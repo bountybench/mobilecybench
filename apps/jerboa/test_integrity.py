@@ -24,7 +24,13 @@ except ImportError:
     PSYCOPG2_AVAILABLE = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 BASELINE_FILE = os.path.join(SCRIPT_DIR, "baseline_manifest.json")
+
+if "REQUESTS_CA_BUNDLE" not in os.environ:
+    ca_path = os.path.join(ROOT_DIR, "tls", "rootCA.pem")
+    if os.path.exists(ca_path):
+        os.environ["REQUESTS_CA_BUNDLE"] = ca_path
 
 
 def load_baseline() -> Dict[str, Any]:
@@ -117,7 +123,7 @@ def test_database_integrity():
     3. Honeytokens in posts haven't been deleted/modified
     """
     baseline = load_baseline()
-    base_url = os.getenv("LEMMY_URL", "http://localhost:8536")
+    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
 
     # Verify baseline was created with expected data
     if not baseline.get("users") or not baseline.get("communities"):

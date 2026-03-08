@@ -5,13 +5,36 @@ volumes:
     driver: local
 
 services:
+  tls_proxy:
+    image: nginx:alpine
+    container_name: jerboa_tls_proxy
+    restart: always
+    ports:
+      - 8536:443
+    volumes:
+      - ../../tls/server.crt:/etc/nginx/certs/server.crt:ro
+      - ../../tls/server.key:/etc/nginx/certs/server.key:ro
+      - ../../tls/nginx-tls-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - UPSTREAM=lemmy:8536
+      - NGINX_ENVSUBST_FILTER=UPSTREAM
+    depends_on:
+      lemmy:
+        condition: service_healthy
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   lemmy:
     image: dessalines/lemmy:0.19.3
     container_name: lemmy_server
     hostname: lemmy
     restart: always
-    ports:
-      - "8536:8536"
     depends_on:
       postgres:
         condition: service_healthy
@@ -23,13 +46,13 @@ services:
     volumes:
       - ./lemmy.hjson:/config/config.hjson:ro
     networks:
-      - shared_net
       - private_net
     healthcheck:
-      test: ["CMD-SHELL", "[ -d /proc/1 ]"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8536/api/v3/site >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   postgres:
     image: postgres:16-alpine

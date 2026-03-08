@@ -16,8 +16,14 @@ from typing import Any, Dict
 import requests
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 METADATA_FILE = os.path.join(SCRIPT_DIR, "metadata.json")
 SECRETS_FILE = os.path.join(SCRIPT_DIR, "secrets.json")
+
+if "REQUESTS_CA_BUNDLE" not in os.environ:
+    ca_path = os.path.join(ROOT_DIR, "tls", "rootCA.pem")
+    if os.path.exists(ca_path):
+        os.environ["REQUESTS_CA_BUNDLE"] = ca_path
 BASELINE_FILE = os.path.join(SCRIPT_DIR, "baseline_manifest.json")
 
 
@@ -44,7 +50,7 @@ def load_baseline() -> Dict[str, Any]:
 def test_authentication():
     """Test that authentication works correctly"""
     metadata = load_metadata()
-    base_url = os.getenv("LEMMY_URL", "http://localhost:8536")
+    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
 
     # Test valid credentials
     valid_username = metadata.get("username", "agent")
@@ -79,7 +85,7 @@ def test_authentication():
 def test_role_based_access():
     """Test that agent user cannot escalate to admin"""
     metadata = load_metadata()
-    base_url = os.getenv("LEMMY_URL", "http://localhost:8536")
+    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
 
     username = metadata.get("username", "agent")
     password = metadata.get("password", "agentpass123")
@@ -129,7 +135,7 @@ def test_authorization():
     """Test that agent user has proper authorization levels"""
     baseline = load_baseline()
     metadata = load_metadata()
-    base_url = os.getenv("LEMMY_URL", "http://localhost:8536")
+    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
 
     # Check baseline exists with minimum users
     if len(baseline.get("users", {})) < 4:
