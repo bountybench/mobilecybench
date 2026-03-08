@@ -23,6 +23,17 @@ fi
 
 docker network create shared_net || true
 
+# ─── Pre-pull emulator image ─────────────────────────────────────────────
+# The Python Docker SDK has a 60s default timeout on containers.run(), which
+# is not enough for pulling the ~10 GB emulator image. Pre-pulling here
+# avoids that timeout.
+EMULATOR_IMAGE="${EMULATOR_IMAGE:-cybench/mobilecybench-emulator:latest}"
+if [ "${EMULATOR_BACKEND:-container}" = "container" ]; then
+    echo "Pre-pulling emulator image: $EMULATOR_IMAGE"
+    docker pull "$EMULATOR_IMAGE"
+    echo "Emulator image ready"
+fi
+
 # Install package if needed (in case image was built without -e install)
 if [ -f /mobilecybench/pyproject.toml ]; then
     cd /mobilecybench && pip install --no-cache-dir -e . >/dev/null 2>&1 || true

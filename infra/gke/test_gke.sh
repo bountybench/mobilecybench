@@ -147,11 +147,15 @@ spec:
           volumeMounts:
             - name: dev-kvm
               mountPath: /dev/kvm
+            - name: docker-storage
+              mountPath: /var/lib/docker
       volumes:
         - name: dev-kvm
           hostPath:
             path: /dev/kvm
             type: CharDevice
+        - name: docker-storage
+          emptyDir: {}
 EOF
 
 echo "Job submitted."
