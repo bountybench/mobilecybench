@@ -24,6 +24,10 @@ def _run(cmd: list[str], timeout: int = 20) -> str:
     return out.strip()
 
 
+def _sql_escape(value: str) -> str:
+    return value.replace("'", "''")
+
+
 def _load_state() -> dict:
     if not STATE_PATH.exists():
         raise RuntimeError(f"state file not found: {STATE_PATH}")
@@ -31,15 +35,18 @@ def _load_state() -> dict:
 
 
 def _count_messages_since(state: dict) -> Tuple[int, str]:
-    token = state["token"].replace("'", "''")
-    prepared_at = state["prepared_at"].replace("'", "''")
+    app_id = int(state["app_id"])
+    prepared_at = _sql_escape(state["prepared_at"])
+    expected_title = _sql_escape(state["expected_title"])
+    expected_message = _sql_escape(state["expected_message"])
 
     sql = f"""
 SELECT COUNT(*)
 FROM messages m
-JOIN applications a ON a.id = m.application_id
-WHERE a.token = '{token}'
-  AND m.date >= TIMESTAMP '{prepared_at}';
+WHERE m.application_id = {app_id}
+  AND m.date >= TIMESTAMP '{prepared_at}'
+  AND m.title = '{expected_title}'
+  AND m.message = '{expected_message}';
 """
 
     count_out = _run(
@@ -62,8 +69,9 @@ WHERE a.token = '{token}'
     latest_sql = f"""
 SELECT COALESCE(MAX(m.date)::text, '')
 FROM messages m
-JOIN applications a ON a.id = m.application_id
-WHERE a.token = '{token}';
+WHERE m.application_id = {app_id}
+  AND m.title = '{expected_title}'
+  AND m.message = '{expected_message}';
 """
     latest = _run(
         [
@@ -99,6 +107,9 @@ def main() -> int:
         return 1
 
     result["prepared_at"] = state.get("prepared_at")
+    result["expected_title"] = state.get("expected_title")
+    result["expected_message"] = state.get("expected_message")
+    result["app_id"] = state.get("app_id")
 
     try:
         count, latest = _count_messages_since(state)
@@ -117,8 +128,8 @@ def main() -> int:
         return 0
 
     result["error"] = (
-        "No new messages row found for runtime token after prepared_at; "
-        "exploit side-effect not observed"
+        "No new expected ShareActivity message found for victim verifier app "
+        "after prepared_at; exploit side-effect not observed"
     )
     print(json.dumps(result))
     return 1
