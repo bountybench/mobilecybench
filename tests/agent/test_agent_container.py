@@ -1,8 +1,12 @@
 """Tests for agent_container module."""
 
 import io
+import os
+import subprocess
 import tarfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import docker.errors
 
 from agent.agent_container import AgentEnvironment
 
@@ -18,6 +22,7 @@ class TestAgentEnvironmentVerifyFiles:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
+            workflow="exploit",
             vuln_id=vuln_id,
         )
 
@@ -94,6 +99,7 @@ class TestSetupAgentOutput:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
+            workflow="exploit",
             vuln_id=vuln_id,
         )
 
@@ -124,6 +130,7 @@ class TestAgentEnvironmentVulnId:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
+            workflow="exploit",
             vuln_id="vuln_2",
         )
 
@@ -137,6 +144,7 @@ class TestAgentEnvironmentVulnId:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
+            workflow="discovery",
         )
 
         assert agent_env.vuln_id is None
@@ -154,6 +162,205 @@ def _make_tar(files: dict[str, str]) -> bytes:
     return buf.getvalue()
 
 
+class TestDiscoveryAgentCodebase:
+    """Tests for discovery-only agent codebase injection."""
+
+    _GIT_ENV = {
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+    }
+
+    def _git(self, cwd, *args):
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, **self._GIT_ENV},
+        )
+        return result.stdout.strip()
+
+    @patch("agent.agent_container.docker.from_env")
+    def test_discovery_setup_injects_honeypot_into_staged_copy(
+        self, _mock_docker, tmp_path
+    ):
+        app_dir = tmp_path / "test_app"
+        codebase_dir = app_dir / "codebase"
+        manifest_dir = codebase_dir / "app" / "src" / "main"
+        source_dir = manifest_dir / "java" / "com" / "example" / "app"
+        source_dir.mkdir(parents=True)
+        (source_dir / "ExampleActivity.java").write_text(
+            "package com.example.app; class ExampleActivity {}",
+            encoding="utf-8",
+        )
+        (manifest_dir / "AndroidManifest.xml").write_text(
+            "<manifest><application></application></manifest>",
+            encoding="utf-8",
+        )
+        self._git(codebase_dir, "init")
+        self._git(codebase_dir, "add", "-A")
+        self._git(codebase_dir, "commit", "-m", "Initial commit")
+        commit_id = self._git(codebase_dir, "rev-parse", "HEAD")
+
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id=commit_id,
+            workflow="discovery",
+            package_name="com.example.app",
+        )
+
+        agent_env._setup_agent_codebase()
+
+        injected_file = (
+            app_dir
+            / "agent_codebase"
+            / "app"
+            / "src"
+            / "main"
+            / "java"
+            / "com"
+            / "example"
+            / "app"
+            / "internal"
+            / "VulnFlagActivity.java"
+        )
+        assert injected_file.exists()
+        assert not (
+            codebase_dir
+            / "app"
+            / "src"
+            / "main"
+            / "java"
+            / "com"
+            / "example"
+            / "app"
+            / "internal"
+            / "VulnFlagActivity.java"
+        ).exists()
+
+    @patch("agent.agent_container.docker.from_env")
+    def test_exploit_setup_does_not_inject_discovery_honeypot(
+        self, _mock_docker, tmp_path
+    ):
+        app_dir = tmp_path / "test_app"
+        codebase_dir = app_dir / "codebase"
+        manifest_dir = codebase_dir / "app" / "src" / "main"
+        source_dir = manifest_dir / "java" / "com" / "example" / "app"
+        source_dir.mkdir(parents=True)
+        (manifest_dir / "AndroidManifest.xml").write_text(
+            "<manifest><application></application></manifest>",
+            encoding="utf-8",
+        )
+
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id="HEAD",
+            workflow="exploit",
+            package_name="com.example.app",
+            vuln_id="vuln_0",
+        )
+
+        agent_env._setup_agent_codebase()
+
+        assert not (
+            app_dir
+            / "agent_codebase"
+            / "app"
+            / "src"
+            / "main"
+            / "java"
+            / "com"
+            / "example"
+            / "app"
+            / "internal"
+            / "VulnFlagActivity.java"
+        ).exists()
+
+
+class TestAgentContainerModeHandling:
+    """Regression tests for workflow vs agent mode separation."""
+
+    @patch("agent.agent_container.docker.from_env")
+    def test_codex_mode_still_logs_in_after_container_start(
+        self, mock_from_env, tmp_path
+    ):
+        mock_client = MagicMock()
+        mock_from_env.return_value = mock_client
+        mock_client.images.get.return_value = MagicMock()
+
+        mock_container = MagicMock()
+        mock_container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
+        mock_client.containers.run.return_value = mock_container
+        mock_client.containers.get.side_effect = docker.errors.NotFound("not found")
+
+        app_dir = tmp_path / "app"
+        codebase_dir = app_dir / "codebase"
+        codebase_dir.mkdir(parents=True)
+        (codebase_dir / ".git").mkdir()
+
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id="HEAD",
+            mode="codex",
+            workflow="discovery",
+        )
+
+        with patch.object(agent_env, "_setup_agent_codebase", return_value={}):
+            agent_env.setup()
+
+        mock_container.exec_run.assert_any_call(
+            "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+        )
+
+    @patch("agent.agent_container.docker.from_env")
+    def test_non_codex_workflow_does_not_trigger_codex_login(
+        self, mock_from_env, tmp_path
+    ):
+        mock_client = MagicMock()
+        mock_from_env.return_value = mock_client
+        mock_client.images.get.return_value = MagicMock()
+
+        mock_container = MagicMock()
+        mock_container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
+        mock_client.containers.run.return_value = mock_container
+        mock_client.containers.get.side_effect = docker.errors.NotFound("not found")
+
+        app_dir = tmp_path / "app"
+        codebase_dir = app_dir / "codebase"
+        codebase_dir.mkdir(parents=True)
+        (codebase_dir / ".git").mkdir()
+
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id="HEAD",
+            workflow="discovery",
+        )
+
+        with patch.object(agent_env, "_setup_agent_codebase", return_value={}):
+            agent_env.setup()
+
+        exec_calls = [call.args[0] for call in mock_container.exec_run.call_args_list]
+        assert (
+            "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+            not in exec_calls
+        )
+
+
 class TestSaveAgentExploit:
     """Tests for AgentEnvironment.save_agent_exploit()."""
 
@@ -164,6 +371,7 @@ class TestSaveAgentExploit:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
+            workflow="discovery",
         )
         return agent_env
 
