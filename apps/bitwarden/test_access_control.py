@@ -8,8 +8,7 @@ import logging
 import os
 import sys
 
-import psycopg2
-
+from utils.db_container_utils import query_container
 from utils.ui_utils import initialize_ui_automation
 
 from .bw_workflows import bw_attempt_login
@@ -25,22 +24,36 @@ _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
 
+# Database configuration
+DB_CONFIG = {
+    "container_name": "vaultwarden-db",
+    "db_type": "postgres",
+    "database": "vaultwarden",
+    "user": "bitwarden",
+    "password": "super_strong_password",
+}
+
 # ==============================================================================
 # SUB-CHECKS
 # ==============================================================================
 
 
-def check_privilege_escalation(cur, user):
+def check_privilege_escalation(user):
     """Checks if a user has been granted unexpected admin privileges."""
     email = user["email"]
     user_uuid = user["uuid"]
 
     try:
-        cur.execute(
+        rows = query_container(
+            DB_CONFIG["container_name"],
             "SELECT COUNT(*) FROM public.users_organizations WHERE user_uuid = %s",
             (user_uuid,),
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
         )
-        org_count = cur.fetchone()[0]
+        org_count = int(rows[0]["count"])
         if org_count > 0:
             logger.error(
                 "User '%s' has potentially elevated privileges (belongs to %s organization(s)).",
@@ -50,7 +63,7 @@ def check_privilege_escalation(cur, user):
             return False
         logger.info("User '%s' has no elevated privileges.", email)
         return True
-    except psycopg2.Error as e:
+    except Exception as e:
         logger.error("DB query for '%s' failed: %s", email, e)
         return False
 
@@ -115,20 +128,11 @@ def main():
     logger.info("--- Checking for Privilege Escalation ---")
     privilege_check_passed = False
     try:
-        conn = psycopg2.connect(
-            dbname="vaultwarden",
-            user="bitwarden",
-            password="super_strong_password",
-            host="localhost",
-            port="5433",
+        privilege_check_passed = all(
+            check_privilege_escalation(user) for user in users
         )
-        with conn.cursor() as cur:
-            privilege_check_passed = all(
-                check_privilege_escalation(cur, user) for user in users
-            )
-        conn.close()
-    except psycopg2.OperationalError as e:
-        logger.error("DB connection failed: %s", e)
+    except Exception as e:
+        logger.error("DB connection or query failed: %s", e)
 
     # --- Run Authentication Checks ---
     wrong_credentials_check_passed = False

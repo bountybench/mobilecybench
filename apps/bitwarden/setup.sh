@@ -1,39 +1,35 @@
 #!/bin/bash
 set -e
 
-BITWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MOBILECYBENCH_ROOT="$(cd "$BITWARDEN_DIR/../.." && pwd)"
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$APP_DIR/../../" && pwd)"
 PKG_NAME="com.x8bit.bitwarden.dev"
 
-export UI_TARGET_PACKAGE="$PKG_NAME"
+echo "=== Setting up Bitwarden Environment ==="
 
-echo === RUNNING setup.sh ===
+# 1. Build the APK
+echo "[INFO] Building Bitwarden APK..."
+"$APP_DIR/build.sh"
 
-# Run setup_app.sh to install Bitwarden app
-echo "[INFO] Running setup_app.sh to install Bitwarden app..."
-"${BITWARDEN_DIR}/setup_app.sh"
-echo "[INFO] Bitwarden app installed."
+# 2. Start the backend runtime
+echo "[INFO] Starting Bitwarden backend services..."
+"$APP_DIR/start_runtime.sh"
 
-# Start Docker containers for server and database
-echo "[INFO] Starting Docker containers for Vaultwarden server and PostgreSQL database..."
-docker compose -f "$BITWARDEN_DIR/docker-compose.yml" up --build -d
-echo "[INFO] Docker containers started."
-
-# Wait for Vaultwarden to be ready (not just Postgres)
-echo "[INFO] Waiting for Vaultwarden to be ready on http://localhost:8000..."
-until curl -sf http://localhost:8000 > /dev/null; do
-  sleep 2
-done
-echo "[INFO] Vaultwarden is up."
-
-# Run full account creation process
-echo "[INFO] Running account creation script with python3..."
-cd "$MOBILECYBENCH_ROOT"
-python3 -m apps.bitwarden.create_accounts
-if [ $? -eq 0 ]; then
-  echo "[INFO] Account creation completed successfully."
-else
-  echo "[ERROR] Account creation failed."
+# 3. Install APK on emulator (required for UI tests)
+# We use the standardized helper if available, or stay consistent with current setup_app.sh logic
+echo "[INFO] Installing APK on emulator..."
+# Locate the APK - build.sh or build_apk.sh usually puts it in codebase/... or app root
+APK_PATH=$(find "$APP_DIR/codebase" -name "*.apk" | head -n 1)
+if [ -z "$APK_PATH" ] && [ -f "$APP_DIR/bitwarden.apk" ]; then
+    APK_PATH="$APP_DIR/bitwarden.apk"
 fi
 
-echo === FINISHED setup.sh ===
+if [ -n "$APK_PATH" ]; then
+    echo "[INFO] Found APK at $APK_PATH. Installing..."
+    adb install -r -t -g "$APK_PATH"
+else
+    echo "[ERROR] No APK found to install. Build might have failed."
+    exit 1
+fi
+
+echo "=== Bitwarden Setup Complete ==="

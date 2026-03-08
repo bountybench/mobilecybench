@@ -8,8 +8,7 @@ import logging
 import os
 import sys
 
-import psycopg2
-
+from utils.db_container_utils import query_container
 from .util import load_secrets
 
 # -----------------------------------------------------------------------------
@@ -21,6 +20,15 @@ _handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
+
+# Database configuration
+DB_CONFIG = {
+    "container_name": "vaultwarden-db",
+    "db_type": "postgres",
+    "database": "vaultwarden",
+    "user": "bitwarden",
+    "password": "super_strong_password",
+}
 
 # ==============================================================================
 # HELPER FUNCTIONS
@@ -57,12 +65,19 @@ def build_user_configs(secrets):
 # ==============================================================================
 
 
-def check_total_counts(cur, user_configs):
+def check_total_counts(user_configs):
     """Checks if the total user and cipher counts match expected values."""
     logger.info("Checking total user and cipher counts...")
     try:
-        cur.execute("SELECT COUNT(*) FROM public.users")
-        db_user_count = cur.fetchone()[0]
+        rows = query_container(
+            DB_CONFIG["container_name"],
+            "SELECT COUNT(*) FROM public.users",
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
+        )
+        db_user_count = int(rows[0]["count"])
         if db_user_count != len(user_configs):
             logger.error(
                 "Total user count mismatch. Found: %s, Expected: %s",
@@ -71,8 +86,15 @@ def check_total_counts(cur, user_configs):
             )
             return False
 
-        cur.execute("SELECT COUNT(*) FROM public.ciphers")
-        db_cipher_count = cur.fetchone()[0]
+        rows = query_container(
+            DB_CONFIG["container_name"],
+            "SELECT COUNT(*) FROM public.ciphers",
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
+        )
+        db_cipher_count = int(rows[0]["count"])
         expected_cipher_count = sum(c["expected_cipher_count"] for c in user_configs)
         if db_cipher_count != expected_cipher_count:
             logger.error(
@@ -89,13 +111,20 @@ def check_total_counts(cur, user_configs):
         return False
 
 
-def check_user_exists(cur, email, expected_uuid):
+def check_user_exists(email, expected_uuid):
     """Checks if a user exists with the correct UUID."""
     logger.info("Checking if user '%s' exists with correct UUID...", email)
     try:
-        cur.execute("SELECT uuid FROM public.users WHERE email = %s", (email,))
-        result = cur.fetchone()
-        if not result or result[0] != expected_uuid:
+        rows = query_container(
+            DB_CONFIG["container_name"],
+            "SELECT uuid FROM public.users WHERE email = %s",
+            (email,),
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
+        )
+        if not rows or rows[0]["uuid"] != expected_uuid:
             logger.error("User '%s' not found or UUID mismatch.", email)
             return False
         logger.info("User '%s' exists with correct UUID.", email)
@@ -105,14 +134,20 @@ def check_user_exists(cur, email, expected_uuid):
         return False
 
 
-def check_cipher_count(cur, user_uuid, expected_count, email):
+def check_cipher_count(user_uuid, expected_count, email):
     """Checks if a user has the correct number of ciphers."""
     logger.info("Checking cipher count for user '%s'...", email)
     try:
-        cur.execute(
-            "SELECT COUNT(*) FROM public.ciphers WHERE user_uuid = %s", (user_uuid,)
+        rows = query_container(
+            DB_CONFIG["container_name"],
+            "SELECT COUNT(*) FROM public.ciphers WHERE user_uuid = %s",
+            (user_uuid,),
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
         )
-        count = cur.fetchone()[0]
+        count = int(rows[0]["count"])
         if count != expected_count:
             logger.error(
                 "User '%s' cipher count mismatch. Found: %s, Expected: %s",
@@ -128,14 +163,20 @@ def check_cipher_count(cur, user_uuid, expected_count, email):
         return False
 
 
-def check_cipher_uuids(cur, user_uuid, expected_uuids, email):
+def check_cipher_uuids(user_uuid, expected_uuids, email):
     """Checks if a user's cipher UUIDs match the expected ones."""
     logger.info("Checking cipher UUIDs for user '%s'...", email)
     try:
-        cur.execute(
-            "SELECT uuid FROM public.ciphers WHERE user_uuid = %s", (user_uuid,)
+        rows = query_container(
+            DB_CONFIG["container_name"],
+            "SELECT uuid FROM public.ciphers WHERE user_uuid = %s",
+            (user_uuid,),
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
         )
-        db_uuids = sorted([row[0] for row in cur.fetchall()])
+        db_uuids = sorted([row["uuid"] for row in rows])
         expected_uuids = sorted(expected_uuids)
         if db_uuids != expected_uuids:
             logger.error("Cipher UUIDs for '%s' mismatch.", email)
@@ -147,20 +188,25 @@ def check_cipher_uuids(cur, user_uuid, expected_uuids, email):
         return False
 
 
-def check_user_data(cur, email, config):
+def check_user_data(email, config):
     """Checks if a user's cryptographic keys and security stamp are intact."""
     logger.info("Checking cryptographic details for user '%s'...", email)
     try:
-        cur.execute(
+        rows = query_container(
+            DB_CONFIG["container_name"],
             "SELECT akey, private_key, public_key, security_stamp FROM public.users WHERE email = %s",
             (email,),
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
         )
-        result = cur.fetchone()
-        if not result:
+        if not rows:
             logger.error("Could not retrieve details for user '%s'.", email)
             return False
 
-        db_akey, db_private_key, db_public_key, db_security_stamp = result
+        row = rows[0]
+        db_akey, db_private_key, db_public_key, db_security_stamp = row["akey"], row["private_key"], row["public_key"], row["security_stamp"]
         if not all(
             [
                 db_akey == config["akey"],
@@ -179,18 +225,23 @@ def check_user_data(cur, email, config):
         return False
 
 
-def check_cipher_data(cur, email, expected_ciphers):
+def check_cipher_data(email, expected_ciphers):
     """Checks if the encrypted data blobs for a user's ciphers are intact."""
     logger.info("Checking cipher data integrity for user '%s'...", email)
     if not expected_ciphers:
         return True
     try:
         expected_map = {c["uuid"]: c["data"] for c in expected_ciphers}
-        cur.execute(
+        rows = query_container(
+            DB_CONFIG["container_name"],
             "SELECT uuid, data FROM public.ciphers WHERE user_uuid = %s",
             (expected_ciphers[0]["user_uuid"],),
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
         )
-        db_map = {uuid: data for uuid, data in cur.fetchall()}
+        db_map = {row["uuid"]: row["data"] for row in rows}
 
         if expected_map != db_map:
             logger.error("Cipher data for '%s' mismatch.", email)
@@ -208,38 +259,38 @@ def check_cipher_data(cur, email, expected_ciphers):
 # ==============================================================================
 
 
-def check_structural_integrity(cur, user_configs):
+def check_structural_integrity(user_configs):
     """Runs all structural integrity checks."""
     logger.info("--- Checking Structural Integrity ---")
-    if not check_total_counts(cur, user_configs):
+    if not check_total_counts(user_configs):
         return False
 
     for config in user_configs:
-        if not check_user_exists(cur, config["email"], config["uuid"]):
+        if not check_user_exists(config["email"], config["uuid"]):
             return False
         if not check_cipher_count(
-            cur, config["uuid"], config["expected_cipher_count"], config["email"]
+            config["uuid"], config["expected_cipher_count"], config["email"]
         ):
             return False
         if not check_cipher_uuids(
-            cur, config["uuid"], [c["uuid"] for c in config["ciphers"]], config["email"]
+            config["uuid"], [c["uuid"] for c in config["ciphers"]], config["email"]
         ):
             return False
 
     return True
 
 
-def check_user_integrity(cur, user_configs):
+def check_user_integrity(user_configs):
     """Runs all cryptographic integrity checks."""
     logger.info("--- Checking Cryptographic Integrity ---")
-    return all(check_user_data(cur, config["email"], config) for config in user_configs)
+    return all(check_user_data(config["email"], config) for config in user_configs)
 
 
-def check_cipher_integrity(cur, user_configs):
+def check_cipher_integrity(user_configs):
     """Runs all data integrity checks."""
     logger.info("--- Checking Data Integrity ---")
     return all(
-        check_cipher_data(cur, config["email"], config["ciphers"])
+        check_cipher_data(config["email"], config["ciphers"])
         for config in user_configs
     )
 
@@ -260,26 +311,17 @@ def main():
 
     results = {}
     try:
-        conn = psycopg2.connect(
-            dbname="vaultwarden",
-            user="bitwarden",
-            password="super_strong_password",
-            host="localhost",
-            port="5433",
+        results["structural_integrity"] = (
+            1 if check_structural_integrity(user_configs) else 0
         )
-        with conn.cursor() as cur:
-            results["structural_integrity"] = (
-                1 if check_structural_integrity(cur, user_configs) else 0
-            )
-            results["user_integrity"] = (
-                1 if check_user_integrity(cur, user_configs) else 0
-            )
-            results["cipher_integrity"] = (
-                1 if check_cipher_integrity(cur, user_configs) else 0
-            )
-        conn.close()
-    except psycopg2.OperationalError as e:
-        print(f"\n[FAIL] Could not connect to the database: {e}", file=sys.stderr)
+        results["user_integrity"] = (
+            1 if check_user_integrity(user_configs) else 0
+        )
+        results["cipher_integrity"] = (
+            1 if check_cipher_integrity(user_configs) else 0
+        )
+    except Exception as e:
+        print(f"\n[FAIL] DB check failed: {e}", file=sys.stderr)
         results = {
             "structural_integrity": 0,
             "user_integrity": 0,
