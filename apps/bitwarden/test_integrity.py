@@ -9,7 +9,9 @@ import os
 import sys
 
 from utils.db_container_utils import query_container
-from .util import load_secrets
+
+# Absolute imports to prevent relative import errors in CI
+from apps.bitwarden.util import load_secrets
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -302,7 +304,9 @@ def check_cipher_integrity(user_configs):
 
 def main():
     """Main function to run integrity checks."""
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Ensure we are in the app directory for relative file lookups
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(app_dir)
 
     secrets = load_secrets()
     user_configs = build_user_configs(secrets)
@@ -329,7 +333,7 @@ def main():
         }
 
     # Emit a single-line JSON summary to STDOUT for run_checks.sh to capture
-    print(json.dumps(results))
+    print(json.dumps({"score": 1 if all(results.values()) else 0, "details": results}))
 
     if all(results.values()):
         logger.info("All database integrity checks passed successfully.")
