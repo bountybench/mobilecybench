@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
-import time
-import hashlib
 import tempfile
+import time
 from typing import List, Tuple
 
 APP_PKG = "org.openhab.habdroid"
@@ -128,7 +128,11 @@ def read_expected_apk_hash() -> str:
 
 def get_apk_device_path(adb: List[str]) -> str:
     out = run(adb + ["shell", "pm", "path", APP_PKG])
-    paths = [line.replace("package:", "", 1).strip() for line in out.splitlines() if line.strip()]
+    paths = [
+        line.replace("package:", "", 1).strip()
+        for line in out.splitlines()
+        if line.strip()
+    ]
     for path in paths:
         if path.endswith("/base.apk"):
             return path
