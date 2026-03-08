@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 META_JSON="$APP_DIR/metadata.json"
 
 log_info() { echo "[prepare_app] INFO: $*"; }
