@@ -126,9 +126,13 @@ def _pull_to_refresh(d) -> None:
 
     try:
         scrolled_to_top = message_list.scroll.vert.toBeginning(max_swipes=6, steps=50)
-        print(f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning={scrolled_to_top}")
+        print(
+            f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning={scrolled_to_top}"
+        )
     except Exception as exc:
-        print(f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning_error={exc}")
+        print(
+            f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning_error={exc}"
+        )
 
     wait_for_ui_stable(d, timeout=8)
 
