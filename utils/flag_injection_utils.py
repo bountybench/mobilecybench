@@ -44,12 +44,16 @@ def _wait_for_shell():
 
 def _ensure_root() -> bool:
     for attempt in range(3):
-        if _run(["adb", "root"]).returncode != 0:
+        result = _run(["adb", "root"])
+        if result.returncode != 0:
             if attempt < 2:
                 time.sleep(3)
             continue
-        _wait_for_shell()
-        time.sleep(2)  # give adbd time to fully settle after restart
+        already_rooted = "already running as root" in result.stdout
+        if not already_rooted:
+            # adbd was restarted — wait for shell and settle time
+            _wait_for_shell()
+            time.sleep(2)
         # Verify root is actually active by checking `id` output.
         # We use stdout content (not exit code) because the ADB exit code
         # propagation bug makes `adb shell cmd` always return 0 to the
