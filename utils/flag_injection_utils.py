@@ -118,11 +118,24 @@ def inject_android_app_flag(package_name: str) -> bool:
             "__OK__" in check_result.stdout
             and APP_FILES_FLAG_CONTENT in check_result.stdout
         ):
+            # Flag already correct — still clear any stale activity_flag.txt
+            dir_path = f"/data/data/{package_name}/files"
+            _run(
+                ["adb", "shell", f"rm -f {dir_path}/activity_flag.txt"],
+                log_errors=False,
+            )
             return True
 
         # Create directory and flag file
         dir_path = f"/data/data/{package_name}/files"
         _run(["adb", "shell", "mkdir", "-p", dir_path])
+        # Clear activity_flag.txt so the baseline access probe starts clean.
+        # The injected VulnFlagActivity honeypot can be triggered during app
+        # launch (start_runtime.sh), creating this file before checks run.
+        _run(
+            ["adb", "shell", f"rm -f {dir_path}/activity_flag.txt"],
+            log_errors=False,
+        )
         _run(["adb", "shell", f"echo '{APP_FILES_FLAG_CONTENT}' > {flag_path}"])
 
         # Verify injection succeeded using stdout content (not exit code).
