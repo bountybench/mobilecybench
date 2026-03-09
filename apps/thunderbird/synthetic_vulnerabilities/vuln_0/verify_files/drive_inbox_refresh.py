@@ -118,39 +118,46 @@ def _log_inbox_state(d, stage: str) -> None:
     )
 
 
-def _swipe_bounds(bounds: dict[str, int]) -> tuple[int, int, int, int]:
-    left = bounds["left"]
-    top = bounds["top"]
-    right = bounds["right"]
-    bottom = bounds["bottom"]
-    width = right - left
-    height = bottom - top
-    x = left + width // 2
-    start_y = top + max(80, height // 5)
-    end_y = min(bottom - 40, top + max(240, (height * 3) // 4))
-    return x, start_y, x, end_y
-
-
 def _pull_to_refresh(d) -> None:
+    refresh = d(resourceIdMatches=_rid("swiperefresh"))
     message_list = d(resourceIdMatches=_rid("message_list"))
-    if not message_list.exists:
-        raise RuntimeError("message list view not present")
+    if not refresh.exists or not message_list.exists:
+        raise RuntimeError("message list refresh UI not present")
+
+    try:
+        scrolled_to_top = message_list.scroll.vert.toBeginning(max_swipes=6, steps=50)
+        print(f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning={scrolled_to_top}")
+    except Exception as exc:
+        print(f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning_error={exc}")
+
+    wait_for_ui_stable(d, timeout=8)
 
     try:
         pre_refresh = d.dump_hierarchy(compressed=True)
     except Exception:
         pre_refresh = None
 
-    bounds = (message_list.info or {}).get("bounds")
-    if not bounds:
-        raise RuntimeError("could not resolve message_list bounds")
-
-    x1, y1, x2, y2 = _swipe_bounds(bounds)
-    d.swipe(x1, y1, x2, y2, 0.2)
-
+    refresh.swipe("down", steps=60)
     if pre_refresh is not None:
         changed = wait_for_screen_change(d, pre_refresh, timeout=3.0)
         print(f"[verify_exploit] attempt={ATTEMPT} refresh_screen_changed={changed}")
+        if not changed:
+            try:
+                fallback_pre_refresh = d.dump_hierarchy(compressed=True)
+            except Exception:
+                fallback_pre_refresh = None
+
+            message_list.swipe("down", steps=60)
+            if fallback_pre_refresh is not None:
+                fallback_changed = wait_for_screen_change(
+                    d,
+                    fallback_pre_refresh,
+                    timeout=3.0,
+                )
+                print(
+                    f"[verify_exploit] attempt={ATTEMPT} "
+                    f"refresh_fallback_screen_changed={fallback_changed}"
+                )
 
     time.sleep(1.5)
     wait_for_ui_stable(d, timeout=12)
