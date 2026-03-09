@@ -1,13 +1,18 @@
 {
   "gh_link": "https://github.com/cy-suite/jerboa.git",
   "commit_version": "d06eef5",
-  "download_link": "https://github.com/LemmyNet/jerboa/releases/download/0.0.84/app-release.apk",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-jerboa-v2/apk-bundle.zip",
   "sdk": "33",
   "java": "17",
-  "emulator_server": "http://10.0.2.2:8536",
-  "app_server": "http://lemmy:8536",
+  "emulator_server": "https://10.0.2.2:8536",
+  "app_server": "jerboa_tls_proxy:443",
   "username": "agent",
   "password": "agentpass123",
   "package_name": "com.jerboa",
-  "container_names": ["lemmy_server", "lemmy_postgres", "lemmy_pictrs"]
+  "container_names": [
+    "jerboa_tls_proxy",
+    "lemmy_server",
+    "lemmy_postgres",
+    "lemmy_pictrs"
+  ]
 }

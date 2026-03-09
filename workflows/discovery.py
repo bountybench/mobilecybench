@@ -31,7 +31,7 @@ class DiscoveryWorkflow(Workflow):
     def setup_runtime_environment(self) -> None:
         """Set up emulator, APK, backend containers, and agent environment."""
         from agent.agent_container import setup_agent_environment
-        from utils.apk_utils import setup_apk
+        from utils.command_executor import CommandExecutor
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import install_app_and_setup_backend
         from utils.uuid_flags_utils import generate_and_save_flags
@@ -54,7 +54,15 @@ class DiscoveryWorkflow(Workflow):
         logger.info("Emulator started in background")
 
         # Build/download APK (can run while emulator boots)
-        setup_apk(self.app_dir, self.config.build_type, self.project_root)
+        self.setup_apks()
+
+        # Repackage with honeypot activity (idempotent)
+        CommandExecutor().run_with_progress(
+            f"bash ../../utils/repackage_apk.sh apk/{self.app_name}.apk",
+            timeout=self.config.build_command_timeout,
+            message="Repackaging APK",
+            cwd=self.app_dir,
+        )
 
         # Explicit boot gate — emulator must be ready before CA injection
         self.emulator.wait_until_ready(
@@ -84,6 +92,16 @@ class DiscoveryWorkflow(Workflow):
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
+
+    def _build_apks_from_source(self) -> None:
+        from utils.command_executor import CommandExecutor
+
+        CommandExecutor().run_with_progress(
+            f"bash ./build_apk.sh {self.app_name}",
+            timeout=self.config.build_command_timeout,
+            message="Building clean APK",
+            cwd=self.project_root,
+        )
 
     def evaluate(self) -> dict:
         """Evaluate using probe-based checks."""

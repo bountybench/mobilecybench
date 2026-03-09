@@ -18,11 +18,13 @@ start_stack(){
   [[ -f "$SCRIPT_DIR/docker-compose.yml" ]] || fatal "docker-compose.yml not found at $SCRIPT_DIR/docker-compose.yml"
   log_info "Starting docker stack"
   docker compose up -d --remove-orphans
+  wait_healthy "jerboa_tls_proxy" 180 || fatal "jerboa_tls_proxy did not become healthy"
 }
 
 run_seeder(){
   log_info "Running seeding script -> $SEED_OUTPUT"
   cd "$SCRIPT_DIR"
+  export REQUESTS_CA_BUNDLE="$SCRIPT_DIR/../../tls/rootCA.pem"
   SEED_OUTPUT_FILE="$SEED_OUTPUT" python3 "$SEED_SCRIPT" || fatal "Seeding failed"
   [[ -f "$SEED_OUTPUT" ]] || fatal "Expected manifest $SEED_OUTPUT not found"
 }
@@ -71,7 +73,7 @@ login_victim_user(){
   log_info "Clearing logcat and logging victim user in..."
   adb logcat -c
   PYTHONPATH="${SCRIPT_DIR}/../.." python3 "$login_script" \
-      "http://10.0.2.2:8536" "alice" "$alice_password" || {
+      "https://10.0.2.2:8536" "alice" "$alice_password" || {
     log_warn "Victim login failed (expected in clean builds without CWE-532)"
     return 0
   }

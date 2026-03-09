@@ -9,8 +9,16 @@ import os
 import subprocess
 import sys
 
+from utils.db_container_utils import query_container
+
 secrets_file = "secrets.json"
 SECRETS = {}
+
+DB_CONTAINER = "simplelogin-db"
+DB_NAME = "simplelogin"
+DB_USER = "simplelogin"
+DB_PASSWORD = "password"
+DB_TYPE = "postgres"
 
 
 def out(msg: str):
@@ -29,24 +37,6 @@ def load_secrets():
         secrets = json.load(f)
     SECRETS = secrets
     return SECRETS
-
-
-def get_container_id(service_name: str):
-    """Get the container id of the specified service"""
-    try:
-        return (
-            subprocess.check_output(["docker", "compose", "ps", "-q", service_name])
-            .decode()
-            .strip()
-        )
-    except subprocess.CalledProcessError:
-        return ""
-
-
-def docker_exec(container_id, *args):
-    """Execute command in docker container"""
-    cmd = ["docker", "exec", "-i", container_id] + list(args)
-    return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
 
 
 def check_device_connectivity():
@@ -126,26 +116,17 @@ def check_docker_services():
 def check_database_connectivity():
     """Test that database is accessible"""
     try:
-        db_container_id = get_container_id("db")
-
-        if not db_container_id:
-            err("[FAIL] Database container not found")
-            return False
-
         # Simple connectivity test
-        result = docker_exec(
-            db_container_id,
-            "psql",
-            "-U",
-            "simplelogin",
-            "-d",
-            "simplelogin",
-            "-t",
-            "-c",
-            "SELECT 1;",
+        rows = query_container(
+            DB_CONTAINER,
+            "SELECT 1",
+            db_type=DB_TYPE,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
         )
 
-        if result.strip() != "1":
+        if not rows:
             err("[FAIL] Database connectivity test failed")
             return False
 
@@ -160,26 +141,21 @@ def check_database_connectivity():
 def check_user_data_availability():
     """Test that user data is available in database"""
     try:
-        db_container_id = get_container_id("db")
-
-        if not db_container_id:
-            err("[FAIL] Database container not found")
-            return False
-
         # Check that we have users
-        result = docker_exec(
-            db_container_id,
-            "psql",
-            "-U",
-            "simplelogin",
-            "-d",
-            "simplelogin",
-            "-t",
-            "-c",
-            "SELECT COUNT(*) FROM users WHERE activated = true;",
+        rows = query_container(
+            DB_CONTAINER,
+            "SELECT COUNT(*) as count FROM users WHERE activated = true",
+            db_type=DB_TYPE,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
         )
 
-        user_count = int(result.strip())
+        if not rows:
+            err("[FAIL] No result from user count query")
+            return False
+
+        user_count = int(rows[0]["count"])
 
         if user_count < 1:
             err("[FAIL] No activated users found in database")

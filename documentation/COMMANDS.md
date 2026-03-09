@@ -33,6 +33,22 @@ Flags:
 - `python runner.py <app_name>`
 - `--agent-type <custom|codex>`
 
+## Download pre-built APKs
+
+```bash
+python download_apk.py conversations
+python download_apk.py --force conversations
+python download_apk.py --check
+```
+
+Details: `documentation/ADDING_APPS.md`
+
+Flags:
+
+- `python download_apk.py <app_name>` — download APK (skips existing files)
+- `--force` — overwrite existing files
+- `--check [app_name]` — validate download_links against GitHub releases
+
 ## Build and publish APKs
 
 ```bash

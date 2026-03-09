@@ -319,7 +319,7 @@ def main():
     secrets = load_secrets()
 
     # Seeder runs on host, so use localhost (not docker hostname)
-    base_url = os.getenv("LEMMY_URL", "http://localhost:8536")
+    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
 
     seeder = LemmySeeder(base_url, secrets)
     manifest = seeder.seed()

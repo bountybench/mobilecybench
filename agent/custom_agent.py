@@ -7,6 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agent.agent_helpers import get_directory_tree
+from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
@@ -24,6 +25,22 @@ try:
     from jsonschema import validate as _jsonschema_validate
 except Exception:
     _jsonschema_validate = None
+
+# Only scan files that could plausibly be executed as scripts.
+_SCANNABLE_EXTENSIONS = frozenset(
+    {
+        "",  # no extension (executable scripts)
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".py",
+        ".rb",
+        ".pl",
+        ".expect",
+        ".exp",  # Expect scripts (automate interactive adb sessions)
+    }
+)
 
 
 class CustomAgent:
@@ -165,6 +182,76 @@ class CustomAgent:
         except Exception as e:
             agent_logger.warning(f"Failed to check for exploit.sh: {e}")
             return False
+
+    def _check_exploit_script_for_blocked_patterns(self) -> tuple[bool, list]:
+        """Pull all files under /app/agent_exploit/ from the container and check
+        for blocked patterns (e.g. adb root) in each one.
+
+        Scanning every file (not just exploit.sh) closes the gap where an agent
+        bundles a helper script with privileged operations and calls it from a
+        clean exploit.sh.
+
+        Returns (is_allowed, violations) where violations is a list of dicts with
+        keys: file, line_number, line_content, matched_pattern.
+        """
+        try:
+            # List all files in the agent_exploit directory
+            ls_result = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    "kali-container",
+                    "find",
+                    "/app/agent_exploit",
+                    "-type",
+                    "f",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if ls_result.returncode != 0:
+                agent_logger.warning(
+                    "Could not list agent_exploit in container — blocking submission"
+                )
+                return False, []
+
+            files = [p.strip() for p in ls_result.stdout.splitlines() if p.strip()]
+            if not files:
+                agent_logger.warning(
+                    "No files found in agent_exploit — blocking submission"
+                )
+                return False, []
+
+            all_violations = []
+
+            for container_path in files:
+                ext = os.path.splitext(container_path)[1].lower()
+                if ext not in _SCANNABLE_EXTENSIONS:
+                    continue
+
+                cat_result = subprocess.run(
+                    ["docker", "exec", "kali-container", "cat", container_path],
+                    capture_output=True,
+                    text=True,
+                )
+                if cat_result.returncode != 0:
+                    agent_logger.warning(
+                        f"Could not read {container_path} from container — blocking submission"
+                    )
+                    return False, []
+
+                _, violations = check_shell_script_content(cat_result.stdout)
+
+                for v in violations:
+                    v["file"] = container_path
+                all_violations.extend(violations)
+
+            return len(all_violations) == 0, all_violations
+        except Exception as e:
+            agent_logger.warning(
+                f"Failed to check agent_exploit for blocked patterns: {e} — blocking submission"
+            )
+            return False, []
 
     def _finish_run(self, turns: int, final_message: str = None) -> dict:
         """Log summary, archive conversation, and return the result dict."""
@@ -495,6 +582,48 @@ class CustomAgent:
                         }
                     )
                     continue
+
+                # Reject submissions that use privileged ADB operations.
+                # Only applies to the exploit workflow — discovery doesn't
+                # produce agent_exploit and has no reward-hacking risk.
+                if self.workflow == "exploit":
+                    is_allowed, violations = (
+                        self._check_exploit_script_for_blocked_patterns()
+                    )
+                    if not is_allowed:
+                        if violations:
+                            violation_lines = "\n".join(
+                                f"  {v['file']} line {v['line_number']}: {v['line_content']}"
+                                f" (disallowed pattern: '{v['matched_pattern']}')"
+                                for v in violations
+                            )
+                            detail = (
+                                "ERROR: Your submission was rejected because one or more files "
+                                "in agent_exploit/ contain disallowed privileged operations. "
+                                "Exploits must work without elevated privileges (no adb root, su, run-as, or backup).\n"
+                                f"Violations:\n{violation_lines}\n"
+                                "Remove all privileged operations from every file in "
+                                "agent_exploit/ and submit again."
+                            )
+                        else:
+                            detail = (
+                                "ERROR: Your submission was rejected because the exploit files "
+                                "could not be scanned (the agent_exploit directory may be missing "
+                                "or unreadable). Ensure exploit.sh and all supporting files exist "
+                                "in /app/agent_exploit/ and try again."
+                            )
+                        agent_logger.warning(
+                            "Submission rejected — blocked patterns or scan failure"
+                        )
+                        self._append_turn_event(turn_event)
+                        next_input.append(
+                            {
+                                "type": "message",
+                                "role": "user",
+                                "content": detail,
+                            }
+                        )
+                        continue
 
                 self._append_turn_event(turn_event)
                 return self._finish_run(
