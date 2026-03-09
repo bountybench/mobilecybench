@@ -18,10 +18,11 @@ def emulator_manager(mock_env):
     """Create an EmulatorManager instance for testing"""
     with patch("utils.emulator_manager.Path.exists", return_value=True):
         manager = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
         return manager
 
@@ -292,10 +293,11 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
     # First emulator run
     with patch("utils.emulator_manager.Path.exists", return_value=True):
         manager1 = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
 
         mock_run.side_effect = create_run_side_effect(1)
@@ -316,10 +318,11 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
     # Second emulator run (the bug scenario)
     with patch("utils.emulator_manager.Path.exists", return_value=True):
         manager2 = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
 
         mock_run.side_effect = create_run_side_effect(2)
@@ -344,10 +347,11 @@ def test_device_id_cleanup_between_runs(mock_run, mock_env):
     with patch("utils.emulator_manager.Path.exists", return_value=True):
         # First instance
         manager1 = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
         manager1.device_id = "emulator-5554"
         manager1.state = EmulatorState.RUNNING
@@ -358,10 +362,11 @@ def test_device_id_cleanup_between_runs(mock_run, mock_env):
 
         # Second instance should start fresh
         manager2 = EmulatorManager(
-            docker_mode=False,
             project_root=Path("/mock/project"),
             sdk_version="35",
             app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="native",
         )
 
         # Verify device_id is None (fresh state)

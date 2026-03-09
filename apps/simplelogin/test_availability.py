@@ -9,8 +9,16 @@ import os
 import subprocess
 import sys
 
+from utils.db_container_utils import query_container
+
 secrets_file = "secrets.json"
 SECRETS = {}
+
+DB_CONTAINER = "simplelogin-db"
+DB_NAME = "simplelogin"
+DB_USER = "simplelogin"
+DB_PASSWORD = "password"
+DB_TYPE = "postgres"
 
 
 def out(msg: str):
@@ -31,24 +39,6 @@ def load_secrets():
     return SECRETS
 
 
-def get_container_id(service_name: str):
-    """Get the container id of the specified service"""
-    try:
-        return (
-            subprocess.check_output(["docker", "compose", "ps", "-q", service_name])
-            .decode()
-            .strip()
-        )
-    except subprocess.CalledProcessError:
-        return ""
-
-
-def docker_exec(container_id, *args):
-    """Execute command in docker container"""
-    cmd = ["docker", "exec", "-i", container_id] + list(args)
-    return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
-
-
 def check_device_connectivity():
     """Test that Android device/emulator is connected"""
     try:
@@ -57,7 +47,7 @@ def check_device_connectivity():
         )
 
         if result.returncode != 0:
-            err(f"❌ [FAIL] adb command failed: {result.stderr}")
+            err(f"[FAIL] adb command failed: {result.stderr}")
             return False
 
         # Count connected devices (both physical devices and emulators)
@@ -67,17 +57,17 @@ def check_device_connectivity():
         )
 
         if device_count < 1:
-            err("❌ [FAIL] No Android devices connected")
+            err("[FAIL] No Android devices connected")
             return False
 
-        out(f"✅ [PASS] {device_count} device(s) connected")
+        out(f"[PASS] {device_count} device(s) connected")
         return True
 
     except subprocess.TimeoutExpired:
-        err("❌ [FAIL] adb command timed out")
+        err("[FAIL] adb command timed out")
         return False
     except Exception as e:
-        err(f"❌ [FAIL] Error checking device connectivity: {e}")
+        err(f"[FAIL] Error checking device connectivity: {e}")
         return False
 
 
@@ -93,7 +83,7 @@ def check_docker_services():
         )
 
         if result.returncode != 0:
-            err(f"❌ [FAIL] Docker compose command failed: {result.stderr}")
+            err(f"[FAIL] Docker compose command failed: {result.stderr}")
             return False
 
         running_services = result.stdout.strip().split("\n")
@@ -104,92 +94,78 @@ def check_docker_services():
         running_services_set = set(running_services)
 
         if len(running_services) < 1:
-            err("❌ [FAIL] No Docker services running")
+            err("[FAIL] No Docker services running")
             return False
 
         missing_services = required_services - running_services_set
         if missing_services:
-            err(f"❌ [FAIL] Missing required services: {', '.join(missing_services)}")
+            err(f"[FAIL] Missing required services: {', '.join(missing_services)}")
             return False
 
-        out(f"✅ [PASS] {len(running_services)} Docker services running")
+        out(f"[PASS] {len(running_services)} Docker services running")
         return True
 
     except subprocess.TimeoutExpired:
-        err("❌ [FAIL] Docker command timed out")
+        err("[FAIL] Docker command timed out")
         return False
     except Exception as e:
-        err(f"❌ [FAIL] Error checking Docker services: {e}")
+        err(f"[FAIL] Error checking Docker services: {e}")
         return False
 
 
 def check_database_connectivity():
     """Test that database is accessible"""
     try:
-        db_container_id = get_container_id("db")
-
-        if not db_container_id:
-            err("❌ [FAIL] Database container not found")
-            return False
-
         # Simple connectivity test
-        result = docker_exec(
-            db_container_id,
-            "psql",
-            "-U",
-            "simplelogin",
-            "-d",
-            "simplelogin",
-            "-t",
-            "-c",
-            "SELECT 1;",
+        rows = query_container(
+            DB_CONTAINER,
+            "SELECT 1",
+            db_type=DB_TYPE,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
         )
 
-        if result.strip() != "1":
-            err("❌ [FAIL] Database connectivity test failed")
+        if not rows:
+            err("[FAIL] Database connectivity test failed")
             return False
 
-        out("✅ [PASS] Database connectivity verified")
+        out("[PASS] Database connectivity verified")
         return True
 
     except Exception as e:
-        err(f"❌ [FAIL] Error checking database connectivity: {e}")
+        err(f"[FAIL] Error checking database connectivity: {e}")
         return False
 
 
 def check_user_data_availability():
     """Test that user data is available in database"""
     try:
-        db_container_id = get_container_id("db")
-
-        if not db_container_id:
-            err("❌ [FAIL] Database container not found")
-            return False
-
         # Check that we have users
-        result = docker_exec(
-            db_container_id,
-            "psql",
-            "-U",
-            "simplelogin",
-            "-d",
-            "simplelogin",
-            "-t",
-            "-c",
-            "SELECT COUNT(*) FROM users WHERE activated = true;",
+        rows = query_container(
+            DB_CONTAINER,
+            "SELECT COUNT(*) as count FROM users WHERE activated = true",
+            db_type=DB_TYPE,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
         )
 
-        user_count = int(result.strip())
-
-        if user_count < 1:
-            err("❌ [FAIL] No activated users found in database")
+        if not rows:
+            err("[FAIL] No result from user count query")
             return False
 
-        out(f"✅ [PASS] {user_count} activated users available")
+        user_count = int(rows[0]["count"])
+
+        if user_count < 1:
+            err("[FAIL] No activated users found in database")
+            return False
+
+        out(f"[PASS] {user_count} activated users available")
         return True
 
     except Exception as e:
-        err(f"❌ [FAIL] Error checking user data availability: {e}")
+        err(f"[FAIL] Error checking user data availability: {e}")
         return False
 
 
@@ -211,18 +187,18 @@ def check_app_installation():
         )
 
         if result.returncode != 0:
-            err(f"❌ [FAIL] Failed to check app installation: {result.stderr}")
+            err(f"[FAIL] Failed to check app installation: {result.stderr}")
             return False
 
         if not result.stdout.strip():
-            err(f"❌ [FAIL] App {app_id} is not installed")
+            err(f"[FAIL] App {app_id} is not installed")
             return False
 
-        out(f"✅ [PASS] App {app_id} is installed")
+        out(f"[PASS] App {app_id} is installed")
         return True
 
     except Exception as e:
-        err(f"❌ [FAIL] Error checking app installation: {e}")
+        err(f"[FAIL] Error checking app installation: {e}")
         return False
 
 
@@ -254,7 +230,7 @@ def check_app_launch():
         )
 
         if result.returncode != 0:
-            err(f"❌ [FAIL] Failed to launch app: {result.stderr}")
+            err(f"[FAIL] Failed to launch app: {result.stderr}")
             return False
 
         # Check if app process is running
@@ -264,14 +240,14 @@ def check_app_launch():
 
         if ps_result.returncode == 0 and ps_result.stdout.strip():
             pid = ps_result.stdout.strip()
-            out(f"✅ [PASS] App launched successfully (PID: {pid})")
+            out(f"[PASS] App launched successfully (PID: {pid})")
             return True
         else:
-            out("✅ [PASS] App launch command executed (process check inconclusive)")
+            out("[PASS] App launch command executed (process check inconclusive)")
             return True  # Launch command succeeded even if process check failed
 
     except Exception as e:
-        err(f"❌ [FAIL] Error checking app launch: {e}")
+        err(f"[FAIL] Error checking app launch: {e}")
         return False
 
 
@@ -296,35 +272,15 @@ def main():
         else:
             results_summary[test_name] = 0
 
-    # Calculate overall score
-    total_tests = len(results_summary)
-    passed_tests = sum(results_summary.values())
-    score = passed_tests / total_tests if total_tests > 0 else 0
-
-    # Create detailed results for the scoring system
-    detailed_results = {
-        "availability": score,
-        "tests_passed": passed_tests,
-        "tests_total": total_tests,
-        "details": f"Availability tests: {passed_tests}/{total_tests} passed",
-        "individual_results": results_summary,
-    }
-
-    # Write results to file for scoring system
-    results_file = os.path.join(os.path.dirname(__file__), "availability_results.json")
-    with open(results_file, "w") as f:
-        json.dump(detailed_results, f, indent=2)
-
-    # Output format expected by universal run_checks.sh
-    score = 1 if all(results_summary.values()) else 0
-    print(json.dumps({"score": score, "details": results_summary}))
-
-    # Check if all tests passed (binary success/failure)
     all_passed = all(val == 1 for val in results_summary.values())
-    if not all_passed:
-        err("\n❌ Some availability tests failed.")
+    score = 1 if all_passed else 0
+
+    if all_passed:
+        out("All availability tests passed successfully.")
     else:
-        out("\n✅ All availability tests passed successfully.")
+        err("Some availability tests failed.")
+
+    print(json.dumps({"score": score, "details": results_summary}))
 
     sys.exit(0)
 

@@ -31,19 +31,23 @@ if [ -f /mobilecybench/pyproject.toml ]; then
     cd /mobilecybench && /opt/venv/bin/pip install --no-cache-dir -e . >/dev/null 2>&1 || true
 fi
 
-echo "Starting ADB server..."
-adb start-server
+# Start ADB on all interfaces (-a) so agent containers can reach it
+# via host.docker.internal:5037. Without -a, ADB binds to 127.0.0.1
+# only, which is unreachable from the docker0 bridge on Linux.
+# See issue #688.
+echo "Starting ADB server on all interfaces..."
+adb -a start-server
 
 # If APP_NAME is provided, run the runner
 if [ -n "$APP_NAME" ]; then
     echo "Running MobileCybench for app: $APP_NAME"
     cd /mobilecybench
 
-    # Ensure docker mode is enabled in runner_config.json
+    # Ensure headless display in runner_config.json (orchestrator runs without display)
     # This changes the host filesystem via volume mount
     if [ -f runner_config.json ]; then
-        jq '.docker_mode = true' runner_config.json > runner_config.json.tmp && mv runner_config.json.tmp runner_config.json
-        echo "Set docker_mode=true in runner_config.json"
+        jq '.emulator_display = "headless"' runner_config.json > runner_config.json.tmp && mv runner_config.json.tmp runner_config.json
+        echo "Set emulator_display=headless in runner_config.json"
     fi
 
     python3 runner.py "$APP_NAME"

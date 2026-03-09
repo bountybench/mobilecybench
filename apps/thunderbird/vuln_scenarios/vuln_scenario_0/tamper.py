@@ -418,11 +418,10 @@ def main():
         # --- Email #1: Subject tampering
         ids1 = search_by_msgid(M, msgid1)
         if ids1:
-            seq1 = ids1[-1]
-            raw1, internal1 = fetch_rfc822_and_internaldate(M, seq1)
+            raw1, internal1 = fetch_rfc822_and_internaldate(M, ids1[-1])
             tampered_subject = f"{subj1} [MODIFIED]"
             new1 = replace_subject(raw1, tampered_subject)
-            delete_and_expunge(M, [seq1])
+            delete_and_expunge(M, ids1)
             append_with_internaldate(M, "INBOX", new1, internal1)
             tampered.append({"msgid": msgid1, "type": "subject_tamper"})
             print("[+] Tampered email 1: Modified subject")
@@ -432,11 +431,10 @@ def main():
         # --- Email #2: Body tampering
         ids2 = search_by_msgid(M, msgid2)
         if ids2:
-            seq2 = ids2[-1]
-            raw2, internal2 = fetch_rfc822_and_internaldate(M, seq2)
+            raw2, internal2 = fetch_rfc822_and_internaldate(M, ids2[-1])
             tampered_body = f"TAMPERED CONTENT: {body2}"
             new2 = replace_text_plain_body(raw2, tampered_body)
-            delete_and_expunge(M, [seq2])
+            delete_and_expunge(M, ids2)
             append_with_internaldate(M, "INBOX", new2, internal2)
             tampered.append({"msgid": msgid2, "type": "body_tamper"})
             print("[+] Tampered email 2: Modified body")
@@ -446,13 +444,12 @@ def main():
         # --- Email #3: Header injection (malicious Reply-To and X-Priority)
         ids3 = search_by_msgid(M, msgid3)
         if ids3:
-            seq3 = ids3[-1]
-            raw3, internal3 = fetch_rfc822_and_internaldate(M, seq3)
+            raw3, internal3 = fetch_rfc822_and_internaldate(M, ids3[-1])
             # Inject malicious Reply-To header
             new3 = inject_malicious_header(raw3, "Reply-To", "attacker@malicious.com")
             # Add high priority header
             new3 = inject_malicious_header(new3, "X-Priority", "1 (Highest)")
-            delete_and_expunge(M, [seq3])
+            delete_and_expunge(M, ids3)
             append_with_internaldate(M, "INBOX", new3, internal3)
             tampered.append({"msgid": msgid3, "type": "header_injection"})
             print("[+] Tampered email 3: Injected malicious headers")
@@ -462,10 +459,9 @@ def main():
         # --- Email #4: Attachment removal
         ids4 = search_by_msgid(M, msgid4)
         if ids4:
-            seq4 = ids4[-1]
-            raw4, internal4 = fetch_rfc822_and_internaldate(M, seq4)
+            raw4, internal4 = fetch_rfc822_and_internaldate(M, ids4[-1])
             new4 = remove_attachment(raw4)
-            delete_and_expunge(M, [seq4])
+            delete_and_expunge(M, ids4)
             append_with_internaldate(M, "INBOX", new4, internal4)
             tampered.append({"msgid": msgid4, "type": "attachment_removal"})
             print("[+] Tampered email 4: Removed attachment")
@@ -475,8 +471,7 @@ def main():
         # --- Email #5: Email deletion
         ids5 = search_by_msgid(M, msgid5)
         if ids5:
-            seq5 = ids5[-1]
-            delete_and_expunge(M, [seq5])
+            delete_and_expunge(M, ids5)
             tampered.append({"msgid": msgid5, "type": "deletion"})
             print("[+] Tampered email 5: Deleted email")
         else:

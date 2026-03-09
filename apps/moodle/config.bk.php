@@ -21,7 +21,7 @@ $CFG->dboptions = array (
 // $CFG->wwwroot   = 'http://localhost:8000';
 
 // Define the allowed domains
-$allowed_domains = ['localhost:8000', '10.0.2.2:8000'];
+$allowed_domains = ['localhost:8000', '10.0.2.2:8000', 'moodle-webserver-1'];
 
 // Check if the request is coming from a browser (HTTP) and matches an allowed domain
 if (isset($_SERVER['HTTP_HOST']) && in_array($_SERVER['HTTP_HOST'], $allowed_domains)) {

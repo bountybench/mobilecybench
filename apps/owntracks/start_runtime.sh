@@ -55,7 +55,17 @@ setup_mosquitto() {
     log_info "Password file created with agent user ($AGENT_USERNAME) and admin user ($ADMIN_USERNAME)"
 
     log_info "Starting Mosquitto MQTT broker..."
+    # If the container already exists, it may have attempted to start previously (or be reused in a
+    # dev workflow). In that case we restart after updating pwfile/ACL so it reloads state.
+    local had_existing_container="false"
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "mosquitto"; then
+        had_existing_container="true"
+    fi
     docker compose up -d mosquitto
+    if [[ "$had_existing_container" == "true" ]]; then
+        log_info "Restarting Mosquitto to reload password/ACL files"
+        docker compose restart mosquitto
+    fi
 
     log_info "Waiting for Mosquitto to start..."
     for i in $(seq 1 15); do
@@ -72,6 +82,20 @@ install_and_configure_app() {
     log_info "Installing OwnTracks on Android device"
     adb uninstall "$PKG" >/dev/null 2>&1 || true
     adb_install_apk "$APK_PATH"
+
+    log_info "Granting runtime permissions"
+    for perm in android.permission.ACCESS_FINE_LOCATION \
+                android.permission.ACCESS_COARSE_LOCATION \
+                android.permission.ACCESS_BACKGROUND_LOCATION \
+                android.permission.POST_NOTIFICATIONS; do
+        adb shell pm grant "$PKG" "$perm" 2>/dev/null || true
+    done
+
+    log_info "Launching OwnTracks and completing welcome wizard"
+    adb shell am start -n "$PKG/.ui.map.MapActivity"
+    sleep 3
+    python3 "$SCRIPT_DIR/ui_automation/welcome_wizard.py"
+    log_info "Welcome wizard completed"
 
     log_info "Configuring OwnTracks with MQTT broker settings"
 
@@ -91,6 +115,7 @@ install_and_configure_app() {
   "subTopic": "owntracks/+/+",
   "tid": "AA",
   "clientId": "owntracks-test",
+  "tls": false,
   "cleanSession": true
 }
 EOF

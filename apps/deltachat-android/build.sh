@@ -4,13 +4,22 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/codebase"
 
+export LC_ALL=C
+export LANG=C
+
 # Install Rust targets (required for native build)
 if ! command -v rustup >/dev/null 2>&1; then
     echo "ERROR: rustup not found. Install Rust first: https://rustup.rs"
     exit 1
 fi
-rustup install 1.86.0
-rustup target add x86_64-linux-android --toolchain 1.86.0
+export PATH="$(rustup which rustc | xargs dirname):$PATH"
+
+git submodule update --init --recursive
+
+ACTIVE_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')
+echo "Active Rust toolchain: $ACTIVE_TOOLCHAIN"
+rustup target add x86_64-linux-android --toolchain "$ACTIVE_TOOLCHAIN"
+rustup target add aarch64-linux-android --toolchain "$ACTIVE_TOOLCHAIN"
 export CARGO_INCREMENTAL=1
 
 # Setup NDK - find any available version
@@ -27,10 +36,9 @@ if [[ -z "$ANDROID_NDK_HOME" ]]; then
 fi
 export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
 
-git submodule update --init --recursive
-
-# Build native libraries
+# Build native libraries for both architectures
 ./scripts/ndk-make.sh x86_64
+./scripts/ndk-make.sh arm64-v8a
 
 # Write signing config (uses KEYSTORE_* env vars from build_apk.sh)
 cat > gradle.properties <<EOF

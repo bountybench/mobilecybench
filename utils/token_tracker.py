@@ -11,9 +11,10 @@ TODO: - Extend support for other API response formats. Currently only OpenAI-lik
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
+
+from pydantic import BaseModel
 
 from utils.logger import logger, logger_manager
 from utils.token_costs import (
@@ -24,12 +25,12 @@ from utils.token_costs import (
 )
 
 
-@dataclass
-class TokenUsage:
+class TokenUsage(BaseModel):
     """A normalized record of tokens and cost for a single API call.
 
     Attributes:
         - model: The model name used for the API call.
+        - run_id: Shared session/experiment identifier from LoggerManager.
         - request_id: The unique request ID from the API response, if available.
         - created_at: timestamp when the record was created.
         - input_tokens: Number of input tokens used.
@@ -39,6 +40,7 @@ class TokenUsage:
     """
 
     model: str
+    run_id: str
     request_id: Optional[str]
     created_at: str
     input_tokens: int
@@ -222,6 +224,7 @@ class TokenTracker:
 
         record = TokenUsage(
             model=model,
+            run_id=logger_manager.get_run_id(),
             request_id=request_id,
             created_at=datetime.now(timezone.utc).isoformat(),
             input_tokens=i,
@@ -247,7 +250,7 @@ class TokenTracker:
         # Append to JSONL if configured
         if self._jsonl_path:
             try:
-                line = json.dumps(asdict(record), ensure_ascii=False)
+                line = json.dumps(record.model_dump(), ensure_ascii=False)
                 with open(self._jsonl_path, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
             except Exception as e:
