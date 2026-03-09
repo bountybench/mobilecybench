@@ -119,6 +119,12 @@ def inject_android_app_flag(package_name: str) -> bool:
             and APP_FILES_FLAG_CONTENT in check_result.stdout
         ):
             # Flag already correct — still clear any stale activity_flag.txt
+            # and force-stop the app to prevent VulnFlagActivity from
+            # recreating it while the app process is running.
+            _run(
+                ["adb", "shell", "am", "force-stop", package_name],
+                log_errors=False,
+            )
             dir_path = f"/data/data/{package_name}/files"
             _run(
                 ["adb", "shell", f"rm -f {dir_path}/activity_flag.txt"],
@@ -129,9 +135,14 @@ def inject_android_app_flag(package_name: str) -> bool:
         # Create directory and flag file
         dir_path = f"/data/data/{package_name}/files"
         _run(["adb", "shell", "mkdir", "-p", dir_path])
-        # Clear activity_flag.txt so the baseline access probe starts clean.
-        # The injected VulnFlagActivity honeypot can be triggered during app
-        # launch (start_runtime.sh), creating this file before checks run.
+        # Force-stop the app and clear activity_flag.txt so the baseline
+        # access probe starts clean.  VulnFlagActivity can be triggered
+        # during app launch (start_runtime.sh) and will keep recreating
+        # the file while the app process is alive.
+        _run(
+            ["adb", "shell", "am", "force-stop", package_name],
+            log_errors=False,
+        )
         _run(
             ["adb", "shell", f"rm -f {dir_path}/activity_flag.txt"],
             log_errors=False,
