@@ -13,5 +13,6 @@
         "jitsi-latest-web-1",
         "jitsi-latest-jicofo-1",
         "jitsi-latest-jvb-1"
-    ]
+    ],
+    "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-jitsi-meet/apk-bundle.zip"
 }
