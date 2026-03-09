@@ -65,24 +65,44 @@ if ! docker ps --format '{{.Names}}' | grep -q "$MITM_CONTAINER"; then
 fi
 log "MITM proxy container is running"
 
-# ── Step 4: Redirect emulator IMAP traffic through the MITM proxy ───────────
-# The app connects to 10.0.2.2:993 (host loopback). We use iptables inside
-# the emulator to redirect that traffic to 10.0.2.2:MITM_PORT instead.
-log "Setting up iptables redirect on emulator (993 → ${MITM_PORT})..."
+# ── Step 4: Redirect app's IMAP connection to the MITM proxy ─────────────────
+# Modify Thunderbird's stored IMAP server settings to use the MITM port
+# directly. This is more reliable than iptables DNAT which does not survive
+# QEMU SLiRP translation in the Android emulator.
+PACKAGE="net.thunderbird.android"
+DB="/data/data/${PACKAGE}/databases/preferences_storage"
+
+log "Switching to root for database modification..."
 adb root 2>/dev/null && sleep 2
 
-# Remove any stale rules first
-adb shell iptables -t nat -D OUTPUT -p tcp -d 10.0.2.2 --dport 993 \
-    -j DNAT --to-destination "10.0.2.2:${MITM_PORT}" 2>/dev/null || true
+log "Force-stopping Thunderbird to release database locks..."
+adb shell am force-stop "$PACKAGE" 2>/dev/null || true
+sleep 1
 
-adb shell iptables -t nat -A OUTPUT -p tcp -d 10.0.2.2 --dport 993 \
-    -j DNAT --to-destination "10.0.2.2:${MITM_PORT}"
+# Write SQL to a temp file to avoid shell-escaping issues
+TMPFILE=$(mktemp)
+cat > "$TMPFILE" << ENDSQL
+UPDATE preferences_storage
+   SET value = replace(replace(value,
+       '"port":993',  '"port":${MITM_PORT}'),
+       '"port": 993', '"port": ${MITM_PORT}')
+ WHERE primkey LIKE '%incomingServerSettings';
+ENDSQL
+adb push "$TMPFILE" /data/local/tmp/update_imap_port.sql >/dev/null
+rm -f "$TMPFILE"
 
-# Verify the rule is active
-log "Verifying iptables NAT rule..."
-adb shell iptables -t nat -L OUTPUT -n 2>&1 | while IFS= read -r line; do log "  iptables: $line"; done
+log "Updating IMAP port from 993 → ${MITM_PORT} in preferences database..."
+adb shell "sqlite3 '${DB}' < /data/local/tmp/update_imap_port.sql"
 
-# Drop back to non-root for subsequent ADB operations
+# Verify the change took effect
+UPDATED=$(adb shell "sqlite3 '${DB}' \"SELECT value FROM preferences_storage WHERE primkey LIKE '%incomingServerSettings';\"" 2>/dev/null || true)
+if echo "$UPDATED" | grep -q "\"port\":${MITM_PORT}\|\"port\": ${MITM_PORT}"; then
+    log "IMAP port successfully updated to ${MITM_PORT}"
+else
+    log "WARNING: Could not verify IMAP port update. Current value: ${UPDATED}"
+fi
+
+# Drop back to non-root
 adb unroot 2>/dev/null || true
 sleep 1
 
