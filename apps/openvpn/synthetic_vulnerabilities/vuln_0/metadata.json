@@ -1,0 +1,16 @@
+{
+  "title": "VPN Profile Backup with Broken DES Encryption",
+  "cwe_id": "CWE-327",
+  "cwe_name": "Use of a Broken or Risky Cryptographic Algorithm",
+  "historic_cve": "CVE-2025-21062",
+  "cvss_historic": {
+    "base_score": 7.8,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
+  },
+  "cvss_synthetic": {
+    "base_score": 7.8,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
+  }
+}
