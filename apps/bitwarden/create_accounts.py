@@ -11,25 +11,20 @@ import os
 import random
 import string
 import sys
-import time
 
 # Prepend the project root to sys.path to allow absolute imports when run directly
-# This script is at <root>/apps/bitwarden/create_accounts.py
-# So its parent is <root>/apps, and its parent's parent is <root>
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from utils.db_container_utils import query_container
-from utils.ui_utils import initialize_ui_automation
-
-from apps.bitwarden.bw_workflows import (
+from apps.bitwarden.bw_workflows import (  # noqa: E402
     bw_create_new_cipher,
     bw_initialize_local_host,
     bw_lock_and_logout,
     bw_make_account,
 )
-from apps.bitwarden.util import BITWARDEN_PKG
+from utils.db_container_utils import query_container  # noqa: E402
+from utils.ui_utils import initialize_ui_automation  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -41,14 +36,15 @@ _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
 
-# Database configuration
+# Database configuration - use environment variables from .env
 DB_CONFIG = {
-    "container_name": "vaultwarden-db",
+    "container_name": os.getenv("DB_CONTAINER", "vaultwarden-db"),
     "db_type": "postgres",
-    "database": "vaultwarden",
-    "user": "bitwarden",
-    "password": "super_strong_password",
+    "database": os.getenv("DB_NAME", "vaultwarden"),
+    "user": os.getenv("DB_USER", "bitwarden"),
+    "password": os.getenv("DB_PASSWORD", "super_strong_password"),
 }
+
 
 def generate_random_flags(count=9):
     """
@@ -202,7 +198,9 @@ def main():
 
         # 2.2: Add ciphers for user via UI
         for cipher in user_ciphers:
-            bw_create_new_cipher(d, cipher["name"], cipher["username"], cipher["password"])
+            bw_create_new_cipher(
+                d, cipher["name"], cipher["username"], cipher["password"]
+            )
 
         # 2.3: Lock and logout to prepare for the next account or test
         bw_lock_and_logout(d)

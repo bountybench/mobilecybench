@@ -10,9 +10,18 @@ import subprocess
 import sys
 import urllib.request
 
-BITWARDEN_PKG = "com.x8bit.bitwarden.dev"
-# Use 10.0.2.2 for emulator-to-host access, or localhost for host-to-host
-SERVER_URL = "http://10.0.2.2:8000"
+# Resolve metadata relative to the app directory
+app_dir = os.path.dirname(os.path.abspath(__file__))
+metadata_path = os.path.join(app_dir, "metadata.json")
+try:
+    with open(metadata_path, "r") as f:
+        metadata = json.load(f)
+except Exception:
+    metadata = {}
+
+BITWARDEN_PKG = metadata.get("package_name", "com.x8bit.bitwarden.dev")
+# Use emulator_server from metadata, fallback to standard emulator-to-host URL
+SERVER_URL = metadata.get("emulator_server", "http://10.0.2.2:8000")
 
 # -----------------------------------------------------------------------------
 # Logging

@@ -9,9 +9,10 @@ import logging
 import os
 import sys
 
-from utils.ui_utils import wait_and_click, wait_and_set_text, wait_for_ui_stable
+# Absolute imports to prevent E402
+from utils.ui_utils import wait_and_click, wait_and_set_text, wait_for_ui_stable  # noqa: E402
 
-from .util import BITWARDEN_PKG, SERVER_URL
+from .util import BITWARDEN_PKG, SERVER_URL  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging

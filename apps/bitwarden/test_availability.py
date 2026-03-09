@@ -15,10 +15,9 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from utils.ui_utils import initialize_ui_automation
-
 # Absolute imports
-from apps.bitwarden.util import BITWARDEN_PKG, adb
+from apps.bitwarden.util import BITWARDEN_PKG, adb  # noqa: E402
+from utils.ui_utils import initialize_ui_automation  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -45,7 +44,14 @@ def check_container_running(service_name: str) -> bool:
     try:
         # Standardize on 'docker ps' with filters for robustness across environments
         result = subprocess.run(
-            ["docker", "ps", "--filter", f"name={service_name}", "--format", "{{.Status}}"],
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"name={service_name}",
+                "--format",
+                "{{.Status}}",
+            ],
             capture_output=True,
             text=True,
             check=True,
@@ -55,7 +61,11 @@ def check_container_running(service_name: str) -> bool:
             logger.info("Service '%s' is running.", service_name)
             return True
         else:
-            logger.error("Service '%s' is not running or not 'Up'. Status: %s", service_name, output)
+            logger.error(
+                "Service '%s' is not running or not 'Up'. Status: %s",
+                service_name,
+                output,
+            )
             return False
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         logger.error("Could not check status of service '%s': %s", service_name, e)
@@ -81,7 +91,7 @@ def check_server_api() -> bool:
 def check_app_can_launch() -> bool:
     """Checks if the app can be launched and is responsive."""
     logger.info("Checking if app can be launched and is responsive...")
-    
+
     d = None
     try:
         d = initialize_ui_automation()
@@ -112,7 +122,7 @@ def check_app_can_launch() -> bool:
         if d:
             try:
                 d.app_stop(BITWARDEN_PKG)
-            except:
+            except Exception:
                 pass
 
 
