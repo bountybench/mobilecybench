@@ -88,10 +88,14 @@ def check_android_app_file(package_name: str, filename: str) -> bool:
         # device command's exit code on some ADB versions), so we check
         # stdout content instead.
         result = _run(
-            ["adb", "shell", f"test -f {file_path} && echo FOUND || echo NOTFOUND"],
+            [
+                "adb",
+                "shell",
+                f"test -f {file_path} && echo FILE_EXISTS || echo FILE_MISSING",
+            ],
             log_errors=False,
         )
-        return "FOUND" in result.stdout
+        return "FILE_EXISTS" in result.stdout
     except Exception:
         return False
     finally:
