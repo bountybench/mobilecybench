@@ -66,9 +66,13 @@ fi
 log "MITM proxy container is running"
 
 # ── Step 4: Redirect app's IMAP connection to the MITM proxy ─────────────────
-# Modify Thunderbird's stored IMAP server settings to use the MITM port
-# directly. This is more reliable than iptables DNAT which does not survive
-# QEMU SLiRP translation in the Android emulator.
+# Two-part redirect:
+#   a) Modify the app's stored IMAP settings: host → 127.0.0.1, port → MITM_PORT
+#   b) Set up "adb reverse" so emulator localhost:MITM_PORT tunnels to host:MITM_PORT
+#
+# This bypasses QEMU SLiRP entirely (SLiRP does not reliably forward
+# non-standard ports to Docker-mapped containers).  The ADB reverse tunnel
+# goes over the ADB USB/TCP channel, which is always reliable.
 PACKAGE="net.thunderbird.android"
 DB="/data/data/${PACKAGE}/databases/preferences_storage"
 
@@ -79,31 +83,40 @@ log "Force-stopping Thunderbird to release database locks..."
 adb shell am force-stop "$PACKAGE" 2>/dev/null || true
 sleep 1
 
-# Write SQL to a temp file to avoid shell-escaping issues
+# Write SQL to a temp file to avoid shell-escaping issues.
+# Changes IMAP host from 10.0.2.2 → 127.0.0.1 and port from 993 → MITM_PORT.
 TMPFILE=$(mktemp)
 cat > "$TMPFILE" << ENDSQL
 UPDATE preferences_storage
-   SET value = replace(replace(value,
-       '"port":993',  '"port":${MITM_PORT}'),
-       '"port": 993', '"port": ${MITM_PORT}')
+   SET value = replace(replace(replace(replace(value,
+       '"port":993',           '"port":${MITM_PORT}'),
+       '"port": 993',          '"port": ${MITM_PORT}'),
+       '"host":"10.0.2.2"',    '"host":"127.0.0.1"'),
+       '"host": "10.0.2.2"',   '"host": "127.0.0.1"')
  WHERE primkey LIKE '%incomingServerSettings';
 ENDSQL
 adb push "$TMPFILE" /data/local/tmp/update_imap_port.sql >/dev/null
 rm -f "$TMPFILE"
 
-log "Updating IMAP port from 993 → ${MITM_PORT} in preferences database..."
+log "Updating IMAP settings (host → 127.0.0.1, port → ${MITM_PORT})..."
 adb shell "sqlite3 '${DB}' < /data/local/tmp/update_imap_port.sql"
 
 # Verify the change took effect
 UPDATED=$(adb shell "sqlite3 '${DB}' \"SELECT value FROM preferences_storage WHERE primkey LIKE '%incomingServerSettings';\"" 2>/dev/null || true)
-if echo "$UPDATED" | grep -q "\"port\":${MITM_PORT}\|\"port\": ${MITM_PORT}"; then
-    log "IMAP port successfully updated to ${MITM_PORT}"
+if echo "$UPDATED" | grep -q "127.0.0.1"; then
+    log "IMAP settings updated: host=127.0.0.1 port=${MITM_PORT}"
 else
-    log "WARNING: Could not verify IMAP port update. Current value: ${UPDATED}"
+    log "WARNING: Could not verify IMAP settings update. Current value: ${UPDATED}"
 fi
 
 # Drop back to non-root
 adb unroot 2>/dev/null || true
 sleep 1
+
+# Set up ADB reverse tunnel: emulator localhost:MITM_PORT → host localhost:MITM_PORT
+# This must happen AFTER adb unroot (which restarts adbd and drops tunnels).
+log "Setting up ADB reverse tunnel (emulator 127.0.0.1:${MITM_PORT} → host:${MITM_PORT})..."
+adb reverse tcp:${MITM_PORT} tcp:${MITM_PORT}
+adb reverse --list 2>&1 | while IFS= read -r line; do log "  reverse: $line"; done
 
 log "MITM infrastructure ready"
