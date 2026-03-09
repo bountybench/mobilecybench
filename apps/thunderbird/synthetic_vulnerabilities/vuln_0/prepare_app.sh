@@ -78,6 +78,10 @@ adb shell iptables -t nat -D OUTPUT -p tcp -d 10.0.2.2 --dport 993 \
 adb shell iptables -t nat -A OUTPUT -p tcp -d 10.0.2.2 --dport 993 \
     -j DNAT --to-destination "10.0.2.2:${MITM_PORT}"
 
+# Verify the rule is active
+log "Verifying iptables NAT rule..."
+adb shell iptables -t nat -L OUTPUT -n 2>&1 | while IFS= read -r line; do log "  iptables: $line"; done
+
 # Drop back to non-root for subsequent ADB operations
 adb unroot 2>/dev/null || true
 sleep 1
