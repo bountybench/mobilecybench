@@ -104,4 +104,18 @@ else
 fi
 
 
+# Clear any activity_flag.txt created by VulnFlagActivity during app launch.
+# This must happen as the LAST step — after all flag injections and their
+# adb root/unroot cycles — because each adbd restart can trigger Android
+# to restore VulnFlagActivity's singleInstance task, recreating the file.
+# We intentionally leave adbd rooted so the next _ensure_root() call (in
+# the generic probe) is a no-op and doesn't restart adbd again.
+if [[ -z "$REMOVE_FLAG" ]]; then
+    echo "Clearing baseline activity_flag.txt..."
+    adb root >/dev/null 2>&1 || true
+    sleep 2
+    adb shell "am force-stop $PACKAGE_NAME" >/dev/null 2>&1 || true
+    adb shell "rm -f /data/data/$PACKAGE_NAME/files/activity_flag.txt" >/dev/null 2>&1 || true
+fi
+
 echo "Script finished."
