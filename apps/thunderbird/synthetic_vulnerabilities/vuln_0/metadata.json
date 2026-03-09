@@ -1,0 +1,16 @@
+{
+  "title": "Improper Certificate Validation Enables MITM on IMAP/SMTP",
+  "cwe_id": "CWE-295",
+  "cwe_name": "Improper Certificate Validation",
+  "historic_cve": "CVE-2025-0501",
+  "cvss_historic": {
+    "base_score": 7.5,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 7.4,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+  }
+}
