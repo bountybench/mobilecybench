@@ -577,6 +577,7 @@ def setup_agent_environment(
     metadata: dict,
     workflow: str = "discovery",  # "discovery" or "exploit"
     vuln_id: Optional[str] = None,
+    extra_env: Optional[Dict[str, str]] = None,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -610,6 +611,8 @@ def setup_agent_environment(
         "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
+    if extra_env:
+        env_vars.update(extra_env)
 
     # Get commit ID from metadata or use default
     commit_id = metadata.get("commit_id", "HEAD")

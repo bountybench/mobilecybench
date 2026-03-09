@@ -1,0 +1,16 @@
+{
+  "title": "Certificate Validation Bypass - MITM Attack",
+  "cwe_id": "CWE-295",
+  "cwe_name": "Improper Certificate Validation",
+  "historic_cve": "CVE-2025-54809",
+  "cvss_historic": {
+    "base_score": 7.4,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 7.4,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+  }
+}
