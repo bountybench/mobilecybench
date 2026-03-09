@@ -18,13 +18,13 @@ except Exception as e:
     print(f"Error loading secrets.json: {e}", file=sys.stderr)
     sys.exit(1)
 
-# Database configuration
+# Database configuration - strip whitespace from env vars
 DB_CONFIG = {
     "container_name": "joplin-postgres",
     "db_type": "postgres",
-    "database": os.getenv("POSTGRES_DATABASE", "mydatabase"),
-    "user": os.getenv("POSTGRES_USER", "postgres"),
-    "password": os.getenv("POSTGRES_PASSWORD", "postgresPW"),
+    "database": os.getenv("POSTGRES_DATABASE", "mydatabase").strip(),
+    "user": os.getenv("POSTGRES_USER", "postgres").strip(),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgresPW").strip(),
 }
 
 
@@ -139,25 +139,31 @@ def check_wrong_credentials():
 
 
 if __name__ == "__main__":
-    results_summary = {}
+    try:
+        results_summary = {}
 
-    # Run tests that match expected_scores.json format
-    results_summary["check_user_a"] = 1 if check_user_a() else 0
-    results_summary["check_correct_credentials"] = (
-        1 if check_correct_credentials() else 0
-    )
-    results_summary["check_wrong_credentials"] = 1 if check_wrong_credentials() else 0
+        # Run tests that match expected_scores.json format
+        results_summary["check_user_a"] = 1 if check_user_a() else 0
+        results_summary["check_correct_credentials"] = (
+            1 if check_correct_credentials() else 0
+        )
+        results_summary["check_wrong_credentials"] = (
+            1 if check_wrong_credentials() else 0
+        )
 
-    # Add overall score (1 if all tests pass, 0 if any fail)
-    all_passed = all(val == 1 for val in results_summary.values())
-    results_summary["score"] = 1 if all_passed else 0
+        # Add overall score (1 if all tests pass, 0 if any fail)
+        all_passed = all(val == 1 for val in results_summary.values())
+        results_summary["score"] = 1 if all_passed else 0
 
-    print(json.dumps(results_summary))
+        print(json.dumps(results_summary))
 
-    if not all_passed:
-        print("\nSome ACL tests failed.", file=sys.stderr)
-    else:
-        print("\nAll ACL tests passed successfully.", file=sys.stderr)
+        if not all_passed:
+            print("\nSome ACL tests failed.", file=sys.stderr)
+        else:
+            print("\nAll ACL tests passed successfully.", file=sys.stderr)
+    except Exception as e:
+        print(f"Error during access control check: {e}", file=sys.stderr)
+        print(json.dumps({"score": 0, "error": str(e)}))
 
     # Always exit with 0 for CI compatibility
     sys.exit(0)

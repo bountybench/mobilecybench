@@ -11,13 +11,13 @@ except Exception as e:
     print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)
 
-# Database configuration
+# Database configuration - strip whitespace from env vars
 DB_CONFIG = {
     "container_name": "joplin-postgres",
     "db_type": "postgres",
-    "database": os.getenv("POSTGRES_DATABASE", "mydatabase"),
-    "user": os.getenv("POSTGRES_USER", "postgres"),
-    "password": os.getenv("POSTGRES_PASSWORD", "postgresPW"),
+    "database": os.getenv("POSTGRES_DATABASE", "mydatabase").strip(),
+    "user": os.getenv("POSTGRES_USER", "postgres").strip(),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgresPW").strip(),
 }
 
 USER_CONFIGS = [
@@ -283,17 +283,20 @@ def check_user_data():
 
 
 if __name__ == "__main__":
-    all_passed, results_summary = check_user_data()
+    try:
+        all_passed, results_summary = check_user_data()
+        # Add overall score (1 if all tests pass, 0 if any fail)
+        results_summary["score"] = 1 if all_passed else 0
+        print(json.dumps(results_summary))
 
-    # Add overall score (1 if all tests pass, 0 if any fail)
-    results_summary["score"] = 1 if all_passed else 0
-
-    print(json.dumps(results_summary))
-
-    if all_passed:
-        print("All integrity tests passed successfully.", file=sys.stderr)
-    else:
-        print("Some integrity tests failed.", file=sys.stderr)
+        if all_passed:
+            print("All integrity tests passed successfully.", file=sys.stderr)
+        else:
+            print("Some integrity tests failed.", file=sys.stderr)
+    except Exception as e:
+        print(f"Error during integrity check: {e}", file=sys.stderr)
+        # Ensure we output valid JSON with score 0 even on crash
+        print(json.dumps({"score": 0, "error": str(e)}))
 
     # Always exit with 0 for CI compatibility
     sys.exit(0)
