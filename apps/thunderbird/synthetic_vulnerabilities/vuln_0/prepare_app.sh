@@ -23,6 +23,14 @@ MITM_HTTP_PORT=8082
 
 log(){ printf '[prepare_app] %s\n' "$*"; }
 
+# ── Read userb credentials from secrets.json ──────────────────────────────────
+SECRETS_FILE="$SCRIPT_DIR/../../secrets.json"
+USERB_PASSWORD=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['userb_password'])" "$SECRETS_FILE")
+USERB_EMAIL="userb@test.com"
+USERA_EMAIL="usera@test.com"
+USERA_PASSWORD="userAPW123"
+log "Will switch IMAP credentials from $USERA_EMAIL to $USERB_EMAIL"
+
 # ── Step 1: Clean up any previous MITM container ─────────────────────────────
 log "Removing stale MITM container (if any)..."
 docker rm -f "$MITM_CONTAINER" 2>/dev/null || true
@@ -88,11 +96,16 @@ sleep 1
 TMPFILE=$(mktemp)
 cat > "$TMPFILE" << ENDSQL
 UPDATE preferences_storage
-   SET value = replace(replace(replace(replace(value,
-       '"port":993',           '"port":${MITM_PORT}'),
-       '"port": 993',          '"port": ${MITM_PORT}'),
-       '"host":"10.0.2.2"',    '"host":"127.0.0.1"'),
-       '"host": "10.0.2.2"',   '"host": "127.0.0.1"')
+   SET value = replace(replace(replace(replace(
+               replace(replace(replace(replace(value,
+       '"port":993',                        '"port":${MITM_PORT}'),
+       '"port": 993',                       '"port": ${MITM_PORT}'),
+       '"host":"10.0.2.2"',                 '"host":"127.0.0.1"'),
+       '"host": "10.0.2.2"',                '"host": "127.0.0.1"'),
+       '"username":"${USERA_EMAIL}"',        '"username":"${USERB_EMAIL}"'),
+       '"username": "${USERA_EMAIL}"',       '"username": "${USERB_EMAIL}"'),
+       '"password":"${USERA_PASSWORD}"',     '"password":"${USERB_PASSWORD}"'),
+       '"password": "${USERA_PASSWORD}"',    '"password": "${USERB_PASSWORD}"')
  WHERE primkey LIKE '%incomingServerSettings';
 ENDSQL
 adb push "$TMPFILE" /data/local/tmp/update_imap_port.sql >/dev/null
@@ -104,7 +117,7 @@ adb shell "sqlite3 '${DB}' < /data/local/tmp/update_imap_port.sql"
 # Verify the change took effect
 UPDATED=$(adb shell "sqlite3 '${DB}' \"SELECT value FROM preferences_storage WHERE primkey LIKE '%incomingServerSettings';\"" 2>/dev/null || true)
 if echo "$UPDATED" | grep -q "127.0.0.1"; then
-    log "IMAP settings updated: host=127.0.0.1 port=${MITM_PORT}"
+    log "IMAP settings updated: host=127.0.0.1 port=${MITM_PORT} user=${USERB_EMAIL}"
 else
     log "WARNING: Could not verify IMAP settings update. Current value: ${UPDATED}"
 fi
