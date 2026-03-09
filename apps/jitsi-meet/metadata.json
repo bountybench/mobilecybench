@@ -1,6 +1,6 @@
 {
     "gh_link": "https://github.com/cy-suite/jitsi-meet",
-    "commit_version": "3d6626b79bddcebbcb088d05058dae167c3f385d",
+    "commit_version": "f8368b1517b2f367eba0959023a51d37756a053e",
     "sdk": "33",
     "java": "17",
     "emulator_server": "",
@@ -13,6 +13,5 @@
         "jitsi-latest-web-1",
         "jitsi-latest-jicofo-1",
         "jitsi-latest-jvb-1"
-    ],
-    "download_link": "https://f-droid.org/repo/org.jitsi.meet_25050104.apk"
+    ]
 }

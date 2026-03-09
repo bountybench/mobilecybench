@@ -1,6 +1,4 @@
 #!/bin/bash
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 CODEBASE_DIR="$SCRIPT_DIR/codebase"
@@ -129,19 +127,6 @@ build_jitsi() {
     rm -rf $TMPDIR/haste-map-* 2>/dev/null || true
     rm -rf node_modules/.cache 2>/dev/null || true
     
-    # echo ">>> Pre-bundling JS Code..."
-    # mkdir -p android/sdk/build/generated/assets/react/release
-    # mkdir -p android/sdk/build/generated/res/react/release
-
-    # npx react-native bundle \
-    #     --platform android \
-    #     --dev false \
-    #     --entry-file index.android.js \
-    #     --bundle-output android/sdk/build/generated/assets/react/release/index.android.bundle \
-    #     --assets-dest android/sdk/build/generated/res/react/release \
-    #     --reset-cache \
-    #     --verbose
-    
     echo ">>> Proceeding with Gradle build..."
     cd $ANDROID_DIR
 
@@ -209,88 +194,6 @@ clear() {
     echo "Clearing completed."
 }
 
-localtest() {
-    echo ">>> Setting up local test environment..."
-    
-    cd "$SCRIPT_DIR"
-    # Define paths
-    ls
-    APK_SOURCE="$SCRIPT_DIR/keep/app-release-unsigned.apk"
-    cd "$ANDROID_DIR"
-    APK_OUTPUT_DIR="$ANDROID_DIR/app/build/outputs/apk"
-    APK_DESTINATION="$APK_OUTPUT_DIR/app-release-unsigned.apk"
-    
-    ls
-
-    # Check if source APK exists
-    if [ ! -f "$APK_SOURCE" ]; then
-        echo "ERROR: Source APK not found at $APK_SOURCE"
-        return 1
-    fi
-    
-    # Create output directory if it doesn't exist
-    mkdir -p "$APK_OUTPUT_DIR"
-    
-    # Copy APK to simulate successful build
-    echo ">>> Copying APK from keep folder to build output..."
-    cp "$APK_SOURCE" "$APK_DESTINATION"
-    
-    if [ -f "$APK_DESTINATION" ]; then
-        echo ">>> APK successfully placed at $APK_DESTINATION"
-        ls -lh "$APK_DESTINATION"
-    else
-        echo "ERROR: Failed to copy APK"
-        return 1
-    fi
-    
-    echo ">>> Local test environment ready!"
-}
-
-sign_apk_localtest() {
-    local unsigned_apk="$1"
-    local output_apk="$2"
-
-    echo -e "Signing APK..."
-
-    local keystore="$ROOT_DIR/utils/benchmark.keystore"
-    local keystore_pass="password"
-    local key_alias="benchmark-key"
-
-    # Create keystore if it doesn't exist
-    if [[ ! -f "$keystore" ]]; then
-        echo -e "${INFO} Creating signing keystore..."
-        keytool -genkey -v -keystore "$keystore" \
-            -alias "$key_alias" -keyalg RSA -keysize 2048 \
-            -validity 10000 -storepass "$keystore_pass" -keypass "$keystore_pass" \
-            -dname "CN=MobileCyBench, OU=Test, O=Test, L=Test, S=Test, C=US"
-    fi
-
-    # Find apksigner
-    local apksigner=""
-    if [[ -d "$ANDROID_HOME/build-tools" ]]; then
-        # Look for both apksigner.bat (Windows) and apksigner (Linux/Mac)
-        apksigner=$(find "$ANDROID_HOME/build-tools" \( -name "apksigner.bat" -o -name "apksigner" \) -type f 2>/dev/null | sort -V | tail -1)
-    fi
-
-    if [[ -z "$apksigner" ]]; then
-        echo "[build_apk] apksigner not found in ANDROID_HOME/build-tools"
-        return 1
-    fi
-
-    echo "[build_apk] Using apksigner: $apksigner"
-
-    # Sign the APK (disable v4 signing to avoid .idsig files)
-    cmd //c "$apksigner" sign \
-        --ks "$keystore" \
-        --ks-key-alias "$key_alias" \
-        --ks-pass "pass:$keystore_pass" \
-        --key-pass "pass:$keystore_pass" \
-        --v4-signing-enabled false \
-        --out "$output_apk" \
-        "$unsigned_apk"
-
-    echo -e "${SUCCESS} APK signed: $output_apk"
-}
 # Main function
 main() {
     echo ">>> Jitsi Meet Android Setup"
@@ -313,10 +216,6 @@ main() {
     copy_apk
     clear
 
-    #localtest
-    #copy_apk
-    #sign_apk_localtest "$SCRIPT_DIR/unsigned.apk" "$SCRIPT_DIR/apk/jitsi-meet.apk" 
-    
     echo ""
     echo ">>> Setup complete! Jitsi Meet is ready for testing."
 }
