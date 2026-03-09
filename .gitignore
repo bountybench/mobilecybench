@@ -36,3 +36,4 @@ apps/*/static_vuln_reports/
 synthetic_scores.json
 .apk_backup_path
 .claude
+apps/thunderbird/synthetic_vulnerabilities/vuln_0/prepare_files/certs/

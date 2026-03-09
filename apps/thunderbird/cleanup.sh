@@ -9,7 +9,14 @@ echo "Cleaning up Thunderbird environment..."
 # Stop services
 docker compose -f "$SCRIPT_DIR/docker-compose.yml" down -v || true
 docker rm -f tb-port-25-proxy 2>/dev/null || true
+docker rm -f thunderbird-mitm 2>/dev/null || true
 docker container prune -f || true
+
+# Remove MITM iptables redirect on emulator (prevents stale rules between CI phases)
+adb root 2>/dev/null && sleep 1
+adb shell iptables -t nat -D OUTPUT -p tcp -d 10.0.2.2 --dport 993 \
+    -j DNAT --to-destination 10.0.2.2:1993 2>/dev/null || true
+adb unroot 2>/dev/null || true
 
 # Uninstall Android app
 PACKAGE_NAME="net.thunderbird.android"
