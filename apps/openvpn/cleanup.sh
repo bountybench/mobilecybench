@@ -12,7 +12,6 @@ docker compose down -v 2>/dev/null || echo "No compose services to stop"
 # Clean up generated files
 echo "Cleaning up generated files..."
 rm -rf client-configs/ logs/ output/ downloads/ || true
-rm -f secrets.json || true
 rm -rf /tmp/vuln_scenario_* || true
 
 # Remove Docker network (optional - may be used by other projects)
