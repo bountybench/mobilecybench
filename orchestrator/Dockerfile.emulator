@@ -1,0 +1,75 @@
+# Minimal Android emulator image for container mode.
+# Contains only the Android SDK, emulator, and required system libraries.
+#
+# Build:
+#   docker build -f orchestrator/Dockerfile.emulator \
+#     -t mobilecybench-emulator:latest .
+#
+# Size: ~8-10 GB (vs ~31 GB orchestrator image)
+# The emulator container needs: emulator binary, AVDs, ADB, KVM access.
+
+FROM --platform=linux/amd64 debian:bookworm-slim
+
+ENV ANDROID_HOME=/root/.android-sdk \
+    PATH="/root/.android-sdk/emulator:/root/.android-sdk/cmdline-tools/latest/bin:/root/.android-sdk/platform-tools:${PATH}"
+
+# Install emulator runtime dependencies + JDK (needed for sdkmanager/avdmanager setup)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # JDK for sdkmanager/avdmanager (removed after SDK setup)
+    default-jdk-headless \
+    # Emulator runtime dependencies
+    libpulse0 \
+    libnss3 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxi6 \
+    libxtst6 \
+    libglib2.0-0 \
+    libgl1 \
+    libxrender1 \
+    libxdamage1 \
+    libxfixes3 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libasound2 \
+    libdbus-1-3 \
+    libfontconfig1 \
+    # Utilities
+    curl \
+    unzip \
+    wget \
+    procps \
+    socat \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Android SDK — only emulator, platform-tools, and system images
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
+    && wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip \
+    && unzip -q /tmp/cmdline-tools.zip -d ${ANDROID_HOME}/cmdline-tools \
+    && mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest \
+    && rm /tmp/cmdline-tools.zip \
+    && yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses \
+    && ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+    "platform-tools" \
+    "emulator" \
+    "system-images;android-33;google_apis;x86_64" \
+    "system-images;android-34;google_apis;x86_64" \
+    "system-images;android-35;google_apis;x86_64" \
+    "system-images;android-33;google_apis_playstore;x86_64" \
+    "system-images;android-34;google_apis_playstore;x86_64" \
+    "system-images;android-35;google_apis_playstore;x86_64" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33_google_apis -k "system-images;android-33;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34_google_apis -k "system-images;android-34;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35_google_apis -k "system-images;android-35;google_apis;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI33_google_apis_playstore -k "system-images;android-33;google_apis_playstore;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI34_google_apis_playstore -k "system-images;android-34;google_apis_playstore;x86_64" --device "pixel_2" \
+    && echo "no" | avdmanager create avd -n MobileCybenchEmulatorAPI35_google_apis_playstore -k "system-images;android-35;google_apis_playstore;x86_64" --device "pixel_2" \
+    # Clean up: remove cmdline-tools (no longer needed) and JDK (only needed for setup)
+    && rm -rf ${ANDROID_HOME}/cmdline-tools \
+    && apt-get purge -y default-jdk-headless && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* /tmp/*
+
+# Default: start ADB server and keep container running
+CMD ["bash", "-c", "adb -a start-server && sleep infinity"]
