@@ -1,17 +1,23 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$APP_DIR/../../" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../" && pwd)"
+source "$SCRIPT_DIR/../../utils/android.sh"
+
+# Resolve APK path using standard helper (supports --apk <path> override)
+# App name used for lookup is "bitwarden"
+APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "bitwarden" "$@")
+cd "$SCRIPT_DIR"
 
 echo "=== Starting Bitwarden Runtime ==="
 
-# 1. Orchestrate backend containers
+# 1. Orchestrate backend containers (Vaultwarden + Postgres)
 echo "[INFO] Orchestrating backend containers..."
-docker compose -f "$APP_DIR/docker-compose.yml" up -d --build --wait
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build --wait
 
-# 2. Wait for Vaultwarden to be healthy (the --wait flag in docker compose up handles healthchecks if defined, 
-# but vaultwarden-db healthcheck might be slower than the app start)
+# 2. Wait for Vaultwarden to be healthy (the --wait flag handles this if healthchecks are defined)
+# But we'll add an explicit check to be sure
 echo "[INFO] Waiting for Vaultwarden to be ready on http://localhost:8000..."
 until curl -sf http://localhost:8000/alive > /dev/null; do
   echo "Still waiting for Vaultwarden..."
@@ -19,10 +25,15 @@ until curl -sf http://localhost:8000/alive > /dev/null; do
 done
 echo "[INFO] Vaultwarden is healthy."
 
-# 3. Handle database seeding/account creation
-echo "[INFO] Seeding database and creating accounts..."
-# We use the existing create_accounts.py but ensure the environment is set up
-export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
+# 3. Install the APK (standardized helper)
+echo "[INFO] Installing Bitwarden APK..."
+adb_install_apk "$APK_PATH"
+
+# 4. Handle database seeding and account creation
+# Note: we use UI automation to create accounts via the app
+# This guarantees correct encryption schemas in the DB.
+echo "[INFO] Seeding database and creating accounts via UI automation..."
+export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
 cd "$ROOT_DIR"
 python3 -m apps.bitwarden.create_accounts
 

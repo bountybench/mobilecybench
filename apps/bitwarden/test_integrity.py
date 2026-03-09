@@ -8,10 +8,9 @@ import logging
 import os
 import sys
 
-from utils.db_container_utils import query_container
-
 # Absolute imports to prevent relative import errors in CI
-from apps.bitwarden.util import load_secrets
+from apps.bitwarden.util import load_secrets  # noqa: E402
+from utils.db_container_utils import query_container  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -23,13 +22,13 @@ _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
 
-# Database configuration
+# Database configuration - use environment variables from .env
 DB_CONFIG = {
-    "container_name": "vaultwarden-db",
+    "container_name": os.getenv("DB_CONTAINER", "vaultwarden-db"),
     "db_type": "postgres",
-    "database": "vaultwarden",
-    "user": "bitwarden",
-    "password": "super_strong_password",
+    "database": os.getenv("DB_NAME", "vaultwarden"),
+    "user": os.getenv("DB_USER", "bitwarden"),
+    "password": os.getenv("DB_PASSWORD", "super_strong_password"),
 }
 
 # ==============================================================================
@@ -208,7 +207,12 @@ def check_user_data(email, config):
             return False
 
         row = rows[0]
-        db_akey, db_private_key, db_public_key, db_security_stamp = row["akey"], row["private_key"], row["public_key"], row["security_stamp"]
+        db_akey, db_private_key, db_public_key, db_security_stamp = (
+            row["akey"],
+            row["private_key"],
+            row["public_key"],
+            row["security_stamp"],
+        )
         if not all(
             [
                 db_akey == config["akey"],
@@ -292,8 +296,7 @@ def check_cipher_integrity(user_configs):
     """Runs all data integrity checks."""
     logger.info("--- Checking Data Integrity ---")
     return all(
-        check_cipher_data(config["email"], config["ciphers"])
-        for config in user_configs
+        check_cipher_data(config["email"], config["ciphers"]) for config in user_configs
     )
 
 
@@ -318,12 +321,8 @@ def main():
         results["structural_integrity"] = (
             1 if check_structural_integrity(user_configs) else 0
         )
-        results["user_integrity"] = (
-            1 if check_user_integrity(user_configs) else 0
-        )
-        results["cipher_integrity"] = (
-            1 if check_cipher_integrity(user_configs) else 0
-        )
+        results["user_integrity"] = 1 if check_user_integrity(user_configs) else 0
+        results["cipher_integrity"] = 1 if check_cipher_integrity(user_configs) else 0
     except Exception as e:
         print(f"\n[FAIL] DB check failed: {e}", file=sys.stderr)
         results = {

@@ -8,12 +8,15 @@ import logging
 import os
 import sys
 
-from utils.db_container_utils import query_container
-from utils.ui_utils import initialize_ui_automation
-
 # Absolute imports to prevent relative import errors in CI
-from apps.bitwarden.bw_workflows import bw_attempt_login
-from apps.bitwarden.util import BITWARDEN_PKG, ensure_server_running, load_secrets
+from apps.bitwarden.bw_workflows import bw_attempt_login  # noqa: E402
+from apps.bitwarden.util import (
+    BITWARDEN_PKG,
+    ensure_server_running,
+    load_secrets,
+)  # noqa: E402
+from utils.db_container_utils import query_container  # noqa: E402
+from utils.ui_utils import initialize_ui_automation  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -25,13 +28,13 @@ _handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 logger.handlers[:] = [_handler]
 logger.propagate = False
 
-# Database configuration
+# Database configuration - use environment variables from .env
 DB_CONFIG = {
-    "container_name": "vaultwarden-db",
+    "container_name": os.getenv("DB_CONTAINER", "vaultwarden-db"),
     "db_type": "postgres",
-    "database": "vaultwarden",
-    "user": "bitwarden",
-    "password": "super_strong_password",
+    "database": os.getenv("DB_NAME", "vaultwarden"),
+    "user": os.getenv("DB_USER", "bitwarden"),
+    "password": os.getenv("DB_PASSWORD", "super_strong_password"),
 }
 
 # ==============================================================================
@@ -132,16 +135,14 @@ def main():
     logger.info("--- Checking for Privilege Escalation ---")
     privilege_check_passed = False
     try:
-        privilege_check_passed = all(
-            check_privilege_escalation(user) for user in users
-        )
+        privilege_check_passed = all(check_privilege_escalation(user) for user in users)
     except Exception as e:
         logger.error("DB connection or query failed: %s", e)
 
     # --- Run Authentication Checks ---
     wrong_credentials_check_passed = False
     correct_credentials_check_passed = False
-    
+
     # Initialize UI automation
     try:
         d = initialize_ui_automation()
@@ -153,6 +154,7 @@ def main():
     finally:
         try:
             from apps.bitwarden.util import adb
+
             logger.info("Stopping app %s...", BITWARDEN_PKG)
             adb(["shell", "am", "force-stop", BITWARDEN_PKG])
         except Exception as e:
