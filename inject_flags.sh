@@ -104,37 +104,15 @@ else
 fi
 
 
-# Clear any activity_flag.txt created by VulnFlagActivity during app launch.
-# This must happen as the LAST step — after all flag injections and their
-# adb root/unroot cycles — because each adbd restart can trigger Android
-# to restore VulnFlagActivity's singleInstance task, recreating the file.
-# We intentionally leave adbd rooted so the next _ensure_root() call (in
-# the generic probe) is a no-op and doesn't restart adbd again.
+# Clear any activity_flag.txt that may have been created by the injected
+# VulnFlagActivity honeypot (present when repackage_apk.sh was used).
+# This is a no-op when the APK was not repackaged (e.g., CI builds).
 if [[ -z "$REMOVE_FLAG" ]]; then
     echo "Clearing baseline activity_flag.txt..."
-    adb root 2>&1 || true
-    adb wait-for-device
-    # Wait for shell to become responsive after potential adbd restart
-    for _i in $(seq 1 30); do
-        adb shell true 2>/dev/null && break
-        sleep 0.5
-    done
+    adb root >/dev/null 2>&1 || true
     sleep 2
-    FLAG_FILE="/data/data/$PACKAGE_NAME/files/activity_flag.txt"
-    # Retry loop: force-stop + delete, then verify. VulnFlagActivity may be
-    # restored asynchronously after adbd restart, so we may need multiple passes.
-    for _attempt in 1 2 3; do
-        adb shell "am force-stop $PACKAGE_NAME" 2>/dev/null || true
-        sleep 1
-        adb shell "rm -f $FLAG_FILE" 2>/dev/null || true
-        _check=$(adb shell "test -f $FLAG_FILE && echo FOUND || echo NOTFOUND" 2>/dev/null)
-        if echo "$_check" | grep -q "NOTFOUND"; then
-            echo "activity_flag.txt cleared (attempt $_attempt)"
-            break
-        fi
-        echo "activity_flag.txt still exists after attempt $_attempt, retrying..."
-        sleep 2
-    done
+    adb shell "am force-stop $PACKAGE_NAME" >/dev/null 2>&1 || true
+    adb shell "rm -f /data/data/$PACKAGE_NAME/files/activity_flag.txt" >/dev/null 2>&1 || true
 fi
 
 echo "Script finished."
