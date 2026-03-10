@@ -12,8 +12,8 @@
   "synthetic_vuln_id": "vuln_0",
   "custom_system_prompt": null,
   "agent_image": "cybench/mobilecybench:latest",
-  "emulator_display": "headed",
-  "emulator_backend": "native",
+  "emulator_display": "headless",
+  "emulator_backend": "container",
   "allowed_tools": [
     "execute_command",
     "get_current_ui_state",
