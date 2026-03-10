@@ -59,6 +59,9 @@ echo "GCS bucket:     ${GCS_BUCKET:-<none>}"
 echo "Cleanup:        $CLEANUP"
 echo ""
 
+# Resolve script directory for locating sibling files (template, daemonset, etc.)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # ─── Preflight checks ──────────────────────────────────────────────────────
 echo "--- Preflight checks ---"
 
@@ -79,6 +82,14 @@ for n in nodes:
 " 2>/dev/null || echo "  (could not enumerate)")
 echo "$KVM_NODES"
 
+echo "Ensuring image-cache DaemonSet is deployed..."
+DAEMONSET_YAML="$SCRIPT_DIR/daemonset-image-cache.yaml"
+if [ -f "$DAEMONSET_YAML" ]; then
+    kubectl apply -f "$DAEMONSET_YAML"
+else
+    echo "  WARNING: $DAEMONSET_YAML not found, skipping"
+fi
+
 echo "Checking secret 'llm-api-keys'..."
 if kubectl get secret llm-api-keys -n "$NAMESPACE" >/dev/null 2>&1; then
     echo "  Secret found"
@@ -96,7 +107,6 @@ echo "--- Deploying test Job: $JOB_NAME ---"
 
 # Render job YAML from job-template.yaml (single source of truth) with test overrides.
 # Uses the same comment-stripping logic as generate_jobs.py.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATE="$SCRIPT_DIR/job-template.yaml"
 
 if [ ! -f "$TEMPLATE" ]; then

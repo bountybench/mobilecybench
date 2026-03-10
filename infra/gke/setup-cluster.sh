@@ -70,6 +70,12 @@ kubectl create secret generic llm-api-keys \
   --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-placeholder}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# ─── 6. Image cache DaemonSet ─────────────────────────────────────────────
+echo "--- Deploying image-cache DaemonSet ---"
+kubectl apply -f "$(dirname "$0")/daemonset-image-cache.yaml"
+echo "  DaemonSet will start caching emulator + agent images on each node."
+echo "  Monitor with: kubectl logs -n mobilecybench -l app=image-cache -f"
+
 echo ""
 echo "=== Setup complete ==="
 echo ""

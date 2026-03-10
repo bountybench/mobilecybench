@@ -211,6 +211,32 @@ def main():
     combined = "---\n".join(all_yamls)
 
     if args.apply:
+        # Ensure the image-cache DaemonSet is deployed before submitting jobs.
+        # Idempotent — kubectl apply is a no-op if it's already running.
+        daemonset_path = Path(__file__).resolve().parent / "daemonset-image-cache.yaml"
+        if daemonset_path.exists():
+            print("Ensuring image-cache DaemonSet is deployed...", file=sys.stderr)
+            ds_result = subprocess.run(
+                ["kubectl", "apply", "-f", str(daemonset_path)],
+                capture_output=True,
+                text=True,
+            )
+            if ds_result.returncode == 0:
+                print(
+                    f"  {ds_result.stdout.strip()}",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"  WARNING: Failed to apply DaemonSet: {ds_result.stderr.strip()}",
+                    file=sys.stderr,
+                )
+        else:
+            print(
+                f"WARNING: DaemonSet not found at {daemonset_path}, skipping",
+                file=sys.stderr,
+            )
+
         print(f"Applying {len(all_yamls)} jobs to cluster...", file=sys.stderr)
         result = subprocess.run(
             ["kubectl", "apply", "-f", "-"],
