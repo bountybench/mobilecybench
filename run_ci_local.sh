@@ -458,12 +458,76 @@ run_exploit_verification() {
         return 1
     fi
 
+    # ── CI-controlled challenge server ──────────────────────────────────────
+    # If verify_files/challenge_server.py exists, start a CI-controlled
+    # server BEFORE prepare_app.sh and the exploit.  The exploit container
+    # receives only the URL ($CHALLENGE_URL); it never controls the server,
+    # its certificates, or the content it serves.  The per-run nonce
+    # embedded in the served content is only knowable by fetching from this
+    # server (which is logged), making it impossible to forge valid evidence
+    # without genuinely triggering the vulnerable code path.
+    # ─────────────────────────────────────────────────────────────────────
+    local CHALLENGE_PID=""
+    local CHALLENGE_LOG_FILE=""
+    local CHALLENGE_PORT=""
+    local challenge_server_script="$vuln_dir/verify_files/challenge_server.py"
+
+    local CHALLENGE_URL=""
+    if [ -f "$challenge_server_script" ]; then
+        echo -e "${INFO} Starting CI challenge server..."
+        CHALLENGE_LOG_FILE=$(mktemp)
+        CHALLENGE_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); p=s.getsockname()[1]; s.close(); print(p)")
+
+        local challenge_stderr
+        challenge_stderr=$(mktemp)
+
+        python3 "$challenge_server_script" \
+            --port "$CHALLENGE_PORT" \
+            --log-file "$CHALLENGE_LOG_FILE" \
+            >/dev/null 2>"$challenge_stderr" &
+        CHALLENGE_PID=$!
+
+        # Wait up to 10 s for "[READY] <url>" on stderr
+        local ready_deadline=$((SECONDS + 10))
+        while [ $SECONDS -lt $ready_deadline ]; do
+            if ! kill -0 "$CHALLENGE_PID" 2>/dev/null; then
+                echo -e "${ERROR} CI challenge server exited prematurely"
+                cat "$challenge_stderr" >&2
+                rm -f "$CHALLENGE_LOG_FILE" "$challenge_stderr"
+                return 1
+            fi
+            CHALLENGE_URL=$(grep -o '\[READY\] .*' "$challenge_stderr" 2>/dev/null \
+                | head -1 | sed 's/\[READY\] //')
+            if [ -n "$CHALLENGE_URL" ]; then
+                break
+            fi
+            sleep 0.2
+        done
+        rm -f "$challenge_stderr"
+
+        if ! kill -0 "$CHALLENGE_PID" 2>/dev/null; then
+            echo -e "${ERROR} CI challenge server failed to start"
+            rm -f "$CHALLENGE_LOG_FILE"
+            return 1
+        fi
+
+        if [ -z "$CHALLENGE_URL" ]; then
+            CHALLENGE_URL="https://10.0.2.2:${CHALLENGE_PORT}/"
+            echo -e "${WARNING} Challenge server [READY] URL not received; using fallback ${CHALLENGE_URL}"
+        else
+            echo -e "${SUCCESS} CI challenge server ready: ${CHALLENGE_URL}"
+        fi
+    fi
+
     # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
+    # CHALLENGE_PORT is exported so prepare_app.sh can redirect the app to the challenge server.
     local prepare_app_hook="$vuln_dir/prepare_app.sh"
     if [ -f "$prepare_app_hook" ]; then
         echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
-        if ! timeout 300 bash "$prepare_app_hook"; then
+        if ! CHALLENGE_PORT="${CHALLENGE_PORT}" timeout 300 bash "$prepare_app_hook"; then
             echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
+            [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
+            [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
             return 1
         fi
         echo -e "${SUCCESS} prepare_app hook completed"
@@ -478,19 +542,34 @@ run_exploit_verification() {
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
     mkdir -p "$agent_output_abs_path"
-    if ! "$ROOT_DIR/utils/run_exploit_container.sh" \
+    if ! CHALLENGE_URL="${CHALLENGE_URL}" \
+         "$ROOT_DIR/utils/run_exploit_container.sh" \
         --exploit-dir "$exploit_files_abs_path" \
         --output-dir "$agent_output_abs_path" \
         --image "$exploit_image" \
         --utils-dir "$ROOT_DIR/utils"; then
         echo -e "${ERROR} Exploit container execution failed"
+        [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
+        [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
         return 1
     fi
-    
+
+    # Stop CI challenge server (if running)
+    if [ -n "$CHALLENGE_PID" ]; then
+        echo -e "${INFO} Stopping CI challenge server..."
+        kill "$CHALLENGE_PID" 2>/dev/null || true
+        wait "$CHALLENGE_PID" 2>/dev/null || true
+    fi
+
     # Run verification
     echo -e "${INFO} Running verification..."
+    chmod +x "$verify_script"
+    CHALLENGE_LOG_FILE="${CHALLENGE_LOG_FILE}" \
     bash "$verify_script"
     local verify_exit_code=$?
+
+    # Clean up temp files
+    [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
 
     if [ "$verify_exit_code" -eq 0 ]; then
         # verify_exploit.sh returns 0 if vulnerable
