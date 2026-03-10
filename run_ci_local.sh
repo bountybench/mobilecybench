@@ -458,27 +458,15 @@ run_exploit_verification() {
         return 1
     fi
 
-    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
-    local prepare_app_hook="$vuln_dir/prepare_app.sh"
-    if [ -f "$prepare_app_hook" ]; then
-        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
-        if ! timeout 300 bash "$prepare_app_hook"; then
-            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
-            return 1
-        fi
-        echo -e "${SUCCESS} prepare_app hook completed"
-    fi
-
-    # -------------------------------------------------------------------------
-    # CI Challenge Server (anti-reward-hacking)
-    # If verify_files/challenge_server.py exists, start a CI-controlled HTTPS
-    # server before the exploit runs.  The exploit container receives only the
-    # URL ($CHALLENGE_URL); it never controls the server, its certificates, or
-    # the config content it serves.  The nonce embedded in the served config is
-    # only knowable by fetching from this server (which is logged), making it
-    # impossible to forge a valid .vp profile without genuinely triggering the
-    # vulnerable import path.
-    # -------------------------------------------------------------------------
+    # ── CI-controlled challenge server ──────────────────────────────────────
+    # If verify_files/challenge_server.py exists, start a CI-controlled
+    # server BEFORE prepare_app.sh and the exploit.  The exploit container
+    # receives only the URL ($CHALLENGE_URL); it never controls the server,
+    # its certificates, or the content it serves.  The per-run nonce
+    # embedded in the served content is only knowable by fetching from this
+    # server (which is logged), making it impossible to forge valid evidence
+    # without genuinely triggering the vulnerable code path.
+    # ─────────────────────────────────────────────────────────────────────
     local CHALLENGE_PID=""
     local CHALLENGE_LOG_FILE=""
     local CHALLENGE_PORT=""
@@ -490,7 +478,6 @@ run_exploit_verification() {
         CHALLENGE_LOG_FILE=$(mktemp)
         CHALLENGE_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); p=s.getsockname()[1]; s.close(); print(p)")
 
-        # Capture stderr so we can read the [READY] <url> line
         local challenge_stderr
         challenge_stderr=$(mktemp)
 
@@ -505,6 +492,7 @@ run_exploit_verification() {
         while [ $SECONDS -lt $ready_deadline ]; do
             if ! kill -0 "$CHALLENGE_PID" 2>/dev/null; then
                 echo -e "${ERROR} CI challenge server exited prematurely"
+                cat "$challenge_stderr" >&2
                 rm -f "$CHALLENGE_LOG_FILE" "$challenge_stderr"
                 return 1
             fi
@@ -531,19 +519,38 @@ run_exploit_verification() {
         fi
     fi
 
-    # Run exploit in container via shared script
+    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
+    # CHALLENGE_PORT is exported so prepare_app.sh can redirect the app to the challenge server.
+    local prepare_app_hook="$vuln_dir/prepare_app.sh"
+    if [ -f "$prepare_app_hook" ]; then
+        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
+        if ! CHALLENGE_PORT="${CHALLENGE_PORT}" timeout 300 bash "$prepare_app_hook"; then
+            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
+            [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
+            [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
+            return 1
+        fi
+        echo -e "${SUCCESS} prepare_app hook completed"
+    fi
+
+    # Run exploit in container
+    echo -e "${INFO} Executing exploit in container..."
+    local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
     local agent_output_abs_path
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
-
+    mkdir -p "$agent_output_abs_path"
     if ! CHALLENGE_URL="${CHALLENGE_URL}" \
          "$ROOT_DIR/utils/run_exploit_container.sh" \
         --exploit-dir "$exploit_files_abs_path" \
         --output-dir "$agent_output_abs_path" \
+        --image "$exploit_image" \
         --utils-dir "$ROOT_DIR/utils"; then
         echo -e "${ERROR} Exploit container execution failed"
+        [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
+        [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
         return 1
     fi
 
