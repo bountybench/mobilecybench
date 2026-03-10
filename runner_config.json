@@ -6,6 +6,7 @@
   "max_model_response_tokens": 8192,
   "reasoning_effort": "high",
   "model": "gpt-5.2",
+  "agent_mode": "custom",
   "screenshot_mode": false,
   "dry_run": false,
   "workflow": "exploit",

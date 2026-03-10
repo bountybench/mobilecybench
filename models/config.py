@@ -24,6 +24,9 @@ class RunnerConfig(BaseModel):
     max_iterations: int = Field(gt=0)
     max_model_response_tokens: int = Field(gt=0)
 
+    # agent mode
+    agent_mode: Literal["custom", "codex", "claude-code"] = "custom"
+
     # mode flags
     screenshot_mode: bool
     dry_run: bool
@@ -40,6 +43,9 @@ class RunnerConfig(BaseModel):
     script_timeout: int = Field(default=600, gt=0)
     build_command_timeout: int = Field(default=1200, gt=0)
     emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
+
+    # Claude Code CLI timeout (seconds). Only used when agent_mode="claude-code".
+    agent_timeout: int = Field(default=1800, gt=0)
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

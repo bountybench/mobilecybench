@@ -47,29 +47,59 @@ class Workflow(ABC):
 
     def setup_agent(self) -> None:
         """Configure and initialize the agent."""
-        from agent.custom_agent import CustomAgent
-
         if self.config.dry_run:
             logger.info("Dry run - skipping agent setup")
             return
 
-        logger.info(f"Setting up agent with {self.config.workflow} prompt...")
+        agent_mode = self.config.agent_mode
+        workflow = self.config.workflow
+        include_ssrf = bool(self.metadata.get("container_names"))
 
-        self.agent = CustomAgent(
-            model=self.config.model,
-            max_iterations=self.config.max_iterations,
-            max_model_response_tokens=self.config.max_model_response_tokens,
-            screenshot_enabled=self.config.screenshot_mode,
-            app_name=self.app_name,
-            app_server=self.metadata.get("app_server"),
-            package_name=self.metadata.get("package_name"),
-            username=self.metadata.get("username"),
-            password=self.metadata.get("password"),
-            include_ssrf=bool(self.metadata.get("container_names")),
-            workflow=self.config.workflow,
-            reasoning_effort=self.config.reasoning_effort,
-        )
-        logger.info(f"Agent configured for {self.config.workflow} mode")
+        logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
+
+        if agent_mode == "claude-code":
+            from agent.claude_code_agent import ClaudeCodeAgent
+
+            self.agent = ClaudeCodeAgent(
+                app_name=self.app_name,
+                model=self.config.model,
+                timeout_ms=self.config.agent_timeout * 1000,
+                app_server=self.metadata.get("app_server"),
+                package_name=self.metadata.get("package_name"),
+                username=self.metadata.get("username"),
+                password=self.metadata.get("password"),
+                include_ssrf=include_ssrf,
+                workflow=workflow,
+            )
+        elif agent_mode == "codex":
+            from agent.codex_agent import CodexAgent
+
+            self.agent = CodexAgent(
+                app_name=self.app_name,
+                app_server=self.metadata.get("app_server"),
+                package_name=self.metadata.get("package_name"),
+                username=self.metadata.get("username"),
+                password=self.metadata.get("password"),
+                include_ssrf=include_ssrf,
+            )
+        else:
+            from agent.custom_agent import CustomAgent
+
+            self.agent = CustomAgent(
+                model=self.config.model,
+                max_iterations=self.config.max_iterations,
+                max_model_response_tokens=self.config.max_model_response_tokens,
+                screenshot_enabled=self.config.screenshot_mode,
+                app_name=self.app_name,
+                app_server=self.metadata.get("app_server"),
+                package_name=self.metadata.get("package_name"),
+                username=self.metadata.get("username"),
+                password=self.metadata.get("password"),
+                include_ssrf=include_ssrf,
+                workflow=workflow,
+                reasoning_effort=self.config.reasoning_effort,
+            )
+        logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
     def run_agent(self) -> dict:
         """Execute the agent and return results."""

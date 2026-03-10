@@ -82,22 +82,37 @@ Key fields:
 
 | Field               | Description                                                                        |
 | ------------------- | ---------------------------------------------------------------------------------- |
-| `model`             | Model to use (e.g., `gpt-5`, `gemini-3-pro-preview`)                               |
+| `model`             | Model for the custom agent (e.g., `gpt-5`, `sonnet`). Ignored by codex/claude-code. |
 | `workflow`          | `"discovery"` or `"exploit"`                                                       |
-| `max_iterations`    | Maximum agent turns before stopping                                                |
+| `max_iterations`    | Maximum agent turns before stopping (custom agent only)                            |
 | `build_type`        | `"source"` (build APK), `"download-apk"`, or `"skip-apk"`                          |
 | `dry_run`           | If true, launches interactive shell instead of agent                               |
 | `script_timeout`    | Timeout in seconds for long-running scripts (exploit, verify, setup). Default: 600 |
 | `synthetic_vuln_id` | Which vulnerability to test in exploit mode (default: `"vuln_0"`)                  |
+| `agent_mode`        | `"custom"` (default), `"codex"`, or `"claude-code"`                                |
+| `agent_timeout`     | Timeout in seconds for CLI-based agents (codex, claude-code). Default: 1800        |
 
-### Agent Type
+### Agent Mode
 
-Use `--agent-type` to select an agent implementation:
+Set `"agent_mode"` in your `runner_config.json` to select an agent implementation:
 
-```bash
-python runner.py <app_name> --agent-type custom  # default
-python runner.py <app_name> --agent-type codex   # Codex mode
+| Mode           | Description                                              | Docker Image                                |
+| -------------- | -------------------------------------------------------- | ------------------------------------------- |
+| `custom`       | Built-in agent with per-turn model calls (default)       | `cybench/mobilecybench:latest`              |
+| `codex`        | OpenAI Codex CLI agent                                   | `cybench/mobilecybench-codex:latest`        |
+| `claude-code`  | Claude Code CLI agent (requires OAuth tokens)            | `cybench/mobilecybench:claudecode`           |
+
+Example config for Claude Code (uses Opus 4.6 by default):
+
+```json
+{
+  "agent_mode": "claude-code",
+  "agent_image": "cybench/mobilecybench:claudecode",
+  "agent_timeout": 1800
+}
 ```
+
+See `documentation/GETTING_STARTED.md` for setup instructions for each agent mode.
 
 ## Outputs
 

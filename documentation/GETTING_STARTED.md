@@ -1,4 +1,4 @@
-# Getting Started
+cko# Getting Started
 
 This guide gets a first-time user from zero to a working emulator and a basic app run.
 
@@ -86,6 +86,45 @@ To run the agent, an API key is required in a `.env` file in the `agent/` direct
 cd agent && touch .env
 echo OPENAI_API_KEY="sk..." > .env
 ```
+
+### Claude Code agent mode
+
+To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config), you need OAuth tokens from a Claude Max or Pro subscription instead of an API key.
+
+**Step 1: Install and authenticate Claude Code**
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude auth login   # follow the browser flow — stores credentials in macOS Keychain
+```
+
+**Step 2: Extract tokens into `agent/.env`**
+
+After logging in, extract your OAuth tokens from the macOS Keychain into the env file:
+
+```bash
+CREDS=$(security find-generic-password -s "Claude Code-credentials" -w)
+echo "$CREDS" | python3 -c "
+import json, sys
+c = json.load(sys.stdin)['claudeAiOauth']
+print(f'CLAUDE_CODE_OAUTH_TOKEN={c[\"accessToken\"]}')
+print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
+" >> agent/.env
+```
+
+Tokens expire periodically — re-run the extraction before each session.
+
+**Step 3: Configure `runner_config.json`**
+
+```json
+{
+  "agent_mode": "claude-code",
+  "agent_image": "cybench/mobilecybench:claudecode",
+  "agent_timeout": 1800
+}
+```
+
+The Docker image is pulled automatically. `agent_timeout` controls how long (in seconds) the CLI is allowed to run (default: 1800).
 
 ## 5) Pick an app
 
