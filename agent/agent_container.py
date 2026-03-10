@@ -644,13 +644,22 @@ def _load_claude_code_credentials() -> Optional[str]:
     """Load Claude Code OAuth credentials from environment variables.
 
     Expects ``CLAUDE_CODE_OAUTH_TOKEN`` (required) and optionally
-    ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN`` to be set, typically via
-    ``agent/.env``.  See ``agent/.env.example`` for details.
+    ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN`` to be set in ``agent/.env``.
+    See ``agent/.env.example`` for details.
 
     Returns the raw JSON string to write into
     ``~/.claude/.credentials.json`` inside the container, or *None* if
     no credentials were found.
     """
+    # Ensure agent/.env is loaded before reading credentials.
+    # This function is called during setup_runtime_environment(), which
+    # runs before setup_agent() where the agent's __init__ loads .env.
+    from dotenv import load_dotenv
+
+    agent_env_file = Path(__file__).parent / ".env"
+    if agent_env_file.exists():
+        load_dotenv(agent_env_file, override=True)
+
     token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     refresh = os.environ.get("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "")
     if token:

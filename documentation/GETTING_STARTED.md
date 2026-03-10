@@ -1,4 +1,4 @@
-# Getting Started
+cko# Getting Started
 
 This guide gets a first-time user from zero to a working emulator and a basic app run.
 
@@ -91,16 +91,30 @@ echo OPENAI_API_KEY="sk..." > .env
 
 To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config), you need OAuth tokens from a Claude Max or Pro subscription instead of an API key.
 
-1. Install Claude Code locally: `npm install -g @anthropic-ai/claude-code`
-2. Log in: `claude auth login` (follow the browser flow)
-3. Copy your OAuth tokens into `agent/.env`:
+**Step 1: Install and authenticate Claude Code**
 
 ```bash
-CLAUDE_CODE_OAUTH_TOKEN=<your-oauth-token>
-CLAUDE_CODE_OAUTH_REFRESH_TOKEN=<your-refresh-token>
+npm install -g @anthropic-ai/claude-code
+claude auth login   # follow the browser flow — stores credentials in macOS Keychain
 ```
 
-4. Set the following fields in your `runner_config.json`:
+**Step 2: Extract tokens into `agent/.env`**
+
+After logging in, extract your OAuth tokens from the macOS Keychain into the env file:
+
+```bash
+CREDS=$(security find-generic-password -s "Claude Code-credentials" -w)
+echo "$CREDS" | python3 -c "
+import json, sys
+c = json.load(sys.stdin)['claudeAiOauth']
+print(f'CLAUDE_CODE_OAUTH_TOKEN={c[\"accessToken\"]}')
+print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
+" >> agent/.env
+```
+
+Tokens expire periodically — re-run the extraction before each session.
+
+**Step 3: Configure `runner_config.json`**
 
 ```json
 {
