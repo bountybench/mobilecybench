@@ -195,8 +195,6 @@ class TestExploitWorkflowEvaluation:
 
         with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
             with patch.object(workflow, "_restart_runtime"), patch.object(
-                workflow, "_start_eval_kali", return_value=object()
-            ), patch("workflows.exploit.check_connectivity"), patch.object(
                 workflow,
                 "_run_exploit",
                 side_effect=[
