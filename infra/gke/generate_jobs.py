@@ -5,6 +5,8 @@ Generate K8s Job YAMLs for the MobileCyBench experiment matrix.
 Scans apps/ for synthetic vulnerabilities, cross-products with the requested
 models, and renders one Job YAML per (app, vuln, model) tuple.
 
+Uses job-template.yaml as the single source of truth for the Job spec.
+
 Usage:
     # Single app + model — print YAML
     python infra/gke/generate_jobs.py --apps moememos --models gpt-4o
@@ -58,7 +60,22 @@ def sanitize_k8s_name(name: str) -> str:
     return name[:63]
 
 
+def load_template(template_path: Path) -> str:
+    """Load the job template YAML, stripping comment lines."""
+    lines = template_path.read_text().splitlines()
+    cleaned = []
+    for line in lines:
+        if line.lstrip().startswith("#"):
+            continue
+        # Strip inline comments (e.g., "value  # comment")
+        if "  #" in line:
+            line = line[: line.index("  #")]
+        cleaned.append(line)
+    return "\n".join(cleaned)
+
+
 def render_job(
+    template: str,
     app_name: str,
     vuln_id: str,
     model: str,
@@ -66,68 +83,42 @@ def render_job(
     gcs_bucket: str,
     emulator_backend: str,
 ) -> str:
-    """Render a K8s Job YAML for a single experiment."""
+    """Render a Job YAML by substituting placeholders in the template."""
     job_name = sanitize_k8s_name(f"mcb-{app_name}-{vuln_id}-{model}")
+    model_label = sanitize_k8s_name(model)
 
-    return f"""apiVersion: batch/v1
-kind: Job
-metadata:
-  name: {job_name}
-  namespace: mobilecybench
-  labels:
-    app: mobilecybench
-    experiment-app: "{app_name}"
-    experiment-vuln: "{vuln_id}"
-    experiment-model: "{sanitize_k8s_name(model)}"
-spec:
-  backoffLimit: 1
-  ttlSecondsAfterFinished: 86400
-  template:
-    metadata:
-      labels:
-        app: mobilecybench
-        experiment-app: "{app_name}"
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: runner
-          image: {image_uri}
-          securityContext:
-            privileged: true
-          resources:
-            requests:
-              cpu: "2"
-              memory: "8Gi"
-            limits:
-              cpu: "4"
-              memory: "16Gi"
-          env:
-            - name: APP_NAME
-              value: "{app_name}"
-            - name: MODEL
-              value: "{model}"
-            - name: VULN_ID
-              value: "{vuln_id}"
-            - name: EMULATOR_BACKEND
-              value: "{emulator_backend}"
-            - name: GCS_BUCKET
-              value: "{gcs_bucket}"
-            - name: RUN_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-          envFrom:
-            - secretRef:
-                name: llm-api-keys
-          volumeMounts:
-            - name: dev-kvm
-              mountPath: /dev/kvm
-      volumes:
-        - name: dev-kvm
-          hostPath:
-            path: /dev/kvm
-            type: CharDevice
-"""
+    replacements = {
+        "mcb-APP_NAME-VULN_ID-MODEL": job_name,
+        "IMAGE_URI": image_uri,
+    }
+
+    result = template
+    for old, new in replacements.items():
+        result = result.replace(old, new)
+
+    # Replace placeholder values in env and labels.
+    # Use word-boundary-aware replacement to avoid partial matches.
+    # The template uses bare APP_NAME, MODEL, etc. as placeholder values.
+    env_replacements = [
+        ("EMULATOR_BACKEND", emulator_backend),
+        ("GCS_BUCKET", gcs_bucket),
+        ("APP_NAME", app_name),
+        ("VULN_ID", vuln_id),
+        ("MODEL", model),
+    ]
+    for placeholder, value in env_replacements:
+        # Replace quoted placeholder values: "PLACEHOLDER" -> "value"
+        result = result.replace(f'"{placeholder}"', f'"{value}"')
+        # Replace unquoted placeholder values in labels: PLACEHOLDER -> "value"
+        # Match lines like `    experiment-app: APP_NAME`
+        result = re.sub(
+            rf"^(\s+experiment-\w+:\s*){placeholder}\s*$",
+            rf'\1"{value}"',
+            result,
+            flags=re.MULTILINE,
+        )
+
+    return result
 
 
 def main():
@@ -149,7 +140,7 @@ def main():
         "--image",
         default=os.environ.get(
             "RUNNER_IMAGE",
-            "us-central1-docker.pkg.dev/PROJECT_ID/mobilecybench/runner:latest",
+            "cybench/mobilecybench-runner:latest",
         ),
         help="Docker image URI for the runner",
     )
@@ -175,6 +166,13 @@ def main():
 
     project_root = Path(__file__).resolve().parent.parent.parent
     apps_dir = project_root / "apps"
+    template_path = Path(__file__).resolve().parent / "job-template.yaml"
+
+    if not template_path.exists():
+        print(f"ERROR: Template not found: {template_path}", file=sys.stderr)
+        return 1
+
+    template = load_template(template_path)
 
     app_filter = None if args.all else args.apps
     experiments = discover_experiments(apps_dir, app_filter)
@@ -193,6 +191,7 @@ def main():
     for exp in experiments:
         for model in args.models:
             yaml_str = render_job(
+                template=template,
                 app_name=exp["app_name"],
                 vuln_id=exp["vuln_id"],
                 model=model,

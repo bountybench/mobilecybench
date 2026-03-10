@@ -23,16 +23,33 @@ fi
 
 docker network create shared_net || true
 
-# ─── Pre-pull emulator image ─────────────────────────────────────────────
-# The Python Docker SDK has a 60s default timeout on containers.run(), which
-# is not enough for pulling the ~10 GB emulator image. Pre-pulling here
-# avoids that timeout.
+# ─── Load or pull images ─────────────────────────────────────────────────
+# If the image-cache DaemonSet has pre-cached tar files on this node, load
+# them (~1 min) instead of pulling from Docker Hub (~10-15 min).
+CACHE_DIR="/image-cache"
 EMULATOR_IMAGE="${EMULATOR_IMAGE:-cybench/mobilecybench-emulator:latest}"
+AGENT_IMAGE="${AGENT_IMAGE:-cybench/mobilecybench:latest}"
+
+load_or_pull() {
+    local tar_file="$1"
+    local image_name="$2"
+    local label="$3"
+
+    if [ -f "$tar_file" ]; then
+        echo "Loading $label image from cache: $tar_file"
+        docker load -i "$tar_file"
+        echo "$label image loaded from cache"
+    else
+        echo "Cache miss for $label — pulling: $image_name"
+        docker pull "$image_name"
+        echo "$label image pulled"
+    fi
+}
+
 if [ "${EMULATOR_BACKEND:-container}" = "container" ]; then
-    echo "Pre-pulling emulator image: $EMULATOR_IMAGE"
-    docker pull "$EMULATOR_IMAGE"
-    echo "Emulator image ready"
+    load_or_pull "$CACHE_DIR/emulator.tar" "$EMULATOR_IMAGE" "Emulator"
 fi
+load_or_pull "$CACHE_DIR/agent.tar" "$AGENT_IMAGE" "Agent"
 
 # Install package if needed (in case image was built without -e install)
 if [ -f /mobilecybench/pyproject.toml ]; then

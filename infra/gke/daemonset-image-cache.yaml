@@ -1,0 +1,98 @@
+# DaemonSet that pre-caches Docker images as tar files on every GKE node.
+# Jobs load from the local tar (~1 min) instead of pulling from Docker Hub (~15 min).
+#
+# Apply:
+#   kubectl apply -f infra/gke/daemonset-image-cache.yaml
+#
+# Check status:
+#   kubectl get ds -n mobilecybench image-cache
+#   kubectl logs -n mobilecybench -l app=image-cache
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: image-cache
+  namespace: mobilecybench
+  labels:
+    app: image-cache
+spec:
+  selector:
+    matchLabels:
+      app: image-cache
+  template:
+    metadata:
+      labels:
+        app: image-cache
+    spec:
+      containers:
+        - name: cache
+          image: gcr.io/go-containerregistry/crane:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              trap 'rm -f "$CACHE_DIR/emulator.tar.tmp" "$CACHE_DIR/agent.tar.tmp"' EXIT
+
+              CACHE_DIR="/cache"
+              EMULATOR_IMAGE="${EMULATOR_IMAGE:-cybench/mobilecybench-emulator:latest}"
+              AGENT_IMAGE="${AGENT_IMAGE:-cybench/mobilecybench:latest}"
+
+              echo "=== Image Cache DaemonSet ==="
+              echo "Emulator image: $EMULATOR_IMAGE"
+              echo "Agent image:    $AGENT_IMAGE"
+              echo "Cache dir:      $CACHE_DIR"
+
+              # Pull and save emulator image
+              if [ ! -f "$CACHE_DIR/emulator.tar" ]; then
+                  echo "Pulling emulator image: $EMULATOR_IMAGE"
+                  crane pull "$EMULATOR_IMAGE" "$CACHE_DIR/emulator.tar.tmp"
+                  mv "$CACHE_DIR/emulator.tar.tmp" "$CACHE_DIR/emulator.tar"
+                  echo "Emulator image cached ($(du -h "$CACHE_DIR/emulator.tar" | cut -f1))"
+              else
+                  echo "Emulator image already cached"
+              fi
+
+              # Pull and save agent image
+              if [ ! -f "$CACHE_DIR/agent.tar" ]; then
+                  echo "Pulling agent image: $AGENT_IMAGE"
+                  crane pull "$AGENT_IMAGE" "$CACHE_DIR/agent.tar.tmp"
+                  mv "$CACHE_DIR/agent.tar.tmp" "$CACHE_DIR/agent.tar"
+                  echo "Agent image cached ($(du -h "$CACHE_DIR/agent.tar" | cut -f1))"
+              else
+                  echo "Agent image already cached"
+              fi
+
+              # Write sentinel file atomically to signal completion
+              printf 'emulator=%s\nagent=%s\ncached_at=%s\n' \
+                  "$EMULATOR_IMAGE" "$AGENT_IMAGE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                  > "$CACHE_DIR/.done.tmp"
+              mv "$CACHE_DIR/.done.tmp" "$CACHE_DIR/.done"
+
+              echo "=== Cache ready ==="
+              cat "$CACHE_DIR/.done"
+
+              # Sleep forever — DaemonSet must stay running
+              echo "Sleeping to keep DaemonSet alive..."
+              sleep infinity
+          env:
+            - name: EMULATOR_IMAGE
+              value: "cybench/mobilecybench-emulator:latest"
+            - name: AGENT_IMAGE
+              value: "cybench/mobilecybench:latest"
+          volumeMounts:
+            - name: image-cache
+              mountPath: /cache
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+      volumes:
+        - name: image-cache
+          hostPath:
+            path: /mnt/image-cache
+            type: DirectoryOrCreate
+      tolerations:
+        - operator: Exists

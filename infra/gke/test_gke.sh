@@ -114,6 +114,27 @@ spec:
         test: "true"
     spec:
       restartPolicy: Never
+      initContainers:
+        - name: wait-for-cache
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Waiting for image cache DaemonSet to finish..."
+              for i in \$(seq 1 240); do
+                  if [ -f /image-cache/.done ]; then
+                      echo "Image cache is ready:"
+                      cat /image-cache/.done
+                      exit 0
+                  fi
+                  echo "  Attempt \$i/240 — cache not ready, retrying in 5s..."
+                  sleep 5
+              done
+              echo "WARNING: Image cache not ready after 20 min, proceeding without cache"
+          volumeMounts:
+            - name: image-cache
+              mountPath: /image-cache
+              readOnly: true
       containers:
         - name: runner
           image: $IMAGE
@@ -149,6 +170,9 @@ spec:
               mountPath: /dev/kvm
             - name: docker-storage
               mountPath: /var/lib/docker
+            - name: image-cache
+              mountPath: /image-cache
+              readOnly: true
       volumes:
         - name: dev-kvm
           hostPath:
@@ -156,6 +180,10 @@ spec:
             type: CharDevice
         - name: docker-storage
           emptyDir: {}
+        - name: image-cache
+          hostPath:
+            path: /mnt/image-cache
+            type: DirectoryOrCreate
 EOF
 
 echo "Job submitted."
