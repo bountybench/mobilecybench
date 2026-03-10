@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""Extract the PID of the most recent APP CRASH from `dumpsys activity exit-info`.
+
+Reads exit-info text from stdin; prints the PID of the latest crash for the
+given package that occurred after the baseline epoch.
+
+Usage:
+    adb shell dumpsys activity exit-info <pkg> \
+        | python3 extract_latest_crash_pid.py <baseline_epoch> <tz_offset> <app_package>
+
+Exit codes:
+    0 - found a crash; PID printed to stdout
+    1 - no qualifying crash found
+    2 - usage / parse error
+"""
 import re
 import sys
 from datetime import datetime, timedelta, timezone
