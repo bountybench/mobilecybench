@@ -85,6 +85,21 @@ def _node_visible(xml_text: str, resource_name: str) -> bool | None:
     return None
 
 
+def _node_attr(xml_text: str, resource_name: str, attr_name: str) -> str | None:
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return None
+
+    wanted = f"{APP_PKG}:id/{resource_name}"
+    for node in root.iter("node"):
+        rid = node.attrib.get("resource-id", "")
+        if rid == wanted or rid.endswith(f":id/{resource_name}"):
+            return node.attrib.get(attr_name)
+
+    return None
+
+
 def _wait_for_inbox_ready(d, timeout: float = 20.0) -> None:
     refresh = d(resourceIdMatches=_rid("swiperefresh"))
     message_list = d(resourceIdMatches=_rid("message_list"))
@@ -104,17 +119,32 @@ def _wait_for_inbox_ready(d, timeout: float = 20.0) -> None:
     raise RuntimeError(f"inbox UI not ready; current={_current_screen(d)}")
 
 
+def _wait_for_refresh_enabled(d, timeout: float = 20.0) -> None:
+    end = time.time() + timeout
+    while time.time() < end:
+        xml_text = _dump_hierarchy(d)
+        enabled = _node_attr(xml_text, "swiperefresh", "enabled")
+        if enabled == "true":
+            return
+        time.sleep(0.4)
+
+    raise RuntimeError("swiperefresh never became enabled")
+
+
 def _log_inbox_state(d, stage: str) -> None:
     refresh = d(resourceIdMatches=_rid("swiperefresh"))
     message_list = d(resourceIdMatches=_rid("message_list"))
     progress = d(resourceIdMatches=_rid("message_list_progress"))
+    xml_text = _dump_hierarchy(d)
+    refresh_enabled = _node_attr(xml_text, "swiperefresh", "enabled")
     print(
         "[verify_exploit] "
         f"attempt={ATTEMPT} stage={stage} "
         f"screen={_current_screen(d)} "
         f"refresh_exists={refresh.exists} "
         f"message_list_exists={message_list.exists} "
-        f"progress_exists={progress.exists}",
+        f"progress_exists={progress.exists} "
+        f"refresh_enabled={refresh_enabled}",
     )
 
 
@@ -134,6 +164,7 @@ def _pull_to_refresh(d) -> None:
             f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning_error={exc}"
         )
 
+    _wait_for_refresh_enabled(d)
     wait_for_ui_stable(d, timeout=8)
 
     try:
@@ -169,7 +200,7 @@ def _pull_to_refresh(d) -> None:
 
 def _wait_for_sync_lifecycle(
     d, start_timeout: float = 20.0, finish_timeout: float = 90.0
-) -> None:
+) -> tuple[bool, bool]:
     started = False
     start_deadline = time.time() + start_timeout
     while time.time() < start_deadline:
@@ -182,7 +213,7 @@ def _wait_for_sync_lifecycle(
 
     if not started:
         print(f"[verify_exploit] attempt={ATTEMPT} sync_progress_started=false")
-        return
+        return False, False
 
     finish_deadline = time.time() + finish_timeout
     while time.time() < finish_deadline:
@@ -190,10 +221,11 @@ def _wait_for_sync_lifecycle(
         if visible is False:
             print(f"[verify_exploit] attempt={ATTEMPT} sync_progress_finished=true")
             wait_for_ui_stable(d, timeout=12)
-            return
+            return True, True
         time.sleep(0.75)
 
     print(f"[verify_exploit] attempt={ATTEMPT} sync_progress_finished=false")
+    return True, False
 
 
 def main() -> int:
@@ -204,9 +236,12 @@ def main() -> int:
         _log_inbox_state(device, "before_refresh")
         _pull_to_refresh(device)
         _log_inbox_state(device, "after_refresh")
-        _wait_for_sync_lifecycle(device)
+        started, finished = _wait_for_sync_lifecycle(device)
         print(
-            f"[verify_exploit] Thunderbird inbox refresh triggered on {_current_screen(device)}"
+            "[verify_exploit] Thunderbird refresh result "
+            f"screen={_current_screen(device)} "
+            f"sync_started={started} "
+            f"sync_finished={finished}"
         )
         return 0
     except Exception as exc:
