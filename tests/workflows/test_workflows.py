@@ -309,9 +309,7 @@ class TestDetectionWorkflowEvaluation:
         with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
             with patch.object(workflow, "_restart_runtime"), patch.object(
                 workflow, "_run_exploit", side_effect=replays
-            ), patch.object(
-                workflow, "_save_result"
-            ):
+            ), patch.object(workflow, "_save_result"):
                 result = workflow.evaluate()
 
         assert result["status"] == expected_status
