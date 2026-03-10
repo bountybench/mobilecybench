@@ -104,15 +104,4 @@ else
 fi
 
 
-# Clear any activity_flag.txt that may have been created by the injected
-# VulnFlagActivity honeypot (present when repackage_apk.sh was used).
-# This is a no-op when the APK was not repackaged (e.g., CI builds).
-if [[ -z "$REMOVE_FLAG" ]]; then
-    echo "Clearing baseline activity_flag.txt..."
-    adb root >/dev/null 2>&1 || true
-    sleep 2
-    adb shell "am force-stop $PACKAGE_NAME" >/dev/null 2>&1 || true
-    adb shell "rm -f /data/data/$PACKAGE_NAME/files/activity_flag.txt" >/dev/null 2>&1 || true
-fi
-
 echo "Script finished."
