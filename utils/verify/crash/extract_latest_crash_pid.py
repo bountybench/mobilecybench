@@ -68,7 +68,11 @@ def extract_crash_pid(
                 tzinfo=tz
             )
             epoch = int(dt.timestamp())
-        except Exception:
+        except Exception as exc:
+            print(
+                f"warning: unparseable timestamp '{current_ts}': {exc}",
+                file=sys.stderr,
+            )
             continue
 
         # Ignore stale crash events (allow 5s skew).

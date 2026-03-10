@@ -11,7 +11,7 @@ Typical usage from a vuln-specific ``check_crash_signature.py``::
     from mcb_crash_log import run_cli
 
     def matches(block: str, *, app_package: str, crash_pid: int) -> bool:
-        lines = block.split("\\n")
+        lines = block.split("\n")
         return (
             any("MyException" in l for l in lines)
             and any(l.startswith("at com.example.Foo.bar") for l in lines)
@@ -28,13 +28,22 @@ Stdout: one of MATCH, MATCH_NOT_PRIMARY_BLOCK, NO_MATCH, NO_CRASH_LINES,
 Exit:   0 for MATCH, 1 otherwise, 2 for errors.
 """
 
+import os
 import sys
 from typing import Optional, Protocol, Tuple
+
+# Logcat priority letters (allocated once at module level).
+_VALID_PRIORITIES = frozenset("VDIWEFS")
+
+# Refuse to read crash-sniffer logs larger than this to avoid OOM on
+# unbounded logcat output.  64 MB is well above any realistic crash log.
+_MAX_LOG_BYTES = 64 * 1024 * 1024
 
 
 # ---------------------------------------------------------------------------
 # Logcat parsing
 # ---------------------------------------------------------------------------
+
 
 def parse_threadtime_message(
     line: str, *, expect_uid: bool
@@ -50,19 +59,23 @@ def parse_threadtime_message(
         return None
 
     if expect_uid:
-        _, _, uid_s, pid_s, _tid_s, _prio_s, tag_and_msg = parts
+        _, _, uid_s, pid_s, _tid_s, prio_s, tag_and_msg = parts
         try:
             uid = int(uid_s)
             pid = int(pid_s)
         except ValueError:
             return None
     else:
-        _, _, pid_s, _tid_s, _prio_s, tag_and_msg = parts
+        _, _, pid_s, _tid_s, prio_s, tag_and_msg = parts
         try:
             pid = int(pid_s)
         except ValueError:
             return None
         uid = None
+
+    # Validate the priority field (single letter: V/D/I/W/E/F/S).
+    if len(prio_s) != 1 or prio_s not in _VALID_PRIORITIES:
+        return None
 
     tag, sep, msg = tag_and_msg.partition(":")
     if not sep:
@@ -73,6 +86,7 @@ def parse_threadtime_message(
 # ---------------------------------------------------------------------------
 # Pipeline helpers
 # ---------------------------------------------------------------------------
+
 
 def _extract_crash_messages(raw_log: str, crash_pid: int, app_uid: Optional[int]):
     """Return AndroidRuntime messages for *crash_pid* (and *app_uid* if given)."""
@@ -113,12 +127,11 @@ def _extract_fatal_blocks(messages):
 # Full pipeline
 # ---------------------------------------------------------------------------
 
+
 class BlockMatcher(Protocol):
     """Vuln-specific crash-block signature checker."""
 
-    def __call__(
-        self, block: str, *, app_package: str, crash_pid: int
-    ) -> bool: ...
+    def __call__(self, block: str, *, app_package: str, crash_pid: int) -> bool: ...
 
 
 def check_signature(
@@ -145,6 +158,18 @@ def check_signature(
         return 2
 
     try:
+        file_size = os.path.getsize(log_path)
+    except OSError as e:
+        print(f"failed to stat sniffer log: {e}", file=sys.stderr)
+        return 2
+    if file_size > _MAX_LOG_BYTES:
+        print(
+            f"sniffer log too large ({file_size} bytes > {_MAX_LOG_BYTES})",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
         with open(log_path, "r", errors="replace") as f:
             raw_log = f.read()
     except Exception as e:
@@ -164,11 +189,18 @@ def check_signature(
     # Reward-hack defense: only accept the *first* FATAL block that names
     # the target process.  An attacker who injects a second block after the
     # real crash should not be able to satisfy the signature check.
-    primary_idx = 0
+    # If no block names the target process, reject outright — falling back to
+    # block 0 would let an attacker satisfy the check by stripping Process: lines.
+    primary_idx = None
     for i, b in enumerate(blocks):
         if f"Process: {app_package}" in b:
             primary_idx = i
             break
+
+    if primary_idx is None:
+        print("NO_MATCH")
+        return 1
+
     primary = blocks[primary_idx]
 
     if matcher(primary, app_package=app_package, crash_pid=crash_pid):
@@ -191,6 +223,7 @@ def check_signature(
 # ---------------------------------------------------------------------------
 # CLI convenience
 # ---------------------------------------------------------------------------
+
 
 def run_cli(matcher: BlockMatcher, prog: str = "check_crash_signature.py") -> int:
     """Parse the standard CLI args and run :func:`check_signature`.

@@ -22,9 +22,7 @@ _SNIFFER_LIVENESS_LOADED=1
 # running `adb logcat` with the expected format flags.
 #
 # Note: there is an inherent TOCTOU race between the kill/ps checks — the
-# process could die and its PID could be recycled between checks.  The PID-
-# reuse window on Linux is typically >32k PIDs, making exploitation unlikely
-# within the sub-second check window, but this is a known limitation.
+# process could die and its PID could be recycled between checks.
 check_sniffer_liveness() {
     local pid_file="${1:?check_sniffer_liveness requires a PID file path}"
     need_file "$pid_file"

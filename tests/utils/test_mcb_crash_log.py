@@ -1,22 +1,25 @@
 """Tests for utils/verify/crash/mcb_crash_log.py and extract_latest_crash_pid.py."""
 
+from __future__ import annotations
+
 import os
 import sys
-import tempfile
 
 import pytest
 
 # Make the modules importable.
-_CRASH_UTILS = os.path.join(os.path.dirname(__file__), "..", "..", "utils", "verify", "crash")
+_CRASH_UTILS = os.path.join(
+    os.path.dirname(__file__), "..", "..", "utils", "verify", "crash"
+)
 sys.path.insert(0, _CRASH_UTILS)
 
-import mcb_crash_log  # noqa: E402
 import extract_latest_crash_pid  # noqa: E402
-
+import mcb_crash_log  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # parse_threadtime_message
 # ---------------------------------------------------------------------------
+
 
 class TestParseThreadtimeMessage:
     def test_with_uid(self):
@@ -39,10 +42,16 @@ class TestParseThreadtimeMessage:
         assert tag == "AndroidRuntime"
 
     def test_non_matching_line(self):
-        assert mcb_crash_log.parse_threadtime_message("not a logcat line", expect_uid=True) is None
+        assert (
+            mcb_crash_log.parse_threadtime_message("not a logcat line", expect_uid=True)
+            is None
+        )
 
     def test_short_line(self):
-        assert mcb_crash_log.parse_threadtime_message("03-10 12:00", expect_uid=True) is None
+        assert (
+            mcb_crash_log.parse_threadtime_message("03-10 12:00", expect_uid=True)
+            is None
+        )
 
     def test_non_numeric_pid(self):
         line = "03-10 12:00:01.000 abc def ghi J SomeTag: msg"
@@ -58,10 +67,20 @@ class TestParseThreadtimeMessage:
         assert result is not None
         assert result[3] == "hello world"
 
+    def test_invalid_priority_rejected(self):
+        """Priority field must be a single known letter (V/D/I/W/E/F/S)."""
+        line = "03-10 12:00:01.000 10123 12345 12345 X AndroidRuntime: msg"
+        assert mcb_crash_log.parse_threadtime_message(line, expect_uid=True) is None
+
+    def test_multi_char_priority_rejected(self):
+        line = "03-10 12:00:01.000 10123 12345 12345 EE AndroidRuntime: msg"
+        assert mcb_crash_log.parse_threadtime_message(line, expect_uid=True) is None
+
 
 # ---------------------------------------------------------------------------
 # _extract_fatal_blocks
 # ---------------------------------------------------------------------------
+
 
 class TestExtractFatalBlocks:
     def test_single_block(self):
@@ -109,6 +128,7 @@ class TestExtractFatalBlocks:
 # check_signature (full pipeline)
 # ---------------------------------------------------------------------------
 
+
 def _always_match(block: str, *, app_package: str, crash_pid: int) -> bool:
     return True
 
@@ -121,50 +141,64 @@ def _make_log(lines: list[str]) -> str:
     return "\n".join(lines)
 
 
-BASIC_CRASH_LOG = _make_log([
-    "03-10 12:00:01.000 10123 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
-    "03-10 12:00:01.001 10123 999 999 E AndroidRuntime: Process: com.test, PID: 999",
-    "03-10 12:00:01.002 10123 999 999 E AndroidRuntime: java.lang.Exception: boom",
-])
+BASIC_CRASH_LOG = _make_log(
+    [
+        "03-10 12:00:01.000 10123 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
+        "03-10 12:00:01.001 10123 999 999 E AndroidRuntime: Process: com.test, PID: 999",
+        "03-10 12:00:01.002 10123 999 999 E AndroidRuntime: java.lang.Exception: boom",
+    ]
+)
 
 
 class TestCheckSignature:
     def test_match(self, tmp_path, capsys):
         log = tmp_path / "crash.log"
         log.write_text(BASIC_CRASH_LOG)
-        rc = mcb_crash_log.check_signature(str(log), 999, "com.test", 10123, _always_match)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", 10123, _always_match
+        )
         assert rc == 0
         assert capsys.readouterr().out.strip() == "MATCH"
 
     def test_no_match(self, tmp_path, capsys):
         log = tmp_path / "crash.log"
         log.write_text(BASIC_CRASH_LOG)
-        rc = mcb_crash_log.check_signature(str(log), 999, "com.test", 10123, _never_match)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", 10123, _never_match
+        )
         assert rc == 1
         assert capsys.readouterr().out.strip() == "NO_MATCH"
 
     def test_wrong_pid(self, tmp_path, capsys):
         log = tmp_path / "crash.log"
         log.write_text(BASIC_CRASH_LOG)
-        rc = mcb_crash_log.check_signature(str(log), 777, "com.test", 10123, _always_match)
+        rc = mcb_crash_log.check_signature(
+            str(log), 777, "com.test", 10123, _always_match
+        )
         assert rc == 1
         assert capsys.readouterr().out.strip() == "NO_CRASH_LINES"
 
     def test_wrong_uid(self, tmp_path, capsys):
         log = tmp_path / "crash.log"
         log.write_text(BASIC_CRASH_LOG)
-        rc = mcb_crash_log.check_signature(str(log), 999, "com.test", 99999, _always_match)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", 99999, _always_match
+        )
         assert rc == 1
         assert capsys.readouterr().out.strip() == "NO_CRASH_LINES"
 
     def test_missing_file(self, capsys):
-        rc = mcb_crash_log.check_signature("/nonexistent", 999, "com.test", None, _always_match)
+        rc = mcb_crash_log.check_signature(
+            "/nonexistent", 999, "com.test", None, _always_match
+        )
         assert rc == 2
 
     def test_empty_log(self, tmp_path, capsys):
         log = tmp_path / "crash.log"
         log.write_text("")
-        rc = mcb_crash_log.check_signature(str(log), 999, "com.test", None, _always_match)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", None, _always_match
+        )
         assert rc == 1
         assert capsys.readouterr().out.strip() == "NO_CRASH_LINES"
 
@@ -174,16 +208,18 @@ class TestPrimaryBlockDefense:
     FATAL block that names the target process."""
 
     def _two_block_log(self):
-        return _make_log([
-            # Block 1: legitimate crash
-            "03-10 12:00:01.000 10123 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
-            "03-10 12:00:01.001 10123 999 999 E AndroidRuntime: Process: com.test, PID: 999",
-            "03-10 12:00:01.002 10123 999 999 E AndroidRuntime: java.lang.Exception: legit",
-            # Block 2: injected crash
-            "03-10 12:00:02.000 10123 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
-            "03-10 12:00:02.001 10123 999 999 E AndroidRuntime: Process: com.test, PID: 999",
-            "03-10 12:00:02.002 10123 999 999 E AndroidRuntime: java.lang.Exception: injected",
-        ])
+        return _make_log(
+            [
+                # Block 1: legitimate crash
+                "03-10 12:00:01.000 10123 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
+                "03-10 12:00:01.001 10123 999 999 E AndroidRuntime: Process: com.test, PID: 999",
+                "03-10 12:00:01.002 10123 999 999 E AndroidRuntime: java.lang.Exception: legit",
+                # Block 2: injected crash
+                "03-10 12:00:02.000 10123 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
+                "03-10 12:00:02.001 10123 999 999 E AndroidRuntime: Process: com.test, PID: 999",
+                "03-10 12:00:02.002 10123 999 999 E AndroidRuntime: java.lang.Exception: injected",
+            ]
+        )
 
     def test_match_in_primary_only(self, tmp_path, capsys):
         """Matcher matches only primary block -> MATCH."""
@@ -193,7 +229,9 @@ class TestPrimaryBlockDefense:
         def match_legit(block, *, app_package, crash_pid):
             return "legit" in block
 
-        rc = mcb_crash_log.check_signature(str(log), 999, "com.test", 10123, match_legit)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", 10123, match_legit
+        )
         assert rc == 0
         assert capsys.readouterr().out.strip() == "MATCH"
 
@@ -205,7 +243,9 @@ class TestPrimaryBlockDefense:
         def match_injected(block, *, app_package, crash_pid):
             return "injected" in block
 
-        rc = mcb_crash_log.check_signature(str(log), 999, "com.test", 10123, match_injected)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", 10123, match_injected
+        )
         assert rc == 1
         assert capsys.readouterr().out.strip() == "MATCH_NOT_PRIMARY_BLOCK"
 
@@ -213,7 +253,29 @@ class TestPrimaryBlockDefense:
         """Matcher matches no block -> NO_MATCH."""
         log = tmp_path / "crash.log"
         log.write_text(self._two_block_log())
-        rc = mcb_crash_log.check_signature(str(log), 999, "com.test", 10123, _never_match)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", 10123, _never_match
+        )
+        assert rc == 1
+        assert capsys.readouterr().out.strip() == "NO_MATCH"
+
+    def test_no_block_names_target_process(self, tmp_path, capsys):
+        """When no FATAL block contains 'Process: <pkg>', return NO_MATCH.
+
+        This prevents an attacker from stripping Process: lines to force
+        evaluation of an injected block (fix for review issue #6).
+        """
+        log_text = _make_log(
+            [
+                "03-10 12:00:01.000 10123 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
+                "03-10 12:00:01.001 10123 999 999 E AndroidRuntime: java.lang.Exception: surprise",
+            ]
+        )
+        log = tmp_path / "crash.log"
+        log.write_text(log_text)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", 10123, _always_match
+        )
         assert rc == 1
         assert capsys.readouterr().out.strip() == "NO_MATCH"
 
@@ -230,7 +292,9 @@ class TestCheckSignatureValidation:
     def test_invalid_crash_pid_negative(self, tmp_path, capsys):
         log = tmp_path / "crash.log"
         log.write_text(BASIC_CRASH_LOG)
-        rc = mcb_crash_log.check_signature(str(log), -1, "com.test", None, _always_match)
+        rc = mcb_crash_log.check_signature(
+            str(log), -1, "com.test", None, _always_match
+        )
         assert rc == 2
 
     def test_invalid_uid_negative(self, tmp_path, capsys):
@@ -242,14 +306,18 @@ class TestCheckSignatureValidation:
     def test_uid_none_allowed(self, tmp_path, capsys):
         """UID=None means skip UID filtering — should still work."""
         # Build a log without UID column (expect_uid=False path).
-        no_uid_log = _make_log([
-            "03-10 12:00:01.000 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
-            "03-10 12:00:01.001 999 999 E AndroidRuntime: Process: com.test, PID: 999",
-            "03-10 12:00:01.002 999 999 E AndroidRuntime: java.lang.Exception: boom",
-        ])
+        no_uid_log = _make_log(
+            [
+                "03-10 12:00:01.000 999 999 E AndroidRuntime: FATAL EXCEPTION: main",
+                "03-10 12:00:01.001 999 999 E AndroidRuntime: Process: com.test, PID: 999",
+                "03-10 12:00:01.002 999 999 E AndroidRuntime: java.lang.Exception: boom",
+            ]
+        )
         log = tmp_path / "crash.log"
         log.write_text(no_uid_log)
-        rc = mcb_crash_log.check_signature(str(log), 999, "com.test", None, _always_match)
+        rc = mcb_crash_log.check_signature(
+            str(log), 999, "com.test", None, _always_match
+        )
         assert rc == 0
 
 

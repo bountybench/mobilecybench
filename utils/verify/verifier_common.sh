@@ -12,10 +12,6 @@
 #   read_baseline_epoch <file> - Print the integer epoch from the given file (or verifier_error)
 #   get_device_tz_offset       - Print the device timezone offset like +0000 (or verifier_error)
 #
-# IMPORTANT: sourcing this file disables errexit (set +e) for the calling
-# script.  Verifiers rely on explicit checks rather than -e because most
-# commands (adb, pm, ps) can legitimately return non-zero.
-#
 # Note: all exit-calling helpers (fail, verifier_error) terminate the process.
 # Functions in this library are designed for use in top-level verifier scripts,
 # not inside subshells or conditional blocks where exit would be swallowed.
@@ -23,13 +19,21 @@
 [[ -n "$_VERIFIER_COMMON_LOADED" ]] && return 0
 _VERIFIER_COMMON_LOADED=1
 
-set +e  # verifiers should not abort on first failure
+# Unconditionally disable errexit.  Verifiers rely on explicit checks rather
+# than -e because most commands (adb, pm, ps) can legitimately return non-zero.
+# This is intentionally not restored — all verifier scripts must run with +e
+# for the full session.  If a calling script needs -e it must re-enable it
+# explicitly after sourcing verifier libs.
+set +e
 
 fail()           { echo "FAILED: $*"; exit 1; }
 verifier_error() { echo "FAILED: $*"; exit 2; }
 need_file() {
     if [ -z "$1" ]; then
         verifier_error "need_file called with empty path"
+    fi
+    if [ -L "$1" ]; then
+        verifier_error "Refusing symlink (expected regular file): $1"
     fi
     [ -f "$1" ] || verifier_error "Missing required file: $1"
 }
@@ -46,7 +50,7 @@ resolve_app_uid() {
             | tr -d '\r' \
             | awk -F'uid:' '/uid:/{print $2; exit}' \
             | awk '{print $1}' \
-            | xargs || true
+            | tr -d '[:space:]' || true
     )"
     if [[ "$uid" =~ ^[0-9]+$ ]]; then echo "$uid"; return 0; fi
 
@@ -56,7 +60,7 @@ resolve_app_uid() {
             | tr -d '\r' \
             | sed -n -E 's/.*(userId=|uid=|appId=)([0-9]+).*/\2/p' \
             | head -n 1 \
-            | xargs || true
+            | tr -d '[:space:]' || true
     )"
     if [[ "$uid" =~ ^[0-9]+$ ]]; then echo "$uid"; return 0; fi
 
@@ -65,7 +69,7 @@ resolve_app_uid() {
         adb shell su 0 stat -c %u "/data/data/$pkg" 2>/dev/null \
             | tr -d '\r' \
             | head -n 1 \
-            | xargs || true
+            | tr -d '[:space:]' || true
     )"
     if [[ "$uid" =~ ^[0-9]+$ ]]; then echo "$uid"; return 0; fi
 
@@ -89,9 +93,11 @@ read_baseline_epoch() {
 # Prints the device timezone offset string (e.g. +0000, -0800).
 get_device_tz_offset() {
     local tz
-    tz="$(adb shell date +%z 2>/dev/null | tr -d '\r' | head -n 1 | xargs || true)"
+    tz="$(adb shell date +%z 2>/dev/null | tr -d '\r' | head -n 1 | tr -d '[:space:]' || true)"
     if ! [[ "$tz" =~ ^[+-][0-9]{4}$ ]]; then
         verifier_error "Could not determine device timezone offset via 'date +%z' (got: '$tz')"
     fi
     echo "$tz"
 }
+
+

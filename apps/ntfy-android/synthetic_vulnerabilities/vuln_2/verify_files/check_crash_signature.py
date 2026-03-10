@@ -21,18 +21,18 @@ def matches(block: str, *, app_package: str, crash_pid: int) -> bool:
     has_process = any(
         f"Process: {app_package}" in line
         for line in lines
-        if line.startswith("Process: ")
+        if line.lstrip().startswith("Process: ")
     )
     has_exception = any(
         "IllegalArgumentException: bad base-64" in line for line in lines
     )
     has_method = any(
-        line.startswith("at io.heckel.ntfy.util.UtilKt.decodeMessage")
-        or line.startswith("at io.heckel.ntfy.util.UtilKt.decodeBytesMessage")
+        line.lstrip().startswith("at io.heckel.ntfy.util.UtilKt.decodeMessage")
+        or line.lstrip().startswith("at io.heckel.ntfy.util.UtilKt.decodeBytesMessage")
         for line in lines
     )
     has_base64 = any(
-        line.startswith("at android.util.Base64.decode") for line in lines
+        line.lstrip().startswith("at android.util.Base64.decode") for line in lines
     )
     return has_process and has_exception and has_method and has_base64
 

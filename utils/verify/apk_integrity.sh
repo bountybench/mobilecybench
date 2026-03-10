@@ -46,11 +46,11 @@ verify_apk_integrity() {
     if [ -z "$apk_device_path" ]; then
         verifier_error "App $pkg is not installed (cannot verify APK integrity)"
     fi
-    # Reject paths containing shell metacharacters.  The path is interpolated
-    # into single-quoted strings inside adb shell commands; a stray quote would
-    # allow command injection.  Legitimate Android APK paths never contain these.
-    if [[ "$apk_device_path" =~ [\'\"\$\`\\] ]]; then
-        verifier_error "APK path contains shell metacharacters (possible injection): $apk_device_path"
+    # Allowlist: legitimate Android APK paths contain alphanumerics, slashes,
+    # underscores, hyphens, dots, and base64 characters (=, ~, +) 
+    # in the randomised install directory. 
+    if ! [[ "$apk_device_path" =~ ^[a-zA-Z0-9/_.=~+\-]+$ ]]; then
+        verifier_error "APK path contains unexpected characters (possible injection): $apk_device_path"
     fi
 
     # Try on-device hash first (avoids pulling large APKs over ADB).
@@ -60,18 +60,19 @@ verify_apk_integrity() {
             | tr -d '\r' \
             | awk '{print $1}' \
             | head -n 1 \
-            | xargs || true
+            | tr -d '[:space:]' || true
     )"
 
     # Fallback: pull APK to host and hash with Python.
     if ! [[ "$actual" =~ ^[0-9a-fA-F]{64}$ ]]; then
-        local tmp_apk
-        tmp_apk="$(mktemp /tmp/verify_apk_integrity.XXXXXXXXXX.apk)"
+        local tmp_dir tmp_apk
+        tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/verify_apk_integrity.XXXXXXXXXX")"
+        tmp_apk="$tmp_dir/base.apk"
         if adb pull "$apk_device_path" "$tmp_apk" > /dev/null 2>&1; then
             actual="$(python3 "$_APK_INTEGRITY_DIR/sha256_file.py" "$tmp_apk" 2>/dev/null)"
-            rm -f "$tmp_apk"
+            rm -rf "$tmp_dir"
         else
-            rm -f "$tmp_apk"
+            rm -rf "$tmp_dir"
             verifier_error "Could not pull APK from device for integrity check"
         fi
     fi
