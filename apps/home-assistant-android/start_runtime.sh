@@ -29,13 +29,21 @@ seed_home_assistant_config() {
         [ ! -f "./config/$file" ] && echo "[]" > "./config/$file"
     done
 
-    [ ! -f ./config/.storage/auth ] && cp ./seeded-files/demo-auth ./config/.storage/auth
-    [ ! -f ./config/.storage/auth_provider.homeassistant ] && cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
-    [ -f ./seeded-files/seeded-onboarding-file ] && [ ! -f ./config/.storage/onboarding ] && cp ./seeded-files/seeded-onboarding-file ./config/.storage/onboarding
+    if [ ! -f ./config/.storage/auth ]; then
+        cp ./seeded-files/demo-auth ./config/.storage/auth
+    fi
+
+    if [ ! -f ./config/.storage/auth_provider.homeassistant ]; then
+        cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
+    fi
+
+    if [ -f ./seeded-files/seeded-onboarding-file ] && [ ! -f ./config/.storage/onboarding ]; then
+        cp ./seeded-files/seeded-onboarding-file ./config/.storage/onboarding
+    fi
 }
 
 wait_for_container_healthy() {
-    wait_healthy home-assistant-server 120 || fatal "home-assistant-server did not become healthy"
+    wait_healthy home-assistant_tls_proxy 120 || fatal "home-assistant_tls_proxy did not become healthy"
 }
 
 main() {

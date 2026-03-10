@@ -4,6 +4,8 @@ import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from models.config import RunnerConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,8 +24,16 @@ class Workflow(ABC):
     6. Save artifacts and clean up
     """
 
-    # Set by subclasses during setup_runtime_environment()
-    agent_env = None
+    def __init__(self, config: RunnerConfig, app_name: str, project_root: Path):
+        self.config = config
+        self.app_name = app_name
+        self.app_dir = project_root / "apps" / app_name
+        self.project_root = project_root
+        self.metadata: dict = {}
+        self.emulator = None
+        self.agent_env = None
+        self.agent = None
+        self.agent_result: dict = {}
 
     @abstractmethod
     def validate_arguments(self) -> None:
@@ -35,15 +45,45 @@ class Workflow(ABC):
         """Set up the runtime environment (emulator, APK, backend services)."""
         pass
 
-    @abstractmethod
     def setup_agent(self) -> None:
         """Configure and initialize the agent."""
-        pass
+        from agent.custom_agent import CustomAgent
 
-    @abstractmethod
+        if self.config.dry_run:
+            logger.info("Dry run - skipping agent setup")
+            return
+
+        logger.info(f"Setting up agent with {self.config.workflow} prompt...")
+
+        self.agent = CustomAgent(
+            model=self.config.model,
+            max_iterations=self.config.max_iterations,
+            max_model_response_tokens=self.config.max_model_response_tokens,
+            screenshot_enabled=self.config.screenshot_mode,
+            app_name=self.app_name,
+            app_server=self.metadata.get("app_server"),
+            package_name=self.metadata.get("package_name"),
+            username=self.metadata.get("username"),
+            password=self.metadata.get("password"),
+            include_ssrf=bool(self.metadata.get("container_names")),
+            workflow=self.config.workflow,
+            reasoning_effort=self.config.reasoning_effort,
+        )
+        logger.info(f"Agent configured for {self.config.workflow} mode")
+
     def run_agent(self) -> dict:
         """Execute the agent and return results."""
-        pass
+        if self.config.dry_run:
+            logger.info("Dry run - skipping agent execution")
+            return {"status": "dry_run", "turns": 0}
+
+        if not self.agent:
+            raise RuntimeError("Agent not initialized. Call setup_agent() first.")
+
+        logger.info(f"Running agent for {self.config.workflow}...")
+        self.agent_result = self.agent.run()
+        logger.info(f"Agent completed with status: {self.agent_result.get('status')}")
+        return self.agent_result
 
     @abstractmethod
     def evaluate(self) -> dict:
@@ -51,7 +91,7 @@ class Workflow(ABC):
         pass
 
     def save_artifacts(self, logs_dir: Path) -> None:
-        """Save agent artifacts (exploit files) to logs.
+        """Save agent artifacts (exploit files, agent output) to logs.
 
         Best-effort: logs warnings on failure but never raises.
         Called after run_agent() while the container is still alive.
@@ -59,12 +99,50 @@ class Workflow(ABC):
         if not self.agent_env:
             return
 
-        try:
-            self.agent_env.save_exploit_files(logs_dir)
-        except Exception as e:
-            logger.warning(f"Failed to save exploit_files: {e}")
+        for save_fn in (
+            self.agent_env.save_agent_exploit,
+            self.agent_env.save_agent_output,
+        ):
+            try:
+                save_fn(logs_dir)
+            except Exception as e:
+                logger.warning(f"Failed to save artifacts: {e}")
 
-    @abstractmethod
+    def setup_apks(self) -> None:
+        """Acquire APKs based on build_type.
+
+        Handles skip-apk and download-apk centrally.
+        For source builds, delegates to subclass ``_build_apks_from_source()``.
+        """
+        if self.config.build_type == "skip-apk":
+            logger.info("skip-apk: assuming APKs already present")
+            return
+
+        if self.config.build_type == "download-apk":
+            from utils.apk_utils import download_apk, get_download_url
+
+            url = get_download_url(self.app_name, self.project_root)
+            if not url:
+                raise FileNotFoundError(
+                    f"No download_link in apps/{self.app_name}/metadata.json. "
+                    f"Build and publish: ./publish_apk_bundle.sh apps/{self.app_name}"
+                )
+            download_apk(self.app_name, url, self.project_root)
+            return
+
+        self._build_apks_from_source()
+
+    def _build_apks_from_source(self) -> None:
+        """Build APKs from source. Subclasses must override."""
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement _build_apks_from_source()"
+        )
+
     def cleanup(self) -> None:
         """Clean up resources (emulator, containers, etc.)."""
-        pass
+        if self.emulator:
+            logger.info("Stopping emulator...")
+            self.emulator.stop()
+        if self.agent_env:
+            logger.info("Cleaning up agent environment...")
+            self.agent_env.cleanup()

@@ -84,6 +84,35 @@ class TestAgentEnvironmentVerifyFiles:
         assert result is None
 
 
+class TestSetupAgentOutput:
+    """Tests for AgentEnvironment._setup_agent_output()."""
+
+    def _create_agent_env(self, app_dir, vuln_id=None):
+        return AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id="HEAD",
+            vuln_id=vuln_id,
+        )
+
+    def test_cleans_stale_data(self, tmp_path):
+        """Removes stale files from previous runs before creating fresh dir."""
+        agent_output_dir = (
+            tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "agent_output"
+        )
+        agent_output_dir.mkdir(parents=True)
+        stale_file = agent_output_dir / "captured_creds.txt"
+        stale_file.write_text("stale data")
+
+        agent_env = self._create_agent_env(tmp_path, vuln_id="vuln_0")
+        agent_env._setup_agent_output()
+
+        assert agent_output_dir.is_dir()
+        assert not stale_file.exists()
+
+
 class TestAgentEnvironmentVulnId:
     """Tests for vuln_id parameter handling in AgentEnvironment."""
 
@@ -125,8 +154,8 @@ def _make_tar(files: dict[str, str]) -> bytes:
     return buf.getvalue()
 
 
-class TestSaveExploitFiles:
-    """Tests for AgentEnvironment.save_exploit_files()."""
+class TestSaveAgentExploit:
+    """Tests for AgentEnvironment.save_agent_exploit()."""
 
     def _create_agent_env(self, tmp_path):
         agent_env = AgentEnvironment(
@@ -144,21 +173,21 @@ class TestSaveExploitFiles:
         agent_env.container = None
 
         # Should not raise
-        agent_env.save_exploit_files(tmp_path / "logs")
-        assert not (tmp_path / "logs" / "exploit_files").exists()
+        agent_env.save_agent_exploit(tmp_path / "logs")
+        assert not (tmp_path / "logs" / "agent_exploit").exists()
 
-    def test_empty_exploit_files_skipped(self, tmp_path):
-        """No extraction when exploit_files directory is empty."""
+    def test_empty_agent_exploit_skipped(self, tmp_path):
+        """No extraction when agent_exploit directory is empty in container."""
         agent_env = self._create_agent_env(tmp_path)
         agent_env.container = MagicMock()
         agent_env.container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
 
-        agent_env.save_exploit_files(tmp_path / "logs")
+        agent_env.save_agent_exploit(tmp_path / "logs")
         agent_env.container.get_archive.assert_not_called()
-        assert not (tmp_path / "logs" / "exploit_files").exists()
+        assert not (tmp_path / "logs" / "agent_exploit").exists()
 
-    def test_copies_exploit_files_to_dest(self, tmp_path):
-        """Extracts exploit_files tar archive to destination."""
+    def test_copies_to_agent_exploit_dir(self, tmp_path):
+        """Extracts container's agent_exploit to dest_dir/agent_exploit/."""
         agent_env = self._create_agent_env(tmp_path)
         agent_env.container = MagicMock()
 
@@ -167,14 +196,14 @@ class TestSaveExploitFiles:
             exit_code=0, output=b"exploit.sh\n"
         )
 
-        # get_archive returns a tar with exploit_files/exploit.sh
-        tar_bytes = _make_tar({"exploit_files/exploit.sh": "#!/bin/bash\necho pwned"})
+        # get_archive returns a tar with agent_exploit/exploit.sh
+        tar_bytes = _make_tar({"agent_exploit/exploit.sh": "#!/bin/bash\necho pwned"})
         agent_env.container.get_archive.return_value = (iter([tar_bytes]), {})
 
         logs_dir = tmp_path / "logs"
-        agent_env.save_exploit_files(logs_dir)
+        agent_env.save_agent_exploit(logs_dir)
 
-        saved = logs_dir / "exploit_files" / "exploit.sh"
+        saved = logs_dir / "agent_exploit" / "exploit.sh"
         assert saved.exists()
         assert "echo pwned" in saved.read_text()
 
@@ -188,4 +217,4 @@ class TestSaveExploitFiles:
         agent_env.container.get_archive.side_effect = Exception("Docker API error")
 
         # Should not raise
-        agent_env.save_exploit_files(tmp_path / "logs")
+        agent_env.save_agent_exploit(tmp_path / "logs")

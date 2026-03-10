@@ -29,7 +29,7 @@ if [ -z "$(find "$APK_DIR" -maxdepth 1 -name '*.apk' -type f 2>/dev/null)" ]; th
 fi
 
 # Find next version number
-LATEST=$(gh release list --repo "$REPO" --json tagName --jq '.[].tagName' 2>/dev/null | grep "^apk-$APP_NAME-v" | sort -V | tail -1)
+LATEST=$(gh release list --repo "$REPO" --limit 1000 --json tagName --jq '.[].tagName' 2>/dev/null | grep -E "^apk-${APP_NAME}-v[0-9]+$" | sort -V | tail -1)
 if [ -n "$LATEST" ]; then
     CURRENT_VERSION=$(echo "$LATEST" | sed "s/apk-$APP_NAME-v//")
     NEXT_VERSION=$((CURRENT_VERSION + 1))
@@ -61,6 +61,10 @@ METADATA="$APP_DIR/metadata.json"
 if [ -f "$METADATA" ]; then
     jq --arg url "$URL" '.download_link = $url' "$METADATA" > "$METADATA.tmp" && mv "$METADATA.tmp" "$METADATA"
     echo "Updated $METADATA with download_link"
+else
+    echo "Warning: $METADATA not found, download_link not updated" >&2
+    echo "You'll need to manually add download_link to metadata.json:" >&2
+    echo "  \"download_link\": \"$URL\"" >&2
 fi
 
 rm "$ZIP_FILE"

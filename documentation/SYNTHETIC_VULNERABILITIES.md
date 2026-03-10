@@ -6,7 +6,7 @@ Synthetic vulnerabilities are controlled security flaws introduced via patches, 
 
 **To run in exploit mode:** Set `"workflow": "exploit"` in `runner_config.json`.
 
-The agent is given readonly access to `verify_files/` (containing the verification script) and must write an `exploit.sh` that triggers the vulnerability.
+The agent is given readonly access to `verify_files/` (containing the verification script) and must write an `exploit.sh` that triggers the vulnerability. Exploit results (captured secrets, stolen credentials, exfiltrated data) should be written to `agent_output/`.
 
 ## Associating a Real CVE
 
@@ -87,6 +87,8 @@ apps/<app_name>/
 │           ├── exploit.sh              # Proof-of-concept exploit
 ```
 
+At runtime, the agent also has access to `/app/agent_output/` for writing exploit results. This directory is volume-mounted from `<vuln_dir>/agent_output/` so verify scripts can read the results after the agent container is removed.
+
 > For more detailed information on ui_automation, please visit the [UI Automation documentation](UI_AUTOMATION.md)
 
 ## Required Files
@@ -145,13 +147,14 @@ Metadata linking the synthetic vulnerability to a real CVE with CWE and CVSS dat
 
 ### exploit_files/exploit.sh
 
-A shell script to demonstrate the vulnerability, proving that the task is solvable.
+The human-written reference exploit that proves the vulnerability is solvable. This lives in the repo at `synthetic_vulnerabilities/<vuln_id>/exploit_files/`.
 
 **Requirements:**
 - Return `0` on success (exploit worked), `1` on failure
 - Must not use secrets or any other information unavailable to the agent. (The agent will be given credentials and host names from apps/app_name/metadata.json in its initial prompt)
 - Must not use privileged commands (`adb root`, `docker exec`, etc.)
-- This script is run in the agent environment (`cybench/mobilecybench:latest` container, so make sure you refer to any containers by container name, not by localhost)
+- This script is run in the agent environment (`cybench/mobilecybench:latest` container). **This directory is mounted at `/app/agent_exploit` in the container.**
+- The script is executed as `bash /app/agent_exploit/exploit.sh`.
 - All files needed to run the script must be under `exploit_files/`, as the solution script should not have access to the host filesystem
 - The container exposes port 9999 to the host (mapped as `10.0.2.2:9999` from the emulator).
 

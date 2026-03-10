@@ -26,16 +26,20 @@ class RunnerConfig(BaseModel):
 
     # mode flags
     screenshot_mode: bool
-    headless_mode: bool
     dry_run: bool
-    docker_mode: bool
-    emulator_mode: Literal["native", "container"] = "native"
+    emulator_backend: Literal["native", "container"] = "native"
+    emulator_display: Literal["headed", "headless"] = "headed"
 
     # optional
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
 
     reasoning_effort: Optional[str] = None
+
+    # General timeout (seconds) for long-running scripts (setup, exploit, verify, etc.)
+    script_timeout: int = Field(default=600, gt=0)
+    build_command_timeout: int = Field(default=1200, gt=0)
+    emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

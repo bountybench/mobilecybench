@@ -14,6 +14,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 DOMAIN="mail.test.com"
 BASE_DIR="${SCRIPT_DIR}/dms-config/ssl"
 DEMO_CA_DIR="${BASE_DIR}/demoCA"
+OPENSSL_EXTFILE="${BASE_DIR}/openssl-server-ext.cnf"
 
 CA_KEY="${DEMO_CA_DIR}/cakey.pem"
 CA_CERT="${DEMO_CA_DIR}/cacert.pem"
@@ -24,6 +25,8 @@ SRV_CSR="${BASE_DIR}/${DOMAIN}.csr"
 SRV_CERT="${BASE_DIR}/${DOMAIN}-cert.pem"
 
 FORCE="${FORCE:-0}"
+SERVER_SAN_DNS="${SERVER_SAN_DNS:-mail.test.com}"
+SERVER_SAN_IPS="${SERVER_SAN_IPS:-10.0.2.2,127.0.0.1}"
 
 mkdir -p "${DEMO_CA_DIR}"
 
@@ -45,15 +48,13 @@ make_or_overwrite() {
 
 echo "==> Generating SSL certificates (FORCE=${FORCE})"
 
-# Generate CA key and certificate
-if make_or_overwrite "${CA_KEY}"; then
-  openssl genrsa -out "${CA_KEY}" 2048
-fi
+# Use shared CA from repository root
+CA_KEY="${SCRIPT_DIR}/../../tls/rootCA.key"
+CA_CERT="${SCRIPT_DIR}/../../tls/rootCA.pem"
 
-if make_or_overwrite "${CA_CERT}"; then
-  openssl req -x509 -new -key "${CA_KEY}" -sha256 -days 3650 \
-    -subj "/CN=Test Root CA" \
-    -out "${CA_CERT}"
+if [[ ! -f "$CA_KEY" || ! -f "$CA_CERT" ]]; then
+    echo "ERROR: Shared Root CA not found in tls/ directory."
+    exit 1
 fi
 
 # Generate server key and CSR
@@ -67,11 +68,31 @@ if make_or_overwrite "${SRV_CSR}"; then
     -out "${SRV_CSR}"
 fi
 
+# Build server certificate extensions with SANs.
+san_entries="DNS:${SERVER_SAN_DNS}"
+IFS=',' read -r -a ip_array <<< "${SERVER_SAN_IPS}"
+for ip in "${ip_array[@]}"; do
+  ip_trimmed="$(echo "$ip" | xargs)"
+  if [[ -n "${ip_trimmed}" ]]; then
+    san_entries="${san_entries},IP:${ip_trimmed}"
+  fi
+done
+
+cat > "${OPENSSL_EXTFILE}" <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=${san_entries}
+EOF
+
 # Generate server certificate signed by CA
 if make_or_overwrite "${SRV_CERT}"; then
   openssl x509 -req -in "${SRV_CSR}" \
     -CA "${CA_CERT}" -CAkey "${CA_KEY}" -CAcreateserial \
-    -days 825 -sha256 -out "${SRV_CERT}"
+    -days 825 -sha256 \
+    -extfile "${OPENSSL_EXTFILE}" \
+    -out "${SRV_CERT}"
 fi
 
 # =============================================================================
@@ -116,6 +137,6 @@ EOF
 # Secure Private Keys
 # =============================================================================
 
-chmod 600 "${CA_KEY}" "${SRV_KEY}"
+chmod 600 "${SRV_KEY}"
 
 echo "Done. Certificates generated in: ${BASE_DIR}"

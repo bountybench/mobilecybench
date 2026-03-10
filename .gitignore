@@ -1,6 +1,3 @@
-check_device.sh
-stop_emulator.sh
-start_emulator.sh
 setup.log
 .DS_Store
 *.apk
@@ -34,6 +31,7 @@ screenshots/*
 submodule_size_report.txt
 benchmark.keystore
 agent_codebase/
+agent_output/
 apps/*/static_vuln_reports/
 synthetic_scores.json
 .apk_backup_path

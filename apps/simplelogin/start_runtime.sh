@@ -19,7 +19,7 @@ setup_backend() {
     log_info "Starting backend services..."
     docker compose up -d || fatal "Failed to start backend services"
 
-    wait_healthy "simplelogin-api" 180 || fatal "simplelogin-api did not become healthy"
+    wait_healthy "simplelogin_tls_proxy" 180 || fatal "simplelogin_tls_proxy did not become healthy"
 }
 
 seed_test_data() {

@@ -100,7 +100,7 @@ kill_flexisip_server() {
         return 0
     fi
 
-    log "Stopping Flexisip container: $FLEXISIP_CONTAINER"
+    log "Stopping and removing Flexisip container: $FLEXISIP_CONTAINER"
     if docker stop "$FLEXISIP_CONTAINER" --time 5 2>/dev/null; then
         log "Flexisip container stopped gracefully"
     elif docker kill "$FLEXISIP_CONTAINER" 2>/dev/null; then
@@ -110,12 +110,15 @@ kill_flexisip_server() {
         return 1
     fi
 
+    # Remove the container to release port bindings
+    docker rm -f "$FLEXISIP_CONTAINER" 2>/dev/null || true
+
     sleep 2
-    STILL_RUNNING=$(docker ps --filter "name=$FLEXISIP_CONTAINER" --filter "status=running" -q)
+    STILL_RUNNING=$(docker ps -a --filter "name=$FLEXISIP_CONTAINER" -q)
     if [ -z "$STILL_RUNNING" ]; then
-        log "Flexisip container successfully terminated"
+        log "Flexisip container successfully removed"
     else
-        warn "Flexisip container may still be running"
+        warn "Flexisip container may still exist"
     fi
 }
 
@@ -153,24 +156,11 @@ kill_account_db() {
     fi
 }
 
-disrupt_sip_network() {
-    log "Attempting SIP network disruption"
-    if command -v iptables >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-        log "Blocking SIP ports 5060 (UDP/TCP) and 5061 (TLS)"
-        iptables -A INPUT -p udp --dport 5060 -j DROP 2>/dev/null || warn "Failed to block UDP 5060"
-        iptables -A INPUT -p tcp --dport 5060 -j DROP 2>/dev/null || warn "Failed to block TCP 5060"
-        iptables -A INPUT -p tcp --dport 5061 -j DROP 2>/dev/null || warn "Failed to block TCP 5061"
-    else
-        log "iptables not available or insufficient privileges; skipping network manipulation"
-    fi
-}
-
 main() {
     log "Starting DoS vulnerability scenario (vuln_scenario_1) for Linphone/Flexisip"
 
     crash_linphone_app
     kill_flexisip_server
-    disrupt_sip_network
 
     log "vuln_scenario_1 completed"
 }

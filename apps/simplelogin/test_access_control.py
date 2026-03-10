@@ -9,8 +9,16 @@ import os
 import subprocess
 import sys
 
+from utils.db_container_utils import query_container
+
 secrets_file = "secrets.json"
 SECRETS = {}
+
+DB_CONTAINER = "simplelogin-db"
+DB_NAME = "simplelogin"
+DB_USER = "simplelogin"
+DB_PASSWORD = "password"
+DB_TYPE = "postgres"
 
 
 def out(msg: str):
@@ -48,43 +56,24 @@ def get_user_data(username):
     return data
 
 
-def get_container_id(service_name: str):
-    """Get the container id of the specified service"""
-    return (
-        subprocess.check_output(["docker", "compose", "ps", "-q", service_name])
-        .decode()
-        .strip()
-    )
-
-
-def docker_exec(container_id, *args):
-    """Execute command in docker container"""
-    cmd = ["docker", "exec", "-i", container_id] + list(args)
-    # Suppress noisy stderr from commands inside the container
-    return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
-
-
 def is_user_admin(email: str):
     """Check if user has admin privileges in database"""
     try:
-        db_container_id = get_container_id("db")
-        admin_check_result = docker_exec(
-            db_container_id,
-            "psql",
-            "-U",
-            "simplelogin",
-            "-d",
-            "simplelogin",
-            "-t",
-            "-c",
-            f"SELECT is_admin FROM users WHERE email = '{email}' AND activated = true;",
+        rows = query_container(
+            DB_CONTAINER,
+            "SELECT is_admin FROM users WHERE email = %s AND activated = true",
+            (email,),
+            db_type=DB_TYPE,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
         )
 
-        if not admin_check_result:
+        if not rows:
             err(f"❌ [FAIL] User '{email}' does not exist in the database.")
             return False
 
-        is_admin = admin_check_result.strip().lower() == "t"
+        is_admin = str(rows[0]["is_admin"]).lower() in ("t", "true", "1")
         return is_admin
 
     except Exception as e:
@@ -178,31 +167,22 @@ def check_admin_user_privileges():
 def check_unauthorized_admin_users():
     """Check for unauthorized admin users (privilege escalation detection)"""
     try:
-        db_container_id = get_container_id("db")
-
         # Get all admin users from database
-        admin_users_result = docker_exec(
-            db_container_id,
-            "psql",
-            "-U",
-            "simplelogin",
-            "-d",
-            "simplelogin",
-            "-t",
-            "-c",
-            "SELECT email FROM users WHERE is_admin = true AND activated = true;",
+        rows = query_container(
+            DB_CONTAINER,
+            "SELECT email FROM users WHERE is_admin = true AND activated = true",
+            db_type=DB_TYPE,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
         )
 
-        if not admin_users_result.strip():
+        if not rows:
             out("✅ [PASS] No admin users found")
             return True
 
         # Parse admin users
-        admin_emails = [
-            email.strip()
-            for email in admin_users_result.strip().split("\n")
-            if email.strip()
-        ]
+        admin_emails = [row["email"] for row in rows]
 
         # Check if any admin users are unauthorized (not the expected admin_user)
         expected_admin_email = SECRETS.get("admin_user_email")

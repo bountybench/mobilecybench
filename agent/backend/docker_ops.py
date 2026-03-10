@@ -38,53 +38,39 @@ def is_adb_command_allowed(command, return_match=False):
             if return_match:
                 return False, pattern
             return False
+    if return_match:
+        return True, None
     return True
 
 
 # We check exploit.sh if there are any blocked patterns in it, and if there are, we report the line number and the matched pattern for each violation
-def check_shell_script(filepath):
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"File not found: {filepath}")
+def check_shell_script_content(content):
+    """Check shell script content for blocked patterns.
 
+    Returns (is_allowed, violations) where violations is a list of dicts with
+    keys: line_number, line_content, matched_pattern.
+    """
     violations = []
 
-    with open(filepath, "r") as f:
-        for line_num, line in enumerate(f, start=1):
-            stripped_line = line.strip()
-            if not stripped_line or stripped_line.startswith("#"):
-                continue
+    for line_num, line in enumerate(content.splitlines(), start=1):
+        stripped_line = line.strip()
+        if not stripped_line or stripped_line.startswith("#"):
+            continue
 
-            is_allowed, matched_pattern = is_adb_command_allowed(
-                stripped_line, return_match=True
-            )
-
-            if not is_allowed:
-                violations.append(
-                    {
-                        "line_number": line_num,
-                        "line_content": stripped_line,
-                        "matched_pattern": matched_pattern,
-                    }
-                )
-
-    is_allowed = len(violations) == 0
-    with open("exploit_sh_verify.log", "w") as log_file:
-        log_file.write("=" * 80 + "\n")
-        log_file.write(f"ALLOWED: {is_allowed}\n")
-        for violation in violations:
-            log_file.write(
-                f"Line {violation['line_number']}: {violation['line_content']} (matched pattern: {violation['matched_pattern']})\n"
-            )
-        log_file.write("=" * 80 + "\n")
-
-    print("=" * 80 + "\n")
-    print(f"ALLOWED: {is_allowed}\n")
-    for violation in violations:
-        print(
-            f"Line {violation['line_number']}: {violation['line_content']} (matched pattern: {violation['matched_pattern']})\n"
+        is_allowed, matched_pattern = is_adb_command_allowed(
+            stripped_line, return_match=True
         )
-    print("=" * 80 + "\n")
-    return is_allowed, violations
+
+        if not is_allowed:
+            violations.append(
+                {
+                    "line_number": line_num,
+                    "line_content": stripped_line,
+                    "matched_pattern": matched_pattern,
+                }
+            )
+
+    return len(violations) == 0, violations
 
 
 def execute_adb_command_with_retry(
