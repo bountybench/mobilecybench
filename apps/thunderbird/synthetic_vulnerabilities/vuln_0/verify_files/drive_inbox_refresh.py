@@ -17,6 +17,7 @@ APP_PKG = os.environ["PKG"]
 ACCOUNT_UUID = os.environ["ACCOUNT_UUID"]
 MESSAGE_LIST_ACTIVITY = "com.fsck.k9.activity.MessageList"
 ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
+EXPECTED_INBOX_TITLES = {"Inbox", "INBOX"}
 ui_utils.TARGET_PACKAGE = APP_PKG
 
 initialize_ui_automation = ui_utils.initialize_ui_automation
@@ -119,6 +120,65 @@ def _wait_for_inbox_ready(d, timeout: float = 20.0) -> None:
     raise RuntimeError(f"inbox UI not ready; current={_current_screen(d)}")
 
 
+def _toolbar_title(d) -> str | None:
+    title = d(resourceIdMatches=_rid("toolbarTitle"))
+    if not title.exists:
+        return None
+    try:
+        return (title.get_text() or "").strip()
+    except Exception:
+        return None
+
+
+def _wait_for_toolbar_title(
+    d, expected_titles: set[str], timeout: float = 15.0
+) -> bool:
+    end = time.time() + timeout
+    while time.time() < end:
+        title = _toolbar_title(d)
+        if title in expected_titles:
+            return True
+        time.sleep(0.4)
+    return False
+
+
+def _open_navigation_drawer(d) -> None:
+    width, height = d.window_size()
+    start_x = max(8, int(width * 0.02))
+    end_x = int(width * 0.78)
+    y = int(height * 0.42)
+    _adb("shell", "input", "swipe", str(start_x), str(y), str(end_x), str(y), "250")
+    wait_for_ui_stable(d, timeout=10)
+
+
+def _select_inbox_from_drawer(d) -> None:
+    for inbox_title in ("Inbox", "INBOX"):
+        folder = d(text=inbox_title)
+        if folder.exists:
+            pre_click = d.dump_hierarchy(compressed=True)
+            folder.click()
+            wait_for_screen_change(d, pre_click, timeout=3.0)
+            wait_for_ui_stable(d, timeout=10)
+            return
+    raise RuntimeError("Inbox folder entry not found in navigation drawer")
+
+
+def _ensure_inbox_selected(d) -> None:
+    title = _toolbar_title(d)
+    if title in EXPECTED_INBOX_TITLES:
+        return
+
+    print(
+        f"[verify_exploit] attempt={ATTEMPT} toolbar_title_before_inbox_selection={title}"
+    )
+    _open_navigation_drawer(d)
+    _select_inbox_from_drawer(d)
+    if not _wait_for_toolbar_title(d, EXPECTED_INBOX_TITLES, timeout=15):
+        raise RuntimeError(
+            f"toolbar title did not resolve to Inbox after drawer selection: {_toolbar_title(d)}"
+        )
+
+
 def _wait_for_refresh_enabled(d, timeout: float = 20.0) -> None:
     end = time.time() + timeout
     while time.time() < end:
@@ -141,6 +201,7 @@ def _log_inbox_state(d, stage: str) -> None:
         "[verify_exploit] "
         f"attempt={ATTEMPT} stage={stage} "
         f"screen={_current_screen(d)} "
+        f"toolbar_title={_toolbar_title(d)} "
         f"refresh_exists={refresh.exists} "
         f"message_list_exists={message_list.exists} "
         f"progress_exists={progress.exists} "
@@ -172,7 +233,25 @@ def _pull_to_refresh(d) -> None:
     except Exception:
         pre_refresh = None
 
-    refresh.swipe("down", steps=60)
+    bounds = refresh.info.get("bounds", {})
+    left = int(bounds.get("left", 0))
+    right = int(bounds.get("right", 0))
+    top = int(bounds.get("top", 0))
+    bottom = int(bounds.get("bottom", 0))
+    center_x = left + max(1, (right - left) // 2)
+    start_y = top + 12
+    end_y = min(bottom - 12, top + max(240, int((bottom - top) * 0.45)))
+
+    _adb(
+        "shell",
+        "input",
+        "swipe",
+        str(center_x),
+        str(start_y),
+        str(center_x),
+        str(end_y),
+        "450",
+    )
     if pre_refresh is not None:
         changed = wait_for_screen_change(d, pre_refresh, timeout=3.0)
         print(f"[verify_exploit] attempt={ATTEMPT} refresh_screen_changed={changed}")
@@ -182,7 +261,17 @@ def _pull_to_refresh(d) -> None:
             except Exception:
                 fallback_pre_refresh = None
 
-            message_list.swipe("down", steps=60)
+            fallback_end_y = min(bottom - 12, top + max(360, int((bottom - top) * 0.6)))
+            _adb(
+                "shell",
+                "input",
+                "swipe",
+                str(center_x),
+                str(start_y),
+                str(center_x),
+                str(fallback_end_y),
+                "650",
+            )
             if fallback_pre_refresh is not None:
                 fallback_changed = wait_for_screen_change(
                     d,
@@ -233,6 +322,7 @@ def main() -> int:
         device = initialize_ui_automation(max_retries=3, retry_delay=1)
         _launch_account_inbox()
         _wait_for_inbox_ready(device)
+        _ensure_inbox_selected(device)
         _log_inbox_state(device, "before_refresh")
         _pull_to_refresh(device)
         _log_inbox_state(device, "after_refresh")
