@@ -11,17 +11,33 @@
 #   resolve_app_uid <pkg>   - Print the numeric UID for the given package (or verifier_error)
 #   read_baseline_epoch <file> - Print the integer epoch from the given file (or verifier_error)
 #   get_device_tz_offset       - Print the device timezone offset like +0000 (or verifier_error)
+#
+# IMPORTANT: sourcing this file disables errexit (set +e) for the calling
+# script.  Verifiers rely on explicit checks rather than -e because most
+# commands (adb, pm, ps) can legitimately return non-zero.
+#
+# Note: all exit-calling helpers (fail, verifier_error) terminate the process.
+# Functions in this library are designed for use in top-level verifier scripts,
+# not inside subshells or conditional blocks where exit would be swallowed.
+
+[[ -n "$_VERIFIER_COMMON_LOADED" ]] && return 0
+_VERIFIER_COMMON_LOADED=1
 
 set +e  # verifiers should not abort on first failure
 
 fail()           { echo "FAILED: $*"; exit 1; }
 verifier_error() { echo "FAILED: $*"; exit 2; }
-need_file()      { [ -f "$1" ] || verifier_error "Missing required file: $1"; }
+need_file() {
+    if [ -z "$1" ]; then
+        verifier_error "need_file called with empty path"
+    fi
+    [ -f "$1" ] || verifier_error "Missing required file: $1"
+}
 
 # resolve_app_uid <package>
 # Prints the numeric UID for the installed package.
 resolve_app_uid() {
-    local pkg="$1"
+    local pkg="${1:?resolve_app_uid requires a package name}"
     local uid=""
 
     # Method 1: pm list packages -U
@@ -59,10 +75,10 @@ resolve_app_uid() {
 # read_baseline_epoch <file>
 # Prints the integer epoch stored in the given file.
 read_baseline_epoch() {
-    local f="$1"
+    local f="${1:?read_baseline_epoch requires a file path}"
     need_file "$f"
     local val
-    val="$(cat "$f" | tr -d '[:space:]')"
+    val="$(tr -d '[:space:]' < "$f")"
     if ! [[ "$val" =~ ^[0-9]+$ ]]; then
         verifier_error "Invalid device epoch baseline (expected integer): $f (got: '$val')"
     fi

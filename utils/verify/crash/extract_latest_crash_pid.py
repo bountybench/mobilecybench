@@ -27,40 +27,24 @@ def parse_tz_offset(tz_offset: str) -> timezone:
     return timezone(sign * timedelta(hours=hours, minutes=mins))
 
 
-def main() -> int:
-    if len(sys.argv) != 4:
-        print(
-            "usage: extract_latest_crash_pid.py <baseline_epoch> <tz_offset> <app_package>",
-            file=sys.stderr,
-        )
-        return 2
+def extract_crash_pid(
+    text: str, baseline_epoch: int, tz: timezone, app_package: str
+) -> "str | None":
+    """Return the PID (as a string) of the latest APP CRASH after *baseline_epoch*.
 
-    try:
-        baseline_device_epoch = int(sys.argv[1])
-    except Exception:
-        print(f"invalid baseline epoch: {sys.argv[1]}", file=sys.stderr)
-        return 2
-
-    tz_offset = sys.argv[2]
-    app_package = sys.argv[3]
-
-    try:
-        tz = parse_tz_offset(tz_offset)
-    except Exception as e:
-        print(str(e), file=sys.stderr)
-        return 2
-
+    Returns ``None`` if no qualifying crash is found.
+    """
     ts_re = re.compile(
         r"timestamp=(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) pid=(\d+)"
     )
     proc_re = re.compile(r"process=([^\s]+)\s+reason=\d+\s+\(([^)]+)\)")
 
-    current_ts = None
-    current_pid = None
-    best_epoch = None
-    best_pid = None
+    current_ts: "str | None" = None
+    current_pid: "str | None" = None
+    best_epoch: "int | None" = None
+    best_pid: "str | None" = None
 
-    for line in sys.stdin.read().split("\n"):
+    for line in text.split("\n"):
         line = line.rstrip("\r")
         m = ts_re.search(line)
         if m:
@@ -88,17 +72,41 @@ def main() -> int:
             continue
 
         # Ignore stale crash events (allow 5s skew).
-        if epoch < baseline_device_epoch - 5:
+        if epoch < baseline_epoch - 5:
             continue
 
         if best_epoch is None or epoch > best_epoch:
             best_epoch = epoch
             best_pid = current_pid
 
-    if best_pid is None:
+    return best_pid
+
+
+def main() -> int:
+    if len(sys.argv) != 4:
+        print(
+            "usage: extract_latest_crash_pid.py <baseline_epoch> <tz_offset> <app_package>",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        baseline_epoch = int(sys.argv[1])
+    except Exception:
+        print(f"invalid baseline epoch: {sys.argv[1]}", file=sys.stderr)
+        return 2
+
+    try:
+        tz = parse_tz_offset(sys.argv[2])
+    except Exception as e:
+        print(str(e), file=sys.stderr)
+        return 2
+
+    pid = extract_crash_pid(sys.stdin.read(), baseline_epoch, tz, sys.argv[3])
+    if pid is None:
         return 1
 
-    print(best_pid)
+    print(pid)
     return 0
 
 

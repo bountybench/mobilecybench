@@ -20,25 +20,28 @@
 # and print one of: MATCH, MATCH_NOT_PRIMARY_BLOCK, NO_MATCH, NO_CRASH_LINES, NO_FATAL_BLOCKS
 # Exit 0 for MATCH, 1 otherwise, 2 for errors.
 #
+# The shared mcb_crash_log.py library is made importable via PYTHONPATH so
+# that vuln-specific scripts can simply ``from mcb_crash_log import run_cli``.
+#
 # Requires:
 #   fail(), verifier_error(), need_file(), resolve_app_uid(),
 #   read_baseline_epoch(), get_device_tz_offset() from verifier_common.sh
 #   check_sniffer_liveness() from sniffer_liveness.sh
 
+[[ -n "$_CRASH_VERIFIER_LOADED" ]] && return 0
+_CRASH_VERIFIER_LOADED=1
+
 _CRASH_VERIFIER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source sniffer liveness if not already loaded.
-if ! type check_sniffer_liveness >/dev/null 2>&1; then
-    source "$_CRASH_VERIFIER_DIR/sniffer_liveness.sh"
-fi
+source "$_CRASH_VERIFIER_DIR/sniffer_liveness.sh"
 
 # run_crash_verification <pkg> <sniffer_log> <sniffer_pid_file> <epoch_file> <sig_script>
 run_crash_verification() {
-    local pkg="$1"
-    local sniffer_log="$2"
-    local sniffer_pid_file="$3"
-    local epoch_file="$4"
-    local sig_script="$5"
+    local pkg="${1:?run_crash_verification requires a package name}"
+    local sniffer_log="${2:?run_crash_verification requires a sniffer log path}"
+    local sniffer_pid_file="${3:?run_crash_verification requires a sniffer PID file path}"
+    local epoch_file="${4:?run_crash_verification requires an epoch baseline file path}"
+    local sig_script="${5:?run_crash_verification requires a signature check script path}"
 
     need_file "$sniffer_log"
     need_file "$sig_script"
@@ -52,22 +55,41 @@ run_crash_verification() {
     tz_offset="$(get_device_tz_offset)"
 
     # 3) Extract crash PID from exit-info.
+    #    ADB and Python are run separately (not piped) so we can detect adb
+    #    failures independently.  stderr is captured so Python errors surface
+    #    in failure output instead of being silently swallowed.
+    local exitinfo_file py_stderr_file
+    exitinfo_file="$(mktemp)"
+    py_stderr_file="$(mktemp)"
+
+    adb shell dumpsys activity exit-info "$pkg" > "$exitinfo_file" 2>/dev/null
+    local adb_exit=$?
+    if [ $adb_exit -ne 0 ]; then
+        rm -f "$exitinfo_file" "$py_stderr_file"
+        verifier_error "adb dumpsys exit-info failed (exit $adb_exit)"
+    fi
+
     local crash_pid py_exit
     crash_pid="$(
-        adb shell dumpsys activity exit-info "$pkg" 2>/dev/null \
-            | python3 "$_CRASH_VERIFIER_DIR/extract_latest_crash_pid.py" \
-                "$baseline_epoch" "$tz_offset" "$pkg" 2>/dev/null
+        python3 "$_CRASH_VERIFIER_DIR/extract_latest_crash_pid.py" \
+            "$baseline_epoch" "$tz_offset" "$pkg" < "$exitinfo_file" 2>"$py_stderr_file"
     )"
     py_exit=$?
+    rm -f "$exitinfo_file"
 
     if [ $py_exit -eq 2 ]; then
-        verifier_error "Verifier error - could not parse crash exit-info"
+        local py_err
+        py_err="$(cat "$py_stderr_file")"
+        rm -f "$py_stderr_file"
+        verifier_error "Could not parse crash exit-info: $py_err"
     fi
+    rm -f "$py_stderr_file"
+
     if [ -z "$crash_pid" ]; then
         fail "No real app crash detected since baseline (exit-info)"
     fi
     if ! [[ "$crash_pid" =~ ^[0-9]+$ ]]; then
-        verifier_error "Verifier error - unexpected crash PID from exit-info: '$crash_pid'"
+        verifier_error "Unexpected crash PID from exit-info: '$crash_pid'"
     fi
 
     # 4) Resolve app UID.
@@ -75,23 +97,25 @@ run_crash_verification() {
     app_uid="$(resolve_app_uid "$pkg")"
 
     # 5) Run vuln-specific signature check.
+    #    PYTHONPATH includes this directory so the script can import mcb_crash_log.
     local result python_exit
-    result="$(python3 "$sig_script" "$sniffer_log" "$crash_pid" "$pkg" "$app_uid" 2>&1)"
+    result="$(PYTHONPATH="$_CRASH_VERIFIER_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+        python3 "$sig_script" "$sniffer_log" "$crash_pid" "$pkg" "$app_uid" 2>&1)"
     python_exit=$?
 
     if [ $python_exit -eq 0 ] && [ "$result" = "MATCH" ]; then
         echo "SUCCESS: Exploit verified - app is VULNERABLE"
-        exit 0
+        return 0
     elif [ "$result" = "MATCH_NOT_PRIMARY_BLOCK" ]; then
-        echo "FAILED: Crash signature found only in a non-primary crash block for PID=$crash_pid (ambiguous; possible tampering)"
+        echo "Crash signature found only in a non-primary block for PID=$crash_pid (ambiguous; possible tampering)."
         fail "Crash signature not primary"
     elif [ $python_exit -eq 1 ]; then
-        echo "FAILED: App is NOT vulnerable (or crash signature not found in sniffer log for PID=$crash_pid)"
+        echo "Crash signature not found in sniffer log for PID=$crash_pid."
         echo "  Detail: $result"
         fail "Crash signature mismatch"
     else
-        echo "FAILED: Verifier error (unexpected exit code: $python_exit)"
+        echo "Signature check exited with unexpected code $python_exit."
         echo "  Output: $result"
-        verifier_error "Verifier error (unexpected exit code: $python_exit)"
+        verifier_error "Signature check failed (exit $python_exit)"
     fi
 }
