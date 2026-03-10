@@ -1087,19 +1087,58 @@ jobs:
           run_exploit_and_verify() {
             local phase_name="$1"
             local expect_vulnerable="$2"
+            local CHALLENGE_PID=""
+            local CHALLENGE_PORT=""
+            local CHALLENGE_LOG_FILE=""
+            local CHALLENGE_URL=""
 
             echo "=== Phase: $phase_name (expect_vulnerable=$expect_vulnerable) ==="
 
             # Wait for app containers
             check_app_containers_ready
 
+            # If this vuln uses a CI-controlled challenge server, start it before prepare_app/exploit.
+            # prepare_app.sh may require CHALLENGE_PORT; verify_exploit.sh may require CHALLENGE_LOG_FILE.
+            challenge_server_script="${vuln_dir}/verify_files/challenge_server.py"
+            if [ -f "$challenge_server_script" ]; then
+              echo "Starting CI challenge server..."
+              CHALLENGE_LOG_FILE=$(mktemp)
+              CHALLENGE_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); p=s.getsockname()[1]; s.close(); print(p)")
+              challenge_stderr=$(mktemp)
+              python3 "$challenge_server_script" --port "$CHALLENGE_PORT" --log-file "$CHALLENGE_LOG_FILE" >/dev/null 2>"$challenge_stderr" &
+              CHALLENGE_PID=$!
+              ready_deadline=$((SECONDS + 10))
+              while [ $SECONDS -lt "$ready_deadline" ]; do
+                if ! kill -0 "$CHALLENGE_PID" 2>/dev/null; then
+                  echo "ERROR: CI challenge server exited prematurely"
+                  cat "$challenge_stderr"
+                  rm -f "$CHALLENGE_LOG_FILE" "$challenge_stderr"
+                  return 1
+                fi
+                CHALLENGE_URL=$(grep -o '\[READY\] .*' "$challenge_stderr" 2>/dev/null | head -1 | sed 's/\[READY\] //')
+                [ -n "$CHALLENGE_URL" ] && break
+                sleep 0.2
+              done
+              rm -f "$challenge_stderr"
+              if ! kill -0 "$CHALLENGE_PID" 2>/dev/null; then
+                echo "ERROR: CI challenge server failed to start"
+                rm -f "$CHALLENGE_LOG_FILE"
+                return 1
+              fi
+              [ -z "$CHALLENGE_URL" ] && CHALLENGE_URL="https://10.0.2.2:${CHALLENGE_PORT}/"
+              echo "CI challenge server ready (port $CHALLENGE_PORT)"
+            fi
+
             # Optional per-vuln host-side app preparation hook.
             # This runs before the exploit container starts so the device is in a known state.
+            # CHALLENGE_PORT is passed when this vuln uses a challenge server (e.g. Thunderbird prepare_app.sh).
             prepare_app_hook="${vuln_dir}/prepare_app.sh"
             if [ -f "$prepare_app_hook" ]; then
               echo "Running prepare_app hook: $prepare_app_hook"
-              if ! timeout 300 bash "$prepare_app_hook"; then
+              if ! CHALLENGE_PORT="${CHALLENGE_PORT}" timeout 300 bash "$prepare_app_hook"; then
                 echo "ERROR: prepare_app.sh failed or timed out"
+                [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
+                [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
                 return 1
               fi
             else
@@ -1109,21 +1148,33 @@ jobs:
             agent_output_path="$(pwd)/${vuln_dir}/agent_output"
             rm -rf "$agent_output_path"
             mkdir -p "$agent_output_path"
-            if ! "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
+            if ! CHALLENGE_URL="${CHALLENGE_URL}" "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
               --exploit-dir "$exploit_files_path" \
               --output-dir "$agent_output_path" \
-              --image "$EXPLOIT_IMAGE"; then
+              --image "$EXPLOIT_IMAGE" \
+              --utils-dir "${GITHUB_WORKSPACE}/utils"; then
               echo "ERROR: Exploit container execution failed"
+              [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
+              [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
               return 1
             fi
 
-            # Run verification on host
+            # Stop CI challenge server before verification (mirrors run_ci_local.sh)
+            if [ -n "$CHALLENGE_PID" ]; then
+              echo "Stopping CI challenge server..."
+              kill "$CHALLENGE_PID" 2>/dev/null || true
+              wait "$CHALLENGE_PID" 2>/dev/null || true
+            fi
+
+            # Run verification on host (CHALLENGE_LOG_FILE required by some verifiers, e.g. Thunderbird)
             echo "Running verification script..."
             chmod +x "$verify_script"
             set +e
-            bash "$verify_script"
+            CHALLENGE_LOG_FILE="${CHALLENGE_LOG_FILE}" bash "$verify_script"
             verify_exit=$?
             set -e
+
+            [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
 
             # Exit codes: 0 = vulnerable, 1 = not vulnerable, >1 = verifier error
             if [ "$verify_exit" -gt 1 ]; then
