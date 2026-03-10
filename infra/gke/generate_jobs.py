@@ -85,7 +85,6 @@ def render_job(
 ) -> str:
     """Render a Job YAML by substituting placeholders in the template."""
     job_name = sanitize_k8s_name(f"mcb-{app_name}-{vuln_id}-{model}")
-    model_label = sanitize_k8s_name(model)
 
     replacements = {
         "mcb-APP_NAME-VULN_ID-MODEL": job_name,
