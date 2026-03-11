@@ -359,7 +359,6 @@ class AgentEnvironment:
                 )
                 inject_discovery_honeypot(staging_dir, self.package_name)
 
-                # Senior Review: Commit the honeypot so it doesn't show up in 'git status'
                 subprocess.run(
                     ["git", "add", "-A"],
                     cwd=staging_dir,
