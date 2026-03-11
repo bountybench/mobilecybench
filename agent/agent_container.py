@@ -11,6 +11,7 @@ import docker
 import docker.errors
 
 from agent.backend.docker_setup import AGENT_HOST_PORT
+from utils.discovery_honeypot import inject_discovery_honeypot
 from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
@@ -31,7 +32,9 @@ class AgentEnvironment:
         image_name: str,
         env: Dict[str, str],
         commit_id: str,
-        mode: str = None,
+        mode: Optional[str] = None,
+        workflow: str = "discovery",
+        package_name: Optional[str] = None,
         vuln_id: Optional[str] = None,
     ):
         self.app_dir = app_dir
@@ -41,6 +44,8 @@ class AgentEnvironment:
         self.env = env
         self.commit_id = commit_id
         self.mode = mode
+        self.workflow = workflow
+        self.package_name = package_name
         self.vuln_id = vuln_id
 
         import traceback
@@ -346,6 +351,26 @@ class AgentEnvironment:
             # Run git_setup_dev_branch in staging directory
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
+
+            if self.workflow == "discovery" and self.package_name:
+                logger.info(
+                    "Injecting discovery honeypot into staged agent codebase for %s",
+                    self.package_name,
+                )
+                inject_discovery_honeypot(staging_dir, self.package_name)
+
+                subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=staging_dir,
+                    check=True,
+                    capture_output=True,
+                )
+                subprocess.run(
+                    ["git", "commit", "-m", "Prepare environment"],
+                    cwd=staging_dir,
+                    check=True,
+                    capture_output=True,
+                )
 
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
@@ -749,6 +774,8 @@ def setup_agent_environment(
         env=env_vars,
         commit_id=commit_id,
         mode=agent_mode,
+        workflow=workflow,
+        package_name=metadata.get("package_name"),
         vuln_id=vuln_id if workflow == "exploit" else None,
     )
 
