@@ -471,7 +471,6 @@ run_exploit_verification() {
 
     # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
-    local container_name="mobilecybench-exploit-$$"
     local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
     local exploit_files_abs_path
     exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
@@ -479,44 +478,14 @@ run_exploit_verification() {
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
     mkdir -p "$agent_output_abs_path"
-
-    # Standard port for agent-hosted servers (emulator reaches via 10.0.2.2:9999)
-    local AGENT_HOST_PORT=9999
-
-    # Start container with exploit_files and agent_output mounted
-    # Also mount shared utils so exploit scripts can import from utils.ui_utils etc.
-    echo -e "${INFO} Starting exploit container: $container_name"
-    docker run -d \
-        --name "$container_name" \
-        --network=shared_net \
-        --add-host=host.docker.internal:host-gateway \
-        -e ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 \
-        -e AGENT_SERVER_PORT=${AGENT_HOST_PORT} \
-        -p ${AGENT_HOST_PORT}:${AGENT_HOST_PORT} \
-        -v "$exploit_files_abs_path:/app/exploit_files" \
-        -v "$agent_output_abs_path:/app/agent_output" \
-        -v "$ROOT_DIR/utils:/app/utils:ro" \
-        "$exploit_image" \
-        tail -f /dev/null
-
-    echo -e "${INFO} Verifying container→emulator ADB connection..."
-    if ! docker exec "$container_name" adb devices 2>/dev/null | grep -q "device$"; then
-        echo -e "${WARNING} Container cannot see the emulator via ADB."
-        echo -e "${WARNING} This is OK for network-only exploits, but exploits requiring ADB may fail."
-    else
-        echo -e "${SUCCESS} Container can access emulator via ADB"
+    if ! "$ROOT_DIR/utils/run_exploit_container.sh" \
+        --exploit-dir "$exploit_files_abs_path" \
+        --output-dir "$agent_output_abs_path" \
+        --image "$exploit_image" \
+        --utils-dir "$ROOT_DIR/utils"; then
+        echo -e "${ERROR} Exploit container execution failed"
+        return 1
     fi
-
-    # Run the exploit script inside the container
-    if docker exec "$container_name" bash /app/exploit_files/exploit.sh; then
-        echo -e "${SUCCESS} Exploit executed successfully"
-    else
-        echo -e "${WARNING} Exploit execution returned non-zero exit code (may be expected)"
-    fi
-
-    # Stop and remove the container
-    echo -e "${INFO} Cleaning up exploit container..."
-    docker rm -f "$container_name" 2>/dev/null || true
     
     # Run verification
     echo -e "${INFO} Running verification..."
@@ -555,6 +524,7 @@ SKIP_DOWNLOAD=false
 SKIP_APK=false
 RUN_UNIT_TESTS=false
 TEST_SYNTHETIC_VULN=""
+TEST_ALL_SYNTHETIC_VULNS=false
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -569,6 +539,8 @@ show_usage() {
     echo "  --unit-tests      Run unit tests (opt-in)"
     echo "  --test-synthetic-vuln <vuln_dir>"
     echo "                    Test a synthetic vulnerability (e.g., synthetic_vulnerabilities/vuln_0)"
+    echo "  --test-all-synthetic-vulns"
+    echo "                    Test all synthetic vulnerabilities found in synthetic_vulnerabilities/"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
@@ -579,6 +551,8 @@ show_usage() {
     echo "  $0 apps/joplin --unit-tests      # Run unit tests"
     echo "  $0 apps/conversations --test-synthetic-vuln synthetic_vulnerabilities/vuln_0"
     echo "                                   # Test synthetic vulnerability"
+    echo "  $0 apps/conversations --test-all-synthetic-vulns"
+    echo "                                   # Test all synthetic vulnerabilities"
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
@@ -613,6 +587,10 @@ while [[ $# -gt 0 ]]; do
             fi
             TEST_SYNTHETIC_VULN="$2"
             shift 2
+            ;;
+        --test-all-synthetic-vulns)
+            TEST_ALL_SYNTHETIC_VULNS=true
+            shift
             ;;
         -h|--help)
             show_usage
@@ -849,7 +827,7 @@ run_tests_for_mode() {
         if [ "$APK_COUNT" -eq 0 ]; then
             echo -e "${INFO} No local APKs found, attempting download from download_link..."
             cd "$ROOT_DIR"
-            if python setup_app_apklink.py "$app_name"; then
+            if python download_apk.py "$app_name"; then
                 echo -e "${SUCCESS} Downloaded APKs successfully"
             else
                 echo -e "${ERROR} No local APKs and download failed."
@@ -867,7 +845,7 @@ run_tests_for_mode() {
         echo -e "${INFO} Setting up app from APK link."
         app_name=$(basename "$dir")
         cd "$ROOT_DIR"
-        { python setup_app_apklink.py "$app_name"; } || { echo -e "${ERROR} setup_app_apklink.py failed"; exit 1; }
+        { python download_apk.py "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source using build_apk.sh..."
@@ -889,7 +867,7 @@ run_tests_for_mode() {
     APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
     if [ "$APK_COUNT" -eq 0 ]; then
         echo -e "${ERROR} No APK found in $APK_DIR/"
-        echo -e "${ERROR} setup_app_source.sh or setup_app_apklink.py must place APKs in ${dir}/apk/"
+        echo -e "${ERROR} build_apk.sh or download_apk.py must place APKs in ${dir}/apk/"
         exit 1
     fi
 
@@ -1035,9 +1013,9 @@ run_synthetic_vuln_test() {
     fi
 
     echo -e "${INFO} Validating metadata.json schema..."
-    if ! python3 -m pytest --no-header -q \
+    if ! (cd "$ROOT_DIR" && python3 -m pytest --no-header -q \
         tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata \
-        --dirs "$(dirname "$metadata_file")"; then
+        --dirs "$(dirname "$metadata_file")"); then
         echo -e "${ERROR} metadata.json schema validation failed for $metadata_file"
         exit 1
     fi
@@ -1048,7 +1026,11 @@ run_synthetic_vuln_test() {
     local app_name
     app_name=$(basename "$app_dir")
     local package_name
-    package_name=$(jq -r '.package_name' "$app_dir/metadata.json")
+    package_name=$(jq -r '.package_name' "$ROOT_DIR/$app_dir/metadata.json")
+    if [ -z "$package_name" ] || [ "$package_name" = "null" ]; then
+        echo -e "${ERROR} Failed to resolve package_name from $ROOT_DIR/$app_dir/metadata.json"
+        exit 1
+    fi
     echo -e "${INFO} Testing app: $app_name"
     echo -e "${INFO} Testing package: $package_name"
 
@@ -1067,7 +1049,7 @@ run_synthetic_vuln_test() {
         if [ "$base_apk_count" -eq 0 ] || [ "$vuln_apk_count" -eq 0 ]; then
             echo -e "${INFO} Missing APKs (base: $base_apk_count, vuln: $vuln_apk_count), attempting download..."
             cd "$ROOT_DIR"
-            if python setup_app_apklink.py "$app_name" 2>/dev/null; then
+            if python download_apk.py "$app_name" 2>/dev/null; then
                 echo -e "${SUCCESS} Downloaded APKs"
             fi
             cd "$ROOT_DIR/$app_dir"
@@ -1247,15 +1229,9 @@ start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF dete
 start_emulator_and_adb() {
     if [ -f "start_emulator.sh" ]; then
         print_header "$CYAN" "STARTING EMULATOR"
-        bash ./start_emulator.sh || echo -e "${WARNING} Failed to start emulator"
-
-        echo "Waiting for emulator to boot..."
-
-        # Wait for device to appear
-        adb wait-for-device
-
-        wait_for_device_boot
-        echo "Emulator booted successfully."
+        bash ./stop_emulator.sh >/dev/null  # Stop any emulator running in the background before starting local CI.
+        # Delegates to emulator.py start — handles boot wait and ADB setup
+        bash ./start_emulator.sh "$sdk" || { echo -e "${ERROR} Failed to start emulator"; exit 1; }
 
         # Ensure emulator is stopped on any exit (success or failure)
         trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT
@@ -1263,23 +1239,7 @@ start_emulator_and_adb() {
         echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
     fi
 
-    # Ensure ADB server is listening on all interfaces for container access
-    echo -e "${INFO} Ensuring ADB server is configured for container access..."
-    if ! lsof -iTCP:5037 -sTCP:LISTEN 2>/dev/null | grep -q "\\*:5037"; then
-        echo -e "${INFO} ADB not listening on all interfaces, restarting with -a flag..."
-        adb kill-server 2>/dev/null || true
-        adb -a start-server
-        # Wait for reconnection
-        for i in {1..30}; do
-            if adb devices 2>/dev/null | grep -q "device$"; then
-                echo -e "${SUCCESS} ADB reconnected to emulator"
-                break
-            fi
-            sleep 1
-        done
-    else
-        echo -e "${SUCCESS} ADB already configured correctly"
-    fi
+    # ADB -a binding is handled by EmulatorManager (via emulator.py start)
 
     # Inject system CA so apps trust local HTTPS backends
     echo -e "${INFO} Injecting system CA certificate..."
@@ -1290,25 +1250,45 @@ start_emulator_and_adb() {
     fi
 }
 
+# Expand --test-all-synthetic-vulns into the list of vuln directories
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    SYNTH_VULN_DIRS=()
+    for d in "$DIR"/synthetic_vulnerabilities/vuln_*/; do
+        [ -d "$d" ] && SYNTH_VULN_DIRS+=("synthetic_vulnerabilities/$(basename "$d")")
+    done
+    if [ ${#SYNTH_VULN_DIRS[@]} -eq 0 ]; then
+        echo -e "${ERROR} No synthetic vulnerability directories found in $DIR/synthetic_vulnerabilities/"
+        exit 1
+    fi
+    echo -e "${INFO} Found ${#SYNTH_VULN_DIRS[@]} synthetic vulnerability(ies): ${SYNTH_VULN_DIRS[*]}"
+fi
+
 # For synthetic vuln tests, delay emulator start until after APKs are built.
 # This avoids the emulator competing for CPU during long native builds.
-if [ -z "$TEST_SYNTHETIC_VULN" ]; then
+if [ -z "$TEST_SYNTHETIC_VULN" ] && [ "$TEST_ALL_SYNTHETIC_VULNS" = false ]; then
     start_emulator_and_adb
 fi
 
 # Check if we're running synthetic vulnerability tests
-if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    print_header "$CYAN" "RUNNING ALL SYNTHETIC VULNERABILITY TESTS"
+    for VULN_DIR in "${SYNTH_VULN_DIRS[@]}"; do
+        print_header "$CYAN" "TESTING SYNTHETIC VULNERABILITY: $VULN_DIR"
+        run_synthetic_vuln_test "$VULN_DIR" "$DIR"
+    done
+    SKIP_NORMAL_TESTS=true
+elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     print_header "$CYAN" "RUNNING SYNTHETIC VULNERABILITY TEST MODE"
-    
+
     # Validate that the vulnerability directory exists
     if [ ! -d "$DIR/$TEST_SYNTHETIC_VULN" ]; then
         echo -e "${ERROR} Synthetic vulnerability directory not found: $DIR/$TEST_SYNTHETIC_VULN"
         exit 1
     fi
-    
+
     # Run synthetic vulnerability test
     run_synthetic_vuln_test "$TEST_SYNTHETIC_VULN" "$DIR"
-    
+
     # Skip normal test flow
     SKIP_NORMAL_TESTS=true
 else
@@ -1331,7 +1311,13 @@ SECONDS=$((DURATION % 60))
 SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
 
 # Handle synthetic vulnerability test results
-if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    print_header "$GREEN" "ALL SYNTHETIC VULNERABILITY TESTS COMPLETED"
+    for VULN_DIR in "${SYNTH_VULN_DIRS[@]}"; do
+        echo -e "${SUCCESS} ✓ $VULN_DIR passed"
+    done
+    echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s"
+elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED"
     echo -e "${SUCCESS} Tested vulnerability: $TEST_SYNTHETIC_VULN"
     echo -e "${SUCCESS} ✓ Clean build verification passed"
@@ -1394,7 +1380,10 @@ fi
 
 # Final Timing and Summary
 print_header "$CYAN" "FINAL TIMING AND SUMMARY"
-if [ -n "$TEST_SYNTHETIC_VULN" ]; then
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    print_header "$GREEN" "ALL SYNTHETIC VULNERABILITY TESTS COMPLETED SUCCESSFULLY"
+    echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
+elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
 elif [ "$HAS_PROBES" = true ]; then

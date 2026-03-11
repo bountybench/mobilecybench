@@ -1,7 +1,6 @@
 """Tests for runner.py - Workflow-based runner."""
 
 import json
-import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,9 +8,9 @@ import pytest
 from jsonschema import validate
 
 from models.config import RunnerConfig
-from runner import _bootstrap_runner_session_id, create_workflow, main, run
+from runner import create_workflow, main, run
 from utils.logger import logger_manager
-from workflows import DiscoveryWorkflow, ExploitWorkflow
+from workflows import DetectionWorkflow, DiscoveryWorkflow, ExploitWorkflow
 
 
 def _load_run_summary_schema() -> dict:
@@ -39,10 +38,10 @@ def base_config():
         max_model_response_tokens=1000,
         model="gpt-4",
         screenshot_mode=False,
-        headless_mode=True,
         dry_run=False,
         agent_image="test-image:latest",
-        docker_mode=False,
+        emulator_display="headed",
+        emulator_backend="native",
         workflow="discovery",
     )
 
@@ -65,6 +64,14 @@ class TestCreateWorkflow:
         """ExploitWorkflow is created when config.workflow == 'exploit'."""
         workflow = create_workflow(exploit_config, "test_app", tmp_path)
         assert isinstance(workflow, ExploitWorkflow)
+
+    def test_creates_detection_workflow_when_configured(self, base_config, tmp_path):
+        """DetectionWorkflow is created when config.workflow == 'detection'."""
+        detection_config = RunnerConfig(
+            **{**base_config.model_dump(), "workflow": "detection"}
+        )
+        workflow = create_workflow(detection_config, "test_app", tmp_path)
+        assert isinstance(workflow, DetectionWorkflow)
 
 
 class TestRun:
@@ -180,7 +187,6 @@ class TestRun:
         assert summary["metrics"]["tool_call_count"] == 1
         assert summary["results"]["scores"] == {"probe_a": 1}
         assert "conversation_jsonl" in summary["artifacts"]
-        assert summary["artifacts"]["timing_json"] is not None
         validate(instance=summary, schema=_load_run_summary_schema())
 
     def test_writes_run_summary_on_validation_error(self, base_config, tmp_path):
@@ -261,16 +267,3 @@ class TestMain:
         ):
             result = main()
             assert result == 1
-
-
-class TestRunnerSessionId:
-    def test_bootstrap_sets_session_id_when_missing(self, monkeypatch):
-        monkeypatch.delenv("MOBILECYBENCH_SESSION_ID", raising=False)
-        run_id = _bootstrap_runner_session_id()
-        assert run_id
-        assert run_id == os.environ.get("MOBILECYBENCH_SESSION_ID")
-
-    def test_bootstrap_keeps_existing_session_id(self, monkeypatch):
-        monkeypatch.setenv("MOBILECYBENCH_SESSION_ID", "existing_session")
-        run_id = _bootstrap_runner_session_id()
-        assert run_id == "existing_session"

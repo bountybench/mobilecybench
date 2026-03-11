@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    build_detect_prompt,
+    build_discovery_prompt,
 )
 from utils.logger import logger, logger_manager
 
@@ -137,9 +137,7 @@ class CodexAgent:
             self._log_content("FINAL OUTPUT", result.output_text)
 
             if result.tool_outputs:
-                logger.info(
-                    f"[TOTAL TOOL INTERACTIONS - {len(result.tool_outputs)} outputs]"
-                )
+                logger.info(f"[TOOL CALLS DETECTED: {len(result.tool_outputs)}]")
                 for i, tool_output in enumerate(result.tool_outputs):
                     logger.info(f"Tool Output {i + 1}: {tool_output}")
                 logger.info("-" * 40)
@@ -185,7 +183,6 @@ class CodexAgent:
             "agent_type": "codex",
             "status": status,
             "turns_taken": turns,
-            "turns": turns,
             "tool_call_count": 0,
             "unique_tools": [],
             "token_totals": {},
@@ -216,7 +213,7 @@ class CodexAgent:
         if self.app_server:
             resolved_host = self.app_server.split(":")[0]
 
-        return build_detect_prompt(
+        return build_discovery_prompt(
             package_name=self.package_name,
             codebase_tree=self._initial_tree_context,
             app_server=self.app_server,
@@ -232,7 +229,6 @@ class CodexAgent:
             "agent_type": "codex",
             "status": "dry_run_completed",
             "turns_taken": 0,
-            "turns": 0,
             "tool_call_count": 0,
             "unique_tools": [],
             "token_totals": {},

@@ -2,21 +2,23 @@ import json
 import os
 import subprocess
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from agent.agent_helpers import get_directory_tree
+from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
-    build_detect_prompt,
+    build_detection_prompt,
+    build_discovery_prompt,
     build_synthetic_prompt,
 )
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
 from utils.logger import agent_logger, logger_manager
+from utils.run_artifacts import jsonable, load_schema, utc_now_iso, validate_schema
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
@@ -24,6 +26,22 @@ try:
     from jsonschema import validate as _jsonschema_validate
 except Exception:
     _jsonschema_validate = None
+
+# Only scan files that could plausibly be executed as scripts.
+_SCANNABLE_EXTENSIONS = frozenset(
+    {
+        "",  # no extension (executable scripts)
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".py",
+        ".rb",
+        ".pl",
+        ".expect",
+        ".exp",  # Expect scripts (automate interactive adb sessions)
+    }
+)
 
 
 class CustomAgent:
@@ -79,11 +97,7 @@ class CustomAgent:
         self._initial_tree_context = get_directory_tree()
         self._instructions = self._get_system_prompt_text(additional_context)
 
-        agent_logger.info("=" * 60)
-        agent_logger.info("SYSTEM PROMPT")
-        agent_logger.info("=" * 60)
-        agent_logger.info(self._instructions)
-        agent_logger.info("=" * 60)
+        agent_logger.info("Agent initialized with system prompt instructions.")
 
         # Create provider (fully configured on construction)
         self.provider = get_model_provider(
@@ -105,29 +119,43 @@ class CustomAgent:
         self._conversation_file = str(
             logger_manager.get_logs_dir() / "conversation.jsonl"
         )
+        self._system_prompt_file = str(
+            logger_manager.get_logs_dir() / "system_prompt.txt"
+        )
         self._conversation_schema = self._load_conversation_schema()
         # Reset per-run structured conversation artifact.
         with open(self._conversation_file, "w", encoding="utf-8"):
             pass
+        # Persist the full system prompt as a dedicated artifact for reproducibility.
+        with open(self._system_prompt_file, "w", encoding="utf-8") as f:
+            f.write(self._instructions)
+            f.write("\n")
 
         agent_logger.info("Agent Run Started")
         agent_logger.info(f"Model: {self.model}")
         agent_logger.info(f"Max Iterations: {self.max_iterations}")
+        agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
         agent_logger.info("=" * 80)
 
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
         """Build the system prompt text based on workflow mode."""
         if self.workflow == "exploit":
-            # Exploit mode - use targeted exploit prompt
             full_prompt = build_synthetic_prompt(
                 package_name=self.package_name,
                 username=self.username,
                 password=self.password,
                 app_server=self.app_server if self.network_access else None,
             )
+        elif self.workflow == "detection":
+            full_prompt = build_detection_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server if self.network_access else None,
+                username=self.username,
+                password=self.password,
+            )
         else:
-            # Discovery mode - use detect prompt
-            full_prompt = build_detect_prompt(
+            full_prompt = build_discovery_prompt(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server if self.network_access else None,
@@ -162,6 +190,76 @@ class CustomAgent:
             agent_logger.warning(f"Failed to check for exploit.sh: {e}")
             return False
 
+    def _check_exploit_script_for_blocked_patterns(self) -> tuple[bool, list]:
+        """Pull all files under /app/agent_exploit/ from the container and check
+        for blocked patterns (e.g. adb root) in each one.
+
+        Scanning every file (not just exploit.sh) closes the gap where an agent
+        bundles a helper script with privileged operations and calls it from a
+        clean exploit.sh.
+
+        Returns (is_allowed, violations) where violations is a list of dicts with
+        keys: file, line_number, line_content, matched_pattern.
+        """
+        try:
+            # List all files in the agent_exploit directory
+            ls_result = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    "kali-container",
+                    "find",
+                    "/app/agent_exploit",
+                    "-type",
+                    "f",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if ls_result.returncode != 0:
+                agent_logger.warning(
+                    "Could not list agent_exploit in container — blocking submission"
+                )
+                return False, []
+
+            files = [p.strip() for p in ls_result.stdout.splitlines() if p.strip()]
+            if not files:
+                agent_logger.warning(
+                    "No files found in agent_exploit — blocking submission"
+                )
+                return False, []
+
+            all_violations = []
+
+            for container_path in files:
+                ext = os.path.splitext(container_path)[1].lower()
+                if ext not in _SCANNABLE_EXTENSIONS:
+                    continue
+
+                cat_result = subprocess.run(
+                    ["docker", "exec", "kali-container", "cat", container_path],
+                    capture_output=True,
+                    text=True,
+                )
+                if cat_result.returncode != 0:
+                    agent_logger.warning(
+                        f"Could not read {container_path} from container — blocking submission"
+                    )
+                    return False, []
+
+                _, violations = check_shell_script_content(cat_result.stdout)
+
+                for v in violations:
+                    v["file"] = container_path
+                all_violations.extend(violations)
+
+            return len(all_violations) == 0, all_violations
+        except Exception as e:
+            agent_logger.warning(
+                f"Failed to check agent_exploit for blocked patterns: {e} — blocking submission"
+            )
+            return False, []
+
     def _finish_run(self, turns: int, final_message: str = None) -> dict:
         """Log summary, archive conversation, and return the result dict."""
         exploit_exists = self._check_exploit_exists()
@@ -179,36 +277,19 @@ class CustomAgent:
             "agent_type": "custom",
             "status": "completed",
             "turns_taken": turns,
-            "turns": turns,
             "max_turns": self.max_iterations,
             "exploit_exists": exploit_exists,
             "final_message": final_message,
             "token_totals": self.token_tracker.totals(),
             "log_file": self.log_file,
             "conversation_file": self._conversation_file,
+            "system_prompt_file": self._system_prompt_file,
             "tool_call_count": self._tool_call_count,
             "unique_tools": sorted(self._unique_tools),
         }
 
-    def _jsonable(self, value):
-        if value is None or isinstance(value, (bool, int, float, str)):
-            return value
-        if isinstance(value, dict):
-            return {str(k): self._jsonable(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [self._jsonable(v) for v in value]
-        return str(value)
-
-    def _parse_arguments(self, raw_args):
-        if isinstance(raw_args, str):
-            try:
-                return json.loads(raw_args)
-            except Exception:
-                return raw_args
-        return raw_args
-
     def _format_observation_content(self, value):
-        normalized = self._jsonable(value)
+        normalized = jsonable(value)
         if isinstance(normalized, str):
             if len(normalized) <= self.OBSERVATION_MAX_CHARS:
                 return normalized, False
@@ -236,24 +317,23 @@ class CustomAgent:
             agent_logger.warning(f"Failed to append conversation turn JSONL: {e}")
 
     def _load_conversation_schema(self):
-        schema_path = (
-            Path(__file__).parent.parent / "schemas" / "conversation_turn.schema.json"
+        return load_schema(
+            Path(__file__).parent.parent, "conversation_turn.schema.json"
         )
-        if not schema_path.exists():
-            return None
-        try:
-            with open(schema_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return None
 
     def _validate_turn_event(self, event):
-        if not self._conversation_schema or _jsonschema_validate is None:
-            return
+        validate_schema(event, self._conversation_schema, "conversation turn")
+
+    def _parse_arguments(self, arguments: str) -> dict:
+        """Safely parse tool arguments from JSON string."""
         try:
-            _jsonschema_validate(instance=event, schema=self._conversation_schema)
-        except Exception as e:
-            agent_logger.warning("Conversation turn schema validation failed: %s", e)
+            if not arguments:
+                return {}
+            if isinstance(arguments, dict):
+                return arguments
+            return json.loads(arguments)
+        except Exception:
+            return {"raw": str(arguments)}
 
     def _archive_conversation(self):
         """Archive the conversation log to the agent log."""
@@ -284,6 +364,15 @@ class CustomAgent:
                 try:
                     screenshot_result = take_screenshot()
                     if screenshot_result.get("success"):
+                        # Rename the captured file for better organization within the turn
+                        if "file_path" in screenshot_result:
+                            try:
+                                old_path = Path(screenshot_result["file_path"])
+                                new_path = old_path.parent / f"turn_{turn + 1}.png"
+                                old_path.rename(new_path)
+                            except Exception:
+                                pass
+
                         # On the first turn, next_input is a string; convert to list
                         if isinstance(next_input, str):
                             next_input = [
@@ -393,9 +482,9 @@ class CustomAgent:
             # Process function calls (tool use)
             has_tool_call = bool(function_calls)
             turn_event = {
-                "run_id": logger_manager.get_session_id(),
+                "run_id": logger_manager.get_run_id(),
                 "turn_number": turn + 1,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": utc_now_iso(),
                 "role": "assistant",
                 "response_id": resp.response_id,
                 "assistant_text": assistant_text,
@@ -418,17 +507,18 @@ class CustomAgent:
                         {
                             "tool_call_id": fc.call_id,
                             "name": fc.name,
-                            "arguments": self._jsonable(
-                                self._parse_arguments(fc.arguments)
-                            ),
+                            "arguments": jsonable(self._parse_arguments(fc.arguments)),
                         }
                     )
 
                     # Execute using local runtime
                     try:
+                        start_tool = time.perf_counter()
                         result = self.runtime.execute(fc.name, fc.arguments)
+                        duration_tool = time.perf_counter() - start_tool
                     except Exception as e:
                         result = f"Error: {e}"
+                        duration_tool = time.perf_counter() - start_tool
                         turn_event["status"] = "error"
 
                     agent_logger.info(f"Result: {result}")
@@ -443,6 +533,7 @@ class CustomAgent:
                             "type": "tool_result",
                             "content": obs_content,
                             "truncated": obs_truncated,
+                            "duration_seconds": round(duration_tool, 4),
                         }
                     )
 
@@ -498,6 +589,48 @@ class CustomAgent:
                         }
                     )
                     continue
+
+                # Reject submissions that use privileged ADB operations.
+                # Only applies to the exploit workflow — discovery doesn't
+                # produce agent_exploit and has no reward-hacking risk.
+                if self.workflow == "exploit":
+                    is_allowed, violations = (
+                        self._check_exploit_script_for_blocked_patterns()
+                    )
+                    if not is_allowed:
+                        if violations:
+                            violation_lines = "\n".join(
+                                f"  {v['file']} line {v['line_number']}: {v['line_content']}"
+                                f" (disallowed pattern: '{v['matched_pattern']}')"
+                                for v in violations
+                            )
+                            detail = (
+                                "ERROR: Your submission was rejected because one or more files "
+                                "in agent_exploit/ contain disallowed privileged operations. "
+                                "Exploits must work without elevated privileges (no adb root, su, run-as, or backup).\n"
+                                f"Violations:\n{violation_lines}\n"
+                                "Remove all privileged operations from every file in "
+                                "agent_exploit/ and submit again."
+                            )
+                        else:
+                            detail = (
+                                "ERROR: Your submission was rejected because the exploit files "
+                                "could not be scanned (the agent_exploit directory may be missing "
+                                "or unreadable). Ensure exploit.sh and all supporting files exist "
+                                "in /app/agent_exploit/ and try again."
+                            )
+                        agent_logger.warning(
+                            "Submission rejected — blocked patterns or scan failure"
+                        )
+                        self._append_turn_event(turn_event)
+                        next_input.append(
+                            {
+                                "type": "message",
+                                "role": "user",
+                                "content": detail,
+                            }
+                        )
+                        continue
 
                 self._append_turn_event(turn_event)
                 return self._finish_run(

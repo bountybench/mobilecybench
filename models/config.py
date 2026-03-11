@@ -17,19 +17,21 @@ class RunnerConfig(BaseModel):
     adb_access: Literal["none", "limited", "full"]
 
     # workflow type
-    workflow: Literal["discovery", "exploit"] = "discovery"
+    workflow: Literal["discovery", "exploit", "detection"] = "discovery"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
 
     # agent limits
     max_iterations: int = Field(gt=0)
     max_model_response_tokens: int = Field(gt=0)
 
+    # agent mode
+    agent_mode: Literal["custom", "codex", "claude-code"] = "custom"
+
     # mode flags
     screenshot_mode: bool
-    headless_mode: bool
     dry_run: bool
-    docker_mode: bool
-    emulator_mode: Literal["native", "container"] = "native"
+    emulator_backend: Literal["native", "container"] = "native"
+    emulator_display: Literal["headed", "headless"] = "headed"
 
     # optional
     custom_system_prompt: Optional[str] = None
@@ -39,6 +41,11 @@ class RunnerConfig(BaseModel):
 
     # General timeout (seconds) for long-running scripts (setup, exploit, verify, etc.)
     script_timeout: int = Field(default=600, gt=0)
+    build_command_timeout: int = Field(default=1200, gt=0)
+    emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
+
+    # Claude Code CLI timeout (seconds). Only used when agent_mode="claude-code".
+    agent_timeout: int = Field(default=1800, gt=0)
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":

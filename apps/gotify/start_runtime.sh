@@ -10,7 +10,8 @@ SECRETS_FILE="$SCRIPT_DIR/secrets.json"
 TARGET_PACKAGE="com.github.gotify"
 
 generate_password() {
-  openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
+  # Avoid pipefail/SIGPIPE edge cases in CI by not using pipelines here.
+  openssl rand -hex 16
 }
 
 cleanup_existing() {
@@ -70,7 +71,9 @@ launch_android_app() {
   log_info "Launching Gotify app..."
   adb shell monkey -p "$TARGET_PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
   sleep 3
-  if adb shell pm list packages | grep -q "$TARGET_PACKAGE"; then
+  local pkg_list
+  pkg_list="$(adb shell pm list packages "$TARGET_PACKAGE" 2>/dev/null || true)"
+  if [[ "$pkg_list" == *"package:${TARGET_PACKAGE}"* ]]; then
     log_info "Gotify app is installed and ready!"
   else
     log_warn "App installation may have failed"

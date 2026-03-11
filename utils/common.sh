@@ -23,13 +23,3 @@ require_cmd() {
         fatal "Required command '$cmd' not found"
     fi
 }
-
-# Changes directory safely, logging the action.
-safe_cd() {
-    local dir=$1
-    if [[ -z "$dir" ]]; then
-        fatal "safe_cd: missing directory argument"
-    fi
-    log_info "cd $dir"
-    cd "$dir" || fatal "Failed to cd into $dir"
-}
