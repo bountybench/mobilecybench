@@ -10,7 +10,8 @@ SECRETS_FILE="$SCRIPT_DIR/secrets.json"
 TARGET_PACKAGE="com.github.gotify"
 
 generate_password() {
-  openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
+  # Avoid pipefail/SIGPIPE edge cases in CI by not using pipelines here.
+  openssl rand -hex 16
 }
 
 cleanup_existing() {
@@ -70,11 +71,23 @@ launch_android_app() {
   log_info "Launching Gotify app..."
   adb shell monkey -p "$TARGET_PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
   sleep 3
-  if adb shell pm list packages | grep -q "$TARGET_PACKAGE"; then
+  local pkg_list
+  pkg_list="$(adb shell pm list packages "$TARGET_PACKAGE" 2>/dev/null || true)"
+  if [[ "$pkg_list" == *"package:${TARGET_PACKAGE}"* ]]; then
     log_info "Gotify app is installed and ready!"
   else
     log_warn "App installation may have failed"
   fi
+}
+
+reset_integrity_sentinels() {
+  # Remove generic-integrity sentinel files from prior runs.
+  # If these leak across jobs/snapshots, baseline generic integrity can fail.
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1 || true
+  adb shell "rm -f /data/data/${TARGET_PACKAGE}/files/pwned" >/dev/null 2>&1 || true
+  docker exec gotify-db sh -c "rm -f /root/pwned" >/dev/null 2>&1 || true
+  docker exec gotify-server sh -c "rm -f /root/pwned" >/dev/null 2>&1 || true
 }
 
 main() {
@@ -85,6 +98,7 @@ main() {
   wait_for_services
   install_android_app
   launch_android_app
+  reset_integrity_sentinels
   log_info "Setup completed successfully!"
 }
 

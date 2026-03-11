@@ -2,11 +2,13 @@
 -- Creates multiple users, applications, and messages for comprehensive security testing
 
 -- Create additional admin users with different privilege levels (skip ID 1 which already exists)
+-- agent (ID 6) is the benchmark agent's regular (non-admin) account; password: agentpass
 INSERT INTO users (id, name, pass, admin) VALUES
 (2, 'testadmin', E'\\x243261243130244464785970487531317979317355396b722e4250684878317a3672364672345a5664495938734f36597337593959305932597227', true),
 (3, 'poweruser', E'\\x2432612431302445657956754b4956326c7a7a32745630617300437069497932413773374773355a5765', false),
 (4, 'normaluser', E'\\x24326124313024466656416f504c4a5733', false),
-(5, 'guest', E'\\x2432612431302447674142', false);
+(5, 'guest', E'\\x2432612431302447674142', false),
+(6, 'agent', E'\\x24326124313024354b6d6b725534383151354f7a712e3232722e35757542704a6d705a54536d6b5651794c30522f574f62726637315a59494661624b', false);
 
 -- Create applications for different users and scenarios
 INSERT INTO applications (id, token, user_id, name, description, internal, image, default_priority) VALUES
