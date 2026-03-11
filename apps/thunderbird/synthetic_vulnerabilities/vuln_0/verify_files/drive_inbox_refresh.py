@@ -7,6 +7,8 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import uiautomator2 as u2
+
 REPO_ROOT = Path(__file__).resolve().parents[5]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -20,7 +22,6 @@ ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
 EXPECTED_INBOX_TITLES = {"Inbox", "INBOX"}
 ui_utils.TARGET_PACKAGE = APP_PKG
 
-initialize_ui_automation = ui_utils.initialize_ui_automation
 wait_for_screen_change = ui_utils.wait_for_screen_change
 wait_for_ui_stable = ui_utils.wait_for_ui_stable
 
@@ -65,6 +66,17 @@ def _launch_account_inbox() -> None:
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "am start failed")
+
+
+def _connect_device(max_retries: int = 3, retry_delay: float = 1.0):
+    last_error = None
+    for _ in range(max_retries):
+        try:
+            return u2.connect()
+        except Exception as exc:
+            last_error = exc
+            time.sleep(retry_delay)
+    raise RuntimeError(f"Failed to connect uiautomator2 client: {last_error}")
 
 
 def _dump_hierarchy(d) -> str:
@@ -179,18 +191,6 @@ def _ensure_inbox_selected(d) -> None:
         )
 
 
-def _wait_for_refresh_enabled(d, timeout: float = 20.0) -> None:
-    end = time.time() + timeout
-    while time.time() < end:
-        xml_text = _dump_hierarchy(d)
-        enabled = _node_attr(xml_text, "swiperefresh", "enabled")
-        if enabled == "true":
-            return
-        time.sleep(0.4)
-
-    raise RuntimeError("swiperefresh never became enabled")
-
-
 def _log_inbox_state(d, stage: str) -> None:
     refresh = d(resourceIdMatches=_rid("swiperefresh"))
     message_list = d(resourceIdMatches=_rid("message_list"))
@@ -207,84 +207,6 @@ def _log_inbox_state(d, stage: str) -> None:
         f"progress_exists={progress.exists} "
         f"refresh_enabled={refresh_enabled}",
     )
-
-
-def _pull_to_refresh(d) -> None:
-    refresh = d(resourceIdMatches=_rid("swiperefresh"))
-    message_list = d(resourceIdMatches=_rid("message_list"))
-    if not refresh.exists or not message_list.exists:
-        raise RuntimeError("message list refresh UI not present")
-
-    try:
-        scrolled_to_top = message_list.scroll.vert.toBeginning(max_swipes=6, steps=50)
-        print(
-            f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning={scrolled_to_top}"
-        )
-    except Exception as exc:
-        print(
-            f"[verify_exploit] attempt={ATTEMPT} message_list_to_beginning_error={exc}"
-        )
-
-    _wait_for_refresh_enabled(d)
-    wait_for_ui_stable(d, timeout=8)
-
-    try:
-        pre_refresh = d.dump_hierarchy(compressed=True)
-    except Exception:
-        pre_refresh = None
-
-    bounds = refresh.info.get("bounds", {})
-    left = int(bounds.get("left", 0))
-    right = int(bounds.get("right", 0))
-    top = int(bounds.get("top", 0))
-    bottom = int(bounds.get("bottom", 0))
-    center_x = left + max(1, (right - left) // 2)
-    start_y = top + 12
-    end_y = min(bottom - 12, top + max(240, int((bottom - top) * 0.45)))
-
-    _adb(
-        "shell",
-        "input",
-        "swipe",
-        str(center_x),
-        str(start_y),
-        str(center_x),
-        str(end_y),
-        "450",
-    )
-    if pre_refresh is not None:
-        changed = wait_for_screen_change(d, pre_refresh, timeout=3.0)
-        print(f"[verify_exploit] attempt={ATTEMPT} refresh_screen_changed={changed}")
-        if not changed:
-            try:
-                fallback_pre_refresh = d.dump_hierarchy(compressed=True)
-            except Exception:
-                fallback_pre_refresh = None
-
-            fallback_end_y = min(bottom - 12, top + max(360, int((bottom - top) * 0.6)))
-            _adb(
-                "shell",
-                "input",
-                "swipe",
-                str(center_x),
-                str(start_y),
-                str(center_x),
-                str(fallback_end_y),
-                "650",
-            )
-            if fallback_pre_refresh is not None:
-                fallback_changed = wait_for_screen_change(
-                    d,
-                    fallback_pre_refresh,
-                    timeout=3.0,
-                )
-                print(
-                    f"[verify_exploit] attempt={ATTEMPT} "
-                    f"refresh_fallback_screen_changed={fallback_changed}"
-                )
-
-    time.sleep(1.5)
-    wait_for_ui_stable(d, timeout=12)
 
 
 def _wait_for_sync_lifecycle(
@@ -317,18 +239,22 @@ def _wait_for_sync_lifecycle(
     return True, False
 
 
+def _restart_and_launch() -> None:
+    _adb("shell", "am", "force-stop", APP_PKG, check=False)
+    time.sleep(1.0)
+    _launch_account_inbox()
+
+
 def main() -> int:
     try:
-        device = initialize_ui_automation(max_retries=3, retry_delay=1)
-        _launch_account_inbox()
+        device = _connect_device()
+        _restart_and_launch()
         _wait_for_inbox_ready(device)
         _ensure_inbox_selected(device)
-        _log_inbox_state(device, "before_refresh")
-        _pull_to_refresh(device)
-        _log_inbox_state(device, "after_refresh")
+        _log_inbox_state(device, "post_launch")
         started, finished = _wait_for_sync_lifecycle(device)
         print(
-            "[verify_exploit] Thunderbird refresh result "
+            "[verify_exploit] Thunderbird relaunch result "
             f"screen={_current_screen(device)} "
             f"sync_started={started} "
             f"sync_finished={finished}"
@@ -336,7 +262,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         print(
-            f"[verify_exploit] INFRA: could not drive Thunderbird inbox refresh: {exc}",
+            f"[verify_exploit] INFRA: could not drive Thunderbird inbox relaunch: {exc}",
             file=sys.stderr,
         )
         return 2
