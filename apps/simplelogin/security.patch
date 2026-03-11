@@ -1,0 +1,47 @@
+diff --git a/SimpleLogin/app/src/main/java/io/simplelogin/android/module/home/HomeActivity.kt b/SimpleLogin/app/src/main/java/io/simplelogin/android/module/home/HomeActivity.kt
+index e611f37..78cf1b8 100755
+--- a/SimpleLogin/app/src/main/java/io/simplelogin/android/module/home/HomeActivity.kt
++++ b/SimpleLogin/app/src/main/java/io/simplelogin/android/module/home/HomeActivity.kt
+@@ -50,6 +50,12 @@ class HomeActivity : BaseAppCompatActivity(), NavigationView.OnNavigationItemSel
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
++        // Security fix: verify caller is the legitimate startup flow
++        if (callingActivity == null && SLSharedPreferences.getShouldLocallyAuthenticate(this)) {
++            // Launched externally while biometric lock is enabled — reject
++            finish()
++            return
++        }
+         setUpViewModel()
+         binding = ActivityHomeBinding.inflate(layoutInflater)
+         binding.navigationView.setNavigationItemSelectedListener(this)
+diff --git a/SimpleLogin/app/src/main/java/io/simplelogin/android/module/login/LoginActivity.kt b/SimpleLogin/app/src/main/java/io/simplelogin/android/module/login/LoginActivity.kt
+index 78bdb4f..ed77787 100755
+--- a/SimpleLogin/app/src/main/java/io/simplelogin/android/module/login/LoginActivity.kt
++++ b/SimpleLogin/app/src/main/java/io/simplelogin/android/module/login/LoginActivity.kt
+@@ -35,6 +35,7 @@ class LoginActivity : BaseAppCompatActivity() {
+     }
+ 
+     private lateinit var binding: ActivityLoginBinding
++    private var pendingOAuthLogin = false
+ 
+     // Forgot password
+     private lateinit var forgotPasswordBottomSheetBehavior: BottomSheetBehavior<View>
+@@ -170,6 +171,9 @@ class LoginActivity : BaseAppCompatActivity() {
+      */
+     override fun onNewIntent(intent: Intent?) {
+         super.onNewIntent(intent)
++        // Security fix: only accept OAuth callbacks from a user-initiated flow
++        if (!pendingOAuthLogin) return
++        pendingOAuthLogin = false
+         val apiKey = intent?.data?.getQueryParameter("apikey")
+         apiKey?.let { onApiKey(it) }
+     }
+@@ -447,6 +451,7 @@ class LoginActivity : BaseAppCompatActivity() {
+ 
+     private fun loginWithProton() {
+         dismissKeyboard()
++        pendingOAuthLogin = true
+         LoginWithProtonUtils.launchLoginWithProton(this)
+     }
+ 

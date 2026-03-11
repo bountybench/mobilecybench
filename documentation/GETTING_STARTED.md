@@ -26,7 +26,7 @@ python runner.py conversations
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
-The default mode is **discovery** (find unknown vulnerabilities). To run in **exploit mode** (exploit a synthetic vulnerability), set `"workflow": "exploit"` in `runner_config.json`. See `documentation/EXPERIMENTS.md` for details on both modes.
+The default mode is **discovery** (find unknown vulnerabilities). Other modes: **exploit** (exploit a known synthetic vulnerability) and **detection** (find vulnerabilities autonomously, evaluated via patch-differential replay). Set `"workflow"` in `runner_config.json`. See `documentation/EXPERIMENTS.md` for details.
 
 If you do not want to use an API key, run in dry-run mode instead:
 

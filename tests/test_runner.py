@@ -10,7 +10,7 @@ from jsonschema import validate
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
 from utils.logger import logger_manager
-from workflows import DiscoveryWorkflow, ExploitWorkflow
+from workflows import DetectionWorkflow, DiscoveryWorkflow, ExploitWorkflow
 
 
 def _load_run_summary_schema() -> dict:
@@ -64,6 +64,14 @@ class TestCreateWorkflow:
         """ExploitWorkflow is created when config.workflow == 'exploit'."""
         workflow = create_workflow(exploit_config, "test_app", tmp_path)
         assert isinstance(workflow, ExploitWorkflow)
+
+    def test_creates_detection_workflow_when_configured(self, base_config, tmp_path):
+        """DetectionWorkflow is created when config.workflow == 'detection'."""
+        detection_config = RunnerConfig(
+            **{**base_config.model_dump(), "workflow": "detection"}
+        )
+        workflow = create_workflow(detection_config, "test_app", tmp_path)
+        assert isinstance(workflow, DetectionWorkflow)
 
 
 class TestRun:
