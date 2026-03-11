@@ -245,6 +245,13 @@ state = {
 Path("${STATE_FILE}").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
 print("[prepare_app] Wrote verifier state:", "${STATE_FILE}")
 PY
+
+  # Relaunch the app so WebSocket reconnects before the exploit runs
+  adb unroot >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null
+  adb shell monkey -p "$APP_PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+  sleep 3
+  log "App relaunched after SharedPreferences update"
 }
 
 prepare_runtime_secret
