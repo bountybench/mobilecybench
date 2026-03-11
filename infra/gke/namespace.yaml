@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mobilecybench
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: mobilecybench-quota
+  namespace: mobilecybench
+spec:
+  hard:
+    pods: "60"
+    requests.cpu: "120"
+    requests.memory: "480Gi"

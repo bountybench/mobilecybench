@@ -7,6 +7,24 @@ from pathlib import Path
 from typing import Optional
 
 
+class ColorConsoleFormatter(logging.Formatter):
+    """Formatter that adds ANSI colors for WARNING (yellow) and ERROR (red)."""
+
+    COLORS = {
+        logging.WARNING: "\033[93m",  # yellow
+        logging.ERROR: "\033[91m",  # red
+        logging.CRITICAL: "\033[91m",  # red
+    }
+    RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        result = super().format(record)
+        color = self.COLORS.get(record.levelno)
+        if color:
+            return f"{color}{result}{self.RESET}"
+        return result
+
+
 class FilteringFormatter(logging.Formatter):
     """Formatter that truncates large UI element arrays in log messages.
 
@@ -148,12 +166,12 @@ class LoggerManager:
 
         formatter_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         if self._should_filter_ui():
-            formatter = FilteringFormatter(formatter_str)
+            file_formatter = FilteringFormatter(formatter_str)
         else:
-            formatter = logging.Formatter(formatter_str)
+            file_formatter = logging.Formatter(formatter_str)
 
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
+        file_handler.setFormatter(file_formatter)
+        console_handler.setFormatter(ColorConsoleFormatter(formatter_str))
 
         self._logger.addHandler(file_handler)
         self._logger.addHandler(console_handler)

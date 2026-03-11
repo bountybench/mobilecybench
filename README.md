@@ -46,3 +46,4 @@ Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 - [Troubleshooting](documentation/TROUBLESHOOTING.md) — common issues
 - [Architecture](documentation/ARCHITECTURE.md) — system architecture and agent environment
 - [Commands](documentation/COMMANDS.md) — command reference grouped by workflow
+- [GKE Infrastructure](infra/gke/README.md) — running experiments at scale on Google Kubernetes Engine (GKE)

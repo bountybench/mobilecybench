@@ -155,7 +155,7 @@ REQUESTS_CA_BUNDLE=../../tls/rootCA.pem
 No. The nginx proxy handles TLS termination. Your backend still serves plain HTTP internally — only the path from the emulator to nginx is encrypted.
 
 **Q: Do I need to generate new certificates?**
-No. The shared certs in `tls/` cover all the SANs we need (`10.0.2.2`, `localhost`, `127.0.0.1`, `host.docker.internal`). They're valid for 100 years.
+No. The shared certs in `tls/` cover all the SANs we need (`10.0.2.2`, `localhost`, `127.0.0.1`, `host.docker.internal`). The server cert is valid for 397 days (the maximum allowed by Chromium WebView). To renew, run `tls/generate_certs.sh --renew`.
 
 **Q: Do I need to inject the CA certificate into the emulator?**
 No. This happens automatically. The orchestrator calls `utils/inject_system_ca.sh` after emulator boot, before your `start_runtime.sh` runs. CI workflows also inject it.

@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Download pre-built APKs from GitHub releases.
+
+Reads the download_link from each app's metadata.json and fetches the APK
+(or zip bundle) via the `gh` CLI. Existing files are preserved unless --force
+is used.
+
+Usage:
+    python download_apk.py <app_name>           # download APK (skip existing)
+    python download_apk.py --force <app_name>   # download and overwrite existing
+    python download_apk.py --check [app_name]   # validate download_links exist on GitHub
+"""
+
+import logging
+import sys
+from pathlib import Path
+
+from utils.apk_utils import check_releases, download_apk, get_download_url
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+
+HELP = """\
+Download pre-built APKs from GitHub releases.
+
+Usage:
+  {prog} <app_name>           Download APK (skips existing files)
+  {prog} --force <app_name>   Download and overwrite existing files
+  {prog} --check [app_name]   Validate download_links against GitHub releases
+
+Examples:
+  {prog} conversations              Download conversations APK
+  {prog} --force conversations      Re-download conversations APK
+  {prog} --check                    Check all apps' download_links
+  {prog} --check conversations      Check just conversations' download_link
+"""
+
+
+def main():
+    project_root = Path(__file__).resolve().parent
+    apps_dir = project_root / "apps"
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+
+    if "--help" in flags or "-h" in flags:
+        print(HELP.format(prog=sys.argv[0]))
+        sys.exit(0)
+
+    if "--check" in flags:
+        app_names = (
+            positional
+            if positional
+            else sorted(d.name for d in apps_dir.iterdir() if d.is_dir())
+        )
+        results = check_releases(app_names, project_root)
+        for name, status in sorted(results.items()):
+            print(f"  {status:<10} {name}")
+        failures = {n: s for n, s in results.items() if s not in ("ok", "no_link")}
+        if failures:
+            print(
+                f"\n{len(failures)} app(s) have broken download_links.", file=sys.stderr
+            )
+        sys.exit(1 if failures else 0)
+
+    if not positional:
+        print(HELP.format(prog=sys.argv[0]), file=sys.stderr)
+        sys.exit(1)
+
+    app_name = positional[0]
+    if not (apps_dir / app_name).exists():
+        print(f"Error: apps/{app_name}/ not found", file=sys.stderr)
+        sys.exit(1)
+
+    url = get_download_url(app_name, project_root)
+    if not url:
+        print(
+            f"Error: No download_link in apps/{app_name}/metadata.json", file=sys.stderr
+        )
+        print("\nTo fix, build and publish the APK:", file=sys.stderr)
+        print(f"  ./build_apk.sh {app_name}", file=sys.stderr)
+        print(f"  ./publish_apk_bundle.sh apps/{app_name}", file=sys.stderr)
+        sys.exit(1)
+
+    download_apk(app_name, url, project_root, force="--force" in flags)
+
+
+if __name__ == "__main__":
+    main()
