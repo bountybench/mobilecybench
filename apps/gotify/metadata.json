@@ -11,6 +11,6 @@
     "gotify-db",
     "gotify-server"
   ],
-  "username": "agent",
+  "username": "agentuser",
   "password": "agentpass"
 }
