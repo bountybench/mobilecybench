@@ -74,7 +74,10 @@ def _parse_pricing_map(raw: Dict[str, dict]) -> Dict[str, ModelPricing]:
             continue
         high_context = None
         high_context_entry = price_entry.get("high_context")
-        if isinstance(high_context_entry, dict) and "input_threshold" in high_context_entry:
+        if (
+            isinstance(high_context_entry, dict)
+            and "input_threshold" in high_context_entry
+        ):
             high_context = HighContextPricing(
                 input_threshold=int(high_context_entry["input_threshold"]),
                 input=float(high_context_entry.get("input", 0) or 0),
