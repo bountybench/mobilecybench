@@ -19,7 +19,7 @@ DB_CONTAINER="gotify-db"
 DB_USER="gotify"
 DB_NAME="gotify"
 
-AGENT_USER="agent"
+AGENT_USER="agentuser"
 AGENT_PASS="agentpass"
 VICTIM_USER_ID=4
 EXPECTED_TITLE="test"
