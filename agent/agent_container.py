@@ -33,6 +33,7 @@ class AgentEnvironment:
         commit_id: str,
         mode: str = None,
         vuln_id: Optional[str] = None,
+        include_git_history: bool = True,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -42,6 +43,7 @@ class AgentEnvironment:
         self.commit_id = commit_id
         self.mode = mode
         self.vuln_id = vuln_id
+        self.include_git_history = include_git_history
 
         import traceback
 
@@ -259,9 +261,9 @@ class AgentEnvironment:
     def _setup_agent_codebase(self):
         """Create a copy of codebase for the agent environment.
 
-        Normal mode: Checkout specific commit, copy with git history.
-        Synthetic vulnerability mode: Copy current state (with patch applied),
-        no git history to prevent agent from seeing the patch was applied.
+        If include_git_history is True: checkout specific commit, copy with full
+        git history. If False: copy current state without git history and
+        initialize a fresh repo.
         """
         original_codebase = self.app_dir / "codebase"
         agent_codebase = self.app_dir / "agent_codebase"
@@ -281,12 +283,9 @@ class AgentEnvironment:
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.vuln_id:
-            # Synthetic vulnerability mode: copy current state without git history
-            logger.info(
-                "Synthetic vuln mode: Copying current codebase state without git history"
-            )
-            # Copy files but ignore .git to prevent agent from seeing patch history
+        if not self.include_git_history:
+            # Copy codebase without git history so agent cannot see prior commits
+            logger.info("Copying codebase without git history")
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
             # Initialize fresh git repo so agent can still use git commands
@@ -315,7 +314,7 @@ class AgentEnvironment:
             )
             logger.info("Created fresh git repo with 'main' and 'dev' branches")
         else:
-            # Normal mode: checkout specific commit and preserve git history
+            # Checkout specific commit and preserve full git history
             # Find the repository root (which contains .git)
             repo_root = original_codebase
             while repo_root.parent != repo_root:
@@ -688,7 +687,7 @@ def setup_agent_environment(
     app_dir: Path,
     agent_image: str,
     metadata: dict,
-    workflow: str = "discovery",  # "discovery" or "exploit"
+    workflow: str = "discovery",  # "discovery", "detection", or "exploit"
     vuln_id: Optional[str] = None,
     agent_mode: str = "custom",
 ) -> AgentEnvironment:
@@ -699,7 +698,7 @@ def setup_agent_environment(
         app_dir: Application directory
         agent_image: Docker image to use for agent
         metadata: App metadata dict
-        workflow: Evaluation workflow type ("discovery" or "exploit")
+        workflow: Evaluation workflow type ("discovery", "detection", or "exploit")
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
 
@@ -750,6 +749,7 @@ def setup_agent_environment(
         commit_id=commit_id,
         mode=agent_mode,
         vuln_id=vuln_id if workflow == "exploit" else None,
+        include_git_history=(workflow != "exploit"),
     )
 
     agent_env.setup()
