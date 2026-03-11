@@ -31,8 +31,8 @@ _wait_for_screen_change = wait_for_screen_change
 
 
 def log(message, script_name="ui_automation"):
-    """Print log message to stderr"""
-    print(f"[{script_name}] {message}", file=sys.stderr)
+    """Print log message to stdout."""
+    print(f"[{script_name}] {message}", flush=True)
 
 
 def wait_for_ui_stable(

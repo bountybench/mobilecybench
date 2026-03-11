@@ -1,4 +1,0 @@
-root
-backup
-su
-run-as

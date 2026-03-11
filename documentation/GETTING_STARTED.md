@@ -1,4 +1,4 @@
-cko# Getting Started
+# Getting Started
 
 This guide gets a first-time user from zero to a working emulator and a basic app run.
 

@@ -23,6 +23,14 @@ from utils.git_utils import (
 )
 from utils.logger import logger
 
+# ---------------------------------------------------------------------------
+# ADB proxy sidecar constants
+# ---------------------------------------------------------------------------
+ADB_PROXY_CONTAINER = "adb-proxy"
+ADB_PROXY_IMAGE = "python:3.11-slim"
+ADB_PROXY_PORT = 5037
+APP_NET = "app_net"
+
 
 class AgentEnvironment:
     def __init__(
@@ -690,10 +698,11 @@ class AgentEnvironment:
             except Exception as e:
                 logger.warning(f"Error cleaning up container: {e}")
         self.container = None
+        _stop_adb_proxy()
 
 
 def create_docker_network(network_name: str = "shared_net") -> None:
-    """Create a Docker network if it doesn't exist."""
+    """Create Docker networks if they don't exist."""
     client = docker.from_env()
 
     try:
@@ -702,6 +711,151 @@ def create_docker_network(network_name: str = "shared_net") -> None:
     except docker.errors.NotFound:
         client.networks.create(network_name, driver="bridge")
         logger.info(f"Created Docker network '{network_name}'")
+
+    # Also create the internal app_net for agent isolation.
+    # app_net is --internal so containers on it alone cannot reach the host
+    # or internet.  The kali container is on both app_net (for ADB proxy and
+    # app servers) and shared_net (for internet/API access).
+    try:
+        client.networks.get(APP_NET)
+        logger.info(f"Docker network '{APP_NET}' already exists")
+    except docker.errors.NotFound:
+        client.networks.create(APP_NET, driver="bridge", internal=True)
+        logger.info(f"Created internal Docker network '{APP_NET}'")
+
+
+def _start_adb_proxy() -> None:
+    """Start the ADB filtering proxy sidecar container.
+
+    The proxy sits on both ``shared_net`` (to reach the host ADB server)
+    and ``app_net`` (so the kali container can reach it).  It filters
+    ADB protocol messages, blocking ``root:``, ``unroot:``, and ``shell:su``.
+    """
+    client = docker.from_env()
+
+    # Remove any stale proxy container
+    _stop_adb_proxy()
+
+    proxy_script = (
+        Path(__file__).resolve().parent.parent / "utils" / "adb_filter_proxy.py"
+    )
+    if not proxy_script.exists():
+        raise FileNotFoundError(f"ADB filter proxy script not found: {proxy_script}")
+
+    logger.info("Starting ADB proxy sidecar...")
+    proxy_container = client.containers.run(
+        image=ADB_PROXY_IMAGE,
+        name=ADB_PROXY_CONTAINER,
+        command="python3 /opt/adb_filter_proxy.py",
+        detach=True,
+        network="shared_net",
+        extra_hosts={"host.docker.internal": "host-gateway"},
+    )
+
+    # Also connect to app_net so kali can reach the proxy
+    app_net = client.networks.get(APP_NET)
+    app_net.connect(proxy_container)
+
+    # Copy the filter script and shared patterns into the container
+    import tarfile as _tarfile
+
+    patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
+
+    buf = io.BytesIO()
+    with _tarfile.open(fileobj=buf, mode="w") as tar:
+        tar.add(str(proxy_script), arcname="adb_filter_proxy.py")
+        tar.add(str(patterns_module), arcname="adb_blocked_patterns.py")
+    buf.seek(0)
+    proxy_container.put_archive("/opt", buf)
+
+    # Restart so it picks up the script (command was set at creation)
+    proxy_container.restart()
+
+    logger.info(
+        f"ADB proxy sidecar started "
+        f"(:{ADB_PROXY_PORT} -> host.docker.internal:{ADB_PROXY_PORT})"
+    )
+
+
+def _stop_adb_proxy() -> None:
+    """Stop and remove the ADB proxy sidecar container if it exists."""
+    client = docker.from_env()
+    try:
+        container = client.containers.get(ADB_PROXY_CONTAINER)
+        container.stop(timeout=5)
+        container.remove(force=True)
+        logger.info("ADB proxy sidecar stopped and removed")
+    except docker.errors.NotFound:
+        pass
+    except Exception as e:
+        logger.warning(f"Error stopping ADB proxy: {e}")
+
+
+def _disable_emulator_root() -> None:
+    """Disable root access on the emulator.
+
+    Two layers of defense:
+    1. ``adb unroot`` — restarts adbd as non-root.
+    2. Bind-mount an empty, mode-000 file over ``/system/xbin/su`` so the
+       ``su`` binary cannot be executed even if the agent bypasses the proxy
+       (e.g. by pushing a script that calls su at runtime).
+
+    This must run *before* ``adb unroot`` drops our ability to do root ops.
+    """
+    try:
+        # Ensure we have root for the setup steps
+        subprocess.run(["adb", "root"], capture_output=True, timeout=10)
+        subprocess.run(["adb", "wait-for-device"], capture_output=True, timeout=30)
+
+        # Disable su binary via bind mount
+        subprocess.run(
+            [
+                "adb",
+                "shell",
+                "touch /data/local/tmp/.fake_su"
+                " && chmod 000 /data/local/tmp/.fake_su"
+                " && mount --bind /data/local/tmp/.fake_su /system/xbin/su",
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+
+        # Drop root
+        subprocess.run(["adb", "unroot"], capture_output=True, timeout=10)
+    except Exception as e:
+        logger.warning(f"Failed to fully disable emulator root: {e}")
+        # Still try to unroot even if bind mount failed
+        try:
+            subprocess.run(["adb", "unroot"], capture_output=True, timeout=10)
+        except Exception:
+            pass
+
+
+def _connect_app_servers_to_app_net(container_names: list) -> None:
+    """Connect app server containers to the internal app_net.
+
+    App servers are started on ``shared_net`` by their docker-compose files.
+    We also connect them to ``app_net`` so the kali container can reach them.
+    """
+    client = docker.from_env()
+    try:
+        app_net = client.networks.get(APP_NET)
+    except docker.errors.NotFound:
+        logger.warning(f"Network {APP_NET} not found, skipping app server connection")
+        return
+
+    for name in container_names:
+        try:
+            container = client.containers.get(name)
+            app_net.connect(container)
+            logger.info(f"Connected app server '{name}' to {APP_NET}")
+        except docker.errors.APIError as e:
+            if "already exists" in str(e):
+                logger.info(f"App server '{name}' already on {APP_NET}")
+            else:
+                logger.warning(f"Failed to connect '{name}' to {APP_NET}: {e}")
+        except docker.errors.NotFound:
+            logger.warning(f"App server container '{name}' not found")
 
 
 def _load_claude_code_credentials() -> Optional[str]:
@@ -770,8 +924,19 @@ def setup_agent_environment(
     Returns:
         AgentEnvironment instance
     """
-    # Create docker network
+    # Create docker networks (shared_net + internal app_net)
     create_docker_network()
+
+    # Start ADB filtering proxy sidecar (on shared_net + app_net)
+    _start_adb_proxy()
+
+    # Connect app server containers to app_net so kali can reach them
+    container_names = metadata.get("container_names", [])
+    _connect_app_servers_to_app_net(container_names)
+
+    # Drop root on the emulator (setup phase already injected certs as root)
+    _disable_emulator_root()
+    logger.info("Emulator root privileges disabled")
 
     # Clear SSRF requests (only for discovery mode)
     if workflow == "discovery":
@@ -784,10 +949,10 @@ def setup_agent_environment(
         except Exception as e:
             logger.warning(f"Failed to clear SSRF requests: {e}")
 
-    # Prepare environment variables
+    # ADB routes through the proxy sidecar on app_net (not directly to host)
     env_vars = {
         "ANDROID_ADB_SERVER_PORT": "5037",
-        "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+        "ADB_SERVER_SOCKET": f"tcp:{ADB_PROXY_CONTAINER}:{ADB_PROXY_PORT}",
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
 
@@ -808,7 +973,7 @@ def setup_agent_environment(
 
     agent_env = AgentEnvironment(
         app_dir=app_dir,
-        docker_networks=["shared_net"],
+        docker_networks=[APP_NET, "shared_net"],
         image_name=agent_image,
         env=env_vars,
         commit_id=commit_id,
