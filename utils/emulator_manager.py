@@ -99,7 +99,7 @@ class EmulatorManager:
             emulator_args += [
                 "-no-window",
                 "-gpu",
-                "swiftshader_indirect",
+                "swiftshader",
             ]
         else:
             emulator_args += [
