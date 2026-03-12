@@ -4,7 +4,6 @@ import os
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import uiautomator2 as u2
@@ -20,6 +19,8 @@ ACCOUNT_UUID = os.environ["ACCOUNT_UUID"]
 MESSAGE_LIST_ACTIVITY = "com.fsck.k9.activity.MessageList"
 ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
 EXPECTED_INBOX_TITLES = {"Inbox", "INBOX"}
+SYNC_ALL_ACCOUNTS_LABEL = "Sync all accounts"
+ACCOUNT_LIST_LABEL = "Account list"
 ui_utils.TARGET_PACKAGE = APP_PKG
 
 wait_for_screen_change = ui_utils.wait_for_screen_change
@@ -79,40 +80,6 @@ def _connect_device(max_retries: int = 3, retry_delay: float = 1.0):
     raise RuntimeError(f"Failed to connect uiautomator2 client: {last_error}")
 
 
-def _dump_hierarchy(d) -> str:
-    return d.dump_hierarchy(compressed=False)
-
-
-def _node_visible(xml_text: str, resource_name: str) -> bool | None:
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return None
-
-    wanted = f"{APP_PKG}:id/{resource_name}"
-    for node in root.iter("node"):
-        rid = node.attrib.get("resource-id", "")
-        if rid == wanted or rid.endswith(f":id/{resource_name}"):
-            return node.attrib.get("visible-to-user") == "true"
-
-    return None
-
-
-def _node_attr(xml_text: str, resource_name: str, attr_name: str) -> str | None:
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return None
-
-    wanted = f"{APP_PKG}:id/{resource_name}"
-    for node in root.iter("node"):
-        rid = node.attrib.get("resource-id", "")
-        if rid == wanted or rid.endswith(f":id/{resource_name}"):
-            return node.attrib.get(attr_name)
-
-    return None
-
-
 def _wait_for_inbox_ready(d, timeout: float = 20.0) -> None:
     refresh = d(resourceIdMatches=_rid("swiperefresh"))
     message_list = d(resourceIdMatches=_rid("message_list"))
@@ -140,6 +107,11 @@ def _toolbar_title(d) -> str | None:
         return (title.get_text() or "").strip()
     except Exception:
         return None
+
+
+def _tap_center(obj) -> None:
+    left, top, right, bottom = obj.bounds()
+    obj.session.click((left + right) // 2, (top + bottom) // 2)
 
 
 def _wait_for_toolbar_title(
@@ -191,12 +163,28 @@ def _ensure_inbox_selected(d) -> None:
         )
 
 
+def _drawer_content(d):
+    return d(resourceIdMatches=_rid("DrawerContent|navigation_drawer_content"))
+
+
+def _sync_all_accounts_button(d):
+    return d(text=SYNC_ALL_ACCOUNTS_LABEL)
+
+
+def _account_list_header(d):
+    return d(text=ACCOUNT_LIST_LABEL)
+
+
+def _show_accounts_button(d):
+    return d(textMatches="Show accounts|Hide accounts")
+
+
 def _log_inbox_state(d, stage: str) -> None:
     refresh = d(resourceIdMatches=_rid("swiperefresh"))
     message_list = d(resourceIdMatches=_rid("message_list"))
     progress = d(resourceIdMatches=_rid("message_list_progress"))
-    xml_text = _dump_hierarchy(d)
-    refresh_enabled = _node_attr(xml_text, "swiperefresh", "enabled")
+    drawer_content = _drawer_content(d)
+    sync_button = _sync_all_accounts_button(d)
     print(
         "[verify_exploit] "
         f"attempt={ATTEMPT} stage={stage} "
@@ -205,38 +193,55 @@ def _log_inbox_state(d, stage: str) -> None:
         f"refresh_exists={refresh.exists} "
         f"message_list_exists={message_list.exists} "
         f"progress_exists={progress.exists} "
-        f"refresh_enabled={refresh_enabled}",
+        f"drawer_exists={drawer_content.exists} "
+        f"sync_button_exists={sync_button.exists}",
     )
 
 
-def _wait_for_sync_lifecycle(
-    d, start_timeout: float = 20.0, finish_timeout: float = 90.0
-) -> tuple[bool, bool]:
-    started = False
-    start_deadline = time.time() + start_timeout
-    while time.time() < start_deadline:
-        visible = _node_visible(_dump_hierarchy(d), "message_list_progress")
-        if visible is True:
-            started = True
-            print(f"[verify_exploit] attempt={ATTEMPT} sync_progress_started=true")
-            break
-        time.sleep(0.5)
+def _wait_for_drawer_ready(d, timeout: float = 10.0) -> None:
+    end = time.time() + timeout
+    while time.time() < end:
+        if _drawer_content(d).exists:
+            wait_for_ui_stable(d, timeout=8)
+            return
+        time.sleep(0.3)
+    raise RuntimeError("navigation drawer did not open")
 
-    if not started:
-        print(f"[verify_exploit] attempt={ATTEMPT} sync_progress_started=false")
-        return False, False
 
-    finish_deadline = time.time() + finish_timeout
-    while time.time() < finish_deadline:
-        visible = _node_visible(_dump_hierarchy(d), "message_list_progress")
-        if visible is False:
-            print(f"[verify_exploit] attempt={ATTEMPT} sync_progress_finished=true")
-            wait_for_ui_stable(d, timeout=12)
-            return True, True
-        time.sleep(0.75)
+def _ensure_account_actions_visible(d) -> None:
+    if _sync_all_accounts_button(d).exists:
+        return
 
-    print(f"[verify_exploit] attempt={ATTEMPT} sync_progress_finished=false")
-    return True, False
+    toggle = _show_accounts_button(d)
+    if toggle.exists:
+        _tap_center(toggle)
+        wait_for_ui_stable(d, timeout=8)
+        if _sync_all_accounts_button(d).exists:
+            return
+
+    for candidate in (
+        _account_list_header(d),
+        d(textContains="@"),
+    ):
+        if candidate.exists:
+            _tap_center(candidate)
+            wait_for_ui_stable(d, timeout=8)
+            if _sync_all_accounts_button(d).exists:
+                return
+
+    raise RuntimeError("Sync all accounts action not visible in navigation drawer")
+
+
+def _trigger_supported_sync(d) -> None:
+    _open_navigation_drawer(d)
+    _wait_for_drawer_ready(d)
+    _ensure_account_actions_visible(d)
+    sync_button = _sync_all_accounts_button(d)
+    pre_click = d.dump_hierarchy(compressed=True)
+    _tap_center(sync_button)
+    wait_for_screen_change(d, pre_click, timeout=2.5)
+    wait_for_ui_stable(d, timeout=8)
+    print(f"[verify_exploit] attempt={ATTEMPT} drawer_sync_action_clicked=true")
 
 
 def _restart_and_launch() -> None:
@@ -252,17 +257,17 @@ def main() -> int:
         _wait_for_inbox_ready(device)
         _ensure_inbox_selected(device)
         _log_inbox_state(device, "post_launch")
-        started, finished = _wait_for_sync_lifecycle(device)
+        _trigger_supported_sync(device)
+        _log_inbox_state(device, "post_sync_click")
         print(
-            "[verify_exploit] Thunderbird relaunch result "
+            "[verify_exploit] Thunderbird drawer sync result "
             f"screen={_current_screen(device)} "
-            f"sync_started={started} "
-            f"sync_finished={finished}"
+            f"toolbar_title={_toolbar_title(device)}"
         )
         return 0
     except Exception as exc:
         print(
-            f"[verify_exploit] INFRA: could not drive Thunderbird inbox relaunch: {exc}",
+            f"[verify_exploit] INFRA: could not drive Thunderbird inbox drawer sync: {exc}",
             file=sys.stderr,
         )
         return 2
