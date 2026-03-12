@@ -45,7 +45,9 @@ class EmulatorManager:
     ):
         self.emulator_backend = emulator_backend
         # Container mode is always headless (no display available)
-        self.emulator_display = "headless" if emulator_backend == "container" else emulator_display
+        self.emulator_display = (
+            "headless" if emulator_backend == "container" else emulator_display
+        )
         self.project_root = project_root
         self.sdk_version = sdk_version
         self.app_name = app_name
