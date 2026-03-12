@@ -8,6 +8,6 @@
   "app_server": "home-assistant_tls_proxy:443",
   "username": "testuser",
   "password": "536b824b-5251-4ed8-9f6e-d6640b02c83c",
-  "package_name": "io.homeassistant.companion.android.minimal",
+  "package_name": "io.homeassistant.companion.android",
   "container_names": ["home-assistant_tls_proxy", "home-assistant-server", "ha-ssrf-listener"]
 }
