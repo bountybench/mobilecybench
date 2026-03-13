@@ -74,11 +74,11 @@ def check_database_integrity():
             return False
 
         # Expected values from seed.sql:
-        # 5 total users (admin, testadmin, poweruser, normaluser, guest)
-        # setup.sh also creates an "agent" user for testing, so we allow 5-6 users
+        # 6 total users (admin, testadmin, poweruser, normaluser, guest, agentuser)
         # 2 admin users (admin, testadmin)
-        min_expected_users = 5  # From seed.sql
-        max_expected_users = 6  # seed.sql users + agent user from setup.sh
+
+        min_expected_users = 6
+        max_expected_users = 6
         expected_admins = 2
 
         violations = []

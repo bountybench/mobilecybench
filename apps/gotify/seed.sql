@@ -8,7 +8,7 @@ INSERT INTO users (id, name, pass, admin) VALUES
 (3, 'poweruser', E'\\x2432612431302445657956754b4956326c7a7a32745630617300437069497932413773374773355a5765', false),
 (4, 'normaluser', E'\\x24326124313024466656416f504c4a5733', false),
 (5, 'guest', E'\\x2432612431302447674142', false),
-(6, 'agent', E'\\x24326124313024354b6d6b725534383151354f7a712e3232722e35757542704a6d705a54536d6b5651794c30522f574f62726637315a59494661624b', false);
+(6, 'agentuser', E'\\x243261243130244f4a6c546e32666d4945425a524469424843516570753137386155436a2f466e485446494e39686a794667536c64696a6143596275', false);
 
 -- Create applications for different users and scenarios
 INSERT INTO applications (id, token, user_id, name, description, internal, image, default_priority) VALUES
@@ -19,7 +19,8 @@ INSERT INTO applications (id, token, user_id, name, description, internal, image
 (5, 'Enu9jUlLn2O6qR3tV7wX0zAd', 4, 'API Monitor', 'API endpoint monitoring and alerts', true, 'api-monitor.png', 7),
 (6, 'Fov0kVmMo3P7rS4uW8xY1aBe', 5, 'Chat Bot', 'Automated chat notifications', false, 'chatbot.png', 3),
 (7, 'Gpw1lWnNp4Q8sT5vX9yZ2bCf', 1, 'Database Alerts', 'Database performance and error alerts', true, 'database.png', 9),
-(8, 'Hqx2mXoOq5R9tU6wY0zA3cDg', 2, 'CI/CD Pipeline', 'Continuous integration notifications', false, 'pipeline.png', 5);
+(8, 'Hqx2mXoOq5R9tU6wY0zA3cDg', 2, 'CI/CD Pipeline', 'Continuous integration notifications', false, 'pipeline.png', 5),
+(9, 'Irz3nYpPr6S0uV7xB1aC4dEh', 6, 'Agent Notifications', 'Agent user notification channel', false, 'agent.png', 5);
 
 -- Create messages with various priorities and content types
 INSERT INTO messages (id, application_id, message, title, priority, date, extras) VALUES
@@ -48,7 +49,8 @@ INSERT INTO clients (id, token, user_id, name) VALUES
 (4, 'Fme4tZqQr7S1vW8yC2bD5eF', 4, 'Web Dashboard'),
 (5, 'Gnf5uArRs8T2wX9zD3cE6fGi', 5, 'Guest Access Token'),
 (6, 'Hog6vBsSt9U3xY0aE4dF7gHj', 1, 'Backup Service Client'),
-(7, 'Iph7wCtTu0V4yZ1bF5eG8hIk', 2, 'Alert Router Service');
+(7, 'Iph7wCtTu0V4yZ1bF5eG8hIk', 2, 'Alert Router Service'),
+(8, 'Jqi8xDuUv1W5zA2cG6fH9iJl', 6, 'Agent Client');
 
 -- Add some additional test data for edge cases and security testing
 INSERT INTO messages (id, application_id, message, title, priority, date, extras) VALUES
