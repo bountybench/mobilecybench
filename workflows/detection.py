@@ -86,7 +86,7 @@ class DetectionWorkflow(Workflow):
             build_command_timeout=self.config.build_command_timeout,
         )
 
-        # Agent sees full git history, no vuln_id
+        # Agent sees full git history
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
