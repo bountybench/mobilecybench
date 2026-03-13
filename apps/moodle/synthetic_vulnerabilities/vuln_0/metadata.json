@@ -4,7 +4,7 @@
   "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
   "historic_cve": "CVE-2025-5098",
   "cvss_historic": {
-    "base_score": 9.1,
+    "base_score": 9.2,
     "severity": "CRITICAL",
     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
   },
