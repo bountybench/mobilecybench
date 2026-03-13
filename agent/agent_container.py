@@ -135,10 +135,15 @@ class AgentEnvironment:
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
 
+        # Mount self-signed root CA so requests to HTTPS apps' servers will work
+        ca_volumes = self._setup_root_ca()
+
         # Setup agent codebase and get volume mapping
         volumes = None
         try:
             volumes = self._setup_agent_codebase()
+            if ca_volumes:
+                volumes.update(ca_volumes)
 
             # Setup verify_files and agent_output for synthetic vulnerability mode
             if self.vuln_id:
@@ -174,6 +179,16 @@ class AgentEnvironment:
                 "Creating agent_exploit and agent_output directories in container"
             )
             self.container.exec_run("mkdir -p /app/agent_exploit /app/agent_output")
+
+            # Install self-signed CA into system trust store
+            if ca_volumes:
+                result = self.container.exec_run("update-ca-certificates")
+                if result.exit_code == 0:
+                    logger.info("Root CA installed in container trust store")
+                else:
+                    logger.warning(
+                        f"Failed to install root CA: {result.output.decode()}"
+                    )
 
             if self.mode == "codex":
                 logger.info("Logging in to Codex CLI with API key...")
@@ -420,6 +435,31 @@ class AgentEnvironment:
             str(agent_output_dir): {
                 "bind": "/app/agent_output",
                 "mode": "rw",
+            }
+        }
+
+    def _setup_root_ca(self) -> Optional[dict]:
+        """Mount the project's self-signed root CA into the container.
+
+        Returns volume dict mapping rootCA.pem into the system CA directory,
+        or None if the CA file doesn't exist.
+        """
+        project_root = self.app_dir.parent.parent
+        root_ca = project_root / "tls" / "rootCA.pem"
+        if not root_ca.exists():
+            logger.info("No tls/rootCA.pem found, skipping CA mount")
+            return None
+
+        ca_bundle = "/etc/ssl/certs/ca-certificates.crt"
+        self.env["REQUESTS_CA_BUNDLE"] = ca_bundle
+        self.env["SSL_CERT_FILE"] = ca_bundle
+        self.env["NODE_EXTRA_CA_CERTS"] = "/usr/local/share/ca-certificates/rootCA.crt"
+
+        logger.info("Mounting rootCA.pem into container trust store")
+        return {
+            str(root_ca): {
+                "bind": "/usr/local/share/ca-certificates/rootCA.crt",
+                "mode": "ro",
             }
         }
 
