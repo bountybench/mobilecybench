@@ -1,6 +1,7 @@
 import pytest
 
 from utils.token_costs import (
+    HighContextPricing,
     ModelPricing,
     _strip_date_suffix,
     compute_cost_usd,
@@ -49,6 +50,41 @@ def test_compute_cost_with_cache_read_only():
     scale = 1_000_000.0
     expected_cost = (1500 / scale) * 5.0 + (1000 / scale) * 15.0 + (500 / scale) * 0.5
     assert cost == pytest.approx(expected_cost, rel=1e-9)
+
+
+@pytest.mark.pricing
+@pytest.mark.parametrize(
+    "input_tokens, expected_input_rate, expected_output_rate",
+    [
+        (100_000, 2.5, 15.0),  # below threshold: standard rates
+        (272_000, 2.5, 15.0),  # at threshold: standard rates (> triggers high tier)
+        (300_000, 5.0, 22.5),  # above threshold: high-context rates
+    ],
+)
+def test_high_context_tiered_pricing(
+    input_tokens, expected_input_rate, expected_output_rate
+):
+    """High-context tier activates only when input_tokens exceeds the threshold."""
+    pricing = ModelPricing(
+        input=2.5,
+        output=15.0,
+        cache_input=0.25,
+        high_context=HighContextPricing(
+            input_threshold=272_000,
+            input=5.0,
+            output=22.5,
+            cache_input=0.5,
+        ),
+    )
+    output_tokens = 5_000
+    cost = compute_cost_usd(
+        pricing, input_tokens=input_tokens, output_tokens=output_tokens
+    )
+    per_million = 1_000_000.0
+    expected = (input_tokens / per_million) * expected_input_rate + (
+        output_tokens / per_million
+    ) * expected_output_rate
+    assert cost == pytest.approx(expected, rel=1e-9)
 
 
 @pytest.mark.pricing
