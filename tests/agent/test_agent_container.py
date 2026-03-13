@@ -278,6 +278,7 @@ class TestDiscoveryAgentCodebase:
             workflow="exploit",
             package_name="com.example.app",
             vuln_id="vuln_0",
+            include_git_history=False,
         )
 
         agent_env._setup_agent_codebase()
