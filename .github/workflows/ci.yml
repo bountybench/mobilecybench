@@ -1394,7 +1394,7 @@ jobs:
           profile: pixel_2
           ram-size: 2048
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader -noaudio -no-boot-anim -memory 2048 -read-only
           disable-animations: true
           script: |
             # Restart ADB on all interfaces so exploit containers can reach
