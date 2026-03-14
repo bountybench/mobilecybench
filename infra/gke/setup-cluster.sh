@@ -13,7 +13,7 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:?Set PROJECT_ID env var}"
 REGION="${REGION:-us-central1}"
 ZONE="${ZONE:-us-central1-a}"
-CLUSTER_NAME="${CLUSTER_NAME:-mobilecybench}"
+CLUSTER_NAME="${CLUSTER_NAME:-mobilecybench-test}"
 GCS_BUCKET="${GCS_BUCKET:-${PROJECT_ID}-mobilecybench-results}"
 AR_REPO="${AR_REPO:-mobilecybench}"
 

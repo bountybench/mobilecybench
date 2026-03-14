@@ -230,6 +230,11 @@ kubectl logs -f "$POD_NAME" -n "$NAMESPACE" || true
 
 echo ""
 
+# ─── Wait for job to finish ───────────────────────────────────────────────
+echo "--- Waiting for job to complete (timeout: 20m) ---"
+kubectl wait --for=condition=complete --timeout=1200s "job/$JOB_NAME" -n "$NAMESPACE" 2>/dev/null || \
+    kubectl wait --for=condition=failed --timeout=60s "job/$JOB_NAME" -n "$NAMESPACE" 2>/dev/null || true
+
 # ─── Check result ──────────────────────────────────────────────────────────
 echo "--- Job result ---"
 JOB_STATUS=$(kubectl get job "$JOB_NAME" -n "$NAMESPACE" \
