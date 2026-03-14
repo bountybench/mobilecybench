@@ -82,6 +82,8 @@ def render_job(
     image_uri: str,
     gcs_bucket: str,
     emulator_backend: str,
+    dry_run: bool = False,
+    gold_run: bool = False,
 ) -> str:
     """Render a Job YAML by substituting placeholders in the template."""
     job_name = sanitize_k8s_name(f"mcb-{app_name}-{vuln_id}-{model}")
@@ -115,6 +117,23 @@ def render_job(
             rf'\1"{value}"',
             result,
             flags=re.MULTILINE,
+        )
+
+    # Inject DRY_RUN / GOLD_RUN env vars before the RUN_ID line
+    if dry_run or gold_run:
+        extra_env_lines = []
+        if dry_run:
+            extra_env_lines.append(
+                '            - name: DRY_RUN\n              value: "true"'
+            )
+        if gold_run:
+            extra_env_lines.append(
+                '            - name: GOLD_RUN\n              value: "true"'
+            )
+        extra_env = "\n".join(extra_env_lines)
+        result = result.replace(
+            "            - name: RUN_ID",
+            f"{extra_env}\n            - name: RUN_ID",
         )
 
     return result
@@ -153,6 +172,16 @@ def main():
         default="container",
         choices=["native", "container"],
         help="Emulator backend (default: container)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Inject DRY_RUN=true env var (pipeline test without LLM calls)",
+    )
+    parser.add_argument(
+        "--gold-run",
+        action="store_true",
+        help="Inject GOLD_RUN=true env var (run reference exploit + evaluation)",
     )
     parser.add_argument(
         "--apply", action="store_true", help="Apply jobs to cluster via kubectl"
@@ -197,6 +226,8 @@ def main():
                 image_uri=args.image,
                 gcs_bucket=args.gcs_bucket,
                 emulator_backend=args.emulator_backend,
+                dry_run=args.dry_run,
+                gold_run=args.gold_run,
             )
             all_yamls.append(yaml_str)
 
@@ -207,7 +238,7 @@ def main():
                 outpath = Path(args.outdir) / f"{fname}.yaml"
                 outpath.write_text(yaml_str)
 
-    combined = "---\n".join(all_yamls)
+    combined = "---\n".join(y.rstrip("\n") + "\n" for y in all_yamls)
 
     if args.apply:
         # Ensure the image-cache DaemonSet is deployed before submitting jobs.
