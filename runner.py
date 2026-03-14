@@ -23,9 +23,14 @@ from utils.run_artifacts import (
     normalize_agent_result,
     utc_now_iso,
     write_run_summary,
-)
-from utils.time_tracker import time_tracker
-from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow
+)  # noqa: E402
+from utils.time_tracker import time_tracker  # noqa: E402
+from workflows import (
+    DetectionWorkflow,
+    DiscoveryWorkflow,
+    ExploitWorkflow,
+    Workflow,
+)  # noqa: E402
 
 
 def run_interactive_shell(app_name: str) -> dict:
@@ -189,30 +194,11 @@ def create_workflow(
     Returns:
         Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
     """
-    app_dir = project_root / "apps" / app_name
-
-    # Common parameters for both workflows
-    common_params = {
-        "app_name": app_name,
-        "app_dir": app_dir,
-        "model": config.model,
-        "max_iterations": config.max_iterations,
-        "max_model_response_tokens": config.max_model_response_tokens,
-        "screenshot_mode": config.screenshot_mode,
-        "build_type": config.build_type,
-        "agent_image": config.agent_image,
-        "project_root": project_root,
-        "dry_run": config.dry_run,
-        "reasoning_effort": config.reasoning_effort,
-        "docker_mode": config.docker_mode,
-        "emulator_mode": config.emulator_mode,
-        "script_timeout": config.script_timeout,
-    }
-
     if config.workflow == "exploit":
-        return ExploitWorkflow(**common_params, vuln_id=config.synthetic_vuln_id)
-    else:
-        return DiscoveryWorkflow(**common_params)
+        return ExploitWorkflow(config, app_name, project_root)
+    if config.workflow == "detection":
+        return DetectionWorkflow(config, app_name, project_root)
+    return DiscoveryWorkflow(config, app_name, project_root)
 
 
 def _log_experiment_config(
@@ -263,9 +249,7 @@ def run(
         Exit code (0 for success, non-zero for failure)
     """
     workflow = create_workflow(config, app_name, project_root)
-    workflow_type = (
-        "ExploitWorkflow" if config.workflow == "exploit" else "DiscoveryWorkflow"
-    )
+    workflow_type = type(workflow).__name__
     logger.info(f"Created {workflow_type} for app: {app_name}")
 
     # Start experiment timing with the shared session ID
@@ -410,20 +394,17 @@ def main():
 
     # Load config
     config_path = Path(args.config)
-    if not config_path.exists():
-        logger.error(f"Config file not found: {config_path}")
+    try:
+        config = RunnerConfig.from_file(config_path)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(str(e))
         return 1
-
-    with open(config_path) as f:
-        config_data = json.load(f)
-
-    config = RunnerConfig(**config_data)
     project_root = Path(__file__).parent
 
     # Initialize LoggerManager with config before any logging occurs
     from utils.logger import get_logger_manager
 
-    get_logger_manager(config=config_data)
+    get_logger_manager(config=config.model_dump())
 
     exit_code = run(config, args.app_name, project_root, config_path=config_path)
 

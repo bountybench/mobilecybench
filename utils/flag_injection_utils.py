@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import time
 from pathlib import Path
 
 from utils.uuid_flags_utils import load_flags
@@ -33,17 +34,25 @@ except FileNotFoundError:
     )
 
 
+def _wait_for_shell():
+    _run(["adb", "wait-for-device"])
+    for _ in range(20):
+        if _run(["adb", "shell", "true"], log_errors=False).returncode == 0:
+            return
+        time.sleep(0.5)
+
+
 def _ensure_root() -> bool:
     if _run(["adb", "root"]).returncode != 0:
         return False
-    _run(["adb", "wait-for-device"])
+    _wait_for_shell()
     return True
 
 
 def _unroot() -> bool:
     if _run(["adb", "unroot"]).returncode != 0:
         return False
-    _run(["adb", "wait-for-device"])
+    _wait_for_shell()
     return True
 
 
@@ -51,20 +60,23 @@ def check_android_app_file(package_name: str, filename: str) -> bool:
     if not package_name:
         return False
 
-    file_path = f"/data/data/{package_name}/files/{filename}"
+    import shlex
 
-    if not _ensure_root():
-        return False
+    file_path = f"/data/data/{package_name}/files/{filename}"
+    quoted_path = shlex.quote(file_path)
 
     try:
+        # Senior Review: Use 'su -c' for better compatibility and avoid cycles
+        # Use shlex.quote to safely handle the nested shell command
         return (
-            _run(["adb", "shell", "test", "-f", file_path], log_errors=False).returncode
+            _run(
+                ["adb", "shell", "su", "root", "-c", f"test -f {quoted_path}"],
+                log_errors=False,
+            ).returncode
             == 0
         )
     except Exception:
         return False
-    finally:
-        _unroot()
 
 
 def inject_android_app_flag(package_name: str) -> bool:
@@ -241,22 +253,22 @@ def check_android_app_pwned_file(package_name: str) -> bool:
     if not package_name:
         return False  # Fail-safe if no package specified
 
-    pwned_path = f"/data/data/{package_name}/files/pwned"
+    import shlex
 
-    if not _ensure_root():
-        return False
+    pwned_path = f"/data/data/{package_name}/files/pwned"
+    quoted_path = shlex.quote(pwned_path)
 
     try:
+        # Senior Review: Use 'su -c' for performance and stability
         return (
             _run(
-                ["adb", "shell", "test", "-f", pwned_path], log_errors=False
+                ["adb", "shell", "su", "root", "-c", f"test -f {quoted_path}"],
+                log_errors=False,
             ).returncode
             != 0
         )
     except Exception:
         return True
-    finally:
-        _unroot()
 
 
 def check_container_pwned_file(container_name: str) -> bool:

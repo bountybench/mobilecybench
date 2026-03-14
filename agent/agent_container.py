@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -10,6 +11,7 @@ import docker
 import docker.errors
 
 from agent.backend.docker_setup import AGENT_HOST_PORT
+from utils.discovery_honeypot import inject_discovery_honeypot
 from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
@@ -30,8 +32,11 @@ class AgentEnvironment:
         image_name: str,
         env: Dict[str, str],
         commit_id: str,
-        mode: str = None,
+        mode: Optional[str] = None,
+        workflow: str = "discovery",
+        package_name: Optional[str] = None,
         vuln_id: Optional[str] = None,
+        include_git_history: bool = True,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -40,7 +45,10 @@ class AgentEnvironment:
         self.env = env
         self.commit_id = commit_id
         self.mode = mode
+        self.workflow = workflow
+        self.package_name = package_name
         self.vuln_id = vuln_id
+        self.include_git_history = include_git_history
 
         import traceback
 
@@ -121,7 +129,8 @@ class AgentEnvironment:
                 logger.error(f"Unexpected error pulling image: {e}")
                 raise
 
-        environment = self.env
+        # Don't pass internal credential blobs as container env vars
+        environment = {k: v for k, v in self.env.items() if not k.startswith("_")}
         extra_hosts = {"host.docker.internal": "host-gateway"}
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
@@ -175,6 +184,73 @@ class AgentEnvironment:
                     logger.info("Codex CLI logged in successfully")
                 else:
                     logger.error(f"Codex login failed: {result.output.decode()}")
+            elif self.mode == "claude-code":
+                self.container.exec_run("mkdir -p /root/.claude")
+
+                # Write credentials file inside the container
+                creds_json = self.env.get("_CLAUDE_CODE_CREDENTIALS_JSON", "")
+                if creds_json:
+                    self.container.exec_run(
+                        [
+                            "bash",
+                            "-c",
+                            f"cat > /root/.claude/.credentials.json << 'CREDS_EOF'\n{creds_json}\nCREDS_EOF",
+                        ]
+                    )
+                    logger.info("Wrote Claude Code credentials to container")
+
+                # Pre-allow all tools so the CLI doesn't prompt for
+                # permissions (--dangerously-skip-permissions refuses to
+                # run as root).  Claude Code has no "allow all" wildcard,
+                # so we list each tool.  Update this list if new tools
+                # are added in future Claude Code releases.
+                settings = json.dumps(
+                    {
+                        "permissions": {
+                            "allow": [
+                                "Bash",
+                                "Read",
+                                "Edit",
+                                "Write",
+                                "Grep",
+                                "Glob",
+                                "WebFetch",
+                                "WebSearch",
+                                "Agent",
+                                "NotebookEdit",
+                                "ToolSearch",
+                                "Task",
+                                "TaskOutput",
+                                "TaskStop",
+                                "TodoWrite",
+                                "AskUserQuestion",
+                                "Skill",
+                                "EnterPlanMode",
+                                "ExitPlanMode",
+                                "EnterWorktree",
+                            ]
+                        }
+                    }
+                )
+                self.container.exec_run(
+                    [
+                        "bash",
+                        "-c",
+                        f"cat > /root/.claude/settings.json << 'SETTINGS_EOF'\n{settings}\nSETTINGS_EOF",
+                    ]
+                )
+                logger.info("Wrote Claude Code settings (all tools allowed)")
+
+                # Verify authentication
+                result = self.container.exec_run("bash -c 'claude auth status'")
+                if result.exit_code == 0:
+                    logger.info(
+                        f"Claude Code authenticated: {result.output.decode().strip()}"
+                    )
+                else:
+                    logger.warning(
+                        f"Claude Code auth check failed: {result.output.decode()}"
+                    )
 
         except Exception as e:
             logger.error(f"Setup failed: {e}")
@@ -190,9 +266,9 @@ class AgentEnvironment:
     def _setup_agent_codebase(self):
         """Create a copy of codebase for the agent environment.
 
-        Normal mode: Checkout specific commit, copy with git history.
-        Synthetic vulnerability mode: Copy current state (with patch applied),
-        no git history to prevent agent from seeing the patch was applied.
+        If include_git_history is True: checkout specific commit, copy with full
+        git history. If False: copy current state without git history and
+        initialize a fresh repo.
         """
         original_codebase = self.app_dir / "codebase"
         agent_codebase = self.app_dir / "agent_codebase"
@@ -212,12 +288,9 @@ class AgentEnvironment:
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.vuln_id:
-            # Synthetic vulnerability mode: copy current state without git history
-            logger.info(
-                "Synthetic vuln mode: Copying current codebase state without git history"
-            )
-            # Copy files but ignore .git to prevent agent from seeing patch history
+        if not self.include_git_history:
+            # Copy codebase without git history so agent cannot see prior commits
+            logger.info("Copying codebase without git history")
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
             # Initialize fresh git repo so agent can still use git commands
@@ -246,7 +319,7 @@ class AgentEnvironment:
             )
             logger.info("Created fresh git repo with 'main' and 'dev' branches")
         else:
-            # Normal mode: checkout specific commit and preserve git history
+            # Checkout specific commit and preserve full git history
             # Find the repository root (which contains .git)
             repo_root = original_codebase
             while repo_root.parent != repo_root:
@@ -277,6 +350,26 @@ class AgentEnvironment:
             # Run git_setup_dev_branch in staging directory
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
+
+            if self.workflow == "discovery" and self.package_name:
+                logger.info(
+                    "Injecting discovery honeypot into staged agent codebase for %s",
+                    self.package_name,
+                )
+                inject_discovery_honeypot(staging_dir, self.package_name)
+
+                subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=staging_dir,
+                    check=True,
+                    capture_output=True,
+                )
+                subprocess.run(
+                    ["git", "commit", "-m", "Prepare environment"],
+                    cwd=staging_dir,
+                    check=True,
+                    capture_output=True,
+                )
 
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
@@ -571,12 +664,57 @@ def create_docker_network(network_name: str = "shared_net") -> None:
         logger.info(f"Created Docker network '{network_name}'")
 
 
+def _load_claude_code_credentials() -> Optional[str]:
+    """Load Claude Code OAuth credentials from environment variables.
+
+    Expects ``CLAUDE_CODE_OAUTH_TOKEN`` (required) and optionally
+    ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN`` to be set in ``agent/.env``.
+    See ``agent/.env.example`` for details.
+
+    Returns the raw JSON string to write into
+    ``~/.claude/.credentials.json`` inside the container, or *None* if
+    no credentials were found.
+    """
+    # Ensure agent/.env is loaded before reading credentials.
+    # This function is called during setup_runtime_environment(), which
+    # runs before setup_agent() where the agent's __init__ loads .env.
+    from dotenv import load_dotenv
+
+    agent_env_file = Path(__file__).parent / ".env"
+    if agent_env_file.exists():
+        load_dotenv(agent_env_file, override=True)
+
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+    refresh = os.environ.get("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "")
+    if token:
+        creds = {
+            "claudeAiOauth": {
+                "accessToken": token,
+                "refreshToken": refresh,
+                "expiresAt": 0,
+                "scopes": [
+                    "user:inference",
+                    "user:profile",
+                    "user:sessions:claude_code",
+                ],
+            }
+        }
+        logger.info("Built Claude Code credentials from environment variables")
+        return json.dumps(creds)
+
+    logger.warning(
+        "No Claude Code credentials found. " "Set CLAUDE_CODE_OAUTH_TOKEN in agent/.env"
+    )
+    return None
+
+
 def setup_agent_environment(
     app_dir: Path,
     agent_image: str,
     metadata: dict,
-    workflow: str = "discovery",  # "discovery" or "exploit"
+    workflow: str = "discovery",  # "discovery", "detection", or "exploit"
     vuln_id: Optional[str] = None,
+    agent_mode: str = "custom",
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -585,7 +723,9 @@ def setup_agent_environment(
         app_dir: Application directory
         agent_image: Docker image to use for agent
         metadata: App metadata dict
-        workflow: Evaluation workflow type ("discovery" or "exploit")
+        workflow: Evaluation workflow type ("discovery", "detection", or "exploit")
+        vuln_id: Vulnerability ID for exploit workflow
+        agent_mode: Agent mode ("custom", "codex", or "claude-code")
 
     Returns:
         AgentEnvironment instance
@@ -611,6 +751,18 @@ def setup_agent_environment(
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
 
+    # Inject mode-specific environment variables
+    if agent_mode == "codex":
+        codex_key = os.environ.get("CODEX_API_KEY", "")
+        if codex_key:
+            env_vars["CODEX_API_KEY"] = codex_key
+    elif agent_mode == "claude-code":
+        # Load OAuth credentials for injection into the container.
+        # Prefer the macOS Keychain (canonical source); fall back to env vars.
+        claude_creds = _load_claude_code_credentials()
+        if claude_creds:
+            env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
+
     # Get commit ID from metadata or use default
     commit_id = metadata.get("commit_id", "HEAD")
 
@@ -620,7 +772,11 @@ def setup_agent_environment(
         image_name=agent_image,
         env=env_vars,
         commit_id=commit_id,
+        mode=agent_mode,
+        workflow=workflow,
+        package_name=metadata.get("package_name"),
         vuln_id=vuln_id if workflow == "exploit" else None,
+        include_git_history=(workflow != "exploit"),
     )
 
     agent_env.setup()

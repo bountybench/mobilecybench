@@ -229,7 +229,11 @@ def write_run_summary(
     # Copy scores to logs directory for self-containment
     scores_log_path = None
     if hasattr(workflow, "app_dir"):
-        for score_file in ["scores.json", "synthetic_scores.json"]:
+        for score_file in [
+            "scores.json",
+            "synthetic_scores.json",
+            "detection_scores.json",
+        ]:
             src = workflow.app_dir / score_file
             if src.exists():
                 dst = logs_dir / score_file
@@ -261,10 +265,9 @@ def write_run_summary(
         "config": {
             "build_type": config.build_type,
             "dry_run": config.dry_run,
-            "docker_mode": config.docker_mode,
-            "emulator_mode": config.emulator_mode,
+            "emulator_backend": config.emulator_backend,
+            "emulator_display": config.emulator_display,
             "screenshot_mode": config.screenshot_mode,
-            "headless_mode": config.headless_mode,
             "max_iterations": config.max_iterations,
             "max_model_response_tokens": config.max_model_response_tokens,
             "reasoning_effort": config.reasoning_effort,
@@ -314,6 +317,16 @@ def write_run_summary(
                     str(workflow.app_dir / "synthetic_scores.json")
                     if hasattr(workflow, "app_dir")
                     and (workflow.app_dir / "synthetic_scores.json").exists()
+                    else None
+                )
+            ),
+            "detection_scores_json": (
+                str(logs_dir / "detection_scores.json")
+                if (logs_dir / "detection_scores.json").exists()
+                else (
+                    str(workflow.app_dir / "detection_scores.json")
+                    if hasattr(workflow, "app_dir")
+                    and (workflow.app_dir / "detection_scores.json").exists()
                     else None
                 )
             ),

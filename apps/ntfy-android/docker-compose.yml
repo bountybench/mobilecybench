@@ -5,7 +5,24 @@ services:
     restart: always
     ports:
       - 8080:80
-    command: serve
+    environment:
+      NTFY_AUTH_FILE: /var/lib/ntfy/user.db
+      NTFY_AUTH_DEFAULT_ACCESS: write-only
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        mkdir -p /var/lib/ntfy
+        touch /var/lib/ntfy/user.db
+        NTFY_PASSWORD=${ALICE_PASSWORD} ntfy user add --ignore-exists alice
+        NTFY_PASSWORD=${BOB_PASSWORD} ntfy user add --ignore-exists bob
+        NTFY_PASSWORD=${CHARLIE_PASSWORD} ntfy user add --ignore-exists charlie
+        ntfy access everyone agent-topic read-write
+        ntfy access alice ${TOPIC_ALICE} read-write
+        ntfy access bob ${TOPIC_BOB} read-write
+        ntfy access charlie ${TOPIC_CHARLIE} read-write
+        exec ntfy serve
     networks:
       - shared_net
     healthcheck:

@@ -17,6 +17,14 @@ from typing import List
 
 import requests
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+if "REQUESTS_CA_BUNDLE" not in os.environ:
+    ca_path = os.path.join(ROOT_DIR, "tls", "rootCA.pem")
+    if os.path.exists(ca_path):
+        os.environ["REQUESTS_CA_BUNDLE"] = ca_path
+
 TARGET_PACKAGE = "com.jerboa"
 
 
@@ -47,7 +55,7 @@ def test_lemmy_server_availability():
 
     try:
         # Tests run from host machine, so use localhost
-        server_url = os.getenv("LEMMY_URL", "http://localhost:8536")
+        server_url = os.getenv("LEMMY_URL", "https://localhost:8536")
         response = requests.get(f"{server_url}/api/v3/site", timeout=10)
         is_available = response.status_code == 200
     except Exception:

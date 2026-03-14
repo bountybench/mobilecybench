@@ -6,8 +6,14 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "nextcloud-talk" "$@")
 cd "$SCRIPT_DIR"
 
+TRUSTED_DOMAIN="$(python3 - <<'PY'
+from common_setup import get_trusted_domain
+print(get_trusted_domain())
+PY
+)"
+
 docker compose up --build -d
-sleep 20
+wait_healthy "nextcloud-talk-tls-proxy" 180 || fatal "nextcloud-talk-tls-proxy did not become healthy"
 
 python3 server_setup.py
 
@@ -23,8 +29,8 @@ if docker exec nextcloud-server test -f /var/www/html/config/config.php; then
         } elseif (!is_array($CONFIG["trusted_domains"])) {
             $CONFIG["trusted_domains"] = array($CONFIG["trusted_domains"]);
         }
-        if (!in_array("10.0.2.2:8080", $CONFIG["trusted_domains"])) {
-            $CONFIG["trusted_domains"][] = "10.0.2.2:8080";
+        if (!in_array("'"${TRUSTED_DOMAIN}"'", $CONFIG["trusted_domains"])) {
+            $CONFIG["trusted_domains"][] = "'"${TRUSTED_DOMAIN}"'";
         }
         $config_content = "<?php\n\$CONFIG = " . var_export($CONFIG, true) . ";\n";
         file_put_contents("/var/www/html/config/config.php", $config_content);

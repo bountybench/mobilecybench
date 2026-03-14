@@ -64,7 +64,7 @@ def render_job(
     model: str,
     image_uri: str,
     gcs_bucket: str,
-    emulator_mode: str,
+    emulator_backend: str,
 ) -> str:
     """Render a K8s Job YAML for a single experiment."""
     job_name = sanitize_k8s_name(f"mcb-{app_name}-{vuln_id}-{model}")
@@ -108,8 +108,8 @@ spec:
               value: "{model}"
             - name: VULN_ID
               value: "{vuln_id}"
-            - name: EMULATOR_MODE
-              value: "{emulator_mode}"
+            - name: EMULATOR_BACKEND
+              value: "{emulator_backend}"
             - name: GCS_BUCKET
               value: "{gcs_bucket}"
             - name: RUN_ID
@@ -159,10 +159,10 @@ def main():
         help="GCS bucket for result uploads",
     )
     parser.add_argument(
-        "--emulator-mode",
+        "--emulator-backend",
         default="container",
         choices=["native", "container"],
-        help="Emulator mode (default: container)",
+        help="Emulator backend (default: container)",
     )
     parser.add_argument(
         "--apply", action="store_true", help="Apply jobs to cluster via kubectl"
@@ -198,7 +198,7 @@ def main():
                 model=model,
                 image_uri=args.image,
                 gcs_bucket=args.gcs_bucket,
-                emulator_mode=args.emulator_mode,
+                emulator_backend=args.emulator_backend,
             )
             all_yamls.append(yaml_str)
 

@@ -23,6 +23,18 @@ fi
 
 docker network create shared_net || true
 
+# ─── Pre-pull emulator image ─────────────────────────────────────────────
+# The Python Docker SDK has a 60s default timeout on containers.run(), which
+# is not enough for pulling the ~10 GB emulator image. Pre-pulling here
+# avoids that timeout.
+EMULATOR_IMAGE="${EMULATOR_IMAGE:-cybench/mobilecybench-emulator:latest}"
+if [ "${EMULATOR_BACKEND:-container}" = "container" ]; then
+    echo "Pre-pulling emulator image: $EMULATOR_IMAGE"
+    docker pull "$EMULATOR_IMAGE"
+    echo "Emulator image ready"
+fi
+
+
 # Install package if needed (in case image was built without -e install)
 if [ -f /mobilecybench/pyproject.toml ]; then
     cd /mobilecybench && pip install --no-cache-dir -e . >/dev/null 2>&1 || true
@@ -35,18 +47,18 @@ adb -a start-server
 CONFIG_SRC="/mobilecybench/runner_config.json"
 CONFIG_DST="/tmp/runner_config.json"
 
-EMULATOR_MODE="${EMULATOR_MODE:-container}"
+EMULATOR_BACKEND="${EMULATOR_BACKEND:-container}"
 DRY_RUN="${DRY_RUN:-false}"
 GOLD_RUN="${GOLD_RUN:-false}"
 
 if [ -f "$CONFIG_SRC" ]; then
     jq --arg model "$MODEL" \
        --arg vuln "$VULN_ID" \
-       --arg em "$EMULATOR_MODE" \
+       --arg em "$EMULATOR_BACKEND" \
        --argjson dryrun "$DRY_RUN" \
        --argjson goldrun "$GOLD_RUN" \
-       '.docker_mode = true
-        | .emulator_mode = $em
+       '.emulator_display = "headless"
+        | .emulator_backend = $em
         | .dry_run = $dryrun
         | .gold_run = $goldrun
         | if $model != "" then .model = $model else . end

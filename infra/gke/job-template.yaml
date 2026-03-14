@@ -38,8 +38,8 @@ spec:
               value: "MODEL"
             - name: VULN_ID
               value: "VULN_ID"
-            - name: EMULATOR_MODE
-              value: "EMULATOR_MODE"
+            - name: EMULATOR_BACKEND
+              value: "EMULATOR_BACKEND"
             - name: GCS_BUCKET
               value: "GCS_BUCKET"
             - name: RUN_ID
@@ -52,8 +52,12 @@ spec:
           volumeMounts:
             - name: dev-kvm
               mountPath: /dev/kvm
+            - name: docker-storage
+              mountPath: /var/lib/docker
       volumes:
         - name: dev-kvm
           hostPath:
             path: /dev/kvm
             type: CharDevice
+        - name: docker-storage
+          emptyDir: {}

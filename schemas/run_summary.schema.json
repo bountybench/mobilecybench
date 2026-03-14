@@ -33,9 +33,9 @@
       "required": ["app_name", "workflow", "agent_type", "model"],
       "properties": {
         "app_name": { "type": "string", "minLength": 1 },
-        "workflow": { "type": "string", "enum": ["discovery", "exploit"] },
+        "workflow": { "type": "string", "enum": ["discovery", "exploit", "detection"] },
         "vuln_id": { "type": ["string", "null"] },
-        "agent_type": { "type": "string", "enum": ["custom", "codex"] },
+        "agent_type": { "type": "string", "enum": ["custom", "codex", "claude-code"] },
         "model": { "type": "string", "minLength": 1 }
       }
     },
@@ -44,10 +44,9 @@
       "required": [
         "build_type",
         "dry_run",
-        "docker_mode",
-        "emulator_mode",
+        "emulator_backend",
+        "emulator_display",
         "screenshot_mode",
-        "headless_mode",
         "max_iterations",
         "max_model_response_tokens",
         "full_snapshot"
@@ -55,10 +54,9 @@
       "properties": {
         "build_type": { "type": "string" },
         "dry_run": { "type": "boolean" },
-        "docker_mode": { "type": "boolean" },
-        "emulator_mode": { "type": "string" },
+        "emulator_backend": { "type": "string", "enum": ["native", "container"] },
+        "emulator_display": { "type": "string", "enum": ["headed", "headless"] },
         "screenshot_mode": { "type": "boolean" },
-        "headless_mode": { "type": "boolean" },
         "max_iterations": { "type": "integer", "minimum": 1 },
         "max_model_response_tokens": { "type": "integer", "minimum": 1 },
         "reasoning_effort": { "type": ["string", "null"] },
@@ -122,6 +120,7 @@
         "screenshots_dir": { "type": ["string", "null"] },
         "scores_json": { "type": ["string", "null"] },
         "synthetic_scores_json": { "type": ["string", "null"] },
+        "detection_scores_json": { "type": ["string", "null"] },
         "logs_dir": { "type": "string", "minLength": 1 }
       }
     },

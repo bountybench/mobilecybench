@@ -1,12 +1,34 @@
 services:
+  tls_proxy:
+    image: nginx:alpine
+    container_name: home-assistant_tls_proxy
+    restart: always
+    ports:
+      - 8123:443
+    volumes:
+      - ../../tls/server.crt:/etc/nginx/certs/server.crt:ro
+      - ../../tls/server.key:/etc/nginx/certs/server.key:ro
+      - ./nginx-tls-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - UPSTREAM=home-assistant-server:8123
+      - NGINX_ENVSUBST_FILTER=UPSTREAM
+    depends_on:
+      home-assistant-server:
+        condition: service_healthy
+    networks:
+      - shared_net
+      - private_net
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   home-assistant-server:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: home-assistant-server
     restart: unless-stopped
-    ports:
-      - "8123:8123"
     networks:
-      - shared_net
       - private_net
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 8123 || exit 1"]

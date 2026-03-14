@@ -2,14 +2,16 @@
 Emulator Lifecycle Manager
 """
 
+import logging
 import os
 import subprocess
+import tempfile
 import time
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from utils.logger import logger
+logger = logging.getLogger("MobileCyBench.emulator_manager")
 
 EMULATOR_CONTAINER_NAME = "emulator-container"
 
@@ -34,15 +36,15 @@ class EmulatorManager:
 
     def __init__(
         self,
-        docker_mode: bool,
         project_root: Path,
         sdk_version: Optional[str] = None,
         app_name: Optional[str] = None,
         rootable: bool = True,
-        emulator_mode: str = "native",
+        emulator_backend: str = "native",
+        emulator_display: str = "headed",
     ):
-        self.docker_mode = docker_mode
-        self.emulator_mode = emulator_mode
+        self.emulator_backend = emulator_backend
+        self.emulator_display = emulator_display
         self.project_root = project_root
         self.sdk_version = sdk_version
         self.app_name = app_name
@@ -58,8 +60,8 @@ class EmulatorManager:
 
         emulator_type = "rootable" if rootable else "non-rootable"
         logger.info(
-            f"EmulatorManager initialized in {'docker' if docker_mode else 'host'} mode, "
-            f"emulator_mode={emulator_mode} ({emulator_type})"
+            f"EmulatorManager initialized: backend={emulator_backend}, "
+            f"display={emulator_display} ({emulator_type})"
         )
 
     def _build_emulator_config(self) -> dict:
@@ -76,7 +78,7 @@ class EmulatorManager:
             f"MobileCybenchEmulatorAPI{self.sdk_version}_{system_image_suffix}"
         )
 
-        if self.docker_mode:
+        if self.emulator_display == "headless":
             emulator_args = [
                 str(emulator_bin),
                 "-avd",
@@ -107,7 +109,7 @@ class EmulatorManager:
             ]
 
         return {
-            "mode": f"{'docker' if self.docker_mode else 'host'}",
+            "emulator_display": self.emulator_display,
             "emulator_name": emulator_name,
             "emulator_args": emulator_args,
             "android_home": android_home,
@@ -141,8 +143,6 @@ class EmulatorManager:
                 "No AVDs found. Please create an AVD first using Android SDK tools."
             )
         if emulator_name not in available_avds:
-            logger.error(f"AVD '{emulator_name}' not found")
-            logger.error(f"Available AVDs: {available_avds}")
             raise RuntimeError(
                 f"AVD '{emulator_name}' not found. Available AVDs: {available_avds}"
             )
@@ -152,7 +152,7 @@ class EmulatorManager:
         """
         Start the Android emulator in background (non-blocking).
 
-        Dispatches to container or native mode based on self.emulator_mode.
+        Dispatches to container or native mode based on self.emulator_backend.
         Use wait_until_ready() to block until boot is complete.
 
         Raises:
@@ -164,7 +164,7 @@ class EmulatorManager:
                 f"Cannot start emulator in state {self.state.value}. Must be NOT_STARTED."
             )
 
-        if self.emulator_mode == "container":
+        if self.emulator_backend == "container":
             self._start_container_emulator()
         else:
             self._start_native_emulator()
@@ -253,7 +253,9 @@ class EmulatorManager:
         self._verify_avd_exists()
 
         logger.info("=" * 60)
-        logger.info(f"STARTING EMULATOR ({self.emulator_config['mode']} mode)")
+        logger.info(
+            f"STARTING EMULATOR (display={self.emulator_config['emulator_display']})"
+        )
         logger.info("=" * 60)
 
         self.state = EmulatorState.STARTING
@@ -280,10 +282,8 @@ class EmulatorManager:
                 f"Existing non-emulator devices before start: {self._devices_before_start}"
             )
 
-        if self.emulator_config["mode"] == "host" and self.app_name:
-            logger.info(
-                f"Installing android dependencies for {self.app_name} in host mode..."
-            )
+        if self.emulator_display == "headed" and self.app_name:
+            logger.info(f"Installing android dependencies for {self.app_name}...")
             try:
                 subprocess.run(
                     ["bash", "./setup.sh", self.app_name],
@@ -320,10 +320,12 @@ class EmulatorManager:
         env = os.environ.copy()
         env["ANDROID_HOME"] = self.emulator_config["android_home"]
         try:
+            # Use temp file instead of PIPE to avoid deadlock if stderr buffer fills.
+            self._stderr_file = tempfile.TemporaryFile()
             self.process = subprocess.Popen(
                 emulator_args,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=self._stderr_file,
                 env=env,
             )
             logger.info(f"Emulator process started with PID: {self.process.pid}")
@@ -376,16 +378,23 @@ class EmulatorManager:
                 last_dot_time = time.time()
 
             # Check if emulator process/container is still alive
-            if self.emulator_mode == "container" and self.emulator_container:
+            if self.emulator_backend == "container" and self.emulator_container:
                 self.emulator_container.reload()
                 if self.emulator_container.status not in ("running", "created"):
                     logger.error("Emulator container stopped unexpectedly")
                     self.state = EmulatorState.STOPPED
                     raise RuntimeError("Emulator container died during boot")
             elif self.process and self.process.poll() is not None:
+                stderr = ""
+                if hasattr(self, "_stderr_file") and self._stderr_file:
+                    self._stderr_file.seek(0)
+                    stderr = self._stderr_file.read().decode(errors="replace")
                 logger.error("Emulator process terminated unexpectedly")
                 self.state = EmulatorState.STOPPED
-                raise RuntimeError("Emulator process died during boot")
+                msg = "Emulator process died during boot"
+                if stderr.strip():
+                    msg += f"\n{stderr.strip()}"
+                raise RuntimeError(msg)
 
             try:
                 current_devices = self._get_connected_devices()
@@ -513,7 +522,7 @@ class EmulatorManager:
         """
         Check if emulator process/container is still running.
         """
-        if self.emulator_mode == "container":
+        if self.emulator_backend == "container":
             if self.emulator_container is None:
                 return False
             try:
@@ -541,7 +550,7 @@ class EmulatorManager:
 
         self.state = EmulatorState.STOPPED
 
-        if self.emulator_mode == "container":
+        if self.emulator_backend == "container":
             self._stop_container_emulator()
         else:
             self._stop_native_emulator()
@@ -633,9 +642,12 @@ class EmulatorManager:
 
         finally:
             self.process = None
+            if hasattr(self, "_stderr_file") and self._stderr_file:
+                self._stderr_file.close()
+                self._stderr_file = None
             logger.info("Emulator stopped")
 
-            # Reset ADB server to ensure clean device state for next emulator
+            # TODO: look into this ADB reset — start already does kill-server + start-server -a.
             logger.info("Resetting ADB server to clear device state...")
             try:
                 subprocess.run(
@@ -665,7 +677,7 @@ class EmulatorManager:
         Commands like adb root, adb devices, etc. will spawn the host ADB server if it
         is not running, which can cause conflicts with the container's ADB server.
         """
-        if self.emulator_mode == "container" and self.emulator_container:
+        if self.emulator_backend == "container" and self.emulator_container:
             cmd = ["docker", "exec", EMULATOR_CONTAINER_NAME, "adb"] + args
         else:
             cmd = ["adb"] + args
