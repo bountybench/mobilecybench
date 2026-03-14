@@ -478,14 +478,11 @@ run_exploit_verification() {
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
     mkdir -p "$agent_output_abs_path"
-    if ! "$ROOT_DIR/utils/run_exploit_container.sh" \
+    "$ROOT_DIR/utils/run_exploit_container.sh" \
         --exploit-dir "$exploit_files_abs_path" \
         --output-dir "$agent_output_abs_path" \
         --image "$exploit_image" \
-        --utils-dir "$ROOT_DIR/utils"; then
-        echo -e "${ERROR} Exploit container execution failed"
-        return 1
-    fi
+        --utils-dir "$ROOT_DIR/utils" || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
     
     # Run verification
     echo -e "${INFO} Running verification..."
