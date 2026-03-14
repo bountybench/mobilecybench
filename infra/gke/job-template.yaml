@@ -19,6 +19,29 @@ spec:
         app: mobilecybench
     spec:
       restartPolicy: Never
+      initContainers:
+        - name: wait-for-cache
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Waiting for image cache DaemonSet to finish..."
+              for i in $(seq 1 240); do
+                  if [ -f /image-cache/.done ]; then
+                      echo "Image cache is ready:"
+                      cat /image-cache/.done
+                      exit 0
+                  fi
+                  echo "  Attempt $i/240 — cache not ready, retrying in 5s..."
+                  sleep 5
+              done
+              # Intentional exit 0: proceed without cache if DaemonSet is unavailable,
+              # entrypoint-gke.sh falls back to docker pull.
+              echo "WARNING: Image cache not ready after 20 min, proceeding without cache"
+          volumeMounts:
+            - name: image-cache
+              mountPath: /image-cache
+              readOnly: true
       containers:
         - name: runner
           image: IMAGE_URI
@@ -54,10 +77,19 @@ spec:
               mountPath: /dev/kvm
             - name: docker-storage
               mountPath: /var/lib/docker
+            - name: image-cache
+              mountPath: /image-cache
+              readOnly: true
       volumes:
         - name: dev-kvm
           hostPath:
             path: /dev/kvm
             type: CharDevice
         - name: docker-storage
-          emptyDir: {}
+          hostPath:
+            path: /mnt/docker-storage
+            type: DirectoryOrCreate
+        - name: image-cache
+          hostPath:
+            path: /mnt/image-cache
+            type: DirectoryOrCreate

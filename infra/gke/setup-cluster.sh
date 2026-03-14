@@ -45,13 +45,13 @@ echo "--- Creating GKE cluster ---"
 gcloud container clusters create "$CLUSTER_NAME" \
   --project="$PROJECT_ID" \
   --zone="$ZONE" \
-  --machine-type=n2d-standard-8 \
+  --machine-type=n2-standard-8 \
   --image-type=UBUNTU_CONTAINERD \
   --num-nodes=1 \
   --enable-autoscaling --min-nodes=0 --max-nodes=20 \
   --spot \
   --disk-size=100 --disk-type=pd-ssd \
-  --metadata=enable-nested-virtualization=TRUE \
+  --enable-nested-virtualization \
   --workload-pool="${PROJECT_ID}.svc.id.goog"
 
 echo "--- Getting cluster credentials ---"
@@ -69,6 +69,12 @@ kubectl create secret generic llm-api-keys \
   --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY:-placeholder}" \
   --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-placeholder}" \
   --dry-run=client -o yaml | kubectl apply -f -
+
+# ─── 6. Image cache DaemonSet ─────────────────────────────────────────────
+echo "--- Deploying image-cache DaemonSet ---"
+kubectl apply -f "$(dirname "$0")/daemonset-image-cache.yaml"
+echo "  DaemonSet will start caching emulator + agent images on each node."
+echo "  Monitor with: kubectl logs -n mobilecybench -l app=image-cache -f"
 
 echo ""
 echo "=== Setup complete ==="

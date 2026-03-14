@@ -63,6 +63,9 @@ echo "GCS bucket:     ${GCS_BUCKET:-<none>}"
 echo "Cleanup:        $CLEANUP"
 echo ""
 
+# Resolve script directory for locating sibling files (template, daemonset, etc.)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # ─── Preflight checks ──────────────────────────────────────────────────────
 echo "--- Preflight checks ---"
 
@@ -83,6 +86,14 @@ for n in nodes:
 " 2>/dev/null || echo "  (could not enumerate)")
 echo "$KVM_NODES"
 
+echo "Ensuring image-cache DaemonSet is deployed..."
+DAEMONSET_YAML="$SCRIPT_DIR/daemonset-image-cache.yaml"
+if [ -f "$DAEMONSET_YAML" ]; then
+    kubectl apply -f "$DAEMONSET_YAML"
+else
+    echo "  WARNING: $DAEMONSET_YAML not found, skipping"
+fi
+
 echo "Checking secret 'llm-api-keys'..."
 if kubectl get secret llm-api-keys -n "$NAMESPACE" >/dev/null 2>&1; then
     echo "  Secret found"
@@ -98,71 +109,87 @@ echo ""
 # ─── Deploy test Job ───────────────────────────────────────────────────────
 echo "--- Deploying test Job: $JOB_NAME ---"
 
-kubectl apply -f - <<EOF
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: $JOB_NAME
-  namespace: $NAMESPACE
-  labels:
-    app: mobilecybench
-    test: "true"
-spec:
-  backoffLimit: 0
-  ttlSecondsAfterFinished: 3600
-  activeDeadlineSeconds: 1800
-  template:
-    metadata:
-      labels:
-        app: mobilecybench
-        test: "true"
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: runner
-          image: $IMAGE
-          securityContext:
-            privileged: true
-          resources:
-            requests:
-              cpu: "2"
-              memory: "8Gi"
-            limits:
-              cpu: "4"
-              memory: "16Gi"
-          env:
-            - name: APP_NAME
-              value: "$APP_NAME"
-            - name: MODEL
-              value: "notarealmodel"
-            - name: VULN_ID
-              value: "vuln_0"
-            - name: EMULATOR_BACKEND
-              value: "$EMULATOR_BACKEND"
-            - name: DRY_RUN
-              value: "$([ "$GOLD_RUN" = true ] && echo false || echo true)"
-            - name: GOLD_RUN
-              value: "$GOLD_RUN"
-            - name: GCS_BUCKET
-              value: "$GCS_BUCKET"
-            - name: RUN_ID
-              value: "$JOB_NAME"
-          envFrom:
-            - secretRef:
-                name: llm-api-keys
-          volumeMounts:
-            - name: dev-kvm
-              mountPath: /dev/kvm
-            - name: docker-storage
-              mountPath: /var/lib/docker
-      volumes:
-        - name: dev-kvm
-          hostPath:
-            path: /dev/kvm
-            type: CharDevice
-        - name: docker-storage
-          emptyDir: {}
-EOF
+# Render job YAML from job-template.yaml (single source of truth) with test overrides.
+# Uses the same comment-stripping logic as generate_jobs.py.
+TEMPLATE="$SCRIPT_DIR/job-template.yaml"
+
+if [ ! -f "$TEMPLATE" ]; then
+    echo "ERROR: Template not found: $TEMPLATE"
+    exit 1
+fi
+
+JOB_YAML=$(python3 - "$TEMPLATE" "$JOB_NAME" "$IMAGE" "$APP_NAME" "$EMULATOR_BACKEND" "$GCS_BUCKET" "$GOLD_RUN" <<'PYEOF'
+import re, sys
+
+template_path, job_name, image, app_name, emulator_backend, gcs_bucket, gold_run = sys.argv[1:8]
+
+with open(template_path) as f:
+    lines = f.read().splitlines()
+
+# Strip comments (same logic as generate_jobs.py load_template)
+cleaned = []
+for line in lines:
+    if line.lstrip().startswith("#"):
+        continue
+    if "  #" in line:
+        line = line[: line.index("  #")]
+    cleaned.append(line)
+y = "\n".join(cleaned)
+
+# --- Placeholder replacements (same as generate_jobs.py render_job) ---
+y = y.replace("mcb-APP_NAME-VULN_ID-MODEL", job_name)
+y = y.replace("IMAGE_URI", image)
+
+env_replacements = [
+    ("EMULATOR_BACKEND", emulator_backend),
+    ("GCS_BUCKET", gcs_bucket),
+    ("APP_NAME", app_name),
+    ("VULN_ID", "vuln_0"),
+    ("MODEL", "notarealmodel"),
+]
+for placeholder, value in env_replacements:
+    y = y.replace(f'"{placeholder}"', f'"{value}"')
+    y = re.sub(
+        rf"^(\s+experiment-\w+:\s*){placeholder}\s*$",
+        rf'\1"{value}"',
+        y,
+        flags=re.MULTILINE,
+    )
+
+# --- Test-specific overrides ---
+# Lower backoff and TTL for test jobs
+y = y.replace("backoffLimit: 1", "backoffLimit: 0")
+y = y.replace(
+    "ttlSecondsAfterFinished: 86400",
+    "ttlSecondsAfterFinished: 3600\n  activeDeadlineSeconds: 1800",
+)
+
+# Add test label in metadata and pod template
+y = y.replace(
+    "    app: mobilecybench\n    experiment-app:",
+    '    app: mobilecybench\n    test: "true"\n    experiment-app:',
+)
+y = y.replace(
+    "      labels:\n        app: mobilecybench\n    spec:",
+    '      labels:\n        app: mobilecybench\n        test: "true"\n    spec:',
+)
+
+# Add DRY_RUN + GOLD_RUN env vars and replace RUN_ID fieldRef with literal value
+dry_run_val = "false" if gold_run == "true" else "true"
+extra_env = f'            - name: DRY_RUN\n              value: "{dry_run_val}"'
+if gold_run == "true":
+    extra_env += f'\n            - name: GOLD_RUN\n              value: "true"'
+y = re.sub(
+    r"            - name: RUN_ID\n              valueFrom:\n                fieldRef:\n                  fieldPath: metadata\.name",
+    f'{extra_env}\n            - name: RUN_ID\n              value: "{job_name}"',
+    y,
+)
+
+print(y)
+PYEOF
+)
+
+echo "$JOB_YAML" | kubectl apply -f -
 
 echo "Job submitted."
 echo ""
