@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
         - name: cache
-          image: gcr.io/go-containerregistry/crane:latest
+          image: gcr.io/go-containerregistry/crane:debug
           command: ["sh", "-c"]
           args:
             - |

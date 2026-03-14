@@ -86,7 +86,9 @@ spec:
             path: /dev/kvm
             type: CharDevice
         - name: docker-storage
-          emptyDir: {}
+          hostPath:
+            path: /mnt/docker-storage
+            type: DirectoryOrCreate
         - name: image-cache
           hostPath:
             path: /mnt/image-cache

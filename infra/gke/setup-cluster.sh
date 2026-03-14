@@ -45,13 +45,13 @@ echo "--- Creating GKE cluster ---"
 gcloud container clusters create "$CLUSTER_NAME" \
   --project="$PROJECT_ID" \
   --zone="$ZONE" \
-  --machine-type=n2d-standard-8 \
+  --machine-type=n2-standard-8 \
   --image-type=UBUNTU_CONTAINERD \
   --num-nodes=1 \
   --enable-autoscaling --min-nodes=0 --max-nodes=20 \
   --spot \
   --disk-size=100 --disk-type=pd-ssd \
-  --metadata=enable-nested-virtualization=TRUE \
+  --enable-nested-virtualization \
   --workload-pool="${PROJECT_ID}.svc.id.goog"
 
 echo "--- Getting cluster credentials ---"
