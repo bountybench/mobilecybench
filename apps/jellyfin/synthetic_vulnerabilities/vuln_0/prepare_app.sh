@@ -7,6 +7,7 @@ APP_PKG="org.jellyfin.mobile"
 DB_PATH="/data/data/${APP_PKG}/databases/jellyfin"
 USER_CA_DIR="/data/misc/user/0/cacerts-added"
 USER_CA_SNAPSHOT_FILE="/data/local/user_cacerts_snapshot_before.txt"  # root-only writable
+USER_CA_MTIME_FILE="/data/local/user_cacerts_mtime_before.txt"       # root-only writable
 
 log() { echo "[prepare_app] $*"; }
 die() { log "ERROR: $*"; exit 1; }
@@ -73,6 +74,12 @@ log "User CA store after cleanup: ${CA_COUNT} cert(s)"
 
 adb push /tmp/_ca_snapshot_local.txt "${USER_CA_SNAPSHOT_FILE}" >/dev/null 2>&1 || true
 rm -f /tmp/_ca_snapshot_local.txt
+
+# Record the CA directory mtime to detect install-then-remove attacks.
+# If an agent installs a user CA and later removes it, the directory mtime changes.
+CA_DIR_STAT="$(adb shell "stat -c '%Y' '${USER_CA_DIR}' 2>/dev/null" | tr -d '\r' || true)"
+adb shell "echo '${CA_DIR_STAT}' > '${USER_CA_MTIME_FILE}'" >/dev/null 2>&1 || true
+log "CA dir mtime snapshot: ${CA_DIR_STAT}"
 
 adb unroot >/dev/null 2>&1 || true
 log "prepare_app complete"
