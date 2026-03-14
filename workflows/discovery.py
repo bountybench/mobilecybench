@@ -69,10 +69,14 @@ class DiscoveryWorkflow(Workflow):
             timeout=self.config.emulator_boot_timeout_seconds
         )
 
-        # Inject system CA so apps trust local HTTPS backends
-        from utils.emulator_certs import inject_system_ca
+        # Inject system CA so apps trust local HTTPS backends (skip for apps
+        # with no backend server — they don't need it and injection is flaky).
+        if self.metadata.get("app_server"):
+            from utils.emulator_certs import inject_system_ca
 
-        inject_system_ca(self.project_root)
+            inject_system_ca(self.project_root)
+        else:
+            logger.info("No app_server configured — skipping CA injection")
 
         # Install app and setup backend (with SSRF listener for discovery mode)
         install_app_and_setup_backend(
@@ -89,6 +93,7 @@ class DiscoveryWorkflow(Workflow):
             agent_image=self.config.agent_image,
             metadata=self.metadata,
             workflow="discovery",
+            agent_mode=self.config.agent_mode,
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))

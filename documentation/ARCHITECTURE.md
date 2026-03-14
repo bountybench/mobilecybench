@@ -76,6 +76,7 @@
 **Mode differences:**
 - Discovery mode: Agent searches for unknown vulnerabilities
 - Exploit mode: Agent receives vulnerability description + access to verify_files
+- Detection mode: Agent searches for real vulnerabilities; evaluation replays exploit on original vs hardened APK
 
 ### Agent Capabilities
 

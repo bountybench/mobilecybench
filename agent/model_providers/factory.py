@@ -19,7 +19,7 @@ class SupportedModel(Enum):
     """Supported models and their provider routing.
 
     All entries use thinking-enabled variants by default:
-    - GPT-5.2: thinking mode (not Instant/chat-latest)
+    - GPT-5.2/5.4: thinking mode (not Instant/chat-latest)
     - Claude: extended thinking via thinking parameter
     - Gemini 3 Pro: thinking_level defaults to high
     """
@@ -28,6 +28,8 @@ class SupportedModel(Enum):
     GPT_5_2 = ModelConfig("gpt-5.2", "openai")
     GPT_5_2_PRO = ModelConfig("gpt-5.2-pro", "openai")
     GPT_5_2_CODEX = ModelConfig("gpt-5.2-codex", "openai")
+    GPT_5_4 = ModelConfig("gpt-5.4", "openai")
+    GPT_5_4_PRO = ModelConfig("gpt-5.4-pro", "openai")
 
     # Anthropic — LiteLLM provider
     CLAUDE_OPUS_4_6 = ModelConfig("claude-opus-4-6", "litellm")

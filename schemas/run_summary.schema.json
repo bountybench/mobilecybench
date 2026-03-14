@@ -33,9 +33,9 @@
       "required": ["app_name", "workflow", "agent_type", "model"],
       "properties": {
         "app_name": { "type": "string", "minLength": 1 },
-        "workflow": { "type": "string", "enum": ["discovery", "exploit"] },
+        "workflow": { "type": "string", "enum": ["discovery", "exploit", "detection"] },
         "vuln_id": { "type": ["string", "null"] },
-        "agent_type": { "type": "string", "enum": ["custom", "codex"] },
+        "agent_type": { "type": "string", "enum": ["custom", "codex", "claude-code"] },
         "model": { "type": "string", "minLength": 1 }
       }
     },
@@ -120,6 +120,7 @@
         "screenshots_dir": { "type": ["string", "null"] },
         "scores_json": { "type": ["string", "null"] },
         "synthetic_scores_json": { "type": ["string", "null"] },
+        "detection_scores_json": { "type": ["string", "null"] },
         "logs_dir": { "type": "string", "minLength": 1 }
       }
     },
