@@ -259,6 +259,14 @@ class TestDiscoveryAgentCodebase:
     def test_exploit_setup_does_not_inject_discovery_honeypot(
         self, _mock_docker, tmp_path
     ):
+        env = {
+            "GIT_AUTHOR_NAME": "Test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "Test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+        }
+        os.environ.update(env)
+
         app_dir = tmp_path / "test_app"
         codebase_dir = app_dir / "codebase"
         manifest_dir = codebase_dir / "app" / "src" / "main"
@@ -268,13 +276,18 @@ class TestDiscoveryAgentCodebase:
             "<manifest><application></application></manifest>",
             encoding="utf-8",
         )
+        # Init a git repo so git commands work in both vuln and non-vuln branches
+        self._git(codebase_dir, "init")
+        self._git(codebase_dir, "add", "-A")
+        self._git(codebase_dir, "commit", "-m", "Initial commit")
+        commit_id = self._git(codebase_dir, "rev-parse", "HEAD")
 
         agent_env = AgentEnvironment(
             app_dir=app_dir,
             docker_networks=["test_net"],
             image_name="test:latest",
             env={},
-            commit_id="HEAD",
+            commit_id=commit_id,
             workflow="exploit",
             package_name="com.example.app",
             vuln_id="vuln_0",

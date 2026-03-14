@@ -132,7 +132,7 @@ class CommandExecutor:
         def drain_queue(q: queue.Queue, error=False, accumulator: str = "") -> str:
             log = logger.info
             if error:
-                log = logger.error
+                log = logger.warning
             while True:
                 try:
                     line: str = q.get_nowait()
