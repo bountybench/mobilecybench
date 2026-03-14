@@ -26,8 +26,8 @@ docker compose down -v
 echo "Removing any dangling containers..."
 docker container prune -f
 
-echo "Removing Docker image..."
-docker image rm -f ghcr.io/home-assistant/home-assistant:stable -f || true
+echo "Removing Docker images (keep base images to avoid re-pulling)..."
+docker image rm -f home-assistant-android-ha-ssrf-listener || true
 
 adb uninstall io.homeassistant.companion.android || true
 
