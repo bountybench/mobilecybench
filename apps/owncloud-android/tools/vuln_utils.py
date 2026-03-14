@@ -95,7 +95,10 @@ def _webdav_put(
 
 def _db_kwargs(env: Env) -> dict:
     return dict(
-        db_type="mysql", user=env.db_user, password=env.db_password, database=env.db_name,
+        db_type="mysql",
+        user=env.db_user,
+        password=env.db_password,
+        database=env.db_name,
     )
 
 
