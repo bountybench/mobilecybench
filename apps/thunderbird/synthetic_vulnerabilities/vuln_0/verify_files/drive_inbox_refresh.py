@@ -487,7 +487,16 @@ def _trigger_pull_to_refresh(d) -> None:
     # Swipe down from the upper quarter to the lower two-thirds of the screen.
     start_y = int(height * 0.25)
     end_y = int(height * 0.65)
-    _adb("shell", "input", "swipe", str(mid_x), str(start_y), str(mid_x), str(end_y), "600")
+    _adb(
+        "shell",
+        "input",
+        "swipe",
+        str(mid_x),
+        str(start_y),
+        str(mid_x),
+        str(end_y),
+        "600",
+    )
     wait_for_ui_stable(d, timeout=12)
     print(f"[verify_exploit] attempt={ATTEMPT} pull_to_refresh_triggered=true")
 
