@@ -17,6 +17,21 @@ from utils.logger import logger
 
 
 @dataclass(frozen=True)
+class HighContextPricing:
+    """Tiered pricing that applies when input tokens exceed a threshold.
+
+    Some models (e.g. GPT-5.4) charge higher rates once the prompt exceeds
+    a token count threshold.  When the threshold is crossed, *all* tokens
+    in the request are billed at the higher rate (not just the excess).
+    """
+
+    input_threshold: int  # token count that triggers the higher tier
+    input: float = 0.0
+    output: float = 0.0
+    cache_input: float = 0.0
+
+
+@dataclass(frozen=True)
 class ModelPricing:
     """Per-1M token pricing for a model.
 
@@ -27,11 +42,13 @@ class ModelPricing:
         - input: Price per 1M input tokens.
         - output: Price per 1M output tokens.
         - cache_input: Price per 1M cache-read input tokens.
+        - high_context: Optional higher-tier pricing for long prompts.
     """
 
     input: float = 0.0
     output: float = 0.0
     cache_input: float = 0.0
+    high_context: Optional[HighContextPricing] = None
 
 
 def _parse_pricing_map(raw: Dict[str, dict]) -> Dict[str, ModelPricing]:
@@ -52,13 +69,26 @@ def _parse_pricing_map(raw: Dict[str, dict]) -> Dict[str, ModelPricing]:
         Dictionary mapping model names to ModelPricing instances.
     """
     parsed: Dict[str, ModelPricing] = {}
-    for model, vals in (raw or {}).items():
-        if not isinstance(vals, dict):
+    for model_name, price_entry in (raw or {}).items():
+        if not isinstance(price_entry, dict):
             continue
-        parsed[model] = ModelPricing(
-            input=float(vals.get("input", 0) or 0),
-            output=float(vals.get("output", 0) or 0),
-            cache_input=float(vals.get("cache_input", 0) or 0),
+        high_context = None
+        high_context_entry = price_entry.get("high_context")
+        if (
+            isinstance(high_context_entry, dict)
+            and "input_threshold" in high_context_entry
+        ):
+            high_context = HighContextPricing(
+                input_threshold=int(high_context_entry["input_threshold"]),
+                input=float(high_context_entry.get("input", 0) or 0),
+                output=float(high_context_entry.get("output", 0) or 0),
+                cache_input=float(high_context_entry.get("cache_input", 0) or 0),
+            )
+        parsed[model_name] = ModelPricing(
+            input=float(price_entry.get("input", 0) or 0),
+            output=float(price_entry.get("output", 0) or 0),
+            cache_input=float(price_entry.get("cache_input", 0) or 0),
+            high_context=high_context,
         )
     return parsed
 
@@ -167,17 +197,17 @@ def get_pricing_for_model(
         If still unknown and `warn` is True, a warning is logged.
         Returns ModelPricing with all zeros to avoid breaking the pipeline.
     """
-    pm = pricing_map if pricing_map is not None else load_pricing()
+    all_pricing = pricing_map if pricing_map is not None else load_pricing()
 
     # Try exact match first
-    pricing = pm.get(model)
+    pricing = all_pricing.get(model)
     if pricing is not None:
         return pricing
 
     # Try with provider prefix stripped (e.g., "gemini/gemini-2.0-flash" -> "gemini-2.0-flash")
     model_no_prefix = _strip_provider_prefix(model)
     if model_no_prefix != model:
-        pricing = pm.get(model_no_prefix)
+        pricing = all_pricing.get(model_no_prefix)
         if pricing is not None:
             logger.debug(f"Using pricing for '{model_no_prefix}' for model '{model}'")
             return pricing
@@ -185,7 +215,7 @@ def get_pricing_for_model(
     # Try with date suffix stripped
     model_no_date = _strip_date_suffix(model_no_prefix)
     if model_no_date != model_no_prefix:
-        pricing = pm.get(model_no_date)
+        pricing = all_pricing.get(model_no_date)
         if pricing is not None:
             logger.debug(f"Using pricing for '{model_no_date}' for model '{model}'")
             return pricing
@@ -219,8 +249,16 @@ def compute_cost_usd(
     ci = max(int(cache_input_tokens or 0), 0)
     billed_input = max(it - ci, 0)
 
+    # Select tier: if high-context pricing exists and input exceeds threshold,
+    # the entire request is billed at the higher rate.
+    high_ctx = pricing.high_context
+    if high_ctx and it > high_ctx.input_threshold:
+        rate = high_ctx
+    else:
+        rate = pricing
+
     scale = 1_000_000.0
-    cost_input = (billed_input / scale) * pricing.input
-    cost_output = (ot / scale) * pricing.output
-    cost_cache_input = (ci / scale) * pricing.cache_input
+    cost_input = (billed_input / scale) * rate.input
+    cost_output = (ot / scale) * rate.output
+    cost_cache_input = (ci / scale) * rate.cache_input
     return float(cost_input + cost_output + cost_cache_input)

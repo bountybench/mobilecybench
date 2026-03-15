@@ -542,17 +542,12 @@ run_exploit_verification() {
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
     mkdir -p "$agent_output_abs_path"
-    if ! CHALLENGE_URL="${CHALLENGE_URL}" \
-         "$ROOT_DIR/utils/run_exploit_container.sh" \
+    CHALLENGE_URL="${CHALLENGE_URL}" \
+    "$ROOT_DIR/utils/run_exploit_container.sh" \
         --exploit-dir "$exploit_files_abs_path" \
         --output-dir "$agent_output_abs_path" \
         --image "$exploit_image" \
-        --utils-dir "$ROOT_DIR/utils"; then
-        echo -e "${ERROR} Exploit container execution failed"
-        [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
-        [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
-        return 1
-    fi
+        --utils-dir "$ROOT_DIR/utils" || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
 
     # Stop CI challenge server (if running)
     if [ -n "$CHALLENGE_PID" ]; then
@@ -560,6 +555,7 @@ run_exploit_verification() {
         kill "$CHALLENGE_PID" 2>/dev/null || true
         wait "$CHALLENGE_PID" 2>/dev/null || true
     fi
+
 
     # Run verification
     echo -e "${INFO} Running verification..."

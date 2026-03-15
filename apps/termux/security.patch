@@ -1,0 +1,41 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index d2357492..5221de94 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -20,6 +20,10 @@
+         android:label="@string/permission_run_command_label"
+         android:protectionLevel="dangerous" />
+ 
++    <permission
++        android:name="${TERMUX_PACKAGE_NAME}.permission.FILE_READ"
++        android:protectionLevel="signature" />
++
+     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+@@ -173,7 +177,7 @@
+             android:authorities="${TERMUX_PACKAGE_NAME}.files"
+             android:exported="true"
+             android:grantUriPermissions="true"
+-            android:readPermission="android.permission.permRead" />
++            android:readPermission="${TERMUX_PACKAGE_NAME}.permission.FILE_READ" />
+ 
+         <meta-data
+             android:name="com.sec.android.support.multiwindow"
+diff --git a/app/src/main/java/com/termux/filepicker/TermuxFileReceiverActivity.java b/app/src/main/java/com/termux/filepicker/TermuxFileReceiverActivity.java
+index ef600dc0..d24e7c9d 100644
+--- a/app/src/main/java/com/termux/filepicker/TermuxFileReceiverActivity.java
++++ b/app/src/main/java/com/termux/filepicker/TermuxFileReceiverActivity.java
+@@ -162,7 +162,11 @@ public class TermuxFileReceiverActivity extends Activity {
+             return null;
+         }
+         try {
+-            final File outFile = new File(receiveDir, attachmentFileName);
++            final File outFile = new File(receiveDir, attachmentFileName).getCanonicalFile();
++            if (!outFile.toPath().startsWith(receiveDir.getCanonicalFile().toPath())) {
++                showErrorDialogAndQuit("Invalid file name.");
++                return null;
++            }
+             try (FileOutputStream f = new FileOutputStream(outFile)) {
+                 byte[] buffer = new byte[4096];
+                 int readBytes;

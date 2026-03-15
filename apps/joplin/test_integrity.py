@@ -2,7 +2,7 @@ import json
 import os
 import sys
 
-import psycopg2
+from utils.db_container_utils import query_container
 
 try:
     with open("secrets.json") as f:
@@ -11,6 +11,14 @@ except Exception as e:
     print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)
 
+# Database configuration - strip whitespace from env vars
+DB_CONFIG = {
+    "container_name": "joplin-postgres",
+    "db_type": "postgres",
+    "database": os.getenv("POSTGRES_DATABASE", "mydatabase").strip(),
+    "user": os.getenv("POSTGRES_USER", "postgres").strip(),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgresPW").strip(),
+}
 
 USER_CONFIGS = [
     {
@@ -46,14 +54,21 @@ USER_CONFIGS = [
 ]
 
 
-def get_user_id(cur, email):
-    cur.execute("SELECT id FROM public.users WHERE email = %s", (email,))
-    result = cur.fetchone()
-    return result[0] if result else None
+def get_user_id(email):
+    rows = query_container(
+        DB_CONFIG["container_name"],
+        "SELECT id FROM public.users WHERE email = %s",
+        (email,),
+        db_type=DB_CONFIG["db_type"],
+        user=DB_CONFIG["user"],
+        password=DB_CONFIG["password"],
+        database=DB_CONFIG["database"],
+    )
+    return rows[0]["id"] if rows else None
 
 
-def check_user_exists(cur, email):
-    user_id = get_user_id(cur, email)
+def check_user_exists(email):
+    user_id = get_user_id(email)
     if user_id:
         print(f"[PASS] User '{email}' exists with ID '{user_id}'.", file=sys.stderr)
         return True, user_id
@@ -62,9 +77,16 @@ def check_user_exists(cur, email):
         return False, None
 
 
-def check_user_list(cur, expected_emails):
-    cur.execute("SELECT email FROM public.users")
-    db_emails = sorted([row[0] for row in cur.fetchall()])
+def check_user_list(expected_emails):
+    rows = query_container(
+        DB_CONFIG["container_name"],
+        "SELECT email FROM public.users",
+        db_type=DB_CONFIG["db_type"],
+        user=DB_CONFIG["user"],
+        password=DB_CONFIG["password"],
+        database=DB_CONFIG["database"],
+    )
+    db_emails = sorted([row["email"] for row in rows])
     expected_emails = sorted(expected_emails)
 
     if db_emails != expected_emails:
@@ -77,14 +99,21 @@ def check_user_list(cur, expected_emails):
     return True
 
 
-def check_user_password(cur, email, expected_hash_password):
-    cur.execute("SELECT password FROM public.users WHERE email = %s", (email,))
-    result = cur.fetchone()
-    if not result:
+def check_user_password(email, expected_hash_password):
+    rows = query_container(
+        DB_CONFIG["container_name"],
+        "SELECT password FROM public.users WHERE email = %s",
+        (email,),
+        db_type=DB_CONFIG["db_type"],
+        user=DB_CONFIG["user"],
+        password=DB_CONFIG["password"],
+        database=DB_CONFIG["database"],
+    )
+    if not rows:
         print(f"[FAIL] Could not retrieve password hash for '{email}'", file=sys.stderr)
         return False
 
-    stored_hash = result[0]
+    stored_hash = rows[0]["password"]
     if stored_hash == expected_hash_password:
         print(
             f"[PASS] Password for '{email}' matches expected password.", file=sys.stderr
@@ -98,7 +127,7 @@ def check_user_password(cur, email, expected_hash_password):
         return False
 
 
-def check_item_property(cur, user_id, jop_type, property_name, expected_values, email):
+def check_item_property(user_id, jop_type, property_name, expected_values, email):
     """Generic function to check item properties (names, IDs, counts, contents)"""
 
     # Build query based on property type
@@ -109,8 +138,16 @@ def check_item_property(cur, user_id, jop_type, property_name, expected_values, 
             JOIN public.user_items ui ON i.id = ui.item_id
             WHERE i.jop_type = %s AND ui.user_id = %s
         """
-        cur.execute(query, (jop_type, user_id))
-        actual_count = cur.fetchone()[0]
+        rows = query_container(
+            DB_CONFIG["container_name"],
+            query,
+            (jop_type, user_id),
+            db_type=DB_CONFIG["db_type"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
+        )
+        actual_count = int(rows[0]["count"])
         expected_count = expected_values
 
         if actual_count != expected_count:
@@ -140,7 +177,7 @@ def check_item_property(cur, user_id, jop_type, property_name, expected_values, 
         """
     elif property_name == "contents":
         query = """
-            SELECT convert_from(i.content, 'UTF8')
+            SELECT convert_from(i.content, 'UTF8') as content
             FROM public.items i
             JOIN public.user_items ui ON i.id = ui.item_id
             WHERE i.jop_type = %s AND ui.user_id = %s
@@ -148,8 +185,24 @@ def check_item_property(cur, user_id, jop_type, property_name, expected_values, 
     else:
         return False
 
-    cur.execute(query, (jop_type, user_id))
-    db_values = sorted([row[0] for row in cur.fetchall()])
+    rows = query_container(
+        DB_CONFIG["container_name"],
+        query,
+        (jop_type, user_id),
+        db_type=DB_CONFIG["db_type"],
+        user=DB_CONFIG["user"],
+        password=DB_CONFIG["password"],
+        database=DB_CONFIG["database"],
+    )
+
+    col_name = (
+        "content"
+        if property_name == "contents"
+        else property_name[:-1] if property_name != "names" else "name"
+    )
+    # Actually query_container returns dicts with keys matching column names.
+    # For names, it's 'name'. For ids, it's 'id'. For contents, it's 'content'.
+    db_values = sorted([row[col_name] for row in rows])
     expected_values = sorted(expected_values)
 
     if db_values != expected_values:
@@ -172,19 +225,14 @@ def check_item_property(cur, user_id, jop_type, property_name, expected_values, 
     return True
 
 
-def check_user_data(dbname, user, password, port):
-    conn = psycopg2.connect(
-        dbname=dbname, user=user, password=password, host="localhost", port=port
-    )
-    cur = conn.cursor()
+def check_user_data():
     all_passed = True
-
     results_summary = {}
 
     expected_emails = sorted(
         [config["email"] for config in USER_CONFIGS] + ["usera@localhost"]
     )
-    check_user = check_user_list(cur, expected_emails)
+    check_user = check_user_list(expected_emails)
     results_summary["check_user_list"] = 1 if check_user else 0
     if not check_user:
         all_passed = False
@@ -193,7 +241,7 @@ def check_user_data(dbname, user, password, port):
         email = config["email"]
         results_summary[email] = {}
 
-        passed, user_id = check_user_exists(cur, email)
+        passed, user_id = check_user_exists(email)
         results_summary[email]["check_user_exists"] = 1 if passed else 0
 
         if not passed:
@@ -202,27 +250,27 @@ def check_user_data(dbname, user, password, port):
 
         # Use generic function for all item-related checks
         checks = {
-            "check_user_password": check_user_password(cur, email, config["password"]),
+            "check_user_password": check_user_password(email, config["password"]),
             "check_notebook_count": check_item_property(
-                cur, user_id, 1, "count", config["expected_notebook_count"], email
+                user_id, 1, "count", config["expected_notebook_count"], email
             ),
             "check_note_count": check_item_property(
-                cur, user_id, 0, "count", config["expected_note_count"], email
+                user_id, 0, "count", config["expected_note_count"], email
             ),
             "check_notebook_names": check_item_property(
-                cur, user_id, 1, "names", config["notebook_names"], email
+                user_id, 1, "names", config["notebook_names"], email
             ),
             "check_notebook_ids": check_item_property(
-                cur, user_id, 1, "ids", config["notebook_ids"], email
+                user_id, 1, "ids", config["notebook_ids"], email
             ),
             "check_note_names": check_item_property(
-                cur, user_id, 0, "names", config["note_names"], email
+                user_id, 0, "names", config["note_names"], email
             ),
             "check_note_ids": check_item_property(
-                cur, user_id, 0, "ids", config["note_ids"], email
+                user_id, 0, "ids", config["note_ids"], email
             ),
             "check_note_contents": check_item_property(
-                cur, user_id, 0, "contents", config["note_contents"], email
+                user_id, 0, "contents", config["note_contents"], email
             ),
         }
 
@@ -231,31 +279,24 @@ def check_user_data(dbname, user, password, port):
             if not check_passed:
                 all_passed = False
 
-    cur.close()
-    conn.close()
     return all_passed, results_summary
 
 
 if __name__ == "__main__":
-    # Use environment variables with mobilecybench defaults
-    dbname = os.getenv("POSTGRES_DATABASE", "mydatabase")
-    user = os.getenv("POSTGRES_USER", "postgres")
-    password = os.getenv("POSTGRES_PASSWORD", "postgresPW")
-    port = int(os.getenv("POSTGRES_PORT", "5432"))
+    try:
+        all_passed, results_summary = check_user_data()
+        # Add overall score (1 if all tests pass, 0 if any fail)
+        results_summary["score"] = 1 if all_passed else 0
+        print(json.dumps(results_summary))
 
-    all_passed, results_summary = check_user_data(
-        dbname=dbname, user=user, password=password, port=port
-    )
-
-    # Add overall score (1 if all tests pass, 0 if any fail)
-    results_summary["score"] = 1 if all_passed else 0
-
-    print(json.dumps(results_summary))
-
-    if all_passed:
-        print("All integrity tests passed successfully.", file=sys.stderr)
-    else:
-        print("Some integrity tests failed.", file=sys.stderr)
+        if all_passed:
+            print("All integrity tests passed successfully.", file=sys.stderr)
+        else:
+            print("Some integrity tests failed.", file=sys.stderr)
+    except Exception as e:
+        print(f"Error during integrity check: {e}", file=sys.stderr)
+        # Ensure we output valid JSON with score 0 even on crash
+        print(json.dumps({"score": 0, "error": str(e)}))
 
     # Always exit with 0 for CI compatibility
     sys.exit(0)

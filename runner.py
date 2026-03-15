@@ -23,7 +23,12 @@ from utils.run_artifacts import (
     write_run_summary,
 )  # noqa: E402
 from utils.time_tracker import time_tracker  # noqa: E402
-from workflows import DiscoveryWorkflow, ExploitWorkflow, Workflow  # noqa: E402
+from workflows import (
+    DetectionWorkflow,
+    DiscoveryWorkflow,
+    ExploitWorkflow,
+    Workflow,
+)  # noqa: E402
 
 
 def run_interactive_shell(app_name: str) -> dict:
@@ -107,6 +112,8 @@ def create_workflow(
     """
     if config.workflow == "exploit":
         return ExploitWorkflow(config, app_name, project_root)
+    if config.workflow == "detection":
+        return DetectionWorkflow(config, app_name, project_root)
     return DiscoveryWorkflow(config, app_name, project_root)
 
 
@@ -158,9 +165,7 @@ def run(
         Exit code (0 for success, non-zero for failure)
     """
     workflow = create_workflow(config, app_name, project_root)
-    workflow_type = (
-        "ExploitWorkflow" if config.workflow == "exploit" else "DiscoveryWorkflow"
-    )
+    workflow_type = type(workflow).__name__
     logger.info(f"Created {workflow_type} for app: {app_name}")
 
     # Start experiment timing with the shared session ID

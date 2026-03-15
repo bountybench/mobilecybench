@@ -35,6 +35,6 @@ done
 export KEYSTORE_PATH="$(pwd)/app/release_keystore.keystore"
 
 ./gradlew --no-daemon clean
-./gradlew --no-daemon --max-workers=1 ${GRADLE_EXTRA_ARGS:-} app:assembleMinimalRelease -Dorg.gradle.jvmargs="-Xmx2048m" -PnoLeakCanary
+./gradlew --no-daemon --max-workers=1 ${GRADLE_EXTRA_ARGS:-} app:assembleFullRelease -Dorg.gradle.jvmargs="-Xmx2048m" -PnoLeakCanary
 
-cp app/build/outputs/apk/minimal/release/app-minimal-release*.apk "$SCRIPT_DIR/unsigned.apk"
+cp app/build/outputs/apk/full/release/app-full-release*.apk "$SCRIPT_DIR/unsigned.apk"
