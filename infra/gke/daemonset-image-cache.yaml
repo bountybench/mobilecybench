@@ -1,5 +1,6 @@
-# DaemonSet that pre-caches Docker images as tar files on every GKE node.
-# Jobs load from the local tar (~1 min) instead of pulling from Docker Hub (~15 min).
+# DaemonSet that builds a golden Docker snapshot on every GKE node.
+# Starts a temporary dockerd, pulls both images, tars the Docker data directory.
+# Jobs extract this tar (~1-2 min) instead of running docker load (~6-7 min).
 #
 # Apply:
 #   kubectl apply -f infra/gke/daemonset-image-cache.yaml
@@ -26,47 +27,73 @@ spec:
     spec:
       containers:
         - name: cache
-          image: gcr.io/go-containerregistry/crane:debug
+          image: docker:27-dind
           command: ["sh", "-c"]
           args:
             - |
               set -e
-              trap 'rm -f "$CACHE_DIR/emulator.tar.tmp" "$CACHE_DIR/agent.tar.tmp"' EXIT
-
               CACHE_DIR="/cache"
-              EMULATOR_IMAGE="${EMULATOR_IMAGE:-cybench/mobilecybench-emulator:latest}"
-              AGENT_IMAGE="${AGENT_IMAGE:-cybench/mobilecybench:latest}"
+              GOLDEN_TAR="$CACHE_DIR/golden.tar"
+              DOCKER_ROOT="/tmp/docker-build"
 
-              echo "=== Image Cache DaemonSet ==="
+              echo "=== Image Cache DaemonSet (golden snapshot) ==="
               echo "Emulator image: $EMULATOR_IMAGE"
               echo "Agent image:    $AGENT_IMAGE"
               echo "Cache dir:      $CACHE_DIR"
 
-              # Pull and save emulator image
-              if [ ! -f "$CACHE_DIR/emulator.tar" ]; then
-                  echo "Pulling emulator image: $EMULATOR_IMAGE"
-                  crane pull "$EMULATOR_IMAGE" "$CACHE_DIR/emulator.tar.tmp"
-                  mv "$CACHE_DIR/emulator.tar.tmp" "$CACHE_DIR/emulator.tar"
-                  echo "Emulator image cached ($(du -h "$CACHE_DIR/emulator.tar" | cut -f1))"
-              else
-                  echo "Emulator image already cached"
+              # Skip if golden snapshot already exists
+              if [ -f "$GOLDEN_TAR" ]; then
+                  echo "Golden snapshot already cached ($(du -h "$GOLDEN_TAR" | cut -f1))"
+                  cat "$CACHE_DIR/.done"
+                  sleep infinity
               fi
 
-              # Pull and save agent image
-              if [ ! -f "$CACHE_DIR/agent.tar" ]; then
-                  echo "Pulling agent image: $AGENT_IMAGE"
-                  crane pull "$AGENT_IMAGE" "$CACHE_DIR/agent.tar.tmp"
-                  mv "$CACHE_DIR/agent.tar.tmp" "$CACHE_DIR/agent.tar"
-                  echo "Agent image cached ($(du -h "$CACHE_DIR/agent.tar" | cut -f1))"
-              else
-                  echo "Agent image already cached"
-              fi
+              # Clean any partial state
+              rm -rf "$DOCKER_ROOT" "$GOLDEN_TAR.tmp"
+              mkdir -p "$DOCKER_ROOT"
 
-              # Write sentinel file atomically to signal completion
-              printf 'emulator=%s\nagent=%s\ncached_at=%s\n' \
+              # Start temporary dockerd with isolated data root
+              dockerd --data-root "$DOCKER_ROOT" --host=unix:///var/run/docker.sock &
+              DOCKERD_PID=$!
+
+              echo "Waiting for temporary dockerd..."
+              for i in $(seq 1 60); do
+                  docker info >/dev/null 2>&1 && break
+                  sleep 1
+              done
+
+              if ! docker info >/dev/null 2>&1; then
+                  echo "ERROR: dockerd failed to start"
+                  exit 1
+              fi
+              echo "Temporary dockerd ready"
+
+              # Pull both images
+              echo "Pulling emulator image: $EMULATOR_IMAGE"
+              docker pull "$EMULATOR_IMAGE"
+              echo "Emulator image pulled"
+
+              echo "Pulling agent image: $AGENT_IMAGE"
+              docker pull "$AGENT_IMAGE"
+              echo "Agent image pulled"
+
+              # Stop dockerd cleanly
+              kill -TERM $DOCKERD_PID && wait $DOCKERD_PID 2>/dev/null || true
+
+              # Create golden tar atomically
+              echo "Creating golden snapshot..."
+              tar -C "$DOCKER_ROOT" -cf "$GOLDEN_TAR.tmp" .
+              mv "$GOLDEN_TAR.tmp" "$GOLDEN_TAR"
+              echo "Golden snapshot created ($(du -h "$GOLDEN_TAR" | cut -f1))"
+
+              # Write sentinel file atomically
+              printf 'emulator=%s\nagent=%s\ncached_at=%s\ntype=golden\n' \
                   "$EMULATOR_IMAGE" "$AGENT_IMAGE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                   > "$CACHE_DIR/.done.tmp"
               mv "$CACHE_DIR/.done.tmp" "$CACHE_DIR/.done"
+
+              # Cleanup build directory
+              rm -rf "$DOCKER_ROOT"
 
               echo "=== Cache ready ==="
               cat "$CACHE_DIR/.done"
@@ -79,16 +106,18 @@ spec:
               value: "cybench/mobilecybench-emulator:latest"
             - name: AGENT_IMAGE
               value: "cybench/mobilecybench:latest"
+          securityContext:
+            privileged: true
           volumeMounts:
             - name: image-cache
               mountPath: /cache
           resources:
             requests:
-              cpu: "100m"
-              memory: "256Mi"
-            limits:
               cpu: "2"
               memory: "4Gi"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
       volumes:
         - name: image-cache
           hostPath:

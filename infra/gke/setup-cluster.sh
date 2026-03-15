@@ -50,7 +50,7 @@ gcloud container clusters create "$CLUSTER_NAME" \
   --num-nodes=1 \
   --enable-autoscaling --min-nodes=0 --max-nodes=20 \
   --spot \
-  --disk-size=100 --disk-type=pd-ssd \
+  --disk-size=200 --disk-type=pd-ssd \
   --enable-nested-virtualization \
   --workload-pool="${PROJECT_ID}.svc.id.goog"
 

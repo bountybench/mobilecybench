@@ -1,6 +1,18 @@
 #!/bin/bash
 set -e
 
+# ─── Pre-populate Docker storage from golden snapshot ─────────────────────
+CACHE_DIR="/image-cache"
+GOLDEN_TAR="$CACHE_DIR/golden.tar"
+SKIP_IMAGE_LOAD=false
+
+if [ -f "$GOLDEN_TAR" ]; then
+    echo "Extracting golden Docker snapshot..."
+    tar -C /var/lib/docker -xf "$GOLDEN_TAR"
+    echo "Golden snapshot extracted ($(du -sh /var/lib/docker | cut -f1))"
+    SKIP_IMAGE_LOAD=true
+fi
+
 # ─── DinD setup (same as orchestrator/entrypoint.sh) ───────────────────────
 rm -f /var/run/docker.pid
 dockerd --host=unix:///var/run/docker.sock &
@@ -23,33 +35,39 @@ fi
 
 docker network create shared_net || true
 
-# ─── Load or pull images ─────────────────────────────────────────────────
-# If the image-cache DaemonSet has pre-cached tar files on this node, load
-# them (~1 min) instead of pulling from Docker Hub (~10-15 min).
-CACHE_DIR="/image-cache"
+# ─── Load or pull images (fallback if no golden snapshot) ────────────────
 EMULATOR_IMAGE="${EMULATOR_IMAGE:-cybench/mobilecybench-emulator:latest}"
 AGENT_IMAGE="${AGENT_IMAGE:-cybench/mobilecybench:latest}"
 
-load_or_pull() {
-    local tar_file="$1"
-    local image_name="$2"
-    local label="$3"
+if [ "$SKIP_IMAGE_LOAD" = true ]; then
+    echo "Images pre-loaded from golden snapshot:"
+    docker images
+else
+    load_or_pull() {
+        local tar_file="$1"
+        local image_name="$2"
+        local label="$3"
 
-    if [ -f "$tar_file" ]; then
-        echo "Loading $label image from cache: $tar_file"
-        docker load -i "$tar_file"
-        echo "$label image loaded from cache"
-    else
-        echo "Cache miss for $label — pulling: $image_name"
-        docker pull "$image_name"
-        echo "$label image pulled"
+        if [ -f "$tar_file" ]; then
+            echo "Loading $label image from cache: $tar_file"
+            docker load -i "$tar_file"
+            echo "$label image loaded from cache"
+        else
+            echo "Cache miss for $label — pulling: $image_name"
+            docker pull "$image_name"
+            echo "$label image pulled"
+        fi
+    }
+
+    if [ "${EMULATOR_BACKEND:-container}" = "container" ]; then
+        load_or_pull "$CACHE_DIR/emulator.tar" "$EMULATOR_IMAGE" "Emulator" &
+        PID_EMU=$!
     fi
-}
-
-if [ "${EMULATOR_BACKEND:-container}" = "container" ]; then
-    load_or_pull "$CACHE_DIR/emulator.tar" "$EMULATOR_IMAGE" "Emulator"
+    load_or_pull "$CACHE_DIR/agent.tar" "$AGENT_IMAGE" "Agent" &
+    PID_AGT=$!
+    [ -n "${PID_EMU:-}" ] && wait $PID_EMU
+    wait $PID_AGT
 fi
-load_or_pull "$CACHE_DIR/agent.tar" "$AGENT_IMAGE" "Agent"
 
 
 # Install package if needed (in case image was built without -e install)
