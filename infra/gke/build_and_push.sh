@@ -149,8 +149,7 @@ if [ "$BAKED" = true ]; then
     BUILDER_NAME="mobilecybench-insecure"
     BUILDKIT_CFG="/tmp/buildkitd-insecure.toml"
     cat > "$BUILDKIT_CFG" <<'TOML'
-[worker.oci]
-  allowed-entitlements = ["security.insecure"]
+insecure-entitlements = ["security.insecure"]
 TOML
 
     if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
