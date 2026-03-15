@@ -173,7 +173,7 @@ def _open_navigation_drawer(d) -> None:
     start_x = max(8, int(width * 0.02))
     end_x = int(width * 0.78)
     y = int(height * 0.42)
-    _adb("shell", "input", "swipe", str(start_x), str(y), str(end_x), str(y), "250")
+    _adb("shell", "input", "swipe", str(start_x), str(y), str(end_x), str(y), "500")
     wait_for_ui_stable(d, timeout=10)
 
 
@@ -340,7 +340,7 @@ def _scroll_drawer_for_sync_action(d, max_swipes: int = 3) -> bool:
                 str(start_y),
                 str(x),
                 str(end_y),
-                "250",
+                "500",
             )
             wait_for_ui_stable(d, timeout=8)
 
@@ -436,15 +436,16 @@ def _wait_for_drawer_ready(d, timeout: float = 10.0) -> None:
 
 
 def _ensure_account_actions_visible(d) -> None:
-    if _account_actions_visible(d):
+    if _account_actions_visible(d) or _scroll_drawer_for_sync_action(d):
         return
 
+    print("[verify_exploit] syncing account actions via header click")
     if _click_account_selector_header(d):
-        if _account_actions_visible(d):
-            wait_for_ui_stable(d, timeout=8)
-            if _account_actions_visible(d) or _scroll_drawer_for_sync_action(d):
-                return
+        wait_for_ui_stable(d, timeout=8)
+        if _account_actions_visible(d) or _scroll_drawer_for_sync_action(d):
+            return
 
+    print("[verify_exploit] syncing account actions via show accounts button")
     toggle = _show_accounts_button(d)
     if toggle and toggle.exists:
         _tap_center(toggle)
@@ -452,6 +453,7 @@ def _ensure_account_actions_visible(d) -> None:
         if _account_actions_visible(d) or _scroll_drawer_for_sync_action(d):
             return
 
+    print("[verify_exploit] syncing account actions via candidates")
     for candidate in (
         _account_list_header(d),
         d(textContains="@"),
@@ -459,10 +461,7 @@ def _ensure_account_actions_visible(d) -> None:
         if candidate and candidate.exists:
             _tap_center(candidate)
             wait_for_ui_stable(d, timeout=8)
-            sync_button = _sync_all_accounts_button(d)
-            if (sync_button and sync_button.exists) or _scroll_drawer_for_sync_action(
-                d
-            ):
+            if _account_actions_visible(d) or _scroll_drawer_for_sync_action(d):
                 return
 
     raise RuntimeError("Sync all accounts action not visible in navigation drawer")
