@@ -200,6 +200,30 @@ def _click_account_selector_header(d) -> bool:
     return True
 
 
+def _scroll_drawer_for_sync_action(d, max_swipes: int = 3) -> bool:
+    drawer = _drawer_content(d)
+    if not drawer.exists:
+        return False
+
+    left, top, right, bottom = drawer.bounds()
+    width = right - left
+    height = bottom - top
+    if width <= 0 or height <= 0:
+        return False
+
+    x = left + width // 2
+    start_y = top + int(height * 0.82)
+    end_y = top + int(height * 0.35)
+
+    for _ in range(max_swipes):
+        if _sync_all_accounts_button(d).exists:
+            return True
+        _adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "250")
+        wait_for_ui_stable(d, timeout=8)
+
+    return _sync_all_accounts_button(d).exists
+
+
 def _log_inbox_state(d, stage: str) -> None:
     refresh = d(resourceIdMatches=_rid("swiperefresh"))
     message_list = d(resourceIdMatches=_rid("message_list"))
@@ -236,14 +260,14 @@ def _ensure_account_actions_visible(d) -> None:
     if _click_account_selector_header(d):
         if _account_list_header(d).exists or _sync_all_accounts_button(d).exists:
             wait_for_ui_stable(d, timeout=8)
-            if _sync_all_accounts_button(d).exists:
+            if _sync_all_accounts_button(d).exists or _scroll_drawer_for_sync_action(d):
                 return
 
     toggle = _show_accounts_button(d)
     if toggle.exists:
         _tap_center(toggle)
         wait_for_ui_stable(d, timeout=8)
-        if _sync_all_accounts_button(d).exists:
+        if _sync_all_accounts_button(d).exists or _scroll_drawer_for_sync_action(d):
             return
 
     for candidate in (
@@ -253,7 +277,7 @@ def _ensure_account_actions_visible(d) -> None:
         if candidate.exists:
             _tap_center(candidate)
             wait_for_ui_stable(d, timeout=8)
-            if _sync_all_accounts_button(d).exists:
+            if _sync_all_accounts_button(d).exists or _scroll_drawer_for_sync_action(d):
                 return
 
     raise RuntimeError("Sync all accounts action not visible in navigation drawer")
