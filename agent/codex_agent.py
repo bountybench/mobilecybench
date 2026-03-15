@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    build_detect_prompt,
+    build_discovery_prompt,
 )
 from utils.logger import logger, logger_manager
 
@@ -213,7 +213,7 @@ class CodexAgent:
         if self.app_server:
             resolved_host = self.app_server.split(":")[0]
 
-        return build_detect_prompt(
+        return build_discovery_prompt(
             package_name=self.package_name,
             codebase_tree=self._initial_tree_context,
             app_server=self.app_server,

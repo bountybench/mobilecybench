@@ -44,7 +44,10 @@ class EmulatorManager:
         emulator_display: str = "headed",
     ):
         self.emulator_backend = emulator_backend
-        self.emulator_display = emulator_display
+        # Container mode is always headless (no display available)
+        self.emulator_display = (
+            "headless" if emulator_backend == "container" else emulator_display
+        )
         self.project_root = project_root
         self.sdk_version = sdk_version
         self.app_name = app_name
@@ -78,34 +81,30 @@ class EmulatorManager:
             f"MobileCybenchEmulatorAPI{self.sdk_version}_{system_image_suffix}"
         )
 
+        # Base flags shared by all modes (matches CI emulator-options in ci.yml)
+        emulator_args = [
+            str(emulator_bin),
+            "-avd",
+            emulator_name,
+            "-no-snapshot-save",
+            "-wipe-data",
+            "-memory",
+            "2048",
+            "-noaudio",
+            "-no-boot-anim",
+            "-read-only",
+        ]
+
         if self.emulator_display == "headless":
-            emulator_args = [
-                str(emulator_bin),
-                "-avd",
-                emulator_name,
-                "-no-snapshot-save",
-                "-wipe-data",
+            emulator_args += [
                 "-no-window",
                 "-gpu",
-                "off",
-                "-memory",
-                "2048",
-                "-no-audio",
-                "-read-only",
+                "swiftshader",
             ]
         else:
-            emulator_args = [
-                str(emulator_bin),
-                "-avd",
-                emulator_name,
-                "-no-snapshot-save",
-                "-wipe-data",
+            emulator_args += [
                 "-gpu",
                 "host",
-                "-skin",
-                "1080x1920",
-                "-memory",
-                "2048",
             ]
 
         return {
@@ -189,22 +188,15 @@ class EmulatorManager:
         except docker.errors.NotFound:
             pass
 
-        emulator_name = self.emulator_config["emulator_name"]
-        android_home = self.emulator_config["android_home"]
-        emulator_bin = f"{android_home}/emulator/emulator"
-
-        # Always headless in container mode
-        emulator_cmd = (
-            f"{emulator_bin} -avd {emulator_name} "
-            f"-no-snapshot-save -wipe-data -no-window -gpu off "
-            f"-memory 2048 -no-audio -read-only"
-        )
+        # Reuse the args built by _build_emulator_config (always headless)
+        emulator_cmd = " ".join(self.emulator_config["emulator_args"])
 
         # Use a minimal emulator image (much smaller than the orchestrator)
         emulator_image = os.environ.get(
             "EMULATOR_IMAGE", "cybench/mobilecybench-emulator:latest"
         )
 
+        emulator_name = self.emulator_config["emulator_name"]
         logger.info(f"Starting emulator container with image: {emulator_image}")
         logger.info(f"Emulator AVD: {emulator_name}")
 
@@ -233,7 +225,7 @@ class EmulatorManager:
                 network="shared_net",
                 ports={"5037/tcp": 5037},
                 detach=True,
-                environment={"ANDROID_HOME": android_home},
+                environment={"ANDROID_HOME": self.emulator_config["android_home"]},
             )
             logger.info(
                 f"Emulator container started: {self.emulator_container.short_id}"

@@ -42,7 +42,7 @@ configure_exploit_host_ip() {
   log_info "Configuring exploit scripts with host IP"
 
   local host_ip
-  host_ip=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+  host_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
 
   if [[ -z "$host_ip" ]]; then
     log_warn "Could not detect host IP, exploit may not work"

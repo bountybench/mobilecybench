@@ -17,26 +17,32 @@
 ## Runtime Architecture
 
 ```
-                              Host Machine
-  ┌───────────────────────────────────────────────────────────────────────────┐
-  │                                                                           │
-  │   runner.py / Workflow                                                    │
-  │         │                                                                 │
-  │         │ docker exec        ADB Server ───► Android Emulator             │
-  │         │                        ▲           (local, or container in GCP) │
-  │         │                        │                                        │
-  └─────────┼────────────────────────┼────────────────────────────────────────┘
-            │                        │ network (adb connect)
-            ▼                        │
-  ┌─────────────────────┐            │          ┌─────────────────────┐
-  │   Kali Container    │────────────┘          │   App Containers    │
-  │   (sandbox)         │                       │                     │
-  │                     │◄───── shared_net ────►│ - Backend servers   │
-  │ - Agent commands    │                       │ - Databases         │
-  │   execute here      │                       │ - App dependencies  │
-  │ - /app/codebase     │                       │                     │
-  │   mounted           │                       │                     │
-  └─────────────────────┘                       └─────────────────────┘
+                  Host Machine (local) / Orchestrator Pod (GKE)
+  ┌──────────────────────────────────────────────────────────────┐
+  │                                                              │
+  │   runner.py / Workflow             ADB Server                │
+  │         │                              ▲                     │
+  │         │ docker exec                  │                     │
+  │         │                              │                     │
+  │         │       Android Emulator ──────┘                     │
+  │         │       (host process, or container on GKE)          │
+  │         │                                                    │
+  └─────────┼────────────────────────────────────────────────────┘
+            │                              ▲
+            │                              │ ADB (tcp)
+            │                   ┌──────────┴─────────┐
+            │                   │    ADB Proxy       │
+            │                   │  Blocks root/su    │
+            ▼                   └──────────▲─────────┘
+                                       ADB │
+  ┌─────────────────────┐                  │      ┌───────────────────┐
+  │   Kali Container    │──────────────────┘      │  App Containers   │
+  │   (sandbox)         │                         │                   │
+  │ - Agent commands    │◄───── shared_net ──────►│  TLS proxies      │
+  │   execute here      │                         │    │ private_net  │
+  │ - /app/codebase     │                         │    ▼              │
+  │   mounted           │                         │  Backends / DBs   │
+  └─────────────────────┘                         └───────────────────┘
 ```
 
 **Host Machine**
@@ -45,17 +51,20 @@
 - Runs Android emulator (local) or connects to emulator container (GCP only)
 - Controls containers via `docker exec`
 
-**Kali Container** (agent phase)
+**ADB Proxy** (sidecar container on `shared_net`)
+- Sits between the Kali container and the host ADB server
+- Inspects ADB protocol messages and blocks dangerous operations (`root:`, `unroot:`, `backup:`, `su`, `run-as`, interactive shells)
+- Blocked patterns defined in `utils/adb_blocked_patterns.py`
+- Additionally, `su` is disabled on the emulator via a bind mount over `/system/xbin/su`
+- Used during both the agent phase and exploit replay (`run_exploit_container.sh`)
+
+**Kali Container** (agent phase, on `shared_net`)
 - Sandboxed environment where agent commands execute
 - App codebase mounted at `/app/codebase`
-- Connects to ADB server on host via network
+- ADB traffic routes through the proxy sidecar (`ADB_SERVER_SOCKET` env var)
 - Tools execute via ToolRuntime
 - Restarted before evaluation begins (only `agent_exploit` dir is preserved)
 
-**App Containers**
-- Backend servers, databases, and other app dependencies
-- Connected to Kali via `shared_net` Docker network
-- Examples: Nextcloud server, database containers
 
 ## Agent Environment
 
@@ -76,6 +85,7 @@
 **Mode differences:**
 - Discovery mode: Agent searches for unknown vulnerabilities
 - Exploit mode: Agent receives vulnerability description + access to verify_files
+- Detection mode: Agent searches for real vulnerabilities; evaluation replays exploit on original vs hardened APK
 
 ### Agent Capabilities
 
@@ -85,11 +95,11 @@
 - Interact with emulator via ADB (as `shell` user)
 - Network access to app containers via `shared_net`
 
-**Cannot do (allowlist restrictions):**
-- `adb root`
-- `adb backup`
-- `su` / privilege escalation
-- Other restricted operations defined in runner config
+**Cannot do (enforced by ADB proxy + emulator lockdown):**
+- `adb root`, `adb unroot`, `adb backup` (blocked ADB services)
+- `su`, `run-as` (blocked shell commands; `su` binary also disabled via bind mount)
+- Interactive shells via `adb shell sh`/`bash` (proxy-only restriction)
+- Full blocked pattern list: `utils/adb_blocked_patterns.py`
 
 ### ADB Shell User Permissions (Android Primer)
 
@@ -122,6 +132,26 @@ Some apps (like Termux) may expose files via other mechanisms, but standard apps
 - App is open to main activity
 - Test users are pre-seeded (credentials in metadata.json)
 
+## GKE Deployment Architecture
+
+For running experiments at scale, MobileCybench can be deployed on Google Kubernetes Engine (GKE). Each experiment runs as a Kubernetes Job in a privileged pod with Docker-in-Docker:
+
+```
+GKE Node (n2d-standard-8, nested virt enabled)
+└── Pod (privileged, /dev/kvm hostPath)
+    └── Orchestrator container (DinD)
+        ├── Android emulator (container or native process)
+        ├── Kali agent container
+        └── App backend containers
+```
+
+Key infrastructure components:
+- **Orchestrator images**: `Dockerfile.orchestrator` (full, ~31 GB) or `Dockerfile.orchestrator-slim` (no emulator, ~5-6 GB) + separate `Dockerfile.emulator` (~8-10 GB)
+- **Emulator modes**: `container` (emulator as a separate Docker container inside DinD) or `native` (emulator as a process inside the orchestrator)
+- **Job generation**: `infra/gke/generate_jobs.py` creates Kubernetes Job manifests for experiment matrices (apps x models x vulnerabilities)
+- **Results collection**: Experiment results are uploaded to GCS and aggregated via `infra/gke/collect_results.py`
+
+See `infra/gke/README.md` for full setup instructions, cluster configuration, and troubleshooting.
 ## Logging & Observability
 
 MobileCybench uses a centralized logging system designed for both human debugging and machine analysis.

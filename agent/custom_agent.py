@@ -11,7 +11,8 @@ from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
-    build_detect_prompt,
+    build_detection_prompt,
+    build_discovery_prompt,
     build_synthetic_prompt,
 )
 from agent.tools.runtime import ToolRuntime
@@ -139,16 +140,22 @@ class CustomAgent:
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
         """Build the system prompt text based on workflow mode."""
         if self.workflow == "exploit":
-            # Exploit mode - use targeted exploit prompt
             full_prompt = build_synthetic_prompt(
                 package_name=self.package_name,
                 username=self.username,
                 password=self.password,
                 app_server=self.app_server if self.network_access else None,
             )
+        elif self.workflow == "detection":
+            full_prompt = build_detection_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server if self.network_access else None,
+                username=self.username,
+                password=self.password,
+            )
         else:
-            # Discovery mode - use detect prompt
-            full_prompt = build_detect_prompt(
+            full_prompt = build_discovery_prompt(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server if self.network_access else None,

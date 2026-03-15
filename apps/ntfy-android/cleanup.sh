@@ -42,7 +42,9 @@ for f in "${SCRIPT_DIR}/baseline_availability.json" \
          "${SCRIPT_DIR}/baseline_android_dir.txt" \
          "${SCRIPT_DIR}/after_android_dir.txt" \
          "${SCRIPT_DIR}/baseline_subscriptions.txt" \
-         "${SCRIPT_DIR}/baseline_notifications.txt"; do
+         "${SCRIPT_DIR}/baseline_notifications.txt" \
+         "${SCRIPT_DIR}/apk_hash_baseline.txt" \
+         "${SCRIPT_DIR}/device_epoch_baseline.txt"; do
   if [[ -f "$f" ]]; then
     rm -f -- "$f"
   fi
@@ -57,8 +59,19 @@ for f in "${SCRIPT_DIR}/generic_scores.json" \
   fi
 done
 
+info "Stopping crash sniffer"
+CRASH_SNIFFER_PID_FILE="${SCRIPT_DIR}/crash_sniffer.pid"
+if [[ -f "$CRASH_SNIFFER_PID_FILE" ]]; then
+  old_pid=$(cat "$CRASH_SNIFFER_PID_FILE" 2>/dev/null || true)
+  if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+    kill "$old_pid" 2>/dev/null || true
+    wait "$old_pid" 2>/dev/null || true
+  fi
+  rm -f -- "$CRASH_SNIFFER_PID_FILE"
+fi
+
 info "Removing runtime logs"
-# Main directory logs
+# Main directory logs (covers crash_sniffer.log via *.log glob)
 rm -f -- "${SCRIPT_DIR}"/*.log 2>/dev/null || true
 rm -f -- "${SCRIPT_DIR}"/setup_app_apklink.log 2>/dev/null || true
 rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true

@@ -8,6 +8,7 @@ cd "$SCRIPT_DIR"
 
 KARAF_TCP_TIMEOUT=${KARAF_TCP_TIMEOUT:-120}
 KARAF_READY_TIMEOUT=${KARAF_READY_TIMEOUT:-120}
+ANDROID_APK_HASH_FILE="${SCRIPT_DIR}/apk_hash_baseline.txt"
 
 KARAF_PASSWORD=${KARAF_PASSWORD:-}
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
@@ -42,6 +43,33 @@ setup_apk_device() {
   log_info "Installing APK on device"
   adb wait-for-device
   adb_install_apk "$APK_PATH"
+}
+
+capture_apk_hash() {
+  log_info "Capturing APK hash for integrity verification"
+  local apk_paths apk_device_path
+  apk_paths="$(adb shell pm path org.openhab.habdroid 2>/dev/null | tr -d '\r' | sed 's/^package://')" || apk_paths=""
+  apk_device_path="$(printf '%s\n' "$apk_paths" | grep '/base.apk$' | head -n 1 || true)"
+  if [ -z "$apk_device_path" ]; then
+    apk_device_path="$(printf '%s\n' "$apk_paths" | head -n 1 || true)"
+  fi
+  if [ -z "$apk_device_path" ]; then
+    log_warn "Could not determine APK path; skipping hash capture"
+    return
+  fi
+
+  local tmp_apk="/tmp/openhab_baseline_apk.tmp"
+  if ! adb pull "$apk_device_path" "$tmp_apk" >/dev/null 2>&1; then
+    log_warn "APK pull failed; skipping hash capture"
+    return
+  fi
+
+  python3 -c '
+import hashlib, sys
+print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
+' "$tmp_apk" > "$ANDROID_APK_HASH_FILE"
+  rm -f "$tmp_apk"
+  log_info "APK hash saved to $ANDROID_APK_HASH_FILE"
 }
 
 wait_for_docker_container_ready() {
@@ -248,6 +276,7 @@ main() {
   setup_karaf
 
   setup_apk_device
+  capture_apk_hash
 
   hash_immutable_files
 

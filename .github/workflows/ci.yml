@@ -1148,16 +1148,11 @@ jobs:
             agent_output_path="$(pwd)/${vuln_dir}/agent_output"
             rm -rf "$agent_output_path"
             mkdir -p "$agent_output_path"
-            if ! CHALLENGE_URL="${CHALLENGE_URL}" "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
+            CHALLENGE_URL="${CHALLENGE_URL}" "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
               --exploit-dir "$exploit_files_path" \
               --output-dir "$agent_output_path" \
               --image "$EXPLOIT_IMAGE" \
-              --utils-dir "${GITHUB_WORKSPACE}/utils"; then
-              echo "ERROR: Exploit container execution failed"
-              [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
-              [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
-              return 1
-            fi
+              --utils-dir "${GITHUB_WORKSPACE}/utils" || echo "WARNING: Exploit returned non-zero exit code (may be expected on clean builds)"
 
             # Stop CI challenge server before verification (mirrors run_ci_local.sh)
             if [ -n "$CHALLENGE_PID" ]; then
@@ -1445,7 +1440,7 @@ jobs:
           profile: pixel_2
           ram-size: 2048
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader -noaudio -no-boot-anim -memory 2048 -read-only
           disable-animations: true
           script: |
             # Restart ADB on all interfaces so exploit containers can reach
