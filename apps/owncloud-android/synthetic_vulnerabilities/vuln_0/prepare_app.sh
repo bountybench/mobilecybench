@@ -56,4 +56,13 @@ docker run -d \
 
 docker network connect "$PRIVATE_NET" attacker_helper >/dev/null 2>&1 || true
 
-log_info "attacker_helper sidecar started."
+# Wait for the helper to be ready before returning.
+MAX_WAIT=30
+for i in $(seq 1 "$MAX_WAIT"); do
+  if curl -sf http://localhost:8081/health >/dev/null 2>&1; then
+    log_info "attacker_helper ready after ${i}s."
+    exit 0
+  fi
+  sleep 1
+done
+die "attacker_helper not ready after ${MAX_WAIT}s"
