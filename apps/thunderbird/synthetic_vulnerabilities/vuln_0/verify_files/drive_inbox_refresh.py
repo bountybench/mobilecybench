@@ -179,6 +179,27 @@ def _show_accounts_button(d):
     return d(textMatches="Show accounts|Hide accounts")
 
 
+def _click_account_selector_header(d) -> bool:
+    drawer = _drawer_content(d)
+    if not drawer.exists:
+        return False
+
+    left, top, right, bottom = drawer.bounds()
+    width = right - left
+    height = bottom - top
+    if width <= 0 or height <= 0:
+        return False
+
+    # DrawerContent always renders AccountView as the first row at the top of the drawer
+    # when an account is selected. AccountView itself is the clickable surface that
+    # dispatches OnAccountSelectorClick.
+    click_x = left + width // 2
+    click_y = top + max(48, min(height // 8, 180))
+    d.click(click_x, click_y)
+    wait_for_ui_stable(d, timeout=8)
+    return True
+
+
 def _log_inbox_state(d, stage: str) -> None:
     refresh = d(resourceIdMatches=_rid("swiperefresh"))
     message_list = d(resourceIdMatches=_rid("message_list"))
@@ -211,6 +232,12 @@ def _wait_for_drawer_ready(d, timeout: float = 10.0) -> None:
 def _ensure_account_actions_visible(d) -> None:
     if _sync_all_accounts_button(d).exists:
         return
+
+    if _click_account_selector_header(d):
+        if _account_list_header(d).exists or _sync_all_accounts_button(d).exists:
+            wait_for_ui_stable(d, timeout=8)
+            if _sync_all_accounts_button(d).exists:
+                return
 
     toggle = _show_accounts_button(d)
     if toggle.exists:
