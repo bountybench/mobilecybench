@@ -1095,25 +1095,14 @@ jobs:
             # Wait for app containers
             check_app_containers_ready
 
-            # Optional per-vuln host-side app preparation hook.
-            # This runs before the exploit container starts so the device is in a known state.
-            prepare_app_hook="${vuln_dir}/prepare_app.sh"
-            if [ -f "$prepare_app_hook" ]; then
-              echo "Running prepare_app hook: $prepare_app_hook"
-              if ! timeout 300 bash "$prepare_app_hook"; then
-                echo "ERROR: prepare_app.sh failed or timed out"
-                return 1
-              fi
-            else
-              echo "No prepare_app hook found (skipping)"
-            fi
-
             # ------------------------------------------------------------------
             # CI Challenge Server (anti-reward-hacking)
-            # Start before the exploit so the container receives CHALLENGE_URL
-            # but never controls the server, its cert, or what it serves.
+            # Start BEFORE prepare_app.sh so CHALLENGE_PORT is available.
+            # The exploit container receives only the URL ($CHALLENGE_URL);
+            # it never controls the server, its cert, or what it serves.
             # ------------------------------------------------------------------
             local CHALLENGE_PID=""
+            local CHALLENGE_PORT=""
             local CHALLENGE_LOG_FILE=""
             local CHALLENGE_URL=""
             local challenge_server_script="${vuln_dir}/verify_files/challenge_server.py"
@@ -1121,13 +1110,12 @@ jobs:
             if [ -f "$challenge_server_script" ]; then
               echo "Starting CI challenge server..."
               CHALLENGE_LOG_FILE=$(mktemp)
-              local challenge_port
-              challenge_port=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); p=s.getsockname()[1]; s.close(); print(p)")
+              CHALLENGE_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); p=s.getsockname()[1]; s.close(); print(p)")
 
               local challenge_stderr
               challenge_stderr=$(mktemp)
               python3 "$challenge_server_script" \
-                --port "$challenge_port" \
+                --port "$CHALLENGE_PORT" \
                 --log-file "$CHALLENGE_LOG_FILE" \
                 >/dev/null 2>"$challenge_stderr" &
               CHALLENGE_PID=$!
@@ -1153,11 +1141,26 @@ jobs:
                 return 1
               fi
               if [ -z "$CHALLENGE_URL" ]; then
-                CHALLENGE_URL="https://10.0.2.2:${challenge_port}/"
+                CHALLENGE_URL="https://10.0.2.2:${CHALLENGE_PORT}/"
                 echo "WARNING: [READY] URL not received; using fallback ${CHALLENGE_URL}"
               else
                 echo "CI challenge server ready: ${CHALLENGE_URL}"
               fi
+            fi
+
+            # Optional per-vuln host-side app preparation hook.
+            # CHALLENGE_PORT is exported so prepare_app.sh can redirect the app to the challenge server.
+            prepare_app_hook="${vuln_dir}/prepare_app.sh"
+            if [ -f "$prepare_app_hook" ]; then
+              echo "Running prepare_app hook: $prepare_app_hook"
+              if ! CHALLENGE_PORT="${CHALLENGE_PORT}" timeout 300 bash "$prepare_app_hook"; then
+                echo "ERROR: prepare_app.sh failed or timed out"
+                [ -n "$CHALLENGE_PID" ] && kill "$CHALLENGE_PID" 2>/dev/null || true
+                [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
+                return 1
+              fi
+            else
+              echo "No prepare_app hook found (skipping)"
             fi
 
             # Run exploit in container via shared script
