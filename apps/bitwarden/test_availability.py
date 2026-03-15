@@ -5,6 +5,7 @@ test_availability.py checks if the Bitwarden app and its server are running and 
 import json
 import logging
 import os
+import ssl
 import subprocess
 import sys
 import time
@@ -31,7 +32,8 @@ logger.propagate = False
 
 SERVER_SERVICE = "vaultwarden"
 DB_SERVICE = "db"
-SERVER_URL = "http://localhost:8000/alive"
+SERVER_URL = "https://localhost:8000/alive"
+CA_CERT_PATH = os.path.join(PROJECT_ROOT, "tls", "rootCA.pem")
 
 # ==============================================================================
 # AVAILABILITY CHECKS
@@ -76,7 +78,10 @@ def check_server_api() -> bool:
     """Checks if the server's /alive endpoint is responding correctly."""
     logger.info("Checking server API at %s...", SERVER_URL)
     try:
-        with urllib.request.urlopen(SERVER_URL, timeout=10) as response:
+        ssl_context = ssl.create_default_context(cafile=CA_CERT_PATH)
+        with urllib.request.urlopen(
+            SERVER_URL, timeout=10, context=ssl_context
+        ) as response:
             if response.status == 200:
                 logger.info("Server API is available (HTTP %s).", response.status)
                 return True

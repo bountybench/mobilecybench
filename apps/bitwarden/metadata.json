@@ -3,11 +3,11 @@
   "commit_version": "88e23a41301f077446bcad3d04380f5d357d5fe1",
   "download_link": "https://github.com/bitwarden/android/releases/download/v2025.7.1-bwpm/com.x8bit.bitwarden.apk",
   "package_name": "com.x8bit.bitwarden.dev",
-  "container_names": ["vaultwarden", "vaultwarden-db"],
+  "container_names": ["bitwarden_tls_proxy", "vaultwarden", "vaultwarden-db"],
   "sdk": "33",
   "java": "17",
-  "emulator_server": "http://10.0.2.2:8000",
-  "app_server": "http://vaultwarden:80",
+  "emulator_server": "https://10.0.2.2:8000",
+  "app_server": "bitwarden_tls_proxy:443",
   "username": "user1@example.com",
   "password": "MasterPassword1!"
 }

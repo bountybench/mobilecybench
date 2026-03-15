@@ -6,6 +6,7 @@ including ADB commands and server management.
 import json
 import logging
 import os
+import ssl
 import subprocess
 import sys
 import urllib.request
@@ -21,7 +22,9 @@ except Exception:
 
 BITWARDEN_PKG = metadata.get("package_name", "com.x8bit.bitwarden.dev")
 # Use emulator_server from metadata, fallback to standard emulator-to-host URL
-SERVER_URL = metadata.get("emulator_server", "http://10.0.2.2:8000")
+SERVER_URL = metadata.get("emulator_server", "https://10.0.2.2:8000")
+HOST_ALIVE_URL = "https://localhost:8000/alive"
+CA_CERT_PATH = os.path.join(app_dir, "..", "..", "tls", "rootCA.pem")
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -94,9 +97,9 @@ def ensure_server_running():
     logger.info("Checking if Vaultwarden server is responsive...")
 
     try:
-        # We check localhost:8000 because this runs on the host (CI runner)
+        ssl_context = ssl.create_default_context(cafile=CA_CERT_PATH)
         with urllib.request.urlopen(
-            "http://localhost:8000/alive", timeout=10
+            HOST_ALIVE_URL, timeout=10, context=ssl_context
         ) as response:
             if response.status == 200:
                 logger.info("Vaultwarden server is responsive.")
