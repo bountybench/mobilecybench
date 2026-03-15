@@ -1,0 +1,44 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -35,6 +35,8 @@
+     }
+ }
+ 
++val fastReleaseBuild = providers.gradleProperty("bw.fastRelease").orElse("false").get().toBoolean()
++
+ android {
+     namespace = "com.x8bit.bitwarden"
+     compileSdk = libs.versions.compileSdk.get().toInt()
+@@ -51,6 +53,9 @@
+         )
+     }
+ 
++    defaultConfig {
++        ndk { abiFilters += "x86_64" }
++    }
+     androidResources {
+         @Suppress("UnstableApiUsage")
+         generateLocaleConfig = true
+@@ -85,8 +90,8 @@
+         create("beta") {
+             applicationIdSuffix = ".beta"
+             isDebuggable = false
+-            isMinifyEnabled = true
+-            isShrinkResources = true
++            isMinifyEnabled = !fastReleaseBuild
++            isShrinkResources = !fastReleaseBuild
+             matchingFallbacks += listOf("release")
+             proguardFiles(
+                 getDefaultProguardFile("proguard-android-optimize.txt"),
+@@ -98,8 +103,8 @@
+         }
+         release {
+             isDebuggable = false
+-            isMinifyEnabled = true
+-            isShrinkResources = true
++            isMinifyEnabled = !fastReleaseBuild
++            isShrinkResources = !fastReleaseBuild
+             proguardFiles(
+                 getDefaultProguardFile("proguard-android-optimize.txt"),
+                 "proguard-rules.pro",
