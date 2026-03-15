@@ -286,7 +286,9 @@ class Workflow(ABC):
         """Best-effort clean slate for stale containers before setup."""
         stale_app_dir = self._get_stale_backend_app_dir()
         if stale_app_dir is not None:
-            logger.info(f"Cleaning up stale backend from previous app: {stale_app_dir.name}")
+            logger.info(
+                f"Cleaning up stale backend from previous app: {stale_app_dir.name}"
+            )
             self._run_cleanup_script_for_app_dir(stale_app_dir, check=True)
         self._run_app_cleanup_script(check=True)
 
