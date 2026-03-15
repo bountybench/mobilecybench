@@ -1,0 +1,76 @@
+# GKE Runner (baked) — extends the slim orchestrator with emulator + agent
+# Docker images pre-pulled into /var/lib/docker-baked.
+#
+# At pod startup, the entrypoint copies the baked Docker data into the emptyDir
+# mounted at /var/lib/docker (~1-2 min cp vs ~6-7 min docker load/pull).
+#
+# Prerequisites:
+#   1. Build the slim orchestrator base:
+#        docker build -f orchestrator/Dockerfile.orchestrator-slim \
+#          -t mobilecybench-orchestrator-slim:latest .
+#
+#   2. Initialize git submodules BEFORE building:
+#        git submodule update --init apps/moememos/codebase ...
+#
+# Build (requires privileged buildx for dockerd during build):
+#   docker buildx create --name insecure-builder --use \
+#     --buildkitd-config <(echo -e '[worker.oci]\n  allowed-entitlements = ["security.insecure"]')
+#   docker buildx build --builder insecure-builder --allow security.insecure \
+#     --load -f infra/gke/Dockerfile.runner-baked \
+#     -t cybench/mobilecybench-runner-baked:latest .
+#
+# Expected image size: ~43-46GB (base ~32GB + emulator ~10GB + agent ~1GB)
+
+ARG BASE_IMAGE=cybench/mobilecybench-orchestrator-slim:latest
+FROM ${BASE_IMAGE}
+
+# Install Google Cloud CLI for GCS uploads
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    apt-transport-https \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+       > /etc/apt/sources.list.d/google-cloud-sdk.list \
+    && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+       | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends google-cloud-cli \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy full codebase (submodules must be initialized on the host before build)
+COPY . /mobilecybench
+WORKDIR /mobilecybench
+
+# Install Python package in editable mode
+RUN /opt/venv/bin/pip install --no-cache-dir -e .
+
+# ─── Bake Docker images into a staging directory ──────────────────────────
+# Start a temporary dockerd, pull both images, then stop dockerd.
+# Images are stored in /var/lib/docker-baked (NOT /var/lib/docker, because
+# the job template mounts an emptyDir over /var/lib/docker for per-pod isolation).
+# The entrypoint copies from docker-baked → docker at startup.
+#
+# REQUIRES: --allow security.insecure (buildx) because dockerd needs privileges.
+ARG EMULATOR_IMAGE=cybench/mobilecybench-emulator:latest
+ARG AGENT_IMAGE=cybench/mobilecybench:latest
+
+RUN --security=insecure \
+    mkdir -p /var/lib/docker-baked && \
+    rm -f /var/run/docker.pid && \
+    dockerd --data-root /var/lib/docker-baked &>/tmp/dockerd-build.log & \
+    DOCKERD_PID=$! && \
+    echo "Waiting for build dockerd..." && \
+    for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 1; done && \
+    docker info >/dev/null 2>&1 || { echo "dockerd failed:"; cat /tmp/dockerd-build.log; exit 1; } && \
+    echo "Pulling ${EMULATOR_IMAGE}..." && \
+    docker pull "${EMULATOR_IMAGE}" && \
+    echo "Pulling ${AGENT_IMAGE}..." && \
+    docker pull "${AGENT_IMAGE}" && \
+    echo "Images baked:" && \
+    docker images && \
+    kill $DOCKERD_PID && wait $DOCKERD_PID 2>/dev/null || true && \
+    rm -f /tmp/dockerd-build.log /var/run/docker.pid
+
+# Copy baked entrypoint
+COPY infra/gke/entrypoint-gke-baked.sh /entrypoint-gke.sh
+RUN chmod +x /entrypoint-gke.sh
+
+ENTRYPOINT ["/entrypoint-gke.sh"]

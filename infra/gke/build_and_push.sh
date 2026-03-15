@@ -4,13 +4,18 @@
 #
 # Usage (on a Linux VM with Docker):
 #   bash infra/gke/build_and_push.sh [--push] [--image <name:tag>]
+#   bash infra/gke/build_and_push.sh --baked [--push]   # baked variant with pre-pulled images
 #
 # Steps:
 #   1. Init git submodules for apps with synthetic vulnerabilities
 #   2. Build clean + vulnerable APKs for each app/vuln pair
-#   3. Build orchestrator-slim base image
-#   4. Build runner-slim image (with APKs baked in)
-#   5. Optionally push to Docker Hub
+#   3. Build runner-slim image (with APKs baked in)
+#   4. Optionally push to Docker Hub
+#
+# With --baked:
+#   Also builds runner-baked image (~43-46GB) that includes emulator + agent
+#   Docker images pre-pulled inside the image. Requires buildx with insecure
+#   entitlement (dockerd runs during build).
 #
 # Prerequisites:
 #   - Docker installed and running
@@ -22,13 +27,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 IMAGE_NAME="cybench/mobilecybench-runner:latest"
+BAKED_IMAGE_NAME="cybench/mobilecybench-runner-baked:latest"
 BASE_IMAGE="cybench/mobilecybench-orchestrator-slim:latest"
 PUSH=false
+BAKED=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --push) PUSH=true; shift ;;
         --image) IMAGE_NAME="$2"; shift 2 ;;
+        --baked-image) BAKED_IMAGE_NAME="$2"; shift 2 ;;
+        --baked) BAKED=true; shift ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -133,13 +142,47 @@ echo ""
 echo "=== Build complete ==="
 echo "Image: $IMAGE_NAME"
 
+# ─── Step 4 (optional): Build baked runner image ────────────────────────
+if [ "$BAKED" = true ]; then
+    echo ""
+    echo "=== Step 4: Build runner-baked image (with pre-pulled emulator + agent) ==="
+    echo "This requires buildx with insecure entitlement for dockerd during build."
+
+    # Create/reuse a builder with insecure entitlement
+    BUILDER_NAME="mobilecybench-insecure"
+    if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
+        echo "Creating buildx builder: $BUILDER_NAME"
+        docker buildx create --name "$BUILDER_NAME" --use \
+            --buildkitd-config <(printf '[worker.oci]\n  allowed-entitlements = ["security.insecure"]\n')
+    else
+        docker buildx use "$BUILDER_NAME"
+    fi
+
+    docker buildx build --builder "$BUILDER_NAME" --allow security.insecure \
+        --load -f infra/gke/Dockerfile.runner-baked \
+        --build-arg BASE_IMAGE="$BASE_IMAGE" \
+        -t "$BAKED_IMAGE_NAME" .
+
+    echo ""
+    echo "=== Baked build complete ==="
+    echo "Image: $BAKED_IMAGE_NAME"
+fi
+
 if [ "$PUSH" = true ]; then
     echo ""
-    echo "=== Step 5: Pushing to Docker Hub ==="
+    echo "=== Pushing to Docker Hub ==="
     docker push "$IMAGE_NAME"
-    echo "Push complete: $IMAGE_NAME"
+    echo "Pushed: $IMAGE_NAME"
+
+    if [ "$BAKED" = true ]; then
+        docker push "$BAKED_IMAGE_NAME"
+        echo "Pushed: $BAKED_IMAGE_NAME"
+    fi
 else
     echo ""
     echo "To push: docker push $IMAGE_NAME"
+    if [ "$BAKED" = true ]; then
+        echo "         docker push $BAKED_IMAGE_NAME"
+    fi
     echo "Or rerun with: bash infra/gke/build_and_push.sh --push"
 fi
