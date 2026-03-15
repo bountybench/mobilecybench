@@ -110,7 +110,7 @@ PY
 log_info "Opening seeded room once while online to cache the conversation"
 CONVERSATION_LABEL="$(python3 -c "import json; print(json.load(open('$SYNTH_STATE_PATH'))['conversation_label'])")"
 ROOM_TOKEN="$(python3 -c "import json; print(json.load(open('$SYNTH_STATE_PATH'))['room_token'])")"
-python3 "$SEED_HELPER" --conversation-label "$CONVERSATION_LABEL"
+python3 "$SEED_HELPER" --conversation-label "$CONVERSATION_LABEL" --room-token "$ROOM_TOKEN"
 
 log_info "Disabling network and creating a real queued message through the normal UI"
 SYNTH_MESSAGE="$(python3 -c "import json; print(json.load(open('$SYNTH_STATE_PATH'))['expected_message'])")"

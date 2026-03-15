@@ -29,6 +29,12 @@ def room_selector(d, label):
     return exact
 
 
+def open_room(d, label):
+    target = wait_for(d, room_selector(d, label), timeout=45)
+    target.click()
+    wait_for(d, d(resourceId=f"{PACKAGE}:id/messageInput"), timeout=45)
+
+
 def scroll_to_label(d, label):
     scrollable = d(scrollable=True)
     if not scrollable.exists:
