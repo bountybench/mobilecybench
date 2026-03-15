@@ -34,12 +34,12 @@ WORKDIR /mobilecybench
 # Install Python package in editable mode
 RUN /opt/venv/bin/pip install --no-cache-dir -e .
 
-# ─── Bake Docker data from host-prepared directory ────────────────────────
+# ─── Bake Docker data as a tar ────────────────────────────────────────────
 # build_and_push.sh runs a temporary dockerd on the host, pulls emulator +
-# agent images, and places the resulting data directory at .docker-baked/
-# in the build context. We copy it to /var/lib/docker-baked (not /var/lib/docker
-# because the job template mounts emptyDir there for per-pod isolation).
-COPY .docker-baked/ /var/lib/docker-baked/
+# agent images, then tars the Docker data directory. We ship the tar rather
+# than the raw directory because overlay2 contains device nodes that COPY
+# can't handle. The entrypoint extracts it into /var/lib/docker at startup.
+COPY .docker-baked.tar /var/lib/docker-baked.tar
 
 # Copy baked entrypoint
 COPY infra/gke/entrypoint-gke-baked.sh /entrypoint-gke.sh

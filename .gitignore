@@ -37,3 +37,4 @@ synthetic_scores.json
 .apk_backup_path
 .claude
 .docker-baked
+.docker-baked.tar

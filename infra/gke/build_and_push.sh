@@ -183,7 +183,18 @@ if [ "$BAKED" = true ]; then
         rm -f /tmp/baked-docker.sock /tmp/baked-dockerd.pid
         trap - EXIT
 
-        echo "Baked Docker data ready at $BAKED_DIR ($(du -sh "$BAKED_DIR" | cut -f1))"
+        echo "Docker data directory ready ($(du -sh "$BAKED_DIR" | cut -f1))"
+    fi
+
+    # Tar the Docker data directory — COPY in Dockerfile can't handle device
+    # nodes in overlay2, so we ship a tar and extract at runtime.
+    BAKED_TAR="$ROOT_DIR/.docker-baked.tar"
+    if [ ! -f "$BAKED_TAR" ] || [ "$BAKED_DIR" -nt "$BAKED_TAR" ]; then
+        echo "Creating .docker-baked.tar..."
+        tar -C "$BAKED_DIR" -cf "$BAKED_TAR" .
+        echo "Tar ready ($(du -sh "$BAKED_TAR" | cut -f1))"
+    else
+        echo "Reusing existing .docker-baked.tar ($(du -sh "$BAKED_TAR" | cut -f1))"
     fi
 
     echo ""

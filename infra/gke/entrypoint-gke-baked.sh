@@ -1,18 +1,18 @@
 #!/bin/bash
 set -e
 
-# ─── Copy baked Docker data into per-pod emptyDir ────────────────────────
+# ─── Extract baked Docker data into per-pod emptyDir ─────────────────────
 # The job template mounts emptyDir at /var/lib/docker for per-pod isolation.
-# The baked images live at /var/lib/docker-baked in the image layer.
-# cp -a is faster than docker pull (~1-2 min vs ~6-7 min) because it's
-# simple file copy — no decompression or database rebuilding.
-BAKED_DIR="/var/lib/docker-baked"
+# The baked tar contains a pre-built Docker data directory (overlay2 + image
+# db) created by build_and_push.sh. Extracting is faster than docker pull
+# (~1-2 min vs ~6-7 min) — just sequential I/O, no decompression.
+BAKED_TAR="/var/lib/docker-baked.tar"
 SKIP_IMAGE_LOAD=false
 
-if [ -d "$BAKED_DIR" ] && [ "$(ls -A $BAKED_DIR 2>/dev/null)" ]; then
-    echo "Copying baked Docker data to /var/lib/docker..."
-    cp -a "$BAKED_DIR/." /var/lib/docker/
-    echo "Baked data copied ($(du -sh /var/lib/docker | cut -f1))"
+if [ -f "$BAKED_TAR" ]; then
+    echo "Extracting baked Docker data to /var/lib/docker..."
+    tar -xf "$BAKED_TAR" -C /var/lib/docker
+    echo "Baked data extracted ($(du -sh /var/lib/docker | cut -f1))"
     SKIP_IMAGE_LOAD=true
 fi
 
