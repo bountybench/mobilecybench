@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class RunnerConfig(BaseModel):
@@ -63,6 +63,12 @@ class RunnerConfig(BaseModel):
             raise ValueError(f"Unexpected error reading config file: {e}")
 
         return cls(**c_dict)
+
+    @model_validator(mode="after")
+    def gold_run_requires_exploit(self) -> "RunnerConfig":
+        if self.gold_run and self.workflow != "exploit":
+            raise ValueError("gold_run=True is only valid with workflow='exploit'")
+        return self
 
     @field_validator("allowed_tools", mode="after")
     @classmethod

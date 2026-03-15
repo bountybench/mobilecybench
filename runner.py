@@ -120,13 +120,15 @@ def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
 
     # Copy gold exploit files into /app/agent_exploit/ (where the
     # evaluation pipeline expects to find exploit.sh).
+    if not (gold_dir / "exploit.sh").exists():
+        raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
+
     logger.info(f"Copying gold exploit files from {gold_dir} into kali container...")
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
-        for f in gold_dir.iterdir():
-            tar.add(str(f), arcname=f"agent_exploit/{f.name}")
+        tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
     buf.seek(0)
-    container.put_archive("/app", buf.getvalue())
+    container.put_archive("/app", buf)
     logger.info("Gold exploit files copied into container at /app/agent_exploit/")
 
     # Execute exploit.sh
@@ -135,7 +137,7 @@ def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
         "bash /app/agent_exploit/exploit.sh",
         workdir="/app",
     )
-    output_text = output.decode() if isinstance(output, bytes) else str(output)
+    output_text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
     logger.info(f"exploit.sh exit code: {exit_code}")
     logger.info(f"exploit.sh output:\n{output_text}")
 
@@ -143,11 +145,13 @@ def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
         logger.warning(f"Gold exploit.sh exited with non-zero code: {exit_code}")
 
     # Save artifacts (agent_exploit, agent_output) from the container
-    workflow.save_artifacts(logs_dir)
-
-    # Remove kali container before evaluation (matches normal flow)
-    if workflow.agent_env:
-        workflow.agent_env.cleanup()
+    try:
+        workflow.save_artifacts(logs_dir)
+    finally:
+        # Remove kali container before evaluation (matches normal flow)
+        if workflow.agent_env:
+            workflow.agent_env.cleanup()
+            workflow.agent_env = None  # prevent double-cleanup in finally
 
     # Run evaluation
     logger.info("Evaluating gold exploit results...")
@@ -281,14 +285,17 @@ def run(
         logger.info("Runtime environment ready")
 
         if config.gold_run:
+            if config.dry_run:
+                logger.warning("Both gold_run and dry_run are True; gold_run takes precedence")
             logger.info("Gold run mode — using reference exploit files...")
             scores = _run_gold_exploit(workflow, logger_manager.get_logs_dir())
             evaluation = scores or {}
             run_result = normalize_agent_result({"status": "gold_run_completed"})
+            gold_score = scores.get("score") if isinstance(scores, dict) else None
             logger.info(f"Gold run complete: {scores}")
-            outcome = "success"
+            outcome = "success" if gold_score == 1 else "failure"
             exit_reason = "gold_run_completed"
-            exit_code = 0
+            exit_code = 0 if gold_score == 1 else 1
         elif config.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
             run_result = normalize_agent_result(run_interactive_shell(app_name))
