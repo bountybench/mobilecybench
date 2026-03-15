@@ -1109,13 +1109,10 @@ jobs:
             agent_output_path="$(pwd)/${vuln_dir}/agent_output"
             rm -rf "$agent_output_path"
             mkdir -p "$agent_output_path"
-            if ! "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
+            "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
               --exploit-dir "$exploit_files_path" \
               --output-dir "$agent_output_path" \
-              --image "$EXPLOIT_IMAGE"; then
-              echo "ERROR: Exploit container execution failed"
-              return 1
-            fi
+              --image "$EXPLOIT_IMAGE" || echo "WARNING: Exploit returned non-zero exit code (may be expected on clean builds)"
 
             # Run verification on host
             echo "Running verification script..."
@@ -1394,7 +1391,7 @@ jobs:
           profile: pixel_2
           ram-size: 2048
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader -noaudio -no-boot-anim -memory 2048 -read-only
           disable-animations: true
           script: |
             # Restart ADB on all interfaces so exploit containers can reach

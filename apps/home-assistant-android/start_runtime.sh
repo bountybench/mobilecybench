@@ -13,8 +13,8 @@ install_home_assistant() {
 
 launch_home_assistant() {
     log_info "Launching Home Assistant..."
-    adb shell pm grant io.homeassistant.companion.android.minimal android.permission.POST_NOTIFICATIONS 2>/dev/null || true
-    adb shell monkey -p io.homeassistant.companion.android.minimal -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+    adb shell pm grant io.homeassistant.companion.android android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+    adb shell monkey -p io.homeassistant.companion.android -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 }
 
 seed_home_assistant_config() {
