@@ -1,0 +1,16 @@
+{
+  "title": "SharedDecks WebView Address Bar Spoofing",
+  "cwe_id": "CWE-451",
+  "cwe_name": "User Interface (UI) Misrepresentation of Critical Information",
+  "historic_cve": "CVE-2025-14809",
+  "cvss_historic": {
+    "base_score": 7.4,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:N/I:H/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 7.4,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:N/I:H/A:N"
+  }
+}
