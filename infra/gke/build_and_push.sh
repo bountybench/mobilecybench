@@ -3,19 +3,20 @@
 # Build all synthetic-vuln APKs and the slim GKE runner Docker image.
 #
 # Usage (on a Linux VM with Docker):
-#   bash infra/gke/build_and_push.sh [--push] [--image <name:tag>]
-#   bash infra/gke/build_and_push.sh --baked [--push]   # baked variant with pre-pulled images
+#   bash infra/gke/build_and_push.sh [--push] [--image <name:tag>]       # slim (default)
+#   bash infra/gke/build_and_push.sh --baked [--push] [--image <name:tag>]  # baked variant
 #
-# Steps:
+# Default (slim):
 #   1. Init git submodules for apps with synthetic vulnerabilities
 #   2. Build clean + vulnerable APKs for each app/vuln pair
 #   3. Build runner-slim image (with APKs baked in)
 #   4. Optionally push to Docker Hub
 #
 # With --baked:
-#   Also builds runner-baked image (~43-46GB) that includes emulator + agent
-#   Docker images pre-pulled inside the image. Requires buildx with insecure
-#   entitlement (dockerd runs during build).
+#   Same steps 1-2, but builds runner-baked image (~43-46GB) instead of
+#   runner-slim. Includes emulator + agent Docker images pre-pulled inside
+#   the image. Requires buildx with insecure entitlement (dockerd runs
+#   during build).
 #
 # Prerequisites:
 #   - Docker installed and running
@@ -26,21 +27,28 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-IMAGE_NAME="cybench/mobilecybench-runner:latest"
-BAKED_IMAGE_NAME="cybench/mobilecybench-runner-baked:latest"
 BASE_IMAGE="cybench/mobilecybench-orchestrator-slim:latest"
 PUSH=false
 BAKED=false
+IMAGE_NAME=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --push) PUSH=true; shift ;;
         --image) IMAGE_NAME="$2"; shift 2 ;;
-        --baked-image) BAKED_IMAGE_NAME="$2"; shift 2 ;;
         --baked) BAKED=true; shift ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
+
+# Set default image name based on variant
+if [ -z "$IMAGE_NAME" ]; then
+    if [ "$BAKED" = true ]; then
+        IMAGE_NAME="cybench/mobilecybench-runner-baked:latest"
+    else
+        IMAGE_NAME="cybench/mobilecybench-runner:latest"
+    fi
+fi
 
 # Discover apps with synthetic vulnerabilities and their vuln IDs
 declare -A APP_VULNS=()
@@ -133,19 +141,8 @@ for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
 done
 
 echo ""
-echo "=== Step 3: Build runner-slim image ==="
-docker build -f infra/gke/Dockerfile.runner-slim \
-    --build-arg BASE_IMAGE="$BASE_IMAGE" \
-    -t "$IMAGE_NAME" .
-
-echo ""
-echo "=== Build complete ==="
-echo "Image: $IMAGE_NAME"
-
-# ─── Step 4 (optional): Build baked runner image ────────────────────────
 if [ "$BAKED" = true ]; then
-    echo ""
-    echo "=== Step 4: Build runner-baked image (with pre-pulled emulator + agent) ==="
+    echo "=== Step 3: Build runner-baked image (with pre-pulled emulator + agent) ==="
     echo "This requires buildx with insecure entitlement for dockerd during build."
 
     # Create/reuse a builder with insecure entitlement
@@ -161,28 +158,25 @@ if [ "$BAKED" = true ]; then
     docker buildx build --builder "$BUILDER_NAME" --allow security.insecure \
         --load -f infra/gke/Dockerfile.runner-baked \
         --build-arg BASE_IMAGE="$BASE_IMAGE" \
-        -t "$BAKED_IMAGE_NAME" .
-
-    echo ""
-    echo "=== Baked build complete ==="
-    echo "Image: $BAKED_IMAGE_NAME"
+        -t "$IMAGE_NAME" .
+else
+    echo "=== Step 3: Build runner-slim image ==="
+    docker build -f infra/gke/Dockerfile.runner-slim \
+        --build-arg BASE_IMAGE="$BASE_IMAGE" \
+        -t "$IMAGE_NAME" .
 fi
+
+echo ""
+echo "=== Build complete ==="
+echo "Image: $IMAGE_NAME"
 
 if [ "$PUSH" = true ]; then
     echo ""
     echo "=== Pushing to Docker Hub ==="
     docker push "$IMAGE_NAME"
     echo "Pushed: $IMAGE_NAME"
-
-    if [ "$BAKED" = true ]; then
-        docker push "$BAKED_IMAGE_NAME"
-        echo "Pushed: $BAKED_IMAGE_NAME"
-    fi
 else
     echo ""
     echo "To push: docker push $IMAGE_NAME"
-    if [ "$BAKED" = true ]; then
-        echo "         docker push $BAKED_IMAGE_NAME"
-    fi
     echo "Or rerun with: bash infra/gke/build_and_push.sh --push"
 fi
