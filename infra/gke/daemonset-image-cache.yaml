@@ -27,14 +27,14 @@ spec:
     spec:
       containers:
         - name: cache
-          image: docker:27-dind
+          image: docker:dind
           command: ["sh", "-c"]
           args:
             - |
               set -e
               CACHE_DIR="/cache"
               GOLDEN_TAR="$CACHE_DIR/golden.tar"
-              DOCKER_ROOT="/tmp/docker-build"
+              DOCKER_ROOT="$CACHE_DIR/docker-build"
 
               echo "=== Image Cache DaemonSet (golden snapshot) ==="
               echo "Emulator image: $EMULATOR_IMAGE"
