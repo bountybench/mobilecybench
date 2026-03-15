@@ -175,13 +175,7 @@ class Workflow(ABC):
     def _restart_runtime(
         self, apk_path: Path, prepare_app_hook: Path = None, hook_env: dict = None
     ) -> None:
-        """Restart emulator and app servers with the given APK.
-
-        Args:
-            apk_path: Relative path to the APK within app_dir.
-            prepare_app_hook: Optional shell script to run after install.
-            hook_env: Optional environment dict for the prepare_app hook.
-        """
+        """Restart emulator and app servers with the given APK."""
         from utils.command_executor import CommandExecutor
         from utils.emulator_certs import inject_system_ca
         from utils.setup_utils import install_app_and_setup_backend

@@ -458,15 +458,7 @@ run_exploit_verification() {
         return 1
     fi
 
-    # ── CI-controlled challenge server ──────────────────────────────────────
-    # If verify_files/challenge_server.py exists, start a CI-controlled
-    # server BEFORE prepare_app.sh and the exploit.  The exploit container
-    # receives only the URL ($CHALLENGE_URL); it never controls the server,
-    # its certificates, or the content it serves.  The per-run nonce
-    # embedded in the served content is only knowable by fetching from this
-    # server (which is logged), making it impossible to forge valid evidence
-    # without genuinely triggering the vulnerable code path.
-    # ─────────────────────────────────────────────────────────────────────
+    # Start challenge server if one exists for this vulnerability
     local CHALLENGE_PID=""
     local CHALLENGE_LOG_FILE=""
     local CHALLENGE_PORT=""
@@ -487,7 +479,6 @@ run_exploit_verification() {
             >/dev/null 2>"$challenge_stderr" &
         CHALLENGE_PID=$!
 
-        # Wait up to 10 s for "[READY] <url>" on stderr
         local ready_deadline=$((SECONDS + 10))
         while [ $SECONDS -lt $ready_deadline ]; do
             if ! kill -0 "$CHALLENGE_PID" 2>/dev/null; then
@@ -519,8 +510,6 @@ run_exploit_verification() {
         fi
     fi
 
-    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
-    # CHALLENGE_PORT is exported so prepare_app.sh can redirect the app to the challenge server.
     local prepare_app_hook="$vuln_dir/prepare_app.sh"
     if [ -f "$prepare_app_hook" ]; then
         echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
@@ -549,22 +538,17 @@ run_exploit_verification() {
         --image "$exploit_image" \
         --utils-dir "$ROOT_DIR/utils" || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
 
-    # Stop CI challenge server (if running)
     if [ -n "$CHALLENGE_PID" ]; then
-        echo -e "${INFO} Stopping CI challenge server..."
         kill "$CHALLENGE_PID" 2>/dev/null || true
         wait "$CHALLENGE_PID" 2>/dev/null || true
     fi
 
-
-    # Run verification
     echo -e "${INFO} Running verification..."
     chmod +x "$verify_script"
     CHALLENGE_LOG_FILE="${CHALLENGE_LOG_FILE}" \
     bash "$verify_script"
     local verify_exit_code=$?
 
-    # Clean up temp files
     [ -n "$CHALLENGE_LOG_FILE" ] && rm -f "$CHALLENGE_LOG_FILE"
 
     if [ "$verify_exit_code" -eq 0 ]; then
