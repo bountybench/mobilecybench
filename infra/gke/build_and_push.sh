@@ -147,10 +147,16 @@ if [ "$BAKED" = true ]; then
 
     # Create/reuse a builder with insecure entitlement
     BUILDER_NAME="mobilecybench-insecure"
+    BUILDKIT_CFG="/tmp/buildkitd-insecure.toml"
+    cat > "$BUILDKIT_CFG" <<'TOML'
+[worker.oci]
+  allowed-entitlements = ["security.insecure"]
+TOML
+
     if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
         echo "Creating buildx builder: $BUILDER_NAME"
         docker buildx create --name "$BUILDER_NAME" --use \
-            --buildkitd-config <(printf '[worker.oci]\n  allowed-entitlements = ["security.insecure"]\n')
+            --buildkitd-config "$BUILDKIT_CFG"
     else
         docker buildx use "$BUILDER_NAME"
     fi
