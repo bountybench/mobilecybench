@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import shlex
 import sys
 import time
 
@@ -28,9 +29,22 @@ def room_selector(d, label):
     return exact
 
 
-def open_room(d, label):
-    target = wait_for(d, room_selector(d, label), timeout=45)
-    target.click()
+def scroll_to_label(d, label):
+    scrollable = d(scrollable=True)
+    if not scrollable.exists:
+        return
+    try:
+        scrollable.scroll.to(text=label)
+    except Exception:
+        pass
+
+
+def launch_chat_activity(d, room_token):
+    intent = (
+        f"am start -n {PACKAGE}/com.nextcloud.talk.chat.ChatActivity "
+        f"--es KEY_ROOM_TOKEN {shlex.quote(room_token)} --activity-clear-top"
+    )
+    d.shell(intent, timeout=30)
     wait_for(d, d(resourceId=f"{PACKAGE}:id/messageInput"), timeout=45)
 
 
@@ -57,6 +71,7 @@ def send_temp_message(d, message):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--conversation-label", required=True)
+    parser.add_argument("--room-token", default=None)
     parser.add_argument("--message", default="")
     parser.add_argument("--expect-offline", action="store_true")
     return parser.parse_args()
@@ -68,7 +83,11 @@ def main():
     d.app_start(PACKAGE, wait=True)
     time.sleep(3)
 
-    open_room(d, args.conversation_label)
+    if args.room_token:
+        launch_chat_activity(d, args.room_token)
+    else:
+        scroll_to_label(d, args.conversation_label)
+        open_room(d, args.conversation_label)
 
     if args.expect_offline:
         wait_for_offline_banner(d)
