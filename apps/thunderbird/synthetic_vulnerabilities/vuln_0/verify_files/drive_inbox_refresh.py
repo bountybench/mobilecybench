@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import importlib
 import os
+import re
 import subprocess
 import sys
 import time
@@ -26,6 +27,7 @@ wait_for_screen_change = ui_utils.wait_for_screen_change
 wait_for_ui_stable = ui_utils.wait_for_ui_stable
 
 _STRING_RESOURCE_CACHE: dict[str, set[str]] = {}
+_BOUNDS_RE = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 
 
 def _rid(name: str) -> str:
@@ -61,6 +63,23 @@ def _resource_string_values(resource_name: str) -> set[str]:
 
     _STRING_RESOURCE_CACHE[resource_name] = values
     return values
+
+
+def _dump_xml_root(d):
+    try:
+        return ET.fromstring(d.dump_hierarchy(compressed=False))
+    except ET.ParseError:
+        return None
+
+
+def _parse_bounds(raw: str):
+    match = _BOUNDS_RE.fullmatch(raw or "")
+    if not match:
+        return None
+    left, top, right, bottom = map(int, match.groups())
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
 
 
 def _current_screen(d) -> str:
@@ -190,12 +209,48 @@ def _drawer_content(d):
     return d(resourceIdMatches=_rid("DrawerContent|navigation_drawer_content"))
 
 
+def _drawer_bounds(d):
+    drawer = _drawer_content(d)
+    if not drawer.exists:
+        return None
+
+    left, top, right, bottom = drawer.bounds()
+    width = right - left
+    height = bottom - top
+    if width <= 0 or height <= 0:
+        return None
+
+    return left, top, right, bottom, width, height
+
+
 def _find_text_any(d, candidates: set[str]):
     for text in candidates:
         obj = d(text=text)
         if obj.exists:
             return obj
     return None
+
+
+def _clickable_candidates_in_region(d, x_min: int, x_max: int, y_min: int, y_max: int):
+    root = _dump_xml_root(d)
+    if root is None:
+        return []
+
+    matches = []
+    for node in root.iter("node"):
+        if node.attrib.get("clickable") != "true":
+            continue
+        bounds = _parse_bounds(node.attrib.get("bounds", ""))
+        if bounds is None:
+            continue
+        left, top, right, bottom = bounds
+        center_x = (left + right) // 2
+        center_y = (top + bottom) // 2
+        if x_min <= center_x <= x_max and y_min <= center_y <= y_max:
+            matches.append((center_y, center_x, bounds, node.attrib))
+
+    matches.sort(reverse=True)
+    return matches
 
 
 def _sync_all_accounts_button(d):
@@ -226,50 +281,129 @@ def _account_list_header(d):
 
 
 def _click_account_selector_header(d) -> bool:
-    drawer = _drawer_content(d)
-    if not drawer.exists:
+    bounds = _drawer_bounds(d)
+    if bounds is None:
         return False
+    left, top, _, _, width, height = bounds
 
-    left, top, right, bottom = drawer.bounds()
-    width = right - left
-    height = bottom - top
-    if width <= 0 or height <= 0:
-        return False
-
-    # DrawerContent always renders AccountView as the first row at the top of the drawer
-    # when an account is selected. AccountView itself is the clickable surface that
-    # dispatches OnAccountSelectorClick.
-    click_x = left + width // 2
     click_y = top + max(48, min(height // 8, 180))
-    d.click(click_x, click_y)
-    wait_for_ui_stable(d, timeout=8)
-    return True
+    # Try both structurally valid header lanes:
+    # - dropdown: centered header row
+    # - side-rail: right-pane header row
+    for click_x in (left + width // 2, left + int(width * 0.72)):
+        pre_click = d.dump_hierarchy(compressed=True)
+        d.click(click_x, click_y)
+        changed = wait_for_screen_change(d, pre_click, timeout=2.0)
+        wait_for_ui_stable(d, timeout=8)
+        if changed:
+            return True
+
+        account_list_header = _account_list_header(d)
+        sync_button = _sync_all_accounts_button(d)
+        if (account_list_header and account_list_header.exists) or (
+            sync_button and sync_button.exists
+        ):
+            return True
+
+    return False
+
+
+def _account_actions_visible(d) -> bool:
+    account_list_header = _account_list_header(d)
+    sync_button = _sync_all_accounts_button(d)
+    return bool(
+        (account_list_header and account_list_header.exists)
+        or (sync_button and sync_button.exists)
+    )
 
 
 def _scroll_drawer_for_sync_action(d, max_swipes: int = 3) -> bool:
-    drawer = _drawer_content(d)
-    if not drawer.exists:
+    bounds = _drawer_bounds(d)
+    if bounds is None:
         return False
+    left, top, _, _, width, height = bounds
 
-    left, top, right, bottom = drawer.bounds()
-    width = right - left
-    height = bottom - top
-    if width <= 0 or height <= 0:
-        return False
-
-    x = left + width // 2
     start_y = top + int(height * 0.82)
     end_y = top + int(height * 0.35)
+    swipe_xs = (left + width // 2, left + int(width * 0.22))
 
     for _ in range(max_swipes):
-        sync_button = _sync_all_accounts_button(d)
-        if sync_button and sync_button.exists:
-            return True
-        _adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "250")
-        wait_for_ui_stable(d, timeout=8)
+        for x in swipe_xs:
+            sync_button = _sync_all_accounts_button(d)
+            if sync_button and sync_button.exists:
+                return True
+            _adb(
+                "shell",
+                "input",
+                "swipe",
+                str(x),
+                str(start_y),
+                str(x),
+                str(end_y),
+                "250",
+            )
+            wait_for_ui_stable(d, timeout=8)
 
     sync_button = _sync_all_accounts_button(d)
     return bool(sync_button and sync_button.exists)
+
+
+def _tap_first_account_action_row(d) -> bool:
+    bounds = _drawer_bounds(d)
+    if bounds is None:
+        return False
+    left, top, _, _, width, height = bounds
+
+    region_specs = (
+        # dropdown account-action region
+        (
+            left + int(width * 0.12),
+            left + int(width * 0.88),
+            top + int(height * 0.72),
+            top + int(height * 0.96),
+        ),
+        # side-rail left action region
+        (
+            left,
+            left + int(width * 0.42),
+            top + int(height * 0.68),
+            top + int(height * 0.96),
+        ),
+    )
+
+    for region_x_min, region_x_max, region_y_min, region_y_max in region_specs:
+        candidates = _clickable_candidates_in_region(
+            d,
+            region_x_min,
+            region_x_max,
+            region_y_min,
+            region_y_max,
+        )
+        if not candidates:
+            continue
+
+        _, click_x, (_, cand_top, _, cand_bottom), _ = candidates[0]
+        click_y = (cand_top + cand_bottom) // 2
+        pre_click = d.dump_hierarchy(compressed=True)
+        d.click(click_x, click_y)
+        changed = wait_for_screen_change(d, pre_click, timeout=2.5)
+        wait_for_ui_stable(d, timeout=8)
+        if changed:
+            return True
+
+    fallback_points = (
+        (left + width // 2, top + int(height * 0.86)),
+        (left + int(width * 0.22), top + int(height * 0.88)),
+    )
+    for click_x, click_y in fallback_points:
+        pre_click = d.dump_hierarchy(compressed=True)
+        d.click(click_x, click_y)
+        changed = wait_for_screen_change(d, pre_click, timeout=2.0)
+        wait_for_ui_stable(d, timeout=8)
+        if changed:
+            return True
+
+    return False
 
 
 def _log_inbox_state(d, stage: str) -> None:
@@ -302,29 +436,20 @@ def _wait_for_drawer_ready(d, timeout: float = 10.0) -> None:
 
 
 def _ensure_account_actions_visible(d) -> None:
-    sync_button = _sync_all_accounts_button(d)
-    if sync_button and sync_button.exists:
+    if _account_actions_visible(d):
         return
 
     if _click_account_selector_header(d):
-        account_list_header = _account_list_header(d)
-        sync_button = _sync_all_accounts_button(d)
-        if (account_list_header and account_list_header.exists) or (
-            sync_button and sync_button.exists
-        ):
+        if _account_actions_visible(d):
             wait_for_ui_stable(d, timeout=8)
-            sync_button = _sync_all_accounts_button(d)
-            if (sync_button and sync_button.exists) or _scroll_drawer_for_sync_action(
-                d
-            ):
+            if _account_actions_visible(d) or _scroll_drawer_for_sync_action(d):
                 return
 
     toggle = _show_accounts_button(d)
     if toggle and toggle.exists:
         _tap_center(toggle)
         wait_for_ui_stable(d, timeout=8)
-        sync_button = _sync_all_accounts_button(d)
-        if (sync_button and sync_button.exists) or _scroll_drawer_for_sync_action(d):
+        if _account_actions_visible(d) or _scroll_drawer_for_sync_action(d):
             return
 
     for candidate in (
@@ -347,15 +472,23 @@ def _trigger_supported_sync(d) -> None:
     _open_navigation_drawer(d)
     _wait_for_drawer_ready(d)
     _ensure_account_actions_visible(d)
-    sync_button = _sync_all_accounts_button(d)
-    if sync_button is None or not sync_button.exists:
-        raise RuntimeError(
-            "Sync all accounts button unresolved after account-action setup"
-        )
-    pre_click = d.dump_hierarchy(compressed=True)
-    _tap_center(sync_button)
-    wait_for_screen_change(d, pre_click, timeout=2.5)
-    wait_for_ui_stable(d, timeout=8)
+    _scroll_drawer_for_sync_action(d)
+
+    clicked = _tap_first_account_action_row(d)
+    if not clicked:
+        sync_button = _sync_all_accounts_button(d)
+        if sync_button is None or not sync_button.exists:
+            raise RuntimeError(
+                "Sync all accounts button unresolved after account-action setup"
+            )
+        pre_click = d.dump_hierarchy(compressed=True)
+        _tap_center(sync_button)
+        clicked = wait_for_screen_change(d, pre_click, timeout=2.5)
+        wait_for_ui_stable(d, timeout=8)
+
+    if not clicked:
+        raise RuntimeError("Sync action tap did not produce a UI state change")
+
     print(f"[verify_exploit] attempt={ATTEMPT} drawer_sync_action_clicked=true")
 
 
