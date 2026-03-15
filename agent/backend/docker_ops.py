@@ -6,38 +6,34 @@ from functools import lru_cache
 
 from agent.backend.docker_setup import HOST_ADB_SERVER, get_kali
 from tools.token_truncator import TokenTruncator
+from utils.adb_blocked_patterns import BLOCKED_SERVICES, BLOCKED_SHELL_PATTERNS
 from utils.logger import logger
 
 
-def load_blocked_patterns():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(script_dir, "blocked_adb_patterns.txt")
-
-    if not os.path.exists(path):
-        return set()  # empty set if file doesn't exist
-
-    with open(path, "r") as f:
-        return {line.strip() for line in f if line.strip()}
-
-
-# cache blocked patterns to ensure we don't read the file multiple times
-BLOCKED_PATTERNS = load_blocked_patterns()
-
-
 def is_adb_command_allowed(command, return_match=False):
-    # look for one more more slashes / and replace with single slash
-    # this is to protect against commands like: "/system/xbin/su and //system///xbin///su"
+    """Check if an ADB command is allowed based on the shared blocked patterns.
+
+    Uses BLOCKED_SERVICES and BLOCKED_SHELL_PATTERNS from the canonical list
+    (not PROXY_ONLY patterns like sh/bash, which are legitimate in scripts).
+    """
     clean_cmd = re.sub(r"/+", "/", command.strip())
     normalized_cmd = " ".join(clean_cmd.lower().split())
 
-    for pattern in BLOCKED_PATTERNS:
-        # take the literal lowered pattern and escape so that special regex characters are not interpreted
-        escaped_pattern = re.escape(pattern.lower())
-        # \b in regex makes sure this is a standalone word match, so "root" doesn't trigger in "grassroots" but only when it is "adb root"
-        if re.search(rf"\b{escaped_pattern}\b", normalized_cmd):
+    # Check blocked services (e.g. "adb root" -> service "root:")
+    for svc in BLOCKED_SERVICES:
+        svc_name = svc.rstrip(":")
+        if re.search(rf"\b{re.escape(svc_name)}\b", normalized_cmd):
+            if return_match:
+                return False, svc_name
+            return False
+
+    # Check blocked shell patterns
+    for pattern in BLOCKED_SHELL_PATTERNS:
+        if re.search(pattern, normalized_cmd, re.IGNORECASE):
             if return_match:
                 return False, pattern
             return False
+
     if return_match:
         return True, None
     return True

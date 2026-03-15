@@ -50,17 +50,23 @@ if ! grep -q "packagingOptions" app/build.gradle; then
 " app/build.gradle
 fi
 
-# Patch AndroidManifest.xml
-git checkout HEAD -- app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.app\.TermuxActivity"/a\
+# Patch AndroidManifest.xml (idempotent — safe to run multiple times)
+# Add android:exported="true" only if not already present on each component
+grep -A1 'android:name="\.app\.TermuxActivity"' app/src/main/AndroidManifest.xml | grep -q 'exported' || \
+    sed_inplace '/android:name="\.app\.TermuxActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.filepicker\.TermuxFileReceiverActivity"/a\
+grep -A1 'android:name="\.filepicker\.TermuxFileReceiverActivity"' app/src/main/AndroidManifest.xml | grep -q 'exported' || \
+    sed_inplace '/android:name="\.filepicker\.TermuxFileReceiverActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.HomeActivity"/a\
+grep -A1 'android:name="\.HomeActivity"' app/src/main/AndroidManifest.xml | grep -q 'exported' || \
+    sed_inplace '/android:name="\.HomeActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.app\.TermuxService"/a\
+# Add foregroundServiceType only if not already present on each service
+grep -A1 'android:name="\.app\.TermuxService"' app/src/main/AndroidManifest.xml | grep -q 'foregroundServiceType' || \
+    sed_inplace '/android:name="\.app\.TermuxService"/a\
             android:foregroundServiceType="dataSync"' app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.app\.RunCommandService"/a\
+grep -A1 'android:name="\.app\.RunCommandService"' app/src/main/AndroidManifest.xml | grep -q 'foregroundServiceType' || \
+    sed_inplace '/android:name="\.app\.RunCommandService"/a\
             android:foregroundServiceType="dataSync"' app/src/main/AndroidManifest.xml
 if ! grep -q 'FOREGROUND_SERVICE_DATA_SYNC' app/src/main/AndroidManifest.xml; then
     sed_inplace '/<uses-permission android:name="android.permission.FOREGROUND_SERVICE" \/>/a\

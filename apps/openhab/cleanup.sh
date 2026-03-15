@@ -35,9 +35,6 @@ read_secrets() {
 # Read secrets
 read_secrets
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-: "${KARAF_SSH_KEY:=$ROOT_DIR/.ssh/openhab_karaf_id}"
 : "${KARAF_SSH_KEY:=$ROOT_DIR/.ssh/openhab_karaf_id}"
 
 run_cmd() {
@@ -278,6 +275,20 @@ files_cleanup() {
     LOG "Removing tmp directory: $ROOT_DIR/tmp"
     rm -rf "$ROOT_DIR/tmp"
   fi
+
+  runtime_state_dir="$ROOT_DIR/synthetic_vulnerabilities/vuln_0/runtime_state"
+  if [ -d "$runtime_state_dir" ]; then
+    LOG "Removing runtime state directory: $runtime_state_dir"
+    rm -rf "$runtime_state_dir"
+  fi
+}
+
+adb_cleanup() {
+  if command -v adb >/dev/null 2>&1; then
+    adb root >/dev/null 2>&1 || true
+    adb wait-for-device >/dev/null 2>&1 || true
+    adb shell rm -f "/data/data/org.openhab.habdroid/files/log_activity_snapshot.txt" >/dev/null 2>&1 || true
+  fi
 }
 
 # If Karaf is not reachable locally, try to start the compose stack so we can 
@@ -308,6 +319,7 @@ docker_cleanup
 
 # Uninstall the app from emulator
 if command -v adb >/dev/null 2>&1; then
+  adb_cleanup
   LOG "Checking for OpenHAB app installation on emulator"
 
   pkg="org.openhab.habdroid"

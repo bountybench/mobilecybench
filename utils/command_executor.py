@@ -129,10 +129,7 @@ class CommandExecutor:
         def clear_line() -> None:
             print("\r" + " " * 80 + "\r", end="", flush=True)
 
-        def drain_queue(q: queue.Queue, error=False, accumulator: str = "") -> str:
-            log = logger.info
-            if error:
-                log = logger.error
+        def drain_queue(q: queue.Queue, log=logger.info, accumulator: str = "") -> str:
             while True:
                 try:
                     line: str = q.get_nowait()
@@ -204,7 +201,7 @@ class CommandExecutor:
                     raise subprocess.TimeoutExpired(args, timeout)
 
                 stdout += drain_queue(stdout_q)
-                stderr += drain_queue(stderr_q, True)
+                stderr += drain_queue(stderr_q)
                 update_spinner(elapsed)
                 time.sleep(0.1)
 
@@ -222,6 +219,8 @@ class CommandExecutor:
                 logger.error(f"{message}... failed! ({time_str})")
                 logger.error(f"Command: {' '.join(args)}")
                 logger.error(f"Exit code: {process.returncode}")
+                if stderr.strip():
+                    logger.error(f"STDERR:\n{stderr.strip()}")
                 if check:
                     raise subprocess.CalledProcessError(
                         process.returncode, args, stdout, stderr

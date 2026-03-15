@@ -25,7 +25,7 @@ HA_CONTAINER="${HA_CONTAINER:-home-assistant-server}"
 HA_HOST="${HA_HOST:-10.0.2.2}"
 HA_PORT="${HA_PORT:-8123}"
 HA_URL="https://${HA_HOST}:${HA_PORT}"
-ANDROID_APP_PACKAGE="${ANDROID_APP_PACKAGE:-io.homeassistant.companion.android.minimal}"
+ANDROID_APP_PACKAGE="${ANDROID_APP_PACKAGE:-io.homeassistant.companion.android}"
 FAKE_LOG_FILE="${FAKE_LOG_FILE:-$SCENARIO_DIR/fake_agent_log.log}"
 
 # Home Assistant credentials to leak
