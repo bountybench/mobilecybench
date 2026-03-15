@@ -13,6 +13,28 @@ if [[ -z "$ROOT_DIR" ]]; then
     ROOT_DIR="$SAVED_ROOT_DIR"
 fi
 
+# Default APK to install (clean build)
+APK_PATH="apk/jitsi-meet.apk"
+
+# Allow overriding APK via CLI (used in CI for synthetic-vuln APKs)
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --apk)
+            shift
+            APK_PATH="$1"
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--apk <path>]"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+    shift
+done
+
 inject_admin_modules_into_defaults() {
     local container="$1"
     local file="/defaults/prosody.cfg.lua"
@@ -154,6 +176,66 @@ setup_hashes(){
     echo "Hash setup complete."
 }
 
+enable_giphy_in_config() {
+    echo "Enabling Giphy in Jitsi config..."
+    
+    local web_container="jitsi-latest-web-1"
+    local config_file="/config/config.js"
+    
+    # Check if container exists
+    if ! docker ps --format '{{.Names}}' | grep -q "$web_container"; then
+        echo "WARNING: Web container not found"
+        return 1
+    fi
+    
+    # Check if giphy already exists
+    if docker exec "$web_container" grep -q "config.giphy" "$config_file" 2>/dev/null; then
+        echo "  Giphy already configured, skipping."
+        return 0
+    fi
+    
+    echo "  Injecting comprehensive giphy config into container's $config_file..."
+    
+    # Inject ALL necessary configs for GIF support
+    docker exec "$web_container" bash -c "cat >> $config_file << 'EOF'
+
+// CRITICAL: Allow third-party requests (needed for Giphy)
+config.disableThirdPartyRequests = false;
+
+// Enable Giphy integration
+config.giphy = {
+    enabled: true,
+    sdkKey: 'FAKE_KEY_FOR_EXPLOIT', // Empty works for arbitrary URLs (the vulnerability!)
+    displayMode: 'all',
+    tileTime: 5000,
+    rating: 'pg',
+    // Force enable even without SDK key
+    proxyUrl: undefined
+};
+
+// Additional flags that might be checked
+config.enableGiphy = true;
+config.giphyEnabled = true;
+
+// Disable any security flags that might block it
+config.disableGiphy = false;
+EOF"
+    
+    echo "  Giphy configuration added."
+    
+    # Reload nginx
+    echo "  Reloading nginx..."
+    docker exec "$web_container" nginx -s reload 2>/dev/null || docker restart "$web_container"
+    
+    sleep 2
+    
+    # Verify
+    echo "  Verifying config..."
+    docker exec "$web_container" grep -A15 "giphy" "$config_file" | head -20
+    
+    echo "✅ Giphy config injection complete."
+}
+
 install_jitsi() {
     echo "Installing Jitsi Meet on Android emulator..."
 
@@ -163,9 +245,8 @@ install_jitsi() {
         exit 1
     fi
 
-    APK_PATH="apk/vuln_0/jitsi-meet.apk"
+    echo "Using APK: $APK_PATH"
 
-    ls
     if [[ ! -f $APK_PATH ]]; then
         echo "ERROR: APK not found at $APK_PATH"
         exit 1
@@ -179,6 +260,12 @@ install_jitsi() {
 launch_jitsi() {
     echo "Launching Jitsi Meet..."
     adb shell appops set org.jitsi.meet SYSTEM_ALERT_WINDOW allow 2>/dev/null || true
+    adb shell pm grant org.jitsi.meet android.permission.CAMERA
+    adb shell pm grant org.jitsi.meet android.permission.RECORD_AUDIO
+    adb shell pm grant org.jitsi.meet android.permission.POST_NOTIFICATIONS
+    adb shell appops set org.jitsi.meet SYSTEM_ALERT_WINDOW allow
+    adb shell settings put global policy_control immersive.full=*
+
     adb_launch_activity "org.jitsi.meet/.MainActivity"
     echo "Jitsi Meet should now be running on your emulator."
 }
@@ -191,6 +278,7 @@ main() {
     root_dir="$(pwd)"
 
     docker_compose
+    enable_giphy_in_config 
     authentication_setup_for_exploit
     prosody_user_setup
 

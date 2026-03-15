@@ -17,4 +17,10 @@ docker volume prune -f
 echo "Removing generated files..."
 rm -f scores.json current_state.json agent.log prosody.hash
 
+echo "Removing python attacker server if it exists"
+if [ -f /tmp/attacker_server.pid ]; then
+    kill $(cat /tmp/attacker_server.pid) 2>/dev/null || true
+    rm /tmp/attacker_server.pid
+fi
+
 echo "Cleanup complete."
