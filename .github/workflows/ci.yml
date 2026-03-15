@@ -136,6 +136,7 @@ jobs:
 
             source_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/build.sh" && echo "true" || echo "false")
             apklink_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/metadata.json" && echo "true" || echo "false")
+            core_modified=$(git diff --name-only origin/main...HEAD | grep -qE "^${dir}/(build\.sh|start_runtime\.sh|cleanup\.sh|metadata\.json|docker-compose\.yml|security\.patch)" && echo "true" || echo "false")
 
             setup_modes=()
             if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
@@ -159,15 +160,20 @@ jobs:
             synth_changes=$(git diff --name-only origin/main...HEAD \
               | grep "^${dir}/synthetic_vulnerabilities/" || true)
 
-            # If PR touches synthetic_vulnerabilities/ for this app, add synthetic vuln jobs
-            if [ -n "$synth_changes" ]; then
-              echo "  Detected synthetic vulnerability changes for $app_name"
-
-              # Extract unique vuln IDs from changed paths
-              vuln_ids=$(echo "$synth_changes" \
-                | sed "s|^${dir}/synthetic_vulnerabilities/||" \
-                | cut -d'/' -f1 \
-                | sort -u)
+            # If PR touches synthetic_vulnerabilities/ or core files, add synthetic vuln jobs
+            if [ -n "$synth_changes" ] || [ "$core_modified" = "true" ]; then
+              if [ "$core_modified" = "true" ]; then
+                echo "  Detected core file changes for $app_name - retesting all synthetic vulnerabilities"
+                # Find all vuln IDs for this app, excluding hidden directories
+                vuln_ids=$(find "${dir}/synthetic_vulnerabilities" -maxdepth 1 -mindepth 1 -type d ! -name ".*" -exec basename {} \; 2>/dev/null | sort -u || true)
+              else
+                echo "  Detected synthetic vulnerability changes for $app_name"
+                # Extract unique vuln IDs from changed paths
+                vuln_ids=$(echo "$synth_changes" \
+                  | sed "s|^${dir}/synthetic_vulnerabilities/||" \
+                  | cut -d'/' -f1 \
+                  | sort -u)
+              fi
 
               for vuln_id in $vuln_ids; do
                 vuln_dir="${dir}/synthetic_vulnerabilities/${vuln_id}"
@@ -193,14 +199,14 @@ jobs:
                   exit 1
                 fi
 
-                # Use apklink if available, but force source if vulnerability.patch or build.sh changed
+                # Use apklink if available, but force source if vulnerability.patch, build.sh, or metadata.json changed
                 synth_mode="source"
                 if [ "$has_apklink" = true ]; then
                   patch_changed=$(echo "$synth_changes" | grep -q "${vuln_id}/vulnerability.patch" && echo "true" || echo "false")
-                  if [ "$patch_changed" = "false" ] && [ "$source_modified" = "false" ]; then
+                  if [ "$patch_changed" = "false" ] && [ "$source_modified" = "false" ] && [ "$apklink_modified" = "false" ]; then
                     synth_mode="apklink"
                   else
-                    echo "  vulnerability.patch or build.sh changed — forcing source build for $vuln_id"
+                    echo "  vulnerability.patch, build.sh, or metadata.json changed — forcing source build for $vuln_id"
                   fi
                 fi
 
@@ -389,7 +395,12 @@ jobs:
             if [ -f "build.sh" ]; then
               echo "Using new build system (build.sh + build_apk.sh)"
               cd ../..
-              ./build_apk.sh "${{ matrix.app_name }}"
+              BUILD_ARGS=""
+              if [ -f "apps/${{ matrix.app_name }}/security.patch" ]; then
+                echo "Found security.patch - building hardened APK"
+                BUILD_ARGS="--hardened"
+              fi
+              ./build_apk.sh "${{ matrix.app_name }}" $BUILD_ARGS
               cd "${{ matrix.app_dir }}"
             else
               echo "ERROR: build.sh not found for ${{ matrix.app_name }}"
