@@ -3,22 +3,34 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEBASE_DIR="$SCRIPT_DIR/codebase"
-PATCH_FILE="$SCRIPT_DIR/local-sdk.patch"
+LOCAL_SDK_PATCH="$SCRIPT_DIR/local-sdk.patch"
+FAST_RELEASE_PATCH="$SCRIPT_DIR/fast-release.patch"
 SDK_REPO_DIR="${TMPDIR:-/tmp}/mobilecybench-bitwarden-sdk-internal"
 SDK_COMMIT="f43bbc685c747c7362e23bae87b1a4977aea4f05"
 SDK_KOTLIN_DIR="$SDK_REPO_DIR/crates/bitwarden-uniffi/kotlin"
 LOCAL_SDK_AAR="$HOME/.m2/repository/com/bitwarden/sdk-android-temp/LOCAL/sdk-android-temp-LOCAL.aar"
+BUILD_LOG="$(mktemp /tmp/bitwarden-build.XXXXXX.log)"
+BW_FAST_RELEASE="${BW_FAST_RELEASE:-true}"
 
 GRADLE_TASKS=(
     :app:assembleFdroidRelease
+    --no-daemon
+    --max-workers=2
+    --console=plain
     -x lintVitalFdroidRelease
     -x lintVitalAnalyzeFdroidRelease
     -x lintVitalReportFdroidRelease
     -x generateFdroidReleaseLintVitalReportModel
     -x lintVitalAnalyzeRelease
     -x generateReleaseLintVitalModel
-    --no-daemon
+    "-Pbw.fastRelease=$BW_FAST_RELEASE"
 )
+
+cleanup() {
+    rm -f "$BUILD_LOG"
+}
+
+trap cleanup EXIT
 
 ensure_rust_toolchain() {
     if [ -f "$HOME/.cargo/env" ]; then
@@ -98,15 +110,27 @@ build_local_sdk() {
 }
 
 prepare_bitwarden_codebase() {
-    if ! git -C "$CODEBASE_DIR" apply --check "$PATCH_FILE"; then
-        echo "[ERROR] Bitwarden local SDK patch no longer applies cleanly."
-        exit 1
-    fi
-    git -C "$CODEBASE_DIR" apply "$PATCH_FILE"
+    apply_patch_once "$LOCAL_SDK_PATCH"
+    apply_patch_once "$FAST_RELEASE_PATCH"
 
     cat > "$CODEBASE_DIR/user.properties" <<'EOF'
 localSdk=true
 EOF
+}
+
+apply_patch_once() {
+    local patch_file="$1"
+
+    if git -C "$CODEBASE_DIR" apply --reverse --check "$patch_file" >/dev/null 2>&1; then
+        echo "[INFO] Patch already present: $(basename "$patch_file")"
+        return
+    fi
+
+    if ! git -C "$CODEBASE_DIR" apply --check "$patch_file"; then
+        echo "[ERROR] Patch no longer applies cleanly: $(basename "$patch_file")"
+        exit 1
+    fi
+    git -C "$CODEBASE_DIR" apply "$patch_file"
 }
 
 cd "$CODEBASE_DIR"
@@ -125,12 +149,35 @@ fi
 
 prepare_bitwarden_codebase
 
-./gradlew "${GRADLE_TASKS[@]}"
+set +e
+start_ts="$(date +%s)"
+./gradlew "${GRADLE_TASKS[@]}" >"$BUILD_LOG" 2>&1 &
+gradle_pid=$!
 
-if [ -f "app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk" ]; then
-    cp app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
-else
-    cp app/build/outputs/apk/fdroid/release/app-fdroid-release.apk "$SCRIPT_DIR/unsigned.apk"
+while kill -0 "$gradle_pid" 2>/dev/null; do
+    sleep 60
+    elapsed="$(( $(date +%s) - start_ts ))"
+    echo "[INFO] Bitwarden Gradle build in progress (${elapsed}s elapsed). Last 5 log lines:"
+    tail -n 5 "$BUILD_LOG"
+done
+
+wait "$gradle_pid"
+gradle_status=$?
+set -e
+
+if [ "$gradle_status" -ne 0 ]; then
+    echo "[ERROR] Bitwarden Gradle build failed. Last 200 log lines:"
+    tail -n 200 "$BUILD_LOG"
+    exit "$gradle_status"
 fi
+
+APK_PATH="$(find app/build/outputs/apk -type f -path '*/fdroid/release/*.apk' | head -n 1)"
+if [ -z "$APK_PATH" ]; then
+    echo "[ERROR] Bitwarden APK not found under app/build/outputs/apk"
+    find app/build/outputs -maxdepth 4 -type f | sort
+    exit 1
+fi
+
+cp "$APK_PATH" "$SCRIPT_DIR/unsigned.apk"
 
 echo "=== Bitwarden Build Finished ==="
