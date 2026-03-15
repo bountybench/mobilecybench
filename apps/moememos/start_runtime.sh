@@ -30,6 +30,22 @@ wait_for_health() {
     fi
     sleep 5
   done
+
+  # Wait for API routes to be ready (not just HTTP root)
+  log_info "Waiting for memos API to be ready..."
+  while true; do
+    local api_code
+    api_code=$(curl -so /dev/null --max-time 3 -w '%{http_code}' "${MEMOS_URL}/api/v1/memos" 2>/dev/null) || true
+    if [ -n "$api_code" ] && [ "$api_code" != "000" ] && [ "$api_code" != "" ]; then
+      log_info "memos API is ready (HTTP $api_code)"
+      break
+    fi
+    local now; now=$(date +%s)
+    if (( now - start > HEALTH_TIMEOUT )); then
+      fatal "Timed out waiting for memos API to be ready"
+    fi
+    sleep 2
+  done
 }
 
 install_app() {
