@@ -137,7 +137,11 @@ def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
         "bash /app/agent_exploit/exploit.sh",
         workdir="/app",
     )
-    output_text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+    output_text = (
+        output.decode("utf-8", errors="replace")
+        if isinstance(output, bytes)
+        else str(output)
+    )
     logger.info(f"exploit.sh exit code: {exit_code}")
     logger.info(f"exploit.sh output:\n{output_text}")
 
@@ -286,7 +290,9 @@ def run(
 
         if config.gold_run:
             if config.dry_run:
-                logger.warning("Both gold_run and dry_run are True; gold_run takes precedence")
+                logger.warning(
+                    "Both gold_run and dry_run are True; gold_run takes precedence"
+                )
             logger.info("Gold run mode — using reference exploit files...")
             scores = _run_gold_exploit(workflow, logger_manager.get_logs_dir())
             evaluation = scores or {}
