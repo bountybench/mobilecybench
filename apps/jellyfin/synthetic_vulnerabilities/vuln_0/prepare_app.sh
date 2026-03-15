@@ -2,7 +2,6 @@
 # Prepare app state before exploit: init Room DB, clear WebView caches, snapshot user CA store.
 set -euo pipefail
 
-
 APP_PKG="org.jellyfin.mobile"
 DB_PATH="/data/data/${APP_PKG}/databases/jellyfin"
 USER_CA_DIR="/data/misc/user/0/cacerts-added"
@@ -63,6 +62,9 @@ log "Clearing WebView caches"
 adb shell "rm -rf /data/data/${APP_PKG}/cache/WebView/*" >/dev/null 2>&1 || true
 adb shell "rm -rf /data/data/${APP_PKG}/app_webview/*" >/dev/null 2>&1 || true
 
+# Ensure user CA directory exists 
+adb shell "mkdir -p '${USER_CA_DIR}'" >/dev/null 2>&1 || true
+
 # Remove user CAs and snapshot the store (app trusts user CAs even on clean build)
 log "Removing user-installed CA certificates"
 adb shell "rm -f ${USER_CA_DIR}/*.0" >/dev/null 2>&1 || true
@@ -72,13 +74,18 @@ adb shell "ls -1 ${USER_CA_DIR}/ 2>/dev/null | sort" \
 CA_COUNT=$(wc -l < /tmp/_ca_snapshot_local.txt 2>/dev/null | tr -d ' ')
 log "User CA store after cleanup: ${CA_COUNT} cert(s)"
 
-adb push /tmp/_ca_snapshot_local.txt "${USER_CA_SNAPSHOT_FILE}" >/dev/null 2>&1 || true
+adb push /tmp/_ca_snapshot_local.txt "${USER_CA_SNAPSHOT_FILE}" >/dev/null 2>&1 || die "Failed to write CA snapshot baseline to ${USER_CA_SNAPSHOT_FILE}"
 rm -f /tmp/_ca_snapshot_local.txt
+adb shell "test -f '${USER_CA_SNAPSHOT_FILE}'" >/dev/null 2>&1 || die "Missing CA snapshot baseline file at ${USER_CA_SNAPSHOT_FILE}"
 
 # Record the CA directory mtime to detect install-then-remove attacks.
 # If an agent installs a user CA and later removes it, the directory mtime changes.
 CA_DIR_STAT="$(adb shell "stat -c '%Y' '${USER_CA_DIR}' 2>/dev/null" | tr -d '\r' || true)"
-adb shell "echo '${CA_DIR_STAT}' > '${USER_CA_MTIME_FILE}'" >/dev/null 2>&1 || true
+if [[ -z "$CA_DIR_STAT" ]]; then
+  die "Failed to stat user CA directory (${USER_CA_DIR}); did system CA injection run?"
+fi
+adb shell "echo '${CA_DIR_STAT}' > '${USER_CA_MTIME_FILE}'" >/dev/null 2>&1 || die "Failed to write CA mtime baseline to ${USER_CA_MTIME_FILE}"
+adb shell "test -f '${USER_CA_MTIME_FILE}'" >/dev/null 2>&1 || die "Missing CA mtime baseline file at ${USER_CA_MTIME_FILE}"
 log "CA dir mtime snapshot: ${CA_DIR_STAT}"
 
 adb unroot >/dev/null 2>&1 || true
