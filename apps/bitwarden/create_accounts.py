@@ -130,7 +130,7 @@ def extract_secrets_from_db():
             # Append master password from original config
             original_user = email_to_original_user.get(row["email"])
             if original_user:
-                user_data["master_password"] = original_user["master_password"]
+                user_data["master_password"] = original_user["password"]
             secrets["users"].append(user_data)
 
         # 2. Extract cipher details
@@ -194,13 +194,11 @@ def main():
         user_ciphers = get_ciphers_for_user(user, flags_for_user, i)
 
         # 2.1: Create account via UI
-        bw_make_account(d, user["email"], user["master_password"], user["hint"])
+        bw_make_account(d, user["email"], user["name"], user["password"], i)
 
         # 2.2: Add ciphers for user via UI
         for cipher in user_ciphers:
-            bw_create_new_cipher(
-                d, cipher["name"], cipher["username"], cipher["password"]
-            )
+            bw_create_new_cipher(d, cipher)
 
         # 2.3: Lock and logout to prepare for the next account or test
         bw_lock_and_logout(d)

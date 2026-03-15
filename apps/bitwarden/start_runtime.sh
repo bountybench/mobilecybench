@@ -14,16 +14,18 @@ echo "=== Starting Bitwarden Runtime ==="
 
 # 1. Orchestrate backend containers (Vaultwarden + Postgres)
 echo "[INFO] Orchestrating backend containers..."
-docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build --wait
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" down -v --remove-orphans 2>/dev/null || true
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
+wait_healthy "bitwarden_tls_proxy" 180 || fatal "bitwarden_tls_proxy did not become healthy"
 
-# 2. Wait for Vaultwarden to be healthy (the --wait flag handles this if healthchecks are defined)
-# But we'll add an explicit check to be sure
-echo "[INFO] Waiting for Vaultwarden to be ready on http://localhost:8000..."
-until curl -sf http://localhost:8000/alive > /dev/null; do
-  echo "Still waiting for Vaultwarden..."
+# 2. Verify the proxy endpoint from the host using the shared CA
+echo "[INFO] Waiting for Bitwarden TLS proxy to serve https://localhost:8000/alive..."
+until curl --silent --show-error --fail --cacert "$ROOT_DIR/tls/rootCA.pem" \
+  https://localhost:8000/alive > /dev/null; do
+  echo "Still waiting for Bitwarden TLS proxy..."
   sleep 5
 done
-echo "[INFO] Vaultwarden is healthy."
+echo "[INFO] Bitwarden TLS proxy is healthy."
 
 # 3. Install the APK (standardized helper)
 echo "[INFO] Installing Bitwarden APK..."
