@@ -30,6 +30,7 @@ class RunnerConfig(BaseModel):
     # mode flags
     screenshot_mode: bool
     dry_run: bool
+    gold_run: bool = False
     emulator_backend: Literal["native", "container"] = "native"
     emulator_display: Literal["headed", "headless"] = "headed"
 
