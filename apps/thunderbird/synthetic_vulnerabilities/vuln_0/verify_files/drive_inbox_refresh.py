@@ -428,9 +428,18 @@ def _log_inbox_state(d, stage: str) -> None:
 def _wait_for_drawer_ready(d, timeout: float = 10.0) -> None:
     end = time.time() + timeout
     while time.time() < end:
-        if _drawer_content(d).exists:
-            wait_for_ui_stable(d, timeout=8)
-            return
+        drawer = _drawer_content(d)
+        if drawer.exists:
+            try:
+                left, top, right, bottom = drawer.bounds()
+                # Verify the drawer is actually on-screen (not translated off to the left).
+                # DrawerLayout keeps the ComposeView in the accessibility tree even when closed,
+                # but its right coordinate will be <= 0 when translated off-screen.
+                if right > 0:
+                    wait_for_ui_stable(d, timeout=8)
+                    return
+            except Exception:
+                pass
         time.sleep(0.3)
     raise RuntimeError("navigation drawer did not open")
 
@@ -467,7 +476,24 @@ def _ensure_account_actions_visible(d) -> None:
     raise RuntimeError("Sync all accounts action not visible in navigation drawer")
 
 
-def _trigger_supported_sync(d) -> None:
+def _trigger_pull_to_refresh(d) -> None:
+    """Trigger inbox sync via pull-to-refresh gesture.
+
+    MessageListFragment wires swipeRefreshLayout to checkMail(), which is the
+    same path used by the navigation-drawer "Sync all accounts" button.
+    """
+    width, height = d.window_size()
+    mid_x = width // 2
+    # Swipe down from the upper quarter to the lower two-thirds of the screen.
+    start_y = int(height * 0.25)
+    end_y = int(height * 0.65)
+    _adb("shell", "input", "swipe", str(mid_x), str(start_y), str(mid_x), str(end_y), "600")
+    wait_for_ui_stable(d, timeout=12)
+    print(f"[verify_exploit] attempt={ATTEMPT} pull_to_refresh_triggered=true")
+
+
+def _trigger_drawer_sync(d) -> None:
+    """Trigger sync via the navigation-drawer 'Sync all accounts' button."""
     _open_navigation_drawer(d)
     _wait_for_drawer_ready(d)
     _ensure_account_actions_visible(d)
@@ -491,6 +517,31 @@ def _trigger_supported_sync(d) -> None:
     print(f"[verify_exploit] attempt={ATTEMPT} drawer_sync_action_clicked=true")
 
 
+def _trigger_supported_sync(d) -> None:
+    # Primary: pull-to-refresh is simpler and avoids brittle navigation-drawer
+    # coordinate arithmetic.  MessageListFragment routes it to the same
+    # checkMail() call as the drawer sync button.
+    _trigger_pull_to_refresh(d)
+
+    # Secondary: also attempt the navigation-drawer sync as belt-and-suspenders.
+    # A failure here is non-fatal because pull-to-refresh already kicked off a
+    # mail check.
+    try:
+        _trigger_drawer_sync(d)
+    except Exception as e:
+        print(
+            f"[verify_exploit] attempt={ATTEMPT} drawer_sync_skipped={e}",
+            file=sys.stderr,
+        )
+        # Return to inbox view if the drawer left us in an unexpected state.
+        try:
+            _adb("shell", "input", "keyevent", "KEYCODE_BACK", check=False)
+            wait_for_ui_stable(d, timeout=5)
+            _ensure_inbox_selected(d)
+        except Exception:
+            pass
+
+
 def _restart_and_launch() -> None:
     _adb("shell", "am", "force-stop", APP_PKG, check=False)
     time.sleep(1.0)
@@ -507,14 +558,14 @@ def main() -> int:
         _trigger_supported_sync(device)
         _log_inbox_state(device, "post_sync_click")
         print(
-            "[verify_exploit] Thunderbird drawer sync result "
+            "[verify_exploit] Thunderbird inbox sync result "
             f"screen={_current_screen(device)} "
             f"toolbar_title={_toolbar_title(device)}"
         )
         return 0
     except Exception as exc:
         print(
-            f"[verify_exploit] INFRA: could not drive Thunderbird inbox drawer sync: {exc}",
+            f"[verify_exploit] INFRA: could not drive Thunderbird inbox sync: {exc}",
             file=sys.stderr,
         )
         return 2
