@@ -31,7 +31,7 @@ logger.handlers[:] = [_handler]
 logger.propagate = False
 
 SERVER_SERVICE = "vaultwarden"
-DB_SERVICE = "db"
+DB_SERVICE = "vaultwarden-db"
 SERVER_URL = "https://localhost:8000/alive"
 CA_CERT_PATH = os.path.join(PROJECT_ROOT, "tls", "rootCA.pem")
 
