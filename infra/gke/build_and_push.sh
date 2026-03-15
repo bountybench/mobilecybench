@@ -14,9 +14,8 @@
 #
 # With --baked:
 #   Same steps 1-2, but builds runner-baked image (~43-46GB) instead of
-#   runner-slim. Includes emulator + agent Docker images pre-pulled inside
-#   the image. Requires buildx with insecure entitlement (dockerd runs
-#   during build).
+#   runner-slim. Runs a temporary dockerd on the host to pull emulator +
+#   agent images, then COPY the Docker data directory into the image.
 #
 # Prerequisites:
 #   - Docker installed and running
@@ -142,26 +141,54 @@ done
 
 echo ""
 if [ "$BAKED" = true ]; then
-    echo "=== Step 3: Build runner-baked image (with pre-pulled emulator + agent) ==="
-    echo "This requires buildx with insecure entitlement for dockerd during build."
+    echo "=== Step 3: Prepare baked Docker data ==="
+    EMULATOR_IMAGE="${EMULATOR_IMAGE:-cybench/mobilecybench-emulator:latest}"
+    AGENT_IMAGE="${AGENT_IMAGE:-cybench/mobilecybench:latest}"
+    BAKED_DIR="$ROOT_DIR/.docker-baked"
 
-    # Create/reuse a builder with insecure entitlement
-    BUILDER_NAME="mobilecybench-insecure"
-    BUILDKIT_CFG="/tmp/buildkitd-insecure.toml"
-    cat > "$BUILDKIT_CFG" <<'TOML'
-insecure-entitlements = ["security.insecure"]
-TOML
-
-    if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
-        echo "Creating buildx builder: $BUILDER_NAME"
-        docker buildx create --name "$BUILDER_NAME" --use \
-            --buildkitd-config "$BUILDKIT_CFG"
+    if [ -d "$BAKED_DIR" ] && [ "$(ls -A "$BAKED_DIR" 2>/dev/null)" ]; then
+        echo "Baked Docker data already exists at $BAKED_DIR, reusing."
+        echo "  (Delete .docker-baked/ to force re-pull)"
     else
-        docker buildx use "$BUILDER_NAME"
+        rm -rf "$BAKED_DIR"
+        mkdir -p "$BAKED_DIR"
+
+        echo "Starting temporary dockerd to pull images..."
+        dockerd --data-root "$BAKED_DIR" --host=unix:///tmp/baked-docker.sock \
+            --pidfile=/tmp/baked-dockerd.pid &>/tmp/baked-dockerd.log &
+        DOCKERD_PID=$!
+        trap 'kill $DOCKERD_PID 2>/dev/null; wait $DOCKERD_PID 2>/dev/null; rm -f /tmp/baked-docker.sock /tmp/baked-dockerd.pid' EXIT
+
+        for i in $(seq 1 60); do
+            docker -H unix:///tmp/baked-docker.sock info >/dev/null 2>&1 && break
+            sleep 1
+        done
+        if ! docker -H unix:///tmp/baked-docker.sock info >/dev/null 2>&1; then
+            echo "ERROR: temporary dockerd failed to start"
+            cat /tmp/baked-dockerd.log
+            exit 1
+        fi
+        echo "Temporary dockerd ready"
+
+        echo "Pulling $EMULATOR_IMAGE..."
+        docker -H unix:///tmp/baked-docker.sock pull "$EMULATOR_IMAGE"
+        echo "Pulling $AGENT_IMAGE..."
+        docker -H unix:///tmp/baked-docker.sock pull "$AGENT_IMAGE"
+
+        echo "Images pulled:"
+        docker -H unix:///tmp/baked-docker.sock images
+
+        # Stop temporary dockerd
+        kill "$DOCKERD_PID" && wait "$DOCKERD_PID" 2>/dev/null || true
+        rm -f /tmp/baked-docker.sock /tmp/baked-dockerd.pid
+        trap - EXIT
+
+        echo "Baked Docker data ready at $BAKED_DIR ($(du -sh "$BAKED_DIR" | cut -f1))"
     fi
 
-    docker buildx build --builder "$BUILDER_NAME" --allow security.insecure \
-        --load -f infra/gke/Dockerfile.runner-baked \
+    echo ""
+    echo "=== Step 4: Build runner-baked image ==="
+    docker build -f infra/gke/Dockerfile.runner-baked \
         --build-arg BASE_IMAGE="$BASE_IMAGE" \
         -t "$IMAGE_NAME" .
 else
