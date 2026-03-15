@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import uiautomator2 as u2
@@ -19,12 +20,12 @@ ACCOUNT_UUID = os.environ["ACCOUNT_UUID"]
 MESSAGE_LIST_ACTIVITY = "com.fsck.k9.activity.MessageList"
 ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
 EXPECTED_INBOX_TITLES = {"Inbox", "INBOX"}
-SYNC_ALL_ACCOUNTS_LABEL = "Sync all accounts"
-ACCOUNT_LIST_LABEL = "Account list"
 ui_utils.TARGET_PACKAGE = APP_PKG
 
 wait_for_screen_change = ui_utils.wait_for_screen_change
 wait_for_ui_stable = ui_utils.wait_for_ui_stable
+
+_STRING_RESOURCE_CACHE: dict[str, set[str]] = {}
 
 
 def _rid(name: str) -> str:
@@ -38,6 +39,28 @@ def _adb(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         text=True,
         capture_output=True,
     )
+
+
+def _resource_string_values(resource_name: str) -> set[str]:
+    cached = _STRING_RESOURCE_CACHE.get(resource_name)
+    if cached is not None:
+        return cached
+
+    values: set[str] = set()
+    for strings_xml in REPO_ROOT.glob(
+        "apps/thunderbird/codebase/feature/navigation/drawer/**/src/main/res/values*/strings.xml"
+    ):
+        try:
+            root = ET.parse(strings_xml).getroot()
+        except ET.ParseError:
+            continue
+
+        for node in root.findall("string"):
+            if node.attrib.get("name") == resource_name and node.text:
+                values.add(node.text.strip())
+
+    _STRING_RESOURCE_CACHE[resource_name] = values
+    return values
 
 
 def _current_screen(d) -> str:
@@ -167,16 +190,39 @@ def _drawer_content(d):
     return d(resourceIdMatches=_rid("DrawerContent|navigation_drawer_content"))
 
 
+def _find_text_any(d, candidates: set[str]):
+    for text in candidates:
+        obj = d(text=text)
+        if obj.exists:
+            return obj
+    return None
+
+
 def _sync_all_accounts_button(d):
-    return d(text=SYNC_ALL_ACCOUNTS_LABEL)
-
-
-def _account_list_header(d):
-    return d(text=ACCOUNT_LIST_LABEL)
+    return _find_text_any(
+        d,
+        _resource_string_values("navigation_drawer_dropdown_action_sync_all_accounts")
+        | _resource_string_values(
+            "navigation_drawer_siderail_action_sync_all_accounts"
+        ),
+    )
 
 
 def _show_accounts_button(d):
-    return d(textMatches="Show accounts|Hide accounts")
+    return _find_text_any(
+        d,
+        _resource_string_values("navigation_drawer_dropdown_action_show_accounts")
+        | _resource_string_values("navigation_drawer_dropdown_action_hide_accounts"),
+    )
+
+
+def _account_list_header(d):
+    return _find_text_any(
+        d,
+        _resource_string_values(
+            "navigation_drawer_dropdown_avount_view_selection_title"
+        ),
+    )
 
 
 def _click_account_selector_header(d) -> bool:
@@ -216,12 +262,14 @@ def _scroll_drawer_for_sync_action(d, max_swipes: int = 3) -> bool:
     end_y = top + int(height * 0.35)
 
     for _ in range(max_swipes):
-        if _sync_all_accounts_button(d).exists:
+        sync_button = _sync_all_accounts_button(d)
+        if sync_button and sync_button.exists:
             return True
         _adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "250")
         wait_for_ui_stable(d, timeout=8)
 
-    return _sync_all_accounts_button(d).exists
+    sync_button = _sync_all_accounts_button(d)
+    return bool(sync_button and sync_button.exists)
 
 
 def _log_inbox_state(d, stage: str) -> None:
@@ -239,7 +287,7 @@ def _log_inbox_state(d, stage: str) -> None:
         f"message_list_exists={message_list.exists} "
         f"progress_exists={progress.exists} "
         f"drawer_exists={drawer_content.exists} "
-        f"sync_button_exists={sync_button.exists}",
+        f"sync_button_exists={bool(sync_button and sync_button.exists)}",
     )
 
 
@@ -254,30 +302,42 @@ def _wait_for_drawer_ready(d, timeout: float = 10.0) -> None:
 
 
 def _ensure_account_actions_visible(d) -> None:
-    if _sync_all_accounts_button(d).exists:
+    sync_button = _sync_all_accounts_button(d)
+    if sync_button and sync_button.exists:
         return
 
     if _click_account_selector_header(d):
-        if _account_list_header(d).exists or _sync_all_accounts_button(d).exists:
+        account_list_header = _account_list_header(d)
+        sync_button = _sync_all_accounts_button(d)
+        if (account_list_header and account_list_header.exists) or (
+            sync_button and sync_button.exists
+        ):
             wait_for_ui_stable(d, timeout=8)
-            if _sync_all_accounts_button(d).exists or _scroll_drawer_for_sync_action(d):
+            sync_button = _sync_all_accounts_button(d)
+            if (sync_button and sync_button.exists) or _scroll_drawer_for_sync_action(
+                d
+            ):
                 return
 
     toggle = _show_accounts_button(d)
-    if toggle.exists:
+    if toggle and toggle.exists:
         _tap_center(toggle)
         wait_for_ui_stable(d, timeout=8)
-        if _sync_all_accounts_button(d).exists or _scroll_drawer_for_sync_action(d):
+        sync_button = _sync_all_accounts_button(d)
+        if (sync_button and sync_button.exists) or _scroll_drawer_for_sync_action(d):
             return
 
     for candidate in (
         _account_list_header(d),
         d(textContains="@"),
     ):
-        if candidate.exists:
+        if candidate and candidate.exists:
             _tap_center(candidate)
             wait_for_ui_stable(d, timeout=8)
-            if _sync_all_accounts_button(d).exists or _scroll_drawer_for_sync_action(d):
+            sync_button = _sync_all_accounts_button(d)
+            if (sync_button and sync_button.exists) or _scroll_drawer_for_sync_action(
+                d
+            ):
                 return
 
     raise RuntimeError("Sync all accounts action not visible in navigation drawer")
@@ -288,6 +348,10 @@ def _trigger_supported_sync(d) -> None:
     _wait_for_drawer_ready(d)
     _ensure_account_actions_visible(d)
     sync_button = _sync_all_accounts_button(d)
+    if sync_button is None or not sync_button.exists:
+        raise RuntimeError(
+            "Sync all accounts button unresolved after account-action setup"
+        )
     pre_click = d.dump_hierarchy(compressed=True)
     _tap_center(sync_button)
     wait_for_screen_change(d, pre_click, timeout=2.5)
