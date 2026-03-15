@@ -19,6 +19,24 @@ def wait_for(d, obj, timeout=30):
     return obj
 
 
+def is_conversation_list_visible(d):
+    return (
+        d(text="Join a conversation or start a new one").exists
+        or d(resourceId=f"{PACKAGE}:id/floatingActionButton").exists
+        or d(resourceId=f"{PACKAGE}:id/dialogName").exists
+    )
+
+
+def wait_for_chat_ready(d, timeout=45):
+    deadline = time.time() + timeout
+    message_input = d(resourceId=f"{PACKAGE}:id/messageInput")
+    while time.time() < deadline:
+        if message_input.exists:
+            return message_input
+        time.sleep(1)
+    raise RuntimeError(f"timed out waiting for {message_input.selector}")
+
+
 def room_selector(d, label):
     exact = d(text=label)
     if exact.exists:
@@ -32,7 +50,7 @@ def room_selector(d, label):
 def open_room(d, label):
     target = wait_for(d, room_selector(d, label), timeout=45)
     target.click()
-    wait_for(d, d(resourceId=f"{PACKAGE}:id/messageInput"), timeout=45)
+    wait_for_chat_ready(d, timeout=45)
 
 
 def scroll_to_label(d, label):
@@ -51,7 +69,27 @@ def launch_chat_activity(d, room_token):
         f"--es KEY_ROOM_TOKEN {shlex.quote(room_token)} --activity-clear-top"
     )
     d.shell(intent, timeout=30)
-    wait_for(d, d(resourceId=f"{PACKAGE}:id/messageInput"), timeout=45)
+    time.sleep(5)
+
+
+def ensure_room_open(d, conversation_label, room_token=None):
+    if room_token:
+        log(f"Launching chat activity for room token: {room_token}")
+        launch_chat_activity(d, room_token)
+        try:
+            wait_for_chat_ready(d, timeout=20)
+            return
+        except RuntimeError:
+            log(
+                "ChatActivity launch did not expose the composer, falling back to room list"
+            )
+
+    if not is_conversation_list_visible(d):
+        log("Conversation list not visible yet, waiting briefly before fallback")
+        time.sleep(5)
+
+    scroll_to_label(d, conversation_label)
+    open_room(d, conversation_label)
 
 
 def wait_for_offline_banner(d):
@@ -62,7 +100,7 @@ def wait_for_offline_banner(d):
 
 
 def send_temp_message(d, message):
-    input_box = wait_for(d, d(resourceId=f"{PACKAGE}:id/messageInput"), timeout=20)
+    input_box = wait_for_chat_ready(d, timeout=20)
     input_box.click()
     input_box.set_text(message)
     send_button = wait_for(
@@ -89,11 +127,7 @@ def main():
     d.app_start(PACKAGE, wait=True)
     time.sleep(3)
 
-    if args.room_token:
-        launch_chat_activity(d, args.room_token)
-    else:
-        scroll_to_label(d, args.conversation_label)
-        open_room(d, args.conversation_label)
+    ensure_room_open(d, args.conversation_label, args.room_token)
 
     if args.expect_offline:
         wait_for_offline_banner(d)
