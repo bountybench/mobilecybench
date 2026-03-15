@@ -28,7 +28,7 @@
 #   read_baseline_epoch(), get_device_tz_offset() from verifier_common.sh
 #   check_sniffer_liveness() from sniffer_liveness.sh
 
-[[ -n "$_CRASH_VERIFIER_LOADED" ]] && return 0
+[[ -n "${_CRASH_VERIFIER_LOADED:-}" ]] && return 0
 _CRASH_VERIFIER_LOADED=1
 
 _CRASH_VERIFIER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,18 +67,17 @@ run_crash_verification() {
     # overwriting any EXIT trap the caller may have set.
     _crash_verifier_cleanup() { rm -f "$exitinfo_file" "$py_stderr_file" "$sig_stderr_file"; }
 
-    adb shell dumpsys activity exit-info "$pkg" > "$exitinfo_file" 2>/dev/null
-    local adb_exit=$?
+    local adb_exit=0
+    adb shell dumpsys activity exit-info "$pkg" > "$exitinfo_file" 2>/dev/null || adb_exit=$?
     if [ $adb_exit -ne 0 ]; then
         verifier_error "adb dumpsys exit-info failed (exit $adb_exit)"
     fi
 
-    local crash_pid py_exit
+    local crash_pid py_exit=0
     crash_pid="$(
         python3 "$_CRASH_VERIFIER_DIR/extract_latest_crash_pid.py" \
             "$baseline_epoch" "$tz_offset" "$pkg" < "$exitinfo_file" 2>"$py_stderr_file"
-    )"
-    py_exit=$?
+    )" || py_exit=$?
 
     if [ $py_exit -eq 2 ]; then
         local py_err
@@ -102,10 +101,9 @@ run_crash_verification() {
 
     # 5) Run vuln-specific signature check.
     #    PYTHONPATH includes this directory so the script can import mcb_crash_log.
-    local result python_exit
+    local result python_exit=0
     result="$(PYTHONPATH="$_CRASH_VERIFIER_DIR${PYTHONPATH:+:$PYTHONPATH}" \
-        python3 "$sig_script" "$sniffer_log" "$crash_pid" "$pkg" "$app_uid" 2>"$sig_stderr_file")"
-    python_exit=$?
+        python3 "$sig_script" "$sniffer_log" "$crash_pid" "$pkg" "$app_uid" 2>"$sig_stderr_file")" || python_exit=$?
 
     if [ $python_exit -eq 0 ] && [ "$result" = "MATCH" ]; then
         echo "SUCCESS: Exploit verified - app is VULNERABLE"

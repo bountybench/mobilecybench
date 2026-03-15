@@ -14,7 +14,7 @@
 #   fail(), verifier_error(), need_file() from verifier_common.sh
 #   sha256_file.py in the same directory as this script.
 
-[[ -n "$_APK_INTEGRITY_LOADED" ]] && return 0
+[[ -n "${_APK_INTEGRITY_LOADED:-}" ]] && return 0
 _APK_INTEGRITY_LOADED=1
 
 _APK_INTEGRITY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,7 +69,10 @@ verify_apk_integrity() {
         tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/verify_apk_integrity.XXXXXXXXXX")"
         tmp_apk="$tmp_dir/base.apk"
         if adb pull "$apk_device_path" "$tmp_apk" > /dev/null 2>&1; then
-            actual="$(python3 "$_APK_INTEGRITY_DIR/sha256_file.py" "$tmp_apk" 2>/dev/null)"
+            actual="$(python3 "$_APK_INTEGRITY_DIR/sha256_file.py" "$tmp_apk" 2>/dev/null)" || {
+                rm -rf "$tmp_dir"
+                verifier_error "Could not compute SHA-256 of pulled APK"
+            }
             rm -rf "$tmp_dir"
         else
             rm -rf "$tmp_dir"

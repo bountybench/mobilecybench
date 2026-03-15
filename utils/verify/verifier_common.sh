@@ -16,15 +16,8 @@
 # Functions in this library are designed for use in top-level verifier scripts,
 # not inside subshells or conditional blocks where exit would be swallowed.
 
-[[ -n "$_VERIFIER_COMMON_LOADED" ]] && return 0
+[[ -n "${_VERIFIER_COMMON_LOADED:-}" ]] && return 0
 _VERIFIER_COMMON_LOADED=1
-
-# Unconditionally disable errexit.  Verifiers rely on explicit checks rather
-# than -e because most commands (adb, pm, ps) can legitimately return non-zero.
-# This is intentionally not restored — all verifier scripts must run with +e
-# for the full session.  If a calling script needs -e it must re-enable it
-# explicitly after sourcing verifier libs.
-set +e
 
 fail()           { echo "FAILED: $*"; exit 1; }
 verifier_error() { echo "FAILED: $*"; exit 2; }

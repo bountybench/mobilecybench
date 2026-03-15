@@ -14,7 +14,7 @@
 # Requires:
 #   fail(), verifier_error(), need_file() from verifier_common.sh
 
-[[ -n "$_SNIFFER_LIVENESS_LOADED" ]] && return 0
+[[ -n "${_SNIFFER_LIVENESS_LOADED:-}" ]] && return 0
 _SNIFFER_LIVENESS_LOADED=1
 
 # check_sniffer_liveness <pid_file>
