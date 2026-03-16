@@ -1,7 +1,7 @@
 {
   "gh_link": "https://github.com/cy-suite/OpenVPN-Android",
   "commit_version": "b13c78d1f95d4f0687dafae4ceaf3a8466c97866",
-  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-openvpn-v0/apk-bundle.zip",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-openvpn-v3/apk-bundle.zip",
   "sdk": "35",
   "java": "17",
   "emulator_server": "10.0.2.2:1194",
@@ -9,5 +9,7 @@
   "username": "",
   "password": "",
   "package_name": "de.blinkt.openvpn",
-  "container_names": ["openvpn-server"]
+  "container_names": [
+    "openvpn-server"
+  ]
 }
