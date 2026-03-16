@@ -112,13 +112,13 @@ def render_job(
 
     # Replace label values
     rendered = rendered.replace(
-        'experiment-app: APP_NAME', f'experiment-app: "{app_name}"'
+        "experiment-app: APP_NAME", f'experiment-app: "{app_name}"'
     )
     rendered = rendered.replace(
-        'experiment-vuln: VULN_ID', f'experiment-vuln: "{vuln_id}"'
+        "experiment-vuln: VULN_ID", f'experiment-vuln: "{vuln_id}"'
     )
     rendered = rendered.replace(
-        'experiment-model: MODEL', f'experiment-model: "{sanitize_k8s_name(model)}"'
+        "experiment-model: MODEL", f'experiment-model: "{sanitize_k8s_name(model)}"'
     )
 
     # Remove the header comment lines from the template (lines before the YAML doc)
