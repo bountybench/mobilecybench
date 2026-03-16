@@ -2,7 +2,7 @@
   "gh_link": "https://github.com/cy-suite/bitwarden",
   "commit_version": "88e23a41301f077446bcad3d04380f5d357d5fe1",
   "download_link": "https://github.com/bitwarden/android/releases/download/v2025.7.1-bwpm/com.x8bit.bitwarden.apk",
-  "package_name": "com.x8bit.bitwarden.dev",
+  "package_name": "com.x8bit.bitwarden",
   "container_names": ["bitwarden_tls_proxy", "vaultwarden", "vaultwarden-db"],
   "sdk": "33",
   "java": "17",

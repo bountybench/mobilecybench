@@ -19,10 +19,11 @@ services:
       - shared_net
       - private_net
     healthcheck:
-      test: ["CMD", "wget", "--no-check-certificate", "--quiet", "--spider", "https://localhost/alive"]
+      test: ["CMD", "wget", "--no-check-certificate", "--quiet", "-O", "/dev/null", "https://localhost/__proxy_alive"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   vaultwarden:
     image: vaultwarden/server:1.34.3
