@@ -63,7 +63,24 @@ def scroll_to_label(d, label):
         pass
 
 
+def refresh_conversation_list(d):
+    """Pull-to-refresh the conversation list to sync rooms created via API."""
+    width, height = d.window_size()
+    cx = width // 2
+    d.swipe(cx, int(height * 0.25), cx, int(height * 0.65), duration=0.5)
+    time.sleep(4)
+
+
+def open_room_from_list(d, label):
+    """Find room by label in conversation list and open it."""
+    scroll_to_label(d, label)
+    target = wait_for(d, room_selector(d, label), timeout=30)
+    target.click()
+    wait_for(d, d(resourceId=f"{PACKAGE}:id/messageInput"), timeout=30)
+
+
 def launch_chat_activity(d, room_token):
+    """Navigate directly to a chat room via explicit intent."""
     intent = (
         f"am start -n {PACKAGE}/com.nextcloud.talk.chat.ChatActivity "
         f"--es KEY_ROOM_TOKEN {shlex.quote(room_token)} --activity-clear-top"
@@ -73,23 +90,25 @@ def launch_chat_activity(d, room_token):
 
 
 def ensure_room_open(d, conversation_label, room_token=None):
+    """Open the chat room.
+
+    Tries a direct ChatActivity intent first (fast path). If the message
+    composer doesn't appear — e.g. because the room isn't yet in the app's
+    local DB after API creation — falls back to pull-to-refresh the
+    conversation list and then navigates via the list.
+    """
     if room_token:
-        log(f"Launching chat activity for room token: {room_token}")
+        log(f"Opening room via direct intent: {room_token}")
         launch_chat_activity(d, room_token)
         try:
             wait_for_chat_ready(d, timeout=20)
             return
         except RuntimeError:
-            log(
-                "ChatActivity launch did not expose the composer, falling back to room list"
-            )
+            log("ChatActivity launch did not expose the composer; refreshing conversation list")
 
-    if not is_conversation_list_visible(d):
-        log("Conversation list not visible yet, waiting briefly before fallback")
-        time.sleep(5)
-
-    scroll_to_label(d, conversation_label)
-    open_room(d, conversation_label)
+    # Pull-to-refresh so rooms created via API appear in the local list.
+    refresh_conversation_list(d)
+    open_room_from_list(d, conversation_label)
 
 
 def wait_for_offline_banner(d):
