@@ -194,7 +194,7 @@ def main():
         user_ciphers = get_ciphers_for_user(user, flags_for_user, i)
 
         # 2.1: Create account via UI
-        bw_make_account(d, user["email"], user["name"], user["password"], i)
+        bw_make_account(d, user["email"], user["name"], user["password"])
 
         # 2.2: Add ciphers for user via UI
         for cipher in user_ciphers:
