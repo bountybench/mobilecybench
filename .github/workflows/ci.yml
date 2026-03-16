@@ -401,6 +401,11 @@ jobs:
                 BUILD_ARGS="--hardened"
               fi
               ./build_apk.sh "${{ matrix.app_name }}" $BUILD_ARGS
+              # If hardened build, copy to default location for downstream validation/upload/install
+              if [ -f "apps/${{ matrix.app_name }}/apk/hardened/${{ matrix.app_name }}.apk" ]; then
+                cp "apps/${{ matrix.app_name }}/apk/hardened/${{ matrix.app_name }}.apk" "apps/${{ matrix.app_name }}/apk/${{ matrix.app_name }}.apk"
+                echo "Copied hardened APK to default location"
+              fi
               cd "${{ matrix.app_dir }}"
             else
               echo "ERROR: build.sh not found for ${{ matrix.app_name }}"
