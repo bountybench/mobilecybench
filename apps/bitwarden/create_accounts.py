@@ -201,7 +201,7 @@ def main():
             bw_create_new_cipher(d, cipher)
 
         # 2.3: Lock and logout to prepare for the next account or test
-        bw_lock_and_logout(d)
+        bw_lock_and_logout(d, user["email"])
 
     # Step 3: Extract finalized data from database to secrets.json
     if extract_secrets_from_db():
