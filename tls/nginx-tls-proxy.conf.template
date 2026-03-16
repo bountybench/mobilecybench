@@ -3,6 +3,11 @@ server {
     ssl_certificate     /etc/nginx/certs/server.crt;
     ssl_certificate_key /etc/nginx/certs/server.key;
 
+    location = /__proxy_alive {
+        add_header Content-Type text/plain;
+        return 200 "ok";
+    }
+
     location / {
         proxy_pass http://${UPSTREAM};
         proxy_set_header Host $http_host;
