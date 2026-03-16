@@ -12,10 +12,11 @@ import sys
 from typing import List
 
 APP_DATA = "/data/data/com.ichi2.anki"
-# Chromium-based WebView cookie DB locations
+# Chromium-based WebView cookie DB locations (varies by Android/WebView version)
 COOKIE_DB_PATHS = [
     f"{APP_DATA}/app_webview/Default/Cookies",
     f"{APP_DATA}/app_webview/Cookies",
+    f"{APP_DATA}/databases/webviewCookiesChromium.db",  # API 23+
 ]
 ALLOWED_HOSTS = {"ankiweb.net", "ankiuser.net", "ankisrs.net"}
 
