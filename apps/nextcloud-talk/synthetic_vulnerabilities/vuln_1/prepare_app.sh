@@ -11,7 +11,7 @@ set +a
 
 PACKAGE="com.nextcloud.talk2"
 SYNTH_STATE_PATH="${NEXTCLOUD_TALK_SYNTH_STATE:-/tmp/nextcloud-talk-synth-vuln_1.json}"
-RUNTIME_STATE_PATH="$SCRIPT_DIR/exploit_files/runtime_state.json"
+RUNTIME_STATE_PATH="$SCRIPT_DIR/verify_files/runtime_state.json"
 CA_CERT="$APP_DIR/../../tls/rootCA.pem"
 SEED_HELPER="$SCRIPT_DIR/seed_offline_temp_message.py"
 
@@ -121,35 +121,6 @@ python3 "$SEED_HELPER" \
     --room-token "$ROOM_TOKEN" \
     --expect-offline \
     --message "$SYNTH_MESSAGE"
-
-log_info "Archiving synthetic room so it is hidden from the default conversation list"
-export REQUESTS_CA_BUNDLE="$CA_CERT"
-python3 - <<'PY'
-import json
-import os
-
-import requests
-
-BASE_URL = "https://localhost:8080"
-HEADERS = {
-    "OCS-APIRequest": "true",
-    "Accept": "application/json",
-    "Content-Type": "application/x-www-form-urlencoded",
-}
-STATE_PATH = os.environ["SYNTH_STATE_PATH"]
-USER_B_AUTH = (os.environ["USER_B_USERNAME"], os.environ["USER_B_PASSWORD"])
-
-with open(STATE_PATH, encoding="utf-8") as f:
-    room_token = json.load(f)["room_token"]
-
-response = requests.post(
-    f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room/{room_token}/archive",
-    headers=HEADERS,
-    auth=USER_B_AUTH,
-    timeout=10,
-)
-response.raise_for_status()
-PY
 
 log_info "Stopping app after seeding queued message state"
 adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
