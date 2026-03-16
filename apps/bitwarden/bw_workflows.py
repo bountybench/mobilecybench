@@ -122,6 +122,14 @@ def _dismiss_common_popups(d, max_rounds: int = 4) -> None:
         break
 
 
+def _is_start_registration_screen(d) -> bool:
+    return (
+        d(resourceId="EmailAddressEntry").exists
+        and d(resourceId="NameEntry").exists
+        and d(resourceId="ContinueButton").exists
+    )
+
+
 def _open_account_switcher(d, expected_account_email: str | None = None) -> bool:
     account_button = d(description="Account")
     if not account_button.exists:
@@ -206,32 +214,49 @@ def _logout_via_overflow(d) -> bool:
 
 
 def _navigate_to_start_registration(d) -> None:
-    start_registration_email = d(resourceId="EmailAddressEntry")
-    name_entry = d(resourceId="NameEntry")
-    if start_registration_email.exists and name_entry.exists:
-        return
+    for _ in range(4):
+        _dismiss_common_popups(d)
 
-    if d(resourceId="ChooseAccountCreationButton").exists:
-        if not click_then_expect(
-            d,
-            d(resourceId="ChooseAccountCreationButton"),
-            lambda: start_registration_email.exists and name_entry.exists,
-            timeout=SHORT_WAIT,
-        ):
-            raise RuntimeError("Failed to navigate from Welcome to Start Registration.")
-        return
+        if _is_start_registration_screen(d):
+            return
 
-    if d(resourceId="CreateAccountLabel").exists:
-        if not click_then_expect(
-            d,
-            d(resourceId="CreateAccountLabel"),
-            lambda: start_registration_email.exists and name_entry.exists,
-            timeout=SHORT_WAIT,
-        ):
-            raise RuntimeError("Failed to navigate from Landing to Start Registration.")
-        return
+        if d(resourceId="ChooseAccountCreationButton").exists:
+            if not click_then_expect(
+                d,
+                d(resourceId="ChooseAccountCreationButton"),
+                lambda: _is_start_registration_screen(d)
+                or d(resourceId="CreateAccountLabel").exists
+                or d(resourceId="ServerUrlEntry").exists
+                or d(resourceId="AlertPopup").exists,
+                timeout=SHORT_WAIT,
+            ):
+                raise RuntimeError(
+                    "Failed to advance from WelcomeScreen toward registration."
+                )
+            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            continue
 
-    raise RuntimeError("Could not find a path to the Start Registration screen.")
+        if d(resourceId="CreateAccountLabel").exists:
+            if not click_then_expect(
+                d,
+                d(resourceId="CreateAccountLabel"),
+                lambda: _is_start_registration_screen(d)
+                or d(resourceId="ServerUrlEntry").exists
+                or d(resourceId="AlertPopup").exists,
+                timeout=SHORT_WAIT,
+            ):
+                raise RuntimeError(
+                    "Failed to advance from LandingScreen to StartRegistrationScreen."
+                )
+            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            continue
+
+        if d(resourceId="ServerUrlEntry").exists:
+            return
+
+        wait_for_ui_stable(d, timeout=SHORT_WAIT)
+
+    raise RuntimeError("Could not find a supported path to StartRegistrationScreen.")
 
 
 def _configure_self_hosted_environment(d) -> None:
