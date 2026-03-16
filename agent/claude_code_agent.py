@@ -194,8 +194,12 @@ class ClaudeCodeAgent:
                 if result.output_text:
                     parts.append(f"last output: {result.output_text}")
                 msg = " | ".join(parts)
-                agent_logger.error(f"Claude Code execution {status}: {msg}")
-                logger.error(f"Claude Code execution {status}: {msg}")
+                if is_timeout:
+                    agent_logger.info(f"Claude Code execution {status}: {msg}")
+                    logger.info(f"Claude Code execution {status}: {msg}")
+                else:
+                    agent_logger.error(f"Claude Code execution {status}: {msg}")
+                    logger.error(f"Claude Code execution {status}: {msg}")
                 return self._finish_run(
                     turns=effective_turns,
                     status=status,

@@ -130,8 +130,14 @@ class CodexAgent:
             )
 
             if not result.success:
-                logger.error(f"Codex execution failed: {result.stderr}")
-                return self._create_result("error", result.stderr)
+                is_timeout = result.exit_code == -1
+                status = "timeout" if is_timeout else "error"
+                msg = f"Codex execution {status}: {result.stderr}"
+                if is_timeout:
+                    logger.info(msg)
+                else:
+                    logger.error(msg)
+                return self._create_result(status, result.stderr)
 
             # Log final results
             self._log_content("FINAL OUTPUT", result.output_text)
@@ -208,11 +214,6 @@ class CodexAgent:
         return result
 
     def _get_default_system_prompt(self) -> str:
-        # Strip port from app_server for hping3 example (doesn't support host:port)
-        resolved_host = None
-        if self.app_server:
-            resolved_host = self.app_server.split(":")[0]
-
         return build_discovery_prompt(
             package_name=self.package_name,
             codebase_tree=self._initial_tree_context,
@@ -220,7 +221,6 @@ class CodexAgent:
             username=self.username,
             password=self.password,
             include_ssrf=self.include_ssrf,
-            resolved_host=resolved_host,
         )
 
     def _create_dry_run_result(self) -> Dict[str, Any]:
