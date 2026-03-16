@@ -289,10 +289,6 @@ def run(
         logger.info("Runtime environment ready")
 
         if config.gold_run:
-            if config.dry_run:
-                logger.warning(
-                    "Both gold_run and dry_run are True; gold_run takes precedence"
-                )
             logger.info("Gold run mode — using reference exploit files...")
             scores = _run_gold_exploit(workflow, logger_manager.get_logs_dir())
             evaluation = scores or {}
