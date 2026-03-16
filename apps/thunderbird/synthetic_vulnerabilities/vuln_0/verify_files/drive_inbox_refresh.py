@@ -58,17 +58,27 @@ def _launch_inbox() -> None:
     )
 
 
-def _wait_for_inbox_ready(d, timeout: float = 30.0) -> None:
-    refresh = d(resourceIdMatches=_rid("swiperefresh"))
+def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
+    """Wait until swipeRefreshLayout is present AND enabled.
+
+    MessageListFragment.initializeSwipeRefreshLayout() sets isEnabled=false
+    immediately after inflating the layout.  isEnabled is only set to true
+    inside setMessageList(), which runs after the local DB query completes.
+    Swiping before that returns no-op because SwipeRefreshLayout ignores
+    gestures while disabled.
+    """
     msg_list = d(resourceIdMatches=_rid("message_list"))
     end = time.time() + timeout
     while time.time() < end:
         app = d.app_current() or {}
-        if app.get("package") == APP_PKG and refresh.exists and msg_list.exists:
-            return
-        time.sleep(1)
+        if app.get("package") == APP_PKG and msg_list.exists:
+            # SwipeRefreshLayout must be enabled (setMessageList() has run).
+            enabled_refresh = d(resourceIdMatches=_rid("swiperefresh"), enabled=True)
+            if enabled_refresh.exists:
+                return
+        time.sleep(0.5)
     raise RuntimeError(
-        f"inbox UI not ready after {timeout:.0f}s; screen={_current_screen(d)}"
+        f"swipeRefreshLayout not enabled after {timeout:.0f}s; screen={_current_screen(d)}"
     )
 
 
@@ -86,8 +96,8 @@ def _pull_to_refresh(d) -> None:
         str(int(height * 0.65)),
         "600",
     )
-    # Allow time for IMAP fetch and notification posting.
-    time.sleep(8)
+    # Allow time for IMAP fetch, DB write, and notification posting.
+    time.sleep(15)
     print(f"[drive_inbox_refresh] attempt={ATTEMPT} pull_to_refresh_done=true")
 
 
