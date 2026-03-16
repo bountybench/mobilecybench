@@ -159,9 +159,7 @@ def get_termux_uid():
 
 def verify_file_ownership():
     """Verify marker file is owned by Termux app (proves extraction by Termux process)."""
-    success, output = run_adb_command(
-        f"shell stat -c '%U:%G:%u:%g' '{MARKER_FILE}'"
-    )
+    success, output = run_adb_command(f"shell stat -c '%U:%G:%u:%g' '{MARKER_FILE}'")
     if not success:
         success, output = run_adb_command(
             f"shell stat -f '%Su:%Sg:%u:%g' '{MARKER_FILE}'"
