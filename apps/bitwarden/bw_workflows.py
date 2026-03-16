@@ -6,13 +6,16 @@ account creation, cipher creation, logging out, and attempting login.
 """
 
 import logging
+import os
+import re
 import sys
 import time
+import xml.etree.ElementTree as ET
+from urllib.parse import quote
 
 # Absolute imports to prevent E402
 from utils.ui_utils import (
     click_then_expect,
-    press_back_then_expect,
     wait_and_click,
     wait_and_set_text,
     wait_for_ui_stable,
@@ -31,6 +34,74 @@ logger.handlers[:] = [_handler]
 logger.propagate = False
 
 SHORT_WAIT = 5
+
+
+def _resource_matches(resource_id: str | None, target: str) -> bool:
+    return bool(resource_id) and (
+        resource_id == target or resource_id.endswith(f"/{target}")
+    )
+
+
+def _parse_bounds_center(bounds: str | None) -> tuple[int, int] | None:
+    if not bounds:
+        return None
+    match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+    if not match:
+        return None
+    x1, y1, x2, y2 = map(int, match.groups())
+    return ((x1 + x2) // 2, (y1 + y2) // 2)
+
+
+def _dump_ui_root(d) -> ET.Element | None:
+    try:
+        return ET.fromstring(d.dump_hierarchy())
+    except Exception as exc:
+        logger.warning("Failed to parse UI hierarchy: %s", exc)
+        return None
+
+
+def _iter_account_cells(root: ET.Element):
+    for node in root.iter():
+        if _resource_matches(node.attrib.get("resource-id"), "AccountCell"):
+            yield node
+
+
+def _descendant_text(node: ET.Element, target_resource_id: str) -> str | None:
+    for desc in node.iter():
+        if _resource_matches(desc.attrib.get("resource-id"), target_resource_id):
+            text = desc.attrib.get("text")
+            if text:
+                return text
+    return None
+
+
+def _has_descendant_resource(node: ET.Element, target_resource_id: str) -> bool:
+    return any(
+        _resource_matches(desc.attrib.get("resource-id"), target_resource_id)
+        for desc in node.iter()
+    )
+
+
+def _find_account_cell_center(d, email: str) -> tuple[int, int] | None:
+    root = _dump_ui_root(d)
+    if root is None:
+        return None
+
+    for cell in _iter_account_cells(root):
+        if _descendant_text(cell, "AccountEmailLabel") == email:
+            return _parse_bounds_center(cell.attrib.get("bounds"))
+    return None
+
+
+def _find_active_account_email(d) -> str | None:
+    root = _dump_ui_root(d)
+    if root is None:
+        return None
+
+    for cell in _iter_account_cells(root):
+        if _has_descendant_resource(cell, "ActiveVaultIcon"):
+            return _descendant_text(cell, "AccountEmailLabel")
+    return None
 
 
 def _dismiss_alert_popup(d, timeout: float = 1.0) -> bool:
@@ -68,18 +139,24 @@ def _show_account_actions(d, email: str) -> bool:
     if not _open_account_switcher(d, expected_account_email=email):
         return False
 
-    account_row = d(text=email)
-    if not account_row.exists:
+    center = _find_account_cell_center(d, email)
+    if center is None:
+        logger.warning("Could not locate AccountCell for %s.", email)
         return False
 
     try:
-        account_row.long_click()
+        x, y = center
+        d.shell(f"input swipe {x} {y} {x} {y} 800")
     except Exception as exc:
-        logger.warning("Failed to long-click account row for %s: %s", email, exc)
+        logger.warning("Failed to long-click AccountCell for %s: %s", email, exc)
         return False
 
     time.sleep(1)
-    return d(text="Log out").exists or d(text="Lock").exists or d(text="Remove account").exists
+    return (
+        d(text="Log out").exists
+        or d(text="Lock").exists
+        or d(text="Remove account").exists
+    )
 
 
 def _logout_via_account_actions(d, email: str) -> bool:
@@ -163,10 +240,20 @@ def _configure_self_hosted_environment(d) -> None:
 
     if server_url_entry.exists:
         wait_and_set_text(d, server_url_entry, SERVER_URL)
-        wait_and_click(d, d(resourceId="SaveButton"))
+        if not click_then_expect(
+            d,
+            d(resourceId="SaveButton"),
+            lambda: d(resourceId="EmailAddressEntry").exists
+            and d(resourceId="NameEntry").exists
+            and d(resourceId="RegionSelectorDropdown").exists,
+            timeout=SHORT_WAIT,
+        ):
+            raise RuntimeError("Failed to save the self-hosted environment.")
         return
 
-    if not click_then_expect(d, region_selector, d(text="Self-hosted"), timeout=SHORT_WAIT):
+    if not click_then_expect(
+        d, region_selector, d(text="Self-hosted"), timeout=SHORT_WAIT
+    ):
         raise RuntimeError("Failed to open the environment selector.")
 
     if not click_then_expect(
@@ -216,7 +303,8 @@ def _complete_post_registration_setup(d) -> None:
             click_then_expect(
                 d,
                 d(text="Confirm"),
-                lambda: d(text="Continue").exists or d(resourceId="AddItemButton").exists,
+                lambda: d(text="Continue").exists
+                or d(resourceId="AddItemButton").exists,
                 timeout=SHORT_WAIT,
             )
 
@@ -229,6 +317,60 @@ def _complete_post_registration_setup(d) -> None:
         )
 
     _dismiss_common_popups(d)
+
+
+def _fetch_verification_token_for_email(email: str) -> str | None:
+    try:
+        from utils.db_container_utils import query_container
+    except Exception as exc:
+        logger.warning("Could not import DB helper for token lookup: %s", exc)
+        return None
+
+    db_config = {
+        "container_name": os.getenv("DB_CONTAINER", "vaultwarden-db"),
+        "db_type": "postgres",
+        "database": os.getenv("DB_NAME", "vaultwarden"),
+        "user": os.getenv("DB_USER", "bitwarden"),
+        "password": os.getenv("DB_PASSWORD", "super_strong_password"),
+    }
+
+    candidate_queries = [
+        (
+            "SELECT email_verification_token FROM public.users "
+            "WHERE email = %s AND email_verification_token IS NOT NULL",
+            "email_verification_token",
+        ),
+        (
+            "SELECT verification_token FROM public.users "
+            "WHERE email = %s AND verification_token IS NOT NULL",
+            "verification_token",
+        ),
+        (
+            "SELECT token FROM public.email_verification "
+            "WHERE email = %s AND token IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+            "token",
+        ),
+    ]
+
+    for query, column in candidate_queries:
+        try:
+            rows = query_container(
+                db_config["container_name"],
+                query,
+                (email,),
+                db_type=db_config["db_type"],
+                user=db_config["user"],
+                password=db_config["password"],
+                database=db_config["database"],
+            )
+        except Exception:
+            continue
+
+        if rows and rows[0].get(column):
+            logger.info("Recovered verification token for %s from the database.", email)
+            return rows[0][column]
+
+    return None
 
 
 def _ensure_app_in_foreground(
@@ -291,7 +433,7 @@ def bw_initialize_local_host(d):
     _configure_self_hosted_environment(d)
 
 
-def bw_make_account(d, email, name, master_password, account_index=0):
+def bw_make_account(d, email, name, master_password):
     """
     Creates a Bitwarden account with the specified credentials
     """
@@ -321,12 +463,25 @@ def bw_make_account(d, email, name, master_password, account_index=0):
         or d(resourceId="AlertPopup").exists,
         timeout=20,
     ):
-        raise RuntimeError("Start Registration did not advance to the expected next screen.")
+        raise RuntimeError(
+            "Start Registration did not advance to the expected next screen."
+        )
 
     if d(resourceId="OpenEmailApp").exists:
-        raise RuntimeError(
-            "Bitwarden registration requires email verification and did not return an inline token."
+        verification_token = _fetch_verification_token_for_email(email)
+        if not verification_token:
+            raise RuntimeError(
+                "Registration reached CheckEmailScreen and no verification token could be recovered."
+            )
+        deep_link = (
+            "bitwarden://complete-registration/finish-signup"
+            f"?email={quote(email)}&token={quote(verification_token)}&fromEmail=true"
         )
+        d.shell(f'am start -a android.intent.action.VIEW -d "{deep_link}"')
+        if not d(resourceId="MasterPasswordEntry").wait(timeout=20):
+            raise RuntimeError(
+                "Recovered verification token but deep link did not open Complete Registration."
+            )
 
     _dismiss_common_popups(d)
 
@@ -373,17 +528,43 @@ def bw_create_new_cipher(d, cipher):
 
     # Step 3.1: Click the main '+' button to add a new item.
     logger.info("Step 3.1: Clicking the 'Add Item' button...")
-    wait_and_click(d, d(resourceId="AddItemButton"))
+    if not click_then_expect(
+        d,
+        d(resourceId="AddItemButton"),
+        lambda: d(resourceId="AlertSelectionOption", text="Login").exists
+        or d(resourceId="AlertPopup").exists,
+        timeout=SHORT_WAIT,
+    ):
+        raise RuntimeError("Add Item did not open the item type selector.")
 
     # Step 3.2: Select "Login" from the item type dialog.
     logger.info("Step 3.2: Selecting 'Login' as the item type...")
-    wait_and_click(d, d(resourceId="AlertSelectionOption", text="Login"))
+    if not click_then_expect(
+        d,
+        d(resourceId="AlertSelectionOption", text="Login"),
+        lambda: d(resourceId="ItemNameEntry").exists
+        or d(resourceId="AcceptAlertButton").exists
+        or d(resourceId="AlertPopup").exists,
+        timeout=SHORT_WAIT,
+    ):
+        raise RuntimeError("Login item type did not open the cipher form.")
 
     # Handle the optional "Bitwarden Autofill Service" dialog that may appear.
     logger.info("Step 3.2: Checking for Autofill Service dialog...")
-    if d(resourceId="AcceptAlertButton").exists(timeout=1):
+    if (
+        d(resourceId="AcceptAlertButton").exists(timeout=1)
+        and not d(resourceId="ItemNameEntry").exists
+    ):
         logger.info("Step 3.2: Autofill dialog found. Clicking 'Okay'...")
-        wait_and_click(d, d(resourceId="AcceptAlertButton"))
+        if not click_then_expect(
+            d,
+            d(resourceId="AcceptAlertButton"),
+            d(resourceId="ItemNameEntry"),
+            timeout=SHORT_WAIT,
+        ):
+            raise RuntimeError("Autofill dialog did not dismiss to the cipher form.")
+
+    _dismiss_common_popups(d)
 
     # Step 3.3: Enter the item name from the cipher data.
     logger.info("Step 3.3: Entering item name '%s'...", cipher["name"])
@@ -403,7 +584,16 @@ def bw_create_new_cipher(d, cipher):
 
     # Step 3.7: Click the Save button to save the cipher.
     logger.info("Step 3.7: Clicking the Save button...")
-    wait_and_click(d, d(resourceId="SaveButton"))
+    if not click_then_expect(
+        d,
+        d(resourceId="SaveButton"),
+        lambda: d(resourceId="AddItemButton").exists
+        or d(resourceId="AlertPopup").exists,
+        timeout=15,
+    ):
+        raise RuntimeError("Saving the cipher did not return to the vault screen.")
+
+    _dismiss_common_popups(d)
 
     logger.info("Finished creating cipher: %s", cipher["name"])
 
@@ -446,11 +636,19 @@ def bw_attempt_login(d, email, password):
         if d(resourceId="AddItemButton").exists:
             logger.info("Unlocked vault detected. Logging out before login attempt.")
             try:
-                bw_lock_and_logout(d)
+                active_email = None
+                if _open_account_switcher(d):
+                    active_email = _find_active_account_email(d)
+                    d.press("back")
+                    wait_for_ui_stable(d, timeout=SHORT_WAIT)
+                bw_lock_and_logout(d, active_email)
             except Exception as exc:
                 logger.warning("Could not pre-logout from unlocked state: %s", exc)
 
-        if d(resourceId="MasterPasswordEntry").exists and d(resourceId="NotYouLabel").exists:
+        if (
+            d(resourceId="MasterPasswordEntry").exists
+            and d(resourceId="NotYouLabel").exists
+        ):
             label_text = ""
             if d(resourceId="LoggingInAsLabel").exists:
                 try:
@@ -458,7 +656,9 @@ def bw_attempt_login(d, email, password):
                 except Exception:
                     label_text = ""
             if email not in label_text:
-                logger.info("Login screen is prefilled for a different account. Choosing 'Not you?'.")
+                logger.info(
+                    "Login screen is prefilled for a different account. Choosing 'Not you?'."
+                )
                 if click_then_expect(
                     d,
                     d(resourceId="NotYouLabel"),
@@ -467,7 +667,10 @@ def bw_attempt_login(d, email, password):
                 ):
                     wait_for_ui_stable(d, timeout=SHORT_WAIT)
 
-        if d(resourceId="EmailAddressEntry").exists and not d(resourceId="NameEntry").exists:
+        if (
+            d(resourceId="EmailAddressEntry").exists
+            and not d(resourceId="NameEntry").exists
+        ):
             logger.info("Entering email: %s...", email)
             wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
 
@@ -502,7 +705,9 @@ def bw_attempt_login(d, email, password):
             or d(resourceId="MasterPasswordEntry").exists,
             timeout=20,
         ):
-            logger.error("Login submission did not produce an expected post-submit state.")
+            logger.error(
+                "Login submission did not produce an expected post-submit state."
+            )
             return False
 
         # Check for error dialogs first (non-fatal dismissal + settle)
@@ -515,9 +720,10 @@ def bw_attempt_login(d, email, password):
         # Success is defined by the appearance of the main vault screen's header.
         # A failed login will not proceed to this screen.
         logger.info("Verifying login outcome...")
-        if d(resourceId="VaultTab").wait(timeout=5.0) or d(
-            resourceId="AddItemButton"
-        ).exists:
+        if (
+            d(resourceId="VaultTab").wait(timeout=5.0)
+            or d(resourceId="AddItemButton").exists
+        ):
             logger.info("Login successful. Main vault is visible.")
             return True
         else:
