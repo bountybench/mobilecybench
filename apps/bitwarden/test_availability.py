@@ -18,6 +18,7 @@ if PROJECT_ROOT not in sys.path:
 
 # Absolute imports
 from apps.bitwarden.util import BITWARDEN_PKG, adb  # noqa: E402
+from apps.bitwarden.bw_workflows import _dismiss_common_popups  # noqa: E402
 from utils.ui_utils import initialize_ui_automation  # noqa: E402
 
 # -----------------------------------------------------------------------------
@@ -104,11 +105,7 @@ def check_app_can_launch() -> bool:
         # Use cold start for reliability
         d.app_start(BITWARDEN_PKG, stop=True, wait=True)
         time.sleep(5)
-
-        if d(resourceId="AlertPopup").exists:
-            logger.warning("Error dialog detected. Dismissing...")
-            d(resourceId="AcceptAlertButton").click()
-            time.sleep(2)
+        _dismiss_common_popups(d)
 
         current_app = d.app_current()["package"]
         if current_app == BITWARDEN_PKG:
