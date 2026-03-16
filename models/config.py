@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class RunnerConfig(BaseModel):
@@ -30,6 +30,7 @@ class RunnerConfig(BaseModel):
     # mode flags
     screenshot_mode: bool
     dry_run: bool
+    gold_run: bool = False
     emulator_backend: Literal["native", "container"] = "native"
     emulator_display: Literal["headed", "headless"] = "headed"
 
@@ -62,6 +63,17 @@ class RunnerConfig(BaseModel):
             raise ValueError(f"Unexpected error reading config file: {e}")
 
         return cls(**c_dict)
+
+    @model_validator(mode="after")
+    def validate_gold_run(self) -> "RunnerConfig":
+        if self.gold_run and self.workflow != "exploit":
+            raise ValueError("gold_run=True is only valid with workflow='exploit'")
+        if self.gold_run and self.dry_run:
+            raise ValueError(
+                "gold_run and dry_run cannot both be True — "
+                "gold_run executes exploit files and requires real evaluation"
+            )
+        return self
 
     @field_validator("allowed_tools", mode="after")
     @classmethod
