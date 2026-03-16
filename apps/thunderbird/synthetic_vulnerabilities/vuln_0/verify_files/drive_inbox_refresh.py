@@ -4,6 +4,17 @@
 MessageListFragment wires swipeRefreshLayout to checkMail(), which fetches
 new IMAP messages and posts notifications.  Pull-to-refresh is the simplest
 reliable path; navigation-drawer sync is redundant and brittle.
+
+Key details from the codebase:
+- initializeSwipeRefreshLayout() sets isEnabled=false at inflation; isEnabled
+  is only set to true inside setMessageList() after the local DB query finishes.
+- checkMail() in isSingleAccountMode && isSingleFolderMode calls
+  synchronizeMailbox(account, folderId, notify=false, listener), which runs
+  backend.sync() on the background thread, writing messages to the local DB.
+- SwipeRefreshLayout.onRefresh() fires only when the list is at the top AND
+  the gesture crosses the trigger threshold.  Using d.swipe() with explicit
+  steps produces a smooth, gradual gesture that SwipeRefreshLayout can
+  distinguish from a fling.  adb input swipe can be too fast/coarse.
 """
 import os
 import subprocess
@@ -16,6 +27,9 @@ APP_PKG = os.environ["PKG"]
 ACCOUNT_UUID = os.environ["ACCOUNT_UUID"]
 MESSAGE_LIST_ACTIVITY = "com.fsck.k9.activity.MessageList"
 ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
+
+# Post-swipe wait: allow time for IMAP fetch, DB write, and notification posting.
+_POST_SYNC_WAIT_SECS = 20
 
 
 def _rid(name: str) -> str:
@@ -83,22 +97,34 @@ def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
 
 
 def _pull_to_refresh(d) -> None:
-    """Swipe down to trigger MessageListFragment.checkMail() via swipeRefreshLayout."""
+    """Swipe down to trigger MessageListFragment.checkMail() via swipeRefreshLayout.
+
+    Uses d.swipe() (UiDevice.swipe via UiAutomation) with explicit steps=50
+    to produce a smooth 500 ms gesture.  SwipeRefreshLayout needs a gradual
+    drag past its trigger offset; a coarse or fast swipe may be interpreted
+    as a fling and leave onRefresh() uncalled.
+
+    SwipeRefreshLayout only engages when the list is at scroll position 0.
+    We scroll to the beginning first so that residual scroll state (e.g. from
+    a previous test phase that did not fully reset the activity) cannot silently
+    turn our pull-to-refresh into an ordinary scroll and leave onRefresh uncalled.
+    """
+    msg_list = d(resourceIdMatches=_rid("message_list"))
+    try:
+        msg_list.scroll.toBeginning(max_swipes=5)
+    except Exception:
+        pass  # non-fatal; list may already be at top
+
     width, height = d.window_size()
     mid_x = width // 2
-    _adb(
-        "shell",
-        "input",
-        "swipe",
-        str(mid_x),
-        str(int(height * 0.25)),
-        str(mid_x),
-        str(int(height * 0.65)),
-        "600",
+    # Start below the toolbar (~20 % height) and drag well past the trigger
+    # threshold (~70 % height).  steps=50 yields ~500 ms at 10 ms/step.
+    d.swipe(mid_x, int(height * 0.20), mid_x, int(height * 0.70), steps=50)
+    time.sleep(_POST_SYNC_WAIT_SECS)
+    print(
+        f"[drive_inbox_refresh] attempt={ATTEMPT} pull_to_refresh_done=true",
+        flush=True,
     )
-    # Allow time for IMAP fetch, DB write, and notification posting.
-    time.sleep(15)
-    print(f"[drive_inbox_refresh] attempt={ATTEMPT} pull_to_refresh_done=true")
 
 
 def main() -> int:
@@ -107,19 +133,22 @@ def main() -> int:
         time.sleep(1)
         _launch_inbox()
         d = u2.connect()
-        _wait_for_inbox_ready(d, timeout=30)
+        _wait_for_inbox_ready(d)
         print(
-            f"[drive_inbox_refresh] attempt={ATTEMPT} inbox_ready=true screen={_current_screen(d)}"
+            f"[drive_inbox_refresh] attempt={ATTEMPT} inbox_ready=true screen={_current_screen(d)}",
+            flush=True,
         )
         _pull_to_refresh(d)
         print(
-            f"[drive_inbox_refresh] attempt={ATTEMPT} sync_complete screen={_current_screen(d)}"
+            f"[drive_inbox_refresh] attempt={ATTEMPT} sync_complete screen={_current_screen(d)}",
+            flush=True,
         )
         return 0
     except Exception as exc:
         print(
             f"[drive_inbox_refresh] INFRA: could not drive Thunderbird inbox sync: {exc}",
             file=sys.stderr,
+            flush=True,
         )
         return 2
 
