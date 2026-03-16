@@ -97,14 +97,51 @@ def git_checkout(
     cmd.append(target)
 
     try:
-        # Clean first if requested
+        # Clean first if requested (including submodules)
         if clean:
+            _run_git_command(directory, ["reset", "--hard", "HEAD"])
             _run_git_command(directory, ["clean", "-fdx"])
 
         _run_git_command(directory, cmd)
+
+        # Initialize/update submodules — some apps (e.g. owncloud-android)
+        # have nested submodules that patches target. --force is needed
+        # because a previous patch may have dirtied the submodule's working tree.
+        try:
+            _run_git_command(
+                directory, ["submodule", "update", "--init", "--recursive", "--force"]
+            )
+        except subprocess.CalledProcessError:
+            logger.debug("No submodules to update (or update failed)")
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to checkout {target}: {e.stderr}")
         raise
+
+
+def git_restore_clean(directory_path: PathLike) -> None:
+    """Restore a git repo (and its submodules) to a clean state.
+
+    Recurse into submodules.  Safe to call on repos without submodules.
+    """
+    directory = Path(directory_path)
+    _run_git_command(directory, ["reset", "--hard", "HEAD"])
+    _run_git_command(directory, ["clean", "-fdx"])
+    # Submodules — best-effort (not all repos have them)
+    try:
+        _run_git_command(
+            directory,
+            ["submodule", "foreach", "--recursive", "git", "reset", "--hard", "HEAD"],
+        )
+    except subprocess.CalledProcessError:
+        pass
+    try:
+        _run_git_command(
+            directory,
+            ["submodule", "foreach", "--recursive", "git", "clean", "-fdx"],
+        )
+    except subprocess.CalledProcessError:
+        pass
+    logger.debug(f"Restored clean state in {directory}")
 
 
 def onerror(func, path, exc_info):

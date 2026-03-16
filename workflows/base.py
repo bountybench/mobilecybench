@@ -217,6 +217,8 @@ class Workflow(ABC):
         exploit_runner: Path,
         exploit_image: str,
         app_server: str = None,
+        *,
+        codebase_dir: Path,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
@@ -240,6 +242,7 @@ class Workflow(ABC):
         ]
         if app_server:
             replay_cmd += ["--app-server", app_server]
+        replay_cmd += ["--codebase-dir", str(codebase_dir)]
         proc = subprocess.run(
             replay_cmd,
             cwd=self.project_root,
@@ -263,10 +266,31 @@ class Workflow(ABC):
         }
 
     def cleanup(self) -> None:
-        """Clean up resources (emulator, agent env)."""
+        """Clean up resources (emulator, agent env) and restore codebase."""
         if self.emulator:
             logger.info("Stopping emulator...")
             self.emulator.stop()
         if self.agent_env:
             logger.info("Cleaning up agent environment...")
             self.agent_env.cleanup()
+
+        # Restore codebase to clean state — workflows may apply patches during
+        # setup or evaluate. This is a no-op if codebase is already clean.
+        codebase_dir = self.app_dir / "codebase"
+        if codebase_dir.exists():
+            try:
+                from utils.git_utils import git_restore_clean
+
+                git_restore_clean(codebase_dir)
+            except Exception as e:
+                logger.warning(f"Failed to restore codebase: {e}")
+
+        # Delete agent_codebase — created during setup, needed through evaluate(),
+        # but should not persist between runs.
+        agent_codebase = self.app_dir / "agent_codebase"
+        if agent_codebase.exists():
+            try:
+                shutil.rmtree(agent_codebase)
+                logger.info("Deleted agent_codebase")
+            except Exception as e:
+                logger.warning(f"Failed to delete agent_codebase: {e}")

@@ -377,8 +377,8 @@ determine_setup_modes() {
 checkout_commit() {
     echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
-        commit=$(jq -r '.["commit_version"]' "metadata.json")
-        
+        commit=$(jq -r '.["commit_version"] // empty' "metadata.json")
+
         if [[ -n "$commit" ]]; then
             echo "Found commit: $commit"
 
@@ -478,11 +478,14 @@ run_exploit_verification() {
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
     mkdir -p "$agent_output_abs_path"
+    local codebase_abs_path
+    codebase_abs_path="$(cd "codebase" && pwd)"
     "$ROOT_DIR/utils/run_exploit_container.sh" \
         --exploit-dir "$exploit_files_abs_path" \
         --output-dir "$agent_output_abs_path" \
         --image "$exploit_image" \
-        --utils-dir "$ROOT_DIR/utils" || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
+        --utils-dir "$ROOT_DIR/utils" \
+        --codebase-dir "$codebase_abs_path" || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
     
     # Run verification
     echo -e "${INFO} Running verification..."
@@ -1095,6 +1098,8 @@ run_synthetic_vuln_test() {
         print_header "$GREEN" "BUILD PHASE COMPLETE: Both APKs built successfully"
     else
         echo -e "${INFO} Using existing APKs (--skip-apk)"
+        # Ensure codebase is at the correct commit (build_apk.sh normally handles this)
+        (cd "$ROOT_DIR/$app_dir" && checkout_commit)
     fi
 
     # =====================================================================
@@ -1157,14 +1162,28 @@ run_synthetic_vuln_test() {
     # Wait for containers
     check_app_containers_ready
 
+    # Apply vulnerability patch so exploit container sees vulnerable source
+    cd "$ROOT_DIR/$app_dir"
+    apply_vulnerability_patch "$patch_file"
+
     # Run exploit and verify (should BE vulnerable)
     cd "$ROOT_DIR/$app_dir"
     run_exploit_verification "$vuln_dir" "true" || {
         echo -e "${ERROR} Phase 2 failed: Vulnerable build verification failed"
+        # Restore codebase (including submodules) before exiting
+        (cd codebase && git reset --hard HEAD && git clean -fdx \
+            && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true \
+            && git submodule foreach --recursive git clean -fdx 2>/dev/null || true) 2>/dev/null || true
         ./cleanup.sh
         uninstall_package "$package_name"
         exit 1
     }
+
+    # Restore codebase (including submodules) to clean state
+    echo -e "${INFO} Restoring codebase after vulnerable phase..."
+    (cd codebase && git reset --hard HEAD && git clean -fdx \
+        && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true \
+        && git submodule foreach --recursive git clean -fdx 2>/dev/null || true)
 
     # Cleanup
     echo -e "${INFO} Cleaning up Phase 2..."
