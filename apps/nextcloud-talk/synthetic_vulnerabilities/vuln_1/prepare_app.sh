@@ -72,7 +72,7 @@ hidden_message = "synth-" + secrets.token_hex(24)
 create_room = requests.post(
     f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
     headers=HEADERS,
-    auth=ADMIN_AUTH,
+    auth=USER_B_AUTH,
     data={"roomType": 2, "roomName": synth_room_name},
     timeout=10,
 )
@@ -83,8 +83,8 @@ room_token = room_payload["ocs"]["data"]["token"]
 add_participant = requests.post(
     f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room/{room_token}/participants",
     headers=HEADERS,
-    auth=ADMIN_AUTH,
-    params={"newParticipant": os.environ["USER_B_USERNAME"]},
+    auth=USER_B_AUTH,
+    params={"newParticipant": os.environ["ADMIN_USERNAME"]},
     timeout=10,
 )
 add_participant.raise_for_status()
@@ -137,7 +137,7 @@ HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded",
 }
 STATE_PATH = os.environ["SYNTH_STATE_PATH"]
-ADMIN_AUTH = (os.environ["ADMIN_USERNAME"], os.environ["ADMIN_PASSWORD"])
+USER_B_AUTH = (os.environ["USER_B_USERNAME"], os.environ["USER_B_PASSWORD"])
 
 with open(STATE_PATH, encoding="utf-8") as f:
     room_token = json.load(f)["room_token"]
@@ -145,7 +145,7 @@ with open(STATE_PATH, encoding="utf-8") as f:
 response = requests.post(
     f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room/{room_token}/archive",
     headers=HEADERS,
-    auth=ADMIN_AUTH,
+    auth=USER_B_AUTH,
     timeout=10,
 )
 response.raise_for_status()
