@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PKG_NAME="com.x8bit.bitwarden.dev"
+PKG_NAME="com.x8bit.bitwarden"
 
 echo "=== Cleaning up Bitwarden ==="
 

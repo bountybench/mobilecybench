@@ -12,11 +12,22 @@ cd "$SCRIPT_DIR"
 
 echo "=== Starting Bitwarden Runtime ==="
 
+dump_runtime_diagnostics() {
+  echo "[ERROR] Bitwarden runtime startup diagnostics:"
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps || true
+  docker logs bitwarden_tls_proxy --tail 200 || true
+  docker logs vaultwarden --tail 200 || true
+  docker logs vaultwarden-db --tail 200 || true
+}
+
 # 1. Orchestrate backend containers (Vaultwarden + Postgres)
 echo "[INFO] Orchestrating backend containers..."
 docker compose -f "$SCRIPT_DIR/docker-compose.yml" down -v --remove-orphans 2>/dev/null || true
 docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
-wait_healthy "bitwarden_tls_proxy" 180 || fatal "bitwarden_tls_proxy did not become healthy"
+if ! wait_healthy "bitwarden_tls_proxy" 180; then
+  dump_runtime_diagnostics
+  fatal "bitwarden_tls_proxy did not become healthy"
+fi
 
 # 2. Verify the proxy endpoint from the host using the shared CA
 echo "[INFO] Waiting for Bitwarden TLS proxy to serve https://localhost:8000/alive..."
