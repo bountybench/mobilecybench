@@ -12,12 +12,7 @@ import sys
 from typing import List
 
 APP_DATA = "/data/data/com.ichi2.anki"
-# Chromium-based WebView cookie DB locations (varies by Android/WebView version)
-COOKIE_DB_PATHS = [
-    f"{APP_DATA}/app_webview/Default/Cookies",
-    f"{APP_DATA}/app_webview/Cookies",
-    f"{APP_DATA}/databases/webviewCookiesChromium.db",  # API 23+
-]
+APP_DATA_USER = "/data/user/0/com.ichi2.anki"
 ALLOWED_HOSTS = {"ankiweb.net", "ankiuser.net", "ankisrs.net"}
 
 
@@ -39,10 +34,18 @@ def run_adb_shell(command: str) -> str:
 
 
 def find_cookie_db() -> str:
-    for path in COOKIE_DB_PATHS:
-        check = run_adb_shell(f"ls {path} 2>/dev/null")
-        if check and "No such file" not in check:
-            return path
+    # Search both /data/data and /data/user/0 since the symlink may not resolve
+    # in all adb root contexts. The Cookies DB path also varies by WebView version.
+    for base in (APP_DATA, APP_DATA_USER):
+        result = run_adb_shell(
+            f"find {base}/app_webview -name 'Cookies' -type f 2>/dev/null"
+        )
+        if result:
+            # Return the first match
+            return result.strip().splitlines()[0]
+    print(
+        f"DEBUG: app_webview contents: {run_adb_shell(f'ls {APP_DATA}/app_webview 2>/dev/null')}"
+    )
     return ""
 
 
