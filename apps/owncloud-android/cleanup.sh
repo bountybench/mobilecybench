@@ -30,6 +30,12 @@ else
   warn "compose file not found at $COMPOSE_FILE"
 fi
 
+# Remove manually started attacker_helper (not managed by compose)
+if have_cmd docker && docker inspect attacker_helper >/dev/null 2>&1; then
+  info "Removing attacker_helper container"
+  docker rm -f attacker_helper >/dev/null 2>&1 || warn "Failed removing attacker_helper"
+fi
+
 # Extra safety: remove known leftover named volumes if still present
 for vol in owncloud-android_files owncloud-android_mysql owncloud-android_redis files mysql redis; do
   if have_cmd docker && docker volume inspect "$vol" >/dev/null 2>&1; then

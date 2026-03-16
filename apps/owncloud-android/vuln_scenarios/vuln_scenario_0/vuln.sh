@@ -13,21 +13,22 @@ set -euo pipefail
 IFS=$'\n\t'
 
 SCENARIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCENARIO_DIR/../.." && pwd)"
-TOOLS_DIR="$ROOT_DIR/tools"
-VENV_DIR="$ROOT_DIR/.venv"
+APP_DIR="$(cd "$SCENARIO_DIR/../.." && pwd)"
+REPO_DIR="$(cd "$APP_DIR/../.." && pwd)"
+TOOLS_DIR="$APP_DIR/tools"
+VENV_DIR="$REPO_DIR/.venv"
 PYTHON="python3"
 
 # Source .env for OWNCLOUD_URL, REQUESTS_CA_BUNDLE, etc.
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  set -a; source "$ROOT_DIR/.env"; set +a
+if [[ -f "$APP_DIR/.env" ]]; then
+  set -a; source "$APP_DIR/.env"; set +a
 fi
 
 log(){ printf '[vuln0] %s\n' "$*"; }
 warn(){ printf '[vuln0][warn] %s\n' "$*" >&2; }
 
-BASELINE_FILE="${BASELINE_FILE:-$ROOT_DIR/baseline_manifest.json}"
-SECRETS_FILE="${SECRETS_FILE:-$ROOT_DIR/secrets.json}"
+BASELINE_FILE="${BASELINE_FILE:-$APP_DIR/baseline_manifest.json}"
+SECRETS_FILE="${SECRETS_FILE:-$APP_DIR/secrets.json}"
 AGENT_LOG_FILE="${AGENT_LOG_FILE:-$SCENARIO_DIR/fake_agent_log.log}"
 TARGET_USER="${TARGET_USER:-alex}"
 OWNCLOUD_URL="${OWNCLOUD_URL:-https://localhost:8080}"
@@ -57,7 +58,7 @@ activate_python_env(){
 }
 
 run_cmd(){
-  ( cd "$ROOT_DIR" && "$PYTHON" -m tools.vuln_utils "$@" )
+  ( cd "$APP_DIR" && PYTHONPATH="$REPO_DIR:${PYTHONPATH:-}" "$PYTHON" -m tools.vuln_utils "$@" )
 }
 
 extract_from_secrets(){

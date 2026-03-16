@@ -66,7 +66,7 @@ setup_backend() {
         docker exec radicale rm -r /data/collection-root
     fi
 
-    docker exec radicale cp -a /seeding/seed-data /data/collection-root/
+    docker exec radicale cp -a /seeding/seed-data /data/collection-root
     docker exec radicale chown -R 2999:2999 /data/collection-root
 }
 
