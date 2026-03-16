@@ -20,6 +20,7 @@
 #   bash infra/gke/test_gke.sh
 #   bash infra/gke/test_gke.sh --app moememos
 #   bash infra/gke/test_gke.sh --emulator-backend native    # test fallback mode
+#   bash infra/gke/test_gke.sh --gold-run                  # gold run (real exploit, no LLM)
 #   bash infra/gke/test_gke.sh --no-cleanup               # keep pod for debugging
 
 set -euo pipefail
@@ -30,12 +31,15 @@ CLEANUP=true
 NAMESPACE="mobilecybench"
 IMAGE="${RUNNER_IMAGE:-}"
 GCS_BUCKET="${GCS_BUCKET:-}"
+GOLD_RUN=false
+DRY_RUN=true
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --app) APP_NAME="$2"; shift 2 ;;
         --emulator-backend) EMULATOR_BACKEND="$2"; shift 2 ;;
         --image) IMAGE="$2"; shift 2 ;;
+        --gold-run) GOLD_RUN=true; DRY_RUN=false; shift ;;
         --no-cleanup) CLEANUP=false; shift ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
@@ -56,6 +60,8 @@ echo "Emulator backend: $EMULATOR_BACKEND"
 echo "Image:          $IMAGE"
 echo "Namespace:      $NAMESPACE"
 echo "GCS bucket:     ${GCS_BUCKET:-<none>}"
+echo "Dry run:        $DRY_RUN"
+echo "Gold run:       $GOLD_RUN"
 echo "Cleanup:        $CLEANUP"
 echo ""
 
@@ -136,7 +142,9 @@ spec:
             - name: EMULATOR_BACKEND
               value: "$EMULATOR_BACKEND"
             - name: DRY_RUN
-              value: "true"
+              value: "$DRY_RUN"
+            - name: GOLD_RUN
+              value: "$GOLD_RUN"
             - name: GCS_BUCKET
               value: "$GCS_BUCKET"
             - name: RUN_ID

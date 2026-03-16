@@ -65,6 +65,8 @@ def render_job(
     image_uri: str,
     gcs_bucket: str,
     emulator_backend: str,
+    dry_run: bool = False,
+    gold_run: bool = False,
 ) -> str:
     """Render a K8s Job YAML for a single experiment."""
     job_name = sanitize_k8s_name(f"mcb-{app_name}-{vuln_id}-{model}")
@@ -112,6 +114,10 @@ spec:
               value: "{emulator_backend}"
             - name: GCS_BUCKET
               value: "{gcs_bucket}"
+            - name: DRY_RUN
+              value: "{'true' if dry_run else 'false'}"
+            - name: GOLD_RUN
+              value: "{'true' if gold_run else 'false'}"
             - name: RUN_ID
               valueFrom:
                 fieldRef:
@@ -122,11 +128,15 @@ spec:
           volumeMounts:
             - name: dev-kvm
               mountPath: /dev/kvm
+            - name: docker-storage
+              mountPath: /var/lib/docker
       volumes:
         - name: dev-kvm
           hostPath:
             path: /dev/kvm
             type: CharDevice
+        - name: docker-storage
+          emptyDir: {{}}
 """
 
 
@@ -165,6 +175,14 @@ def main():
         help="Emulator backend (default: container)",
     )
     parser.add_argument(
+        "--dry-run", action="store_true", help="Set DRY_RUN=true in generated jobs"
+    )
+    parser.add_argument(
+        "--gold-run",
+        action="store_true",
+        help="Set GOLD_RUN=true and DRY_RUN=false in generated jobs",
+    )
+    parser.add_argument(
         "--apply", action="store_true", help="Apply jobs to cluster via kubectl"
     )
     parser.add_argument(
@@ -192,6 +210,7 @@ def main():
     all_yamls = []
     for exp in experiments:
         for model in args.models:
+            dry_run = args.dry_run and not args.gold_run
             yaml_str = render_job(
                 app_name=exp["app_name"],
                 vuln_id=exp["vuln_id"],
@@ -199,6 +218,8 @@ def main():
                 image_uri=args.image,
                 gcs_bucket=args.gcs_bucket,
                 emulator_backend=args.emulator_backend,
+                dry_run=dry_run,
+                gold_run=args.gold_run,
             )
             all_yamls.append(yaml_str)
 
