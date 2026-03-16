@@ -11,7 +11,7 @@ set +a
 
 PACKAGE="com.nextcloud.talk2"
 SYNTH_STATE_PATH="${NEXTCLOUD_TALK_SYNTH_STATE:-/tmp/nextcloud-talk-synth-vuln_1.json}"
-RUNTIME_STATE_PATH="$SCRIPT_DIR/runtime_state.json"
+RUNTIME_STATE_PATH="$SCRIPT_DIR/exploit_files/runtime_state.json"
 CA_CERT="$APP_DIR/../../tls/rootCA.pem"
 SEED_HELPER="$SCRIPT_DIR/seed_offline_temp_message.py"
 
