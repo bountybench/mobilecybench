@@ -104,7 +104,9 @@ def ensure_room_open(d, conversation_label, room_token=None):
             wait_for_chat_ready(d, timeout=20)
             return
         except RuntimeError:
-            log("ChatActivity launch did not expose the composer; refreshing conversation list")
+            log(
+                "ChatActivity launch did not expose the composer; refreshing conversation list"
+            )
 
     # Pull-to-refresh so rooms created via API appear in the local list.
     refresh_conversation_list(d)
