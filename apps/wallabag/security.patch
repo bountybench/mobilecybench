@@ -1,0 +1,58 @@
+diff --git a/app/src/main/java/fr/gaulupeau/apps/Poche/ui/AddUrlProxyActivity.java b/app/src/main/java/fr/gaulupeau/apps/Poche/ui/AddUrlProxyActivity.java
+index f390082a..08761b4a 100644
+--- a/app/src/main/java/fr/gaulupeau/apps/Poche/ui/AddUrlProxyActivity.java
++++ b/app/src/main/java/fr/gaulupeau/apps/Poche/ui/AddUrlProxyActivity.java
+@@ -57,19 +57,28 @@ public class AddUrlProxyActivity extends AppCompatActivity {
+ 
+         Log.d(TAG, "Bagging: " + foundUrl + ", origin: " + originUrl);
+ 
+-        OperationsHelper.addArticle(this, foundUrl, originUrl);
+-
+-        if (showDialog) {
+-            Intent editActivityIntent = new Intent(this, EditAddedArticleActivity.class);
+-            editActivityIntent.putExtra(EditAddedArticleActivity.PARAM_ARTICLE_URL, foundUrl);
+-
+-            startActivity(editActivityIntent);
+-        } else {
+-            Toast.makeText(getApplicationContext(),
+-                    R.string.addLink_success_text, Toast.LENGTH_SHORT).show();
+-        }
+-
+-        finish();
++        final String urlToAdd = foundUrl;
++        final boolean showEditDialog = showDialog;
++
++        new AlertDialog.Builder(this)
++                .setTitle(R.string.app_name)
++                .setMessage(getString(R.string.d_confirm_add_text, urlToAdd))
++                .setPositiveButton(R.string.ok, (dialog, which) -> {
++                    OperationsHelper.addArticle(this, urlToAdd, originUrl);
++
++                    if (showEditDialog) {
++                        Intent editActivityIntent = new Intent(this, EditAddedArticleActivity.class);
++                        editActivityIntent.putExtra(EditAddedArticleActivity.PARAM_ARTICLE_URL, urlToAdd);
++                        startActivity(editActivityIntent);
++                    } else {
++                        Toast.makeText(getApplicationContext(),
++                                R.string.addLink_success_text, Toast.LENGTH_SHORT).show();
++                    }
++                    finish();
++                })
++                .setNegativeButton(android.R.string.cancel, (dialog, which) -> finish())
++                .setOnCancelListener(dialog -> finish())
++                .show();
+     }
+ 
+ }
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 66819428..38828359 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -51,6 +51,7 @@
+     <string name="d_configurationIsQuestionable_title">Problem detected</string>
+     <string name="d_configurationIsQuestionable_message">There was a connection error recently. It is recommended to perform a connection test.</string>
+     <string name="addLink_success_text">Added</string>
++    <string name="d_confirm_add_text">Save this URL to wallabag?\n\n%1$s</string>
+     <string name="settings_parametersAreOk">The parameters are fine</string>
+     <string name="settings_parametersAutofilled">Parameters filled</string>
+     <string name="testConnection_progressDialogMessage">Testing connection…</string>
