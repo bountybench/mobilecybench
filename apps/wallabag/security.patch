@@ -44,6 +44,19 @@ index f390082a..08761b4a 100644
      }
  
  }
+diff --git a/app/src/main/java/fr/gaulupeau/apps/Poche/ui/preferences/ConnectionWizardActivity.java b/app/src/main/java/fr/gaulupeau/apps/Poche/ui/preferences/ConnectionWizardActivity.java
+index b89c90bf..cefb0b2c 100644
+--- a/app/src/main/java/fr/gaulupeau/apps/Poche/ui/preferences/ConnectionWizardActivity.java
++++ b/app/src/main/java/fr/gaulupeau/apps/Poche/ui/preferences/ConnectionWizardActivity.java
+@@ -92,7 +92,7 @@ public class ConnectionWizardActivity extends BaseActionBarActivity {
+ 
+             String dataString = intent.getDataString();
+             if(dataString != null) {
+-                Log.d(TAG, "onCreate() got data string: " + dataString);
++                Log.d(TAG, "onCreate() got data string (redacted)");
+                 try {
+                     ConnectionData connectionData = parseLoginData(dataString);
+ 
 diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
 index 66819428..38828359 100644
 --- a/app/src/main/res/values/strings.xml
