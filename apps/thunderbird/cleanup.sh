@@ -11,13 +11,8 @@ docker compose -f "$SCRIPT_DIR/docker-compose.yml" down -v || true
 docker rm -f tb-port-25-proxy 2>/dev/null || true
 docker container prune -f || true
 
-# Remove ADB reverse tunnel and stale iptables rules
-adb reverse --remove-all 2>/dev/null || true
-adb root 2>/dev/null && sleep 1
-adb shell iptables -t nat -D OUTPUT -p tcp -d 10.0.2.2 --dport 993 \
-    -j DNAT --to-destination 10.0.2.2:1993 2>/dev/null || true
+# Remove temporary files created by prepare_app.sh
 adb shell rm -f /data/local/tmp/update_imap_port.sql 2>/dev/null || true
-adb unroot 2>/dev/null || true
 
 # Uninstall Android app
 PACKAGE_NAME="net.thunderbird.android"
