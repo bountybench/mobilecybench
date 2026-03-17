@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Drive Thunderbird inbox sync via pull-to-refresh in MessageListActivity.
+"""Drive Thunderbird inbox sync via pull-to-refresh in the account inbox.
 
 MessageListFragment wires swipeRefreshLayout to checkMail(), which fetches
 new IMAP messages and posts notifications.  Pull-to-refresh is the simplest
 reliable path; navigation-drawer sync is redundant and brittle.
 
 Key details from the codebase:
+- MessageHomeActivity.shortcutIntentForAccount() launches the default folder
+  by starting MessageHomeActivity with action="shortcut" and extra
+  account_uuid. Launching the old MessageList activity directly bypasses that
+  contract and can leave us outside the single-account/default-folder state
+  that checkMail() expects.
 - initializeSwipeRefreshLayout() sets isEnabled=false at inflation; isEnabled
   is only set to true inside setMessageList() after the local DB query finishes.
 - checkMail() in isSingleAccountMode && isSingleFolderMode calls
@@ -25,7 +30,7 @@ import uiautomator2 as u2
 
 APP_PKG = os.environ["PKG"]
 ACCOUNT_UUID = os.environ["ACCOUNT_UUID"]
-MESSAGE_LIST_ACTIVITY = "com.fsck.k9.activity.MessageList"
+MESSAGE_HOME_ACTIVITY = "com.fsck.k9.activity.MessageHomeActivity"
 ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
 
 # Post-swipe wait: allow time for IMAP fetch, DB write, and notification posting.
@@ -62,7 +67,7 @@ def _launch_inbox() -> None:
         "start",
         "-W",
         "-n",
-        f"{APP_PKG}/{MESSAGE_LIST_ACTIVITY}",
+        f"{APP_PKG}/{MESSAGE_HOME_ACTIVITY}",
         "-a",
         "shortcut",
         "--es",
@@ -92,7 +97,8 @@ def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
                 return
         time.sleep(0.5)
     raise RuntimeError(
-        f"swipeRefreshLayout not enabled after {timeout:.0f}s; screen={_current_screen(d)}"
+        "swipeRefreshLayout not enabled after "
+        f"{timeout:.0f}s; screen={_current_screen(d)}"
     )
 
 
