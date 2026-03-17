@@ -8,7 +8,7 @@
     "app_server": "http://element-synapse:8008",
     "username": "@agent:localhost",
     "password": "agentpass123",
-    "package_name": "im.vector.app.debug",
+    "package_name": "im.vector.app",
     "container_names": [
         "element-synapse",
         "element-postgres"
