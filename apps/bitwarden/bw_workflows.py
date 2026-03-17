@@ -327,7 +327,9 @@ def _configure_self_hosted_environment(d) -> None:
             _is_landing_screen,
             timeout=SHORT_WAIT,
         ):
-            raise RuntimeError("LoginScreen did not return to LandingScreen via NotYouLabel.")
+            raise RuntimeError(
+                "LoginScreen did not return to LandingScreen via NotYouLabel."
+            )
         wait_for_ui_stable(d, timeout=SHORT_WAIT)
 
     if server_url_entry.exists:
