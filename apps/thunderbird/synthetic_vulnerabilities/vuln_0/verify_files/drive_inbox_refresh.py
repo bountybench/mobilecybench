@@ -6,11 +6,11 @@ new IMAP messages and posts notifications.  Pull-to-refresh is the simplest
 reliable path; navigation-drawer sync is redundant and brittle.
 
 Key details from the codebase:
-- MessageHomeActivity.shortcutIntentForAccount() launches the default folder
-  by starting MessageHomeActivity with action="shortcut" and extra
-  account_uuid. Launching the old MessageList activity directly bypasses that
-  contract and can leave us outside the single-account/default-folder state
-  that checkMail() expects.
+- The app's exported entrypoint is MainActivity. It routes to
+  MessageHomeActivity after account setup is complete.
+- MessageHomeActivity is launched internally by the app. From adb/UI
+  automation, the code-truth equivalent is opening Thunderbird through its
+  launcher entrypoint instead of trying to start internal activities directly.
 - initializeSwipeRefreshLayout() sets isEnabled=false at inflation; isEnabled
   is only set to true inside setMessageList() after the local DB query finishes.
 - checkMail() in isSingleAccountMode && isSingleFolderMode calls
@@ -29,8 +29,6 @@ import time
 import uiautomator2 as u2
 
 APP_PKG = os.environ["PKG"]
-ACCOUNT_UUID = os.environ["ACCOUNT_UUID"]
-MESSAGE_HOME_ACTIVITY = "com.fsck.k9.activity.MessageHomeActivity"
 ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
 
 # Post-swipe wait: allow time for IMAP fetch, DB write, and notification posting.
@@ -61,20 +59,9 @@ def _current_screen(d) -> str:
 def _launch_inbox() -> None:
     _adb("shell", "input", "keyevent", "KEYCODE_WAKEUP", check=False)
     _adb("shell", "wm", "dismiss-keyguard", check=False)
-    _adb(
-        "shell",
-        "am",
-        "start",
-        "-W",
-        "-n",
-        f"{APP_PKG}/{MESSAGE_HOME_ACTIVITY}",
-        "-a",
-        "shortcut",
-        "--es",
-        "account_uuid",
-        ACCOUNT_UUID,
-        check=False,
-    )
+    # Launch through the exported LAUNCHER entrypoint. MainActivity then routes
+    # to MessageHomeActivity once account setup is complete.
+    _adb("shell", "monkey", "-p", APP_PKG, "-c", "android.intent.category.LAUNCHER", "1")
 
 
 def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
