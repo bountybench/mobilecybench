@@ -396,11 +396,6 @@ jobs:
               echo "Using new build system (build.sh + build_apk.sh)"
               cd ../..
               ./build_apk.sh "${{ matrix.app_name }}"
-              # TODO: Enable hardened build when detection workflow CI is added
-              # if [ -f "apps/${{ matrix.app_name }}/security.patch" ]; then
-              #   echo "Found security.patch - building hardened APK"
-              #   ./build_apk.sh "${{ matrix.app_name }}" --hardened
-              # fi
               cd "${{ matrix.app_dir }}"
             else
               echo "ERROR: build.sh not found for ${{ matrix.app_name }}"
