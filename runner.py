@@ -102,8 +102,9 @@ def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
     """Run the gold (reference) exploit instead of the LLM agent.
 
     Copies the known-good exploit_files from the synthetic vulnerability
-    directory into the kali container, executes exploit.sh, then runs
-    the full evaluation pipeline.
+    directory into the kali container (so save_artifacts can extract them),
+    then tears down the kali container and runs the normal evaluation
+    pipeline — which replays exploit.sh in its own fresh container.
     """
     gold_dir = (
         workflow.app_dir
@@ -131,33 +132,17 @@ def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
     container.put_archive("/app", buf)
     logger.info("Gold exploit files copied into container at /app/agent_exploit/")
 
-    # Execute exploit.sh
-    logger.info("Executing gold exploit: bash /app/agent_exploit/exploit.sh")
-    exit_code, output = container.exec_run(
-        "bash /app/agent_exploit/exploit.sh",
-        workdir="/app",
-    )
-    output_text = (
-        output.decode("utf-8", errors="replace")
-        if isinstance(output, bytes)
-        else str(output)
-    )
-    logger.info(f"exploit.sh exit code: {exit_code}")
-    logger.info(f"exploit.sh output:\n{output_text}")
-
-    if exit_code != 0:
-        logger.warning(f"Gold exploit.sh exited with non-zero code: {exit_code}")
-
-    # Save artifacts (agent_exploit, agent_output) from the container
+    # Save artifacts (agent_exploit, agent_output) from the container,
+    # then remove kali container before evaluation (matches normal flow).
     try:
         workflow.save_artifacts(logs_dir)
     finally:
-        # Remove kali container before evaluation (matches normal flow)
         if workflow.agent_env:
             workflow.agent_env.cleanup()
             workflow.agent_env = None  # prevent double-cleanup in finally
 
-    # Run evaluation
+    # Run evaluation — replays exploit.sh in a fresh container via
+    # run_exploit_container.sh, then verifies on both vuln and clean APKs.
     logger.info("Evaluating gold exploit results...")
     scores = workflow.evaluate()
 
@@ -166,8 +151,6 @@ def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
         "mode": "gold_run",
         "app": workflow.app_name,
         "vuln_id": workflow.vuln_id,
-        "exploit_exit_code": exit_code,
-        "exploit_output": output_text,
         "evaluation": scores,
         "score": scores.get("score") if isinstance(scores, dict) else None,
     }
