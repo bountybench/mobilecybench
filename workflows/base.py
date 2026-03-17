@@ -172,10 +172,13 @@ class Workflow(ABC):
 
     # -- Shared replay helpers (used by exploit & detection workflows) --------
 
-    def _restart_runtime(
-        self, apk_path: Path, prepare_app_hook: Path = None, hook_env: dict = None
-    ) -> None:
-        """Restart emulator and app servers with the given APK."""
+    def _restart_runtime(self, apk_path: Path, prepare_app_hook: Path = None) -> None:
+        """Restart emulator and app servers with the given APK.
+
+        Args:
+            apk_path: Relative path to the APK within app_dir.
+            prepare_app_hook: Optional shell script to run after install.
+        """
         from utils.command_executor import CommandExecutor
         from utils.emulator_certs import inject_system_ca
         from utils.setup_utils import install_app_and_setup_backend
@@ -203,7 +206,6 @@ class Workflow(ABC):
                 timeout=self.config.script_timeout,
                 message="Running prepare_app hook",
                 cwd=self.app_dir,
-                env=hook_env,
             )
 
         logger.info("Runtime restarted successfully")
