@@ -122,6 +122,29 @@ def _dismiss_common_popups(d, max_rounds: int = 4) -> None:
         break
 
 
+def _scroll_until_visible(d, element, max_swipes: int = 4) -> bool:
+    if element.exists:
+        return True
+
+    for _ in range(max_swipes):
+        try:
+            scroller = d(scrollable=True)
+            if scroller.exists:
+                scroller.scroll.vert.forward(steps=30)
+            else:
+                d.swipe_ext("up", scale=0.6)
+        except Exception:
+            try:
+                d.swipe_ext("up", scale=0.6)
+            except Exception:
+                return element.exists
+        wait_for_ui_stable(d, timeout=SHORT_WAIT)
+        if element.exists:
+            return True
+
+    return element.exists
+
+
 def _is_start_registration_screen(d) -> bool:
     return (
         d(resourceId="EmailAddressEntry").exists
@@ -641,9 +664,14 @@ def bw_make_account(d, email, name, master_password):
 
     # Step 2.6: Click the Next button to proceed with account creation
     logger.info("Step 2.6: Clicking Next button...")
+    next_button = d(text="Next")
+    if not _scroll_until_visible(d, next_button):
+        raise RuntimeError(
+            "Complete Registration CTA was not visible after scrolling the form."
+        )
     if not click_then_expect(
         d,
-        d(text="Next"),
+        next_button,
         lambda: d(resourceId="SetUpLaterButton").exists
         or d(text="Turn on later").exists
         or d(text="Continue").exists
