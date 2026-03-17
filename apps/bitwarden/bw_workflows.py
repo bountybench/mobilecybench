@@ -130,15 +130,47 @@ def _is_start_registration_screen(d) -> bool:
     )
 
 
+def _is_landing_screen(d) -> bool:
+    return (
+        d(resourceId="EmailAddressEntry").exists
+        and d(resourceId="ContinueButton").exists
+        and d(resourceId="CreateAccountLabel").exists
+    )
+
+
+def _is_create_account_screen(d) -> bool:
+    return (
+        d(resourceId="EmailAddressEntry").exists
+        and d(resourceId="MasterPasswordEntry").exists
+        and d(resourceId="ConfirmMasterPasswordEntry").exists
+        and d(resourceId="SubmitButton").exists
+    )
+
+
+def _is_login_screen(d) -> bool:
+    return (
+        d(resourceId="MasterPasswordEntry").exists
+        and d(resourceId="LogInWithMasterPasswordButton").exists
+        and d(resourceId="LoggingInAsLabel").exists
+        and d(resourceId="NotYouLabel").exists
+    )
+
+
 def _open_account_switcher(d, expected_account_email: str | None = None) -> bool:
-    account_button = d(description="Account")
+    account_button = d(resourceId="CurrentActiveAccount")
+    if not account_button.exists:
+        account_button = d(description="Account")
     if not account_button.exists:
         return False
 
     def switcher_visible() -> bool:
         if expected_account_email:
             return d(text=expected_account_email).exists
-        return d(text="Add account").exists or d(resourceId="AccountEmailLabel").exists
+        return (
+            d(resourceId="AccountListView").exists
+            or d(resourceId="AddAccountButton").exists
+            or d(resourceId="AccountEmailLabel").exists
+        )
 
     return click_then_expect(d, account_button, switcher_visible, timeout=SHORT_WAIT)
 
@@ -217,23 +249,11 @@ def _navigate_to_start_registration(d) -> None:
     for _ in range(4):
         _dismiss_common_popups(d)
 
-        if _is_start_registration_screen(d):
+        if _is_start_registration_screen(d) or _is_create_account_screen(d):
             return
 
-        if d(resourceId="ChooseAccountCreationButton").exists:
-            if not click_then_expect(
-                d,
-                d(resourceId="ChooseAccountCreationButton"),
-                lambda: _is_start_registration_screen(d)
-                or d(resourceId="CreateAccountLabel").exists
-                or d(resourceId="ServerUrlEntry").exists
-                or d(resourceId="AlertPopup").exists,
-                timeout=SHORT_WAIT,
-            ):
-                raise RuntimeError(
-                    "Failed to advance from WelcomeScreen toward registration."
-                )
-            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+        if d(resourceId="ChooseLoginButton").exists or _is_login_screen(d):
+            _navigate_to_auth_entry(d)
             continue
 
         if d(resourceId="CreateAccountLabel").exists:
@@ -241,6 +261,7 @@ def _navigate_to_start_registration(d) -> None:
                 d,
                 d(resourceId="CreateAccountLabel"),
                 lambda: _is_start_registration_screen(d)
+                or _is_create_account_screen(d)
                 or d(resourceId="ServerUrlEntry").exists
                 or d(resourceId="AlertPopup").exists,
                 timeout=SHORT_WAIT,
@@ -259,18 +280,64 @@ def _navigate_to_start_registration(d) -> None:
     raise RuntimeError("Could not find a supported path to StartRegistrationScreen.")
 
 
+def _navigate_to_auth_entry(d) -> None:
+    for _ in range(4):
+        _dismiss_common_popups(d)
+
+        if (
+            _is_landing_screen(d)
+            or _is_login_screen(d)
+            or _is_start_registration_screen(d)
+            or _is_create_account_screen(d)
+            or d(resourceId="ServerUrlEntry").exists
+        ):
+            return
+
+        if d(resourceId="ChooseLoginButton").exists:
+            if not click_then_expect(
+                d,
+                d(resourceId="ChooseLoginButton"),
+                lambda: _is_landing_screen(d)
+                or _is_login_screen(d)
+                or _is_start_registration_screen(d)
+                or _is_create_account_screen(d)
+                or d(resourceId="ServerUrlEntry").exists
+                or d(resourceId="AlertPopup").exists,
+                timeout=SHORT_WAIT,
+            ):
+                raise RuntimeError(
+                    "Failed to advance from WelcomeScreen to the authentication entry flow."
+                )
+            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            continue
+
+        wait_for_ui_stable(d, timeout=SHORT_WAIT)
+
+    raise RuntimeError("Could not reach a supported authentication entry screen.")
+
+
 def _configure_self_hosted_environment(d) -> None:
     region_selector = d(resourceId="RegionSelectorDropdown")
     server_url_entry = d(resourceId="ServerUrlEntry")
+
+    if _is_login_screen(d):
+        if not click_then_expect(
+            d,
+            d(resourceId="NotYouLabel"),
+            _is_landing_screen,
+            timeout=SHORT_WAIT,
+        ):
+            raise RuntimeError("LoginScreen did not return to LandingScreen via NotYouLabel.")
+        wait_for_ui_stable(d, timeout=SHORT_WAIT)
 
     if server_url_entry.exists:
         wait_and_set_text(d, server_url_entry, SERVER_URL)
         if not click_then_expect(
             d,
             d(resourceId="SaveButton"),
-            lambda: d(resourceId="EmailAddressEntry").exists
-            and d(resourceId="NameEntry").exists
-            and d(resourceId="RegionSelectorDropdown").exists,
+            lambda: _is_landing_screen(d)
+            or _is_start_registration_screen(d)
+            or _is_create_account_screen(d),
             timeout=SHORT_WAIT,
         ):
             raise RuntimeError("Failed to save the self-hosted environment.")
@@ -293,9 +360,9 @@ def _configure_self_hosted_environment(d) -> None:
     if not click_then_expect(
         d,
         d(resourceId="SaveButton"),
-        lambda: d(resourceId="EmailAddressEntry").exists
-        and d(resourceId="NameEntry").exists
-        and d(resourceId="RegionSelectorDropdown").exists,
+        lambda: _is_landing_screen(d)
+        or _is_start_registration_screen(d)
+        or _is_create_account_screen(d),
         timeout=SHORT_WAIT,
     ):
         raise RuntimeError("Failed to save the self-hosted environment.")
@@ -451,8 +518,8 @@ def bw_initialize_local_host(d):
     wait_for_ui_stable(d, timeout=15)
     _dismiss_common_popups(d)
 
-    logger.info("Step 1.2.1: Navigating to Start Registration...")
-    _navigate_to_start_registration(d)
+    logger.info("Step 1.2.1: Navigating to the authentication entry flow...")
+    _navigate_to_auth_entry(d)
 
     logger.info("Step 1.2.2: Configuring the self-hosted environment...")
     _configure_self_hosted_environment(d)
@@ -468,7 +535,57 @@ def bw_make_account(d, email, name, master_password):
     logger.info("Creating account for %s", email)
 
     _dismiss_common_popups(d)
+    if _is_landing_screen(d):
+        if not click_then_expect(
+            d,
+            d(resourceId="CreateAccountLabel"),
+            lambda: _is_start_registration_screen(d)
+            or _is_create_account_screen(d)
+            or d(resourceId="AlertPopup").exists,
+            timeout=SHORT_WAIT,
+        ):
+            raise RuntimeError("Landing screen did not advance into account creation.")
+        wait_for_ui_stable(d, timeout=SHORT_WAIT)
+        _dismiss_common_popups(d)
+
     _navigate_to_start_registration(d)
+
+    if _is_create_account_screen(d):
+        logger.info("Detected CreateAccountScreen flow for %s", email)
+        wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
+        wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), master_password)
+        wait_and_set_text(
+            d, d(resourceId="ConfirmMasterPasswordEntry"), master_password
+        )
+
+        accept_policies = d(description="AcceptPoliciesToggle")
+        if accept_policies.exists:
+            try:
+                info = accept_policies.info
+                if not info.get("checked", False):
+                    wait_and_click(d, accept_policies)
+                    wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            except Exception:
+                wait_and_click(d, accept_policies)
+                wait_for_ui_stable(d, timeout=SHORT_WAIT)
+
+        if not click_then_expect(
+            d,
+            d(resourceId="SubmitButton"),
+            lambda: d(resourceId="EmailAddressEntry").exists
+            or d(resourceId="MasterPasswordEntry").exists
+            or d(resourceId="AlertPopup").exists
+            or d(resourceId="AddItemButton").exists,
+            timeout=20,
+        ):
+            raise RuntimeError("CreateAccountScreen did not submit successfully.")
+
+        _dismiss_common_popups(d)
+        if not bw_attempt_login(d, email, master_password):
+            raise RuntimeError(
+                "Direct create-account flow completed but login did not reach the vault."
+            )
+        return
 
     # Step 2.1: Enter the email address
     logger.info("Step 2.1: Entering email address: %s...", email)
