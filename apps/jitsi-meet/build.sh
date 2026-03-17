@@ -134,11 +134,6 @@ build_jitsi() {
     ./gradlew clean
 
     echo ">>> Starting Gradle Build..."
-    # ./gradlew assembleRelease \
-    #     --no-daemon \
-    #     --max-workers=2 \
-    #     --console=plain \
-    #     -Dorg.gradle.jvmargs="-Xmx6144m -Xss8m"
     ./gradlew assembleRelease \
         --no-daemon \
         --max-workers=4 \
@@ -203,63 +198,11 @@ clear() {
     echo "Clearing completed."
 }
 
-# LOCAL FUNCTIONS
-sign_apk() {
-    local unsigned_apk="$1"
-    local output_apk="$2"
-
-    echo -e "Signing APK..."
-
-    local keystore="$ROOT_DIR/utils/benchmark.keystore"
-    local keystore_pass="password"
-    local key_alias="benchmark-key"
-
-    # Create keystore if it doesn't exist
-    if [[ ! -f "$keystore" ]]; then
-        echo -e "Creating signing keystore..."
-        keytool -genkey -v -keystore "$keystore" \
-            -alias "$key_alias" -keyalg RSA -keysize 2048 \
-            -validity 10000 -storepass "$keystore_pass" -keypass "$keystore_pass" \
-            -dname "CN=MobileCyBench, OU=Test, O=Test, L=Test, S=Test, C=US"
-    fi
-
-    # Find apksigner
-    local apksigner=""
-    if [[ -d "$ANDROID_HOME/build-tools" ]]; then
-        apksigner=$(find "$ANDROID_HOME/build-tools" -name "apksigner.bat" -o -name "apksigner" -type f 2>/dev/null | sort -V | tail -1)
-    fi
-
-    # Invoke correctly on Windows
-    if [[ "$apksigner" == *.bat ]]; then
-        cmd //c "$apksigner" sign \
-            --ks "$keystore" \
-            --ks-key-alias "$key_alias" \
-            --ks-pass "pass:$keystore_pass" \
-            --key-pass "pass:$keystore_pass" \
-            --v4-signing-enabled false \
-            --out "$output_apk" \
-            "$unsigned_apk"
-    else
-        "$apksigner" sign \
-            --ks "$keystore" \
-            --ks-key-alias "$key_alias" \
-            --ks-pass "pass:$keystore_pass" \
-            --key-pass "pass:$keystore_pass" \
-            --v4-signing-enabled false \
-            --out "$output_apk" \
-            "$unsigned_apk"
-    fi
-
-    echo -e "APK signed: $output_apk"
-}
-
 # Main function
 main() {
     echo ">>> Jitsi Meet Android Setup"
     echo "========================"
     echo ">>> Setting up Jitsi Meet Android"
-
-    #sign_apk "unsigned.apk" "apk/jitsi-meet.apk"
 
     cd $CODEBASE_DIR
     echo ">>> Cleaning up old React Native CLI packages..."
@@ -276,7 +219,7 @@ main() {
     echo ">>> Starting build process..."
     build_jitsi
     copy_apk
-    # clear
+    clear
 
     echo ""
     echo ">>> Setup complete! Jitsi Meet is ready for testing."
