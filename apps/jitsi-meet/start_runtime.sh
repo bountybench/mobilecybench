@@ -1,38 +1,26 @@
 #!/bin/bash
 set -e
 
-export MSYS_NO_PATHCONV=1 # Prevent Git Bash from doing Windows Pathing Conversion
+export MSYS_NO_PATHCONV=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ANDROID_HOME="${HOME}/.android-sdk"
 SAVED_ROOT_DIR="$ROOT_DIR"
 source "$ROOT_DIR/utils/android.sh" || true
-# Restore ROOT_DIR if it was cleared
+
 if [[ -z "$ROOT_DIR" ]]; then
     ROOT_DIR="$SAVED_ROOT_DIR"
 fi
 
-# Default APK to install (clean build)
 APK_PATH="apk/jitsi-meet.apk"
 
-# Allow overriding APK via CLI (used in CI for synthetic-vuln APKs)
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --apk)
-            shift
-            APK_PATH="$1"
-            ;;
-        --help|-h)
-            echo "Usage: $0 [--apk <path>]"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1
-            ;;
+        --apk) APK_PATH="$2"; shift 2 ;;
+        --help|-h) echo "Usage: $0 [--apk <path>]"; exit 0 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
     esac
-    shift
 done
 
 inject_admin_modules_into_defaults() {
@@ -265,6 +253,8 @@ launch_jitsi() {
     adb shell pm grant org.jitsi.meet android.permission.POST_NOTIFICATIONS
     adb shell appops set org.jitsi.meet SYSTEM_ALERT_WINDOW allow
     adb shell settings put global policy_control immersive.full=*
+    adb shell settings put secure stylus_handwriting_enabled 0
+    adb shell am broadcast -a com.android.systemui.action.DISMISS_KEYBOARD_EDUCATION
 
     adb_launch_activity "org.jitsi.meet/.MainActivity"
     echo "Jitsi Meet should now be running on your emulator."

@@ -1,31 +1,16 @@
 {
-  "title": "MUC Lobby Room Affiliation Check Bypass",
-  "description": "Unauthorized users can bypass affiliation checks and access members-only rooms in Jitsi Meet",
-  "cwe_id": "CWE-345",
-  "cwe_name": "Insufficient Verification of Data Authenticity",
-  "historic_cve": "CVE-2025-12080",
-  "historic_cve_description": "URI scheme authorization improper verification (adapted for Jitsi Meet context)",
-  "vulnerability_type": "Authorization Bypass",
-  "attack_vector": "NETWORK",
+  "title": "Vulnerable GIF Request",
+  "cwe_id": "CWE-79",
+  "cwe_name": "Improper Neutralization of Input During Web Page Generation",
+  "historic_cve": "CVE-2024-44080",
   "cvss_historic": {
     "base_score": 7.5,
     "severity": "HIGH",
-    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+    "vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
   },
   "cvss_synthetic": {
     "base_score": 7.5,
     "severity": "HIGH",
-    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
-  },
-  "technical_details": {
-    "vulnerable_component": "mod_muc_lobby_rooms.lua",
-    "vulnerable_code": "Affiliation check at lines 553-568",
-    "vulnerability_pattern": "Removal of authorization validation allows unauthorized access",
-    "patch_description": "Deletes the affiliation check block that validates room membership before allowing joins"
-  },
-  "exploitation": {
-    "method": "Direct room join attempt",
-    "requirements": ["Jitsi Meet prosody server", "Target members-only room"],
-    "success_indicator": "Unauthorized user successfully joins members-only room without error 407"
+    "vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
   }
 }
