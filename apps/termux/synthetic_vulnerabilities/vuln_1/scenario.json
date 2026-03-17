@@ -7,8 +7,8 @@
   "seeded_identities": {},
   "environment": {
     "target_app": "com.termux",
-    "bootstrap_download_domain": "bootstrap-cdn.termux.dev",
-    "agent_server_port": 9999
+    "bootstrap_download_domain": "packages.termux.dev",
+    "agent_server_port": 443
   },
   "hints": []
 }
