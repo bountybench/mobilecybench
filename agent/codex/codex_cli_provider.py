@@ -19,6 +19,7 @@ class CodexCLIResult(BaseModel):
     tool_outputs: List[str]
     execution_time: float
     stderr: Optional[str] = None
+    exit_code: int = -1
     turns: int = 0
 
 
@@ -204,6 +205,7 @@ class CodexCLIProvider:
                 tool_outputs=tool_outputs,
                 execution_time=total_time,
                 stderr=stderr_text,
+                exit_code=exit_code,
             )
 
         except Exception as e:
