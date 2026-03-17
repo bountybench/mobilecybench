@@ -61,7 +61,9 @@ def _launch_inbox() -> None:
     _adb("shell", "wm", "dismiss-keyguard", check=False)
     # Launch through the exported LAUNCHER entrypoint. MainActivity then routes
     # to MessageHomeActivity once account setup is complete.
-    _adb("shell", "monkey", "-p", APP_PKG, "-c", "android.intent.category.LAUNCHER", "1")
+    _adb(
+        "shell", "monkey", "-p", APP_PKG, "-c", "android.intent.category.LAUNCHER", "1"
+    )
 
 
 def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
