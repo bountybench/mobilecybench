@@ -458,6 +458,7 @@ run_exploit_verification() {
         return 1
     fi
 
+    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
     local prepare_app_hook="$vuln_dir/prepare_app.sh"
     if [ -f "$prepare_app_hook" ]; then
         echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
@@ -468,6 +469,7 @@ run_exploit_verification() {
         echo -e "${SUCCESS} prepare_app hook completed"
     fi
 
+    # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
     local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
     local exploit_files_abs_path
@@ -481,9 +483,9 @@ run_exploit_verification() {
         --output-dir "$agent_output_abs_path" \
         --image "$exploit_image" \
         --utils-dir "$ROOT_DIR/utils" || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
-
+    
+    # Run verification
     echo -e "${INFO} Running verification..."
-    chmod +x "$verify_script"
     bash "$verify_script"
     local verify_exit_code=$?
 

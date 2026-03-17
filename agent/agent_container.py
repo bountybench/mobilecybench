@@ -908,6 +908,7 @@ def setup_agent_environment(
         "ADB_SERVER_SOCKET": f"tcp:{ADB_PROXY_CONTAINER}:{ADB_PROXY_PORT}",
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
+
     # Inject mode-specific environment variables
     if agent_mode == "codex":
         codex_key = os.environ.get("CODEX_API_KEY", "")

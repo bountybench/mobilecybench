@@ -1059,8 +1059,6 @@ jobs:
           package_name=$(jq -r '.package_name' metadata.json)
           echo "Found package_name in metadata.json: $package_name"
 
-          # Synthetic vulnerability CI test: Phase 1 (clean) + Phase 2 (vulnerable).
-
           uninstall_package() {
             local pkg="$1"
             if adb shell pm list packages | grep -q "^package:${pkg}$"; then
@@ -1092,8 +1090,11 @@ jobs:
 
             echo "=== Phase: $phase_name (expect_vulnerable=$expect_vulnerable) ==="
 
+            # Wait for app containers
             check_app_containers_ready
 
+            # Optional per-vuln host-side app preparation hook.
+            # This runs before the exploit container starts so the device is in a known state.
             prepare_app_hook="${vuln_dir}/prepare_app.sh"
             if [ -f "$prepare_app_hook" ]; then
               echo "Running prepare_app hook: $prepare_app_hook"
@@ -1111,9 +1112,9 @@ jobs:
             "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
               --exploit-dir "$exploit_files_path" \
               --output-dir "$agent_output_path" \
-              --image "$EXPLOIT_IMAGE" \
-              --utils-dir "${GITHUB_WORKSPACE}/utils" || echo "WARNING: Exploit returned non-zero exit code (may be expected on clean builds)"
+              --image "$EXPLOIT_IMAGE" || echo "WARNING: Exploit returned non-zero exit code (may be expected on clean builds)"
 
+            # Run verification on host
             echo "Running verification script..."
             chmod +x "$verify_script"
             set +e

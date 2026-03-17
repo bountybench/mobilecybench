@@ -82,9 +82,9 @@ apps/<app_name>/
 │       ├── vulnerability.patch         # Git diff to introduce the vulnerability
 │       ├── prepare_app.sh              # (Optional) App state preparation
 │       ├── verify_files/
-│       │   └── verify_exploit.sh       # Detects if vulnerability was exploited
+│       │   ├── verify_exploit.sh       # Detects if vulnerability was exploited
 │       └── exploit_files/
-│           └── exploit.sh              # Proof-of-concept exploit
+│           ├── exploit.sh              # Proof-of-concept exploit
 ```
 
 At runtime, the agent also has access to `/app/agent_output/` for writing exploit results. This directory is volume-mounted from `<vuln_dir>/agent_output/` so verify scripts can read the results after the agent container is removed.
