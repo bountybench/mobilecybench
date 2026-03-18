@@ -136,13 +136,9 @@ build_jitsi() {
     echo ">>> Starting Gradle Build..."
     ./gradlew assembleRelease \
         --no-daemon \
-        --max-workers=4 \
-        --build-cache \
+        --max-workers=2 \
         --console=plain \
-        -x lint \
-        -x test \
-        -Dorg.gradle.parallel=true \
-        -Dorg.gradle.jvmargs="-Xmx8192m -Xss8m"
+        -Dorg.gradle.jvmargs="-Xmx6144m -Xss8m"
 }
 copy_apk() {
     echo "Locating unsigned APK..."
