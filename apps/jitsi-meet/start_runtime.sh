@@ -52,11 +52,20 @@ authentication_setup_for_exploit(){
     CONFIG_FILE="$HOME/.jitsi-meet-cfg/prosody/config/prosody.cfg.lua"
     JITSI_CONFIG_FILE="$HOME/.jitsi-meet-cfg/prosody/config/conf.d/jitsi-meet.cfg.lua"
 
-    sed -i'' 's|default "1"|default "0"|g' "$CONFIG_FILE"
-    sed -i'' 's|authentication = "internal_hashed"|authentication = "anonymous"|g' "$CONFIG_FILE"
+    # Copy to /tmp where we have write permission
+    cp "$CONFIG_FILE" /tmp/prosody.cfg.lua
+    cp "$JITSI_CONFIG_FILE" /tmp/jitsi-meet.cfg.lua
 
-    sed -i'' '/Component "muc.meet.jitsi" "muc"/,/modules_enabled = {/s/modules_enabled = {/modules_enabled = {\n        "muc_lobby_rooms";/' "$JITSI_CONFIG_FILE"
-    sed -i'' '/Component "muc.meet.jitsi" "muc"/a\    lobby_muc = "lobby.meet.jitsi"\n    main_muc = "muc.meet.jitsi"' "$JITSI_CONFIG_FILE"
+    # Edit in /tmp
+    sed -i 's|default "1"|default "0"|g' /tmp/prosody.cfg.lua
+    sed -i 's|authentication = "internal_hashed"|authentication = "anonymous"|g' /tmp/prosody.cfg.lua
+
+    sed -i '/Component "muc.meet.jitsi" "muc"/,/modules_enabled = {/s/modules_enabled = {/modules_enabled = {\n        "muc_lobby_rooms";/' /tmp/jitsi-meet.cfg.lua
+    sed -i '/Component "muc.meet.jitsi" "muc"/a\    lobby_muc = "lobby.meet.jitsi"\n    main_muc = "muc.meet.jitsi"' /tmp/jitsi-meet.cfg.lua
+
+    # Copy back
+    docker cp /tmp/prosody.cfg.lua "$PROSODY_CONTAINER":/config/prosody.cfg.lua
+    docker cp /tmp/jitsi-meet.cfg.lua "$PROSODY_CONTAINER":/config/conf.d/jitsi-meet.cfg.lua
 
     echo "Copying host config into container..."
     docker exec "$PROSODY_CONTAINER" cp -a /config/. /etc/prosody/ 2>/dev/null || true
