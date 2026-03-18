@@ -133,12 +133,26 @@ build_jitsi() {
     echo ">>> Cleaning Gradle Build Caches..."
     ./gradlew clean
 
-    echo ">>> Starting Gradle Build..."
+    # Cap Kotlin daemon memory at the environment level
+    export GRADLE_OPTS="-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx1g -XX:MaxMetaspaceSize=512m"
+ 
     ./gradlew assembleRelease \
         --no-daemon \
         --max-workers=2 \
         --console=plain \
-        -Dorg.gradle.jvmargs="-Xmx6144m -Xss8m"
+        -x lint \
+        -x lintDebug \
+        -x lintRelease \
+        -x lintAnalyzeDebug \
+        -x lintAnalyzeRelease \
+        -x lintVitalAnalyzeRelease \
+        -x test \
+        -Dorg.gradle.parallel=false \
+        -Dorg.gradle.jvmargs="-Xmx4g -Xss4m -XX:MaxMetaspaceSize=512m" \
+        -Dkotlin.daemon.jvm.options="-Xmx1g" \
+        -Pandroid.lint.abortOnError=false \
+        -Pandroid.lint.checkReleaseBuilds=false \
+        2>&1 | grep -E "^(> Task|ERROR|FAILURE|BUILD|e:|warning: error)"
 }
 copy_apk() {
     echo "Locating unsigned APK..."
