@@ -21,6 +21,8 @@ services:
     volumes:
       - prosody_logs:/var/log/prosody
       - ./prosody.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
+      - ../../tls/server.crt:/etc/prosody/certs/10.0.2.2.crt:ro
+      - ../../tls/server.key:/etc/prosody/certs/10.0.2.2.key:ro
     networks:
       - shared_net
       - private_net
