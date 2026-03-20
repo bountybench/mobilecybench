@@ -11,7 +11,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-SANS="IP:10.0.2.2,IP:127.0.0.1,DNS:localhost,DNS:host.docker.internal"
+SANS="IP:10.0.2.2,IP:127.0.0.1,DNS:10.0.2.2,DNS:localhost,DNS:host.docker.internal"
 
 for f in rootCA.pem rootCA.key server.key; do
     [[ -f "$f" ]] || { echo "Error: $f not found." >&2; exit 1; }
