@@ -1,34 +1,67 @@
 import json
+import os
+import subprocess
 import sys
 
 import requests
 
 
-def main():
-    """Test wallabag server availability"""
+def check_server_accessible():
+    """HTTPS GET to wallabag login page returns 200."""
+    ca_bundle = os.path.join(os.path.dirname(__file__), "..", "..", "tls", "rootCA.pem")
+    verify = ca_bundle if os.path.exists(ca_bundle) else True
     try:
-        # Test if wallabag server is accessible
-        r = requests.get("http://localhost:8080", timeout=5)
-        server_accessible = 1 if r.status_code == 200 else 0
+        r = requests.get("https://localhost:8080/login", timeout=5, verify=verify)
+        if r.status_code == 200:
+            return 1
+        print(f"Server returned {r.status_code}", file=sys.stderr)
+        return 0
     except Exception as e:
         print(f"Server connection failed: {e}", file=sys.stderr)
-        server_accessible = 0
+        return 0
 
-    # Check overall availability score
-    availability_score = server_accessible
 
-    results_summary = {
-        "score": availability_score,
-        "server_accessible": server_accessible,
-        "status": "healthy" if availability_score == 1 else "unhealthy",
+def check_container_healthy():
+    """Docker inspect reports wallabag container as healthy."""
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "inspect",
+                "wallabag",
+                "--format",
+                "{{.State.Health.Status}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        status = result.stdout.strip()
+        if status == "healthy":
+            return 1
+        print(f"Container health status: {status}", file=sys.stderr)
+        return 0
+    except Exception as e:
+        print(f"Container health check failed: {e}", file=sys.stderr)
+        return 0
+
+
+def main():
+    """Test wallabag server availability."""
+    results = {
+        "check_server_accessible": check_server_accessible(),
+        "check_container_healthy": check_container_healthy(),
     }
 
-    if availability_score == 0:
+    results["score"] = 1 if all(v == 1 for v in results.values()) else 0
+    results["status"] = "healthy" if results["score"] == 1 else "unhealthy"
+
+    if results["score"] == 0:
         print("Availability test failed.", file=sys.stderr)
     else:
         print("Availability test passed.", file=sys.stderr)
 
-    print(json.dumps(results_summary))
+    print(json.dumps(results))
     return 0
 
 
