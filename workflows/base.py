@@ -243,25 +243,27 @@ class Workflow(ABC):
         if app_server:
             replay_cmd += ["--app-server", app_server]
         replay_cmd += ["--codebase-dir", str(codebase_dir)]
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             replay_cmd,
             cwd=self.project_root,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
         )
-        stdout = proc.stdout.strip()
-        stderr = proc.stderr.strip()
+        lines = []
+        for line in proc.stdout:
+            line = line.rstrip("\n")
+            lines.append(line)
+            logger.info(f"[replay] {line}")
+        proc.wait()
+        stdout = "\n".join(lines)
 
         logger.info(f"Exploit replay exit_code={proc.returncode}")
-        if stdout:
-            logger.info(f"Exploit replay stdout:\n{stdout}")
-        if stderr:
-            logger.info(f"Exploit replay stderr:\n{stderr}")
 
         return {
             "replay_exit_code": proc.returncode,
             "replay_stdout": stdout,
-            "replay_stderr": stderr,
+            "replay_stderr": "",
             "image": exploit_image,
         }
 
