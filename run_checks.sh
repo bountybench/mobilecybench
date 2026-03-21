@@ -132,42 +132,70 @@ echo "Scores saved to $app_path/scores.json"
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
 
-echo "TESTING GENERIC ACCESS..."
-{
-    gen_access_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_access.py | tail -1)
-    gen_access_exit=$?
-}
-gen_access_output=${gen_access_output:-"{}"}
-echo
+# Read enabled generic probes from metadata, defaulting to all if no specification
+GENERIC_PROBES=$(jq -r '.generic_probes // ["access","availability","confidentiality","integrity"] | .[]' metadata.json 2>/dev/null)
+probe_enabled() { echo "$GENERIC_PROBES" | grep -qw "$1"; }
 
-echo "TESTING GENERIC AVAILABILITY..."
-{
-    gen_availability_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_availability.py | tail -1)
-    gen_availability_exit=$?
-}
-gen_availability_output=${gen_availability_output:-"{}"}
-echo
-
-echo "TESTING GENERIC CONFIDENTIALITY..."
-if [ -z "$exploit_log" ]; then
-    echo "[FAIL] No log provided."
-    gen_confidentiality_exit=0
-    gen_confidentiality_output='{"score": 0, "status": "no_log"}'
-else
+if probe_enabled "access"; then
+    echo "TESTING GENERIC ACCESS..."
     {
-        gen_confidentiality_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
-        gen_confidentiality_exit=$?
+        gen_access_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_access.py | tail -1)
+        gen_access_exit=$?
     }
-    gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
+    gen_access_output=${gen_access_output:-"{}"}
+else
+    echo "SKIPPING GENERIC ACCESS (not in generic_probes)..."
+    gen_access_exit=0
+    gen_access_output='{"score": null, "status": "skipped"}'
 fi
 echo
 
-echo "TESTING GENERIC INTEGRITY..."
-{
-    gen_integrity_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_integrity.py | tail -1)
-    gen_integrity_exit=$?
-}
-gen_integrity_output=${gen_integrity_output:-"{}"}
+if probe_enabled "availability"; then
+    echo "TESTING GENERIC AVAILABILITY..."
+    {
+        gen_availability_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_availability.py | tail -1)
+        gen_availability_exit=$?
+    }
+    gen_availability_output=${gen_availability_output:-"{}"}
+else
+    echo "SKIPPING GENERIC AVAILABILITY (not in generic_probes)..."
+    gen_availability_exit=0
+    gen_availability_output='{"score": null, "status": "skipped"}'
+fi
+echo
+
+if probe_enabled "confidentiality"; then
+    echo "TESTING GENERIC CONFIDENTIALITY..."
+    if [ -z "$exploit_log" ]; then
+        echo "[FAIL] No log provided."
+        gen_confidentiality_exit=0
+        gen_confidentiality_output='{"score": 0, "status": "no_log"}'
+    else
+        {
+            gen_confidentiality_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
+            gen_confidentiality_exit=$?
+        }
+        gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
+    fi
+else
+    echo "SKIPPING GENERIC CONFIDENTIALITY (not in generic_probes)..."
+    gen_confidentiality_exit=0
+    gen_confidentiality_output='{"score": null, "status": "skipped"}'
+fi
+echo
+
+if probe_enabled "integrity"; then
+    echo "TESTING GENERIC INTEGRITY..."
+    {
+        gen_integrity_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_integrity.py | tail -1)
+        gen_integrity_exit=$?
+    }
+    gen_integrity_output=${gen_integrity_output:-"{}"}
+else
+    echo "SKIPPING GENERIC INTEGRITY (not in generic_probes)..."
+    gen_integrity_exit=0
+    gen_integrity_output='{"score": null, "status": "skipped"}'
+fi
 echo
 
 
@@ -175,28 +203,28 @@ if [ "$gen_access_exit" -ne 0 ] || [ -z "$gen_access_output" ]; then
   echo "ERROR: Access test failed to execute or produce output"
   exit 1
 else
-  gen_access_score=$(echo "$gen_access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  gen_access_score=$(echo "$gen_access_output" | jq '.score' 2>/dev/null || echo "0")
 fi
 
 if [ "$gen_availability_exit" -ne 0 ] || [ -z "$gen_availability_output" ]; then
   echo "ERROR: Availability test failed to execute or produce output"
   exit 1
 else
-  gen_availability_score=$(echo "$gen_availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  gen_availability_score=$(echo "$gen_availability_output" | jq '.score' 2>/dev/null || echo "0")
 fi
 
 if [ "$gen_confidentiality_exit" -ne 0 ] || [ -z "$gen_confidentiality_output" ]; then
   echo "ERROR: Confidentiality test failed to execute or produce output"
   exit 1
 else
-  gen_confidentiality_score=$(echo "$gen_confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  gen_confidentiality_score=$(echo "$gen_confidentiality_output" | jq '.score' 2>/dev/null || echo "0")
 fi
 
 if [ "$gen_integrity_exit" -ne 0 ] || [ -z "$gen_integrity_output" ]; then
   echo "ERROR: Integrity test failed to execute or produce output"
   exit 1
 else
-  gen_integrity_score=$(echo "$gen_integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  gen_integrity_score=$(echo "$gen_integrity_output" | jq '.score' 2>/dev/null || echo "0")
 fi
 
 echo
