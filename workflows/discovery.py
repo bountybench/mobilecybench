@@ -85,6 +85,7 @@ class DiscoveryWorkflow(Workflow):
             self.project_root,
             start_ssrf=True,
             build_command_timeout=self.config.build_command_timeout,
+            emulator_backend=self.config.emulator_backend,
         )
 
         # Setup agent container
