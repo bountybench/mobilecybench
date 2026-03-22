@@ -22,6 +22,7 @@
 #   bash infra/gke/test_local.sh moememos --container   # emulator in separate container
 #   bash infra/gke/test_local.sh moememos --skip-build   # never build, only use existing/pull
 #   bash infra/gke/test_local.sh moememos --gold-run     # run reference exploits
+#   bash infra/gke/test_local.sh ntfy-android --gold-run --vuln vuln_1  # specific vuln
 
 set -euo pipefail
 
@@ -30,6 +31,7 @@ EMULATOR_BACKEND="native"
 SKIP_BUILD=false
 DRY_RUN=true
 GOLD_RUN=false
+VULN_ID="vuln_0"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -39,6 +41,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run) DRY_RUN=true; GOLD_RUN=false; shift ;;
         --gold-run) GOLD_RUN=true; DRY_RUN=false; shift ;;
         --no-dry-run) DRY_RUN=false; shift ;;
+        --vuln) VULN_ID="$2"; shift 2 ;;
         --*) echo "Unknown arg: $1"; exit 1 ;;
         *) APP_NAME="$1"; shift ;;
     esac
@@ -49,11 +52,13 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Docker Hub image names
 DOCKERHUB_ORCHESTRATOR="cybench/mobilecybench-orchestrator:latest"
-DOCKERHUB_ORCHESTRATOR_SLIM="cybench/mobilecybench-orchestrator-slim:latest"
+# orchestrator image is the slim version (no emulator) — works for both modes
+# In container mode, emulator runs in a separate container (Dockerfile.emulator)
 DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
+echo "Vuln ID:        $VULN_ID"
 echo "Emulator backend: $EMULATOR_BACKEND"
 echo "Dry run:        $DRY_RUN"
 echo "Gold run:       $GOLD_RUN"
@@ -115,17 +120,10 @@ ensure_image() {
 
 # ─── Step 1: Ensure orchestrator image ────────────────────────────────────
 echo "--- Step 1: Ensuring orchestrator image ---"
-if [ "$EMULATOR_BACKEND" = "container" ]; then
-    ensure_image "mobilecybench-orchestrator-slim:test" \
-                 "$DOCKERHUB_ORCHESTRATOR_SLIM" \
-                 "orchestrator/Dockerfile.orchestrator-slim" \
-                 IMAGE_NAME
-else
-    ensure_image "mobilecybench-orchestrator:test" \
-                 "$DOCKERHUB_ORCHESTRATOR" \
-                 "orchestrator/Dockerfile.orchestrator" \
-                 IMAGE_NAME
-fi
+ensure_image "mobilecybench-orchestrator:test" \
+             "$DOCKERHUB_ORCHESTRATOR" \
+             "orchestrator/Dockerfile.orchestrator" \
+             IMAGE_NAME
 echo "Orchestrator image: $IMAGE_NAME"
 echo ""
 
@@ -185,7 +183,7 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "dry_run": $DRY_RUN,
   "gold_run": $GOLD_RUN,
   "workflow": "exploit",
-  "synthetic_vuln_id": "vuln_0",
+  "synthetic_vuln_id": "$VULN_ID",
   "agent_image": "cybench/mobilecybench:latest",
   "emulator_display": "headless",
   "emulator_backend": "$EMULATOR_BACKEND"

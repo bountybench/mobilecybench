@@ -5,9 +5,9 @@
 # need the emulator binary or system images baked in.
 #
 # Prerequisites:
-#   1. Build the slim orchestrator base:
-#        docker build -f orchestrator/Dockerfile.orchestrator-slim \
-#          -t mobilecybench-orchestrator-slim:latest .
+#   1. Build the orchestrator base:
+#        docker build -f orchestrator/Dockerfile.orchestrator \
+#          -t mobilecybench-orchestrator:latest .
 #
 #   2. Initialize git submodules for any apps you want to test BEFORE building:
 #        git submodule update --init apps/moememos/codebase apps/nextcloud-talk/codebase ...
@@ -17,7 +17,7 @@
 #   docker build -f infra/gke/Dockerfile.runner-slim \
 #     -t us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner-slim:latest .
 
-ARG BASE_IMAGE=mobilecybench-orchestrator-slim:latest
+ARG BASE_IMAGE=mobilecybench-orchestrator:latest
 FROM ${BASE_IMAGE}
 
 # Install Google Cloud CLI for GCS uploads
