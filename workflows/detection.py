@@ -9,6 +9,7 @@ supports the conclusion that the agent found the real vulnerability.
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from utils.logger import logger, logger_manager
@@ -121,13 +122,20 @@ class DetectionWorkflow(Workflow):
             self._save_result(result)
             return result
 
+        codebase_dir = self.app_dir / "codebase"
+
         # Phase 1: Replay on original (vulnerable) APK
         logger.info("Restarting runtime with original APK")
         self._restart_runtime(self._original_apk)
 
         logger.info("Replaying exploit on original app")
         original_exploit = self._run_exploit(
-            agent_exploit_dir, output_dir, exploit_runner, exploit_image, app_server
+            agent_exploit_dir,
+            output_dir,
+            exploit_runner,
+            exploit_image,
+            app_server,
+            codebase_dir=codebase_dir,
         )
 
         if original_exploit["replay_exit_code"] != 0:
@@ -143,13 +151,29 @@ class DetectionWorkflow(Workflow):
 
         # Phase 2: Replay on hardened APK
         logger.info("Exploit succeeded on original. Running hardened check...")
+
+        # Apply security.patch so exploit container sees hardened source
+        security_patch = self.app_dir / "security.patch"
+        logger.info("Applying security.patch to codebase for hardened phase")
+        subprocess.run(
+            ["git", "apply", str(security_patch)],
+            cwd=codebase_dir,
+            check=True,
+        )
+
         logger.info("Restarting runtime with hardened APK")
         self._restart_runtime(self._hardened_apk)
 
         logger.info("Replaying exploit on hardened app")
         hardened_exploit = self._run_exploit(
-            agent_exploit_dir, output_dir, exploit_runner, exploit_image, app_server
+            agent_exploit_dir,
+            output_dir,
+            exploit_runner,
+            exploit_image,
+            app_server,
+            codebase_dir=codebase_dir,
         )
+        # codebase restore handled by Workflow.cleanup()
 
         if hardened_exploit["replay_exit_code"] != 0:
             logger.info(

@@ -250,6 +250,8 @@ class TestDetectionWorkflowEvaluation:
         exploit_runner = tmp_path / "utils" / "run_exploit_container.sh"
 
         app_dir.mkdir(parents=True)
+        (app_dir / "codebase").mkdir()
+        (app_dir / "security.patch").write_text("")
         agent_exploit_dir.mkdir(parents=True)
         exploit_runner.parent.mkdir(parents=True)
         (agent_exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0")
@@ -309,7 +311,9 @@ class TestDetectionWorkflowEvaluation:
         with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
             with patch.object(workflow, "_restart_runtime"), patch.object(
                 workflow, "_run_exploit", side_effect=replays
-            ), patch.object(workflow, "_save_result"):
+            ), patch.object(workflow, "_save_result"), patch(
+                "workflows.detection.subprocess.run"
+            ):
                 result = workflow.evaluate()
 
         assert result["status"] == expected_status

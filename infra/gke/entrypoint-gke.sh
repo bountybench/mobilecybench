@@ -47,16 +47,22 @@ CONFIG_SRC="/mobilecybench/runner_config.json"
 CONFIG_DST="/tmp/runner_config.json"
 
 EMULATOR_BACKEND="${EMULATOR_BACKEND:-container}"
-DRY_RUN="${DRY_RUN:-false}"
+
+# Normalize boolean env vars to JSON-safe "true"/"false" for jq --argjson
+normalize_bool() { [[ "${1,,}" == "true" || "$1" == "1" ]] && echo true || echo false; }
+DRY_RUN="$(normalize_bool "${DRY_RUN:-false}")"
+GOLD_RUN="$(normalize_bool "${GOLD_RUN:-false}")"
 
 if [ -f "$CONFIG_SRC" ]; then
     jq --arg model "$MODEL" \
        --arg vuln "$VULN_ID" \
        --arg em "$EMULATOR_BACKEND" \
        --argjson dryrun "$DRY_RUN" \
+       --argjson goldrun "$GOLD_RUN" \
        '.emulator_display = "headless"
         | .emulator_backend = $em
         | .dry_run = $dryrun
+        | .gold_run = $goldrun
         | if $model != "" then .model = $model else . end
         | if $vuln != "" then .synthetic_vuln_id = $vuln else . end' \
        "$CONFIG_SRC" > "$CONFIG_DST"

@@ -612,8 +612,8 @@ jobs:
           checkout_commit() {
             pwd
             if [[ -f "metadata.json" ]]; then
-              commit=$(jq -r '.["commit_version"]' "metadata.json")
-              
+              commit=$(jq -r '.["commit_version"] // empty' "metadata.json")
+
               if [[ -n "$commit" ]]; then
                 echo "Found commit: $commit"
 
@@ -1061,6 +1061,9 @@ jobs:
 
           cd "$dir"
 
+          # Ensure codebase is at the correct commit
+          checkout_commit
+
           # Get package_name from metadata.json
           package_name=$(jq -r '.package_name' metadata.json)
           echo "Found package_name in metadata.json: $package_name"
@@ -1118,7 +1121,8 @@ jobs:
             "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
               --exploit-dir "$exploit_files_path" \
               --output-dir "$agent_output_path" \
-              --image "$EXPLOIT_IMAGE" || echo "WARNING: Exploit returned non-zero exit code (may be expected on clean builds)"
+              --image "$EXPLOIT_IMAGE" \
+              --codebase-dir "$(pwd)/codebase" || echo "WARNING: Exploit returned non-zero exit code (may be expected on clean builds)"
 
             # Run verification on host
             echo "Running verification script..."
@@ -1209,8 +1213,25 @@ jobs:
             exit 1
           fi
 
+          # Apply vulnerability patch so exploit container sees vulnerable source
+          patch_file="${vuln_dir}/vulnerability.patch"
+          echo "Applying vulnerability patch to codebase..."
+          (cd codebase && git apply "$GITHUB_WORKSPACE/$dir/$patch_file")
+
+          # Always restore codebase (including submodules) after Phase 2, even on failure
+          restore_codebase() {
+            echo "Restoring codebase after vulnerable phase..."
+            (cd codebase && git reset --hard HEAD && sudo git clean -fdx \
+              && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true \
+              && git submodule foreach --recursive sudo git clean -fdx 2>/dev/null || true)
+          }
+          trap restore_codebase EXIT
+
           run_exploit_and_verify "Vulnerable build" "true"
           phase2_result=$?
+
+          restore_codebase
+          trap - EXIT
 
           echo "Cleaning up Phase 2..."
           ./cleanup.sh

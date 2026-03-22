@@ -631,23 +631,6 @@ class AgentEnvironment:
                 "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n"
             )
 
-    def delete_agent_codebase(self):
-        agent_codebase = self.app_dir / "agent_codebase"
-
-        if not agent_codebase.exists():
-            logger.info("agent_codebase does not exist, nothing to reset")
-            return
-
-        try:
-            # Simple approach: delete the entire directory
-            logger.info(f"Deleting agent_codebase directory at {agent_codebase}")
-            shutil.rmtree(agent_codebase, onerror=onerror)
-            logger.info("Successfully deleted agent_codebase directory")
-
-        except Exception as e:
-            logger.error(f"Failed to reset agent_codebase: {e}")
-            raise
-
     def _save_container_dir(self, container_path: str, dest_dir: Path) -> None:
         """Copy a directory from the container to dest_dir.
 
@@ -922,7 +905,7 @@ def setup_agent_environment(
             env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
 
     # Get commit ID from metadata or use default
-    commit_id = metadata.get("commit_id", "HEAD")
+    commit_id = metadata.get("commit_version", "HEAD")
 
     agent_env = AgentEnvironment(
         app_dir=app_dir,

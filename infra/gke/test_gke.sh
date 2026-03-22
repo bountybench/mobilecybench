@@ -30,6 +30,8 @@ CLEANUP=true
 NAMESPACE="mobilecybench"
 IMAGE="${RUNNER_IMAGE:-}"
 GCS_BUCKET="${GCS_BUCKET:-}"
+DRY_RUN="true"
+GOLD_RUN="false"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -37,6 +39,9 @@ while [[ $# -gt 0 ]]; do
         --emulator-backend) EMULATOR_BACKEND="$2"; shift 2 ;;
         --image) IMAGE="$2"; shift 2 ;;
         --no-cleanup) CLEANUP=false; shift ;;
+        --dry-run) DRY_RUN="true"; GOLD_RUN="false"; shift ;;
+        --gold-run) GOLD_RUN="true"; DRY_RUN="false"; shift ;;
+        --no-dry-run) DRY_RUN="false"; shift ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -56,6 +61,8 @@ echo "Emulator backend: $EMULATOR_BACKEND"
 echo "Image:          $IMAGE"
 echo "Namespace:      $NAMESPACE"
 echo "GCS bucket:     ${GCS_BUCKET:-<none>}"
+echo "Dry run:        $DRY_RUN"
+echo "Gold run:       $GOLD_RUN"
 echo "Cleanup:        $CLEANUP"
 echo ""
 
@@ -136,7 +143,9 @@ spec:
             - name: EMULATOR_BACKEND
               value: "$EMULATOR_BACKEND"
             - name: DRY_RUN
-              value: "true"
+              value: "$DRY_RUN"
+            - name: GOLD_RUN
+              value: "$GOLD_RUN"
             - name: GCS_BUCKET
               value: "$GCS_BUCKET"
             - name: RUN_ID
