@@ -152,7 +152,7 @@ fi
 
 # ─── Step 2: Determine build_type ─────────────────────────────────────────
 CLEAN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/$APP_NAME.apk"
-VULN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/vuln_0/$APP_NAME.apk"
+VULN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/$VULN_ID/$APP_NAME.apk"
 
 if [ -f "$CLEAN_APK" ] && [ -f "$VULN_APK" ]; then
     BUILD_TYPE="skip-apk"
