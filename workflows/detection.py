@@ -78,6 +78,9 @@ class DetectionWorkflow(Workflow):
 
         inject_system_ca(self.project_root)
 
+        # Set up socat port forwards for container emulator mode
+        self.emulator.setup_port_forwards(self.app_dir)
+
         # Install original (vulnerable) APK — no flag injection, no SSRF
         install_app_and_setup_backend(
             self.app_dir,
