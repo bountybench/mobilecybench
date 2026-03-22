@@ -196,7 +196,6 @@ class Workflow(ABC):
             apk_path=apk_path,
             inject_flags=False,
             build_command_timeout=self.config.build_command_timeout,
-            emulator_backend=self.config.emulator_backend,
         )
 
         if prepare_app_hook and prepare_app_hook.exists():

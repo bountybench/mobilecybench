@@ -85,7 +85,6 @@ class DetectionWorkflow(Workflow):
             self.project_root,
             inject_flags=False,
             build_command_timeout=self.config.build_command_timeout,
-            emulator_backend=self.config.emulator_backend,
         )
 
         # Agent sees full git history

@@ -12,9 +12,7 @@ from urllib.parse import urlparse
 from utils.logger import logger
 
 
-def setup_container_emulator_port_forwards(
-    app_dir: Path, emulator_backend: str
-) -> None:
+def setup_container_emulator_port_forwards(app_dir: Path) -> None:
     """Set up socat port forwards inside the emulator container for container mode.
 
     In container emulator mode, Android's 10.0.2.2 maps to the emulator container's
@@ -22,14 +20,18 @@ def setup_container_emulator_port_forwards(
     reads the app's metadata.json to find the server port, discovers which backend
     container on shared_net listens on that port, and sets up socat forwarding inside
     the emulator container.
-
-    Only runs when emulator_backend is "container". In native mode, 10.0.2.2 already
-    routes to the host where backend containers listen, so no forwarding is needed.
     """
-    if emulator_backend != "container":
-        return
-
     from utils.emulator_manager import EMULATOR_CONTAINER_NAME
+
+    # Check if we're in container emulator mode
+    result = subprocess.run(
+        ["docker", "inspect", EMULATOR_CONTAINER_NAME],
+        capture_output=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        logger.debug("No emulator container found — skipping port forwards")
+        return
 
     # Read emulator_server from metadata.json
     metadata_path = app_dir / "metadata.json"
@@ -139,7 +141,6 @@ def install_app_and_setup_backend(
     start_ssrf: bool = False,
     apk_path: Optional[Path] = None,
     inject_flags: bool = True,
-    emulator_backend: str = "native",
 ) -> None:
     """
     Install the app and set up backend services.
@@ -193,7 +194,7 @@ def install_app_and_setup_backend(
         )
 
     # Set up port forwarding for container emulator mode
-    setup_container_emulator_port_forwards(app_dir, emulator_backend)
+    setup_container_emulator_port_forwards(app_dir)
 
     # Inject flags (discovery mode only; exploit uses verify_files)
     if inject_flags:
