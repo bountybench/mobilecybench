@@ -1,135 +1,11 @@
 """Runtime setup utilities for app installation and backend configuration."""
 
-import json
-import os
-import re
 import shlex
 import subprocess
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 from utils.logger import logger
-
-
-def setup_container_emulator_port_forwards(app_dir: Path) -> None:
-    """Set up socat port forwards inside the emulator container for container mode.
-
-    In container emulator mode, Android's 10.0.2.2 maps to the emulator container's
-    loopback — not the Docker host where backend containers listen. This function
-    reads the app's metadata.json to find the server port, discovers which backend
-    container on shared_net listens on that port, and sets up socat forwarding inside
-    the emulator container.
-    """
-    from utils.emulator_manager import EMULATOR_CONTAINER_NAME
-
-    # Check if we're in container emulator mode
-    result = subprocess.run(
-        ["docker", "inspect", EMULATOR_CONTAINER_NAME],
-        capture_output=True,
-        timeout=10,
-    )
-    if result.returncode != 0:
-        logger.debug("No emulator container found — skipping port forwards")
-        return
-
-    # Read emulator_server from metadata.json
-    metadata_path = app_dir / "metadata.json"
-    if not metadata_path.exists():
-        logger.debug("No metadata.json found — skipping port forwards")
-        return
-
-    metadata = json.loads(metadata_path.read_text())
-    emulator_server = metadata.get("emulator_server", "")
-    if not emulator_server:
-        logger.debug("No emulator_server in metadata — skipping port forwards")
-        return
-
-    # Parse port from emulator_server (handles "http://10.0.2.2:8080", "10.0.2.2:5222", etc.)
-    port = None
-    if "://" in emulator_server:
-        parsed = urlparse(emulator_server)
-        port = parsed.port
-        if port is None:
-            port = 443 if parsed.scheme == "https" else 80
-    else:
-        match = re.search(r":(\d+)", emulator_server)
-        if match:
-            port = int(match.group(1))
-
-    if port is None:
-        logger.warning(f"Could not parse port from emulator_server: {emulator_server}")
-        return
-
-    # Find backend containers on shared_net (exclude emulator container)
-    result = subprocess.run(
-        ["docker", "network", "inspect", "shared_net", "--format",
-         "{{range .Containers}}{{.Name}} {{end}}"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if result.returncode != 0:
-        logger.warning("Could not inspect shared_net network")
-        return
-
-    containers = result.stdout.strip().split()
-    backend_containers = [c for c in containers if c != EMULATOR_CONTAINER_NAME]
-
-    if not backend_containers:
-        logger.debug("No backend containers on shared_net")
-        return
-
-    # Find which container listens on the target port
-    target_container = None
-    for container_name in backend_containers:
-        # Check if this container has the port exposed or is listening on it
-        check = subprocess.run(
-            ["docker", "exec", container_name, "sh", "-c",
-             f"ss -tlnp 2>/dev/null | grep -q ':{port}' || "
-             f"netstat -tlnp 2>/dev/null | grep -q ':{port}'"],
-            capture_output=True,
-            timeout=10,
-        )
-        if check.returncode == 0:
-            target_container = container_name
-            break
-
-    if target_container is None:
-        # Fall back: use the first backend container (common case: single backend)
-        target_container = backend_containers[0]
-        logger.info(
-            f"Could not detect which container listens on port {port}, "
-            f"using first backend container: {target_container}"
-        )
-
-    # Kill any existing socat on this port
-    subprocess.run(
-        ["docker", "exec", EMULATOR_CONTAINER_NAME,
-         "pkill", "-f", f"socat.*{port}"],
-        capture_output=True,
-        timeout=10,
-    )
-
-    # Set up socat: emulator-container:port → backend-container:port
-    result = subprocess.run(
-        ["docker", "exec", "-d", EMULATOR_CONTAINER_NAME,
-         "socat", f"TCP-LISTEN:{port},fork,reuseaddr",
-         f"TCP:{target_container}:{port}"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    if result.returncode == 0:
-        logger.info(
-            f"Port forward established: emulator-container:{port} → "
-            f"{target_container}:{port}"
-        )
-    else:
-        logger.warning(
-            f"Failed to set up port forward on port {port}: {result.stderr}"
-        )
 
 
 def install_app_and_setup_backend(
@@ -192,9 +68,6 @@ def install_app_and_setup_backend(
             f"No runtime script found in {app_dir}. "
             "Expected start_runtime.sh or setup.sh"
         )
-
-    # Set up port forwarding for container emulator mode
-    setup_container_emulator_port_forwards(app_dir)
 
     # Inject flags (discovery mode only; exploit uses verify_files)
     if inject_flags:
