@@ -791,17 +791,32 @@ class EmulatorManager:
 
         # Kill any existing socat on this port (idempotent for restarts)
         subprocess.run(
-            ["docker", "exec", EMULATOR_CONTAINER_NAME,
-             "pkill", "-f", f"socat.*{listen_port}"],
-            capture_output=True, timeout=10,
+            [
+                "docker",
+                "exec",
+                EMULATOR_CONTAINER_NAME,
+                "pkill",
+                "-f",
+                f"socat.*{listen_port}",
+            ],
+            capture_output=True,
+            timeout=10,
         )
 
         # socat: listen on emulator_server port, forward to app_server host:port
         result = subprocess.run(
-            ["docker", "exec", "-d", EMULATOR_CONTAINER_NAME,
-             "socat", f"TCP-LISTEN:{listen_port},fork,reuseaddr",
-             f"TCP:{target_host}:{target_port}"],
-            capture_output=True, text=True, timeout=10,
+            [
+                "docker",
+                "exec",
+                "-d",
+                EMULATOR_CONTAINER_NAME,
+                "socat",
+                f"TCP-LISTEN:{listen_port},fork,reuseaddr",
+                f"TCP:{target_host}:{target_port}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
 
         if result.returncode == 0:
