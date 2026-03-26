@@ -1236,6 +1236,10 @@ cd "$ROOT_DIR"
 print_header "$CYAN" "CREATING DOCKER NETWORK"
 echo -e "${INFO} Creating shared_net network..."
 docker network create shared_net || echo -e "${INFO} shared_net network already exists"
+echo -e "${INFO} Creating adb_net network..."
+docker network create --driver bridge adb_net || echo -e "${INFO} adb_net network already exists"
+echo -e "${INFO} Building ADB server image..."
+docker build -t mobilecybench/adb-server:latest -f utils/Dockerfile.adb-server utils/
 
 # Start SSRF Listener
 print_header "$CYAN" "STARTING SSRF LISTENER"

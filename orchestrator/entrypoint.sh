@@ -26,6 +26,13 @@ if ! docker network inspect shared_net >/dev/null 2>&1; then
     echo "Creating shared_net network..."
     docker network create shared_net
 fi
+if ! docker network inspect adb_net >/dev/null 2>&1; then
+    echo "Creating adb_net network..."
+    docker network create --driver bridge adb_net
+fi
+
+echo "Building ADB server image..."
+docker build -t mobilecybench/adb-server:latest -f /mobilecybench/utils/Dockerfile.adb-server /mobilecybench/utils/
 
 if [ -f /mobilecybench/pyproject.toml ]; then
     cd /mobilecybench && /opt/venv/bin/pip install --no-cache-dir -e . >/dev/null 2>&1 || true

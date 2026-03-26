@@ -741,8 +741,11 @@ jobs:
           pip install -r requirements.txt -q
           pip install -e .
 
-      - name: Create Docker Network
-        run: docker network create shared_net || true
+      - name: Create Docker Networks and Build ADB Server Image
+        run: |
+          docker network create shared_net || true
+          docker network create --driver bridge adb_net || true
+          docker build -t mobilecybench/adb-server:latest -f utils/Dockerfile.adb-server utils/
 
       - name: Start SSRF Listener
         run: |

@@ -22,6 +22,10 @@ if [ $timeout -eq 0 ]; then
 fi
 
 docker network create shared_net || true
+docker network create --driver bridge adb_net || true
+
+echo "Building ADB server image..."
+docker build -t mobilecybench/adb-server:latest -f /mobilecybench/utils/Dockerfile.adb-server /mobilecybench/utils/
 
 # ─── Pre-pull emulator image ─────────────────────────────────────────────
 # The Python Docker SDK has a 60s default timeout on containers.run(), which
