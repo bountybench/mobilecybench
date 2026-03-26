@@ -95,7 +95,10 @@ class DiscoveryWorkflow(Workflow):
         else:
             logger.info("No app_server configured — skipping CA injection")
 
-        # Install app and setup backend
+        # Set up socat port forwards for container emulator mode
+        self.emulator.setup_port_forwards(self.app_dir)
+
+        # Install app and setup backend (with SSRF listener for discovery mode)
         install_app_and_setup_backend(
             self.app_dir,
             self.emulator,

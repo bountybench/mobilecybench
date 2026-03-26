@@ -189,6 +189,7 @@ class Workflow(ABC):
             timeout=self.config.emulator_boot_timeout_seconds
         )
         inject_system_ca(self.project_root)
+        self.emulator.setup_port_forwards(self.app_dir)
         install_app_and_setup_backend(
             self.app_dir,
             self.emulator,
