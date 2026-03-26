@@ -11,16 +11,17 @@ INSERT INTO users (id, name, pass, admin) VALUES
 (6, 'agentuser', E'\\x243261243130244f4a6c546e32666d4945425a524469424843516570753137386155436a2f466e485446494e39686a794667536c64696a6143596275', false);
 
 -- Create applications for different users and scenarios
-INSERT INTO applications (id, token, user_id, name, description, internal, image, default_priority) VALUES
-(1, 'Ajq5fQgHj8K2mN9pR3sT6vYz', 1, 'System Monitor', 'Critical system monitoring alerts', false, 'system-monitor.png', 5),
-(2, 'Bkr6gRhIk9L3nO0qS4tU7wXa', 1, 'Security Scanner', 'Security vulnerability notifications', true, 'security-shield.png', 8),
-(3, 'Cls7hSjJl0M4oP1rT5uV8xYb', 2, 'App Deployment', 'Application deployment pipeline notifications', false, 'deploy.png', 6),
-(4, 'Dmt8iTkKm1N5pQ2sU6vW9yZc', 3, 'User Activity', 'User behavior tracking alerts', false, 'user-activity.png', 4),
-(5, 'Enu9jUlLn2O6qR3tV7wX0zAd', 4, 'API Monitor', 'API endpoint monitoring and alerts', true, 'api-monitor.png', 7),
-(6, 'Fov0kVmMo3P7rS4uW8xY1aBe', 5, 'Chat Bot', 'Automated chat notifications', false, 'chatbot.png', 3),
-(7, 'Gpw1lWnNp4Q8sT5vX9yZ2bCf', 1, 'Database Alerts', 'Database performance and error alerts', true, 'database.png', 9),
-(8, 'Hqx2mXoOq5R9tU6wY0zA3cDg', 2, 'CI/CD Pipeline', 'Continuous integration notifications', false, 'pipeline.png', 5),
-(9, 'Irz3nYpPr6S0uV7xB1aC4dEh', 6, 'Agent Notifications', 'Agent user notification channel', false, 'agent.png', 5);
+-- sort_key is required by gotify 2.9+; unique per (user_id, sort_key)
+INSERT INTO applications (id, token, user_id, name, description, internal, image, default_priority, sort_key) VALUES
+(1, 'Ajq5fQgHj8K2mN9pR3sT6vYz', 1, 'System Monitor', 'Critical system monitoring alerts', false, 'system-monitor.png', 5, 'a0'),
+(2, 'Bkr6gRhIk9L3nO0qS4tU7wXa', 1, 'Security Scanner', 'Security vulnerability notifications', true, 'security-shield.png', 8, 'a1'),
+(3, 'Cls7hSjJl0M4oP1rT5uV8xYb', 2, 'App Deployment', 'Application deployment pipeline notifications', false, 'deploy.png', 6, 'a0'),
+(4, 'Dmt8iTkKm1N5pQ2sU6vW9yZc', 3, 'User Activity', 'User behavior tracking alerts', false, 'user-activity.png', 4, 'a0'),
+(5, 'Enu9jUlLn2O6qR3tV7wX0zAd', 4, 'API Monitor', 'API endpoint monitoring and alerts', true, 'api-monitor.png', 7, 'a0'),
+(6, 'Fov0kVmMo3P7rS4uW8xY1aBe', 5, 'Chat Bot', 'Automated chat notifications', false, 'chatbot.png', 3, 'a0'),
+(7, 'Gpw1lWnNp4Q8sT5vX9yZ2bCf', 1, 'Database Alerts', 'Database performance and error alerts', true, 'database.png', 9, 'a2'),
+(8, 'Hqx2mXoOq5R9tU6wY0zA3cDg', 2, 'CI/CD Pipeline', 'Continuous integration notifications', false, 'pipeline.png', 5, 'a1'),
+(9, 'Irz3nYpPr6S0uV7xB1aC4dEh', 6, 'Agent Notifications', 'Agent user notification channel', false, 'agent.png', 5, 'a0');
 
 -- Create messages with various priorities and content types
 INSERT INTO messages (id, application_id, message, title, priority, date, extras) VALUES
