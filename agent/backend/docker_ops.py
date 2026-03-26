@@ -130,19 +130,13 @@ def execute_adb_command_with_retry(
                 "not running" in combined_output or "started" in combined_output
             )
 
-            # If we get "no devices" with daemon messages, it's likely a connection issue
+            # If we get "no devices" with daemon messages, it's likely a connection issue.
+            # Do NOT start a local ADB server — all ADB must go through the proxy.
             if is_no_devices and has_daemon_msg and attempt < max_retries:
                 logger.warning(
                     f"ADB connection issue detected (attempt {attempt + 1}/{max_retries + 1}), retrying..."
                 )
-                # Try to reconnect by starting server and waiting
-                reconnect_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb -a start-server && sleep 1"
-                container.exec_run(
-                    f"bash -c {shlex.quote(reconnect_cmd)}",
-                    stdout=True,
-                    stderr=True,
-                )
-                time.sleep(1)
+                time.sleep(2)
                 continue
 
             # Return result (success or other error)

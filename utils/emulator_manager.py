@@ -200,33 +200,33 @@ class EmulatorManager:
         logger.info(f"Starting emulator container with image: {emulator_image}")
         logger.info(f"Emulator AVD: {emulator_name}")
 
-        # Kill any existing ADB server on the host so it doesn't conflict
-        # with the container's port 5037 mapping. The port mapping is needed
-        # because host-side scripts (inject_system_ca.sh, start_runtime.sh)
-        # use bare `adb` commands. Once all host-side ADB usage is routed
-        # through docker exec, the port mapping and this kill-server can go.
+        # Kill any stray host ADB server to avoid port conflicts
         subprocess.run(["adb", "kill-server"], capture_output=True)
         self._devices_before_start = set()
 
-        # Single ADB server design: the container runs the only ADB server
-        # (on 0.0.0.0:5037) and the emulator's adbd connects to it via the
-        # local qemud pipe. We publish port 5037 to the host so the
-        # orchestrator's `adb` commands transparently reach the container's
-        # server. No TCP mode (adb tcpip) needed — same architecture as
-        # native mode, just the ADB server lives in the container.
-        container_cmd = f"bash -c 'adb -a start-server && {emulator_cmd}'"
-
+        # ADB server runs in a separate container (adb-server) on adb_net.
+        # The emulator just needs to be reachable on port 5555 (emulator
+        # binary's host-side transport) via adb_net for adb-server to connect.
         try:
-            self.emulator_container = client.containers.run(
+            self.emulator_container = client.containers.create(
                 image=emulator_image,
                 name=EMULATOR_CONTAINER_NAME,
-                command=container_cmd,
+                command=emulator_cmd,
                 devices=["/dev/kvm:/dev/kvm"],
                 network="shared_net",
-                ports={"5037/tcp": 5037},
                 detach=True,
                 environment={"ANDROID_HOME": self.emulator_config["android_home"]},
             )
+
+            # Attach to adb_net so the adb-server container can reach port 5555
+            try:
+                adb_net = client.networks.get("adb_net")
+                adb_net.connect(self.emulator_container)
+                logger.info("Attached emulator-container to adb_net")
+            except Exception as e:
+                logger.warning(f"Could not attach to adb_net: {e}")
+
+            self.emulator_container.start()
             logger.info(
                 f"Emulator container started: {self.emulator_container.short_id}"
             )
@@ -290,14 +290,9 @@ class EmulatorManager:
                 logger.error(f"Setup failed: {e.stderr}")
                 raise RuntimeError(f"Failed to run setup.sh: {e}")
 
-        # Restart ADB on all interfaces (-a) so Docker containers can reach
-        # it via host.docker.internal:5037.
-        #
-        # Without -a, ADB binds to 127.0.0.1 only. On Linux, host-gateway
-        # maps host.docker.internal to the docker0 bridge IP (172.17.0.1),
-        # which can't reach 127.0.0.1. macOS Docker Desktop masks this
-        # because its VM proxy forwards to the host loopback.
-        # See issue #688
+        # Start host ADB server for the setup phase (emulator boot, CA
+        # injection, app install). The containerized adb-server takes over
+        # for the agent phase later — they coexist on different ports.
         subprocess.run(["adb", "kill-server"], capture_output=True, timeout=10)
         subprocess.run(["adb", "-a", "start-server"], capture_output=True, timeout=10)
 
@@ -660,19 +655,13 @@ class EmulatorManager:
                 logger.warning(f"Failed to reset ADB server: {e}")
 
     def _run_adb(self, args: list[str], **kwargs) -> subprocess.CompletedProcess:
-        """Run an ADB command, routing through docker exec in container mode.
+        """Run an ADB command, respecting ANDROID_ADB_SERVER_PORT if set.
 
-        In container mode this avoids invoking the host `adb` client, which
-        would auto-start a local server and race with the container's server
-        on port 5037.
-
-        Commands like adb root, adb devices, etc. will spawn the host ADB server if it
-        is not running, which can cause conflicts with the container's ADB server.
+        During emulator startup the default host ADB server is used.
+        After setup_agent_environment() starts the containerized adb-server,
+        ANDROID_ADB_SERVER_PORT=15037 routes through the trusted path.
         """
-        if self.emulator_backend == "container" and self.emulator_container:
-            cmd = ["docker", "exec", EMULATOR_CONTAINER_NAME, "adb"] + args
-        else:
-            cmd = ["adb"] + args
+        cmd = ["adb"] + args
         return subprocess.run(cmd, **kwargs)
 
     def restart(self):

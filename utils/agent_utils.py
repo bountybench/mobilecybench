@@ -9,7 +9,7 @@ from utils.logger import logger
 
 DOCKER_CLIENT = docker.from_env()
 KALI_CONTAINER_NAME = "kali-container"  # from agent/docker-compose.yml
-HOST_ADB_SERVER = "host.docker.internal:5037"  # from agent/docker-compose.yml
+HOST_ADB_SERVER = "adb-proxy:5037"  # ADB traffic routed through filtering proxy
 
 
 def encode_image(image_data: bytes) -> str:

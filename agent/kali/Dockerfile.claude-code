@@ -3,4 +3,4 @@ FROM cybench/mobilecybench-kali:latest
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
-ENV ADB_SERVER_SOCKET=tcp:host.docker.internal:5037
+ENV ADB_SERVER_SOCKET=tcp:adb-proxy:5037

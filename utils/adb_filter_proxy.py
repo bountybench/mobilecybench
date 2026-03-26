@@ -7,9 +7,12 @@ on the host, inspecting protocol messages and rejecting dangerous ones.
 Usage:
     python3 adb_filter_proxy.py [listen_port] [upstream_host] [upstream_port]
 
-Defaults: listen on :5037, forward to host.docker.internal:5037
+Defaults: listen on :5037, forward to adb-server:5037
+
+Upstream host can also be set via ADB_UPSTREAM_HOST env var.
 """
 
+import os
 import re
 import socket
 import sys
@@ -22,9 +25,26 @@ except ImportError:
     # before adb_blocked_patterns.py is copied alongside this script).
     from utils.adb_blocked_patterns import ALL_SHELL_PATTERNS, BLOCKED_SERVICES
 
-LISTEN_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5037
-UPSTREAM_HOST = sys.argv[2] if len(sys.argv) > 2 else "host.docker.internal"
-UPSTREAM_PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 5037
+
+def _parse_args():
+    """Parse CLI args, falling back to env vars / defaults."""
+    try:
+        listen = int(sys.argv[1]) if len(sys.argv) > 1 else 5037
+    except ValueError:
+        listen = 5037
+    upstream_host = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else os.environ.get("ADB_UPSTREAM_HOST", "adb-server")
+    )
+    try:
+        upstream_port = int(sys.argv[3]) if len(sys.argv) > 3 else 5037
+    except ValueError:
+        upstream_port = 5037
+    return listen, upstream_host, upstream_port
+
+
+LISTEN_PORT, UPSTREAM_HOST, UPSTREAM_PORT = _parse_args()
 
 # Encode for byte-level matching in the proxy.
 _BLOCKED_SERVICES_B = [s.encode() for s in BLOCKED_SERVICES]

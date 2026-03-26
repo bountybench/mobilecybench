@@ -24,11 +24,21 @@ from utils.git_utils import (
 from utils.logger import logger
 
 # ---------------------------------------------------------------------------
-# ADB proxy sidecar constants
+# ADB network isolation constants
+#
+# adb_net is a Docker bridge network that kali is NOT on.
+# Only adb-server, adb-proxy, and (in container mode) emulator-container
+# are attached. Kali can only reach ADB through the proxy on shared_net.
 # ---------------------------------------------------------------------------
+ADB_NET = "adb_net"
+ADB_SERVER_CONTAINER = "adb-server"
 ADB_PROXY_CONTAINER = "adb-proxy"
-ADB_PROXY_IMAGE = "python:3.11-slim"
+ADB_SERVER_IMAGE = "mobilecybench/adb-server:latest"  # lightweight image with adb only
+ADB_PROXY_IMAGE = "python:3.11-slim"  # only needs python for the filter script
 ADB_PROXY_PORT = 5037
+ADB_TRUSTED_PORT = (
+    15037  # host-side port for trusted scripts (non-default to avoid races)
+)
 
 
 class AgentEnvironment:
@@ -138,7 +148,8 @@ class AgentEnvironment:
 
         # Don't pass internal credential blobs as container env vars
         environment = {k: v for k, v in self.env.items() if not k.startswith("_")}
-        extra_hosts = {"host.docker.internal": "host-gateway"}
+        # No extra_hosts — Kali must not resolve host.docker.internal,
+        # forcing all ADB traffic through the filtering proxy.
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
 
@@ -167,7 +178,6 @@ class AgentEnvironment:
                 name=container_name,
                 command=command,
                 environment=environment,
-                extra_hosts=extra_hosts,
                 network=network,
                 volumes=volumes,
                 ports={f"{AGENT_HOST_PORT}/tcp": AGENT_HOST_PORT},
@@ -695,17 +705,131 @@ def create_docker_network(network_name: str = "shared_net") -> None:
         logger.info(f"Created Docker network '{network_name}'")
 
 
-def _start_adb_proxy() -> None:
-    """Start the ADB filtering proxy sidecar container.
+def create_adb_network() -> None:
+    """Create the ADB network for proxy-to-server isolation.
 
-    The proxy sits on ``shared_net`` between the kali container and the
-    host ADB server.  It filters ADB protocol messages, blocking
-    ``root:``, ``unroot:``, and ``shell:su``.
+    Kali is NOT on this network — it can only reach ADB through the proxy
+    on shared_net.  adb-server, adb-proxy, and (in container mode)
+    emulator-container are attached.
     """
     client = docker.from_env()
+    try:
+        client.networks.get(ADB_NET)
+        logger.info(f"Docker network '{ADB_NET}' already exists")
+    except docker.errors.NotFound:
+        client.networks.create(ADB_NET, driver="bridge")
+        logger.info(f"Created Docker network '{ADB_NET}'")
 
-    # Remove any stale proxy container
-    _stop_adb_proxy()
+
+def _stop_container(client, name: str) -> None:
+    """Stop and remove a container by name, ignoring if it doesn't exist."""
+    try:
+        c = client.containers.get(name)
+        c.stop(timeout=5)
+        c.remove(force=True)
+        logger.info(f"Stopped and removed container '{name}'")
+    except docker.errors.NotFound:
+        pass
+    except Exception as e:
+        logger.warning(f"Error stopping container '{name}': {e}")
+
+
+def _start_adb_server() -> None:
+    """Start the dedicated ADB server container on ``adb_net``.
+
+    The server connects to the emulator (container or native) via
+    ``adb connect`` and publishes ``127.0.0.1:15037`` for trusted
+    host-side scripts.  Kali cannot reach it — only the proxy can.
+    """
+    client = docker.from_env()
+    _stop_container(client, ADB_SERVER_CONTAINER)
+
+    # Build image if not present (fast — lightweight Dockerfile)
+    try:
+        client.images.get(ADB_SERVER_IMAGE)
+    except docker.errors.ImageNotFound:
+        dockerfile_dir = str(Path(__file__).resolve().parent.parent / "utils")
+        logger.info(f"Building {ADB_SERVER_IMAGE}...")
+        client.images.build(
+            path=dockerfile_dir,
+            dockerfile="Dockerfile.adb-server",
+            tag=ADB_SERVER_IMAGE,
+            rm=True,
+        )
+
+    # Kill any stray host ADB server on the trusted port (pitfall #5)
+    subprocess.run(
+        ["adb", "kill-server"],
+        env={**os.environ, "ANDROID_ADB_SERVER_PORT": str(ADB_TRUSTED_PORT)},
+        capture_output=True,
+    )
+
+    # Detect emulator mode to determine adb connect target
+    container_mode = False
+    try:
+        client.containers.get("emulator-container")
+        container_mode = True
+    except docker.errors.NotFound:
+        pass
+
+    if container_mode:
+        connect_target = "emulator-container:5555"
+    else:
+        connect_target = "host.docker.internal:5555"
+
+    extra_hosts = {}
+    if not container_mode:
+        extra_hosts = {"host.docker.internal": "host-gateway"}
+
+    startup = (
+        f"adb -a start-server"
+        f" && adb connect {connect_target}"
+        " && adb wait-for-device"
+        " && echo 'ADB_SERVER_READY'"
+        " && sleep infinity"
+    )
+
+    # adb_net is non-internal so port publishing and host access work.
+    # Kali is NOT on adb_net — only the proxy bridges both networks.
+    logger.info(f"Starting ADB server (connect target: {connect_target})...")
+    server = client.containers.run(
+        image=ADB_SERVER_IMAGE,
+        name=ADB_SERVER_CONTAINER,
+        command=["bash", "-c", startup],
+        detach=True,
+        network=ADB_NET,
+        ports={"5037/tcp": ("127.0.0.1", ADB_TRUSTED_PORT)},
+        extra_hosts=extra_hosts or None,
+    )
+
+    # Wait for ADB server to become ready
+    import time
+
+    for _ in range(60):
+        server.reload()
+        if server.status != "running":
+            raise RuntimeError("adb-server container exited unexpectedly")
+        logs = server.logs().decode(errors="replace")
+        if "ADB_SERVER_READY" in logs:
+            break
+        time.sleep(1)
+    else:
+        raise RuntimeError("adb-server did not become ready within 60s")
+
+    logger.info(
+        f"ADB server ready on {ADB_NET} "
+        f"(127.0.0.1:{ADB_TRUSTED_PORT} -> :{ADB_PROXY_PORT})"
+    )
+
+
+def _start_adb_proxy() -> None:
+    """Start the ADB filtering proxy on ``shared_net`` + ``adb_net``.
+
+    Upstream is always ``adb-server:5037`` on ``adb_net``.
+    Kali reaches ``adb-proxy:5037`` on ``shared_net`` (filtered).
+    """
+    client = docker.from_env()
+    _stop_container(client, ADB_PROXY_CONTAINER)
 
     proxy_script = (
         Path(__file__).resolve().parent.parent / "utils" / "adb_filter_proxy.py"
@@ -720,8 +844,15 @@ def _start_adb_proxy() -> None:
         command="python3 /opt/adb_filter_proxy.py",
         detach=True,
         network="shared_net",
-        extra_hosts={"host.docker.internal": "host-gateway"},
     )
+
+    # Connect proxy to adb_net so it can reach adb-server
+    try:
+        adb_network = client.networks.get(ADB_NET)
+        adb_network.connect(proxy_container)
+        logger.info(f"Connected {ADB_PROXY_CONTAINER} to {ADB_NET}")
+    except docker.errors.NotFound:
+        logger.warning(f"Network {ADB_NET} not found — proxy on shared_net only")
 
     # Copy the filter script and shared patterns into the container
     import tarfile as _tarfile
@@ -739,23 +870,16 @@ def _start_adb_proxy() -> None:
     proxy_container.restart()
 
     logger.info(
-        f"ADB proxy sidecar started "
-        f"(:{ADB_PROXY_PORT} -> host.docker.internal:{ADB_PROXY_PORT})"
+        f"ADB proxy started on shared_net + {ADB_NET} "
+        f"(:{ADB_PROXY_PORT} -> {ADB_SERVER_CONTAINER}:{ADB_PROXY_PORT})"
     )
 
 
 def _stop_adb_proxy() -> None:
-    """Stop and remove the ADB proxy sidecar container if it exists."""
+    """Stop and remove the ADB proxy and ADB server containers."""
     client = docker.from_env()
-    try:
-        container = client.containers.get(ADB_PROXY_CONTAINER)
-        container.stop(timeout=5)
-        container.remove(force=True)
-        logger.info("ADB proxy sidecar stopped and removed")
-    except docker.errors.NotFound:
-        pass
-    except Exception as e:
-        logger.warning(f"Error stopping ADB proxy: {e}")
+    _stop_container(client, ADB_PROXY_CONTAINER)
+    _stop_container(client, ADB_SERVER_CONTAINER)
 
 
 def _disable_emulator_root() -> None:
@@ -769,31 +893,30 @@ def _disable_emulator_root() -> None:
 
     This must run *before* ``adb unroot`` drops our ability to do root ops.
     """
-    try:
-        # Ensure we have root for the setup steps
-        subprocess.run(["adb", "root"], capture_output=True, timeout=10)
-        subprocess.run(["adb", "wait-for-device"], capture_output=True, timeout=30)
+    # Route through the trusted ADB server (port 15037), bypassing the proxy
+    env = {**os.environ, "ANDROID_ADB_SERVER_PORT": str(ADB_TRUSTED_PORT)}
 
-        # Disable su binary via bind mount
-        subprocess.run(
-            [
-                "adb",
-                "shell",
-                "touch /data/local/tmp/.fake_su"
-                " && chmod 000 /data/local/tmp/.fake_su"
-                " && mount --bind /data/local/tmp/.fake_su /system/xbin/su",
-            ],
-            capture_output=True,
-            timeout=10,
+    def _adb(*args, **kwargs):
+        kwargs.setdefault("capture_output", True)
+        kwargs.setdefault("timeout", 10)
+        return subprocess.run(["adb", *args], env=env, **kwargs)
+
+    try:
+        _adb("root")
+        _adb("wait-for-device", timeout=30)
+
+        _adb(
+            "shell",
+            "touch /data/local/tmp/.fake_su"
+            " && chmod 000 /data/local/tmp/.fake_su"
+            " && mount --bind /data/local/tmp/.fake_su /system/xbin/su",
         )
 
-        # Drop root
-        subprocess.run(["adb", "unroot"], capture_output=True, timeout=10)
+        _adb("unroot")
     except Exception as e:
         logger.warning(f"Failed to fully disable emulator root: {e}")
-        # Still try to unroot even if bind mount failed
         try:
-            subprocess.run(["adb", "unroot"], capture_output=True, timeout=10)
+            _adb("unroot")
         except Exception:
             pass
 
@@ -864,10 +987,12 @@ def setup_agent_environment(
     Returns:
         AgentEnvironment instance
     """
-    # Create shared_net docker network
+    # Create docker networks for isolation
     create_docker_network()
+    create_adb_network()
 
-    # Start ADB filtering proxy sidecar on shared_net
+    # Start ADB server on adb_net, then proxy bridging shared_net and adb_net
+    _start_adb_server()
     _start_adb_proxy()
 
     # Drop root on the emulator (setup phase already injected certs as root)
