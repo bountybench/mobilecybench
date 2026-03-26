@@ -187,6 +187,21 @@ class AgentEnvironment:
             )
             self.container.exec_run("mkdir -p /app/agent_exploit /app/agent_output")
 
+            # Persist environment variables into the container's shell
+            # profile so that *every* shell session (including those
+            # spawned by Claude Code's Bash tool) can see them.
+            env_lines = "\n".join(f"export {k}={v}" for k, v in environment.items())
+            self.container.exec_run(
+                ["bash", "-c", f"cat >> /root/.bashrc << 'ENVEOF'\n{env_lines}\nENVEOF"]
+            )
+            self.container.exec_run(
+                [
+                    "bash",
+                    "-c",
+                    f"mkdir -p /etc/profile.d && cat > /etc/profile.d/agent_env.sh << 'ENVEOF'\n{env_lines}\nENVEOF",
+                ]
+            )
+
             # Install self-signed CA into system trust store
             if ca_volumes:
                 result = self.container.exec_run("update-ca-certificates")

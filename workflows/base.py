@@ -55,7 +55,11 @@ class Workflow(ABC):
 
         agent_mode = self.config.agent_mode
         workflow = self.config.workflow
-        include_ssrf = bool(self.metadata.get("container_names"))
+        include_ssrf = workflow == "discovery" and bool(
+            self.metadata.get("container_names")
+        )
+
+        additional_context = self.metadata.get("additional_info")
 
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
 
@@ -67,11 +71,13 @@ class Workflow(ABC):
                 model=self.config.model,
                 timeout_ms=self.config.agent_timeout * 1000,
                 app_server=self.metadata.get("app_server"),
+                emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
                 username=self.metadata.get("username"),
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
+                additional_context=additional_context,
             )
         elif agent_mode == "codex":
             from agent.codex_agent import CodexAgent
@@ -79,10 +85,13 @@ class Workflow(ABC):
             self.agent = CodexAgent(
                 app_name=self.app_name,
                 app_server=self.metadata.get("app_server"),
+                emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
                 username=self.metadata.get("username"),
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
+                workflow=workflow,
+                additional_context=additional_context,
             )
         else:
             from agent.custom_agent import CustomAgent
@@ -93,7 +102,9 @@ class Workflow(ABC):
                 max_model_response_tokens=self.config.max_model_response_tokens,
                 screenshot_enabled=self.config.screenshot_mode,
                 app_name=self.app_name,
+                additional_context=additional_context,
                 app_server=self.metadata.get("app_server"),
+                emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
                 username=self.metadata.get("username"),
                 password=self.metadata.get("password"),
@@ -172,18 +183,44 @@ class Workflow(ABC):
 
     # -- Shared replay helpers (used by exploit & detection workflows) --------
 
-    def _restart_runtime(self, apk_path: Path, prepare_app_hook: Path = None) -> None:
+    def _restart_runtime(
+        self,
+        apk_path: Path,
+        prepare_app_hook: Path = None,
+        *,
+        inject_flags: bool = False,
+        start_ssrf: bool = False,
+    ) -> None:
         """Restart emulator and app servers with the given APK.
 
         Args:
             apk_path: Relative path to the APK within app_dir.
             prepare_app_hook: Optional shell script to run after install.
+            inject_flags: Whether to inject hidden flags for probe evaluation.
+            start_ssrf: Whether to start the SSRF listener.
         """
         from utils.command_executor import CommandExecutor
         from utils.emulator_certs import inject_system_ca
         from utils.setup_utils import install_app_and_setup_backend
 
         logger.info(f"Restarting runtime with APK: {apk_path}")
+
+        # Tear down backend containers so they start with clean state.
+        # Without this, Docker containers persist across emulator restarts
+        # and retain any state changes the agent made (modified items,
+        # created users, changed configs, etc.).
+        compose_file = self.app_dir / "docker-compose.yml"
+        if compose_file.exists():
+            import subprocess as _sp
+
+            logger.info("Tearing down backend containers for clean replay...")
+            _sp.run(
+                ["docker", "compose", "down", "--volumes", "--remove-orphans"],
+                cwd=self.app_dir,
+                capture_output=True,
+                timeout=60,
+            )
+
         self.emulator.restart()
         self.emulator.wait_until_ready(
             timeout=self.config.emulator_boot_timeout_seconds
@@ -194,7 +231,8 @@ class Workflow(ABC):
             self.emulator,
             self.project_root,
             apk_path=apk_path,
-            inject_flags=False,
+            inject_flags=inject_flags,
+            start_ssrf=start_ssrf,
             build_command_timeout=self.config.build_command_timeout,
         )
 
@@ -260,10 +298,36 @@ class Workflow(ABC):
 
         logger.info(f"Exploit replay exit_code={proc.returncode}")
 
+        # Persist replay evidence files
+        stdout_path = output_dir / "stdout.txt"
+        stderr_path = output_dir / "stderr.txt"
+        evidence_path = output_dir / "replay_evidence.log"
+
+        stdout_path.write_text(stdout, encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+
+        # Build evidence log: stdout + decodable text from agent_output
+        evidence_parts = []
+        if stdout:
+            evidence_parts.append(f"=== stdout ===\n{stdout}")
+        agent_output = output_dir / "agent_output"
+        if agent_output.is_dir():
+            for fpath in sorted(agent_output.rglob("*")):
+                if fpath.is_file():
+                    try:
+                        text = fpath.read_text(encoding="utf-8", errors="strict")
+                        evidence_parts.append(
+                            f"=== {fpath.relative_to(output_dir)} ===\n{text}"
+                        )
+                    except (UnicodeDecodeError, OSError):
+                        pass
+        evidence_path.write_text("\n".join(evidence_parts), encoding="utf-8")
+
         return {
             "replay_exit_code": proc.returncode,
             "replay_stdout": stdout,
             "replay_stderr": "",
+            "replay_evidence_path": str(evidence_path),
             "image": exploit_image,
         }
 

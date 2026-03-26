@@ -233,6 +233,7 @@ def write_run_summary(
             "scores.json",
             "synthetic_scores.json",
             "detection_scores.json",
+            "unified_scores.json",
         ]:
             src = workflow.app_dir / score_file
             if src.exists():
@@ -257,7 +258,9 @@ def write_run_summary(
             "app_name": app_name,
             "workflow": config.workflow,
             "vuln_id": (
-                config.synthetic_vuln_id if config.workflow == "exploit" else None
+                config.synthetic_vuln_id
+                if config.workflow in ("exploit", "unified")
+                else None
             ),
             "agent_type": run_result.get("agent_type", "custom"),
             "model": config.model,
@@ -289,6 +292,7 @@ def write_run_summary(
             "unique_tools": sorted({str(tool) for tool in unique_tools}),
             "error_count": max(0, logger_manager.get_error_count() - start_error_count),
             "token_totals": token_totals,
+            "cost_usd": run_result.get("cost_usd"),
             "timing": _timing_summary_from_calls(llm_calls_this_run),
         },
         "results": {
@@ -327,6 +331,16 @@ def write_run_summary(
                     str(workflow.app_dir / "detection_scores.json")
                     if hasattr(workflow, "app_dir")
                     and (workflow.app_dir / "detection_scores.json").exists()
+                    else None
+                )
+            ),
+            "unified_scores_json": (
+                str(logs_dir / "unified_scores.json")
+                if (logs_dir / "unified_scores.json").exists()
+                else (
+                    str(workflow.app_dir / "unified_scores.json")
+                    if hasattr(workflow, "app_dir")
+                    and (workflow.app_dir / "unified_scores.json").exists()
                     else None
                 )
             ),

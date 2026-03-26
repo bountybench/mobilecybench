@@ -29,6 +29,7 @@ from workflows import (
     DetectionWorkflow,
     DiscoveryWorkflow,
     ExploitWorkflow,
+    UnifiedWorkflow,
     Workflow,
 )  # noqa: E402
 
@@ -98,20 +99,25 @@ def run_interactive_shell(app_name: str) -> dict:
     return {"status": "completed", "commands_executed": command_count}
 
 
-def _run_gold_exploit(workflow: "ExploitWorkflow", logs_dir: Path) -> dict:
+def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     """Run the gold (reference) exploit instead of the LLM agent.
 
-    Copies the known-good exploit_files from the synthetic vulnerability
-    directory into the kali container (so save_artifacts can extract them),
-    then tears down the kali container and runs the normal evaluation
-    pipeline — which replays exploit.sh in its own fresh container.
+    Copies the known-good exploit files into the kali container (so
+    save_artifacts can extract them), then tears down the kali container
+    and runs the normal evaluation pipeline.
+
+    For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
+    For unified workflow: uses reference_exploit/
     """
-    gold_dir = (
-        workflow.app_dir
-        / "synthetic_vulnerabilities"
-        / workflow.vuln_id
-        / "exploit_files"
-    )
+    if workflow.config.workflow == "unified":
+        gold_dir = workflow.app_dir / "reference_exploit"
+    else:
+        gold_dir = (
+            workflow.app_dir
+            / "synthetic_vulnerabilities"
+            / workflow.vuln_id
+            / "exploit_files"
+        )
     if not gold_dir.exists():
         raise FileNotFoundError(f"Gold exploit directory not found: {gold_dir}")
 
@@ -185,6 +191,8 @@ def create_workflow(
     Returns:
         Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
     """
+    if config.workflow == "unified":
+        return UnifiedWorkflow(config, app_name, project_root)
     if config.workflow == "exploit":
         return ExploitWorkflow(config, app_name, project_root)
     if config.workflow == "detection":

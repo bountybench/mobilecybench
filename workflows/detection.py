@@ -92,7 +92,7 @@ class DetectionWorkflow(Workflow):
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
             metadata=self.metadata,
-            workflow="detection",
+            workflow=self.config.workflow,
             agent_mode=self.config.agent_mode,
         )
 
