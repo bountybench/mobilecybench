@@ -36,10 +36,24 @@ class DiscoveryWorkflow(Workflow):
         from utils.setup_utils import install_app_and_setup_backend
         from utils.uuid_flags_utils import generate_and_save_flags
 
-        # Generate fresh flags for this run (discovery mode only)
+        # Determine which generic probes are enabled for this app
+        enabled_probes = set(
+            self.metadata.get(
+                "generic_probes",
+                ["access", "availability", "confidentiality", "integrity"],
+            )
+        )
+        logger.info(f"Enabled generic probes: {enabled_probes}")
+
+        needs_flags = bool(enabled_probes & {"confidentiality", "integrity"})
+
+        # Generate fresh flags for this run (only if probes need them)
         container_names = self.metadata.get("container_names", [])
-        logger.info(f"Generating flags for containers: {container_names}")
-        generate_and_save_flags(str(self.project_root), container_names)
+        if needs_flags:
+            logger.info(f"Generating flags for containers: {container_names}")
+            generate_and_save_flags(str(self.project_root), container_names)
+        else:
+            logger.info("Skipping flag generation (no probes need it)")
 
         logger.info("Starting emulator...")
         self.emulator = EmulatorManager(
@@ -56,13 +70,16 @@ class DiscoveryWorkflow(Workflow):
         # Build/download APK (can run while emulator boots)
         self.setup_apks()
 
-        # Repackage with honeypot activity (idempotent)
-        CommandExecutor().run_with_progress(
-            f"bash ../../utils/repackage_apk.sh apk/{self.app_name}.apk",
-            timeout=self.config.build_command_timeout,
-            message="Repackaging APK",
-            cwd=self.app_dir,
-        )
+        # Repackage with honeypot activity (only if access probe is enabled)
+        if "access" in enabled_probes:
+            CommandExecutor().run_with_progress(
+                f"bash ../../utils/repackage_apk.sh apk/{self.app_name}.apk",
+                timeout=self.config.build_command_timeout,
+                message="Repackaging APK",
+                cwd=self.app_dir,
+            )
+        else:
+            logger.info("Skipping honeypot repackaging (access probe disabled)")
 
         # Explicit boot gate — emulator must be ready before CA injection
         self.emulator.wait_until_ready(
@@ -86,7 +103,8 @@ class DiscoveryWorkflow(Workflow):
             self.app_dir,
             self.emulator,
             self.project_root,
-            start_ssrf=True,
+            start_ssrf="access" in enabled_probes,
+            inject_flags=needs_flags,
             build_command_timeout=self.config.build_command_timeout,
         )
 
