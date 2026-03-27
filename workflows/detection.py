@@ -159,7 +159,7 @@ class DetectionWorkflow(Workflow):
         security_patch = self.app_dir / "security.patch"
         logger.info("Applying security.patch to codebase for hardened phase")
         subprocess.run(
-            ["git", "apply", str(security_patch)],
+            ["git", "apply", "--allow-empty", str(security_patch)],
             cwd=codebase_dir,
             check=True,
         )
