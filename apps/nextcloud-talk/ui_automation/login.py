@@ -88,6 +88,12 @@ def is_logged_in(d):
     return False
 
 
+def on_ssl_cert_dialog(d):
+    return d(
+        resourceId="android:id/alertTitle", text="Check out the certificate"
+    ).exists
+
+
 def on_server_url_screen(d):
     return d(resourceId=f"{PACKAGE}:id/serverEntryTextInputEditText").exists
 
@@ -199,11 +205,31 @@ def handle_server_url(d, server_url):
         d,
         arrow,
         lambda: current_package(d) == BROWSER_PACKAGE
-        or on_browser_login_handoff_screen(d),
+        or on_browser_login_handoff_screen(d)
+        or on_ssl_cert_dialog(d),
         timeout=30,
     ):
         log("ERROR: Browser handoff did not start after submitting server URL")
         sys.exit(1)
+
+    # Accept self-signed certificate if prompted
+    if on_ssl_cert_dialog(d):
+        log("Accepting SSL certificate")
+        d(resourceId="android:id/button1", text="Yes").click()
+        time.sleep(2)
+        # After accepting, the app retries the connection — tap arrow again
+        if on_server_url_screen(d):
+            arrow = d(resourceId=f"{PACKAGE}:id/text_input_end_icon")
+            if not click_then_expect(
+                d,
+                arrow,
+                lambda: current_package(d) == BROWSER_PACKAGE
+                or on_browser_login_handoff_screen(d),
+                timeout=30,
+            ):
+                log("ERROR: Browser handoff did not start after accepting certificate")
+                sys.exit(1)
+
     log("Server URL submitted")
 
 
@@ -214,18 +240,22 @@ def handle_connect_page(d):
     while time.time() < deadline:
         handle_chrome_first_run(d)
 
-        if on_login_form(d):
-            log("Login form already visible")
+        if on_login_form(d) or on_grant_access_page(d):
+            log("Login form or grant page already visible")
             return
 
         if on_connect_page(d):
             login_btn = d(text="Log in", className="android.widget.Button")
+            # Chrome may have a cached session — grant page can appear directly
             if not click_then_expect(
-                d, login_btn, lambda: on_login_form(d), timeout=20
+                d,
+                login_btn,
+                lambda: on_login_form(d) or on_grant_access_page(d),
+                timeout=20,
             ):
                 log("ERROR: Login form did not appear")
                 sys.exit(1)
-            log("Login form loaded")
+            log("Login form or grant page loaded")
             return
 
         time.sleep(1)
@@ -237,6 +267,11 @@ def handle_connect_page(d):
 def handle_login_form(d, username, password):
     """Fill and submit the browser login form."""
     log("Step 3: Filling login form")
+
+    # Chrome may have a cached session — skip if already on grant page
+    if on_grant_access_page(d):
+        log("Grant page already visible (cached session), skipping login form")
+        return
 
     if not wait_for_condition(lambda: on_login_form(d), timeout=20):
         log("ERROR: Login form is not visible")

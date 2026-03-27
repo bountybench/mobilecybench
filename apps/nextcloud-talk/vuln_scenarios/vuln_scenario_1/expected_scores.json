@@ -18,13 +18,7 @@
   },
   "confidentiality_details": {
     "score": 1,
-    "admin_password": 1,
-    "user_b_password": 1,
-    "user_b_message": 1,
-    "admin_file_contents": 1,
-    "admin_file_name": 1,
-    "user_b_file_contents": 1,
-    "user_b_file_name": 1
+    "success": 1
   },
   "integrity_details": {
     "score": 0,
