@@ -88,3 +88,9 @@
 [submodule "apps/moememos/codebase"]
 	path = apps/moememos/codebase
 	url = ../../cy-suite/MoeMemosAndroid.git
+[submodule "apps/jitsi-meet/codebase"]
+	path = apps/jitsi-meet/codebase
+	url = https://github.com/cy-suite/jitsi-meet.git
+[submodule "apps/jitsi-meet/jitsi-docker"]
+	path = apps/jitsi-meet/jitsi-docker
+	url = https://github.com/cy-suite/jitsi-meet-docker.git
