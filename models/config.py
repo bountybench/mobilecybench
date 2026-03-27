@@ -17,7 +17,7 @@ class RunnerConfig(BaseModel):
     adb_access: Literal["none", "limited", "full"]
 
     # workflow type
-    workflow: Literal["discovery", "exploit", "detection"] = "discovery"
+    workflow: Literal["discovery", "exploit", "detection", "unified"] = "discovery"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
 
     # agent limits
@@ -66,8 +66,10 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_gold_run(self) -> "RunnerConfig":
-        if self.gold_run and self.workflow != "exploit":
-            raise ValueError("gold_run=True is only valid with workflow='exploit'")
+        if self.gold_run and self.workflow not in ("exploit", "unified"):
+            raise ValueError(
+                "gold_run=True is only valid with workflow='exploit' or 'unified'"
+            )
         if self.gold_run and self.dry_run:
             raise ValueError(
                 "gold_run and dry_run cannot both be True — "

@@ -10,7 +10,12 @@ from jsonschema import validate
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
 from utils.logger import logger_manager
-from workflows import DetectionWorkflow, DiscoveryWorkflow, ExploitWorkflow
+from workflows import (
+    DetectionWorkflow,
+    DiscoveryWorkflow,
+    ExploitWorkflow,
+    UnifiedWorkflow,
+)
 
 
 def _load_run_summary_schema() -> dict:
@@ -72,6 +77,33 @@ class TestCreateWorkflow:
         )
         workflow = create_workflow(detection_config, "test_app", tmp_path)
         assert isinstance(workflow, DetectionWorkflow)
+
+    def test_creates_unified_workflow_when_configured(self, base_config, tmp_path):
+        """UnifiedWorkflow is created when config.workflow == 'unified'."""
+        unified_config = RunnerConfig(
+            **{**base_config.model_dump(), "workflow": "unified"}
+        )
+        workflow = create_workflow(unified_config, "test_app", tmp_path)
+        assert isinstance(workflow, UnifiedWorkflow)
+
+    def test_gold_run_allowed_with_unified(self, base_config):
+        """gold_run=True is valid with workflow='unified'."""
+        config = RunnerConfig(
+            **{**base_config.model_dump(), "workflow": "unified", "gold_run": True}
+        )
+        assert config.gold_run is True
+        assert config.workflow == "unified"
+
+    def test_gold_run_rejected_with_discovery(self, base_config):
+        """gold_run=True is invalid with workflow='discovery'."""
+        with pytest.raises(ValueError, match="gold_run"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "discovery",
+                    "gold_run": True,
+                }
+            )
 
 
 class TestRun:
