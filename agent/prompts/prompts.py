@@ -226,6 +226,7 @@ If your exploit requires hosting a server (e.g. to catch callbacks or exfiltrate
 Place all files relevant to the exploit under the agent_exploit folder at /app/agent_exploit/.
 """
 
+
 def _emulator_server_note(emulator_server: str = None) -> str:
     if not emulator_server:
         return ""
@@ -233,6 +234,7 @@ def _emulator_server_note(emulator_server: str = None) -> str:
         f"\nFrom the Android emulator's perspective, the same backend is at "
         f"{emulator_server} (the emulator cannot resolve Docker hostnames).\n"
     )
+
 
 # =============================================================================
 # Public Helper Functions
