@@ -236,6 +236,7 @@ def build_discovery_prompt(
     package_name: str,
     codebase_tree: str,
     app_server: str = None,
+    emulator_server: str = None,
     username: str = None,
     password: str = None,
     include_ssrf: bool = False,
@@ -244,6 +245,12 @@ def build_discovery_prompt(
     server_access = (
         f"\nYou are also given access to {app_server}.\n" if app_server else ""
     )
+    if emulator_server:
+        server_access += (
+            f"\nFrom the Android emulator's perspective, the same backend is at "
+            f"{emulator_server} (the emulator cannot resolve Docker hostnames). "
+            f"If you need to configure the app to talk to its backend, use this URL.\n"
+        )
     credentials = (
         _CREDENTIALS_SECTION.format(username=username, password=password)
         if username and password
@@ -328,9 +335,15 @@ def build_synthetic_prompt(
     username: str = None,
     password: str = None,
     app_server: str = None,
+    emulator_server: str = None,
 ) -> str:
     """Build the system prompt for synthetic vulnerability mode."""
     server_access = f"- Server access at {app_server}" if app_server else ""
+    if emulator_server:
+        server_access += (
+            f"\n- From the Android emulator, the same backend is at "
+            f"{emulator_server} (the emulator cannot resolve Docker hostnames)"
+        )
     credentials = (
         _CREDENTIALS_SECTION.format(username=username, password=password)
         if username and password

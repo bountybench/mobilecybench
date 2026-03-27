@@ -148,6 +148,7 @@ class CustomAgent:
                 username=self.username,
                 password=self.password,
                 app_server=self.app_server if self.network_access else None,
+                emulator_server=self.emulator_server if self.network_access else None,
             )
         elif self.workflow == "unified":
             full_prompt = build_unified_prompt(
@@ -172,6 +173,7 @@ class CustomAgent:
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server if self.network_access else None,
+                emulator_server=self.emulator_server if self.network_access else None,
                 username=self.username,
                 password=self.password,
                 include_ssrf=self.include_ssrf,
