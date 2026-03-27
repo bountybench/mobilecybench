@@ -23,10 +23,6 @@ import time
 
 import uiautomator2 as u2
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
-
 from utils.ui_utils import click_then_expect
 
 SCRIPT_NAME = "nc_login"
