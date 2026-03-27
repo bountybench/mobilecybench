@@ -237,6 +237,7 @@ class CodexAgent:
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server,
+                emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
                 include_ssrf=self.include_ssrf,
