@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/cy-suite/nextcloud-talk-android.git",
-  "commit_version": "dc51a3c1a",
+  "commit_version": "0bd0fbd07",
   "sdk": "35",
   "java": "17",
   "emulator_server": "https://10.0.2.2:8080",
