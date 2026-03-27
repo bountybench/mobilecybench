@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-Log in to Nextcloud Talk on the emulator via the WebView login flow.
+Log in to Nextcloud Talk on the emulator via the browser-based login flow.
 
 Flow:
-1. Server URL screen (native) → enter URL, tap arrow
-2. WebView "Connect to your account" → tap "Log in"
-3. WebView login form → fill username/password, tap "Log in"
-4. WebView "Grant access" → tap "Grant access"
-5. Main conversation list (native) → verify logged in
+1. Server URL screen (native) -> enter URL, tap arrow
+2. Browser handoff (native) -> wait for Chrome
+3. Chrome connect page -> tap "Log in"
+4. Chrome login form -> fill username/password, tap "Log in"
+5. Chrome grant page -> tap "Grant access"
+6. Main conversation list (native) -> verify logged in
 
 Usage:
     python login.py --username admin --password secretpass
     python login.py --username admin --user-key admin_password
 """
+
 import argparse
 import json
 import os
@@ -21,10 +23,15 @@ import time
 
 import uiautomator2 as u2
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
 from utils.ui_utils import click_then_expect
 
 SCRIPT_NAME = "nc_login"
 PACKAGE = "com.nextcloud.talk2"
+BROWSER_PACKAGE = "com.android.chrome"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_SECRETS_PATH = os.path.join(SCRIPT_DIR, "../secrets.json")
@@ -46,6 +53,10 @@ def get_default_server_url():
 
 def log(msg):
     print(f"[{SCRIPT_NAME}] {msg}", file=sys.stderr, flush=True)
+
+
+def current_package(d):
+    return d.app_current().get("package", "")
 
 
 def parse_args():
@@ -85,6 +96,101 @@ def on_server_url_screen(d):
     return d(resourceId=f"{PACKAGE}:id/serverEntryTextInputEditText").exists
 
 
+def on_browser_login_handoff_screen(d):
+    return (
+        current_package(d) == PACKAGE
+        and d(resourceId=f"{PACKAGE}:id/cancel_login_btn").exists
+    )
+
+
+def on_chrome_welcome_screen(d):
+    return (
+        current_package(d) == BROWSER_PACKAGE
+        and d(text="Use without an account", className="android.widget.Button").exists
+    )
+
+
+def on_chrome_notifications_dialog(d):
+    return (
+        current_package(d) == BROWSER_PACKAGE
+        and d(
+            resourceId=f"{BROWSER_PACKAGE}:id/negative_button", text="No thanks"
+        ).exists
+    )
+
+
+def on_connect_page(d):
+    return (
+        current_package(d) == BROWSER_PACKAGE
+        and d(text="Log in", className="android.widget.Button").exists
+    )
+
+
+def on_login_form(d):
+    return (
+        current_package(d) == BROWSER_PACKAGE and d(text="Log in to Nextcloud").exists
+    )
+
+
+def on_grant_access_page(d):
+    return (
+        current_package(d) == BROWSER_PACKAGE
+        and d(text="Grant access", className="android.widget.Button").exists
+    )
+
+
+def on_account_connected_page(d):
+    return current_package(d) == BROWSER_PACKAGE and d(text="Account connected").exists
+
+
+def wait_for_condition(condition, timeout=30, interval=1):
+    start = time.time()
+    while time.time() - start < timeout:
+        if condition():
+            return True
+        time.sleep(interval)
+    return False
+
+
+def wait_for_browser(d, timeout=30):
+    log("Waiting for external browser")
+    if not wait_for_condition(
+        lambda: current_package(d) == BROWSER_PACKAGE
+        or on_browser_login_handoff_screen(d),
+        timeout=timeout,
+    ):
+        log("ERROR: Browser login handoff did not appear")
+        sys.exit(1)
+
+    if on_browser_login_handoff_screen(d):
+        if not wait_for_condition(
+            lambda: current_package(d) == BROWSER_PACKAGE, timeout=timeout
+        ):
+            log("ERROR: Chrome did not open after browser handoff screen")
+            sys.exit(1)
+
+    log("External browser opened")
+
+
+def handle_chrome_first_run(d):
+    while True:
+        if on_chrome_welcome_screen(d):
+            log("Chrome first run: choosing 'Use without an account'")
+            d(text="Use without an account", className="android.widget.Button").click()
+            time.sleep(2)
+            continue
+
+        if on_chrome_notifications_dialog(d):
+            log("Chrome first run: dismissing notifications prompt")
+            d(
+                resourceId=f"{BROWSER_PACKAGE}:id/negative_button", text="No thanks"
+            ).click()
+            time.sleep(2)
+            continue
+
+        return
+
+
 def handle_server_url(d, server_url):
     """Enter server URL and submit."""
     log("Step 1: Server URL screen")
@@ -93,71 +199,101 @@ def handle_server_url(d, server_url):
     time.sleep(0.5)
 
     arrow = d(resourceId=f"{PACKAGE}:id/text_input_end_icon")
-    # After tapping arrow, we expect the WebView to load with "Log in" button
-    webview_login = d(text="Log in", className="android.widget.Button")
-    if not click_then_expect(d, arrow, webview_login, timeout=30):
-        log("ERROR: WebView did not load after submitting server URL")
+    if not click_then_expect(
+        d,
+        arrow,
+        lambda: current_package(d) == BROWSER_PACKAGE
+        or on_browser_login_handoff_screen(d),
+        timeout=30,
+    ):
+        log("ERROR: Browser handoff did not start after submitting server URL")
         sys.exit(1)
-    log("Server URL submitted, WebView loaded")
+    log("Server URL submitted")
 
 
 def handle_connect_page(d):
-    """Tap 'Log in' on the 'Connect to your account' WebView page."""
-    log("Step 2: Connect page — tapping 'Log in'")
-    login_btn = d(text="Log in", className="android.widget.Button")
-    # After tapping, we expect the login form with username field
-    user_field = d(resourceId="user", className="android.widget.EditText")
-    if not click_then_expect(d, login_btn, user_field, timeout=15):
-        log("ERROR: Login form did not appear")
-        sys.exit(1)
-    log("Login form loaded")
+    """Tap 'Log in' on the browser connect page."""
+    log("Step 2: Browser connect page")
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        handle_chrome_first_run(d)
+
+        if on_login_form(d):
+            log("Login form already visible")
+            return
+
+        if on_connect_page(d):
+            login_btn = d(text="Log in", className="android.widget.Button")
+            if not click_then_expect(
+                d, login_btn, lambda: on_login_form(d), timeout=20
+            ):
+                log("ERROR: Login form did not appear")
+                sys.exit(1)
+            log("Login form loaded")
+            return
+
+        time.sleep(1)
+
+    log("ERROR: Connect page did not appear in Chrome")
+    sys.exit(1)
 
 
 def handle_login_form(d, username, password):
-    """Fill and submit the WebView login form."""
+    """Fill and submit the browser login form."""
     log("Step 3: Filling login form")
-    user_field = d(resourceId="user", className="android.widget.EditText")
-    user_field.click()
-    time.sleep(0.3)
+
+    if not wait_for_condition(lambda: on_login_form(d), timeout=20):
+        log("ERROR: Login form is not visible")
+        sys.exit(1)
+
+    user_field = d(className="android.widget.EditText", instance=0)
+    pwd_field = d(className="android.widget.EditText", instance=1)
+
+    if not user_field.exists or not pwd_field.exists:
+        log("ERROR: Could not find Chrome login form fields")
+        sys.exit(1)
+
     user_field.set_text(username)
     time.sleep(0.3)
 
-    pwd_field = d(resourceId="password", className="android.widget.EditText")
-    pwd_field.click()
-    time.sleep(0.3)
     pwd_field.set_text(password)
     time.sleep(0.3)
 
-    # Submit via keyboard Enter — the submit button may be behind the keyboard
-    # on smaller screens. Pressing Enter on the password field triggers form submit.
-    d.press("enter")
-    log("Login form submitted")
+    login_btn = d(text="Log in", className="android.widget.Button")
+    if login_btn.exists:
+        if not click_then_expect(
+            d, login_btn, lambda: on_grant_access_page(d), timeout=30
+        ):
+            log("ERROR: Grant access page did not appear after login")
+            sys.exit(1)
+    else:
+        d.press("enter")
+        if not wait_for_condition(lambda: on_grant_access_page(d), timeout=30):
+            log("ERROR: Grant access page did not appear after login")
+            sys.exit(1)
 
-    # Wait for "Grant access" page. After submit, the WebView navigates
-    # server-side (authenticate → redirect → grant page). During this
-    # transition the old page's DOM elements may still be briefly visible,
-    # so we simply poll for the grant button without trying to detect
-    # "form reappeared" (which causes false positives mid-navigation).
-    log("Step 4: Waiting for grant access page")
-    grant_btn = d(text="Grant access", className="android.widget.Button")
-    if not grant_btn.wait(timeout=45):
-        log("ERROR: Grant access page did not appear after login")
-        sys.exit(1)
+    log("Login form submitted")
     log("Grant access page loaded")
 
 
 def handle_grant_access(d):
-    """Tap 'Grant access' to complete the OAuth flow."""
-    log("Step 5: Granting access")
+    """Tap 'Grant access' and return to the app."""
+    log("Step 4: Granting access")
     grant_btn = d(text="Grant access", className="android.widget.Button")
 
-    def main_screen_reached():
-        return is_logged_in(d)
-
-    if not click_then_expect(d, grant_btn, main_screen_reached, timeout=20):
-        log("ERROR: Main screen not reached after granting access")
+    if not click_then_expect(
+        d, grant_btn, lambda: on_account_connected_page(d), timeout=20
+    ):
+        log("ERROR: Account connected page did not appear after granting access")
         sys.exit(1)
-    log("Access granted, main screen reached")
+
+    log("Access granted, returning to app")
+    d.app_start(PACKAGE, wait=True)
+
+    if not wait_for_condition(lambda: is_logged_in(d), timeout=45):
+        log("ERROR: Main screen not reached after returning to app")
+        sys.exit(1)
+    log("Main screen reached")
 
 
 def main():
@@ -181,6 +317,8 @@ def main():
     if on_server_url_screen(d):
         handle_server_url(d, args.server_url)
 
+    wait_for_browser(d)
+    handle_chrome_first_run(d)
     handle_connect_page(d)
     handle_login_form(d, args.username, password)
     handle_grant_access(d)

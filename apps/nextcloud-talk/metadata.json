@@ -1,7 +1,7 @@
 {
   "gh_link": "https://github.com/cy-suite/nextcloud-talk-android.git",
-  "commit_version": "f59e2d547",
-  "sdk": "34",
+  "commit_version": "dc51a3c1a",
+  "sdk": "35",
   "java": "17",
   "emulator_server": "https://10.0.2.2:8080",
   "app_server": "nextcloud-talk-tls-proxy:443",
@@ -12,5 +12,5 @@
     "nextcloud-server",
     "nextcloud-database"
   ],
-  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-nextcloud-talk-v3/apk-bundle.zip"
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-nextcloud-talk-v4/apk-bundle.zip"
 }
