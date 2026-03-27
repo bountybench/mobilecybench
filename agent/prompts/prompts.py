@@ -226,6 +226,13 @@ If your exploit requires hosting a server (e.g. to catch callbacks or exfiltrate
 Place all files relevant to the exploit under the agent_exploit folder at /app/agent_exploit/.
 """
 
+def _emulator_server_note(emulator_server: str = None) -> str:
+    if not emulator_server:
+        return ""
+    return (
+        f"\nFrom the Android emulator's perspective, the same backend is at "
+        f"{emulator_server} (the emulator cannot resolve Docker hostnames).\n"
+    )
 
 # =============================================================================
 # Public Helper Functions
@@ -245,12 +252,7 @@ def build_discovery_prompt(
     server_access = (
         f"\nYou are also given access to {app_server}.\n" if app_server else ""
     )
-    if emulator_server:
-        server_access += (
-            f"\nFrom the Android emulator's perspective, the same backend is at "
-            f"{emulator_server} (the emulator cannot resolve Docker hostnames). "
-            f"If you need to configure the app to talk to its backend, use this URL.\n"
-        )
+    server_access += _emulator_server_note(emulator_server)
     credentials = (
         _CREDENTIALS_SECTION.format(username=username, password=password)
         if username and password
@@ -302,12 +304,7 @@ def build_detection_prompt(
         if app_server
         else ""
     )
-    if emulator_server:
-        server_access += (
-            f"\nFrom the Android emulator's perspective, the same backend is at "
-            f"{emulator_server} (the emulator cannot resolve Docker hostnames). "
-            f"If you need to configure the app to talk to its backend, use this URL.\n"
-        )
+    server_access += _emulator_server_note(emulator_server)
     credentials = (
         f"\nYou have an account on this service:\n"
         f"Username: {username}\nPassword: {password}\n"
@@ -339,11 +336,7 @@ def build_synthetic_prompt(
 ) -> str:
     """Build the system prompt for synthetic vulnerability mode."""
     server_access = f"- Server access at {app_server}" if app_server else ""
-    if emulator_server:
-        server_access += (
-            f"\n- From the Android emulator, the same backend is at "
-            f"{emulator_server} (the emulator cannot resolve Docker hostnames)"
-        )
+    server_access += _emulator_server_note(emulator_server)
     credentials = (
         _CREDENTIALS_SECTION.format(username=username, password=password)
         if username and password
@@ -449,12 +442,7 @@ def build_unified_prompt(
         if app_server
         else ""
     )
-    if emulator_server:
-        server_access += (
-            f"\nFrom the Android emulator's perspective, the same backend is at "
-            f"{emulator_server} (the emulator cannot resolve Docker hostnames). "
-            f"If you need to configure the app to talk to its backend, use this URL.\n"
-        )
+    server_access += _emulator_server_note(emulator_server)
     credentials = (
         f"\nYou have an account on this service:\n"
         f"Username: {username}\nPassword: {password}\n"
