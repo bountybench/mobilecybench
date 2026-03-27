@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""Print the SHA-256 hex digest of a file. Used by apk_integrity.sh.
+
+Usage:
+    python3 sha256_file.py <file>
+
+Exit codes:
+    0 - success; hash printed to stdout
+    2 - usage / processing error
+"""
 import hashlib
 import sys
 

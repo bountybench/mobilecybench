@@ -9,7 +9,11 @@ from dotenv import load_dotenv
 
 from agent.agent_helpers import get_directory_tree
 from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
-from agent.prompts.prompts import build_detect_prompt, build_synthetic_prompt
+from agent.prompts.prompts import (
+    build_detection_prompt,
+    build_discovery_prompt,
+    build_synthetic_prompt,
+)
 from utils.logger import agent_logger, logger, logger_manager
 from utils.run_artifacts import load_schema, utc_now_iso, validate_schema
 
@@ -47,7 +51,7 @@ class ClaudeCodeAgent:
             username: App credentials.
             password: App credentials.
             include_ssrf: Whether to include SSRF instructions.
-            workflow: ``"discovery"`` or ``"exploit"``.
+            workflow: ``"discovery"``, ``"detection"``, or ``"exploit"``.
         """
         self.app_name = app_name
         self.app_server = app_server
@@ -122,7 +126,16 @@ class ClaudeCodeAgent:
                 app_server=self.app_server,
             )
 
-        return build_detect_prompt(
+        if self.workflow == "detection":
+            return build_detection_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server,
+                username=self.username,
+                password=self.password,
+            )
+
+        return build_discovery_prompt(
             package_name=self.package_name,
             codebase_tree=self._initial_tree_context,
             app_server=self.app_server,
@@ -181,8 +194,12 @@ class ClaudeCodeAgent:
                 if result.output_text:
                     parts.append(f"last output: {result.output_text}")
                 msg = " | ".join(parts)
-                agent_logger.error(f"Claude Code execution {status}: {msg}")
-                logger.error(f"Claude Code execution {status}: {msg}")
+                if is_timeout:
+                    agent_logger.info(f"Claude Code execution {status}: {msg}")
+                    logger.info(f"Claude Code execution {status}: {msg}")
+                else:
+                    agent_logger.error(f"Claude Code execution {status}: {msg}")
+                    logger.error(f"Claude Code execution {status}: {msg}")
                 return self._finish_run(
                     turns=effective_turns,
                     status=status,

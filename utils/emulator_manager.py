@@ -2,18 +2,51 @@
 Emulator Lifecycle Manager
 """
 
+import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import time
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger("MobileCyBench.emulator_manager")
 
 EMULATOR_CONTAINER_NAME = "emulator-container"
+
+
+def _parse_port(server_url: str) -> Optional[int]:
+    """Extract port from emulator_server values like 'http://10.0.2.2:8080' or '10.0.2.2:5222'."""
+    if "://" in server_url:
+        parsed = urlparse(server_url)
+        port = parsed.port
+        if port is None:
+            return 443 if parsed.scheme == "https" else 80
+        return port
+    match = re.search(r":(\d+)", server_url)
+    return int(match.group(1)) if match else None
+
+
+def _parse_host_port(app_server: str) -> tuple[Optional[str], Optional[int]]:
+    """Extract host and port from app_server values like 'memos-server:5230' or 'http://server:80'."""
+    if "://" in app_server:
+        parsed = urlparse(app_server)
+        host = parsed.hostname
+        port = parsed.port
+        if port is None:
+            port = 443 if parsed.scheme == "https" else 80
+        return host, port
+    parts = app_server.rsplit(":", 1)
+    if len(parts) == 2:
+        try:
+            return parts[0], int(parts[1])
+        except ValueError:
+            return None, None
+    return None, None
 
 
 class EmulatorState(Enum):
@@ -44,7 +77,10 @@ class EmulatorManager:
         emulator_display: str = "headed",
     ):
         self.emulator_backend = emulator_backend
-        self.emulator_display = emulator_display
+        # Container mode is always headless (no display available)
+        self.emulator_display = (
+            "headless" if emulator_backend == "container" else emulator_display
+        )
         self.project_root = project_root
         self.sdk_version = sdk_version
         self.app_name = app_name
@@ -78,34 +114,30 @@ class EmulatorManager:
             f"MobileCybenchEmulatorAPI{self.sdk_version}_{system_image_suffix}"
         )
 
+        # Base flags shared by all modes (matches CI emulator-options in ci.yml)
+        emulator_args = [
+            str(emulator_bin),
+            "-avd",
+            emulator_name,
+            "-no-snapshot-save",
+            "-wipe-data",
+            "-memory",
+            "2048",
+            "-noaudio",
+            "-no-boot-anim",
+            "-read-only",
+        ]
+
         if self.emulator_display == "headless":
-            emulator_args = [
-                str(emulator_bin),
-                "-avd",
-                emulator_name,
-                "-no-snapshot-save",
-                "-wipe-data",
+            emulator_args += [
                 "-no-window",
                 "-gpu",
-                "off",
-                "-memory",
-                "2048",
-                "-no-audio",
-                "-read-only",
+                "swiftshader",
             ]
         else:
-            emulator_args = [
-                str(emulator_bin),
-                "-avd",
-                emulator_name,
-                "-no-snapshot-save",
-                "-wipe-data",
+            emulator_args += [
                 "-gpu",
                 "host",
-                "-skin",
-                "1080x1920",
-                "-memory",
-                "2048",
             ]
 
         return {
@@ -189,22 +221,15 @@ class EmulatorManager:
         except docker.errors.NotFound:
             pass
 
-        emulator_name = self.emulator_config["emulator_name"]
-        android_home = self.emulator_config["android_home"]
-        emulator_bin = f"{android_home}/emulator/emulator"
-
-        # Always headless in container mode
-        emulator_cmd = (
-            f"{emulator_bin} -avd {emulator_name} "
-            f"-no-snapshot-save -wipe-data -no-window -gpu off "
-            f"-memory 2048 -no-audio -read-only"
-        )
+        # Reuse the args built by _build_emulator_config (always headless)
+        emulator_cmd = " ".join(self.emulator_config["emulator_args"])
 
         # Use a minimal emulator image (much smaller than the orchestrator)
         emulator_image = os.environ.get(
             "EMULATOR_IMAGE", "cybench/mobilecybench-emulator:latest"
         )
 
+        emulator_name = self.emulator_config["emulator_name"]
         logger.info(f"Starting emulator container with image: {emulator_image}")
         logger.info(f"Emulator AVD: {emulator_name}")
 
@@ -233,7 +258,7 @@ class EmulatorManager:
                 network="shared_net",
                 ports={"5037/tcp": 5037},
                 detach=True,
-                environment={"ANDROID_HOME": android_home},
+                environment={"ANDROID_HOME": self.emulator_config["android_home"]},
             )
             logger.info(
                 f"Emulator container started: {self.emulator_container.short_id}"
@@ -729,6 +754,77 @@ class EmulatorManager:
         except Exception as e:
             logger.error(f"Error getting connected devices: {e}")
             return set()
+
+    def setup_port_forwards(self, app_dir: Path) -> None:
+        """Set up socat port forwards inside the emulator container.
+
+        In container mode, Android's 10.0.2.2 routes to the emulator
+        container's loopback. This forwards traffic from the listen port
+        (from emulator_server) to the backend container (from app_server)
+        via Docker DNS on shared_net.
+
+        No-op in native mode (10.0.2.2 already routes to host localhost).
+        """
+        if self.emulator_backend != "container":
+            return
+
+        metadata_path = app_dir / "metadata.json"
+        if not metadata_path.exists():
+            return
+
+        metadata = json.loads(metadata_path.read_text())
+        emulator_server = metadata.get("emulator_server", "")
+        app_server = metadata.get("app_server", "")
+        if not emulator_server or not app_server:
+            logger.debug("No emulator_server/app_server — skipping port forwards")
+            return
+
+        listen_port = _parse_port(emulator_server)
+        if listen_port is None:
+            logger.warning(f"Cannot parse port from emulator_server: {emulator_server}")
+            return
+
+        target_host, target_port = _parse_host_port(app_server)
+        if target_host is None or target_port is None:
+            logger.warning(f"Cannot parse app_server: {app_server}")
+            return
+
+        # Kill any existing socat on this port (idempotent for restarts)
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                EMULATOR_CONTAINER_NAME,
+                "pkill",
+                "-f",
+                f"socat.*{listen_port}",
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+
+        # socat: listen on emulator_server port, forward to app_server host:port
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "-d",
+                EMULATOR_CONTAINER_NAME,
+                "socat",
+                f"TCP-LISTEN:{listen_port},fork,reuseaddr",
+                f"TCP:{target_host}:{target_port}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode == 0:
+            logger.info(
+                f"Port forward: emulator:{listen_port} -> {target_host}:{target_port}"
+            )
+        else:
+            logger.warning(f"Failed socat port forward: {result.stderr}")
 
     def __enter__(self):
         return self

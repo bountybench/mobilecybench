@@ -189,6 +189,7 @@ class Workflow(ABC):
             timeout=self.config.emulator_boot_timeout_seconds
         )
         inject_system_ca(self.project_root)
+        self.emulator.setup_port_forwards(self.app_dir)
         install_app_and_setup_backend(
             self.app_dir,
             self.emulator,
@@ -217,6 +218,8 @@ class Workflow(ABC):
         exploit_runner: Path,
         exploit_image: str,
         app_server: str = None,
+        *,
+        codebase_dir: Path,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
@@ -240,33 +243,57 @@ class Workflow(ABC):
         ]
         if app_server:
             replay_cmd += ["--app-server", app_server]
-        proc = subprocess.run(
+        replay_cmd += ["--codebase-dir", str(codebase_dir)]
+        proc = subprocess.Popen(
             replay_cmd,
             cwd=self.project_root,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
         )
-        stdout = proc.stdout.strip()
-        stderr = proc.stderr.strip()
+        lines = []
+        for line in proc.stdout:
+            line = line.rstrip("\n")
+            lines.append(line)
+            logger.info(f"[replay] {line}")
+        proc.wait()
+        stdout = "\n".join(lines)
 
         logger.info(f"Exploit replay exit_code={proc.returncode}")
-        if stdout:
-            logger.info(f"Exploit replay stdout:\n{stdout}")
-        if stderr:
-            logger.info(f"Exploit replay stderr:\n{stderr}")
 
         return {
             "replay_exit_code": proc.returncode,
             "replay_stdout": stdout,
-            "replay_stderr": stderr,
+            "replay_stderr": "",
             "image": exploit_image,
         }
 
     def cleanup(self) -> None:
-        """Clean up resources (emulator, agent env)."""
+        """Clean up resources (emulator, agent env) and restore codebase."""
         if self.emulator:
             logger.info("Stopping emulator...")
             self.emulator.stop()
         if self.agent_env:
             logger.info("Cleaning up agent environment...")
             self.agent_env.cleanup()
+
+        # Restore codebase to clean state — workflows may apply patches during
+        # setup or evaluate. This is a no-op if codebase is already clean.
+        codebase_dir = self.app_dir / "codebase"
+        if codebase_dir.exists():
+            try:
+                from utils.git_utils import git_restore_clean
+
+                git_restore_clean(codebase_dir)
+            except Exception as e:
+                logger.warning(f"Failed to restore codebase: {e}")
+
+        # Delete agent_codebase — created during setup, needed through evaluate(),
+        # but should not persist between runs.
+        agent_codebase = self.app_dir / "agent_codebase"
+        if agent_codebase.exists():
+            try:
+                shutil.rmtree(agent_codebase)
+                logger.info("Deleted agent_codebase")
+            except Exception as e:
+                logger.warning(f"Failed to delete agent_codebase: {e}")

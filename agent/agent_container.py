@@ -11,6 +11,7 @@ import docker
 import docker.errors
 
 from agent.backend.docker_setup import AGENT_HOST_PORT
+from utils.discovery_honeypot import inject_discovery_honeypot
 from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
@@ -22,6 +23,13 @@ from utils.git_utils import (
 )
 from utils.logger import logger
 
+# ---------------------------------------------------------------------------
+# ADB proxy sidecar constants
+# ---------------------------------------------------------------------------
+ADB_PROXY_CONTAINER = "adb-proxy"
+ADB_PROXY_IMAGE = "python:3.11-slim"
+ADB_PROXY_PORT = 5037
+
 
 class AgentEnvironment:
     def __init__(
@@ -31,8 +39,11 @@ class AgentEnvironment:
         image_name: str,
         env: Dict[str, str],
         commit_id: str,
-        mode: str = None,
+        mode: Optional[str] = None,
+        workflow: str = "discovery",
+        package_name: Optional[str] = None,
         vuln_id: Optional[str] = None,
+        include_git_history: bool = True,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -41,7 +52,10 @@ class AgentEnvironment:
         self.env = env
         self.commit_id = commit_id
         self.mode = mode
+        self.workflow = workflow
+        self.package_name = package_name
         self.vuln_id = vuln_id
+        self.include_git_history = include_git_history
 
         import traceback
 
@@ -128,10 +142,15 @@ class AgentEnvironment:
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
 
+        # Mount self-signed root CA so requests to HTTPS apps' servers will work
+        ca_volumes = self._setup_root_ca()
+
         # Setup agent codebase and get volume mapping
         volumes = None
         try:
             volumes = self._setup_agent_codebase()
+            if ca_volumes:
+                volumes.update(ca_volumes)
 
             # Setup verify_files and agent_output for synthetic vulnerability mode
             if self.vuln_id:
@@ -167,6 +186,16 @@ class AgentEnvironment:
                 "Creating agent_exploit and agent_output directories in container"
             )
             self.container.exec_run("mkdir -p /app/agent_exploit /app/agent_output")
+
+            # Install self-signed CA into system trust store
+            if ca_volumes:
+                result = self.container.exec_run("update-ca-certificates")
+                if result.exit_code == 0:
+                    logger.info("Root CA installed in container trust store")
+                else:
+                    logger.warning(
+                        f"Failed to install root CA: {result.output.decode()}"
+                    )
 
             if self.mode == "codex":
                 logger.info("Logging in to Codex CLI with API key...")
@@ -259,9 +288,9 @@ class AgentEnvironment:
     def _setup_agent_codebase(self):
         """Create a copy of codebase for the agent environment.
 
-        Normal mode: Checkout specific commit, copy with git history.
-        Synthetic vulnerability mode: Copy current state (with patch applied),
-        no git history to prevent agent from seeing the patch was applied.
+        If include_git_history is True: checkout specific commit, copy with full
+        git history. If False: copy current state without git history and
+        initialize a fresh repo.
         """
         original_codebase = self.app_dir / "codebase"
         agent_codebase = self.app_dir / "agent_codebase"
@@ -281,12 +310,9 @@ class AgentEnvironment:
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.vuln_id:
-            # Synthetic vulnerability mode: copy current state without git history
-            logger.info(
-                "Synthetic vuln mode: Copying current codebase state without git history"
-            )
-            # Copy files but ignore .git to prevent agent from seeing patch history
+        if not self.include_git_history:
+            # Copy codebase without git history so agent cannot see prior commits
+            logger.info("Copying codebase without git history")
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
             # Initialize fresh git repo so agent can still use git commands
@@ -315,7 +341,7 @@ class AgentEnvironment:
             )
             logger.info("Created fresh git repo with 'main' and 'dev' branches")
         else:
-            # Normal mode: checkout specific commit and preserve git history
+            # Checkout specific commit and preserve full git history
             # Find the repository root (which contains .git)
             repo_root = original_codebase
             while repo_root.parent != repo_root:
@@ -346,6 +372,26 @@ class AgentEnvironment:
             # Run git_setup_dev_branch in staging directory
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
+
+            if self.workflow == "discovery" and self.package_name:
+                logger.info(
+                    "Injecting discovery honeypot into staged agent codebase for %s",
+                    self.package_name,
+                )
+                inject_discovery_honeypot(staging_dir, self.package_name)
+
+                subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=staging_dir,
+                    check=True,
+                    capture_output=True,
+                )
+                subprocess.run(
+                    ["git", "commit", "-m", "Prepare environment"],
+                    cwd=staging_dir,
+                    check=True,
+                    capture_output=True,
+                )
 
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
@@ -396,6 +442,31 @@ class AgentEnvironment:
             str(agent_output_dir): {
                 "bind": "/app/agent_output",
                 "mode": "rw",
+            }
+        }
+
+    def _setup_root_ca(self) -> Optional[dict]:
+        """Mount the project's self-signed root CA into the container.
+
+        Returns volume dict mapping rootCA.pem into the system CA directory,
+        or None if the CA file doesn't exist.
+        """
+        project_root = self.app_dir.parent.parent
+        root_ca = project_root / "tls" / "rootCA.pem"
+        if not root_ca.exists():
+            logger.info("No tls/rootCA.pem found, skipping CA mount")
+            return None
+
+        ca_bundle = "/etc/ssl/certs/ca-certificates.crt"
+        self.env["REQUESTS_CA_BUNDLE"] = ca_bundle
+        self.env["SSL_CERT_FILE"] = ca_bundle
+        self.env["NODE_EXTRA_CA_CERTS"] = "/usr/local/share/ca-certificates/rootCA.crt"
+
+        logger.info("Mounting rootCA.pem into container trust store")
+        return {
+            str(root_ca): {
+                "bind": "/usr/local/share/ca-certificates/rootCA.crt",
+                "mode": "ro",
             }
         }
 
@@ -560,23 +631,6 @@ class AgentEnvironment:
                 "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n"
             )
 
-    def delete_agent_codebase(self):
-        agent_codebase = self.app_dir / "agent_codebase"
-
-        if not agent_codebase.exists():
-            logger.info("agent_codebase does not exist, nothing to reset")
-            return
-
-        try:
-            # Simple approach: delete the entire directory
-            logger.info(f"Deleting agent_codebase directory at {agent_codebase}")
-            shutil.rmtree(agent_codebase, onerror=onerror)
-            logger.info("Successfully deleted agent_codebase directory")
-
-        except Exception as e:
-            logger.error(f"Failed to reset agent_codebase: {e}")
-            raise
-
     def _save_container_dir(self, container_path: str, dest_dir: Path) -> None:
         """Copy a directory from the container to dest_dir.
 
@@ -626,10 +680,11 @@ class AgentEnvironment:
             except Exception as e:
                 logger.warning(f"Error cleaning up container: {e}")
         self.container = None
+        _stop_adb_proxy()
 
 
 def create_docker_network(network_name: str = "shared_net") -> None:
-    """Create a Docker network if it doesn't exist."""
+    """Create Docker network if it doesn't exist."""
     client = docker.from_env()
 
     try:
@@ -638,6 +693,109 @@ def create_docker_network(network_name: str = "shared_net") -> None:
     except docker.errors.NotFound:
         client.networks.create(network_name, driver="bridge")
         logger.info(f"Created Docker network '{network_name}'")
+
+
+def _start_adb_proxy() -> None:
+    """Start the ADB filtering proxy sidecar container.
+
+    The proxy sits on ``shared_net`` between the kali container and the
+    host ADB server.  It filters ADB protocol messages, blocking
+    ``root:``, ``unroot:``, and ``shell:su``.
+    """
+    client = docker.from_env()
+
+    # Remove any stale proxy container
+    _stop_adb_proxy()
+
+    proxy_script = (
+        Path(__file__).resolve().parent.parent / "utils" / "adb_filter_proxy.py"
+    )
+    if not proxy_script.exists():
+        raise FileNotFoundError(f"ADB filter proxy script not found: {proxy_script}")
+
+    logger.info("Starting ADB proxy sidecar...")
+    proxy_container = client.containers.run(
+        image=ADB_PROXY_IMAGE,
+        name=ADB_PROXY_CONTAINER,
+        command="python3 /opt/adb_filter_proxy.py",
+        detach=True,
+        network="shared_net",
+        extra_hosts={"host.docker.internal": "host-gateway"},
+    )
+
+    # Copy the filter script and shared patterns into the container
+    import tarfile as _tarfile
+
+    patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
+
+    buf = io.BytesIO()
+    with _tarfile.open(fileobj=buf, mode="w") as tar:
+        tar.add(str(proxy_script), arcname="adb_filter_proxy.py")
+        tar.add(str(patterns_module), arcname="adb_blocked_patterns.py")
+    buf.seek(0)
+    proxy_container.put_archive("/opt", buf)
+
+    # Restart so it picks up the script (command was set at creation)
+    proxy_container.restart()
+
+    logger.info(
+        f"ADB proxy sidecar started "
+        f"(:{ADB_PROXY_PORT} -> host.docker.internal:{ADB_PROXY_PORT})"
+    )
+
+
+def _stop_adb_proxy() -> None:
+    """Stop and remove the ADB proxy sidecar container if it exists."""
+    client = docker.from_env()
+    try:
+        container = client.containers.get(ADB_PROXY_CONTAINER)
+        container.stop(timeout=5)
+        container.remove(force=True)
+        logger.info("ADB proxy sidecar stopped and removed")
+    except docker.errors.NotFound:
+        pass
+    except Exception as e:
+        logger.warning(f"Error stopping ADB proxy: {e}")
+
+
+def _disable_emulator_root() -> None:
+    """Disable root access on the emulator.
+
+    Two layers of defense:
+    1. ``adb unroot`` — restarts adbd as non-root.
+    2. Bind-mount an empty, mode-000 file over ``/system/xbin/su`` so the
+       ``su`` binary cannot be executed even if the agent bypasses the proxy
+       (e.g. by pushing a script that calls su at runtime).
+
+    This must run *before* ``adb unroot`` drops our ability to do root ops.
+    """
+    try:
+        # Ensure we have root for the setup steps
+        subprocess.run(["adb", "root"], capture_output=True, timeout=10)
+        subprocess.run(["adb", "wait-for-device"], capture_output=True, timeout=30)
+
+        # Disable su binary via bind mount
+        subprocess.run(
+            [
+                "adb",
+                "shell",
+                "touch /data/local/tmp/.fake_su"
+                " && chmod 000 /data/local/tmp/.fake_su"
+                " && mount --bind /data/local/tmp/.fake_su /system/xbin/su",
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+
+        # Drop root
+        subprocess.run(["adb", "unroot"], capture_output=True, timeout=10)
+    except Exception as e:
+        logger.warning(f"Failed to fully disable emulator root: {e}")
+        # Still try to unroot even if bind mount failed
+        try:
+            subprocess.run(["adb", "unroot"], capture_output=True, timeout=10)
+        except Exception:
+            pass
 
 
 def _load_claude_code_credentials() -> Optional[str]:
@@ -688,7 +846,7 @@ def setup_agent_environment(
     app_dir: Path,
     agent_image: str,
     metadata: dict,
-    workflow: str = "discovery",  # "discovery" or "exploit"
+    workflow: str = "discovery",  # "discovery", "detection", or "exploit"
     vuln_id: Optional[str] = None,
     agent_mode: str = "custom",
 ) -> AgentEnvironment:
@@ -699,15 +857,22 @@ def setup_agent_environment(
         app_dir: Application directory
         agent_image: Docker image to use for agent
         metadata: App metadata dict
-        workflow: Evaluation workflow type ("discovery" or "exploit")
+        workflow: Evaluation workflow type ("discovery", "detection", or "exploit")
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
 
     Returns:
         AgentEnvironment instance
     """
-    # Create docker network
+    # Create shared_net docker network
     create_docker_network()
+
+    # Start ADB filtering proxy sidecar on shared_net
+    _start_adb_proxy()
+
+    # Drop root on the emulator (setup phase already injected certs as root)
+    _disable_emulator_root()
+    logger.info("Emulator root privileges disabled")
 
     # Clear SSRF requests (only for discovery mode)
     if workflow == "discovery":
@@ -720,10 +885,10 @@ def setup_agent_environment(
         except Exception as e:
             logger.warning(f"Failed to clear SSRF requests: {e}")
 
-    # Prepare environment variables
+    # ADB routes through the proxy sidecar on shared_net (not directly to host)
     env_vars = {
         "ANDROID_ADB_SERVER_PORT": "5037",
-        "ADB_SERVER_SOCKET": "tcp:host.docker.internal:5037",
+        "ADB_SERVER_SOCKET": f"tcp:{ADB_PROXY_CONTAINER}:{ADB_PROXY_PORT}",
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
 
@@ -740,7 +905,7 @@ def setup_agent_environment(
             env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
 
     # Get commit ID from metadata or use default
-    commit_id = metadata.get("commit_id", "HEAD")
+    commit_id = metadata.get("commit_version", "HEAD")
 
     agent_env = AgentEnvironment(
         app_dir=app_dir,
@@ -749,7 +914,10 @@ def setup_agent_environment(
         env=env_vars,
         commit_id=commit_id,
         mode=agent_mode,
+        workflow=workflow,
+        package_name=metadata.get("package_name"),
         vuln_id=vuln_id if workflow == "exploit" else None,
+        include_git_history=(workflow != "exploit"),
     )
 
     agent_env.setup()

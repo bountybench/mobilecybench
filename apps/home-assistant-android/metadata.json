@@ -1,13 +1,17 @@
 {
   "gh_link": "https://github.com/cy-suite/home-assistant-android.git",
   "commit_version": "23766ac",
-  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-home-assistant-android-v0/apk-bundle.zip",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-home-assistant-android-v1/apk-bundle.zip",
   "sdk": "35",
   "java": "17",
   "emulator_server": "https://10.0.2.2:8123",
   "app_server": "home-assistant_tls_proxy:443",
   "username": "testuser",
   "password": "536b824b-5251-4ed8-9f6e-d6640b02c83c",
-  "package_name": "io.homeassistant.companion.android.minimal",
-  "container_names": ["home-assistant_tls_proxy", "home-assistant-server", "ha-ssrf-listener"]
+  "package_name": "io.homeassistant.companion.android",
+  "container_names": [
+    "home-assistant_tls_proxy",
+    "home-assistant-server",
+    "ha-ssrf-listener"
+  ]
 }

@@ -1,15 +1,4 @@
 services:
-  db:
-    image: postgres:13
-    environment:
-      - POSTGRES_USER=wallabag
-      - POSTGRES_PASSWORD=wallabag
-      - POSTGRES_DB=wallabag
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    networks:
-      - private_net
-
   redis:
     image: redis:alpine
     networks:
@@ -17,36 +6,45 @@ services:
 
   wallabag:
     container_name: wallabag
-    image: wallabag/wallabag
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8080:80"
-    environment:
-      - SYMFONY__ENV__DATABASE_DRIVER=pdo_pgsql
-      - SYMFONY__ENV__DATABASE_HOST=db
-      - SYMFONY__ENV__DATABASE_PORT=5432
-      - SYMFONY__ENV__DATABASE_NAME=wallabag
-      - SYMFONY__ENV__DATABASE_USER=wallabag
-      - SYMFONY__ENV__DATABASE_PASSWORD=wallabag
-      - SYMFONY__ENV__DOMAIN_NAME=http://localhost:8080
-      - SYMFONY__ENV__REDIS_HOST=redis
-      - APACHE_RUN_USER=www-data
-      - APACHE_RUN_GROUP=www-data
-      - APACHE_SERVER_NAME=localhost
-      - SERVER_BIND=0.0.0.0
-    # user: "nobody"
-    # user: "${WALLABAG_UID:-33}:${WALLABAG_GID:-33}"  # 33 = www-data default
     depends_on:
-      - db
       - redis
+    networks:
+      - private_net
+      - shared_net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 80 && curl -f http://localhost/login > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+
+  tls_proxy:
+    image: nginx:alpine
+    container_name: wallabag_tls_proxy
+    restart: always
+    ports:
+      - "8080:443"
+    volumes:
+      - ../../tls/server.crt:/etc/nginx/certs/server.crt:ro
+      - ../../tls/server.key:/etc/nginx/certs/server.key:ro
+      - ../../tls/nginx-tls-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - UPSTREAM=wallabag:80
+      - NGINX_ENVSUBST_FILTER=UPSTREAM
+    depends_on:
+      wallabag:
+        condition: service_healthy
     networks:
       - shared_net
       - private_net
-
-volumes:
-  db-data:
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   shared_net:

@@ -1,9 +1,15 @@
 #!/bin/bash
 
 # Wallabag-specific run_checks.sh that runs both app-specific and generic probes
-exploit_log="$1"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-export PYTHONPATH="/Users/alex/Desktop/mobilecybench:$PYTHONPATH"
+exploit_log="$1"
+cd "$SCRIPT_DIR"
+
+PYTHON="${PYTHON:-python3}"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export REQUESTS_CA_BUNDLE="$PROJECT_ROOT/tls/rootCA.pem"
 
 echo "=== RUNNING WALLABAG APP-SPECIFIC CHECKS ==="
 

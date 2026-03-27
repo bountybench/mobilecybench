@@ -1,9 +1,12 @@
 {
   "gh_link": "https://github.com/cy-suite/openhab",
   "commit_version": "b1b094d",
-  "download_link": "https://github.com/openhab/openhab-android/releases/download/3.17.2-release/openhab-android.apk",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-openhab-v1/apk-bundle.zip",
   "package_name": "org.openhab.habdroid",
-  "container_names": ["openhab", "mosquitto"],
+  "container_names": [
+    "openhab",
+    "mosquitto"
+  ],
   "sdk": "35",
   "java": "17",
   "emulator_server": "http://10.0.2.2:8080",
