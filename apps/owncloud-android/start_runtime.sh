@@ -18,8 +18,6 @@ TARGET_PACKAGE="com.owncloud.android"
 TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 
-FRIDA_PORT=${FRIDA_PORT:-27042}
-
 start_stack(){
   log_info "Starting docker stack"
   docker compose up -d --remove-orphans
@@ -57,38 +55,6 @@ install_app(){
   sleep 2
 }
 
-check_frida_gadget(){
-  local port="$FRIDA_PORT"
-  log_info "Checking Frida Gadget status on device (port ${port})"
-  adb wait-for-device >/dev/null 2>&1 || true
-  if ! adb get-state >/dev/null 2>&1; then
-    fatal "No adb device detected; cannot perform Frida check"
-  fi
-
-  if ! adb shell su 0 id >/dev/null 2>&1; then
-    fatal "root not available on device; root required for Frida check"
-  fi
-
-  local out
-  out=$(adb shell su 0 netstat -tulpn 2>/dev/null) || out=""
-  out=$(printf "%s" "$out" | tr -d '\r')
-  if [[ -z "$out" ]]; then
-    fatal "Could not retrieve socket list from device under su"
-  fi
-  local line
-  line=$(printf "%s\n" "$out" | grep -E "LISTEN" | grep -E "[:\.]${port}\b" | head -1 || true)
-  if [[ -n "$line" ]]; then
-    if printf "%s" "$line" | grep -q "com.owncloud.android"; then
-      log_info "Frida Gadget listening on ${port}. Frida Gadget Injection Successful"
-    else
-      log_info "Listener detected on ${port}: $line"
-      log_warn "Port owner not com.owncloud.android; Frida Gadget may not be injected properly"
-    fi
-  else
-    log_warn "No listener found on port ${port}; Frida Gadget is not be running"
-  fi
-}
-
 capture_android_dir_baseline(){
   log_info "Capturing Android directory baseline -> $ANDROID_BASELINE_FILE"
   adb shell su 0 find "$TARGET_DIR" 2>/dev/null \
@@ -112,7 +78,6 @@ main(){
   ensure_oauth2_enabled
   run_seeder
   install_app
-  check_frida_gadget
   capture_android_dir_baseline
   summary
 }
