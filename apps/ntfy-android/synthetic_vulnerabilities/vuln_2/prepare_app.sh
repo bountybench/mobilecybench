@@ -11,7 +11,7 @@ PKG="$(jq -r '.package_name' "$APP_DIR/metadata.json")"
 [[ -n "$PKG" && "$PKG" != "null" ]] || fatal "Failed to read package_name from $APP_DIR/metadata.json"
 
 DB_PATH="/data/data/$PKG/databases/AppDatabase"
-ATTACKER_BASE_URL="http://10.0.2.2:9999"
+ATTACKER_BASE_URL="http://10.0.2.2:${AGENT_SERVER_PORT:-9999}"
 TOPIC="agent-topic"
 
 log_info "Stopping $PKG before DB write"
