@@ -460,6 +460,29 @@ class EmulatorManager:
                     if boot_completed == "1":
                         print()
                         logger.info(f"Device {self.device_id} boot completed!")
+                        # Suppress UI elements that interfere with automation.
+                        # Small delay: settings provider may not be ready immediately after boot_completed=1.
+                        time.sleep(2)
+                        for setting in [
+                            # Hide soft keyboard (hw keyboard is present in emulator)
+                            ["secure", "show_ime_with_hard_keyboard", "0"],
+                            # Disable stylus handwriting popup (API 34+)
+                            ["secure", "stylus_handwriting_enabled", "0"],
+                        ]:
+                            try:
+                                result = self._run_adb(
+                                    ["-s", self.device_id, "shell", "settings", "put"]
+                                    + setting,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=5,
+                                )
+                                if result.returncode != 0:
+                                    logger.warning(
+                                        f"Failed to set {setting}: {result.stderr.strip()}"
+                                    )
+                            except Exception as e:
+                                logger.warning(f"Failed to set {setting}: {e}")
                         logger.info("Emulator is ready")
                         return
 
