@@ -6,6 +6,8 @@
   "package_name": "com.termux",
   "app_server": "",
   "container_names": [],
-  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-termux-v1/apk-bundle.zip",
-  "generic_probes": ["availability"]
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-termux-v2/apk-bundle.zip",
+  "generic_probes": [
+    "availability"
+  ]
 }
