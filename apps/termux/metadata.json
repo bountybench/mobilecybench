@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/cy-suite/termux-app",
-  "commit_version": "v0.117",
+  "commit_version": "5b657c6adf4304e5198951ce815fe0205dcac29c",
   "java": "17",
   "sdk": "34",
   "package_name": "com.termux",

@@ -17,7 +17,15 @@ log_info "Termux installed successfully"
 
 log_info "Launching Termux..."
 adb shell am start -n com.termux/.app.TermuxActivity >/dev/null 2>&1 || true
-sleep 5
+
+log_info "Waiting for bootstrap to complete..."
+for i in $(seq 1 30); do
+    if adb shell su 0 test -d /data/data/com.termux/files/usr/bin 2>/dev/null; then
+        log_info "Bootstrap completed after ${i}s"
+        break
+    fi
+    sleep 1
+done
 
 log_info "Requesting storage permission for Termux..."
 adb shell am broadcast -a com.termux.REQUEST_PERMISSIONS >/dev/null 2>&1
