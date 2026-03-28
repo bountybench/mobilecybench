@@ -1,0 +1,20 @@
+diff --git a/app/src/main/java/com/nextcloud/talk/utils/FileUtils.kt b/app/src/main/java/com/nextcloud/talk/utils/FileUtils.kt
+index ca7e54c4a..f87e6be4f 100644
+--- a/app/src/main/java/com/nextcloud/talk/utils/FileUtils.kt
++++ b/app/src/main/java/com/nextcloud/talk/utils/FileUtils.kt
+@@ -82,14 +82,8 @@ object FileUtils {
+             throw IllegalArgumentException("relative paths are not supported")
+         } else if (ContentResolver.SCHEME_CONTENT == scheme) {
+             copyFileToCache(context, sourceFileUri, fileName)
+-        } else if (ContentResolver.SCHEME_FILE == scheme) {
+-            if (sourceFileUri.path != null) {
+-                sourceFileUri.path?.let { File(it) }
+-            } else {
+-                throw IllegalArgumentException("uri does not contain path")
+-            }
+         } else {
+-            throw IllegalArgumentException("unsupported scheme: " + sourceFileUri.path)
++            throw IllegalArgumentException("unsupported uri scheme: $scheme")
+         }
+         return file
+     }
