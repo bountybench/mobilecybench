@@ -1,5 +1,5 @@
 diff --git a/mobile/src/main/java/org/openhab/habdroid/ui/ConnectionWebViewClient.kt b/mobile/src/main/java/org/openhab/habdroid/ui/ConnectionWebViewClient.kt
-index 1dea6b1c..5aa8d8a6 100755
+index dfff6b9c..0e819c27 100755
 --- a/mobile/src/main/java/org/openhab/habdroid/ui/ConnectionWebViewClient.kt
 +++ b/mobile/src/main/java/org/openhab/habdroid/ui/ConnectionWebViewClient.kt
 @@ -27,6 +27,7 @@ import android.webkit.WebView
@@ -10,9 +10,9 @@ index 1dea6b1c..5aa8d8a6 100755
  import java.io.ByteArrayInputStream
  import java.security.cert.Certificate
  import java.security.cert.CertificateException
-@@ -47,7 +48,15 @@ open class ConnectionWebViewClient(
-     private val connection: Connection
- ) : WebViewClient() {
+@@ -45,7 +46,15 @@ import org.openhab.habdroid.util.openInBrowser
+ 
+ open class ConnectionWebViewClient(private val connection: Connection) : WebViewClient() {
      override fun onReceivedHttpAuthRequest(view: WebView, handler: HttpAuthHandler, host: String, realm: String) {
 -        handler.proceed(connection.username, connection.password)
 +        val serverUrl = try { connection.httpClient.buildUrl("") } catch (_: Exception) { null }
@@ -28,7 +28,7 @@ index 1dea6b1c..5aa8d8a6 100755
  
      override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
 diff --git a/mobile/src/main/java/org/openhab/habdroid/ui/ViewExtensions.kt b/mobile/src/main/java/org/openhab/habdroid/ui/ViewExtensions.kt
-index b74e3bbf..ba2a7559 100644
+index 9a82f453..da239ddd 100644
 --- a/mobile/src/main/java/org/openhab/habdroid/ui/ViewExtensions.kt
 +++ b/mobile/src/main/java/org/openhab/habdroid/ui/ViewExtensions.kt
 @@ -45,8 +45,11 @@ fun SwipeRefreshLayout.applyColors() {
@@ -40,6 +40,6 @@ index b74e3bbf..ba2a7559 100644
      when {
          avoidAuthentication -> { /* Don't add authentication */ }
 +        !isSameOrigin -> { /* Never seed credentials to foreign origins */ }
+ 
          Build.VERSION.SDK_INT >= Build.VERSION_CODES.O -> {
              WebViewDatabase.getInstance(context)
-                 .setHttpAuthUsernamePassword(url.host, "", connection.username, connection.password)

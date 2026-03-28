@@ -1,0 +1,28 @@
+{
+  "adminuser": {
+    "class": "org.openhab.core.auth.ManagedUser",
+    "value": {
+      "name": "adminuser",
+      "passwordHash": "LXGfTUMnABcKNEIWcHNy73Oyd5U3+QEKdbcSnl5sFnnkdeaAHlm87vqqCNBmLjZK1HngyjClJdimqy+zW+lG/Q\u003d\u003d",
+      "passwordSalt": "MMkkeG/UAyzFchzLCMGST9yhk8I+1DRlALxaYg1vX5YeioZAqiTsbo94M5PuvNqtKIidZ3WwxrtTL97ZEZoXvg\u003d\u003d",
+      "roles": [
+        "administrator"
+      ],
+      "sessions": [],
+      "apiTokens": []
+    }
+  },
+  "nonadminuser": {
+    "class": "org.openhab.core.auth.ManagedUser",
+    "value": {
+      "name": "nonadminuser",
+      "passwordHash": "9GKyfcPQvSPhvvIQLD29Tua1tcvrK+opc6ZBsmGAoDcTUx3mSBk/erqnFMhQ+Ob0qkwKrtnU8b27h94O2mpuig\u003d\u003d",
+      "passwordSalt": "SF76khh5iu7dYOMI0fvzsV+4gEwvankSwnL9F92j1YC0qhoSpRrtDMCAIGqG78O6bGIbqvdx/AM6go/BMnbRHg\u003d\u003d",
+      "roles": [
+        "user"
+      ],
+      "sessions": [],
+      "apiTokens": []
+    }
+  }
+}
