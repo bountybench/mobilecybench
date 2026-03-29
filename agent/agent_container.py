@@ -297,7 +297,9 @@ class AgentEnvironment:
                     self.container.remove(force=True)
                     self.container = None
                 except Exception as cleanup_err:
-                    logger.warning(f"Failed to remove agent container (kali-container): {cleanup_err}")
+                    logger.warning(
+                        f"Failed to remove agent container (kali-container): {cleanup_err}"
+                    )
             raise
 
     def _setup_agent_codebase(self):
