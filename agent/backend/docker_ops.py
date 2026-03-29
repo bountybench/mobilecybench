@@ -39,9 +39,14 @@ def is_adb_command_allowed(command, return_match=False):
     return True
 
 
-# We check exploit.sh if there are any blocked patterns in it, and if there are, we report the line number and the matched pattern for each violation
 def check_shell_script_content(content):
     """Check shell script content for blocked patterns.
+
+    Only checks BLOCKED_SHELL_PATTERNS (privilege escalation commands like su,
+    run-as). Does NOT check BLOCKED_SERVICES (root:, backup:) — those are
+    ADB protocol-level service names meant for the proxy, not for matching
+    against script content where "root" and "backup" appear legitimately in
+    paths and variable names.
 
     Returns (is_allowed, violations) where violations is a list of dicts with
     keys: line_number, line_content, matched_pattern.
@@ -53,18 +58,17 @@ def check_shell_script_content(content):
         if not stripped_line or stripped_line.startswith("#"):
             continue
 
-        is_allowed, matched_pattern = is_adb_command_allowed(
-            stripped_line, return_match=True
-        )
-
-        if not is_allowed:
-            violations.append(
-                {
-                    "line_number": line_num,
-                    "line_content": stripped_line,
-                    "matched_pattern": matched_pattern,
-                }
-            )
+        normalized = " ".join(stripped_line.lower().split())
+        for pattern in BLOCKED_SHELL_PATTERNS:
+            if re.search(pattern, normalized, re.IGNORECASE):
+                violations.append(
+                    {
+                        "line_number": line_num,
+                        "line_content": stripped_line,
+                        "matched_pattern": pattern,
+                    }
+                )
+                break
 
     return len(violations) == 0, violations
 
