@@ -2,7 +2,7 @@
 
 import json
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import docker
 from pydantic import BaseModel
@@ -23,6 +23,8 @@ class ClaudeCodeCLIResult(BaseModel):
     turns: int = 0
     cost_usd: Optional[float] = None
     conversation_events: List[dict] = []
+    session_id: Optional[str] = None
+    result_payload: Optional[Dict[str, Any]] = None
 
 
 class ClaudeCodeCLIProvider:
@@ -142,6 +144,8 @@ class ClaudeCodeCLIProvider:
             conversation_events: List[dict] = []
             result_turns = 0
             result_cost = None
+            cli_session_id: Optional[str] = None
+            cli_result_payload: Optional[Dict[str, Any]] = None
 
             # Buffer for incomplete lines across chunks.  Docker streaming
             # can split a JSON line across multiple callbacks.
@@ -174,6 +178,7 @@ class ClaudeCodeCLIProvider:
             def parse_output_chunk(text: str):
                 """Parse JSONL chunks from stdout."""
                 nonlocal result_turns, result_cost, current_turn, line_buffer
+                nonlocal cli_session_id, cli_result_payload
 
                 # Prepend any leftover partial line from previous chunk
                 text = line_buffer + text
@@ -196,9 +201,9 @@ class ClaudeCodeCLIProvider:
                         if event_type == "system":
                             subtype = data.get("subtype")
                             if subtype == "init":
-                                session_id = data.get("session_id", "unknown")
+                                cli_session_id = data.get("session_id", "unknown")
                                 logger.info(
-                                    f"[ClaudeCode] Session started: {session_id}"
+                                    f"[ClaudeCode] Session started: {cli_session_id}"
                                 )
 
                         elif event_type == "assistant":
@@ -263,6 +268,8 @@ class ClaudeCodeCLIProvider:
                             result_turns = data.get("num_turns", 0)
                             result_cost = data.get("total_cost_usd")
                             subtype = data.get("subtype")
+                            # Capture the full result event for token/cost parsing
+                            cli_result_payload = data
                             # Flush any remaining turn data
                             _flush_turn()
                             if subtype == "success":
@@ -319,6 +326,8 @@ class ClaudeCodeCLIProvider:
                 turns=result_turns,
                 cost_usd=result_cost,
                 conversation_events=conversation_events,
+                session_id=cli_session_id,
+                result_payload=cli_result_payload,
             )
 
         except Exception as e:

@@ -13,6 +13,7 @@ from agent.prompts.prompts import (
     build_detection_prompt,
     build_discovery_prompt,
     build_synthetic_prompt,
+    build_unified_prompt,
 )
 from utils.logger import agent_logger, logger, logger_manager
 from utils.run_artifacts import load_schema, utc_now_iso, validate_schema
@@ -34,11 +35,13 @@ class ClaudeCodeAgent:
         timeout_ms: int,
         app_name: str = "",
         app_server: Optional[str] = None,
+        emulator_server: Optional[str] = None,
         package_name: Optional[str] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "discovery",
+        additional_context: Optional[str] = None,
     ):
         """Initialise the Claude Code agent.
 
@@ -46,15 +49,18 @@ class ClaudeCodeAgent:
             model: Ignored — Claude Code always uses Opus 4.6.
             timeout_ms: Timeout for the CLI execution in milliseconds.
             app_name: Name of the app under test.
-            app_server: Optional backend server URL.
+            app_server: Optional backend server URL (reachable from kali container).
+            emulator_server: Optional backend URL from the emulator's perspective.
             package_name: Android package name.
             username: App credentials.
             password: App credentials.
             include_ssrf: Whether to include SSRF instructions.
             workflow: ``"discovery"``, ``"detection"``, or ``"exploit"``.
+            additional_context: Optional extra context appended to the prompt.
         """
         self.app_name = app_name
         self.app_server = app_server
+        self.emulator_server = emulator_server
         self.timeout_ms = timeout_ms
         self.package_name = package_name
         self.username = username
@@ -64,6 +70,7 @@ class ClaudeCodeAgent:
         # The model parameter from runner config is ignored.
         self.model = "claude-opus-4-6"
         self.workflow = workflow
+        self.additional_context = additional_context
 
         # Load .env from the agent directory (same pattern as CustomAgent)
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -119,30 +126,46 @@ class ClaudeCodeAgent:
             # exploit-mode guidance beyond the standard synthetic prompt
             # (e.g. explicit instructions to write exploit.sh, or special
             # handling for verify_files).
-            return build_synthetic_prompt(
+            prompt = build_synthetic_prompt(
                 package_name=self.package_name,
                 username=self.username,
                 password=self.password,
                 app_server=self.app_server,
+                emulator_server=self.emulator_server,
             )
-
-        if self.workflow == "detection":
-            return build_detection_prompt(
+        elif self.workflow == "unified":
+            prompt = build_unified_prompt(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server,
+                emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
             )
+        elif self.workflow == "detection":
+            prompt = build_detection_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+            )
+        else:
+            prompt = build_discovery_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+                include_ssrf=self.include_ssrf,
+            )
 
-        return build_discovery_prompt(
-            package_name=self.package_name,
-            codebase_tree=self._initial_tree_context,
-            app_server=self.app_server,
-            username=self.username,
-            password=self.password,
-            include_ssrf=self.include_ssrf,
-        )
+        if self.additional_context:
+            prompt = prompt + "\n\n" + self.additional_context
+
+        return prompt
 
     # ------------------------------------------------------------------
     # Run
@@ -179,6 +202,9 @@ class ClaudeCodeAgent:
             # back to the number of conversation events we actually parsed.
             effective_turns = result.turns or len(result.conversation_events)
 
+            # Parse the CLI result payload into token_totals
+            token_totals = self._parse_result_payload(result.result_payload)
+
             if not result.success:
                 # Distinguish timeout (exit_code == -1) from real errors
                 is_timeout = result.exit_code == -1
@@ -205,6 +231,7 @@ class ClaudeCodeAgent:
                     status=status,
                     final_message=msg,
                     cost_usd=result.cost_usd,
+                    token_totals=token_totals,
                 )
 
             return self._finish_run(
@@ -212,6 +239,7 @@ class ClaudeCodeAgent:
                 status="completed",
                 final_message=result.output_text,
                 cost_usd=result.cost_usd,
+                token_totals=token_totals,
             )
 
         except Exception as e:
@@ -304,12 +332,80 @@ class ClaudeCodeAgent:
     # Result (mirrors CustomAgent._finish_run)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _parse_result_payload(payload: Optional[Dict]) -> Dict[str, Any]:
+        """Extract token totals from the CLI result event payload.
+
+        The ``result`` event from ``claude -p --output-format stream-json``
+        contains ``model_usage`` (per-model token/cost breakdown) and
+        top-level timing fields.
+        """
+        if not payload:
+            return {}
+
+        model_usage = payload.get("model_usage") or payload.get("modelUsage") or {}
+        if not isinstance(model_usage, dict):
+            return {}
+
+        # Aggregate across all models
+        total_input = 0
+        total_output = 0
+        total_cache_creation = 0
+        total_cache_read = 0
+        total_cost = 0.0
+        per_model: Dict[str, Dict[str, Any]] = {}
+
+        for model_name, usage in model_usage.items():
+            if not isinstance(usage, dict):
+                continue
+            inp = int(usage.get("inputTokens") or 0)
+            out = int(usage.get("outputTokens") or 0)
+            cache_create = int(usage.get("cacheCreationInputTokens") or 0)
+            cache_read = int(usage.get("cacheReadInputTokens") or 0)
+            cost = float(usage.get("costUSD") or 0.0)
+
+            total_input += inp
+            total_output += out
+            total_cache_creation += cache_create
+            total_cache_read += cache_read
+            total_cost += cost
+
+            per_model[model_name] = {
+                "input_tokens": inp,
+                "output_tokens": out,
+                "cache_creation_input_tokens": cache_create,
+                "cache_read_input_tokens": cache_read,
+                "cost_usd": cost,
+            }
+
+        totals: Dict[str, Any] = {
+            "input_tokens": total_input,
+            "output_tokens": total_output,
+            "cache_creation_input_tokens": total_cache_creation,
+            "cache_read_input_tokens": total_cache_read,
+            "cost_usd": total_cost,
+            "per_model": per_model,
+        }
+
+        # Timing from the CLI result event
+        if payload.get("duration_api_ms") is not None:
+            totals["api_duration_ms"] = int(payload["duration_api_ms"])
+        if payload.get("duration_ms") is not None:
+            totals["duration_ms"] = int(payload["duration_ms"])
+
+        # Stop reason
+        if payload.get("stop_reason"):
+            totals["stop_reason"] = payload["stop_reason"]
+
+        return totals
+
     def _finish_run(
         self,
         turns: int,
         status: str = "completed",
         final_message: Optional[str] = None,
         cost_usd: Optional[float] = None,
+        token_totals: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Build result dict compatible with run_artifacts.normalize_agent_result."""
         exploit_exists = self._check_exploit_exists()
@@ -329,7 +425,7 @@ class ClaudeCodeAgent:
             "max_turns": 0,  # CLI manages its own turn limit
             "exploit_exists": exploit_exists,
             "final_message": final_message,
-            "token_totals": {},  # CLI doesn't expose per-token counts
+            "token_totals": token_totals or {},
             "cost_usd": cost_usd,
             "log_file": self.log_file,
             "conversation_file": self._conversation_file,
