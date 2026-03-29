@@ -9,9 +9,9 @@ services:
       - "8101:8101"   # Karaf console
       - "5007:5007"   # LSP for rules (optional)
     volumes:
-      - ./openhab_addons:/openhab/addons
-      - ./openhab_conf:/openhab/conf
-      - ./openhab_userdata:/openhab/userdata
+      - ./openhab_conf/services/runtime.cfg:/openhab/conf/services/runtime.cfg
+      - ./openhab_conf/sitemaps/home.sitemap:/openhab/conf/sitemaps/home.sitemap
+      - ./openhab_userdata/jsondb:/openhab/userdata/jsondb
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
