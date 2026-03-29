@@ -62,26 +62,11 @@ configure_exploit_host_ip() {
   fi
 }
 
-setup_emulator_port_forward() {
-  # In container emulator mode, Android's 10.0.2.2 maps to the emulator
-  # container's loopback — not the Docker host. Forward port 5230 inside
-  # the emulator container so the app can reach memos-server.
-  if docker inspect emulator-container >/dev/null 2>&1; then
-    log_info "Container emulator detected — forwarding port 5230 to memos-server"
-    # Kill any existing socat on this port (from a previous run)
-    docker exec emulator-container pkill -f 'socat.*5230' 2>/dev/null || true
-    docker exec -d emulator-container \
-      socat TCP-LISTEN:5230,fork,reuseaddr TCP:memos-server:5230
-    log_info "Port forward 5230 → memos-server:5230 established"
-  fi
-}
-
 main() {
   log_info "Starting MoeMemos setup"
   start_stack
   wait_for_health
   install_app
-  setup_emulator_port_forward
   configure_exploit_host_ip
   log_info "MoeMemos setup complete! Server: $MEMOS_URL"
 }
