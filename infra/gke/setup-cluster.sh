@@ -70,6 +70,14 @@ kubectl create secret generic llm-api-keys \
   --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-placeholder}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# ─── 6. Docker Hub credentials (optional — avoids rate limits) ─────────────
+echo "--- Creating Docker Hub credentials secret (placeholder) ---"
+kubectl create secret generic dockerhub-credentials \
+  --namespace=mobilecybench \
+  --from-literal=DOCKERHUB_USERNAME="${DOCKERHUB_USERNAME:-placeholder}" \
+  --from-literal=DOCKERHUB_TOKEN="${DOCKERHUB_TOKEN:-placeholder}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 echo ""
 echo "=== Setup complete ==="
 echo ""
@@ -87,5 +95,12 @@ echo "       --from-literal=OPENAI_API_KEY=sk-... \\"
 echo "       --from-literal=ANTHROPIC_API_KEY=sk-ant-... \\"
 echo "       --dry-run=client -o yaml | kubectl apply -f -"
 echo ""
-echo "  3. Generate and submit jobs:"
+echo "  3. (Optional) Set Docker Hub credentials to avoid rate limits:"
+echo "     kubectl create secret generic dockerhub-credentials \\"
+echo "       --namespace=mobilecybench \\"
+echo "       --from-literal=DOCKERHUB_USERNAME=myuser \\"
+echo "       --from-literal=DOCKERHUB_TOKEN=dckr_pat_... \\"
+echo "       --dry-run=client -o yaml | kubectl apply -f -"
+echo ""
+echo "  4. Generate and submit jobs:"
 echo "     python infra/gke/generate_jobs.py --apps moememos --models gpt-4o --apply"

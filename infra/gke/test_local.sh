@@ -235,6 +235,8 @@ docker run --rm \
     -e APP_NAME="$APP_NAME" \
     -e EMULATOR_IMAGE="${EMULATOR_IMAGE_NAME}" \
     -e DOCKER_TLS_CERTDIR= \
+    -e DOCKERHUB_USERNAME="${DOCKERHUB_USERNAME:-}" \
+    -e DOCKERHUB_TOKEN="${DOCKERHUB_TOKEN:-}" \
     "$IMAGE_NAME" \
     -c '
         set -e
@@ -250,6 +252,12 @@ docker run --rm \
         done
         if [ $timeout -eq 0 ]; then echo "Docker daemon failed to start"; exit 1; fi
         echo "Docker daemon ready"
+
+        # Docker Hub auth (optional — avoids rate limits on image pulls)
+        if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            echo "Docker Hub login successful"
+        fi
 
         docker network create shared_net || true
 
