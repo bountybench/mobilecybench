@@ -1,6 +1,6 @@
 services:
   tls_proxy:
-    image: nginx:alpine
+    image: nginx:1.28.3-alpine
     container_name: nextcloud-talk-tls-proxy
     restart: always
     ports:

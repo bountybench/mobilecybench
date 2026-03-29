@@ -208,6 +208,16 @@ time.sleep(2)
 create_user_with_retry(user_b_data, "User B")
 time.sleep(2)
 
+# Email must be set via a separate PUT — the creation endpoint ignores it
+if USER_B_EMAIL:
+    r = requests.put(
+        f"{BASE_URL}/ocs/v1.php/cloud/users/{USER_B_USERNAME}",
+        headers=headers,
+        auth=admin_auth,
+        data={"key": "email", "value": USER_B_EMAIL},
+    )
+    print(f"Set user_b email: {r.status_code}")
+
 
 # #Enable the nextcloud talk app
 result = run_command(
