@@ -120,30 +120,5 @@ set_state "SecurityCamera_Living" "rtsp://192.168.1.50:554/live"
 set_state "Admin_WifiPassword" "MyS3cur3W1f1P@ss!"
 set_state "Admin_VPNConfig" "vpn-key-9f8e7d6c5b4a3210"
 
-echo "[INFO]  Seeding sitemap..."
-cat > "$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap" <<'SITEMAP'
-sitemap home label="Smart Home" {
-    Frame label="Security" {
-        Switch item=AlarmSystem_Armed label="Alarm System"
-        Text item=SecurityCamera_Living label="Camera Feed"
-        Text item=MotionSensor_Entry label="Entry Motion"
-    }
-    Frame label="Door Locks" {
-        Switch item=FrontDoor_Lock label="Front Door"
-        Switch item=GarageDoor_Lock label="Garage Door"
-        Switch item=BackDoor_Lock label="Back Door"
-    }
-    Frame label="Lighting" {
-        Slider item=Light_Living label="Living Room"
-        Slider item=Light_Bedroom label="Bedroom"
-        Switch item=Light_Porch label="Porch"
-    }
-    Frame label="Climate" {
-        Setpoint item=Thermostat_Target label="Target Temp [%.1f °F]" minValue=60 maxValue=85 step=1
-        Text item=Thermostat_Current label="Current Temp [%.1f °F]"
-    }
-}
-SITEMAP
-
 ITEM_COUNT=$($CURL_PREFIX -sf --connect-timeout 5 --max-time 15 -u "$AUTH" "$BASE_URL/rest/items" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" || echo "?")
-echo "[INFO]  Environment seeded: $ITEM_COUNT items, 1 sitemap"
+echo "[INFO]  Environment seeded: $ITEM_COUNT items"
