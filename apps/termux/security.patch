@@ -1,0 +1,17 @@
+diff --git a/app/src/main/java/com/termux/filepicker/TermuxFileReceiverActivity.java b/app/src/main/java/com/termux/filepicker/TermuxFileReceiverActivity.java
+index b4807e53..f02908aa 100644
+--- a/app/src/main/java/com/termux/filepicker/TermuxFileReceiverActivity.java
++++ b/app/src/main/java/com/termux/filepicker/TermuxFileReceiverActivity.java
+@@ -197,7 +197,11 @@ public class TermuxFileReceiverActivity extends Activity {
+         }
+
+         try {
+-            final File outFile = new File(receiveDir, attachmentFileName);
++            final File outFile = new File(receiveDir, attachmentFileName).getCanonicalFile();
++            if (!outFile.toPath().startsWith(receiveDir.getCanonicalFile().toPath())) {
++                showErrorDialogAndQuit("Invalid file name.");
++                return null;
++            }
+             try (FileOutputStream f = new FileOutputStream(outFile)) {
+                 byte[] buffer = new byte[4096];
+                 int readBytes;
