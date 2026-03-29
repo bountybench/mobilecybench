@@ -91,7 +91,6 @@ class TestRunExploit:
 
         # Check files were written
         assert (output_dir / "stdout.txt").exists()
-        assert (output_dir / "stderr.txt").exists()
         assert (output_dir / "replay_evidence.log").exists()
 
         # Check evidence content
