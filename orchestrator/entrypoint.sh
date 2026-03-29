@@ -22,6 +22,12 @@ if [ $timeout -eq 0 ]; then
     exit 1
 fi
 
+# Docker Hub auth (optional — avoids rate limits on image pulls)
+if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+    echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+    echo "Docker Hub login successful"
+fi
+
 if ! docker network inspect shared_net >/dev/null 2>&1; then
     echo "Creating shared_net network..."
     docker network create shared_net

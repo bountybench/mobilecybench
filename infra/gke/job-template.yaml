@@ -53,6 +53,9 @@ spec:
           envFrom:
             - secretRef:
                 name: llm-api-keys
+            - secretRef:
+                name: dockerhub-credentials
+                optional: true
           volumeMounts:
             - name: dev-kvm
               mountPath: /dev/kvm
