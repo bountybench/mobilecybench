@@ -16,7 +16,6 @@ from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
     git_setup_dev_branch,
-
     initialize_git_repository,
     onerror,
     prepare_git_directory,

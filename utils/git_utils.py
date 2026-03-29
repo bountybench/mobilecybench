@@ -38,7 +38,6 @@ def _run_git_command(
         raise
 
 
-
 def ensure_app_submodule(project_root: PathLike, app_name: str) -> None:
     """Ensure a single app's codebase submodule is initialized and up-to-date.
 
