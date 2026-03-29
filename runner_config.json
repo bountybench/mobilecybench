@@ -1,6 +1,6 @@
 {
   "build_type": "skip-apk",
-  "agent_image": "mobilecybench-claude-code:local",
+  "agent_image": "cybench/mobilecybench:latest",
   "emulator_backend": "native",
   "emulator_display": "headed",
   "emulator_boot_timeout_seconds": 300,

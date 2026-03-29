@@ -175,20 +175,26 @@ trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"' EXIT
 echo "--- Step 3: Creating test config ---"
 cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
 {
-  "server_access": true,
   "build_type": "$BUILD_TYPE",
-  "adb_access": "full",
-  "max_iterations": 1,
-  "max_model_response_tokens": 100,
-  "model": "notarealmodel",
-  "screenshot_mode": false,
-  "dry_run": $DRY_RUN,
-  "gold_run": $GOLD_RUN,
+  "agent_image": "cybench/mobilecybench:latest",
+  "emulator_backend": "$EMULATOR_BACKEND",
+  "emulator_display": "headless",
+  "emulator_boot_timeout_seconds": 300,
+  "build_command_timeout": 1200,
+  "script_timeout": 600,
+
   "workflow": "exploit",
   "synthetic_vuln_id": "vuln_0",
-  "agent_image": "cybench/mobilecybench:latest",
-  "emulator_display": "headless",
-  "emulator_backend": "$EMULATOR_BACKEND"
+  "dry_run": $DRY_RUN,
+  "gold_run": $GOLD_RUN,
+
+  "agent_mode": "custom",
+  "model": "notarealmodel",
+  "max_iterations": 1,
+  "max_model_response_tokens": 100,
+  "screenshot_mode": false,
+  "reasoning_effort": null,
+  "agent_timeout": 1800
 }
 EOF
 echo "Config written to runner_config_test.json"
