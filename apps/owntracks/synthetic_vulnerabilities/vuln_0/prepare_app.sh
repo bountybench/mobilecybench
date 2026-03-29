@@ -57,7 +57,6 @@ log_info "Importing victim config (user=$VICTIM_USER) via LoadActivity intent"
 adb shell am start -a android.intent.action.VIEW \
     -n "$PKG/.ui.preferences.load.LoadActivity" \
     -d "$INLINE_URI"
-sleep 3
 
 log_info "Tapping Save button"
 python3 - <<'PY'
@@ -66,11 +65,16 @@ import uiautomator2 as u2
 
 d = u2.connect()
 btn = d(resourceId="org.owntracks.android:id/save")
-if not btn.wait(timeout=5):
-    print("[prepare_app] ERROR: Save button not found", file=sys.stderr)
+# Wait up to 30s for the LoadActivity to render the Save button.
+# uiautomator2 polls deterministically — proceeds as soon as the
+# element appears, no arbitrary sleep needed.
+if not btn.wait(timeout=30):
+    d.dump_hierarchy()
+    print("[prepare_app] ERROR: Save button not found after 30s", file=sys.stderr)
     sys.exit(1)
 btn.click()
-time.sleep(2)
+# Wait for the config import to complete
+d(text="Preferences imported").wait(timeout=10)
 print("[prepare_app] Save clicked", file=sys.stderr)
 PY
 
