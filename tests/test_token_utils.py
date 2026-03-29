@@ -53,6 +53,36 @@ def test_compute_cost_with_cache_read_only():
 
 
 @pytest.mark.pricing
+def test_compute_cost_with_reasoning_tokens_uses_separate_rate_without_double_counting():
+    """Reasoning tokens should be split out of output tokens, not double-counted."""
+    p = ModelPricing(input=5.0, output=15.0, reasoning=7.5)
+    cost = compute_cost_usd(
+        p,
+        input_tokens=2000,
+        output_tokens=1000,
+        reasoning_tokens=400,
+    )
+    scale = 1_000_000.0
+    expected_cost = (2000 / scale) * 5.0 + (600 / scale) * 15.0 + (400 / scale) * 7.5
+    assert cost == pytest.approx(expected_cost, rel=1e-9)
+
+
+@pytest.mark.pricing
+def test_compute_cost_with_reasoning_tokens_defaults_to_output_rate():
+    """Missing reasoning pricing should fall back to the standard output rate."""
+    p = ModelPricing(input=5.0, output=15.0)
+    cost = compute_cost_usd(
+        p,
+        input_tokens=2000,
+        output_tokens=1000,
+        reasoning_tokens=400,
+    )
+    scale = 1_000_000.0
+    expected_cost = (2000 / scale) * 5.0 + (1000 / scale) * 15.0
+    assert cost == pytest.approx(expected_cost, rel=1e-9)
+
+
+@pytest.mark.pricing
 @pytest.mark.parametrize(
     "input_tokens, expected_input_rate, expected_output_rate",
     [
@@ -197,12 +227,35 @@ class _InputDetails:
         self.cached_tokens = cached_tokens
 
 
+class _OutputDetails:
+    def __init__(self, reasoning_tokens: int):
+        self.reasoning_tokens = reasoning_tokens
+
+
 class _UsageWithDetails(_Usage):
     """Mock usage object with input_tokens_details similar to OpenAI response."""
 
     def __init__(self, input_tokens, output_tokens, cached_tokens):
         super().__init__(input_tokens=input_tokens, output_tokens=output_tokens)
         self.input_tokens_details = _InputDetails(cached_tokens)
+
+
+class _UsageWithReasoningDetails(_UsageWithDetails):
+    """Mock usage object with cache and reasoning details."""
+
+    def __init__(self, input_tokens, output_tokens, cached_tokens, reasoning_tokens):
+        super().__init__(input_tokens, output_tokens, cached_tokens)
+        self.output_tokens_details = _OutputDetails(reasoning_tokens)
+
+
+class _ChatCompletionUsageWithReasoning:
+    """Mock usage object similar to LiteLLM / Chat Completions format."""
+
+    def __init__(self, prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens):
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.prompt_tokens_details = _InputDetails(cached_tokens)
+        self.completion_tokens_details = _OutputDetails(reasoning_tokens)
 
 
 @pytest.mark.token_tracker
@@ -215,6 +268,7 @@ def test_tracker_record_known_model_no_cache_details():
     assert rec.request_id == "r1"
     assert rec.input_tokens == 1000
     assert rec.output_tokens == 500
+    assert rec.reasoning_tokens == 0
     assert rec.cache_input_tokens == 0
     assert rec.cost_usd > 0
 
@@ -232,6 +286,39 @@ def test_tracker_record_known_model_with_cache_details():
     assert rec.request_id == "r2"
     assert rec.input_tokens == 200
     assert rec.output_tokens == 100
+    assert rec.reasoning_tokens == 0
+    assert rec.cache_input_tokens == 50
+
+
+@pytest.mark.token_tracker
+def test_tracker_record_known_model_with_reasoning_details():
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
+    mock_resp = _Resp(rid="r2b", usage=_UsageWithReasoningDetails(200, 100, 50, 40))
+    rec = tracker.record_from_openai_response(mock_resp, model="o3")
+
+    assert rec.model == "o3"
+    assert rec.request_id == "r2b"
+    assert rec.input_tokens == 200
+    assert rec.output_tokens == 100
+    assert rec.reasoning_tokens == 40
+    assert rec.cache_input_tokens == 50
+
+    totals = tracker.totals()
+    assert totals["reasoning_tokens"] == 40
+
+
+@pytest.mark.token_tracker
+def test_tracker_extracts_chat_completions_style_reasoning_details():
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
+    mock_resp = _Resp(
+        rid="r2c",
+        usage=_ChatCompletionUsageWithReasoning(200, 100, 50, 40),
+    )
+    rec = tracker.record_from_openai_response(mock_resp, model="o3")
+
+    assert rec.input_tokens == 200
+    assert rec.output_tokens == 100
+    assert rec.reasoning_tokens == 40
     assert rec.cache_input_tokens == 50
 
 
@@ -241,6 +328,7 @@ def test_tracker_unknown_model_cost_zero_with_warning():
     mock_resp = _Resp(rid="r3", usage=_Usage(input_tokens=1000, output_tokens=1000))
     rec = tracker.record_from_openai_response(mock_resp, model="unknown-model")
 
+    assert rec.reasoning_tokens == 0
     assert rec.cost_usd == 0.0  # unknown model yields zero with warning in logs
 
 
@@ -266,6 +354,7 @@ def test_tracker_multiple_records_accumulate_totals():
     assert totals["calls"] == 2
     assert totals["input_tokens"] == 800
     assert totals["output_tokens"] == 300
+    assert totals["reasoning_tokens"] == 0
     assert totals["cache_input_tokens"] == 50
 
     excepted_cost = compute_cost_usd(
@@ -273,6 +362,7 @@ def test_tracker_multiple_records_accumulate_totals():
         input_tokens=800,
         output_tokens=300,
         cache_input_tokens=50,
+        reasoning_tokens=0,
     )
     assert totals["cost_usd"] == pytest.approx(excepted_cost, rel=1e-9)
     print(f"totals['cost_usd']: {totals['cost_usd']}")

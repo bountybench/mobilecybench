@@ -29,6 +29,7 @@ class HighContextPricing:
     input: float = 0.0
     output: float = 0.0
     cache_input: float = 0.0
+    reasoning: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -42,13 +43,23 @@ class ModelPricing:
         - input: Price per 1M input tokens.
         - output: Price per 1M output tokens.
         - cache_input: Price per 1M cache-read input tokens.
+        - reasoning: Optional price per 1M reasoning output tokens.
+            If omitted, reasoning tokens fall back to the standard output rate.
         - high_context: Optional higher-tier pricing for long prompts.
     """
 
     input: float = 0.0
     output: float = 0.0
     cache_input: float = 0.0
+    reasoning: Optional[float] = None
     high_context: Optional[HighContextPricing] = None
+
+
+def _optional_float(value: object) -> Optional[float]:
+    """Return float(value) unless the value is None."""
+    if value is None:
+        return None
+    return float(value)
 
 
 def _parse_pricing_map(raw: Dict[str, dict]) -> Dict[str, ModelPricing]:
@@ -83,11 +94,13 @@ def _parse_pricing_map(raw: Dict[str, dict]) -> Dict[str, ModelPricing]:
                 input=float(high_context_entry.get("input", 0) or 0),
                 output=float(high_context_entry.get("output", 0) or 0),
                 cache_input=float(high_context_entry.get("cache_input", 0) or 0),
+                reasoning=_optional_float(high_context_entry.get("reasoning")),
             )
         parsed[model_name] = ModelPricing(
             input=float(price_entry.get("input", 0) or 0),
             output=float(price_entry.get("output", 0) or 0),
             cache_input=float(price_entry.get("cache_input", 0) or 0),
+            reasoning=_optional_float(price_entry.get("reasoning")),
             high_context=high_context,
         )
     return parsed
@@ -232,14 +245,21 @@ def compute_cost_usd(
     input_tokens: int = 0,
     output_tokens: int = 0,
     cache_input_tokens: int = 0,
+    reasoning_tokens: int = 0,
 ) -> float:
     """Calculate the USD cost based on token usage and model pricing.
 
     Args:
         pricing: ModelPricing instance with per-1M token prices.
         input_tokens: Number of input tokens used.
-        output_tokens: Number of output tokens generated.
+        output_tokens: Number of output tokens generated. For OpenAI-like
+            responses, this is typically the total output including reasoning.
         cache_input_tokens: Number of input tokens served from cache.
+        reasoning_tokens: Number of reasoning tokens included in the output.
+            When this value is less than or equal to output_tokens, it is treated
+            as a billed subset of output_tokens. If it exceeds output_tokens, the
+            excess is conservatively billed in addition to output_tokens rather
+            than being silently dropped.
 
     Returns:
         - Cost in USD as a float. (non-negative)
@@ -247,6 +267,7 @@ def compute_cost_usd(
     it = max(int(input_tokens or 0), 0)
     ot = max(int(output_tokens or 0), 0)
     ci = max(int(cache_input_tokens or 0), 0)
+    rt = max(int(reasoning_tokens or 0), 0)
     billed_input = max(it - ci, 0)
 
     # Select tier: if high-context pricing exists and input exceeds threshold,
@@ -257,8 +278,16 @@ def compute_cost_usd(
     else:
         rate = pricing
 
+    # OpenAI/LiteLLM report reasoning tokens as a subset of total output tokens.
+    # Split them out when we have a sane breakdown so separate reasoning pricing
+    # can be applied without double-counting.
+    reasoning_included_in_output = 0 < rt <= ot
+    billed_text_output = ot - rt if reasoning_included_in_output else ot
+    reasoning_rate = rate.reasoning if rate.reasoning is not None else rate.output
+
     scale = 1_000_000.0
     cost_input = (billed_input / scale) * rate.input
-    cost_output = (ot / scale) * rate.output
+    cost_output = (billed_text_output / scale) * rate.output
+    cost_reasoning = (rt / scale) * reasoning_rate
     cost_cache_input = (ci / scale) * rate.cache_input
-    return float(cost_input + cost_output + cost_cache_input)
+    return float(cost_input + cost_output + cost_reasoning + cost_cache_input)
