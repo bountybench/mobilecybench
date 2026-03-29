@@ -110,6 +110,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     For unified workflow: uses reference_exploit/
     """
     if workflow.config.workflow == "unified":
+        # Known-working proof-of-concept exploit for the real vulnerability
         gold_dir = workflow.app_dir / "reference_exploit"
     else:
         gold_dir = (

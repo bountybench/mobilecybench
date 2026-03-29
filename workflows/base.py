@@ -301,11 +301,9 @@ class Workflow(ABC):
 
         # Persist replay evidence files
         stdout_path = output_dir / "stdout.txt"
-        stderr_path = output_dir / "stderr.txt"
         evidence_path = output_dir / "replay_evidence.log"
 
         stdout_path.write_text(stdout, encoding="utf-8")
-        stderr_path.write_text("", encoding="utf-8")
 
         # Build evidence log: stdout + decodable text from agent_output
         evidence_parts = []
