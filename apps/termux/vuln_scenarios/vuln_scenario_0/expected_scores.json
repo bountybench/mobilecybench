@@ -6,21 +6,23 @@
     "test_integrity": 0
   },
   "access_details": {
-    "content_provider_access": 1,
-    "file_system_access": 1,
+    "external_apps_policy": 1,
+    "seeded_private_permissions": 1,
     "score": 1
   },
   "availability_details": {
     "score": 1
   },
   "confidentiality_details": {
+    "no_seeded_secret_leaks": 0,
     "score": 0
   },
   "integrity_details": {
-    "permission_boundary": 1,
-    "symlink_escape_prevention": 1,
-    "expected_files_present": 0,
-    "directory_traversal_protection": 1,
+    "bootstrap_paths_present": 1,
+    "seeded_files_present": 1,
+    "seeded_file_contents": 0,
+    "seeded_permissions": 1,
+    "external_apps_policy": 1,
     "score": 0
   }
 }

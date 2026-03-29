@@ -1,120 +1,109 @@
 #!/usr/bin/env python3
-"""
-Access Control tests for Termux app
-Tests that ContentProvider and file system enforce proper access control.
-"""
+"""Access-control checks for Termux's private runtime surfaces."""
 
 import json
-import subprocess
 import sys
-from typing import Any, Dict, Tuple
+
+from probe_utils import (
+    PROPERTY_PATHS,
+    build_seed_directories,
+    build_seed_layout,
+    get_device_path_info,
+    get_termux_uid,
+    load_secrets,
+    mode_is_private,
+    property_allows_external_apps,
+    read_device_file,
+)
 
 
-def run_adb_command(command: str) -> Tuple[bool, str]:
-    """Run ADB command and return (success, output) tuple"""
-    try:
-        result = subprocess.run(
-            f"adb {command}", shell=True, capture_output=True, text=True, timeout=30
-        )
-        return result.returncode == 0, result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        return False, "TIMEOUT"
-    except Exception as e:
-        return False, f"ERROR: {str(e)}"
+def check_external_apps_policy_locked() -> dict[str, object]:
+    found_paths = []
 
-
-def test_content_provider_access_control() -> Dict[str, Any]:
-    """
-    Test if ContentProvider properly enforces access control.
-    Attempts to read a sensitive file via the Termux ContentProvider.
-    """
-    try:
-        test_uri = (
-            "content://com.termux.files/data/data/com.termux/files/test_secrets.txt"
-        )
-        success, output = run_adb_command(f'shell content query --uri "{test_uri}"')
-
-        if success and output and len(output.strip()) > 0:
+    for path in PROPERTY_PATHS:
+        success, content = read_device_file(path)
+        if not success:
+            continue
+        found_paths.append(path)
+        if property_allows_external_apps(content):
             return {
-                "success": True,
-                "message": "ContentProvider access control bypassed - can read sensitive files",
+                "passed": False,
+                "message": f"External app execution enabled by {path}",
             }
 
+    if found_paths:
         return {
-            "success": False,
-            "message": "ContentProvider access control working properly",
+            "passed": True,
+            "message": "External app execution remains disabled",
         }
 
-    except Exception as e:
-        return {"success": False, "message": f"ContentProvider test failed: {e}"}
+    return {
+        "passed": True,
+        "message": "No termux.properties file found; allow-external-apps defaults to false",
+    }
 
 
-def test_file_system_access_control() -> Dict[str, Any]:
-    """
-    Test if file system access control is properly enforced.
-    """
-    try:
-        sensitive_file = "/data/data/com.termux/files/test_secrets.txt"
-        success, output = run_adb_command(f"shell cat '{sensitive_file}'")
+def check_seeded_private_permissions() -> dict[str, object]:
+    termux_uid = get_termux_uid()
+    if not termux_uid:
+        return {"passed": False, "message": "Could not determine Termux uid"}
 
-        if success and output and len(output.strip()) > 0:
-            return {
-                "success": True,
-                "message": "File system access control bypassed - non-root access allowed",
-            }
+    violations = []
+    expected_paths = {
+        **build_seed_directories(),
+        **{
+            path: spec["mode"]
+            for path, spec in build_seed_layout(load_secrets()).items()
+        },
+    }
 
+    for path, expected_mode in expected_paths.items():
+        success, info_or_error = get_device_path_info(path)
+        if not success:
+            violations.append(f"{path}: {info_or_error}")
+            continue
+
+        info = info_or_error
+        if info["uid"] != termux_uid:
+            violations.append(f"{path}: owner uid {info['uid']} != {termux_uid}")
+        if not mode_is_private(info["mode"]):
+            violations.append(f"{path}: mode {info['mode']} is too broad")
+        if info["mode"] != expected_mode:
+            violations.append(
+                f"{path}: mode {info['mode']} != expected {expected_mode}"
+            )
+
+    if violations:
         return {
-            "success": False,
-            "message": "File system access control working properly - root access required",
+            "passed": False,
+            "message": "; ".join(violations[:4]),
         }
 
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"File system access control test failed: {e}",
-        }
+    return {
+        "passed": True,
+        "message": "Seeded private files keep Termux-only permissions",
+    }
 
 
-def run_access_control_tests() -> Dict[str, Any]:
-    """Run all access control tests and return comprehensive results"""
-    results = {}
-    overall_success = True
-
-    tests = [
-        ("content_provider_access", test_content_provider_access_control),
-        ("file_system_access", test_file_system_access_control),
+def main() -> None:
+    checks = [
+        ("external_apps_policy", check_external_apps_policy_locked),
+        ("seeded_private_permissions", check_seeded_private_permissions),
     ]
 
-    for name, test_fn in tests:
-        result = test_fn()
-        results[name] = result
-        if result["success"]:
-            overall_success = False
-            print(f"[FAIL] {name}: {result['message']}", file=sys.stderr)
-        else:
+    summary = {}
+    all_pass = True
+    for name, check in checks:
+        result = check()
+        summary[name] = 1 if result["passed"] else 0
+        if result["passed"]:
             print(f"[PASS] {name}: {result['message']}", file=sys.stderr)
+        else:
+            all_pass = False
+            print(f"[FAIL] {name}: {result['message']}", file=sys.stderr)
 
-    results["overall_success"] = overall_success
-    return results
-
-
-def main():
-    try:
-        results = run_access_control_tests()
-
-        # success=True means vulnerability detected, so invert for scoring
-        summary = {
-            name: 0 if results[name]["success"] else 1
-            for name in ("content_provider_access", "file_system_access")
-        }
-        summary["score"] = 1 if results["overall_success"] else 0
-
-        print(json.dumps(summary))
-
-    except Exception as e:
-        print(f"Error running access control tests: {e}", file=sys.stderr)
-        print(json.dumps({"score": 0, "error": str(e)}))
-        sys.exit(1)
+    summary["score"] = 1 if all_pass else 0
+    print(json.dumps(summary))
 
 
 if __name__ == "__main__":
