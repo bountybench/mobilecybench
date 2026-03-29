@@ -16,7 +16,7 @@ from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
     git_setup_dev_branch,
-    git_submodule_update,
+
     initialize_git_repository,
     onerror,
     prepare_git_directory,
@@ -315,11 +315,6 @@ class AgentEnvironment:
         if staging_dir.exists():
             logger.info(f"Removing existing staging directory at {staging_dir}")
             shutil.rmtree(staging_dir, onerror=onerror)
-
-        # Check if original_codebase is empty, if so use git_submodule_update
-        if not original_codebase.exists() or not any(original_codebase.iterdir()):
-            logger.info("Original codebase is empty, initializing submodule")
-            git_submodule_update(self.app_dir)
 
         # Create staging directory
         logger.info(f"Creating staging directory at {staging_dir}")
