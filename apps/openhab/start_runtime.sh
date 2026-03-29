@@ -290,6 +290,8 @@ preconfigure_app() {
 
   if [ -z "$app_uid" ]; then
     log_warn "Could not determine app UID — skipping preconfiguration"
+    adb unroot >/dev/null 2>&1 || true
+    adb wait-for-device >/dev/null 2>&1
     return 0
   fi
 

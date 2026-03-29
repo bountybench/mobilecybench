@@ -211,6 +211,7 @@ files_cleanup() {
     LOG "Restoring pre-committed config files from git..."
     git checkout -- "$ROOT_DIR/openhab_userdata/jsondb/users.json" 2>/dev/null || true
     git checkout -- "$ROOT_DIR/openhab_conf/services/runtime.cfg" 2>/dev/null || true
+    git checkout -- "$ROOT_DIR/openhab_conf/sitemaps/home.sitemap" 2>/dev/null || true
   fi
 
   # Clean mosquitto runtime data but preserve config
