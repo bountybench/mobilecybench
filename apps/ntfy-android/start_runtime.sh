@@ -199,8 +199,25 @@ start_crash_sniffer() {
 }
 
 capture_baseline() {
+  # Capture file list repeatedly until it stabilizes (two consecutive
+  # snapshots match). This avoids races with async SharedPreferences
+  # writes that may still be in flight after seeding, without needing
+  # to force-stop the app.
   log_info "Capturing Android baseline -> $ANDROID_BASELINE_FILE"
-  adb shell "su 0 sh -c 'cd \"$TARGET_DIR\" && find . -type f'" 2>/dev/null | tr -d '\r' | sort > "$ANDROID_BASELINE_FILE" || log_warn "Baseline capture failed"
+  local prev="" curr=""
+  for _i in $(seq 1 10); do
+    curr="$(adb shell "su 0 sh -c 'cd \"$TARGET_DIR\" && find . -type f'" 2>/dev/null | tr -d '\r' | sort)"
+    if [ "$curr" = "$prev" ]; then
+      echo "$curr" > "$ANDROID_BASELINE_FILE"
+      log_info "Baseline stabilized ($(echo "$curr" | wc -l | xargs) entries)"
+      return 0
+    fi
+    prev="$curr"
+    sleep 2
+  done
+  # Use last snapshot even if not fully stable
+  log_warn "Baseline did not fully stabilize after 10 attempts; using last snapshot"
+  echo "$curr" > "$ANDROID_BASELINE_FILE"
 }
 
 run_ntfy_seeding() {
