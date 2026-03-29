@@ -1,52 +1,36 @@
 import json
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class RunnerConfig(BaseModel):
-    # TODO - Look into internal docker network - something we can use to limit codex agent permissions
-    # TODO - separate out runner configuration based on what agent mode
+    # ── Environment ────────────────────────────────────────────────
     build_type: Literal["source", "download-apk", "skip-apk"]
-    model: str = Field(min_length=1)
     agent_image: str = Field(min_length=1)
+    emulator_backend: Literal["native", "container"]
+    emulator_display: Literal["headed", "headless"]
+    emulator_boot_timeout_seconds: int = Field(gt=0)
+    build_command_timeout: int = Field(gt=0)
+    script_timeout: int = Field(gt=0)
 
-    # access control
-    server_access: bool
-    adb_access: Literal["none", "limited", "full"]
+    # ── Workflow ───────────────────────────────────────────────────
+    workflow: Literal["discovery", "exploit", "detection", "unified"]
+    synthetic_vuln_id: str  # which vulnerability to test (exploit only)
+    dry_run: bool
+    gold_run: bool
 
-    # workflow type
-    workflow: Literal["discovery", "exploit", "detection", "unified"] = "discovery"
-    synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
-
-    # agent limits
+    # ── Agent ──────────────────────────────────────────────────────
+    agent_mode: Literal["custom", "codex", "claude-code"]
+    # custom agent only:
+    model: str = Field(min_length=1)
     max_iterations: int = Field(gt=0)
     max_model_response_tokens: int = Field(gt=0)
-
-    # agent mode
-    agent_mode: Literal["custom", "codex", "claude-code"] = "custom"
-
-    # mode flags
     screenshot_mode: bool
-    dry_run: bool
-    gold_run: bool = False
-    emulator_backend: Literal["native", "container"] = "native"
-    emulator_display: Literal["headed", "headless"] = "headed"
-
-    # optional
-    custom_system_prompt: Optional[str] = None
-    allowed_tools: Optional[List[str]] = None
-
-    reasoning_effort: Optional[str] = None
-
-    # General timeout (seconds) for long-running scripts (setup, exploit, verify, etc.)
-    script_timeout: int = Field(default=600, gt=0)
-    build_command_timeout: int = Field(default=1200, gt=0)
-    emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
-
-    # Claude Code CLI timeout (seconds). Only used when agent_mode="claude-code".
-    agent_timeout: int = Field(default=1800, gt=0)
+    reasoning_effort: Optional[str]
+    # claude-code agent only:
+    agent_timeout: int = Field(gt=0)
 
     @classmethod
     def from_file(cls, config_path: Path) -> "RunnerConfig":
@@ -76,23 +60,3 @@ class RunnerConfig(BaseModel):
                 "gold_run executes exploit files and requires real evaluation"
             )
         return self
-
-    @field_validator("allowed_tools", mode="after")
-    @classmethod
-    def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
-        if value is None:
-            return None
-        # TODO: should consider a single truth of source tools registry or constants file
-        # currently hardcode as we don't have that file yet
-        valid_tools = {
-            "execute_command",
-            "get_current_ui_state",
-            "execute_command_with_ui_state",
-        }
-        invalid = set(value) - valid_tools
-        if invalid:
-            raise ValueError(
-                f"Invalid tools found in allowed_tools: {invalid}\n"
-                f"Supported tools are: {valid_tools}"
-            )
-        return value

@@ -15,15 +15,21 @@ def unified_config():
         build_type="skip-apk",
         model="test",
         agent_image="test:latest",
-        server_access=True,
-        adb_access="full",
+        agent_mode="custom",
         max_iterations=10,
         max_model_response_tokens=1000,
         screenshot_mode=False,
         dry_run=False,
+        gold_run=False,
         emulator_backend="native",
         emulator_display="headed",
         workflow="unified",
+        synthetic_vuln_id="vuln_0",
+        reasoning_effort=None,
+        script_timeout=600,
+        build_command_timeout=1200,
+        emulator_boot_timeout_seconds=300,
+        agent_timeout=1800,
     )
 
 

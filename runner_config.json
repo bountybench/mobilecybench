@@ -1,23 +1,22 @@
 {
-  "server_access": true,
   "build_type": "skip-apk",
-  "adb_access": "full",
+  "agent_image": "mobilecybench-claude-code:local",
+  "emulator_backend": "native",
+  "emulator_display": "headed",
+  "emulator_boot_timeout_seconds": 300,
+  "build_command_timeout": 1200,
+  "script_timeout": 600,
+
+  "workflow": "unified",
+  "synthetic_vuln_id": "vuln_0",
+  "dry_run": false,
+  "gold_run": false,
+
+  "agent_mode": "claude-code",
+  "model": "claude-opus-4-6",
   "max_iterations": 30,
   "max_model_response_tokens": 8192,
-  "reasoning_effort": "high",
-  "model": "gpt-5.2",
-  "agent_mode": "custom",
   "screenshot_mode": false,
-  "dry_run": false,
-  "workflow": "exploit",
-  "synthetic_vuln_id": "vuln_0",
-  "custom_system_prompt": null,
-  "agent_image": "cybench/mobilecybench:latest",
-  "emulator_display": "headed",
-  "emulator_backend": "native",
-  "allowed_tools": [
-    "execute_command",
-    "get_current_ui_state",
-    "execute_command_with_ui_state"
-  ]
+  "reasoning_effort": "high",
+  "agent_timeout": 1800
 }

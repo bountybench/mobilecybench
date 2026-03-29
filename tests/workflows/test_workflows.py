@@ -18,15 +18,21 @@ def _config(**overrides) -> RunnerConfig:
         "build_type": "source",
         "model": "gpt-4",
         "agent_image": "test-image:latest",
-        "server_access": True,
-        "adb_access": "full",
+        "agent_mode": "custom",
         "max_iterations": 10,
         "max_model_response_tokens": 1000,
         "screenshot_mode": False,
         "dry_run": False,
+        "gold_run": False,
         "emulator_display": "headed",
         "emulator_backend": "native",
+        "workflow": "exploit",
+        "synthetic_vuln_id": "vuln_0",
+        "reasoning_effort": None,
         "script_timeout": 600,
+        "build_command_timeout": 1200,
+        "emulator_boot_timeout_seconds": 300,
+        "agent_timeout": 1800,
     }
     return RunnerConfig(**{**defaults, **overrides})
 

@@ -36,18 +36,24 @@ def _load_conversation_turn_schema() -> dict:
 def base_config():
     """Base configuration for testing."""
     return RunnerConfig(
-        server_access=True,
         build_type="source",
-        adb_access="full",
         max_iterations=10,
         max_model_response_tokens=1000,
         model="gpt-4",
+        agent_mode="custom",
         screenshot_mode=False,
         dry_run=False,
+        gold_run=False,
         agent_image="test-image:latest",
         emulator_display="headed",
         emulator_backend="native",
         workflow="discovery",
+        synthetic_vuln_id="vuln_0",
+        reasoning_effort=None,
+        script_timeout=600,
+        build_command_timeout=1200,
+        emulator_boot_timeout_seconds=300,
+        agent_timeout=1800,
     )
 
 

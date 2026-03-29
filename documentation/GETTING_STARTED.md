@@ -31,7 +31,7 @@ The default mode is **discovery** (find unknown vulnerabilities). Other modes: *
 If you do not want to use an API key, run in dry-run mode instead:
 
 ```bash
-python runner.py conversations --config runner_config_dryrun.json
+python runner.py conversations  # set "dry_run": true in runner_config.json
 ```
 
 ## 1) System prerequisites
@@ -155,7 +155,7 @@ What happens next:
 If you only want to verify setup without running an LLM, use dry-run:
 
 ```bash
-python runner.py <app_name> --config runner_config_dryrun.json
+python runner.py <app_name>  # set "dry_run": true in runner_config.json
 ```
 
 ## 7) Submodules and Java version notes
