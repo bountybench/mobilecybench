@@ -24,6 +24,8 @@ sed_inplace 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/
 sed_inplace 's|classpath.*gradle:.*|classpath '\''com.android.tools.build:gradle:8.9.3'\''|' build.gradle
 
 # Patch gradle.properties - update SDK to 34 and JVM args
+# v0.118+ uses multi-line jvmargs with backslash continuations; collapse to one line first
+sed_inplace -e '/^org\.gradle\.jvmargs=/,/[^\\]$/{/^org\.gradle\.jvmargs=/!d;}' gradle.properties
 sed_inplace \
     -e 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx2048M --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED|' \
     -e 's|^ndkVersion=.*|ndkVersion=24.0.8215888|' \
@@ -50,17 +52,23 @@ if ! grep -q "packagingOptions" app/build.gradle; then
 " app/build.gradle
 fi
 
-# Patch AndroidManifest.xml
-git checkout HEAD -- app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.app\.TermuxActivity"/a\
+# Patch AndroidManifest.xml (idempotent — safe to run multiple times)
+# Add android:exported="true" only if not already present on each component
+grep -A1 'android:name="\.app\.TermuxActivity"' app/src/main/AndroidManifest.xml | grep -q 'exported' || \
+    sed_inplace '/android:name="\.app\.TermuxActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.filepicker\.TermuxFileReceiverActivity"/a\
+grep -A1 'android:name="\.filepicker\.TermuxFileReceiverActivity"' app/src/main/AndroidManifest.xml | grep -q 'exported' || \
+    sed_inplace '/android:name="\.filepicker\.TermuxFileReceiverActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.HomeActivity"/a\
+grep -A1 'android:name="\.HomeActivity"' app/src/main/AndroidManifest.xml | grep -q 'exported' || \
+    sed_inplace '/android:name="\.HomeActivity"/a\
             android:exported="true"' app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.app\.TermuxService"/a\
+# Add foregroundServiceType only if not already present on each service
+grep -A1 'android:name="\.app\.TermuxService"' app/src/main/AndroidManifest.xml | grep -q 'foregroundServiceType' || \
+    sed_inplace '/android:name="\.app\.TermuxService"/a\
             android:foregroundServiceType="dataSync"' app/src/main/AndroidManifest.xml
-sed_inplace '/android:name="\.app\.RunCommandService"/a\
+grep -A1 'android:name="\.app\.RunCommandService"' app/src/main/AndroidManifest.xml | grep -q 'foregroundServiceType' || \
+    sed_inplace '/android:name="\.app\.RunCommandService"/a\
             android:foregroundServiceType="dataSync"' app/src/main/AndroidManifest.xml
 if ! grep -q 'FOREGROUND_SERVICE_DATA_SYNC' app/src/main/AndroidManifest.xml; then
     sed_inplace '/<uses-permission android:name="android.permission.FOREGROUND_SERVICE" \/>/a\
@@ -79,13 +87,18 @@ sed_inplace 's/PendingIntent\.getService(this, 0, exitIntent, 0)/PendingIntent.g
 sed_inplace 's/PendingIntent\.getService(this, 0, toggleWakeLockIntent, 0)/PendingIntent.getService(this, 0, toggleWakeLockIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
 
 git checkout HEAD -- app/src/main/java/com/termux/app/utils/CrashUtils.java
-sed_inplace 's/PendingIntent\.getActivity(context, 0, notificationIntent, PendingIntent\.FLAG_UPDATE_CURRENT)/PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/utils/CrashUtils.java
+sed_inplace 's/PendingIntent\.FLAG_UPDATE_CURRENT)/PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)/g' app/src/main/java/com/termux/app/utils/CrashUtils.java
 sed_inplace 's/R\.drawable\.ic_error_notification/com.termux.shared.R.drawable.ic_error_notification/' app/src/main/java/com/termux/app/utils/CrashUtils.java
 
 git checkout HEAD -- app/src/main/java/com/termux/app/utils/PluginUtils.java
 sed_inplace 's/R\.drawable\.ic_error_notification/com.termux.shared.R.drawable.ic_error_notification/' app/src/main/java/com/termux/app/utils/PluginUtils.java
 
 sed_inplace 's/registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter)/registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)/' app/src/main/java/com/termux/app/TermuxActivity.java
+
+# Fix references to termux-shared resources (AGP 8.0+ with namespaces requires qualified R)
+sed_inplace 's/R\.raw\.bell/com.termux.shared.R.raw.bell/' app/src/main/java/com/termux/app/terminal/TermuxTerminalSessionClient.java
+sed_inplace 's/R\.string\.action_yes/com.termux.shared.R.string.action_yes/' app/src/main/java/com/termux/app/terminal/TermuxTerminalViewClient.java
+sed_inplace 's/R\.string\.action_no/com.termux.shared.R.string.action_no/' app/src/main/java/com/termux/app/terminal/TermuxTerminalViewClient.java
 
 # Add namespaces to library modules
 for module_ns in "terminal-emulator:com.termux.terminal" "termux-shared:com.termux.shared" "terminal-view:com.termux.view"; do

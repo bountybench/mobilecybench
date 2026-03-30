@@ -40,6 +40,10 @@ spec:
               value: "VULN_ID"
             - name: EMULATOR_BACKEND
               value: "EMULATOR_BACKEND"
+            - name: DRY_RUN
+              value: "DRY_RUN"
+            - name: GOLD_RUN
+              value: "GOLD_RUN"
             - name: GCS_BUCKET
               value: "GCS_BUCKET"
             - name: RUN_ID
@@ -49,6 +53,9 @@ spec:
           envFrom:
             - secretRef:
                 name: llm-api-keys
+            - secretRef:
+                name: dockerhub-credentials
+                optional: true
           volumeMounts:
             - name: dev-kvm
               mountPath: /dev/kvm

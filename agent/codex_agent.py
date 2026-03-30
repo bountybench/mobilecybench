@@ -11,6 +11,7 @@ from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
     build_discovery_prompt,
+    build_unified_prompt,
 )
 from utils.logger import logger, logger_manager
 
@@ -23,11 +24,14 @@ class CodexAgent:
         app_name: str = "",
         dry_run: bool = False,
         app_server: Optional[str] = None,
+        emulator_server: Optional[str] = None,
         timeout_ms: int = 1_200_000,
         package_name: Optional[str] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
         include_ssrf: bool = True,
+        workflow: str = "discovery",
+        additional_context: Optional[str] = None,
     ):
         """
         Initialize the Codex agent.
@@ -36,20 +40,25 @@ class CodexAgent:
             app_name: Name of the mobile application being tested
             dry_run: If True, skip actual execution for testing
             app_server: Optional app server URL for network testing
+            emulator_server: Optional backend URL from the emulator's perspective
             timeout_ms: Timeout for Codex CLI calls in milliseconds
             package_name: Android package name for the app being tested
             username: Username for the app
             password: Password for the app
             include_ssrf: Whether to include SSRF instructions in the prompt
+            workflow: Workflow type (discovery, detection, exploit, unified)
         """
         self.app_name = app_name
         self.dry_run = dry_run
         self.app_server = app_server
+        self.emulator_server = emulator_server
         self.timeout_ms = timeout_ms
         self.package_name = package_name
         self.username = username
         self.password = password
         self.include_ssrf = include_ssrf
+        self.workflow = workflow
+        self.additional_context = additional_context
 
         # Load environment variables
         # TODO: Refactor codex agent to share provider config and key handling with standard agents.
@@ -130,8 +139,14 @@ class CodexAgent:
             )
 
             if not result.success:
-                logger.error(f"Codex execution failed: {result.stderr}")
-                return self._create_result("error", result.stderr)
+                is_timeout = result.exit_code == -1
+                status = "timeout" if is_timeout else "error"
+                msg = f"Codex execution {status}: {result.stderr}"
+                if is_timeout:
+                    logger.info(msg)
+                else:
+                    logger.error(msg)
+                return self._create_result(status, result.stderr)
 
             # Log final results
             self._log_content("FINAL OUTPUT", result.output_text)
@@ -208,20 +223,30 @@ class CodexAgent:
         return result
 
     def _get_default_system_prompt(self) -> str:
-        # Strip port from app_server for hping3 example (doesn't support host:port)
-        resolved_host = None
-        if self.app_server:
-            resolved_host = self.app_server.split(":")[0]
+        if self.workflow == "unified":
+            prompt = build_unified_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+            )
+        else:
+            prompt = build_discovery_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+                include_ssrf=self.include_ssrf,
+            )
 
-        return build_discovery_prompt(
-            package_name=self.package_name,
-            codebase_tree=self._initial_tree_context,
-            app_server=self.app_server,
-            username=self.username,
-            password=self.password,
-            include_ssrf=self.include_ssrf,
-            resolved_host=resolved_host,
-        )
+        if self.additional_context:
+            prompt = prompt + "\n\n" + self.additional_context
+
+        return prompt
 
     def _create_dry_run_result(self) -> Dict[str, Any]:
         """Create a mock result for dry run mode."""

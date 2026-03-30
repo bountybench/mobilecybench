@@ -21,18 +21,26 @@
 #   bash infra/gke/test_local.sh moememos
 #   bash infra/gke/test_local.sh moememos --container   # emulator in separate container
 #   bash infra/gke/test_local.sh moememos --skip-build   # never build, only use existing/pull
+#   bash infra/gke/test_local.sh moememos --gold-run     # run reference exploits
 
 set -euo pipefail
 
-APP_NAME="${1:-moememos}"
+APP_NAME="moememos"
 EMULATOR_BACKEND="native"
 SKIP_BUILD=false
+DRY_RUN=true
+GOLD_RUN=false
 
-for arg in "$@"; do
-    case "$arg" in
-        --native) EMULATOR_BACKEND="native" ;;
-        --container) EMULATOR_BACKEND="container" ;;
-        --skip-build) SKIP_BUILD=true ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --native) EMULATOR_BACKEND="native"; shift ;;
+        --container) EMULATOR_BACKEND="container"; shift ;;
+        --skip-build) SKIP_BUILD=true; shift ;;
+        --dry-run) DRY_RUN=true; GOLD_RUN=false; shift ;;
+        --gold-run) GOLD_RUN=true; DRY_RUN=false; shift ;;
+        --no-dry-run) DRY_RUN=false; shift ;;
+        --*) echo "Unknown arg: $1"; exit 1 ;;
+        *) APP_NAME="$1"; shift ;;
     esac
 done
 
@@ -47,6 +55,8 @@ DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
 echo "Emulator backend: $EMULATOR_BACKEND"
+echo "Dry run:        $DRY_RUN"
+echo "Gold run:       $GOLD_RUN"
 echo "Project root:   $PROJECT_ROOT"
 echo ""
 
@@ -160,6 +170,8 @@ fi
 echo ""
 
 # ─── Step 3: Create dry-run config ─────────────────────────────────────────
+trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"' EXIT
+
 echo "--- Step 3: Creating test config ---"
 cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
 {
@@ -170,7 +182,8 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "max_model_response_tokens": 100,
   "model": "notarealmodel",
   "screenshot_mode": false,
-  "dry_run": true,
+  "dry_run": $DRY_RUN,
+  "gold_run": $GOLD_RUN,
   "workflow": "exploit",
   "synthetic_vuln_id": "vuln_0",
   "agent_image": "cybench/mobilecybench:latest",
@@ -182,7 +195,7 @@ echo "Config written to runner_config_test.json"
 echo ""
 
 # ─── Step 4: Run orchestrator ──────────────────────────────────────────────
-echo "--- Step 4: Running orchestrator (dry_run=true, no LLM) ---"
+echo "--- Step 4: Running orchestrator (dry_run=$DRY_RUN, gold_run=$GOLD_RUN) ---"
 echo "The orchestrator will:"
 echo "  - Start DinD"
 echo "  - Start emulator ($EMULATOR_BACKEND mode)"
@@ -222,6 +235,8 @@ docker run --rm \
     -e APP_NAME="$APP_NAME" \
     -e EMULATOR_IMAGE="${EMULATOR_IMAGE_NAME}" \
     -e DOCKER_TLS_CERTDIR= \
+    -e DOCKERHUB_USERNAME="${DOCKERHUB_USERNAME:-}" \
+    -e DOCKERHUB_TOKEN="${DOCKERHUB_TOKEN:-}" \
     "$IMAGE_NAME" \
     -c '
         set -e
@@ -237,6 +252,12 @@ docker run --rm \
         done
         if [ $timeout -eq 0 ]; then echo "Docker daemon failed to start"; exit 1; fi
         echo "Docker daemon ready"
+
+        # Docker Hub auth (optional — avoids rate limits on image pulls)
+        if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            echo "Docker Hub login successful"
+        fi
 
         docker network create shared_net || true
 
@@ -296,9 +317,6 @@ docker run --rm \
 if [ -n "$EMULATOR_IMAGE_TAR" ] && [ -f "$EMULATOR_IMAGE_TAR" ]; then
     rm -f "$EMULATOR_IMAGE_TAR"
 fi
-
-# Cleanup
-rm -f "$PROJECT_ROOT/runner_config_test.json"
 
 echo ""
 echo "=== Test complete ==="

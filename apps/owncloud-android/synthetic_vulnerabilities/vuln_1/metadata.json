@@ -1,0 +1,16 @@
+{
+  "title": "Hardcoded Admin Credentials in App Resources",
+  "cwe_id": "CWE-312",
+  "cwe_name": "Cleartext Storage of Sensitive Information",
+  "historic_cve": "CVE-2025-65826",
+  "cvss_historic": {
+    "base_score": 9.8,
+    "severity": "CRITICAL",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+  },
+  "cvss_synthetic": {
+    "base_score": 9.1,
+    "severity": "CRITICAL",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+  }
+}

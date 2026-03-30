@@ -35,9 +35,6 @@ read_secrets() {
 # Read secrets
 read_secrets
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-: "${KARAF_SSH_KEY:=$ROOT_DIR/.ssh/openhab_karaf_id}"
 : "${KARAF_SSH_KEY:=$ROOT_DIR/.ssh/openhab_karaf_id}"
 
 run_cmd() {
@@ -208,50 +205,21 @@ files_cleanup() {
     rm -rf "$p"
   done
 
-  # Remove OpenHAB configuration directories completely
-  openhab_dirs=(
-    "$ROOT_DIR/openhab_conf"
-    "$ROOT_DIR/openhab_addons"
-    "$ROOT_DIR/openhab_userdata"
-  )
-  
-  for d in "${openhab_dirs[@]}"; do
-    if [ -d "$d" ]; then
-      LOG "Removing OpenHAB directory: $d"
-      rm -rf "$d"
-    fi
-  done
+  # Restore bind-mounted files to their committed state.
+  # Vuln scenarios and the container itself may have modified them.
+  if command -v git >/dev/null 2>&1; then
+    LOG "Restoring pre-committed config files from git..."
+    git checkout -- "$ROOT_DIR/openhab_userdata/jsondb/users.json" 2>/dev/null || true
+    git checkout -- "$ROOT_DIR/openhab_conf/services/runtime.cfg" 2>/dev/null || true
+    git checkout -- "$ROOT_DIR/openhab_conf/sitemaps/home.sitemap" 2>/dev/null || true
+  fi
 
-  # Remove dynamically created mosquitto configuration file and directories
+  # Clean mosquitto runtime data but preserve config
   mosquitto_dir="$ROOT_DIR/mosquitto"
   if [ -d "$mosquitto_dir" ]; then
-    LOG "Removing mosquitto directory and all contents: $mosquitto_dir"
-    
-    # Use Docker to remove files with proper permissions if Docker is available
-    if command -v docker >/dev/null 2>&1; then
-      LOG "Using Docker to clean mosquitto files with proper permissions"
-      # Use a more comprehensive Docker cleanup that handles all file permissions
-      docker run --rm \
-        -v "$mosquitto_dir:/cleanup" \
-        --user root \
-        alpine:latest \
-        sh -c "find /cleanup -mindepth 1 -delete 2>/dev/null || rm -rf /cleanup/* /cleanup/.* 2>/dev/null || true" || {
-        LOG "Docker cleanup failed, attempting fallback"
-      }
-      
-      # Remove the empty directory
-      rmdir "$mosquitto_dir" 2>/dev/null || {
-        # If rmdir fails, try rm -rf as final fallback
-        rm -rf "$mosquitto_dir" 2>/dev/null || {
-          LOG "Warning: Could not fully remove mosquitto directory. Manual cleanup may be required."
-        }
-      }
-    else
-      # Fallback to regular rm (may fail with permission errors in CI/CD)
-      rm -rf "$mosquitto_dir" 2>/dev/null || {
-        LOG "Warning: Could not remove mosquitto directory due to permission issues. Docker is recommended for proper cleanup."
-      }
-    fi
+    LOG "Cleaning mosquitto runtime data (preserving config)..."
+    rm -rf "$mosquitto_dir/data" "$mosquitto_dir/log" 2>/dev/null || true
+    mkdir -p "$mosquitto_dir/data" "$mosquitto_dir/log" 2>/dev/null || true
   fi
 
   # Remove baseline.json file if it exists
@@ -278,47 +246,46 @@ files_cleanup() {
     LOG "Removing tmp directory: $ROOT_DIR/tmp"
     rm -rf "$ROOT_DIR/tmp"
   fi
+
+  runtime_state_dir="$ROOT_DIR/synthetic_vulnerabilities/vuln_0/runtime_state"
+  if [ -d "$runtime_state_dir" ]; then
+    LOG "Removing runtime state directory: $runtime_state_dir"
+    rm -rf "$runtime_state_dir"
+  fi
 }
 
-# If Karaf is not reachable locally, try to start the compose stack so we can 
-# perform user removal. This is best-effort.
-compose_file="$ROOT_DIR/docker-compose.yml"
-if [ -f "$compose_file" ] && command -v docker >/dev/null 2>&1; then
-  # Only attempt to start if karaf (8101) is not reachable
-  if ! nc -vz 127.0.0.1 8101 >/dev/null 2>&1; then
-    LOG "Karaf not reachable; attempting to start docker-compose to allow user removal"
-    if command -v docker-compose >/dev/null 2>&1; then
-      invoker=(docker-compose -f "$compose_file")
-    else
-      invoker=(docker compose -f "$compose_file")
-    fi
-    run_cmd "${invoker[*]} up -d"
-    # Wait for karaf to come up (best-effort)
-    wait_for_karaf
+adb_cleanup() {
+  if ! command -v adb >/dev/null 2>&1; then
+    return 0
   fi
-fi
+  # Only run adb commands if an emulator is actually connected
+  if ! adb devices 2>/dev/null | grep -q "device$"; then
+    LOG "No emulator connected — skipping adb cleanup"
+    return 0
+  fi
+  adb root >/dev/null 2>&1 || true
+  sleep 2
+  adb shell rm -f "/data/data/org.openhab.habdroid/files/log_activity_snapshot.txt" >/dev/null 2>&1 || true
+}
 
-# Attempt to remove any test user created by setup.sh (best-effort; won't abort on failures)
-if ! remove_test_users; then
-  LOG "Test user removal returned non-zero; continuing with remaining cleanup results." || true
-fi
-
-# Now that users have been handled (or attempted), bring down docker services
+# Users are pre-committed in openhab_userdata/jsondb/users.json — no need
+# to remove them via Karaf. Just tear down the containers.
 docker_cleanup
 
-# Uninstall the app from emulator
-if command -v adb >/dev/null 2>&1; then
+# Uninstall the app from emulator (only if one is connected)
+if command -v adb >/dev/null 2>&1 && adb devices 2>/dev/null | grep -q "device$"; then
+  adb_cleanup
   LOG "Checking for OpenHAB app installation on emulator"
 
   pkg="org.openhab.habdroid"
-  if adb shell pm list packages | grep -q "^package:$pkg$"; then
+  if adb shell pm list packages 2>/dev/null | grep -q "^package:$pkg$"; then
     LOG "Uninstalling $pkg from emulator"
     adb uninstall "$pkg" 2>/dev/null || LOG "Warning: Failed to uninstall $pkg"
   else
     LOG "Package $pkg not found on emulator"
   fi
 else
-  LOG "adb not available; skipping app uninstallation from emulator"
+  LOG "No emulator connected — skipping app uninstallation"
 fi
 
 # Clean up files after user operations are complete

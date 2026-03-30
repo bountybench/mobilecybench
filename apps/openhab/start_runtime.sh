@@ -6,8 +6,9 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "openhab" "$@")
 cd "$SCRIPT_DIR"
 
-KARAF_TCP_TIMEOUT=${KARAF_TCP_TIMEOUT:-120}
-KARAF_READY_TIMEOUT=${KARAF_READY_TIMEOUT:-120}
+KARAF_TCP_TIMEOUT=${KARAF_TCP_TIMEOUT:-480}
+KARAF_READY_TIMEOUT=${KARAF_READY_TIMEOUT:-480}
+ANDROID_APK_HASH_FILE="${SCRIPT_DIR}/apk_hash_baseline.txt"
 
 KARAF_PASSWORD=${KARAF_PASSWORD:-}
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
@@ -44,8 +45,56 @@ setup_apk_device() {
   adb_install_apk "$APK_PATH"
 }
 
+capture_apk_hash() {
+  log_info "Capturing APK hash for integrity verification"
+  local apk_paths apk_device_path
+  apk_paths="$(adb shell pm path org.openhab.habdroid 2>/dev/null | tr -d '\r' | sed 's/^package://')" || apk_paths=""
+  apk_device_path="$(printf '%s\n' "$apk_paths" | grep '/base.apk$' | head -n 1 || true)"
+  if [ -z "$apk_device_path" ]; then
+    apk_device_path="$(printf '%s\n' "$apk_paths" | head -n 1 || true)"
+  fi
+  if [ -z "$apk_device_path" ]; then
+    log_warn "Could not determine APK path; skipping hash capture"
+    return
+  fi
+
+  local tmp_apk="/tmp/openhab_baseline_apk.tmp"
+  if ! adb pull "$apk_device_path" "$tmp_apk" >/dev/null 2>&1; then
+    log_warn "APK pull failed; skipping hash capture"
+    return
+  fi
+
+  python3 -c '
+import hashlib, sys
+print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
+' "$tmp_apk" > "$ANDROID_APK_HASH_FILE"
+  rm -f "$tmp_apk"
+  log_info "APK hash saved to $ANDROID_APK_HASH_FILE"
+}
+
 wait_for_docker_container_ready() {
-    wait_healthy "${2:-openhab}" "${1:-300}" || fatal "Container '${2:-openhab}' did not become healthy"
+    local container="${2:-openhab}"
+    local timeout="${1:-300}"
+    log_info "Waiting up to ${timeout}s for container '$container' to become healthy..."
+    local elapsed=0
+    while [ "$elapsed" -lt "$timeout" ]; do
+      local status
+      status=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "no-healthcheck")
+      if [ "$status" = "healthy" ]; then
+        log_info "Container '$container' is healthy (${elapsed}s)"
+        return 0
+      fi
+      if [ "$status" = "no-healthcheck" ]; then
+        log_warn "Container '$container' has no healthcheck"
+        return 0
+      fi
+      if [ $((elapsed % 30)) -eq 0 ] && [ "$elapsed" -gt 0 ]; then
+        log_info "Still waiting for '$container'... status=$status (${elapsed}s/${timeout}s)"
+      fi
+      sleep 5
+      elapsed=$((elapsed + 5))
+    done
+    fatal "Container '$container' did not become healthy after ${timeout}s"
 }
 
 update_runtime_cfg() {
@@ -116,7 +165,33 @@ update_runtime_cfg() {
   log_info "Updated $cfg_file successfully"
 }
 
+users_exist_in_jsondb() {
+  local users_file="$SCRIPT_DIR/openhab_userdata/jsondb/users.json"
+  if [ ! -f "$users_file" ]; then
+    return 1
+  fi
+  # Check that both admin and nonadmin users exist
+  python3 -c "
+import json, sys
+with open('$users_file') as f:
+    db = json.load(f)
+admin = db.get('$ADMINUSER_USERNAME', {}).get('value', {})
+nonadmin = db.get('$NONADMINUSER_USERNAME', {}).get('value', {})
+if 'administrator' in admin.get('roles', []) and nonadmin.get('name'):
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null
+}
+
 setup_karaf() {
+  # Skip Karaf SSH user creation if users already exist in JSONDB.
+  # The JSONDB is a bind-mounted file that persists across container restarts,
+  # so openHAB will load these users automatically.
+  if users_exist_in_jsondb; then
+    log_info "Users already exist in JSONDB — skipping Karaf SSH setup"
+    return 0
+  fi
+
   local setup_karaf_script="$SCRIPT_DIR/setup_karaf.sh"
 
   if [ -f "$setup_karaf_script" ] && [ -x "$setup_karaf_script" ]; then
@@ -153,61 +228,104 @@ setup_karaf() {
   fi
 }
 
-compute_dir_hash() {
-  local path="$1"
-  find "$path" -type f -exec sha256sum {} + | awk '{print $1}' | sort | sha256sum | awk '{print $1}'
-}
+preconfigure_app() {
+  # Pre-configure the OpenHAB app with the server URL so the emulator can
+  # connect to the backend without manual UI configuration.  This injects
+  # SharedPreferences via adb push (requires root, which is still enabled
+  # at this point in the setup flow — root gets disabled later by the agent
+  # container setup).
+  #
+  # Credentials are stored in EncryptedSharedPreferences on API 23+ and
+  # cannot be injected via file push.  The URL alone is enough to skip the
+  # intro wizard; the agent or exploit replay can add credentials via a
+  # short UI automation step or use curl directly from kali.
 
-wait_for_filesystem_stable() {
-  local dir="$1"
-  local max_wait=${2:-30}
-  local check_interval=2
-  local stable_duration=5
+  local metadata_file="$SCRIPT_DIR/metadata.json"
+  if [ ! -f "$metadata_file" ] || ! command -v jq >/dev/null 2>&1; then
+    log_warn "Cannot preconfigure app: metadata.json or jq not found"
+    return 0
+  fi
 
-  log_info "Waiting for filesystem activity to stabilize in $dir..."
+  local emulator_server
+  emulator_server=$(jq -r '.emulator_server // empty' "$metadata_file" 2>/dev/null || true)
+  if [ -z "$emulator_server" ]; then
+    log_info "No emulator_server in metadata.json — skipping app preconfiguration"
+    return 0
+  fi
 
-  local last_hash=""
-  local stable_since=0
-  local start_time=$(date +%s)
+  local app_pkg="org.openhab.habdroid"
+  local prefs_path="/data/data/${app_pkg}/shared_prefs/${app_pkg}_preferences.xml"
 
-  while true; do
-    local current_hash=$(compute_dir_hash "$dir")
-    local now=$(date +%s)
+  # Check the app is installed
+  if ! adb shell pm list packages 2>/dev/null | grep -q "^package:${app_pkg}$"; then
+    log_warn "App $app_pkg not installed — skipping preconfiguration"
+    return 0
+  fi
 
-    if [ "$current_hash" = "$last_hash" ]; then
-      stable_since=$((stable_since + check_interval))
+  # Need root to write to app's private data directory.
+  # After adb root, adbd restarts — give the package manager a moment
+  # to become available before querying it.
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1
+  sleep 2
 
-      if [ $stable_since -ge $stable_duration ]; then
-        log_info "Filesystem stable for ${stable_duration}s in $dir"
-        return 0
-      fi
-    else
-      stable_since=0
-      last_hash="$current_hash"
-    fi
-
-    if [ $((now - start_time)) -ge $max_wait ]; then
-      log_warn "Filesystem did not stabilize within ${max_wait}s"
-      return 1
-    fi
-
-    sleep $check_interval
+  local app_uid=""
+  local attempt
+  for attempt in 1 2 3; do
+    app_uid="$(
+      adb shell dumpsys package "$app_pkg" 2>/dev/null \
+        | sed -n 's/.*userId=\([0-9][0-9]*\).*/\1/p' \
+        | head -n 1
+    )"
+    [ -n "$app_uid" ] && break
+    # Also try the "uid=" variant used on some Android versions
+    app_uid="$(
+      adb shell dumpsys package "$app_pkg" 2>/dev/null \
+        | sed -n 's/.*uid=\([0-9][0-9]*\).*/\1/p' \
+        | head -n 1
+    )"
+    [ -n "$app_uid" ] && break
+    sleep 2
   done
-}
 
-hash_immutable_files() {
-  local baseline="$SCRIPT_DIR/baseline.json"
-  log_info "Waiting for files to stabilize before hashing..."
+  if [ -z "$app_uid" ]; then
+    log_warn "Could not determine app UID — skipping preconfiguration"
+    adb unroot >/dev/null 2>&1 || true
+    adb wait-for-device >/dev/null 2>&1
+    return 0
+  fi
 
-  wait_for_filesystem_stable "$SCRIPT_DIR/openhab_userdata/"
+  local tmp_prefs
+  tmp_prefs="$(mktemp)"
 
-  log_info "Hashing immutable directories and saving to $baseline"
-
-  cat > "$baseline" << EOF
-{
- "openhab_userdata/jsondb/users.json": "$(compute_dir_hash "$SCRIPT_DIR/openhab_userdata/jsondb/users.json")"
-}
+  cat >"$tmp_prefs" <<EOF
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <set name="server_ids">
+        <string>1</string>
+    </set>
+    <int name="active_server_id" value="1" />
+    <int name="primary_server_id" value="1" />
+    <string name="server_name_1">openHAB</string>
+    <string name="local_url_1">${emulator_server}</string>
+    <boolean name="firstStart" value="false" />
+</map>
 EOF
+
+  adb shell mkdir -p "$(dirname "$prefs_path")" >/dev/null 2>&1 || true
+  adb push "$tmp_prefs" "$prefs_path" >/dev/null
+  adb shell chown "${app_uid}:${app_uid}" "$prefs_path" >/dev/null 2>&1 || true
+  adb shell chmod 600 "$prefs_path" >/dev/null 2>&1 || true
+  rm -f "$tmp_prefs"
+
+  # Force-stop so the app picks up the new prefs on next launch
+  adb shell am force-stop "$app_pkg" >/dev/null 2>&1 || true
+
+  # Drop root privileges — the agent must not have root access
+  adb unroot >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1
+
+  log_info "App preconfigured with server URL: $emulator_server"
 }
 
 create_env_file() {
@@ -241,15 +359,20 @@ main() {
   "$SCRIPT_DIR/setup_mosquitto.sh"
   log_info "Starting docker compose services..."
   docker compose up -d
+
   wait_for_docker_container_ready
 
-  update_runtime_cfg
-
+  # Users are pre-committed in openhab_userdata/jsondb/users.json and
+  # bind-mounted into the container. Only run Karaf as a fallback.
   setup_karaf
 
-  setup_apk_device
+  # Seed items via REST API (idempotent — skips if already seeded)
+  log_info "Seeding environment with sample data..."
+  bash "$SCRIPT_DIR/seed_environment.sh"
 
-  hash_immutable_files
+  setup_apk_device
+  preconfigure_app
+  capture_apk_hash
 
   log_info "Setup completed."
 }

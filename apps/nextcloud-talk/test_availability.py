@@ -5,16 +5,6 @@ import common_setup as cs
 import requests
 
 
-def run_adb_command(cmd):
-    try:
-        result = subprocess.run(
-            ["adb", "shell"] + cmd.split(), capture_output=True, text=True
-        )
-        return result.stdout
-    except Exception as e:
-        return str(e)
-
-
 def check_container_health():
     """Return 1 if the container health status is 'healthy', 0 otherwise."""
     try:

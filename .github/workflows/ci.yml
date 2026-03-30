@@ -104,7 +104,7 @@ jobs:
             fi
 
             java=$(jq -r '.java // 17' "$metadata")
-            system_image="google_atd"
+            system_image=$(jq -r '.system_image // "google_atd"' "$metadata")
             echo "  SDK: $sdk, Java: $java, System image: $system_image"
 
             # Check for probes
@@ -136,6 +136,7 @@ jobs:
 
             source_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/build.sh" && echo "true" || echo "false")
             apklink_modified=$(git diff --name-only origin/main...HEAD | grep -qF "$dir/metadata.json" && echo "true" || echo "false")
+            core_modified=$(git diff --name-only origin/main...HEAD | grep -qE "^${dir}/(build\.sh|start_runtime\.sh|cleanup\.sh|metadata\.json|docker-compose\.yml|security\.patch)" && echo "true" || echo "false")
 
             setup_modes=()
             if [ "$has_source" = true ] && [ "$has_apklink" = true ]; then
@@ -159,15 +160,20 @@ jobs:
             synth_changes=$(git diff --name-only origin/main...HEAD \
               | grep "^${dir}/synthetic_vulnerabilities/" || true)
 
-            # If PR touches synthetic_vulnerabilities/ for this app, add synthetic vuln jobs
-            if [ -n "$synth_changes" ]; then
-              echo "  Detected synthetic vulnerability changes for $app_name"
-
-              # Extract unique vuln IDs from changed paths
-              vuln_ids=$(echo "$synth_changes" \
-                | sed "s|^${dir}/synthetic_vulnerabilities/||" \
-                | cut -d'/' -f1 \
-                | sort -u)
+            # If PR touches synthetic_vulnerabilities/ or core files, add synthetic vuln jobs
+            if [ -n "$synth_changes" ] || [ "$core_modified" = "true" ]; then
+              if [ "$core_modified" = "true" ]; then
+                echo "  Detected core file changes for $app_name - retesting all synthetic vulnerabilities"
+                # Find all vuln IDs for this app, excluding hidden directories
+                vuln_ids=$(find "${dir}/synthetic_vulnerabilities" -maxdepth 1 -mindepth 1 -type d ! -name ".*" -exec basename {} \; 2>/dev/null | sort -u || true)
+              else
+                echo "  Detected synthetic vulnerability changes for $app_name"
+                # Extract unique vuln IDs from changed paths
+                vuln_ids=$(echo "$synth_changes" \
+                  | sed "s|^${dir}/synthetic_vulnerabilities/||" \
+                  | cut -d'/' -f1 \
+                  | sort -u)
+              fi
 
               for vuln_id in $vuln_ids; do
                 vuln_dir="${dir}/synthetic_vulnerabilities/${vuln_id}"
@@ -193,14 +199,14 @@ jobs:
                   exit 1
                 fi
 
-                # Use apklink if available, but force source if vulnerability.patch or build.sh changed
+                # Use apklink if available, but force source if vulnerability.patch, build.sh, or metadata.json changed
                 synth_mode="source"
                 if [ "$has_apklink" = true ]; then
                   patch_changed=$(echo "$synth_changes" | grep -q "${vuln_id}/vulnerability.patch" && echo "true" || echo "false")
-                  if [ "$patch_changed" = "false" ] && [ "$source_modified" = "false" ]; then
+                  if [ "$patch_changed" = "false" ] && [ "$source_modified" = "false" ] && [ "$apklink_modified" = "false" ]; then
                     synth_mode="apklink"
                   else
-                    echo "  vulnerability.patch or build.sh changed — forcing source build for $vuln_id"
+                    echo "  vulnerability.patch, build.sh, or metadata.json changed — forcing source build for $vuln_id"
                   fi
                 fi
 
@@ -606,8 +612,8 @@ jobs:
           checkout_commit() {
             pwd
             if [[ -f "metadata.json" ]]; then
-              commit=$(jq -r '.["commit_version"]' "metadata.json")
-              
+              commit=$(jq -r '.["commit_version"] // empty' "metadata.json")
+
               if [[ -n "$commit" ]]; then
                 echo "Found commit: $commit"
 
@@ -846,7 +852,7 @@ jobs:
             exit 1
           fi
 
-          if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
+          if ! jq -e '[.. | select(type == "number")] | length > 0 and all(. == 1)' generic_scores.json > /dev/null; then
               echo "ERROR: generic_scores.json does not contain all 1s."
               cat generic_scores.json
               ./cleanup.sh
@@ -1055,6 +1061,9 @@ jobs:
 
           cd "$dir"
 
+          # Ensure codebase is at the correct commit
+          checkout_commit
+
           # Get package_name from metadata.json
           package_name=$(jq -r '.package_name' metadata.json)
           echo "Found package_name in metadata.json: $package_name"
@@ -1109,13 +1118,11 @@ jobs:
             agent_output_path="$(pwd)/${vuln_dir}/agent_output"
             rm -rf "$agent_output_path"
             mkdir -p "$agent_output_path"
-            if ! "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
+            "${GITHUB_WORKSPACE}/utils/run_exploit_container.sh" \
               --exploit-dir "$exploit_files_path" \
               --output-dir "$agent_output_path" \
-              --image "$EXPLOIT_IMAGE"; then
-              echo "ERROR: Exploit container execution failed"
-              return 1
-            fi
+              --image "$EXPLOIT_IMAGE" \
+              --codebase-dir "$(pwd)/codebase" || echo "WARNING: Exploit returned non-zero exit code (may be expected on clean builds)"
 
             # Run verification on host
             echo "Running verification script..."
@@ -1206,8 +1213,25 @@ jobs:
             exit 1
           fi
 
+          # Apply vulnerability patch so exploit container sees vulnerable source
+          patch_file="${vuln_dir}/vulnerability.patch"
+          echo "Applying vulnerability patch to codebase..."
+          (cd codebase && git apply "$GITHUB_WORKSPACE/$dir/$patch_file")
+
+          # Always restore codebase (including submodules) after Phase 2, even on failure
+          restore_codebase() {
+            echo "Restoring codebase after vulnerable phase..."
+            (cd codebase && git reset --hard HEAD && sudo git clean -fdx \
+              && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true \
+              && git submodule foreach --recursive sudo git clean -fdx 2>/dev/null || true)
+          }
+          trap restore_codebase EXIT
+
           run_exploit_and_verify "Vulnerable build" "true"
           phase2_result=$?
+
+          restore_codebase
+          trap - EXIT
 
           echo "Cleaning up Phase 2..."
           ./cleanup.sh
@@ -1394,7 +1418,7 @@ jobs:
           profile: pixel_2
           ram-size: 2048
           force-avd-creation: true
-          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -skin 1080x1920 -memory 2048 -camera-back emulated
+          emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader -noaudio -no-boot-anim -memory 2048 -read-only
           disable-animations: true
           script: |
             # Restart ADB on all interfaces so exploit containers can reach

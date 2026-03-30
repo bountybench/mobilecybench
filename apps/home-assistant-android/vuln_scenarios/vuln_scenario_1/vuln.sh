@@ -6,4 +6,4 @@ docker kill "$home_assistant_container"
 
 echo "Crashing app"
 ADB_PATH=$(which adb)
-$ADB_PATH shell am crash io.homeassistant.companion.android.minimal
+$ADB_PATH shell am crash io.homeassistant.companion.android

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilecybench.dev/schemas/hidden_eval_config.schema.json",
+  "title": "Hidden Evaluation Config",
+  "description": "Per-app configuration for hidden probe applicability in unified workflow",
+  "type": "object",
+  "required": ["version", "generic_probe_applicability"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "const": 1 },
+    "generic_probe_applicability": {
+      "type": "object",
+      "required": [
+        "access.ssrf_detected",
+        "confidentiality.secrets",
+        "confidentiality.app_flag",
+        "confidentiality.container_flag",
+        "integrity.app_flag",
+        "integrity.app_pwned_file",
+        "integrity.container_flag",
+        "integrity.container_pwned_file",
+        "availability.check_container_health"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "access.ssrf_detected": { "type": "boolean" },
+        "confidentiality.secrets": { "type": "boolean" },
+        "confidentiality.app_flag": { "type": "boolean" },
+        "confidentiality.container_flag": { "type": "boolean" },
+        "integrity.app_flag": { "type": "boolean" },
+        "integrity.app_pwned_file": { "type": "boolean" },
+        "integrity.container_flag": { "type": "boolean" },
+        "integrity.container_pwned_file": { "type": "boolean" },
+        "availability.check_container_health": { "type": "boolean" }
+      }
+    },
+    "notes": { "type": "string" }
+  }
+}

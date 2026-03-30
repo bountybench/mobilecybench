@@ -9,6 +9,7 @@ supports the conclusion that the agent found the real vulnerability.
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from utils.logger import logger, logger_manager
@@ -45,6 +46,8 @@ class DetectionWorkflow(Workflow):
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import check_connectivity
 
+        self._preflight_cleanup_app_runtime()
+
         logger.info("Starting emulator...")
         self.emulator = EmulatorManager(
             project_root=self.project_root,
@@ -77,6 +80,10 @@ class DetectionWorkflow(Workflow):
 
         inject_system_ca(self.project_root)
 
+        # Set up socat port forwards for container emulator mode
+        self.emulator.setup_port_forwards(self.app_dir)
+        self._mark_app_backend_active()
+
         # Install original (vulnerable) APK — no flag injection, no SSRF
         install_app_and_setup_backend(
             self.app_dir,
@@ -86,12 +93,13 @@ class DetectionWorkflow(Workflow):
             build_command_timeout=self.config.build_command_timeout,
         )
 
-        # Agent sees full git history, no vuln_id
+        # Agent sees full git history
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
             metadata=self.metadata,
-            workflow="detection",
+            workflow=self.config.workflow,
+            agent_mode=self.config.agent_mode,
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
@@ -120,13 +128,20 @@ class DetectionWorkflow(Workflow):
             self._save_result(result)
             return result
 
+        codebase_dir = self.app_dir / "codebase"
+
         # Phase 1: Replay on original (vulnerable) APK
         logger.info("Restarting runtime with original APK")
         self._restart_runtime(self._original_apk)
 
         logger.info("Replaying exploit on original app")
         original_exploit = self._run_exploit(
-            agent_exploit_dir, output_dir, exploit_runner, exploit_image, app_server
+            agent_exploit_dir,
+            output_dir,
+            exploit_runner,
+            exploit_image,
+            app_server,
+            codebase_dir=codebase_dir,
         )
 
         if original_exploit["replay_exit_code"] != 0:
@@ -142,13 +157,29 @@ class DetectionWorkflow(Workflow):
 
         # Phase 2: Replay on hardened APK
         logger.info("Exploit succeeded on original. Running hardened check...")
+
+        # Apply security.patch so exploit container sees hardened source
+        security_patch = self.app_dir / "security.patch"
+        logger.info("Applying security.patch to codebase for hardened phase")
+        subprocess.run(
+            ["git", "apply", str(security_patch)],
+            cwd=codebase_dir,
+            check=True,
+        )
+
         logger.info("Restarting runtime with hardened APK")
         self._restart_runtime(self._hardened_apk)
 
         logger.info("Replaying exploit on hardened app")
         hardened_exploit = self._run_exploit(
-            agent_exploit_dir, output_dir, exploit_runner, exploit_image, app_server
+            agent_exploit_dir,
+            output_dir,
+            exploit_runner,
+            exploit_image,
+            app_server,
+            codebase_dir=codebase_dir,
         )
+        # codebase restore handled by Workflow.cleanup()
 
         if hardened_exploit["replay_exit_code"] != 0:
             logger.info(

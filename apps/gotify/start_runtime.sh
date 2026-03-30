@@ -10,7 +10,8 @@ SECRETS_FILE="$SCRIPT_DIR/secrets.json"
 TARGET_PACKAGE="com.github.gotify"
 
 generate_password() {
-  openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
+  # Avoid pipefail/SIGPIPE edge cases in CI by not using pipelines here.
+  openssl rand -hex 16
 }
 
 cleanup_existing() {
@@ -70,10 +71,32 @@ launch_android_app() {
   log_info "Launching Gotify app..."
   adb shell monkey -p "$TARGET_PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
   sleep 3
-  if adb shell pm list packages | grep -q "$TARGET_PACKAGE"; then
+  local pkg_list
+  pkg_list="$(adb shell pm list packages "$TARGET_PACKAGE" 2>/dev/null || true)"
+  if [[ "$pkg_list" == *"package:${TARGET_PACKAGE}"* ]]; then
     log_info "Gotify app is installed and ready!"
   else
     log_warn "App installation may have failed"
+  fi
+}
+
+grant_permissions() {
+  log_info "Pre-granting permissions..."
+  adb shell pm grant "$TARGET_PACKAGE" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+  adb shell appops set "$TARGET_PACKAGE" SCHEDULE_EXACT_ALARM allow 2>/dev/null || true
+  # Allow starting activities from the foreground service (needed on Android 12+)
+  adb shell appops set "$TARGET_PACKAGE" SYSTEM_ALERT_WINDOW allow 2>/dev/null || true
+}
+
+login_agentuser() {
+  log_info "Logging in as agentuser..."
+  local agent_pass=$(jq -r '.password' "$SCRIPT_DIR/metadata.json")
+  local agent_user=$(jq -r '.username' "$SCRIPT_DIR/metadata.json")
+  if python3 "${SCRIPT_DIR}/ui_automation/login.py" \
+      --username "$agent_user" --password "$agent_pass"; then
+    log_info "agentuser logged in successfully"
+  else
+    fatal "Failed to login agentuser"
   fi
 }
 
@@ -84,7 +107,11 @@ main() {
   start_services
   wait_for_services
   install_android_app
+  # Clear logcat so verification only sees events from this phase
+  adb logcat -c 2>/dev/null || true
   launch_android_app
+  grant_permissions
+  login_agentuser
   log_info "Setup completed successfully!"
 }
 

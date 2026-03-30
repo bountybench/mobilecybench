@@ -1,0 +1,16 @@
+{
+  "title": "Intent URL Confirmation Bypass via parseUri",
+  "cwe_id": "CWE-94",
+  "cwe_name": "Improper Control of Generation of Code",
+  "historic_cve": "CVE-2024-34405",
+  "cvss_historic": {
+    "base_score": 9.1,
+    "severity": "CRITICAL",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 8.1,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H"
+  }
+}

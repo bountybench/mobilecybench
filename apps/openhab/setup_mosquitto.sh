@@ -14,11 +14,19 @@ create_mosquitto_config() {
   local config_dir="$mosquitto_dir/config"
   local config_file="$config_dir/mosquitto.conf"
   
-  LOG "Creating Mosquitto configuration..."
-  
   # Create mosquitto directories if they don't exist
   mkdir -p "$config_dir"
   mkdir -p "$mosquitto_dir/data"
+
+  # Skip config generation if file already exists (pre-committed)
+  if [ -f "$config_file" ]; then
+    LOG "Mosquitto configuration already exists at $config_file"
+    chmod 644 "$config_file" 2>/dev/null || true
+    chmod 755 "$mosquitto_dir" "$config_dir" "$mosquitto_dir/data" "$mosquitto_dir/log" 2>/dev/null || true
+    return 0
+  fi
+
+  LOG "Creating Mosquitto configuration..."
   mkdir -p "$mosquitto_dir/log"
   
   # Create mosquitto.conf file

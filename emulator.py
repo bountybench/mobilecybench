@@ -65,11 +65,12 @@ def cmd_start(args: argparse.Namespace) -> int:
             return 1
 
         print(f"Starting emulator (SDK {args.sdk})...")
+        display = "headless" if args.headless else "headed"
         manager = EmulatorManager(
             project_root=PROJECT_ROOT,
             sdk_version=args.sdk,
             rootable=True,
-            emulator_display="headed",
+            emulator_display=display,
             emulator_backend="native",
         )
         try:
@@ -152,6 +153,9 @@ def main() -> int:
     start_p = sub.add_parser("start", help="Start emulator and wait for boot")
     start_p.add_argument(
         "--sdk", default=DEFAULT_SDK, help=f"SDK version (default: {DEFAULT_SDK})"
+    )
+    start_p.add_argument(
+        "--headless", action="store_true", help="Run without display window"
     )
     start_p.set_defaults(handler=cmd_start)
 

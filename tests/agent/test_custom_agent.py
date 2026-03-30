@@ -217,6 +217,8 @@ class TestModelProviderRouting:
             SupportedModel.GPT_5_2,
             SupportedModel.GPT_5_2_PRO,
             SupportedModel.GPT_5_2_CODEX,
+            SupportedModel.GPT_5_4,
+            SupportedModel.GPT_5_4_PRO,
         ]:
             provider = get_model_provider(model.value.api_id, instructions="test")
             assert isinstance(

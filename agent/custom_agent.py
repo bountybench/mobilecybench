@@ -14,6 +14,7 @@ from agent.prompts.prompts import (
     build_detection_prompt,
     build_discovery_prompt,
     build_synthetic_prompt,
+    build_unified_prompt,
 )
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
@@ -57,6 +58,7 @@ class CustomAgent:
         additional_context: str = None,
         timeout_ms: int = 600_000,
         app_server: str = None,
+        emulator_server: str = None,
         network_access: bool = True,
         package_name: str = None,
         reasoning_effort: str = None,
@@ -84,6 +86,7 @@ class CustomAgent:
         self.timeout_ms = timeout_ms
         self.screenshot_enabled = screenshot_enabled
         self.app_server = app_server
+        self.emulator_server = emulator_server
         self.network_access = network_access
         self.app_name = app_name
         self.package_name = package_name
@@ -145,12 +148,23 @@ class CustomAgent:
                 username=self.username,
                 password=self.password,
                 app_server=self.app_server if self.network_access else None,
+                emulator_server=self.emulator_server,
+            )
+        elif self.workflow == "unified":
+            full_prompt = build_unified_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server if self.network_access else None,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
             )
         elif self.workflow == "detection":
             full_prompt = build_detection_prompt(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server if self.network_access else None,
+                emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
             )
@@ -159,6 +173,7 @@ class CustomAgent:
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server if self.network_access else None,
+                emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
                 include_ssrf=self.include_ssrf,

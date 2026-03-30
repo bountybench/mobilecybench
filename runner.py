@@ -8,15 +8,17 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
+import io
 import json
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Optional
 
-from models.config import RunnerConfig  # noqa: E402
-from utils.git_utils import ensure_app_submodule  # noqa: E402
-from utils.logger import logger, logger_manager  # noqa: E402
+from models.config import RunnerConfig
+from utils.git_utils import ensure_app_submodule
+from utils.logger import logger, logger_manager
 from utils.run_artifacts import (
     normalize_agent_result,
     utc_now_iso,
@@ -27,6 +29,7 @@ from workflows import (
     DetectionWorkflow,
     DiscoveryWorkflow,
     ExploitWorkflow,
+    UnifiedWorkflow,
     Workflow,
 )  # noqa: E402
 
@@ -96,6 +99,85 @@ def run_interactive_shell(app_name: str) -> dict:
     return {"status": "completed", "commands_executed": command_count}
 
 
+def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
+    """Run the gold (reference) exploit instead of the LLM agent.
+
+    Copies the known-good exploit files into the kali container (so
+    save_artifacts can extract them), then tears down the kali container
+    and runs the normal evaluation pipeline.
+
+    For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
+    For unified workflow: uses reference_exploit/
+    """
+    if workflow.config.workflow == "unified":
+        # Known-working proof-of-concept exploit for the real vulnerability
+        gold_dir = workflow.app_dir / "reference_exploit"
+    else:
+        gold_dir = (
+            workflow.app_dir
+            / "synthetic_vulnerabilities"
+            / workflow.vuln_id
+            / "exploit_files"
+        )
+    if not gold_dir.exists():
+        raise FileNotFoundError(f"Gold exploit directory not found: {gold_dir}")
+
+    container = workflow.agent_env.container
+    if not container:
+        raise RuntimeError("Kali container not running — cannot copy exploit files")
+
+    # Copy gold exploit files into /app/agent_exploit/ (where the
+    # evaluation pipeline expects to find exploit.sh).
+    if not (gold_dir / "exploit.sh").exists():
+        raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
+
+    logger.info(f"Copying gold exploit files from {gold_dir} into kali container...")
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
+    buf.seek(0)
+    container.put_archive("/app", buf)
+    logger.info("Gold exploit files copied into container at /app/agent_exploit/")
+
+    # Save artifacts (agent_exploit, agent_output) from the container,
+    # then remove kali container before evaluation (matches normal flow).
+    try:
+        workflow.save_artifacts(logs_dir)
+    finally:
+        if workflow.agent_env:
+            workflow.agent_env.cleanup()
+            workflow.agent_env = None  # prevent double-cleanup in finally
+
+    # Run evaluation — replays exploit.sh in a fresh container via
+    # run_exploit_container.sh, then verifies on both vuln and clean APKs.
+    logger.info("Evaluating gold exploit results...")
+    scores = workflow.evaluate()
+
+    # Write gold run result file
+    gold_result = {
+        "mode": "gold_run",
+        "app": workflow.app_name,
+        "vuln_id": workflow.vuln_id,
+        "evaluation": scores,
+        "score": scores.get("score") if isinstance(scores, dict) else None,
+    }
+    gold_result_path = logs_dir / "gold_run_result.json"
+    gold_result_path.write_text(json.dumps(gold_result, indent=2))
+
+    # Clear pass/fail banner
+    score = gold_result["score"]
+    logger.info("=" * 60)
+    if score == 1:
+        logger.info("GOLD RUN PASSED — exploit verified successfully (score=1)")
+    else:
+        logger.info(f"GOLD RUN FAILED — score={score}")
+        logger.info(f"Evaluation details: {scores}")
+    logger.info(f"Result saved to: {gold_result_path}")
+    logger.info("=" * 60)
+
+    return scores
+
+
 def create_workflow(
     config: RunnerConfig, app_name: str, project_root: Path
 ) -> Workflow:
@@ -110,6 +192,8 @@ def create_workflow(
     Returns:
         Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
     """
+    if config.workflow == "unified":
+        return UnifiedWorkflow(config, app_name, project_root)
     if config.workflow == "exploit":
         return ExploitWorkflow(config, app_name, project_root)
     if config.workflow == "detection":
@@ -196,7 +280,17 @@ def run(
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
 
-        if config.dry_run:
+        if config.gold_run:
+            logger.info("Gold run mode — using reference exploit files...")
+            scores = _run_gold_exploit(workflow, logger_manager.get_logs_dir())
+            evaluation = scores or {}
+            run_result = normalize_agent_result({"status": "gold_run_completed"})
+            gold_score = scores.get("score") if isinstance(scores, dict) else None
+            logger.info(f"Gold run complete: {scores}")
+            outcome = "success" if gold_score == 1 else "failure"
+            exit_reason = "gold_run_completed"
+            exit_code = 0 if gold_score == 1 else 1
+        elif config.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
             run_result = normalize_agent_result(run_interactive_shell(app_name))
             run_result["status"] = "dry_run_completed"
