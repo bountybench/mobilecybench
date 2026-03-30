@@ -10,21 +10,38 @@ from utils.adb_blocked_patterns import BLOCKED_SERVICES, BLOCKED_SHELL_PATTERNS
 from utils.logger import logger
 
 
+def _build_service_patterns():
+    """Build regex patterns for blocked ADB service commands.
+
+    Matches "adb <service>" as a command (e.g. "adb root", "adb backup")
+    but NOT the service name as a substring in paths or variables
+    (e.g. /root/.android-sdk, BACKUP_DIR).
+    """
+    patterns = []
+    for svc in BLOCKED_SERVICES:
+        svc_name = svc.rstrip(":")
+        patterns.append(rf"\badb\s+{re.escape(svc_name)}\b")
+    return patterns
+
+
+_SERVICE_CMD_PATTERNS = _build_service_patterns()
+
+
 def is_adb_command_allowed(command, return_match=False):
     """Check if an ADB command is allowed based on the shared blocked patterns.
 
-    Uses BLOCKED_SERVICES and BLOCKED_SHELL_PATTERNS from the canonical list
-    (not PROXY_ONLY patterns like sh/bash, which are legitimate in scripts).
+    Checks two categories:
+    - BLOCKED_SERVICES as "adb <service>" command patterns (not bare words)
+    - BLOCKED_SHELL_PATTERNS for privilege escalation commands (su, run-as)
     """
     clean_cmd = re.sub(r"/+", "/", command.strip())
     normalized_cmd = " ".join(clean_cmd.lower().split())
 
-    # Check blocked services (e.g. "adb root" -> service "root:")
-    for svc in BLOCKED_SERVICES:
-        svc_name = svc.rstrip(":")
-        if re.search(rf"\b{re.escape(svc_name)}\b", normalized_cmd):
+    # Check blocked ADB service commands (e.g. "adb root", "adb backup")
+    for pattern in _SERVICE_CMD_PATTERNS:
+        if re.search(pattern, normalized_cmd, re.IGNORECASE):
             if return_match:
-                return False, svc_name
+                return False, pattern
             return False
 
     # Check blocked shell patterns
@@ -39,9 +56,14 @@ def is_adb_command_allowed(command, return_match=False):
     return True
 
 
-# We check exploit.sh if there are any blocked patterns in it, and if there are, we report the line number and the matched pattern for each violation
 def check_shell_script_content(content):
     """Check shell script content for blocked patterns.
+
+    Uses the same logic as is_adb_command_allowed() — checks both
+    BLOCKED_SHELL_PATTERNS and BLOCKED_SERVICES (as "adb <service>"
+    command patterns). Safe for script content because service names
+    are only matched in "adb root" / "adb backup" command form, not
+    as bare words in paths or variables.
 
     Returns (is_allowed, violations) where violations is a list of dicts with
     keys: line_number, line_content, matched_pattern.
