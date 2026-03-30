@@ -181,6 +181,153 @@ class Workflow(ABC):
             f"{type(self).__name__} must implement _build_apks_from_source()"
         )
 
+    def _compose_file_exists(self) -> bool:
+        """Return whether the app directory has a Docker Compose file."""
+        return any(
+            (self.app_dir / name).exists()
+            for name in (
+                "docker-compose.yml",
+                "docker-compose.yaml",
+                "compose.yml",
+                "compose.yaml",
+            )
+        )
+
+    def _backend_runtime_state_file(self) -> Path:
+        """Path to the marker file recording the last active app backend."""
+        runtime_state_dir = self.project_root / ".runtime_state"
+        runtime_state_dir.mkdir(parents=True, exist_ok=True)
+        return runtime_state_dir / "active_backend_app"
+
+    def _mark_app_backend_active(self) -> None:
+        """Record this app as the backend most likely to require cleanup."""
+        self._backend_runtime_state_file().write_text(f"{self.app_name}\n")
+
+    def _clear_app_backend_active_marker(self) -> None:
+        """Remove the active backend marker if it points to this app."""
+        state_file = self._backend_runtime_state_file()
+        if not state_file.exists():
+            return
+
+        if state_file.read_text().strip() == self.app_name:
+            state_file.unlink()
+
+    def _get_stale_backend_app_dir(self) -> Path | None:
+        """Return the previously active app directory, if different from this app."""
+        state_file = self._backend_runtime_state_file()
+        if not state_file.exists():
+            return None
+
+        stale_app_name = state_file.read_text().strip()
+        if not stale_app_name or stale_app_name == self.app_name:
+            return None
+
+        stale_app_dir = self.project_root / "apps" / stale_app_name
+        if not stale_app_dir.exists():
+            logger.warning(
+                "Active backend marker points to missing app directory: %s",
+                stale_app_name,
+            )
+            state_file.unlink(missing_ok=True)
+            return None
+        return stale_app_dir
+
+    def _run_app_cleanup_script(self, *, check: bool) -> bool:
+        """Run the app's cleanup.sh script when present."""
+        cleanup_script = self.app_dir / "cleanup.sh"
+        if not cleanup_script.exists():
+            logger.info("No cleanup.sh found for app backend cleanup")
+            return True
+
+        logger.info(f"Running app cleanup script: {cleanup_script}")
+        try:
+            result = subprocess.run(
+                ["bash", str(cleanup_script)],
+                cwd=self.app_dir,
+                timeout=60,
+                capture_output=True,
+                text=True,
+                check=check,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    "App cleanup script exited non-zero (exit code %s)",
+                    result.returncode,
+                )
+                if result.stdout:
+                    logger.warning(f"cleanup.sh stdout:\n{result.stdout.strip()}")
+                if result.stderr:
+                    logger.warning(f"cleanup.sh stderr:\n{result.stderr.strip()}")
+                return False
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"App cleanup script failed with exit code {e.returncode}")
+            if e.stdout:
+                logger.error(f"cleanup.sh stdout:\n{e.stdout.strip()}")
+            if e.stderr:
+                logger.error(f"cleanup.sh stderr:\n{e.stderr.strip()}")
+            raise
+
+    def _run_cleanup_script_for_app_dir(self, app_dir: Path, *, check: bool) -> None:
+        """Run cleanup.sh for the given app directory when present."""
+        cleanup_script = app_dir / "cleanup.sh"
+        if not cleanup_script.exists():
+            logger.info(f"No cleanup.sh found for app backend cleanup in {app_dir}")
+            return
+
+        logger.info(f"Running app cleanup script: {cleanup_script}")
+        try:
+            subprocess.run(
+                ["bash", str(cleanup_script)],
+                cwd=app_dir,
+                timeout=60,
+                capture_output=True,
+                text=True,
+                check=check,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"App cleanup script failed with exit code {e.returncode}")
+            if e.stdout:
+                logger.error(f"cleanup.sh stdout:\n{e.stdout.strip()}")
+            if e.stderr:
+                logger.error(f"cleanup.sh stderr:\n{e.stderr.strip()}")
+            raise
+
+    def _preflight_cleanup_app_runtime(self) -> None:
+        """Best-effort clean slate for stale containers before setup."""
+        stale_app_dir = self._get_stale_backend_app_dir()
+        if stale_app_dir is not None:
+            logger.info(
+                f"Cleaning up stale backend from previous app: {stale_app_dir.name}"
+            )
+            self._run_cleanup_script_for_app_dir(stale_app_dir, check=True)
+        self._run_app_cleanup_script(check=True)
+
+    def _reset_app_backend_state(self) -> None:
+        """Drop app backend containers and volumes before replaying evaluation."""
+        if not self._compose_file_exists():
+            logger.info("No Docker Compose file found - skipping backend volume reset")
+            return
+
+        logger.info("Resetting app backend containers and volumes")
+        result = subprocess.run(
+            ["docker", "compose", "down", "-v"],
+            cwd=self.app_dir,
+            timeout=60,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout:
+            logger.info(f"docker compose down -v stdout:\n{result.stdout.strip()}")
+        if result.stderr:
+            logger.warning(f"docker compose down -v stderr:\n{result.stderr.strip()}")
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Failed to reset backend containers in {self.app_dir}: "
+                f"docker compose down -v exited {result.returncode}"
+            )
+
     # -- Shared replay helpers (used by exploit & detection workflows) --------
 
     def _restart_runtime(
@@ -227,6 +374,8 @@ class Workflow(ABC):
         )
         inject_system_ca(self.project_root)
         self.emulator.setup_port_forwards(self.app_dir)
+        self._reset_app_backend_state()
+        self._mark_app_backend_active()
         install_app_and_setup_backend(
             self.app_dir,
             self.emulator,
@@ -331,7 +480,20 @@ class Workflow(ABC):
         }
 
     def cleanup(self) -> None:
-        """Clean up resources (emulator, agent env) and restore codebase."""
+        """Clean up resources (emulator, agent env, app backends) and restore codebase."""
+        cleanup_ok = True
+        try:
+            cleanup_ok = self._run_app_cleanup_script(check=False)
+        except Exception as e:
+            cleanup_ok = False
+            logger.warning(f"App backend cleanup failed: {e}")
+        finally:
+            if cleanup_ok:
+                self._clear_app_backend_active_marker()
+            else:
+                logger.warning(
+                    "Preserving active backend marker because app cleanup did not complete successfully"
+                )
         if self.emulator:
             logger.info("Stopping emulator...")
             self.emulator.stop()
