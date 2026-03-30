@@ -232,16 +232,16 @@ class Workflow(ABC):
             return None
         return stale_app_dir
 
-    def _run_app_cleanup_script(self, *, check: bool) -> None:
+    def _run_app_cleanup_script(self, *, check: bool) -> bool:
         """Run the app's cleanup.sh script when present."""
         cleanup_script = self.app_dir / "cleanup.sh"
         if not cleanup_script.exists():
             logger.info("No cleanup.sh found for app backend cleanup")
-            return
+            return True
 
         logger.info(f"Running app cleanup script: {cleanup_script}")
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["bash", str(cleanup_script)],
                 cwd=self.app_dir,
                 timeout=60,
@@ -249,6 +249,17 @@ class Workflow(ABC):
                 text=True,
                 check=check,
             )
+            if result.returncode != 0:
+                logger.warning(
+                    "App cleanup script exited non-zero (exit code %s)",
+                    result.returncode,
+                )
+                if result.stdout:
+                    logger.warning(f"cleanup.sh stdout:\n{result.stdout.strip()}")
+                if result.stderr:
+                    logger.warning(f"cleanup.sh stderr:\n{result.stderr.strip()}")
+                return False
+            return True
         except subprocess.CalledProcessError as e:
             logger.error(f"App cleanup script failed with exit code {e.returncode}")
             if e.stdout:
@@ -470,12 +481,19 @@ class Workflow(ABC):
 
     def cleanup(self) -> None:
         """Clean up resources (emulator, agent env, app backends) and restore codebase."""
+        cleanup_ok = True
         try:
-            self._run_app_cleanup_script(check=False)
+            cleanup_ok = self._run_app_cleanup_script(check=False)
         except Exception as e:
+            cleanup_ok = False
             logger.warning(f"App backend cleanup failed: {e}")
         finally:
-            self._clear_app_backend_active_marker()
+            if cleanup_ok:
+                self._clear_app_backend_active_marker()
+            else:
+                logger.warning(
+                    "Preserving active backend marker because app cleanup did not complete successfully"
+                )
         if self.emulator:
             logger.info("Stopping emulator...")
             self.emulator.stop()

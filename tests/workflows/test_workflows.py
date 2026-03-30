@@ -400,10 +400,41 @@ class TestWorkflowRuntimeCleanup:
         state_file = workflow._backend_runtime_state_file()
         state_file.write_text("test_app\n")
 
-        with patch("workflows.base.subprocess.run"):
+        with patch(
+            "workflows.base.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=["bash", str(app_dir / "cleanup.sh")],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+        ):
             workflow.cleanup()
 
         assert not state_file.exists()
+
+    def test_cleanup_preserves_active_backend_marker_on_failed_cleanup(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        state_file = workflow._backend_runtime_state_file()
+        state_file.write_text("test_app\n")
+
+        with patch(
+            "workflows.base.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=["bash", str(app_dir / "cleanup.sh")],
+                returncode=1,
+                stdout="",
+                stderr="boom",
+            ),
+        ):
+            workflow.cleanup()
+
+        assert state_file.exists()
+        assert state_file.read_text().strip() == "test_app"
 
     def test_restart_runtime_marks_backend_active_before_install(self, tmp_path):
         app_dir = tmp_path / "apps" / "test_app"
