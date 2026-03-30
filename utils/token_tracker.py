@@ -91,6 +91,9 @@ def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
                 val = _get_attr_or_key(details, "reasoning_tokens")
                 if val is not None:
                     return int(val)
+            val = _get_attr_or_key(u, "reasoning_tokens")
+            if val is not None:
+                return int(val)
             return default
         elif key == "input_tokens":
             # Try input_tokens first (Responses API), then prompt_tokens (Chat Completions)

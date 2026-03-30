@@ -169,7 +169,8 @@ def _strip_date_suffix(model: str) -> str:
     """Strip date suffix from model name if present.
 
     Args:
-        model: Model name that may contain a date suffix like "-2025-08-07".
+        model: Model name that may contain a date suffix like "-2025-08-07"
+            or a compact snapshot suffix like "-20250929".
 
     Returns:
         Model name without date suffix.
@@ -177,10 +178,11 @@ def _strip_date_suffix(model: str) -> str:
     Examples:
         "gpt-5-2025-08-07" -> "gpt-5"
         "gpt-5-mini-2025-08-07" -> "gpt-5-mini"
+        "claude-sonnet-4-5-20250929" -> "claude-sonnet-4-5"
         "gpt-4" -> "gpt-4" (unchanged)
     """
-    # Pattern matches "-YYYY-MM-DD" at the end of the string
-    date_pattern = r"-\d{4}-\d{2}-\d{2}$"
+    # Matches "-YYYY-MM-DD" or compact "-YYYYMMDD" suffixes at the end.
+    date_pattern = r"-(?:\d{4}-\d{2}-\d{2}|\d{8})$"
     return re.sub(date_pattern, "", model)
 
 

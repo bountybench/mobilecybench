@@ -17,6 +17,18 @@
     "cache_input": 0.175,
     "reasoning": 14.0
   },
+  "gpt-5.2-pro": {
+    "input": 21.0,
+    "output": 168.0,
+    "cache_input": null,
+    "reasoning": 168.0
+  },
+  "gpt-5.2-codex": {
+    "input": 1.75,
+    "output": 14.0,
+    "cache_input": 0.175,
+    "reasoning": 14.0
+  },
   "gpt-5.4": {
     "input": 2.5,
     "output": 15.0,
@@ -113,7 +125,7 @@
   "o4-mini": {
     "input": 1.1,
     "output": 4.4,
-    "cache_input": 0.55,
+    "cache_input": 0.275,
     "reasoning": 4.4
   },
   "gemini-3-pro-preview": {

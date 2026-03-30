@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -244,6 +245,29 @@ class TestModelProviderRouting:
     def test_unsupported_model_raises_error(self):
         with pytest.raises(ValueError, match="Unsupported model"):
             get_model_provider("some-random-model", instructions="test")
+
+
+class TestLiteLLMProviderUsageWrapping:
+    """Focused tests for LiteLLM usage normalization into TokenTracker format."""
+
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
+    @patch("agent.model_providers.litellm_provider.litellm.completion")
+    def test_top_level_reasoning_tokens_are_preserved_in_wrapper(self, mock_completion):
+        usage = SimpleNamespace(
+            prompt_tokens=200,
+            completion_tokens=100,
+            total_tokens=300,
+            reasoning_tokens=40,
+        )
+        message = SimpleNamespace(content="ok", reasoning_content="", tool_calls=[])
+        choice = SimpleNamespace(message=message)
+        mock_completion.return_value = SimpleNamespace(choices=[choice], usage=usage)
+
+        provider = LiteLLMProvider("claude-opus-4-6", instructions="test")
+        resp = provider.call("hello")
+
+        assert resp.raw_response.usage.prompt_tokens_details.cached_tokens == 0
+        assert resp.raw_response.usage.output_tokens_details.reasoning_tokens == 40
 
 
 class TestCustomAgentWithClaude:

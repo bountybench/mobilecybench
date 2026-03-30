@@ -221,8 +221,8 @@ class LiteLLMProvider(ModelProvider):
         usage_obj: Any,
         detail_keys: tuple[str, ...],
         value_key: str,
-        default: int = 0,
-    ) -> int:
+        default: Optional[int] = 0,
+    ) -> Optional[int]:
         for detail_key in detail_keys:
             if usage_obj is None:
                 break
@@ -240,6 +240,19 @@ class LiteLLMProvider(ModelProvider):
             if value is not None:
                 return int(value)
         return default
+
+    @classmethod
+    def _get_reasoning_tokens(cls, usage_obj: Any) -> int:
+        """Read reasoning tokens from nested details first, then top-level usage."""
+        nested_reasoning_tokens = cls._get_usage_detail_value(
+            usage_obj,
+            ("completion_tokens_details", "output_tokens_details"),
+            "reasoning_tokens",
+            default=None,
+        )
+        if nested_reasoning_tokens is not None:
+            return nested_reasoning_tokens
+        return cls._get_usage_value(usage_obj, "reasoning_tokens", 0)
 
     def call(self, input: Any) -> ProviderResponse:
         # Translate input and append to conversation
@@ -331,12 +344,7 @@ class LiteLLMProvider(ModelProvider):
             "cached_tokens",
             0,
         )
-        reasoning_tokens = self._get_usage_detail_value(
-            usage_obj,
-            ("completion_tokens_details", "output_tokens_details"),
-            "reasoning_tokens",
-            0,
-        )
+        reasoning_tokens = self._get_reasoning_tokens(usage_obj)
 
         response_id = f"litellm_{uuid.uuid4().hex}"
         usage = _UsageInfo(
