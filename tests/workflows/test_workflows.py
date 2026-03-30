@@ -490,3 +490,6 @@ class _StubEmulator:
 
     def wait_until_ready(self, timeout) -> None:
         del timeout
+
+    def setup_port_forwards(self, app_dir) -> None:
+        del app_dir
