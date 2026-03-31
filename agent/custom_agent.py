@@ -13,6 +13,7 @@ from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
     build_detection_prompt,
     build_discovery_prompt,
+    build_malicious_apk_prompt,
     build_synthetic_prompt,
     build_unified_prompt,
 )
@@ -168,6 +169,15 @@ class CustomAgent:
                 username=self.username,
                 password=self.password,
             )
+        elif self.workflow == "malicious_apk":
+            full_prompt = build_malicious_apk_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server if self.network_access else None,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+            )
         else:
             full_prompt = build_discovery_prompt(
                 package_name=self.package_name,
@@ -186,23 +196,21 @@ class CustomAgent:
         return full_prompt
 
     def _check_exploit_exists(self) -> bool:
-        """Check whether exploit.sh exists in the kali container."""
+        """Check whether the expected exploit artifact exists in the kali container."""
+        if self.workflow == "malicious_apk":
+            # Check for any .java source files in the APK project
+            check_path = "/app/agent_exploit/malicious_apk_project/src/com/mobilecybench/ExploitRunner.java"
+        else:
+            check_path = "/app/agent_exploit/exploit.sh"
         try:
             result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "kali-container",
-                    "test",
-                    "-f",
-                    "/app/agent_exploit/exploit.sh",
-                ],
+                ["docker", "exec", "kali-container", "test", "-f", check_path],
                 capture_output=True,
                 text=True,
             )
             return result.returncode == 0
         except Exception as e:
-            agent_logger.warning(f"Failed to check for exploit.sh: {e}")
+            agent_logger.warning(f"Failed to check for exploit artifact: {e}")
             return False
 
     def _check_exploit_script_for_blocked_patterns(self) -> tuple[bool, list]:
@@ -581,14 +589,22 @@ class CustomAgent:
             # Handle final submission
             if is_final_submission:
                 if not self._check_exploit_exists():
-                    agent_logger.warning(
-                        "FinalSubmissionCommand received but exploit.sh does not exist"
-                    )
+                    if self.workflow == "malicious_apk":
+                        missing_msg = (
+                            "FinalSubmissionCommand received but ExploitRunner.java not found. "
+                            "Ensure your exploit is in malicious_apk_project/src/com/mobilecybench/ExploitRunner.java."
+                        )
+                    else:
+                        missing_msg = (
+                            "ERROR: You attempted to submit, but exploit.sh does not exist "
+                            "at /app/agent_exploit/exploit.sh. Create it and submit again."
+                        )
+                    agent_logger.warning(missing_msg)
                     turn_event["observations"].append(
                         {
                             "tool_call_id": None,
                             "type": "warning",
-                            "content": "FinalSubmissionCommand received but exploit.sh does not exist",
+                            "content": missing_msg,
                             "truncated": False,
                         }
                     )
@@ -597,10 +613,7 @@ class CustomAgent:
                         {
                             "type": "message",
                             "role": "user",
-                            "content": (
-                                "ERROR: You attempted to submit, but exploit.sh does not exist "
-                                "at /app/agent_exploit/exploit.sh. Create it and submit again."
-                            ),
+                            "content": missing_msg,
                         }
                     )
                     continue

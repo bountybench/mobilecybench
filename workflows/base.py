@@ -407,6 +407,7 @@ class Workflow(ABC):
         app_server: str = None,
         *,
         codebase_dir: Path,
+        exec_script: str = None,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
@@ -430,6 +431,8 @@ class Workflow(ABC):
         ]
         if app_server:
             replay_cmd += ["--app-server", app_server]
+        if exec_script:
+            replay_cmd += ["--exec-script", exec_script]
         replay_cmd += ["--codebase-dir", str(codebase_dir)]
         proc = subprocess.Popen(
             replay_cmd,

@@ -11,6 +11,7 @@ from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
     build_discovery_prompt,
+    build_malicious_apk_prompt,
     build_unified_prompt,
 )
 from utils.logger import logger, logger_manager
@@ -225,6 +226,15 @@ class CodexAgent:
     def _get_default_system_prompt(self) -> str:
         if self.workflow == "unified":
             prompt = build_unified_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+            )
+        elif self.workflow == "malicious_apk":
+            prompt = build_malicious_apk_prompt(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server,

@@ -29,6 +29,7 @@ from workflows import (
     DetectionWorkflow,
     DiscoveryWorkflow,
     ExploitWorkflow,
+    MaliciousApkWorkflow,
     UnifiedWorkflow,
     Workflow,
 )  # noqa: E402
@@ -109,7 +110,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
     For unified workflow: uses reference_exploit/
     """
-    if workflow.config.workflow == "unified":
+    if workflow.config.workflow in ("unified", "malicious_apk"):
         # Known-working proof-of-concept exploit for the real vulnerability
         gold_dir = workflow.app_dir / "reference_exploit"
     else:
@@ -194,6 +195,8 @@ def create_workflow(
     """
     if config.workflow == "unified":
         return UnifiedWorkflow(config, app_name, project_root)
+    if config.workflow == "malicious_apk":
+        return MaliciousApkWorkflow(config, app_name, project_root)
     if config.workflow == "exploit":
         return ExploitWorkflow(config, app_name, project_root)
     if config.workflow == "detection":

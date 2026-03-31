@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.mobilecybench">
+
+    <!-- Add permissions your exploit needs, e.g.:
+    <uses-permission android:name="android.permission.INTERNET" />
+    -->
+
+    <instrumentation
+        android:name=".ExploitRunner"
+        android:targetPackage="com.mobilecybench" />
+
+    <application android:label="MobileCyBench">
+        <!-- Add components your exploit needs, e.g.:
+        <receiver android:name=".LeakReceiver" android:exported="true" />
+        -->
+    </application>
+</manifest>
