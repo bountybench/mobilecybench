@@ -22,49 +22,6 @@ from .base import FunctionCall, ModelProvider, ProviderResponse
 litellm.suppress_debug_info = True
 
 
-# Lightweight wrappers for TokenTracker compatibility
-
-
-class _InputTokenDetails:
-    def __init__(self, cached_tokens: int) -> None:
-        self.cached_tokens = cached_tokens
-
-
-class _OutputTokenDetails:
-    def __init__(self, reasoning_tokens: int) -> None:
-        self.reasoning_tokens = reasoning_tokens
-
-
-class _UsageInfo:
-    def __init__(
-        self,
-        input_tokens: int,
-        output_tokens: int,
-        total_tokens: int,
-        cached_tokens: int = 0,
-        reasoning_tokens: int = 0,
-    ) -> None:
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
-        self.total_tokens = total_tokens
-        self.prompt_tokens = input_tokens
-        self.completion_tokens = output_tokens
-        input_details = _InputTokenDetails(cached_tokens)
-        output_details = _OutputTokenDetails(reasoning_tokens)
-        self.prompt_tokens_details = input_details
-        self.input_tokens_details = input_details
-        self.completion_tokens_details = output_details
-        self.output_tokens_details = output_details
-
-
-class _RawResponseWrapper:
-    """Minimal wrapper for raw_response so TokenTracker can read .id and .usage."""
-
-    def __init__(self, id: str, usage: _UsageInfo) -> None:
-        self.id = id
-        self.usage = usage
-
-
 class LiteLLMProvider(ModelProvider):
     """LiteLLM-based provider for non-OpenAI models.
 
@@ -206,54 +163,6 @@ class LiteLLMProvider(ModelProvider):
 
         return messages
 
-    @staticmethod
-    def _get_usage_value(obj: Any, key: str, default: int = 0) -> int:
-        if obj is None:
-            return default
-        if isinstance(obj, dict):
-            value = obj.get(key, default)
-        else:
-            value = getattr(obj, key, default)
-        return int(value) if value is not None else default
-
-    @staticmethod
-    def _get_usage_detail_value(
-        usage_obj: Any,
-        detail_keys: tuple[str, ...],
-        value_key: str,
-        default: Optional[int] = 0,
-    ) -> Optional[int]:
-        for detail_key in detail_keys:
-            if usage_obj is None:
-                break
-            if isinstance(usage_obj, dict):
-                details = usage_obj.get(detail_key)
-            else:
-                details = getattr(usage_obj, detail_key, None)
-            if details is None:
-                continue
-
-            if isinstance(details, dict):
-                value = details.get(value_key)
-            else:
-                value = getattr(details, value_key, None)
-            if value is not None:
-                return int(value)
-        return default
-
-    @classmethod
-    def _get_reasoning_tokens(cls, usage_obj: Any) -> int:
-        """Read reasoning tokens from nested details first, then top-level usage."""
-        nested_reasoning_tokens = cls._get_usage_detail_value(
-            usage_obj,
-            ("completion_tokens_details", "output_tokens_details"),
-            "reasoning_tokens",
-            default=None,
-        )
-        if nested_reasoning_tokens is not None:
-            return nested_reasoning_tokens
-        return cls._get_usage_value(usage_obj, "reasoning_tokens", 0)
-
     def call(self, input: Any) -> ProviderResponse:
         # Translate input and append to conversation
         new_messages = self._translate_input_to_messages(input)
@@ -323,45 +232,14 @@ class LiteLLMProvider(ModelProvider):
         )
         self._messages.append(assistant_msg)
 
-        # Build usage wrapper for token tracker
-        usage_obj = getattr(raw_response, "usage", None)
-        input_tokens = self._get_usage_value(
-            usage_obj,
-            "prompt_tokens",
-            self._get_usage_value(usage_obj, "input_tokens", 0),
-        )
-        output_tokens = self._get_usage_value(
-            usage_obj,
-            "completion_tokens",
-            self._get_usage_value(usage_obj, "output_tokens", 0),
-        )
-        total_tokens = self._get_usage_value(
-            usage_obj, "total_tokens", input_tokens + output_tokens
-        )
-        cached_tokens = self._get_usage_detail_value(
-            usage_obj,
-            ("prompt_tokens_details", "input_tokens_details"),
-            "cached_tokens",
-            0,
-        )
-        reasoning_tokens = self._get_reasoning_tokens(usage_obj)
-
-        response_id = f"litellm_{uuid.uuid4().hex}"
-        usage = _UsageInfo(
-            input_tokens,
-            output_tokens,
-            total_tokens,
-            cached_tokens,
-            reasoning_tokens,
-        )
-        raw_wrapper = _RawResponseWrapper(id=response_id, usage=usage)
+        response_id = getattr(raw_response, "id", None) or ""
 
         resp = ProviderResponse(
             response_id=response_id,
             assistant_text=assistant_text,
             function_calls=function_calls,
             reasoning_summary=reasoning_summary,
-            raw_response=raw_wrapper,
+            raw_response=raw_response,
         )
         self._record_history(resp)
         return resp
