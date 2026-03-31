@@ -258,10 +258,8 @@ def compute_cost_usd(
             responses, this is typically the total output including reasoning.
         cache_input_tokens: Number of input tokens served from cache.
         reasoning_tokens: Number of reasoning tokens included in the output.
-            When this value is less than or equal to output_tokens, it is treated
-            as a billed subset of output_tokens. If it exceeds output_tokens, the
-            excess is conservatively billed in addition to output_tokens rather
-            than being silently dropped.
+            Subtracted from output_tokens so each token is billed once: text
+            output at the output rate, reasoning at the reasoning rate.
 
     Returns:
         - Cost in USD as a float. (non-negative)
@@ -281,10 +279,8 @@ def compute_cost_usd(
         rate = pricing
 
     # OpenAI/LiteLLM report reasoning tokens as a subset of total output tokens.
-    # Split them out when we have a sane breakdown so separate reasoning pricing
-    # can be applied without double-counting.
-    reasoning_included_in_output = 0 < rt <= ot
-    billed_text_output = ot - rt if reasoning_included_in_output else ot
+    # Subtract them so each token is billed exactly once at the correct rate.
+    billed_text_output = max(ot - rt, 0)
     reasoning_rate = rate.reasoning if rate.reasoning is not None else rate.output
 
     scale = 1_000_000.0

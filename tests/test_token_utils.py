@@ -94,8 +94,8 @@ def test_compute_cost_with_reasoning_tokens_falls_back_to_high_context_output_ra
 
 
 @pytest.mark.pricing
-def test_compute_cost_with_reasoning_tokens_exceeding_output_tokens_bills_conservatively():
-    """If reasoning exceeds output, bill it in addition to output instead of dropping it."""
+def test_compute_cost_with_reasoning_tokens_exceeding_output_tokens_no_double_count():
+    """If reasoning exceeds output (inconsistent data), text portion clamps to zero."""
     p = ModelPricing(input=5.0, output=15.0, reasoning=7.5)
     cost = compute_cost_usd(
         p,
@@ -103,7 +103,8 @@ def test_compute_cost_with_reasoning_tokens_exceeding_output_tokens_bills_conser
         reasoning_tokens=1200,
     )
     scale = 1_000_000.0
-    expected_cost = (1000 / scale) * 15.0 + (1200 / scale) * 7.5
+    # text = max(1000-1200, 0) = 0; all output billed as reasoning
+    expected_cost = (1200 / scale) * 7.5
     assert cost == pytest.approx(expected_cost, rel=1e-9)
 
 
