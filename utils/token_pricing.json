@@ -136,6 +136,17 @@
     "output": 1.5,
     "cache_input": 0.125
   },
+  "gemini-3.1-pro": {
+    "input": 2.0,
+    "output": 12.0,
+    "cache_input": 0.2,
+    "high_context": {
+      "input_threshold": 200000,
+      "input": 4.0,
+      "output": 18.0,
+      "cache_input": 0.4
+    }
+  },
   "claude-3-5-sonnet": {
     "input": 3.0,
     "output": 15.0,
