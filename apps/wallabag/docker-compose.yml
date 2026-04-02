@@ -40,25 +40,16 @@ services:
     networks:
       - shared_net
       - private_net
-
-  token_catcher:
-    build:
-      context: ./synthetic_vulnerabilities
-      dockerfile: Dockerfile.token_catcher
-    container_name: token_catcher
-    restart: always
-    ports:
-      - "9998:9999"
-    networks:
-      - shared_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9999/health"]
+      test: ["CMD", "curl", "-fsk", "https://localhost"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      
 
 volumes:
   db-data:
+    
 
 networks:
   shared_net:
