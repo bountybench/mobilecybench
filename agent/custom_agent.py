@@ -1,6 +1,5 @@
 import json
 import os
-import subprocess
 import time
 from pathlib import Path
 
@@ -188,18 +187,14 @@ class CustomAgent:
     def _check_exploit_exists(self) -> bool:
         """Check whether exploit.sh exists in the kali container."""
         try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "kali-container",
-                    "test",
-                    "-f",
-                    "/app/agent_exploit/exploit.sh",
-                ],
+            from utils.command_executor import CommandExecutor
+
+            result = CommandExecutor().run(
+                "docker exec kali-container test -f /app/agent_exploit/exploit.sh",
+                timeout=self.config.script_timeout,
                 capture_output=True,
-                text=True,
             )
+
             return result.returncode == 0
         except Exception as e:
             agent_logger.warning(f"Failed to check for exploit.sh: {e}")
@@ -218,19 +213,15 @@ class CustomAgent:
         """
         try:
             # List all files in the agent_exploit directory
-            ls_result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "kali-container",
-                    "find",
-                    "/app/agent_exploit",
-                    "-type",
-                    "f",
-                ],
+
+            from utils.command_executor import CommandExecutor
+
+            ls_result = CommandExecutor().run(
+                "docker exec kali-container find /app/agent_exploit -type f",
+                timeout=self.config.script_timeout,
                 capture_output=True,
-                text=True,
             )
+
             if ls_result.returncode != 0:
                 agent_logger.warning(
                     "Could not list agent_exploit in container — blocking submission"
@@ -251,11 +242,12 @@ class CustomAgent:
                 if ext not in _SCANNABLE_EXTENSIONS:
                     continue
 
-                cat_result = subprocess.run(
-                    ["docker", "exec", "kali-container", "cat", container_path],
+                cat_result = CommandExecutor().run(
+                    f"docker exec kali-container cat {container_path}",
+                    timeout=self.config.script_timeout,
                     capture_output=True,
-                    text=True,
                 )
+
                 if cat_result.returncode != 0:
                     agent_logger.warning(
                         f"Could not read {container_path} from container — blocking submission"
