@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -240,10 +241,10 @@ class CustomAgent:
                 if ext not in _SCANNABLE_EXTENSIONS:
                     continue
 
-                cat_result = CommandExecutor().run(
-                    f"docker exec kali-container cat {container_path}",
+                cat_result = subprocess.run(
+                    ["docker", "exec", "kali-container", "cat", container_path],
                     capture_output=True,
-                    timeout=self.self.timeout_s,
+                    timeout=self.timeout_s,
                 )
                 if cat_result.returncode != 0:
                     agent_logger.warning(

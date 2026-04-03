@@ -4,12 +4,12 @@ import json
 import logging
 import re
 import shutil
+import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Optional
 
-import subprocess
 from utils.command_executor import CommandExecutor
 
 logger = logging.getLogger("MobileCyBench.apk_utils")
@@ -64,6 +64,8 @@ def download_apk(
                 tmpdir,
                 "--clobber",
             ],
+            check=True,
+            timeout=timeout_s,
         )
         tmp_path = Path(tmpdir) / filename
         if not tmp_path.exists():
