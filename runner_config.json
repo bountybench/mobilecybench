@@ -12,7 +12,7 @@
   "dry_run": false,
   "gold_run": false,
 
-  "agent_mode": "claude-code",
+  "agent_mode": "custom",
   "model": "claude-opus-4-6",
   "max_iterations": 30,
   "max_model_response_tokens": 8192,
