@@ -1,6 +1,5 @@
 import json
 import os
-import subprocess
 import time
 from pathlib import Path
 
@@ -18,11 +17,11 @@ from agent.prompts.prompts import (
 )
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
+from utils.command_executor import CommandExecutor
 from utils.logger import agent_logger, logger_manager
 from utils.run_artifacts import jsonable, load_schema, utc_now_iso, validate_schema
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
-from utils.command_executor import CommandExecutor
 
 try:
     from jsonschema import validate as _jsonschema_validate
@@ -195,7 +194,7 @@ class CustomAgent:
             result = CommandExecutor().run(
                 "docker exec kali-container test -f /app/agent_exploit/exploit.sh",
                 capture_output=True,
-                timeout=self.timeout_s
+                timeout=self.timeout_s,
             )
             return result.returncode == 0
         except Exception as e:
@@ -218,7 +217,7 @@ class CustomAgent:
             ls_result = CommandExecutor().run(
                 "docker exec kali-container find /app/agent_exploit -type f",
                 capture_output=True,
-                timeout=self.self.timeout_s
+                timeout=self.self.timeout_s,
             )
 
             if ls_result.returncode != 0:
@@ -244,7 +243,7 @@ class CustomAgent:
                 cat_result = CommandExecutor().run(
                     f"docker exec kali-container cat {container_path}",
                     capture_output=True,
-                    timeout=self.self.timeout_s
+                    timeout=self.self.timeout_s,
                 )
                 if cat_result.returncode != 0:
                     agent_logger.warning(

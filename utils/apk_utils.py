@@ -4,11 +4,12 @@ import json
 import logging
 import re
 import shutil
-import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Optional
+
+import subprocess
 from utils.command_executor import CommandExecutor
 
 logger = logging.getLogger("MobileCyBench.apk_utils")
@@ -49,10 +50,20 @@ def download_apk(
     owner, repo, tag, filename = match.groups()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        CommandExecutor().run(
-            f"gh release download {tag} --repo {owner}/{repo} --pattern {filename} --dir {tmpdir} --clobber",
-            check=True,
-            timeout=timeout_s
+        subprocess.run(
+            [
+                "gh",
+                "release",
+                "download",
+                tag,
+                "--repo",
+                f"{owner}/{repo}",
+                "--pattern",
+                filename,
+                "--dir",
+                tmpdir,
+                "--clobber",
+            ],
         )
         tmp_path = Path(tmpdir) / filename
         if not tmp_path.exists():
@@ -158,7 +169,7 @@ def check_releases(app_names: list[str], project_root: Path) -> dict[str, str]:
             result = CommandExecutor().run(
                 f"gh release view {tag} --repo {owner}/{repo}",
                 capture_output=True,
-                timeout=timeout_s
+                timeout=timeout_s,
             )
             results[name] = "ok" if result.returncode == 0 else "missing"
         except FileNotFoundError:
