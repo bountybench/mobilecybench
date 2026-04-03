@@ -244,6 +244,7 @@ class CustomAgent:
                 cat_result = subprocess.run(
                     ["docker", "exec", "kali-container", "cat", container_path],
                     capture_output=True,
+                    text=True,
                     timeout=self.timeout_s,
                 )
                 if cat_result.returncode != 0:
