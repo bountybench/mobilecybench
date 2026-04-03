@@ -43,6 +43,7 @@ class AgentEnvironment:
         package_name: Optional[str] = None,
         vuln_id: Optional[str] = None,
         include_git_history: bool = True,
+        no_codebase: bool = False,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -55,6 +56,7 @@ class AgentEnvironment:
         self.package_name = package_name
         self.vuln_id = vuln_id
         self.include_git_history = include_git_history
+        self.no_codebase = no_codebase
 
         import traceback
 
@@ -144,10 +146,16 @@ class AgentEnvironment:
         # Mount self-signed root CA so requests to HTTPS apps' servers will work
         ca_volumes = self._setup_root_ca()
 
-        # Setup agent codebase and get volume mapping
-        volumes = None
+        # Setup agent resources: APK replaces codebase when no_codebase is set
+        volumes = {}
         try:
-            volumes = self._setup_agent_codebase()
+            if self.no_codebase:
+                apk_volumes = self._setup_agent_apk()
+                if apk_volumes:
+                    volumes.update(apk_volumes)
+            else:
+                volumes = self._setup_agent_codebase()
+
             if ca_volumes:
                 volumes.update(ca_volumes)
 
@@ -403,6 +411,33 @@ class AgentEnvironment:
         volumes = {str(agent_codebase): {"bind": "/app/codebase", "mode": "ro"}}
 
         return volumes
+
+    def _setup_agent_apk(self) -> Optional[dict]:
+        """Copy the built APK into a staging directory for the agent.
+
+        Looks for the APK at the standard path (clean or vuln-specific)
+        and returns a volume mapping to bind-mount at /app/apk/.
+        """
+        if self.vuln_id:
+            apk_path = self.app_dir / "apk" / self.vuln_id / f"{self.app_name}.apk"
+        else:
+            apk_path = self.app_dir / "apk" / f"{self.app_name}.apk"
+
+        if not apk_path.exists():
+            raise FileNotFoundError(
+                f"APK not found at {apk_path}. "
+                f"Build the APK first or set no_codebase=false in runner_config."
+            )
+
+        agent_apk_dir = self.app_dir / "agent_apk"
+        if agent_apk_dir.exists():
+            shutil.rmtree(agent_apk_dir)
+        agent_apk_dir.mkdir(parents=True)
+
+        shutil.copy2(apk_path, agent_apk_dir / apk_path.name)
+        logger.info(f"Copied APK {apk_path.name} to agent_apk staging directory")
+
+        return {str(agent_apk_dir): {"bind": "/app/apk", "mode": "ro"}}
 
     def _setup_verify_files(self):
         """Mount verify_files for the synthetic vulnerability."""
@@ -847,6 +882,7 @@ def setup_agent_environment(
     workflow: str = "exploit",
     vuln_id: Optional[str] = None,
     agent_mode: str = "custom",
+    no_codebase: bool = False,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -858,6 +894,7 @@ def setup_agent_environment(
         workflow: Evaluation workflow type ("exploit" or "detection")
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
+        no_codebase: Whether to copy the built APK into the agent environment
 
     Returns:
         AgentEnvironment instance
@@ -906,6 +943,7 @@ def setup_agent_environment(
         package_name=metadata.get("package_name"),
         vuln_id=vuln_id if workflow == "exploit" else None,
         include_git_history=(workflow != "exploit"),
+        no_codebase=no_codebase,
     )
 
     agent_env.setup()

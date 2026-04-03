@@ -17,7 +17,7 @@ def get_directory_tree() -> str:
     try:
         agent_logger.info("Fetching directory tree structure for initial context...")
 
-        tree_cmd = "tree -L 2 2>/dev/null || (ls -la . && echo '---' && find . -maxdepth 2 -type d | head -50)"
+        tree_cmd = "tree -L 2 /app/codebase 2>/dev/null || (ls -la /app/codebase && echo '---' && find /app/codebase -maxdepth 2 -type d | head -50)"
 
         # execute_command_internal returns the formatted string directly
         tree_output = execute_command_internal(tree_cmd)

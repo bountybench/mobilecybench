@@ -100,6 +100,7 @@ class DetectionWorkflow(Workflow):
             metadata=self.metadata,
             workflow=self.config.workflow,
             agent_mode=self.config.agent_mode,
+            no_codebase=self.config.no_codebase,
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))

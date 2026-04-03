@@ -10,6 +10,7 @@
   "screenshot_mode": false,
   "dry_run": false,
   "workflow": "exploit",
+  "no_codebase": false,
   "synthetic_vuln_id": "vuln_0",
   "custom_system_prompt": null,
   "agent_image": "cybench/mobilecybench:latest",

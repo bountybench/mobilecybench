@@ -79,6 +79,7 @@ class Workflow(ABC):
                 workflow=workflow,
                 attack_model=self.config.attack_model,
                 additional_context=additional_context,
+                no_codebase=self.config.no_codebase,
             )
         elif agent_mode == "codex":
             from agent.codex_agent import CodexAgent
@@ -94,6 +95,7 @@ class Workflow(ABC):
                 workflow=workflow,
                 attack_model=self.config.attack_model,
                 additional_context=additional_context,
+                no_codebase=self.config.no_codebase,
             )
         else:
             from agent.custom_agent import CustomAgent
@@ -114,6 +116,7 @@ class Workflow(ABC):
                 workflow=workflow,
                 attack_model=self.config.attack_model,
                 reasoning_effort=self.config.reasoning_effort,
+                no_codebase=self.config.no_codebase,
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
@@ -698,3 +701,12 @@ class Workflow(ABC):
                 logger.info("Deleted agent_codebase")
             except Exception as e:
                 logger.warning(f"Failed to delete agent_codebase: {e}")
+
+        # Delete agent_apk staging directory (created when no_codebase=True)
+        agent_apk = self.app_dir / "agent_apk"
+        if agent_apk.exists():
+            try:
+                shutil.rmtree(agent_apk)
+                logger.info("Deleted agent_apk")
+            except Exception as e:
+                logger.warning(f"Failed to delete agent_apk: {e}")

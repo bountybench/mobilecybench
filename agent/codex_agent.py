@@ -35,6 +35,7 @@ class CodexAgent:
         workflow: str = "exploit",
         attack_model: str = "malicious_apk",
         additional_context: Optional[str] = None,
+        no_codebase: bool = False,
     ):
         """
         Initialize the Codex agent.
@@ -64,6 +65,7 @@ class CodexAgent:
         self.workflow = workflow
         self.attack_model = attack_model
         self.additional_context = additional_context
+        self.no_codebase = no_codebase
 
         # Load environment variables
         # TODO: Refactor codex agent to share provider config and key handling with standard agents.
@@ -250,6 +252,7 @@ class CodexAgent:
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
+                no_codebase=self.no_codebase,
             )
         else:
             prompt = build_synthetic_prompt(
@@ -258,6 +261,7 @@ class CodexAgent:
                 password=self.password,
                 app_server=self.app_server,
                 emulator_server=self.emulator_server,
+                no_codebase=self.no_codebase,
             )
 
         if self.additional_context:
