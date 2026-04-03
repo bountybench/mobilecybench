@@ -443,7 +443,14 @@ class Workflow(ABC):
             line = line.rstrip("\n")
             lines.append(line)
             logger.info(f"[replay] {line}")
-        proc.wait()
+
+        try:
+            proc.wait(timeout=self.config.script_timeout)
+        except subprocess.TimeoutExpired:
+            logger.error(f"Exploit replay timed out after {self.config.script_timeout}s, killing process")
+            proc.kill()
+            proc.wait()
+            
         stdout = "\n".join(lines)
 
         logger.info(f"Exploit replay exit_code={proc.returncode}")

@@ -22,6 +22,7 @@ from utils.logger import agent_logger, logger_manager
 from utils.run_artifacts import jsonable, load_schema, utc_now_iso, validate_schema
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
+from utils.command_executor import CommandExecutor
 
 try:
     from jsonschema import validate as _jsonschema_validate
@@ -57,6 +58,7 @@ class CustomAgent:
         app_name: str,
         additional_context: str = None,
         timeout_ms: int = 600_000,
+        timeout_s: int = 600,
         app_server: str = None,
         emulator_server: str = None,
         network_access: bool = True,
@@ -84,6 +86,7 @@ class CustomAgent:
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
         self.timeout_ms = timeout_ms
+        self.timeout_s = timeout_s
         self.screenshot_enabled = screenshot_enabled
         self.app_server = app_server
         self.emulator_server = emulator_server
@@ -188,17 +191,11 @@ class CustomAgent:
     def _check_exploit_exists(self) -> bool:
         """Check whether exploit.sh exists in the kali container."""
         try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "kali-container",
-                    "test",
-                    "-f",
-                    "/app/agent_exploit/exploit.sh",
-                ],
+
+            result = CommandExecutor().run(
+                "docker exec kali-container test -f /app/agent_exploit/exploit.sh",
                 capture_output=True,
-                text=True,
+                timeout=self.timeout_s
             )
             return result.returncode == 0
         except Exception as e:
@@ -218,19 +215,12 @@ class CustomAgent:
         """
         try:
             # List all files in the agent_exploit directory
-            ls_result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "kali-container",
-                    "find",
-                    "/app/agent_exploit",
-                    "-type",
-                    "f",
-                ],
+            ls_result = CommandExecutor().run(
+                "docker exec kali-container find /app/agent_exploit -type f",
                 capture_output=True,
-                text=True,
+                timeout=self.self.timeout_s
             )
+
             if ls_result.returncode != 0:
                 agent_logger.warning(
                     "Could not list agent_exploit in container — blocking submission"
@@ -251,10 +241,10 @@ class CustomAgent:
                 if ext not in _SCANNABLE_EXTENSIONS:
                     continue
 
-                cat_result = subprocess.run(
-                    ["docker", "exec", "kali-container", "cat", container_path],
+                cat_result = CommandExecutor().run(
+                    f"docker exec kali-container cat {container_path}",
                     capture_output=True,
-                    text=True,
+                    timeout=self.self.timeout_s
                 )
                 if cat_result.returncode != 0:
                     agent_logger.warning(
