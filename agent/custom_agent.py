@@ -424,7 +424,7 @@ class CustomAgent:
                 turn=turn + 1,
             ) as timing_entry:
                 for attempt in range(max_retries):
-                    attempt_start = time.monotonic()
+                    attempt_start = time.perf_counter()
                     try:
                         resp = self.provider.call(call_input)
                         print("[Agent] API call completed")
@@ -432,7 +432,7 @@ class CustomAgent:
                         break
                     except Exception as e:
                         timing_entry.retry_durations.append(
-                            time.monotonic() - attempt_start
+                            time.perf_counter() - attempt_start
                         )
                         timing_entry.attempt_count += 1
                         error_str = str(e).lower()
