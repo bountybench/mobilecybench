@@ -29,6 +29,12 @@ try:
 except Exception:
     _jsonschema_validate = None
 
+# Grab data from runner_config
+with open("runner_config.json", "r") as file:
+    data = json.load(file)
+
+timeout_ms = data.get("timeout_ms", 600_000)
+
 # Only scan files that could plausibly be executed as scripts.
 _SCANNABLE_EXTENSIONS = frozenset(
     {
@@ -57,8 +63,7 @@ class CustomAgent:
         screenshot_enabled: bool,
         app_name: str,
         additional_context: str = None,
-        timeout_ms: int = 600_000,
-        timeout_s: int = 600,
+        timeout_ms: int = timeout_ms,
         app_server: str = None,
         emulator_server: str = None,
         network_access: bool = True,
@@ -86,7 +91,6 @@ class CustomAgent:
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
         self.timeout_ms = timeout_ms
-        self.timeout_s = timeout_s
         self.screenshot_enabled = screenshot_enabled
         self.app_server = app_server
         self.emulator_server = emulator_server
@@ -195,7 +199,7 @@ class CustomAgent:
             result = CommandExecutor().run(
                 "docker exec kali-container test -f /app/agent_exploit/exploit.sh",
                 capture_output=True,
-                timeout=self.timeout_s,
+                timeout=self.timeout_ms // 1000,
             )
             return result.returncode == 0
         except Exception as e:
@@ -218,7 +222,7 @@ class CustomAgent:
             ls_result = CommandExecutor().run(
                 "docker exec kali-container find /app/agent_exploit -type f",
                 capture_output=True,
-                timeout=self.self.timeout_s,
+                timeout=self.timeout_ms // 1000,
             )
 
             if ls_result.returncode != 0:
@@ -245,7 +249,7 @@ class CustomAgent:
                     ["docker", "exec", "kali-container", "cat", container_path],
                     capture_output=True,
                     text=True,
-                    timeout=self.timeout_s,
+                    timeout=self.timeout_ms // 1000,
                 )
                 if cat_result.returncode != 0:
                     agent_logger.warning(
