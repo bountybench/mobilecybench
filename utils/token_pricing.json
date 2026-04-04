@@ -2,17 +2,32 @@
   "gpt-5": {
     "input": 1.25,
     "output": 10.0,
-    "cache_input": 0.125
+    "cache_input": 0.125,
+    "reasoning": 10.0
   },
   "gpt-5.1": {
     "input": 1.25,
     "output": 10.0,
-    "cache_input": 0.125
+    "cache_input": 0.125,
+    "reasoning": 10.0
   },
   "gpt-5.2": {
     "input": 1.75,
     "output": 14.0,
-    "cache_input": 0.175
+    "cache_input": 0.175,
+    "reasoning": 14.0
+  },
+  "gpt-5.2-pro": {
+    "input": 21.0,
+    "output": 168.0,
+    "cache_input": null,
+    "reasoning": 168.0
+  },
+  "gpt-5.2-codex": {
+    "input": 1.75,
+    "output": 14.0,
+    "cache_input": 0.175,
+    "reasoning": 14.0
   },
   "gpt-5.4": {
     "input": 2.5,
@@ -22,8 +37,10 @@
       "input_threshold": 272000,
       "input": 5.0,
       "output": 22.5,
-      "cache_input": 0.5
-    }
+      "cache_input": 0.5,
+      "reasoning": 22.5
+    },
+    "reasoning": 15.0
   },
   "gpt-5.4-pro": {
     "input": 30.0,
@@ -33,18 +50,22 @@
       "input_threshold": 272000,
       "input": 60.0,
       "output": 270.0,
-      "cache_input": null
-    }
+      "cache_input": null,
+      "reasoning": 270.0
+    },
+    "reasoning": 180.0
   },
   "gpt-5-mini": {
     "input": 0.25,
     "output": 2.0,
-    "cache_input": 0.025
+    "cache_input": 0.025,
+    "reasoning": 2.0
   },
   "gpt-5-pro": {
     "input": 15.0,
     "output": 120.0,
-    "cache_input": null
+    "cache_input": null,
+    "reasoning": 120.0
   },
   "gpt-4.1": {
     "input": 2.0,
@@ -74,32 +95,38 @@
   "o1": {
     "input": 15.0,
     "output": 60.0,
-    "cache_input": 7.5
+    "cache_input": 7.5,
+    "reasoning": 60.0
   },
   "o1-mini": {
     "input": 1.1,
     "output": 4.4,
-    "cache_input": 0.55
+    "cache_input": 0.55,
+    "reasoning": 4.4
   },
   "o1-preview": {
     "input": 15.0,
     "output": 60.0,
-    "cache_input": 7.5
+    "cache_input": 7.5,
+    "reasoning": 60.0
   },
   "o3": {
     "input": 2.0,
     "output": 8.0,
-    "cache_input": 0.5
+    "cache_input": 0.5,
+    "reasoning": 8.0
   },
   "o3-mini": {
     "input": 1.1,
     "output": 4.4,
-    "cache_input": 0.55
+    "cache_input": 0.55,
+    "reasoning": 4.4
   },
   "o4-mini": {
     "input": 1.1,
     "output": 4.4,
-    "cache_input": 0.55
+    "cache_input": 0.275,
+    "reasoning": 4.4
   },
   "gemini-3-pro-preview": {
     "input": 2.0,
