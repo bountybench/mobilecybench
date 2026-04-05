@@ -1,6 +1,8 @@
 """Base workflow class defining the evaluation interface."""
 
+import json
 import logging
+import os
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -77,6 +79,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
+                attack_model=self.config.attack_model,
                 additional_context=additional_context,
             )
         elif agent_mode == "codex":
@@ -91,6 +94,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
+                attack_model=self.config.attack_model,
                 additional_context=additional_context,
             )
         else:
@@ -110,6 +114,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
+                attack_model=self.config.attack_model,
                 reasoning_effort=self.config.reasoning_effort,
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
@@ -407,6 +412,7 @@ class Workflow(ABC):
         app_server: str = None,
         *,
         codebase_dir: Path,
+        exec_script: str = None,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
@@ -430,6 +436,8 @@ class Workflow(ABC):
         ]
         if app_server:
             replay_cmd += ["--app-server", app_server]
+        if exec_script:
+            replay_cmd += ["--exec-script", exec_script]
         replay_cmd += ["--codebase-dir", str(codebase_dir)]
         proc = subprocess.Popen(
             replay_cmd,
@@ -478,6 +486,108 @@ class Workflow(ABC):
             "replay_evidence_path": str(evidence_path),
             "image": exploit_image,
         }
+
+    # -- Shared evaluation helpers -----------------------------------------------
+
+    def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
+        return {"status": status, "score": score, "scores": {}, **kwargs}
+
+    def _save_result(self, result: dict, filename: str = "scores.json") -> None:
+        scores_file = self.app_dir / filename
+        with open(scores_file, "w") as f:
+            json.dump(result, f, indent=2)
+        logger.info(f"Result saved to {scores_file}")
+
+    def _run_checks(
+        self,
+        exploit_log_path: str,
+        *,
+        app_scores_out: Path,
+        generic_scores_out: Path,
+        probe_dir: Path | None = None,
+    ) -> bool:
+        """Run run_checks.sh with explicit output paths. Returns True on success.
+
+        Args:
+            probe_dir: Directory containing probe scripts (test_*.py).
+                       Defaults to self.app_dir. Used by auth_attacker to point
+                       to apps/<app>/auth_attacker/.
+        """
+        check_dir = probe_dir or self.app_dir
+
+        run_checks = check_dir / "run_checks.sh"
+        if not run_checks.exists():
+            run_checks = self.project_root / "run_checks.sh"
+
+        env = os.environ.copy()
+        env["APP_SCORES_OUT"] = str(app_scores_out)
+        env["GENERIC_SCORES_OUT"] = str(generic_scores_out)
+
+        if not self.metadata.get("container_names"):
+            env["SKIP_SSRF_CHECK"] = "1"
+
+        args = [str(check_dir)]
+        if exploit_log_path:
+            args.append(exploit_log_path)
+
+        cmd = ["bash", str(run_checks)] + args
+        logger.info(f"Running checks: {' '.join(cmd)}")
+        proc = subprocess.run(
+            cmd,
+            cwd=check_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        if proc.returncode != 0:
+            logger.error(f"run_checks.sh failed (exit {proc.returncode})")
+            if proc.stderr:
+                logger.error(f"stderr: {proc.stderr}")
+            return False
+
+        for path in (app_scores_out, generic_scores_out):
+            if path.exists():
+                try:
+                    json.loads(path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON in {path}")
+                    return False
+            else:
+                logger.warning(f"Expected score file not produced: {path}")
+
+        return True
+
+    def _isolate_backend(self) -> None:
+        """Disconnect backend containers from shared_net during replay."""
+        if not self.metadata.get("isolate_backend_during_replay"):
+            return
+        for name in self.metadata.get("container_names", []):
+            logger.info(f"Isolating backend: disconnecting {name} from shared_net")
+            subprocess.run(
+                ["docker", "network", "disconnect", "shared_net", name],
+                capture_output=True,
+            )
+
+    def _restore_backend(self) -> None:
+        """Reconnect backend containers to shared_net after replay."""
+        if not self.metadata.get("isolate_backend_during_replay"):
+            return
+        for name in self.metadata.get("container_names", []):
+            logger.info(f"Restoring backend: reconnecting {name} to shared_net")
+            subprocess.run(
+                ["docker", "network", "connect", "shared_net", name],
+                capture_output=True,
+            )
+
+    def _clear_ssrf_requests(self) -> None:
+        """Clear SSRF listener state before a probe replay."""
+        try:
+            from utils.ssrf_utils import clear_ssrf_requests
+
+            clear_ssrf_requests()
+        except ImportError:
+            logger.warning("ssrf_utils not available — skipping SSRF clear")
 
     def cleanup(self) -> None:
         """Clean up resources (emulator, agent env, app backends) and restore codebase."""
