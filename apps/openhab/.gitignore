@@ -27,7 +27,6 @@ tmp/
 
 # Experiment outputs
 detection_scores.json
-hidden_eval_config.json
 unified_scores.json
 openhab_probes.tex
 
