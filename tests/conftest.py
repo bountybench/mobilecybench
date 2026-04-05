@@ -52,6 +52,7 @@ def create_provider_response(
     usage = Mock()
     usage.input_tokens = 100
     usage.output_tokens = 50
+    usage.reasoning_tokens = 0
     usage.total_tokens = 150
     raw_response.usage = usage
 
@@ -123,7 +124,14 @@ def mock_agent_dependencies(mock_model_provider):
                     mock_tracker_instance = Mock()
                     mock_tracker_instance.record_from_openai_response = Mock()
                     mock_tracker_instance.totals = Mock(
-                        return_value={"input_tokens": 100, "output_tokens": 50}
+                        return_value={
+                            "calls": 1,
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "reasoning_tokens": 0,
+                            "cache_input_tokens": 0,
+                            "cost_usd": 0.0,
+                        }
                     )
                     mock_tracker.return_value = mock_tracker_instance
                     yield {
