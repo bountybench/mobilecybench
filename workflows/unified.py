@@ -7,7 +7,6 @@ evaluation. The agent sees no probes, flags, SSRF details, or patch information.
 All scoring comes from replay of the final submitted exploit.sh.
 """
 
-import json
 import os
 import subprocess
 from pathlib import Path

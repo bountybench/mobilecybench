@@ -533,13 +533,7 @@ This is the codebase:
 
 def _build_redteam_server_access(app_server, emulator_server):
     """Common server access section for redteam prompts."""
-    server_access = (
-        f"\nThe app's backend server is reachable from your Kali terminal at {app_server}.\n"
-        f"If it speaks HTTPS and your client rejects the certificate, use `curl -k`.\n"
-        if app_server
-        else ""
-    )
-    return server_access + _emulator_server_note(emulator_server)
+    return _build_server_note(app_server, emulator_server)
 
 
 def build_redteam_prompt(

@@ -14,5 +14,5 @@
   "username": "nonadminuser",
   "password": "9839237d-5b0f-454e-a053-35c0c464d116",
   "isolate_backend_during_replay": true,
-  "additional_info": "During evaluation, your exploit APK cannot reach the OpenHAB server directly (network is blocked). The victim's app has a live, authenticated session with the server."
+  "additional_info": ""
 }

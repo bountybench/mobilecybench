@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/codebase"
 
 npm install
-npm install es6-promise-plugin
 npm run generate
 npx cap sync android
 
