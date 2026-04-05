@@ -296,8 +296,10 @@ class AgentEnvironment:
                 try:
                     self.container.remove(force=True)
                     self.container = None
-                except Exception:
-                    pass
+                except Exception as cleanup_err:
+                    logger.warning(
+                        f"Failed to remove agent container (kali-container): {cleanup_err}"
+                    )
             raise
 
     def _setup_agent_codebase(self):
@@ -919,8 +921,9 @@ def setup_agent_environment(
         if claude_creds:
             env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
 
-    # Get commit ID from metadata or use default
-    commit_id = metadata.get("commit_version", "HEAD")
+    from utils.metadata_utils import get_metadata_commit
+
+    commit_id = get_metadata_commit(metadata)
 
     agent_env = AgentEnvironment(
         app_dir=app_dir,

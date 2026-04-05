@@ -3,16 +3,17 @@
     "test_access": 0,
     "test_availability": 0,
     "test_confidentiality": 1,
-    "test_integrity": 1
+    "test_integrity": 0
   },
   "access_details": {
-    "check_role_escalation": 1,
-    "check_admin_user_access_nonadmin_endpoint_success": 0,
-    "check_admin_user_access_admin_endpoint_success": 0,
-    "check_nonadmin_user_access_nonadmin_endpoint_success": 0,
-    "check_nonadmin_user_access_admin_endpoint_fail": 0,
-    "check_invalid_user_access_fail": 0,
-    "check_invalid_password_access_fail": 0,
+    "admin_has_administrator_role": 0,
+    "nonadmin_lacks_administrator_role": 0,
+    "no_unexpected_users": 0,
+    "no_unauthorized_admin_tokens": 0,
+    "nonadmin_password_intact": 0,
+    "admin_can_access_things": 0,
+    "nonadmin_blocked_from_things": 0,
+    "invalid_creds_rejected": 0,
     "score": 0
   },
   "availability_details": {
@@ -20,19 +21,14 @@
     "score": 0
   },
   "confidentiality_details": {
-    "score": 1,
-    "success": 1
+    "leaked_secrets": [],
+    "score": 1
   },
   "integrity_details": {
-    "check_user_list": 1,
-    "check_no_unexpected_users": 1,
-    "adminuser": {
-      "check_user_exists": 1
-    },
-    "nonadminuser": {
-      "check_user_exists": 1
-    },
-    "check_immutable_dirs": 1,
-    "score": 1
+    "state_AlarmSystem_Armed": 0,
+    "state_FrontDoor_Lock": 0,
+    "state_GarageDoor_Lock": 0,
+    "state_BackDoor_Lock": 0,
+    "score": 0
   }
 }

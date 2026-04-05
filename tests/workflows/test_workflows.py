@@ -1,5 +1,6 @@
 """Tests for Workflow base class and implementations."""
 
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -145,6 +146,56 @@ class TestDiscoveryWorkflowFlagGeneration:
             mock_check_connectivity.assert_called_once_with(
                 mock_setup_agent_environment.return_value.container, None
             )
+
+    def test_discovery_workflow_runs_preflight_cleanup(self, tmp_path):
+        """setup_runtime_environment cleans stale same-app runtime before setup."""
+        (tmp_path / "apps" / "test_app").mkdir(parents=True)
+        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        workflow.metadata = {}
+
+        with patch.object(
+            workflow, "_preflight_cleanup_app_runtime"
+        ) as mock_preflight, patch("docker.from_env"), patch(
+            "utils.uuid_flags_utils.generate_and_save_flags"
+        ), patch(
+            "utils.emulator_manager.EmulatorManager"
+        ), patch(
+            "workflows.base.Workflow.setup_apks"
+        ), patch(
+            "utils.command_executor.CommandExecutor"
+        ), patch(
+            "utils.emulator_certs.inject_system_ca"
+        ), patch(
+            "utils.setup_utils.install_app_and_setup_backend"
+        ), patch(
+            "workflows.discovery.check_connectivity"
+        ), patch(
+            "agent.agent_container.setup_agent_environment"
+        ):
+            workflow.setup_runtime_environment()
+
+        mock_preflight.assert_called_once_with()
+
+    def test_preflight_cleans_only_stale_marked_app(self, tmp_path):
+        apps_dir = tmp_path / "apps"
+        stale_app_dir = apps_dir / "stale_app"
+        current_app_dir = apps_dir / "test_app"
+        stale_app_dir.mkdir(parents=True)
+        current_app_dir.mkdir(parents=True)
+        (stale_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+        (current_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        workflow._backend_runtime_state_file().write_text("stale_app\n")
+
+        with patch("workflows.base.subprocess.run") as mock_run:
+            workflow._preflight_cleanup_app_runtime()
+
+        assert mock_run.call_count == 2
+        first_call = mock_run.call_args_list[0]
+        second_call = mock_run.call_args_list[1]
+        assert first_call.kwargs["cwd"] == stale_app_dir
+        assert second_call.kwargs["cwd"] == current_app_dir
 
     def test_discovery_workflow_generates_flags_with_empty_containers(self, tmp_path):
         """setup_runtime_environment generates flags even without containers."""
@@ -318,3 +369,158 @@ class TestDetectionWorkflowEvaluation:
 
         assert result["status"] == expected_status
         assert result["score"] == expected_score
+
+
+class TestWorkflowRuntimeCleanup:
+    def test_cleanup_runs_app_cleanup_script_when_present(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+
+        with patch("workflows.base.subprocess.run") as mock_run:
+            workflow.cleanup()
+
+        mock_run.assert_called_once_with(
+            ["bash", str(app_dir / "cleanup.sh")],
+            cwd=app_dir,
+            timeout=60,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_cleanup_clears_active_backend_marker(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        state_file = workflow._backend_runtime_state_file()
+        state_file.write_text("test_app\n")
+
+        with patch(
+            "workflows.base.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=["bash", str(app_dir / "cleanup.sh")],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+        ):
+            workflow.cleanup()
+
+        assert not state_file.exists()
+
+    def test_cleanup_preserves_active_backend_marker_on_failed_cleanup(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        state_file = workflow._backend_runtime_state_file()
+        state_file.write_text("test_app\n")
+
+        with patch(
+            "workflows.base.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=["bash", str(app_dir / "cleanup.sh")],
+                returncode=1,
+                stdout="",
+                stderr="boom",
+            ),
+        ):
+            workflow.cleanup()
+
+        assert state_file.exists()
+        assert state_file.read_text().strip() == "test_app"
+
+    def test_restart_runtime_marks_backend_active_before_install(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "docker-compose.yaml").write_text("services: {}\n")
+
+        workflow = DetectionWorkflow(
+            _config(workflow="detection"), "test_app", tmp_path
+        )
+        workflow.emulator = _StubEmulator()
+
+        with patch("utils.emulator_certs.inject_system_ca"), patch(
+            "utils.setup_utils.install_app_and_setup_backend"
+        ), patch(
+            "workflows.base.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=["docker", "compose", "down", "-v"],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+        ):
+            workflow._restart_runtime(workflow._original_apk)
+
+        assert workflow._backend_runtime_state_file().read_text().strip() == "test_app"
+
+    def test_preflight_cleanup_propagates_stale_cleanup_failure(self, tmp_path):
+        stale_app_dir = tmp_path / "apps" / "stale_app"
+        current_app_dir = tmp_path / "apps" / "test_app"
+        stale_app_dir.mkdir(parents=True)
+        current_app_dir.mkdir(parents=True)
+        (stale_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+        (current_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        workflow._backend_runtime_state_file().write_text("stale_app\n")
+
+        with patch(
+            "workflows.base.subprocess.run",
+            side_effect=subprocess.CalledProcessError(
+                1, ["bash", str(stale_app_dir / "cleanup.sh")], "", "boom"
+            ),
+        ):
+            with pytest.raises(subprocess.CalledProcessError):
+                workflow._preflight_cleanup_app_runtime()
+
+    def test_restart_runtime_resets_compose_volumes_before_install(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "docker-compose.yaml").write_text("services: {}\n")
+
+        workflow = DetectionWorkflow(
+            _config(workflow="detection"), "test_app", tmp_path
+        )
+        workflow.emulator = _StubEmulator()
+
+        with patch("utils.emulator_certs.inject_system_ca"), patch(
+            "utils.setup_utils.install_app_and_setup_backend"
+        ) as mock_install, patch(
+            "workflows.base.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=["docker", "compose", "down", "-v"],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+        ) as mock_run:
+            workflow._restart_runtime(workflow._original_apk)
+
+        mock_run.assert_called_once_with(
+            ["docker", "compose", "down", "-v"],
+            cwd=app_dir,
+            timeout=60,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        mock_install.assert_called_once()
+
+
+class _StubEmulator:
+    def restart(self) -> None:
+        pass
+
+    def wait_until_ready(self, timeout) -> None:
+        del timeout
+
+    def setup_port_forwards(self, app_dir) -> None:
+        del app_dir
