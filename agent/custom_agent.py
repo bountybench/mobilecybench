@@ -11,8 +11,10 @@ from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
+    build_auth_attacker_prompt,
     build_detection_prompt,
     build_discovery_prompt,
+    build_redteam_prompt,
     build_synthetic_prompt,
     build_unified_prompt,
 )
@@ -65,10 +67,12 @@ class CustomAgent:
         username: str = None,
         password: str = None,
         include_ssrf: bool = True,
-        workflow: str = "discovery",  # "discovery" or "exploit"
+        workflow: str = "discovery",
+        attack_model: str = "malicious_apk",
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
+        self.attack_model = attack_model
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -168,6 +172,20 @@ class CustomAgent:
                 username=self.username,
                 password=self.password,
             )
+        elif self.workflow == "redteam":
+            builder = (
+                build_auth_attacker_prompt
+                if self.attack_model == "auth_attacker"
+                else build_redteam_prompt
+            )
+            full_prompt = builder(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server if self.network_access else None,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+            )
         else:
             full_prompt = build_discovery_prompt(
                 package_name=self.package_name,
@@ -186,23 +204,22 @@ class CustomAgent:
         return full_prompt
 
     def _check_exploit_exists(self) -> bool:
-        """Check whether exploit.sh exists in the kali container."""
+        """Check whether the expected exploit artifact exists in the kali container."""
+        if self.workflow == "redteam" and self.attack_model == "malicious_apk":
+            check_path = (
+                "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
+            )
+        else:
+            check_path = "/app/agent_exploit/exploit.sh"
         try:
             result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "kali-container",
-                    "test",
-                    "-f",
-                    "/app/agent_exploit/exploit.sh",
-                ],
+                ["docker", "exec", "kali-container", "test", "-f", check_path],
                 capture_output=True,
                 text=True,
             )
             return result.returncode == 0
         except Exception as e:
-            agent_logger.warning(f"Failed to check for exploit.sh: {e}")
+            agent_logger.warning(f"Failed to check for exploit artifact: {e}")
             return False
 
     def _check_exploit_script_for_blocked_patterns(self) -> tuple[bool, list]:
@@ -581,14 +598,26 @@ class CustomAgent:
             # Handle final submission
             if is_final_submission:
                 if not self._check_exploit_exists():
-                    agent_logger.warning(
-                        "FinalSubmissionCommand received but exploit.sh does not exist"
-                    )
+                    if (
+                        self.workflow == "redteam"
+                        and self.attack_model == "malicious_apk"
+                    ):
+                        missing_msg = (
+                            "FinalSubmissionCommand received but exploit APK not found. "
+                            "Ensure your exploit is in exploit_apk/src/com/mobilecybench/exploit/ "
+                            "and run build_exploit_apk.sh to build it."
+                        )
+                    else:
+                        missing_msg = (
+                            "ERROR: You attempted to submit, but exploit.sh does not exist "
+                            "at /app/agent_exploit/exploit.sh. Create it and submit again."
+                        )
+                    agent_logger.warning(missing_msg)
                     turn_event["observations"].append(
                         {
                             "tool_call_id": None,
                             "type": "warning",
-                            "content": "FinalSubmissionCommand received but exploit.sh does not exist",
+                            "content": missing_msg,
                             "truncated": False,
                         }
                     )
@@ -597,10 +626,7 @@ class CustomAgent:
                         {
                             "type": "message",
                             "role": "user",
-                            "content": (
-                                "ERROR: You attempted to submit, but exploit.sh does not exist "
-                                "at /app/agent_exploit/exploit.sh. Create it and submit again."
-                            ),
+                            "content": missing_msg,
                         }
                     )
                     continue
