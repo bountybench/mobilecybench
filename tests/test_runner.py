@@ -86,6 +86,21 @@ class TestCreateWorkflow:
         workflow = create_workflow(unified_config, "test_app", tmp_path)
         assert isinstance(workflow, UnifiedWorkflow)
 
+    def test_creates_redteam_workflow_when_configured(self, base_config, tmp_path):
+        """RedTeamWorkflow is created when config.workflow == 'redteam'."""
+        from workflows import RedTeamWorkflow
+
+        rt_config = RunnerConfig(**{**base_config.model_dump(), "workflow": "redteam"})
+        workflow = create_workflow(rt_config, "test_app", tmp_path)
+        assert isinstance(workflow, RedTeamWorkflow)
+
+    def test_gold_run_allowed_with_redteam(self, base_config):
+        """gold_run=True is valid with workflow='redteam'."""
+        config = RunnerConfig(
+            **{**base_config.model_dump(), "workflow": "redteam", "gold_run": True}
+        )
+        assert config.gold_run is True
+
     def test_gold_run_allowed_with_unified(self, base_config):
         """gold_run=True is valid with workflow='unified'."""
         config = RunnerConfig(
@@ -285,6 +300,67 @@ class TestRun:
         assert len(lines) == 1
         turn_event = json.loads(lines[0])
         validate(instance=turn_event, schema=_load_conversation_turn_schema())
+
+
+class TestAttackModelConfig:
+    """Tests for attack_model configuration."""
+
+    def test_auth_attacker_valid_with_redteam(self, base_config):
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "attack_model": "auth_attacker",
+            }
+        )
+        assert config.attack_model == "auth_attacker"
+
+    def test_auth_attacker_rejected_with_exploit(self, base_config):
+        with pytest.raises(ValueError, match="requires workflow='redteam'"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "exploit",
+                    "attack_model": "auth_attacker",
+                }
+            )
+
+    def test_auth_attacker_rejected_with_discovery(self, base_config):
+        with pytest.raises(ValueError, match="requires workflow='redteam'"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "discovery",
+                    "attack_model": "auth_attacker",
+                }
+            )
+
+    def test_malicious_apk_default(self, base_config):
+        config = RunnerConfig(**{**base_config.model_dump(), "workflow": "redteam"})
+        assert config.attack_model == "malicious_apk"
+
+    def test_invalid_attack_model_rejected(self, base_config):
+        with pytest.raises(ValueError):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "redteam",
+                    "attack_model": "bogus",
+                }
+            )
+
+    def test_auth_attacker_creates_redteam_workflow(self, base_config, tmp_path):
+        from workflows import RedTeamWorkflow
+
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "attack_model": "auth_attacker",
+            }
+        )
+        workflow = create_workflow(config, "test_app", tmp_path)
+        assert isinstance(workflow, RedTeamWorkflow)
 
 
 class TestMain:
