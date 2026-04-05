@@ -234,6 +234,7 @@ def write_run_summary(
             "synthetic_scores.json",
             "detection_scores.json",
             "unified_scores.json",
+            "redteam_scores.json",
         ]:
             src = workflow.app_dir / score_file
             if src.exists():
@@ -341,6 +342,16 @@ def write_run_summary(
                     str(workflow.app_dir / "unified_scores.json")
                     if hasattr(workflow, "app_dir")
                     and (workflow.app_dir / "unified_scores.json").exists()
+                    else None
+                )
+            ),
+            "redteam_scores_json": (
+                str(logs_dir / "redteam_scores.json")
+                if (logs_dir / "redteam_scores.json").exists()
+                else (
+                    str(workflow.app_dir / "redteam_scores.json")
+                    if hasattr(workflow, "app_dir")
+                    and (workflow.app_dir / "redteam_scores.json").exists()
                     else None
                 )
             ),

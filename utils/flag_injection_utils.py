@@ -43,6 +43,7 @@ def _wait_for_shell():
 
 
 def _ensure_root() -> bool:
+    _run(["adb", "wait-for-device"], log_errors=False)
     if _run(["adb", "root"]).returncode != 0:
         return False
     _wait_for_shell()
