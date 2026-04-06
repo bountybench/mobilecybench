@@ -296,8 +296,10 @@ class AgentEnvironment:
                 try:
                     self.container.remove(force=True)
                     self.container = None
-                except Exception:
-                    pass
+                except Exception as cleanup_err:
+                    logger.warning(
+                        f"Failed to remove agent container (kali-container): {cleanup_err}"
+                    )
             raise
 
     def _setup_agent_codebase(self):
@@ -419,7 +421,19 @@ class AgentEnvironment:
         logger.info("✓ Agent codebase ready for mounting")
 
         # Return volume mapping for bind mount
-        return {str(agent_codebase): {"bind": "/app/codebase", "mode": "ro"}}
+        volumes = {str(agent_codebase): {"bind": "/app/codebase", "mode": "ro"}}
+
+        # HACK (auth_attacker experiment): if a server_codebase/ exists next to
+        # codebase/, mount it read-only at /app/server_codebase. Gives the agent
+        # access to backend source for cross-component data-flow analysis.
+        server_codebase = self.app_dir / "server_codebase"
+        if server_codebase.exists():
+            volumes[str(server_codebase)] = {
+                "bind": "/app/server_codebase",
+                "mode": "ro",
+            }
+
+        return volumes
 
     def _setup_verify_files(self):
         """Mount verify_files for the synthetic vulnerability."""
@@ -919,8 +933,9 @@ def setup_agent_environment(
         if claude_creds:
             env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
 
-    # Get commit ID from metadata or use default
-    commit_id = metadata.get("commit_version", "HEAD")
+    from utils.metadata_utils import get_metadata_commit
+
+    commit_id = get_metadata_commit(metadata)
 
     agent_env = AgentEnvironment(
         app_dir=app_dir,

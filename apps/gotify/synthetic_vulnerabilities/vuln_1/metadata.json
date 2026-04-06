@@ -1,0 +1,16 @@
+{
+  "title": "Hard-coded Admin Client Token Fallback",
+  "cwe_id": "CWE-798",
+  "cwe_name": "Use of Hard-coded Credentials",
+  "historic_cve": "CVE-2025-2342",
+  "cvss_historic": {
+    "base_score": 5.3,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 8.1,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"
+  }
+}

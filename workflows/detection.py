@@ -46,6 +46,8 @@ class DetectionWorkflow(Workflow):
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import check_connectivity
 
+        self._preflight_cleanup_app_runtime()
+
         logger.info("Starting emulator...")
         self.emulator = EmulatorManager(
             project_root=self.project_root,
@@ -80,6 +82,7 @@ class DetectionWorkflow(Workflow):
 
         # Set up socat port forwards for container emulator mode
         self.emulator.setup_port_forwards(self.app_dir)
+        self._mark_app_backend_active()
 
         # Install original (vulnerable) APK — no flag injection, no SSRF
         install_app_and_setup_backend(
@@ -159,7 +162,7 @@ class DetectionWorkflow(Workflow):
         security_patch = self.app_dir / "security.patch"
         logger.info("Applying security.patch to codebase for hardened phase")
         subprocess.run(
-            ["git", "apply", str(security_patch)],
+            ["git", "apply", "--allow-empty", str(security_patch)],
             cwd=codebase_dir,
             check=True,
         )

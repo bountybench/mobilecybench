@@ -1,0 +1,16 @@
+{
+  "title": "Refresh Token Leakage via Debug Logging",
+  "cwe_id": "CWE-532",
+  "cwe_name": "Insertion of Sensitive Information into Log File",
+  "historic_cve": "CVE-2025-4090",
+  "cvss_historic": {
+    "base_score": 5.3,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 5.5,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+  }
+}

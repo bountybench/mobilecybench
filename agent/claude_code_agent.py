@@ -10,8 +10,10 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
 from agent.prompts.prompts import (
+    build_auth_attacker_prompt,
     build_detection_prompt,
     build_discovery_prompt,
+    build_redteam_prompt,
     build_synthetic_prompt,
     build_unified_prompt,
 )
@@ -41,6 +43,7 @@ class ClaudeCodeAgent:
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "discovery",
+        attack_model: str = "malicious_apk",
         additional_context: Optional[str] = None,
     ):
         """Initialise the Claude Code agent.
@@ -56,6 +59,7 @@ class ClaudeCodeAgent:
             password: App credentials.
             include_ssrf: Whether to include SSRF instructions.
             workflow: ``"discovery"``, ``"detection"``, or ``"exploit"``.
+            attack_model: Attack model for redteam workflow.
             additional_context: Optional extra context appended to the prompt.
         """
         self.app_name = app_name
@@ -70,6 +74,7 @@ class ClaudeCodeAgent:
         # The model parameter from runner config is ignored.
         self.model = "claude-opus-4-6"
         self.workflow = workflow
+        self.attack_model = attack_model
         self.additional_context = additional_context
 
         # Load .env from the agent directory (same pattern as CustomAgent)
@@ -144,6 +149,20 @@ class ClaudeCodeAgent:
             )
         elif self.workflow == "detection":
             prompt = build_detection_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+            )
+        elif self.workflow == "redteam":
+            builder = (
+                build_auth_attacker_prompt
+                if self.attack_model == "auth_attacker"
+                else build_redteam_prompt
+            )
+            prompt = builder(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server,
@@ -317,15 +336,21 @@ class ClaudeCodeAgent:
     # ------------------------------------------------------------------
 
     def _check_exploit_exists(self) -> bool:
-        """Check whether exploit.sh exists in the kali container."""
+        """Check whether the expected exploit artifact exists in the kali container."""
+        if self.workflow == "redteam" and self.attack_model == "malicious_apk":
+            check_path = (
+                "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
+            )
+        else:
+            check_path = "/app/agent_exploit/exploit.sh"
         try:
             container = self.provider.client.containers.get(
                 self.provider.container_name
             )
-            result = container.exec_run(["test", "-f", "/app/agent_exploit/exploit.sh"])
+            result = container.exec_run(["test", "-f", check_path])
             return result.exit_code == 0
         except Exception as e:
-            agent_logger.warning(f"Failed to check for exploit.sh: {e}")
+            agent_logger.warning(f"Failed to check for exploit artifact: {e}")
             return False
 
     # ------------------------------------------------------------------

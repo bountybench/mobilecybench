@@ -48,6 +48,7 @@ class DiscoveryWorkflow(Workflow):
         needs_flags = bool(enabled_probes & {"confidentiality", "integrity"})
 
         # Generate fresh flags for this run (only if probes need them)
+        self._preflight_cleanup_app_runtime()
         container_names = self.metadata.get("container_names", [])
         if needs_flags:
             logger.info(f"Generating flags for containers: {container_names}")
@@ -97,6 +98,7 @@ class DiscoveryWorkflow(Workflow):
 
         # Set up socat port forwards for container emulator mode
         self.emulator.setup_port_forwards(self.app_dir)
+        self._mark_app_backend_active()
 
         # Install app and setup backend (with SSRF listener for discovery mode)
         install_app_and_setup_backend(

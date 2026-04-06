@@ -34,7 +34,9 @@ class TokenUsage(BaseModel):
         - request_id: The unique request ID from the API response, if available.
         - created_at: timestamp when the record was created.
         - input_tokens: Number of input tokens used.
-        - output_tokens: Number of output tokens generated.
+        - output_tokens: Number of output tokens generated, including reasoning
+            tokens when the upstream API reports them as part of total output.
+        - reasoning_tokens: Number of billed reasoning tokens, if reported.
         - cache_input_tokens: Number of input tokens served from cache.
         - cost_usd: Total cost in USD for this call, rounded to 10 decimal places.
     """
@@ -45,8 +47,18 @@ class TokenUsage(BaseModel):
     created_at: str
     input_tokens: int
     output_tokens: int
+    reasoning_tokens: int
     cache_input_tokens: int
     cost_usd: float
+
+
+def _get_attr_or_key(obj: Any, key: str, default: Any = None) -> Any:
+    """Read a value from either an object attribute or a dictionary key."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 
 def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
@@ -54,7 +66,8 @@ def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
 
     Args:
         u: The usage object from the API response.
-        key: One of "input_tokens", "output_tokens", or "cache_input_tokens".
+        key: One of "input_tokens", "output_tokens", "reasoning_tokens",
+            or "cache_input_tokens".
         default: Value to return if the key is not found or extraction fails.
     Returns:
         Integer token count for the specified key, or default if not found.
@@ -66,47 +79,57 @@ def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
         return default
     try:
         if key == "cache_input_tokens":
-            # Try OpenAI Responses API format first
-            details = getattr(u, "input_tokens_details", None)
-            if details and hasattr(details, "cached_tokens"):
-                val = getattr(details, "cached_tokens")
-                return int(val) if val is not None else default
-            # Try Chat Completions format
-            details = getattr(u, "prompt_tokens_details", None)
-            if details and hasattr(details, "cached_tokens"):
-                val = getattr(details, "cached_tokens")
-                return int(val) if val is not None else default
+            for details_key in ["input_tokens_details", "prompt_tokens_details"]:
+                details = _get_attr_or_key(u, details_key)
+                val = _get_attr_or_key(details, "cached_tokens")
+                if val is not None:
+                    return int(val)
+            return default
+        elif key == "reasoning_tokens":
+            for details_key in ["output_tokens_details", "completion_tokens_details"]:
+                details = _get_attr_or_key(u, details_key)
+                val = _get_attr_or_key(details, "reasoning_tokens")
+                if val is not None:
+                    return int(val)
+            val = _get_attr_or_key(u, "reasoning_tokens")
+            if val is not None:
+                return int(val)
             return default
         elif key == "input_tokens":
             # Try input_tokens first (Responses API), then prompt_tokens (Chat Completions)
             for attr in ["input_tokens", "prompt_tokens"]:
-                if hasattr(u, attr):
-                    val = getattr(u, attr)
-                    if val is not None:
-                        return int(val)
+                val = _get_attr_or_key(u, attr)
+                if val is not None:
+                    return int(val)
         elif key == "output_tokens":
             # Try output_tokens first (Responses API), then completion_tokens (Chat Completions)
             for attr in ["output_tokens", "completion_tokens"]:
-                if hasattr(u, attr):
-                    val = getattr(u, attr)
-                    if val is not None:
-                        return int(val)
+                val = _get_attr_or_key(u, attr)
+                if val is not None:
+                    return int(val)
         else:
-            if hasattr(u, key):
-                val = getattr(u, key)
-                return int(val) if val is not None else default
+            val = _get_attr_or_key(u, key)
+            return int(val) if val is not None else default
     except Exception:
         pass
     return default
 
 
-def _extract_usage_openai_like(resp: Any) -> Tuple[int, int, int, Optional[str]]:
+def _extract_usage_openai_like(
+    resp: Any,
+) -> Tuple[int, int, int, int, Optional[str]]:
     """Extract token usage and request ID from OpenAI-compatible API response.
 
     Args:
         resp: The response object from an OpenAI-like API call.
     Returns:
-        A tuple of (input_tokens, output_tokens, cache_input_tokens, request_id).
+        A tuple of (
+            input_tokens,
+            output_tokens,
+            reasoning_tokens,
+            cache_input_tokens,
+            request_id,
+        ).
         Each token count defaults to 0 if not found, and request_id may be None.
     Note:
         Expected response structure:
@@ -125,13 +148,14 @@ def _extract_usage_openai_like(resp: Any) -> Tuple[int, int, int, Optional[str]]
             },
             "other fields": ...
     """
-    request_id = getattr(resp, "id", None)
-    usage: Optional[Any] = getattr(resp, "usage", None)
+    request_id = _get_attr_or_key(resp, "id", None)
+    usage: Optional[Any] = _get_attr_or_key(resp, "usage", None)
     input_tokens = _extract_token_count(usage, "input_tokens", 0)
     output_tokens = _extract_token_count(usage, "output_tokens", 0)
+    reasoning_tokens = _extract_token_count(usage, "reasoning_tokens", 0)
     cache_read = _extract_token_count(usage, "cache_input_tokens", 0)
 
-    return input_tokens, output_tokens, cache_read, request_id
+    return input_tokens, output_tokens, reasoning_tokens, cache_read, request_id
 
 
 class TokenTracker:
@@ -142,6 +166,7 @@ class TokenTracker:
     Attributes:
         - total_input_tokens: Cumulative input tokens across all recorded calls.
         - total_output_tokens: Cumulative output tokens across all recorded calls.
+        - total_reasoning_tokens: Cumulative reasoning tokens across all recorded calls.
         - total_cache_input_tokens: Cumulative cache-read input tokens across all calls.
         - total_cost_usd: Cumulative cost in USD across all recorded calls.
         - call_count: Total number of API calls recorded.
@@ -177,6 +202,7 @@ class TokenTracker:
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.total_reasoning_tokens = 0
         self.total_cache_input_tokens = 0
         self.total_cost_usd = 0.0
         self.call_count = 0
@@ -185,6 +211,7 @@ class TokenTracker:
         """Update running totals with data from a new usage record."""
         self.total_input_tokens += record.input_tokens
         self.total_output_tokens += record.output_tokens
+        self.total_reasoning_tokens += record.reasoning_tokens
         self.total_cache_input_tokens += record.cache_input_tokens
         self.total_cost_usd += record.cost_usd
         self.call_count += 1
@@ -210,7 +237,7 @@ class TokenTracker:
             >>> record = tracker.record_from_openai_response(api_response, "gpt-4")
             >>> print(f"Cost: ${record.cost_usd:.4f}")
         """
-        i, o, cr, request_id = _extract_usage_openai_like(resp)
+        i, o, r, cr, request_id = _extract_usage_openai_like(resp)
 
         pricing: ModelPricing = get_pricing_for_model(
             model, pricing_map=self._pricing_map, warn=True
@@ -220,6 +247,7 @@ class TokenTracker:
             input_tokens=i,
             output_tokens=o,
             cache_input_tokens=cr,
+            reasoning_tokens=r,
         )
 
         record = TokenUsage(
@@ -229,6 +257,7 @@ class TokenTracker:
             created_at=datetime.now(timezone.utc).isoformat(),
             input_tokens=i,
             output_tokens=o,
+            reasoning_tokens=r,
             cache_input_tokens=cr,
             cost_usd=round(cost, 10),
         )
@@ -238,11 +267,12 @@ class TokenTracker:
 
         # Log a concise line
         logger.info(
-            "Token usage | model=%s id=%s in=%d out=%d cache_input=%d cost=$%.6f",
+            "Token usage | model=%s id=%s in=%d out=%d reasoning=%d cache_input=%d cost=$%.6f",
             model,
             request_id or "-",
             i,
             o,
+            r,
             cr,
             record.cost_usd,
         )
@@ -264,7 +294,9 @@ class TokenTracker:
             A Dictionary with keys:
                 - calls: Total number of API calls recorded.
                 - input_tokens: Cumulative input tokens.
-                - output_tokens: Cumulative output tokens.
+                - output_tokens: Cumulative output tokens, including reasoning
+                    tokens when reported in total output.
+                - reasoning_tokens: Cumulative reasoning tokens.
                 - cache_input_tokens: Cumulative cache input tokens.
                 - cost_usd: Cumulative cost in USD, rounded to 10 decimal places.
         """
@@ -272,6 +304,7 @@ class TokenTracker:
             "calls": self.call_count,
             "input_tokens": self.total_input_tokens,
             "output_tokens": self.total_output_tokens,
+            "reasoning_tokens": self.total_reasoning_tokens,
             "cache_input_tokens": self.total_cache_input_tokens,
             "cost_usd": round(self.total_cost_usd, 10),
         }

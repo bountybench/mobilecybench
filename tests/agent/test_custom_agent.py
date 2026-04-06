@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -11,6 +12,7 @@ from agent.model_providers.factory import SupportedModel, get_model_provider
 from agent.model_providers.litellm_provider import LiteLLMProvider
 from agent.model_providers.openai_provider import OpenAIProvider
 from tests.conftest import create_provider_response
+from utils.token_tracker import TokenTracker
 
 
 def _load_conversation_turn_schema() -> dict:
@@ -244,6 +246,34 @@ class TestModelProviderRouting:
     def test_unsupported_model_raises_error(self):
         with pytest.raises(ValueError, match="Unsupported model"):
             get_model_provider("some-random-model", instructions="test")
+
+
+class TestLiteLLMProviderUsagePassthrough:
+    """Verify that LiteLLM raw responses flow through to TokenTracker correctly."""
+
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
+    @patch("agent.model_providers.litellm_provider.litellm.completion")
+    def test_top_level_reasoning_tokens_reach_token_tracker(self, mock_completion):
+        usage = SimpleNamespace(
+            prompt_tokens=200,
+            completion_tokens=100,
+            total_tokens=300,
+            reasoning_tokens=40,
+        )
+        message = SimpleNamespace(content="ok", reasoning_content="", tool_calls=[])
+        choice = SimpleNamespace(message=message)
+        mock_completion.return_value = SimpleNamespace(
+            id="test-resp-1", choices=[choice], usage=usage
+        )
+
+        provider = LiteLLMProvider("claude-opus-4-6", instructions="test")
+        resp = provider.call("hello")
+
+        tracker = TokenTracker(jsonl_path="")
+        record = tracker.record_from_openai_response(resp.raw_response, model="o3")
+        assert record.input_tokens == 200
+        assert record.output_tokens == 100
+        assert record.reasoning_tokens == 40
 
 
 class TestCustomAgentWithClaude:

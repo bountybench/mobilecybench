@@ -9,5 +9,5 @@
     "password": "agentpass",
     "package_name": "eu.siacs.conversations",
     "container_names": ["conversations-prosody"],
-    "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-conversations-v0/Conversations-2.19.2-conversations-free-universal-release.apk"
+    "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-conversations-v2/apk-bundle.zip"
 }

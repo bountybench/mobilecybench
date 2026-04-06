@@ -11,6 +11,7 @@ __pycache__/
 .reports/
 logs/
 scores.json
+redteam_scores.json
 generic_scores.json
 baseline.json
 flags.json
@@ -35,6 +36,7 @@ submodule_size_report.txt
 benchmark.keystore
 agent_codebase/
 agent_output/
+apps/*/server_codebase/
 apps/*/static_vuln_reports/
 synthetic_scores.json
 .apk_backup_path

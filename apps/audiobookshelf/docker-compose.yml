@@ -6,6 +6,7 @@ services:
             - 13378:80
         volumes:
             - ./files/audiobooks:/audiobooks
+            - ./files/podcasts:/podcasts
             - ./files/config:/config
         networks:
             - private_net
