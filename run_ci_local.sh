@@ -17,7 +17,8 @@ ROOT_DIR=$(pwd)
 source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
 source "${ROOT_DIR}/utils/local_error_logger.sh"
-source "${ROOT_DIR}/scripts/task_runtime_common.sh"
+source "${ROOT_DIR}/scripts/task_validation_common.sh"
+source "${ROOT_DIR}/scripts/zero_day_task_common.sh"
 set +e
 
 DIR=""
@@ -76,99 +77,9 @@ check_metadata_schema() {
 }
 
 check_app_containers_ready() {
-    # Timeout per container in seconds
-    TIMEOUT=${TIMEOUT:-180}
-    # Interval between checks in seconds
-    INTERVAL=${INTERVAL:-1}
-
-    # Get app-specific containers from metadata.json
-    containers=""
-    if [ -f "metadata.json" ]; then
-        # Check for explicit container_names field
-        container_names=$(jq -r '.container_names[]? // empty' metadata.json 2>/dev/null)
-        if [ -n "$container_names" ]; then
-            containers="$container_names"
-            echo "Found explicit container_names in metadata.json: $containers"
-        fi
+    if ! task_validation_check_app_containers_ready "$(pwd)/metadata.json"; then
+        exit 1
     fi
-
-    if [ -z "$containers" ]; then
-        echo "No app-specific containers found in metadata.json - skipping container readiness check"
-        return 0
-    fi
-
-    echo "Checking readiness for app-specific containers: $containers"
-
-    for container in $containers; do
-        echo "Checking readiness for $container..."
-
-        # Check if container has a health check
-        has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container")
-        if [ "$has_health" = "true" ]; then
-            echo "Container has a health check. Waiting to become healthy..."
-            elapsed=0
-            success=0
-            while [ $elapsed -lt $TIMEOUT ]; do
-                status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)
-                if [ "$status" == "healthy" ]; then
-                    success=1
-                    break
-                fi
-                sleep "$INTERVAL"
-                elapsed=$((elapsed + INTERVAL))
-            done
-            if [ $success -eq 1 ]; then
-                echo "$container is healthy."
-                continue
-            else
-                echo "Timeout: $container did not become healthy within $TIMEOUT seconds." >&2
-                exit 1
-            fi
-        else
-            # Get exposed TCP ports
-            ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container")
-            if [ -z "$ports" ]; then
-                echo "No exposed ports for $container. Skipping readiness check." >&2
-                continue
-            fi
-
-            elapsed=0
-            all_success=0
-            while [ $elapsed -lt $TIMEOUT ]; do
-                success=1
-                for port_spec in $ports; do
-                    port=$(echo "$port_spec" | cut -d'/' -f1)
-                    proto=$(echo "$port_spec" | cut -d'/' -f2)
-                    if [ "$proto" != "tcp" ]; then
-                        continue  # Skip non-TCP ports
-                    fi
-
-                    # Perform TCP check
-                    if ! nc -z -w 1 localhost "$port" &>/dev/null; then
-                        success=0
-                        break
-                    fi
-                done
-
-                if [ $success -eq 1 ]; then
-                    all_success=1
-                    break
-                fi
-
-                sleep "$INTERVAL"
-                elapsed=$((elapsed + INTERVAL))
-            done
-
-            if [ $all_success -eq 1 ]; then
-                echo "$container is ready via port check on all ports."
-            else
-                echo "Timeout: $container not ready after $TIMEOUT seconds." >&2
-                exit 1
-            fi
-        fi
-    done
-
-    echo "App-specific containers are ready!"
 }
 
 verify_shared_net_connectivity() {
@@ -490,73 +401,38 @@ run_build_apk_with_vuln_env() {
     fi
 }
 
-# Run exploit and verification for synthetic vulnerability
-run_exploit_verification() {
-    local vuln_dir="$1"
-    local expect_vulnerable="$2"  # "true" or "false"
+SYNTH_RUNTIME_PATCH_FILE=""
 
-    echo -e "${INFO} Running exploit from: $vuln_dir"
-
-    # Check required files
-    local exploit_files_dir="$vuln_dir/exploit_files"
-    local exploit_script="$exploit_files_dir/exploit.sh"
-    local verify_script="$vuln_dir/verify_files/verify_exploit.sh"
-
-    if [ ! -f "$exploit_script" ]; then
-        echo -e "${ERROR} Exploit script not found: $exploit_script"
+synthetic_phase_apply_vulnerability_patch() {
+    if [ -z "$SYNTH_RUNTIME_PATCH_FILE" ]; then
+        echo -e "${ERROR} Synthetic runtime patch file is not set"
         return 1
     fi
-    
-    if [ ! -f "$verify_script" ]; then
-        echo -e "${ERROR} Verification script not found: $verify_script"
-        return 1
+    echo -e "${INFO} Applying synthetic vulnerability patch for runtime services..."
+    apply_vulnerability_patch "$SYNTH_RUNTIME_PATCH_FILE"
+}
+
+run_zero_day_task() {
+    local task_dir="$1"
+    local app_dir="$2"
+
+    # Local public zero-day tasks use the same shared runner as external ones.
+    print_header "$CYAN" "TESTING ZERO-DAY TASK: $task_dir"
+
+    local app_name
+    app_name=$(basename "$app_dir")
+    local task_abs_path="$ROOT_DIR/$app_dir/$task_dir"
+
+    if [ ! -d "$task_abs_path" ]; then
+        echo -e "${ERROR} Task directory not found: $task_abs_path"
+        exit 1
     fi
 
-    local agent_output_abs_path
-    agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
-    rm -rf "$agent_output_abs_path"
-    mkdir -p "$agent_output_abs_path"
-    local task_abs_path
-    task_abs_path="$(cd "$vuln_dir" && pwd)"
-    local phase_name="secure"
-    if [ "$expect_vulnerable" = "true" ]; then
-        phase_name="vulnerable"
-    fi
-    local fix_patch_path=""
-    if [ -f "$task_abs_path/fix.patch" ]; then
-        fix_patch_path="$task_abs_path/fix.patch"
-    fi
-    task_runtime_set_context \
-        "$task_abs_path" \
-        "$agent_output_abs_path" \
-        "$(pwd)" \
-        "$task_abs_path/metadata.json" \
-        "$(pwd)/metadata.json" \
-        "$VULN_PACKAGE_NAME" \
-        "${VULN_TASK_ID:-$(basename "$vuln_dir")}" \
-        "${VULN_BASELINE_COMMIT:-}" \
-        "$phase_name" \
-        "$fix_patch_path"
+    start_emulator_and_adb
 
-    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
-    if [ -f "$vuln_dir/prepare_app.sh" ]; then
-        echo -e "${INFO} Found prepare_app hook: $vuln_dir/prepare_app.sh"
-        if ! task_runtime_run_prepare_hook; then
-            return 1
-        fi
+    if ! zero_day_task_run_validation "$app_name" "$task_abs_path" "$SKIP_APK" "" "false"; then
+        exit 1
     fi
-    local codebase_abs_path
-    codebase_abs_path="$(cd "codebase" && pwd)"
-    task_runtime_run_exploit_container "$ROOT_DIR" "$codebase_abs_path" \
-        || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
-    
-    # Run verification
-    task_runtime_run_verifier
-    if ! task_runtime_check_expectation "$expect_vulnerable" "App"; then
-        return 1
-    fi
-
-    return 0
 }
 
 # Parse command line arguments
@@ -1184,70 +1060,69 @@ run_vuln_test() {
 
     cd "$ROOT_DIR"
     start_emulator_and_adb
-
-    print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
-
-    cd "$ROOT_DIR/$app_dir"
-
-    echo -e "${INFO} Installing clean APK..."
-    if [ "$clean_apk_mode" = "security_patch" ]; then
-        ./start_runtime.sh --apk "$clean_apk" || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
-    else
-        ./start_runtime.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
+    if ! task_validation_resolve_android_serial; then
+        exit 1
     fi
 
-    check_app_containers_ready
+    local task_abs_path
+    task_abs_path="$(cd "$ROOT_DIR/$app_dir/$vuln_dir" && pwd)"
+    local agent_output_abs_path="$task_abs_path/agent_output"
+    local fix_patch_path=""
+    if [ -f "$task_abs_path/fix.patch" ]; then
+        fix_patch_path="$task_abs_path/fix.patch"
+    fi
 
-    cd "$ROOT_DIR/$app_dir"
-    run_exploit_verification "$vuln_dir" "false" || {
+    task_validation_set_context \
+        "$ROOT_DIR" \
+        "$ROOT_DIR/$app_dir" \
+        "$task_abs_path" \
+        "$agent_output_abs_path" \
+        "" \
+        "" \
+        "$package_name" \
+        "${VULN_TASK_ID:-$vuln_id}" \
+        "${VULN_BASELINE_COMMIT:-}" \
+        "$fix_patch_path" \
+        "" \
+        "flat" \
+        "true"
+
+    print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
+    local phase1_apk_arg=""
+    if [ "$clean_apk_mode" = "security_patch" ]; then
+        phase1_apk_arg="$clean_apk"
+    fi
+    if ! task_validation_run_phase "Clean build" "secure" "$phase1_apk_arg" "false"; then
         echo -e "${ERROR} Phase 1 failed: Clean build verification failed"
-        ./cleanup.sh
-        uninstall_package "$package_name"
+        task_validation_cleanup_runtime
         exit 1
-    }
+    fi
 
     echo -e "${INFO} Cleaning up Phase 1..."
-    ./cleanup.sh
-    uninstall_package "$package_name"
-
+    task_validation_cleanup_runtime
     print_header "$GREEN" "PHASE 1 PASSED: Clean build is NOT vulnerable"
 
     print_header "$CYAN" "PHASE 2: Testing Vulnerable Build (With Patch)"
-
-    cd "$ROOT_DIR/$app_dir"
-
     local vuln_apk="apk/$vuln_id/${app_name}.apk"
     if [ ! -f "$vuln_apk" ]; then
         echo -e "${ERROR} Vulnerable APK not found: $vuln_apk"
         exit 1
     fi
 
-    echo -e "${INFO} Installing vulnerable APK via --apk flag..."
-    ./start_runtime.sh --apk "$vuln_apk" || {
-        echo -e "${ERROR} Failed to install vulnerable APK"
-        exit 1
-    }
-
-    check_app_containers_ready
-
-    cd "$ROOT_DIR/$app_dir"
-    apply_vulnerability_patch "$patch_file"
-
-    cd "$ROOT_DIR/$app_dir"
-    run_exploit_verification "$vuln_dir" "true" || {
+    SYNTH_RUNTIME_PATCH_FILE="$patch_file"
+    if ! task_validation_run_phase "Vulnerable build" "vulnerable" "$vuln_apk" "true" "synthetic_phase_apply_vulnerability_patch"; then
         echo -e "${ERROR} Phase 2 failed: Vulnerable build verification failed"
-        (cd codebase && git reset --hard HEAD && git clean -fdx             && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true             && git submodule foreach --recursive git clean -fdx 2>/dev/null || true) 2>/dev/null || true
-        ./cleanup.sh
-        uninstall_package "$package_name"
+        echo -e "${INFO} Restoring codebase after vulnerable phase..."
+        (cd "$ROOT_DIR/$app_dir/codebase" && git reset --hard HEAD && git clean -fdx             && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true             && git submodule foreach --recursive git clean -fdx 2>/dev/null || true) 2>/dev/null || true
+        task_validation_cleanup_runtime
         exit 1
-    }
+    fi
 
     echo -e "${INFO} Restoring codebase after vulnerable phase..."
-    (cd codebase && git reset --hard HEAD && git clean -fdx         && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true         && git submodule foreach --recursive git clean -fdx 2>/dev/null || true)
+    (cd "$ROOT_DIR/$app_dir/codebase" && git reset --hard HEAD && git clean -fdx         && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true         && git submodule foreach --recursive git clean -fdx 2>/dev/null || true)
 
     echo -e "${INFO} Cleaning up Phase 2..."
-    ./cleanup.sh
-    uninstall_package "$package_name"
+    task_validation_cleanup_runtime
 
     print_header "$GREEN" "PHASE 2 PASSED: Vulnerable build IS vulnerable"
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETE: $vuln_dir"
@@ -1284,32 +1159,12 @@ elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
 elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
     print_header "$CYAN" "RUNNING ZERO-DAY TASK VALIDATION"
 
-    # Zero-day tasks delegate to the shared zero-day task validator rather than
-    # reimplementing build/exploit/verify inline. Unlike the current synthetic
-    # local CI path, this validator executes from a temporary task copy, so
-    # runtime artifacts never get written back into the checked-out task.
-
-    local_app_name=$(basename "$DIR")
-    local_task_dir="$ROOT_DIR/$DIR/$TEST_ZERO_DAY_VULN"
-
-    if [ ! -d "$local_task_dir" ]; then
-        echo -e "${ERROR} Task directory not found: $local_task_dir"
+    if [ ! -d "$DIR/$TEST_ZERO_DAY_VULN" ]; then
+        echo -e "${ERROR} Zero-day task directory not found: $DIR/$TEST_ZERO_DAY_VULN"
         exit 1
     fi
 
-    # Start the emulator (the zero-day task validator expects it to be running)
-    start_emulator_and_adb
-
-    # Build validator arguments
-    local_validator_args=(--app "$local_app_name" --task-dir "$local_task_dir")
-    if [ "$SKIP_APK" = true ]; then
-        local_validator_args+=(--skip-build)
-    fi
-
-    echo -e "${INFO} Delegating to zero-day task validator"
-    echo -e "${INFO}   validate_task_bundle.sh ${local_validator_args[*]}"
-
-    "$ROOT_DIR/scripts/validate_task_bundle.sh" "${local_validator_args[@]}"
+    run_zero_day_task "$TEST_ZERO_DAY_VULN" "$DIR"
 
     # Skip normal test flow
     SKIP_NORMAL_TESTS=true
@@ -1415,7 +1270,7 @@ elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
 elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
-    print_header "$GREEN" "ZERO-DAY TASK BUNDLE VALIDATION COMPLETED SUCCESSFULLY"
+    print_header "$GREEN" "ZERO-DAY TASK VALIDATION COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
 elif [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"

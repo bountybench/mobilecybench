@@ -114,8 +114,7 @@ classification or disclosure fields if a task owner wants them.
   --report-dir /path/to/reports/home-assistant-android/report-1
 ```
 
-That wrapper simply resolves `<report-dir>/task/` and delegates to
-`validate_task_bundle.sh`.
+`validate_zero_day_report.sh` simply resolves `<report-dir>/task/`. Both it and the local `run_ci_local.sh --test-zero-day-vuln ...` path then use the same shared zero-day runner; `validate_task_bundle.sh` is the direct CLI entry point to that runner.
 
 ## Validation behavior
 

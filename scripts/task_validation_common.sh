@@ -1,0 +1,328 @@
+#!/usr/bin/env bash
+# Shared helpers for task validation flows that install APKs, wait for app
+# services, run task hooks, and verify comparator expectations.
+
+if [ -n "${TASK_VALIDATION_COMMON_SH_LOADED:-}" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+TASK_VALIDATION_COMMON_SH_LOADED=1
+
+if [ -z "${ROOT_DIR:-}" ]; then
+    echo "ROOT_DIR must be set before sourcing scripts/task_validation_common.sh" >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+source "${ROOT_DIR}/scripts/task_runtime_common.sh"
+
+TASK_VALIDATION_ROOT_DIR=""
+TASK_VALIDATION_APP_DIR=""
+TASK_VALIDATION_TASK_DIR=""
+TASK_VALIDATION_OUTPUT_ROOT=""
+TASK_VALIDATION_LOG_ROOT=""
+TASK_VALIDATION_ARTIFACTS_DIR=""
+TASK_VALIDATION_PACKAGE_NAME=""
+TASK_VALIDATION_TASK_ID=""
+TASK_VALIDATION_BASELINE_COMMIT=""
+TASK_VALIDATION_FIX_PATCH=""
+TASK_VALIDATION_WORKSPACE_DIR=""
+TASK_VALIDATION_OUTPUT_MODE="per_phase"
+TASK_VALIDATION_RESET_FLAT_OUTPUT=false
+TASK_VALIDATION_TASK_METADATA_JSON=""
+TASK_VALIDATION_APP_METADATA_JSON=""
+TASK_VALIDATION_CODEBASE_DIR=""
+
+_task_validation_log() {
+    local level="$1"
+    shift
+    local prefix="${level}"
+    case "$level" in
+        INFO) prefix="${INFO:-[INFO]}" ;;
+        SUCCESS) prefix="${SUCCESS:-[SUCCESS]}" ;;
+        ERROR) prefix="${ERROR:-[ERROR]}" ;;
+        WARNING) prefix="${WARNING:-[WARNING]}" ;;
+    esac
+    echo -e "${prefix} $*"
+}
+
+task_validation_set_context() {
+    TASK_VALIDATION_ROOT_DIR="$1"
+    TASK_VALIDATION_APP_DIR="$2"
+    TASK_VALIDATION_TASK_DIR="$3"
+    TASK_VALIDATION_OUTPUT_ROOT="$4"
+    TASK_VALIDATION_LOG_ROOT="$5"
+    TASK_VALIDATION_ARTIFACTS_DIR="$6"
+    TASK_VALIDATION_PACKAGE_NAME="$7"
+    TASK_VALIDATION_TASK_ID="$8"
+    TASK_VALIDATION_BASELINE_COMMIT="$9"
+    TASK_VALIDATION_FIX_PATCH="${10:-}"
+    TASK_VALIDATION_WORKSPACE_DIR="${11:-}"
+    TASK_VALIDATION_OUTPUT_MODE="${12:-per_phase}"
+    TASK_VALIDATION_RESET_FLAT_OUTPUT="${13:-false}"
+
+    TASK_VALIDATION_TASK_METADATA_JSON="$TASK_VALIDATION_TASK_DIR/metadata.json"
+    TASK_VALIDATION_APP_METADATA_JSON="$TASK_VALIDATION_APP_DIR/metadata.json"
+    TASK_VALIDATION_CODEBASE_DIR="$TASK_VALIDATION_APP_DIR/codebase"
+}
+
+task_validation_check_app_containers_ready() {
+    local metadata_json="$1"
+    local timeout="${TIMEOUT:-180}"
+    local interval="${INTERVAL:-1}"
+    local containers=""
+
+    if [ -f "$metadata_json" ]; then
+        containers=$(jq -r '.container_names[]? // empty' "$metadata_json" 2>/dev/null)
+    fi
+
+    if [ -z "$containers" ]; then
+        _task_validation_log INFO "No app-specific containers found in metadata.json - skipping container readiness check"
+        return 0
+    fi
+
+    _task_validation_log INFO "Checking readiness for app-specific containers: $containers"
+
+    local container
+    for container in $containers; do
+        _task_validation_log INFO "Checking readiness for $container..."
+
+        local has_health
+        has_health=$(docker inspect --format '{{if .Config.Healthcheck}}true{{else}}false{{end}}' "$container" 2>/dev/null || true)
+        if [ -z "$has_health" ]; then
+            _task_validation_log ERROR "Container not found: $container"
+            return 1
+        fi
+
+        if [ "$has_health" = "true" ]; then
+            local elapsed=0
+            local success=0
+            while [ "$elapsed" -lt "$timeout" ]; do
+                local status
+                status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null || true)
+                if [ "$status" = "healthy" ]; then
+                    success=1
+                    break
+                fi
+                sleep "$interval"
+                elapsed=$((elapsed + interval))
+            done
+            if [ "$success" -eq 1 ]; then
+                _task_validation_log INFO "$container is healthy."
+                continue
+            fi
+            _task_validation_log ERROR "Timeout: $container did not become healthy within $timeout seconds."
+            return 1
+        fi
+
+        local ports
+        ports=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$container" 2>/dev/null || true)
+        if [ -z "$ports" ]; then
+            _task_validation_log WARNING "No exposed ports for $container. Skipping readiness check."
+            continue
+        fi
+
+        local elapsed=0
+        local all_success=0
+        while [ "$elapsed" -lt "$timeout" ]; do
+            local success=1
+            local port
+            for port in $ports; do
+                if ! nc -z -w 1 localhost "$port" >/dev/null 2>&1; then
+                    success=0
+                    break
+                fi
+            done
+            if [ "$success" -eq 1 ]; then
+                all_success=1
+                break
+            fi
+            sleep "$interval"
+            elapsed=$((elapsed + interval))
+        done
+
+        if [ "$all_success" -eq 1 ]; then
+            _task_validation_log INFO "$container is ready via port check on all ports."
+        else
+            _task_validation_log ERROR "Timeout: $container not ready after $timeout seconds."
+            return 1
+        fi
+    done
+
+    _task_validation_log INFO "App-specific containers are ready!"
+    return 0
+}
+
+task_validation_resolve_android_serial() {
+    if [ -n "${ANDROID_SERIAL:-}" ]; then
+        _task_validation_log INFO "Using ANDROID_SERIAL from environment: $ANDROID_SERIAL"
+        return 0
+    fi
+
+    local -a devices=()
+    while IFS= read -r device; do
+        [ -n "$device" ] || continue
+        devices+=("$device")
+    done < <(adb devices | awk '$2 == "device" { print $1 }')
+
+    if [ ${#devices[@]} -eq 0 ]; then
+        _task_validation_log ERROR "No online adb device found"
+        return 1
+    fi
+
+    if [ ${#devices[@]} -gt 1 ]; then
+        local preferred=""
+        local device
+        for device in "${devices[@]}"; do
+            if [[ "$device" == emulator-* ]]; then
+                preferred="$device"
+                break
+            fi
+        done
+        if [ -z "$preferred" ]; then
+            preferred="${devices[0]}"
+        fi
+        export ANDROID_SERIAL="$preferred"
+        _task_validation_log WARNING "Multiple adb devices detected (${devices[*]}); using $ANDROID_SERIAL"
+        return 0
+    fi
+
+    export ANDROID_SERIAL="${devices[0]}"
+    _task_validation_log INFO "Using adb device: $ANDROID_SERIAL"
+    return 0
+}
+
+task_validation_uninstall_package() {
+    local package_name="$1"
+    if [ -z "$package_name" ]; then
+        return 0
+    fi
+    if adb shell pm list packages 2>/dev/null | grep -q "^package:${package_name}$"; then
+        _task_validation_log INFO "Uninstalling $package_name..."
+        adb uninstall "$package_name" >/dev/null 2>&1 || true
+    fi
+}
+
+task_validation_cleanup_runtime() {
+    if [ -d "$TASK_VALIDATION_APP_DIR" ] && [ -x "$TASK_VALIDATION_APP_DIR/cleanup.sh" ]; then
+        (
+            cd "$TASK_VALIDATION_APP_DIR" && ./cleanup.sh
+        ) >/dev/null 2>&1 || true
+    fi
+    task_validation_uninstall_package "$TASK_VALIDATION_PACKAGE_NAME" >/dev/null 2>&1 || true
+}
+
+task_validation_copy_phase_artifacts() {
+    local phase_slug="$1"
+    local phase_output="$2"
+    local phase_logs="$3"
+
+    if [ -z "$TASK_VALIDATION_ARTIFACTS_DIR" ]; then
+        return 0
+    fi
+
+    local phase_artifacts="$TASK_VALIDATION_ARTIFACTS_DIR/$phase_slug"
+    mkdir -p "$phase_artifacts"
+    cp -R "$phase_output/." "$phase_artifacts/" 2>/dev/null || true
+    if [ -n "$phase_logs" ] && [ -d "$phase_logs" ]; then
+        cp -R "$phase_logs" "$phase_artifacts/logs" 2>/dev/null || true
+    fi
+    cp "$TASK_VALIDATION_TASK_METADATA_JSON" "$phase_artifacts/metadata.json" 2>/dev/null || true
+    if [ -n "$TASK_VALIDATION_FIX_PATCH" ] && [ -f "$TASK_VALIDATION_FIX_PATCH" ]; then
+        cp "$TASK_VALIDATION_FIX_PATCH" "$phase_artifacts/fix.patch" 2>/dev/null || true
+    fi
+}
+
+task_validation_run_phase() {
+    local phase_name="$1"
+    local phase_slug="$2"
+    local apk_arg="$3"
+    local expect_vulnerable="$4"
+    local post_install_hook="${5:-}"
+
+    local phase_output="$TASK_VALIDATION_OUTPUT_ROOT"
+    if [ "$TASK_VALIDATION_OUTPUT_MODE" = "per_phase" ]; then
+        phase_output="$TASK_VALIDATION_OUTPUT_ROOT/$phase_slug"
+    elif [ "$TASK_VALIDATION_RESET_FLAT_OUTPUT" = true ]; then
+        rm -rf "$phase_output"
+    fi
+    mkdir -p "$phase_output"
+
+    local phase_logs=""
+    local prepare_log=""
+    local exploit_log=""
+    local verify_log=""
+    if [ -n "$TASK_VALIDATION_LOG_ROOT" ]; then
+        phase_logs="$TASK_VALIDATION_LOG_ROOT/$phase_slug"
+        rm -rf "$phase_logs"
+        mkdir -p "$phase_logs"
+        prepare_log="$phase_logs/prepare.log"
+        exploit_log="$phase_logs/exploit.log"
+        verify_log="$phase_logs/verify.log"
+    fi
+
+    _task_validation_log INFO "=== Phase: $phase_name (expect_vulnerable=$expect_vulnerable) ==="
+
+    _task_validation_log INFO "Installing APK..."
+    cd "$TASK_VALIDATION_APP_DIR"
+    if [ -n "$apk_arg" ]; then
+        ./start_runtime.sh --apk "$apk_arg" || {
+            _task_validation_log ERROR "start_runtime.sh failed"
+            return 1
+        }
+    else
+        ./start_runtime.sh || {
+            _task_validation_log ERROR "start_runtime.sh failed"
+            return 1
+        }
+    fi
+
+    if ! adb shell pm list packages 2>/dev/null | grep -q "^package:${TASK_VALIDATION_PACKAGE_NAME}$"; then
+        _task_validation_log ERROR "Package $TASK_VALIDATION_PACKAGE_NAME not installed after start_runtime.sh"
+        return 1
+    fi
+
+    if ! task_validation_check_app_containers_ready "$TASK_VALIDATION_APP_METADATA_JSON"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
+    fi
+
+    if [ -n "$post_install_hook" ]; then
+        if ! "$post_install_hook" "$phase_slug"; then
+            task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+            return 1
+        fi
+    fi
+
+    task_runtime_set_context \
+        "$TASK_VALIDATION_TASK_DIR" \
+        "$phase_output" \
+        "$TASK_VALIDATION_APP_DIR" \
+        "$TASK_VALIDATION_TASK_METADATA_JSON" \
+        "$TASK_VALIDATION_APP_METADATA_JSON" \
+        "$TASK_VALIDATION_PACKAGE_NAME" \
+        "$TASK_VALIDATION_TASK_ID" \
+        "$TASK_VALIDATION_BASELINE_COMMIT" \
+        "$phase_slug" \
+        "$TASK_VALIDATION_FIX_PATCH" \
+        "$TASK_VALIDATION_WORKSPACE_DIR"
+
+    if ! task_runtime_run_prepare_hook "$prepare_log"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
+    fi
+
+    if ! task_runtime_run_exploit_container \
+        "$TASK_VALIDATION_ROOT_DIR" \
+        "$TASK_VALIDATION_CODEBASE_DIR" \
+        "$exploit_log"; then
+        _task_validation_log WARNING "Exploit returned non-zero (may be expected)"
+    fi
+
+    task_runtime_run_verifier "$verify_log"
+    if ! task_runtime_check_expectation "$expect_vulnerable" "$phase_name"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
+    fi
+
+    task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+    return 0
+}

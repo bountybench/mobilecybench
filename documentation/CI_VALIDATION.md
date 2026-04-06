@@ -112,7 +112,7 @@ The baseline revision comes from `task/metadata.json` (`baseline.commit`).
 
 ### Running Validation
 
-All entry points delegate to `scripts/validate_task_bundle.sh`.
+Local and external zero-day entry points share the same zero-day runner. `run_ci_local.sh` calls it directly for tasks under `apps/<app>/zero_day_vulnerabilities/`, while `scripts/validate_task_bundle.sh` is the CLI wrapper for invoking that same runner on an arbitrary task directory.
 
 **Via `run_ci_local.sh`** (manages emulator lifecycle automatically):
 
