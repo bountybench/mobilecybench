@@ -17,6 +17,7 @@ ROOT_DIR=$(pwd)
 source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
 source "${ROOT_DIR}/utils/local_error_logger.sh"
+source "${ROOT_DIR}/scripts/task_runtime_common.sh"
 set +e
 
 DIR=""
@@ -511,11 +512,6 @@ run_exploit_verification() {
         return 1
     fi
 
-    # Run exploit in container
-    echo -e "${INFO} Executing exploit in container..."
-    local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
-    local exploit_files_abs_path
-    exploit_files_abs_path="$(cd "$exploit_files_dir" && pwd)"
     local agent_output_abs_path
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
@@ -526,67 +522,41 @@ run_exploit_verification() {
     if [ "$expect_vulnerable" = "true" ]; then
         phase_name="vulnerable"
     fi
-    local -a task_env=(
-        "MCB_TASK_DIR=$task_abs_path"
-        "MCB_OUTPUT_DIR=$agent_output_abs_path"
-        "MCB_APP_DIR=$(pwd)"
-        "MCB_TASK_METADATA_JSON=$task_abs_path/metadata.json"
-        "MCB_APP_METADATA_JSON=$(pwd)/metadata.json"
-        "MCB_FIX_PATCH=$task_abs_path/fix.patch"
-        "MCB_PACKAGE_NAME=$VULN_PACKAGE_NAME"
-        "MCB_TASK_ID=${VULN_TASK_ID:-$(basename "$vuln_dir")}"
-        "MCB_BASELINE_COMMIT=${VULN_BASELINE_COMMIT:-}"
-        "MCB_PHASE=$phase_name"
-    )
+    local fix_patch_path=""
+    if [ -f "$task_abs_path/fix.patch" ]; then
+        fix_patch_path="$task_abs_path/fix.patch"
+    fi
+    task_runtime_set_context \
+        "$task_abs_path" \
+        "$agent_output_abs_path" \
+        "$(pwd)" \
+        "$task_abs_path/metadata.json" \
+        "$(pwd)/metadata.json" \
+        "$VULN_PACKAGE_NAME" \
+        "${VULN_TASK_ID:-$(basename "$vuln_dir")}" \
+        "${VULN_BASELINE_COMMIT:-}" \
+        "$phase_name" \
+        "$fix_patch_path"
 
     # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
-    local prepare_app_hook="$vuln_dir/prepare_app.sh"
-    if [ -f "$prepare_app_hook" ]; then
-        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
-        if ! env "${task_env[@]}" timeout 300 bash "$prepare_app_hook"; then
-            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
+    if [ -f "$vuln_dir/prepare_app.sh" ]; then
+        echo -e "${INFO} Found prepare_app hook: $vuln_dir/prepare_app.sh"
+        if ! task_runtime_run_prepare_hook; then
             return 1
         fi
-        echo -e "${SUCCESS} prepare_app hook completed"
     fi
     local codebase_abs_path
     codebase_abs_path="$(cd "codebase" && pwd)"
-    "$ROOT_DIR/utils/run_exploit_container.sh" \
-        --exploit-dir "$exploit_files_abs_path" \
-        --output-dir "$agent_output_abs_path" \
-        --image "$exploit_image" \
-        --utils-dir "$ROOT_DIR/utils" \
-        --codebase-dir "$codebase_abs_path" || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
+    task_runtime_run_exploit_container "$ROOT_DIR" "$codebase_abs_path" \
+        || echo -e "${WARNING} Exploit returned non-zero exit code (may be expected on clean builds)"
     
     # Run verification
-    echo -e "${INFO} Running verification..."
-    env "${task_env[@]}" bash "$verify_script"
-    local verify_exit_code=$?
-
-    if [ "$verify_exit_code" -eq 0 ]; then
-        # verify_exploit.sh returns 0 if vulnerable
-        if [ "$expect_vulnerable" = "true" ]; then
-            echo -e "${SUCCESS} Verification passed: App is vulnerable (as expected)"
-            return 0
-        else
-            echo -e "${ERROR} Verification failed: App is vulnerable (expected NOT vulnerable)"
-            return 1
-        fi
-    elif [ "$verify_exit_code" -eq 1 ]; then
-        # verify_exploit.sh returns 1 if not vulnerable
-        if [ "$expect_vulnerable" = "false" ]; then
-            echo -e "${SUCCESS} Verification passed: App is NOT vulnerable (as expected)"
-            return 0
-        else
-            echo -e "${ERROR} Verification failed: App is NOT vulnerable (expected vulnerable)"
-            return 1
-        fi
-    else
-        # Any other exit code indicates an error in the verification script
-        echo -e "${ERROR} Verification script failed with unexpected exit code: $verify_exit_code"
-        echo -e "${ERROR} This indicates an error in verify_exploit.sh (e.g., adb/db failure), not a vulnerability status"
+    task_runtime_run_verifier
+    if ! task_runtime_check_expectation "$expect_vulnerable" "App"; then
         return 1
     fi
+
+    return 0
 }
 
 # Parse command line arguments
@@ -1314,7 +1284,7 @@ elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
 elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
     print_header "$CYAN" "RUNNING ZERO-DAY TASK BUNDLE VALIDATION"
 
-    # Zero-day tasks delegate to the canonical task-bundle validator rather than
+    # Zero-day tasks delegate to the shared task-bundle validator rather than
     # reimplementing build/exploit/verify inline.  This keeps a single execution
     # model: ephemeral workspace, immutable source, no agent_output/ created
     # inside the task tree.  See scripts/validate_task_bundle.sh.
@@ -1327,7 +1297,7 @@ elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
         exit 1
     fi
 
-    # Start the emulator (the canonical validator expects it to be running)
+    # Start the emulator (the task-bundle validator expects it to be running)
     start_emulator_and_adb
 
     # Build validator arguments
@@ -1336,7 +1306,7 @@ elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
         local_validator_args+=(--skip-build)
     fi
 
-    echo -e "${INFO} Delegating to canonical task-bundle validator"
+    echo -e "${INFO} Delegating to task-bundle validator"
     echo -e "${INFO}   validate_task_bundle.sh ${local_validator_args[*]}"
 
     "$ROOT_DIR/scripts/validate_task_bundle.sh" "${local_validator_args[@]}"

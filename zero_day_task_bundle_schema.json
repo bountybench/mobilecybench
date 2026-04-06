@@ -1,92 +1,39 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "description": "Schema for zero-day task bundle metadata.json files",
-  "additionalProperties": false,
+  "description": "Execution-focused schema for zero-day task metadata.json files",
+  "additionalProperties": true,
   "properties": {
     "schema_version": {
       "type": "integer",
       "const": 1,
-      "description": "Task bundle schema version"
+      "description": "Zero-day task metadata schema version"
     },
     "task_id": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9_-]*$",
-      "description": "Stable benchmark task identifier"
+      "description": "Stable task identifier"
     },
     "title": {
       "type": "string",
       "minLength": 1,
       "description": "Short task title"
     },
-    "provenance": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "real",
-          "description": "Zero-day task provenance"
-        },
-        "historic_cve": {
-          "type": ["string", "null"],
-          "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$",
-          "description": "Historic CVE when one exists"
-        },
-        "cwe": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^CWE-[0-9]+$"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "primary": {
-                "type": "boolean"
-              }
-            },
-            "required": ["id", "name"]
-          },
-          "description": "Primary and secondary CWE classifications"
-        }
-      },
-      "required": ["kind", "cwe"]
-    },
-    "severity": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "historic": {
-          "$ref": "#/definitions/cvss"
-        },
-        "benchmark": {
-          "$ref": "#/definitions/cvss"
-        }
-      },
-      "required": ["historic", "benchmark"]
-    },
     "baseline": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "commit": {
           "type": "string",
           "minLength": 1,
-          "description": "App source revision that defines the vulnerable baseline"
+          "description": "App revision that defines the vulnerable baseline"
         }
       },
       "required": ["commit"]
     },
     "build": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "env": {
           "type": "object",
@@ -94,26 +41,12 @@
             "type": ["string", "number", "integer", "boolean"]
           },
           "description": "Environment variables passed to build_apk.sh"
-        },
-        "comparators": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "vulnerable": {
-              "$ref": "#/definitions/comparator"
-            },
-            "secure": {
-              "$ref": "#/definitions/comparator"
-            }
-          },
-          "required": ["vulnerable", "secure"]
         }
-      },
-      "required": ["comparators"]
+      }
     },
     "runtime": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "package_name": {
           "type": "string",
@@ -127,42 +60,6 @@
     "schema_version",
     "task_id",
     "title",
-    "provenance",
-    "severity",
-    "baseline",
-    "build"
-  ],
-  "definitions": {
-    "cvss": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "base_score": {
-          "type": "number",
-          "minimum": 0.0,
-          "maximum": 10.0
-        },
-        "severity": {
-          "type": "string",
-          "enum": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
-        },
-        "vector": {
-          "type": "string",
-          "pattern": "^CVSS:"
-        }
-      },
-      "required": ["base_score", "severity", "vector"]
-    },
-    "comparator": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "patch": {
-          "type": ["string", "null"],
-          "description": "Relative path inside the task bundle to the comparator patch, or null"
-        }
-      },
-      "required": ["patch"]
-    }
-  }
+    "baseline"
+  ]
 }

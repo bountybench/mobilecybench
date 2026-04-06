@@ -18,13 +18,10 @@ def dirs(request):
 
 
 REQUIRED_FIELDS = {
-    "schema_version": "Task bundle schema version (currently 1)",
-    "task_id": "Stable benchmark task identifier (e.g. location_spoofing)",
+    "schema_version": "Task metadata schema version (currently 1)",
+    "task_id": "Stable task identifier (for example location_spoofing)",
     "title": "Short task title",
-    "provenance": "Real-vulnerability provenance block with CWE data",
-    "severity": "Historic and benchmark CVSS objects",
     "baseline": "Baseline app commit that defines the vulnerable build",
-    "build": "Build settings and secure/vulnerable comparator definitions",
 }
 
 

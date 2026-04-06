@@ -27,10 +27,10 @@ def dirs(request):
 
 
 def test_synthetic_vuln_metadata(dirs: list[str]):
-    """Validate metadata.json files in synthetic vulnerability task directories.
+    """Validate metadata.json files in synthetic vulnerability directories.
 
     When --dirs is provided, validates only those directories.
-    Otherwise, discovers and validates all synthetic vulnerability task metadata files.
+    Otherwise, discovers and validates all synthetic vulnerability metadata files.
     """
     with open(SCHEMA_PATH, "r") as f:
         schema = json.load(f)
@@ -47,7 +47,7 @@ def test_synthetic_vuln_metadata(dirs: list[str]):
 
 
 def _collect_metadata_files(dirs):
-    """Collect vulnerability task metadata.json files to validate."""
+    """Collect synthetic vulnerability metadata.json files to validate."""
     metadata_files = []
 
     if dirs:
@@ -60,11 +60,11 @@ def _collect_metadata_files(dirs):
         apps_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "apps")
         if os.path.isdir(apps_dir):
             for app in sorted(os.listdir(apps_dir)):
-                task_dir = os.path.join(apps_dir, app, "synthetic_vulnerabilities")
-                if not os.path.isdir(task_dir):
+                synth_dir = os.path.join(apps_dir, app, "synthetic_vulnerabilities")
+                if not os.path.isdir(synth_dir):
                     continue
-                for vuln in sorted(os.listdir(task_dir)):
-                    metadata_file = os.path.join(task_dir, vuln, "metadata.json")
+                for vuln in sorted(os.listdir(synth_dir)):
+                    metadata_file = os.path.join(synth_dir, vuln, "metadata.json")
                     if os.path.isfile(metadata_file):
                         metadata_files.append(metadata_file)
 

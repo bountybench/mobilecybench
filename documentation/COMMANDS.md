@@ -58,7 +58,7 @@ Flags:
 ./publish_apk_bundle.sh apps/conversations
 ```
 
-Details: `documentation/ADDING_APPS.md`, `documentation/SYNTHETIC_VULNERABILITIES.md`, and `documentation/ZERO_DAY_CI_INTERFACE.md`
+Details: `documentation/ADDING_APPS.md`, `documentation/SYNTHETIC_VULNERABILITIES.md`, and `documentation/ZERODAY_TASKS.md`
 
 Flags:
 
@@ -94,7 +94,7 @@ Flags:
   --task-dir /path/to/task-bundle
 ```
 
-Details: `documentation/CI_VALIDATION.md` and `documentation/ZERO_DAY_CI_INTERFACE.md`
+Details: `documentation/CI_VALIDATION.md` and `documentation/ZERODAY_TASKS.md`
 
 ## External zero-day report wrapper
 
@@ -104,7 +104,7 @@ Details: `documentation/CI_VALIDATION.md` and `documentation/ZERO_DAY_CI_INTERFA
   --report-dir /path/to/reports/app-name/report-n
 ```
 
-Details: `documentation/CI_VALIDATION.md` and `documentation/ZERO_DAY_CI_INTERFACE.md`
+Details: `documentation/CI_VALIDATION.md` and `documentation/ZERODAY_TASKS.md`
 
 ## Flag injection utilities
 

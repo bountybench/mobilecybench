@@ -921,10 +921,6 @@ def setup_agent_environment(
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
 
-    android_serial = os.environ.get("ANDROID_SERIAL")
-    if android_serial:
-        env_vars["ANDROID_SERIAL"] = android_serial
-
     # Inject mode-specific environment variables
     if agent_mode == "codex":
         codex_key = os.environ.get("CODEX_API_KEY", "")

@@ -2,7 +2,7 @@
 #
 # validate_task_bundle.sh
 #
-# Canonical validator for zero-day task bundles. A task bundle is an atomic,
+# Validator for zero-day task bundles. A task bundle is an atomic,
 # self-contained benchmark unit that can live either in the public app tree or
 # in an external report directory. This script validates and executes the
 # bundle without depending on its source checkout location.
@@ -21,6 +21,7 @@ ERROR="${RED}[validate-task-bundle]${RESET}"
 WARNING="${YELLOW}[validate-task-bundle]${RESET}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT_DIR}/scripts/task_runtime_common.sh"
 APP_NAME=""
 TASK_DIR=""
 APP_DIR=""
@@ -34,7 +35,6 @@ TASK_METADATA=""
 TASK_ID=""
 PACKAGE_NAME=""
 BASELINE_COMMIT=""
-SECURE_PATCH_REL=""
 SECURE_PATCH_ABS=""
 declare -a BUILD_ENV_ARGS=()
 
@@ -72,7 +72,7 @@ validate_metadata_schema_if_present() {
     schema_version="$(jq -r '.schema_version // empty' "$metadata_file")"
 
     if [ -z "$schema_version" ]; then
-        echo -e "${WARNING} metadata.json has no schema_version; using legacy compatibility mode"
+        echo -e "${WARNING} metadata.json has no schema_version; using compatibility mode"
         return 0
     fi
 
@@ -100,21 +100,15 @@ resolve_task_metadata() {
 
     validate_metadata_schema_if_present "$TASK_METADATA"
 
-    # Detect whether this is the canonical schema (has schema_version) or legacy
     if ! jq -e '.schema_version' "$TASK_METADATA" >/dev/null 2>&1; then
-        echo -e "${WARNING} Task metadata uses legacy format (no schema_version)"
-        echo -e "${WARNING} Migrate to the canonical schema — see documentation/ZERO_DAY_CI_INTERFACE.md"
+        echo -e "${WARNING} Task metadata has no schema_version; using older-field compatibility"
     fi
 
-    # --- task_id ---
-    # Canonical: .task_id  |  Legacy: .task_slug
     TASK_ID="$(jq -r '.task_id // .task_slug // empty' "$TASK_METADATA")"
     if [ -z "$TASK_ID" ] || [ "$TASK_ID" = "null" ]; then
         TASK_ID="$(basename "$TASK_DIR")"
     fi
 
-    # --- package_name ---
-    # Canonical: .runtime.package_name  |  Legacy: .app_metadata_overrides.package_name
     PACKAGE_NAME="$(jq -r '.runtime.package_name // .app_metadata_overrides.package_name // empty' "$TASK_METADATA")"
     if [ -z "$PACKAGE_NAME" ] || [ "$PACKAGE_NAME" = "null" ]; then
         PACKAGE_NAME="$(jq -r '.package_name // empty' "$APP_DIR/metadata.json")"
@@ -124,8 +118,6 @@ resolve_task_metadata() {
         return 1
     fi
 
-    # --- baseline commit ---
-    # Canonical: .baseline.commit  |  Legacy: app metadata .commit_version
     BASELINE_COMMIT="$(jq -r '.baseline.commit // empty' "$TASK_METADATA")"
     if [ -z "$BASELINE_COMMIT" ] || [ "$BASELINE_COMMIT" = "null" ]; then
         BASELINE_COMMIT="$(jq -r '.commit_version // empty' "$APP_DIR/metadata.json")"
@@ -138,30 +130,19 @@ resolve_task_metadata() {
         return 1
     fi
 
-    # --- secure comparator patch ---
-    # Canonical: .build.comparators.secure.patch  |  Legacy: .clean_apk_mode == "security_patch"
-    SECURE_PATCH_REL="$(jq -r '.build.comparators.secure.patch // empty' "$TASK_METADATA")"
-    if [ -z "$SECURE_PATCH_REL" ] || [ "$SECURE_PATCH_REL" = "null" ]; then
-        if jq -e '.clean_apk_mode == "security_patch"' "$TASK_METADATA" >/dev/null 2>&1; then
-            SECURE_PATCH_REL="fix.patch"
-        fi
-    fi
-    if [ -z "$SECURE_PATCH_REL" ]; then
-        SECURE_PATCH_REL="fix.patch"
-    fi
-
-    if [ "$SECURE_PATCH_REL" != "fix.patch" ]; then
-        echo -e "${ERROR} Secure comparator patch must be task-local fix.patch (got: $SECURE_PATCH_REL)"
-        return 1
-    fi
-    SECURE_PATCH_ABS="$TASK_WORK_DIR/$SECURE_PATCH_REL"
+    SECURE_PATCH_ABS="$TASK_WORK_DIR/fix.patch"
     if [ ! -f "$SECURE_PATCH_ABS" ]; then
         echo -e "${ERROR} Secure comparator patch not found: $SECURE_PATCH_ABS"
         return 1
     fi
 
-    # --- vulnerable comparator ---
-    # Must be null / absent for zero-day tasks (baseline as-is is vulnerable)
+    local secure_patch_rel
+    secure_patch_rel="$(jq -r '.build.comparators.secure.patch // empty' "$TASK_METADATA")"
+    if [ -n "$secure_patch_rel" ] && [ "$secure_patch_rel" != "null" ] && [ "$secure_patch_rel" != "fix.patch" ]; then
+        echo -e "${ERROR} If build.comparators.secure.patch is set, it must be fix.patch"
+        return 1
+    fi
+
     local vulnerable_patch_rel
     vulnerable_patch_rel="$(jq -r '.build.comparators.vulnerable.patch // empty' "$TASK_METADATA")"
     if [ -n "$vulnerable_patch_rel" ] && [ "$vulnerable_patch_rel" != "null" ]; then
@@ -169,8 +150,6 @@ resolve_task_metadata() {
         return 1
     fi
 
-    # --- build env ---
-    # Canonical: .build.env  |  Legacy: .build_env
     BUILD_ENV_ARGS=()
     while IFS=$'\t' read -r key value; do
         [ -n "$key" ] || continue
@@ -296,87 +275,32 @@ run_phase() {
         return 1
     fi
 
-    local -a task_env=(
-        "ANDROID_SERIAL=${ANDROID_SERIAL:-}"
-        "MCB_TASK_DIR=$TASK_WORK_DIR"
-        "MCB_OUTPUT_DIR=$phase_output"
-        "MCB_WORKSPACE_DIR=$WORKSPACE"
-        "MCB_APP_DIR=$APP_DIR"
-        "MCB_TASK_METADATA_JSON=$TASK_WORK_DIR/metadata.json"
-        "MCB_APP_METADATA_JSON=$APP_DIR/metadata.json"
-        "MCB_FIX_PATCH=$TASK_WORK_DIR/fix.patch"
-        "MCB_PACKAGE_NAME=$PACKAGE_NAME"
-        "MCB_TASK_ID=$TASK_ID"
-        "MCB_BASELINE_COMMIT=$BASELINE_COMMIT"
-        "MCB_PHASE=$phase_slug"
-    )
+    task_runtime_set_context \
+        "$TASK_WORK_DIR" \
+        "$phase_output" \
+        "$APP_DIR" \
+        "$TASK_WORK_DIR/metadata.json" \
+        "$APP_DIR/metadata.json" \
+        "$PACKAGE_NAME" \
+        "$TASK_ID" \
+        "$BASELINE_COMMIT" \
+        "$phase_slug" \
+        "$SECURE_PATCH_ABS" \
+        "$WORKSPACE"
 
-    local prepare_hook="$TASK_WORK_DIR/prepare_app.sh"
-    if [ -f "$prepare_hook" ]; then
-        echo -e "${INFO} Running prepare_app.sh..."
-        if ! (
-            cd "$TASK_WORK_DIR" && \
-            env "${task_env[@]}" timeout 300 bash "$prepare_hook" >"$phase_logs/prepare.log" 2>&1
-        ); then
-            cat "$phase_logs/prepare.log" >&2 || true
-            echo -e "${ERROR} prepare_app.sh failed or timed out"
-            copy_phase_artifacts "$phase_slug"
-            return 1
-        fi
-        cat "$phase_logs/prepare.log" || true
-        echo -e "${SUCCESS} prepare_app.sh completed"
-    fi
-
-    echo -e "${INFO} Running exploit in container..."
-    if ! (
-        cd "$TASK_WORK_DIR" && \
-        env "${task_env[@]}" "$ROOT_DIR/utils/run_exploit_container.sh" \
-            --exploit-dir "$TASK_WORK_DIR/exploit_files" \
-            --output-dir "$phase_output" \
-            --image "${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}" \
-            --utils-dir "$ROOT_DIR/utils" \
-            --codebase-dir "$APP_DIR/codebase" \
-            >"$phase_logs/exploit.log" 2>&1
-    ); then
-        cat "$phase_logs/exploit.log" || true
-        echo -e "${WARNING} Exploit returned non-zero (may be expected)"
-    else
-        cat "$phase_logs/exploit.log" || true
-    fi
-
-    echo -e "${INFO} Running verification..."
-    local verify_script="$TASK_WORK_DIR/verify_files/verify_exploit.sh"
-    chmod +x "$verify_script"
-    set +e
-    (
-        cd "$TASK_WORK_DIR" && env "${task_env[@]}" bash "$verify_script" >"$phase_logs/verify.log" 2>&1
-    )
-    local verify_exit=$?
-    set -e
-    cat "$phase_logs/verify.log" || true
-
-    if [ "$verify_exit" -gt 1 ]; then
-        echo -e "${ERROR} Verifier failed with unexpected exit code $verify_exit"
+    if ! task_runtime_run_prepare_hook "$phase_logs/prepare.log"; then
         copy_phase_artifacts "$phase_slug"
         return 1
     fi
 
-    if [ "$expect_vulnerable" = "true" ]; then
-        if [ "$verify_exit" -eq 0 ]; then
-            echo -e "${SUCCESS} Vulnerable build IS vulnerable (as expected)"
-        else
-            echo -e "${ERROR} Vulnerable build is NOT vulnerable (expected exit 0, got $verify_exit)"
-            copy_phase_artifacts "$phase_slug"
-            return 1
-        fi
-    else
-        if [ "$verify_exit" -eq 1 ]; then
-            echo -e "${SUCCESS} Secure build is NOT vulnerable (as expected)"
-        else
-            echo -e "${ERROR} Secure build IS vulnerable (expected exit 1, got $verify_exit)"
-            copy_phase_artifacts "$phase_slug"
-            return 1
-        fi
+    if ! task_runtime_run_exploit_container "$ROOT_DIR" "$APP_DIR/codebase" "$phase_logs/exploit.log"; then
+        echo -e "${WARNING} Exploit returned non-zero (may be expected)"
+    fi
+
+    task_runtime_run_verifier "$phase_logs/verify.log"
+    if ! task_runtime_check_expectation "$expect_vulnerable" "$phase_name"; then
+        copy_phase_artifacts "$phase_slug"
+        return 1
     fi
 
     copy_phase_artifacts "$phase_slug"
