@@ -119,10 +119,10 @@ That wrapper simply resolves `<report-dir>/task/` and delegates to
 
 ## Validation behavior
 
-Compared with synthetic-task validation, the zero-day validator does two extra
-things:
-- it copies the task into a temporary workspace before execution so the source
-  checkout stays source-only
+Compared with the current synthetic local CI path, the zero-day validator
+does two extra things:
+- it runs from a temporary copy of the task directory before execution, so
+  runtime artifacts do not get written back into the task checkout
 - it builds both comparators from `baseline.commit`, using `fix.patch` only for
   the secure build
 

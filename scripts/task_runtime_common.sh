@@ -100,7 +100,7 @@ task_runtime_run_exploit_container() {
     local codebase_dir="$2"
     local log_file="${3:-}"
 
-    echo -e "${INFO} Running exploit in container..."
+    echo -e "${INFO} Executing exploit in container..."
     if [ -n "$log_file" ]; then
         (
             cd "$TASK_RUNTIME_TASK_DIR" && \

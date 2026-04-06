@@ -26,14 +26,14 @@ REQUIRED_FIELDS = {
 
 
 def test_zero_day_task_bundle_metadata(dirs: list[str]):
-    """Validate metadata.json files in zero-day task bundle directories."""
+    """Validate metadata.json files in zero-day task directories."""
     with open(SCHEMA_PATH, "r") as f:
         schema = json.load(f)
 
     metadata_files = _collect_metadata_files(dirs)
 
     if not metadata_files:
-        logger.info("No zero-day task bundle metadata.json files found. Skipping.")
+        logger.info("No zero-day task metadata.json files found. Skipping.")
         return
 
     for metadata_file in metadata_files:

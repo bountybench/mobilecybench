@@ -1282,22 +1282,22 @@ elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     # Skip normal test flow
     SKIP_NORMAL_TESTS=true
 elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
-    print_header "$CYAN" "RUNNING ZERO-DAY TASK BUNDLE VALIDATION"
+    print_header "$CYAN" "RUNNING ZERO-DAY TASK VALIDATION"
 
-    # Zero-day tasks delegate to the shared task-bundle validator rather than
-    # reimplementing build/exploit/verify inline.  This keeps a single execution
-    # model: ephemeral workspace, immutable source, no agent_output/ created
-    # inside the task tree.  See scripts/validate_task_bundle.sh.
+    # Zero-day tasks delegate to the shared zero-day task validator rather than
+    # reimplementing build/exploit/verify inline. Unlike the current synthetic
+    # local CI path, this validator executes from a temporary task copy, so
+    # runtime artifacts never get written back into the checked-out task.
 
     local_app_name=$(basename "$DIR")
     local_task_dir="$ROOT_DIR/$DIR/$TEST_ZERO_DAY_VULN"
 
     if [ ! -d "$local_task_dir" ]; then
-        echo -e "${ERROR} Task bundle directory not found: $local_task_dir"
+        echo -e "${ERROR} Task directory not found: $local_task_dir"
         exit 1
     fi
 
-    # Start the emulator (the task-bundle validator expects it to be running)
+    # Start the emulator (the zero-day task validator expects it to be running)
     start_emulator_and_adb
 
     # Build validator arguments
@@ -1306,7 +1306,7 @@ elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
         local_validator_args+=(--skip-build)
     fi
 
-    echo -e "${INFO} Delegating to task-bundle validator"
+    echo -e "${INFO} Delegating to zero-day task validator"
     echo -e "${INFO}   validate_task_bundle.sh ${local_validator_args[*]}"
 
     "$ROOT_DIR/scripts/validate_task_bundle.sh" "${local_validator_args[@]}"
@@ -1346,8 +1346,8 @@ elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     echo -e "${SUCCESS} ✓ Vulnerable build verification passed"
     echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s"
 elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
-    print_header "$GREEN" "ZERO-DAY TASK BUNDLE VALIDATION COMPLETED"
-    echo -e "${SUCCESS} Tested task bundle: $TEST_ZERO_DAY_VULN"
+    print_header "$GREEN" "ZERO-DAY TASK VALIDATION COMPLETED"
+    echo -e "${SUCCESS} Tested task: $TEST_ZERO_DAY_VULN"
     echo -e "${SUCCESS} ✓ Secure build is NOT vulnerable"
     echo -e "${SUCCESS} ✓ Vulnerable build IS vulnerable"
     echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s"

@@ -2,8 +2,8 @@
 #
 # validate_zero_day_report.sh
 #
-# Thin adapter for validating a zero-day task bundle stored under an external
-# report directory. Assumes the task bundle lives at <report-dir>/task and then
+# Thin adapter for validating a zero-day task stored under an external
+# report directory. Assumes the task lives at <report-dir>/task and then
 # delegates all execution logic to validate_task_bundle.sh.
 
 set -euo pipefail

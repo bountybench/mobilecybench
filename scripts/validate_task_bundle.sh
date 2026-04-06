@@ -2,10 +2,10 @@
 #
 # validate_task_bundle.sh
 #
-# Validator for zero-day task bundles. A task bundle is an atomic,
-# self-contained benchmark unit that can live either in the public app tree or
-# in an external report directory. This script validates and executes the
-# bundle without depending on its source checkout location.
+# Validator for zero-day tasks. Each task is a self-contained directory that
+# can live either in the public app tree or in an external report checkout.
+# This script validates and executes the task without depending on its source
+# checkout location.
 
 set -euo pipefail
 
@@ -15,10 +15,10 @@ YELLOW="\033[1;33m"
 CYAN="\033[1;36m"
 RESET="\033[0m"
 
-INFO="${CYAN}[validate-task-bundle]${RESET}"
-SUCCESS="${GREEN}[validate-task-bundle]${RESET}"
-ERROR="${RED}[validate-task-bundle]${RESET}"
-WARNING="${YELLOW}[validate-task-bundle]${RESET}"
+INFO="${CYAN}[validate-zero-day-task]${RESET}"
+SUCCESS="${GREEN}[validate-zero-day-task]${RESET}"
+ERROR="${RED}[validate-zero-day-task]${RESET}"
+WARNING="${YELLOW}[validate-zero-day-task]${RESET}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT_DIR}/scripts/task_runtime_common.sh"
@@ -44,7 +44,7 @@ Usage: $0 --app <app_name> --task-dir <path> [options]
 
 Required:
   --app <app_name>         App name (e.g. home-assistant-android)
-  --task-dir <path>        Path to the zero-day task bundle directory
+  --task-dir <path>        Path to the zero-day task directory
 
 Options:
   --skip-build             Reuse existing APKs in apps/<app>/apk/
@@ -77,7 +77,7 @@ validate_metadata_schema_if_present() {
     fi
 
     if [ "$schema_version" != "1" ]; then
-        echo -e "${ERROR} Unsupported task bundle schema_version: $schema_version"
+        echo -e "${ERROR} Unsupported zero-day task schema_version: $schema_version"
         return 1
     fi
 
@@ -146,7 +146,7 @@ resolve_task_metadata() {
     local vulnerable_patch_rel
     vulnerable_patch_rel="$(jq -r '.build.comparators.vulnerable.patch // empty' "$TASK_METADATA")"
     if [ -n "$vulnerable_patch_rel" ] && [ "$vulnerable_patch_rel" != "null" ]; then
-        echo -e "${ERROR} Zero-day task bundles must use the unpatched baseline as the vulnerable comparator"
+        echo -e "${ERROR} Zero-day tasks must use the unpatched baseline as the vulnerable comparator"
         return 1
     fi
 
@@ -361,18 +361,18 @@ fi
 
 for req_file in "metadata.json" "fix.patch" "exploit_files/exploit.sh" "verify_files/verify_exploit.sh"; do
     if [ ! -f "$TASK_DIR/$req_file" ]; then
-        echo -e "${ERROR} Required task bundle file not found: $TASK_DIR/$req_file"
+        echo -e "${ERROR} Required task file not found: $TASK_DIR/$req_file"
         exit 1
     fi
 done
 
 if find "$TASK_DIR" -type d \( -name 'agent_output' -o -name '__pycache__' -o -name '.pytest_cache' -o -name 'build' -o -name 'dist' \) -print -quit | grep -q .; then
-    echo -e "${ERROR} Task bundle contains generated runtime artifacts; task bundles must be source-only"
+    echo -e "${ERROR} Task directory contains generated runtime artifacts; zero-day tasks must stay source-only"
     exit 1
 fi
 
 mkdir -p "$ROOT_DIR/tmp"
-WORKSPACE="$(mktemp -d "$ROOT_DIR/tmp/zero_day_task_bundle.${APP_NAME}.XXXXXX")"
+WORKSPACE="$(mktemp -d "$ROOT_DIR/tmp/zero_day_task.${APP_NAME}.XXXXXX")"
 TASK_WORK_DIR="$WORKSPACE/task"
 mkdir -p "$TASK_WORK_DIR" "$WORKSPACE/output" "$WORKSPACE/logs"
 cp -R "$TASK_DIR/." "$TASK_WORK_DIR/"
@@ -381,10 +381,10 @@ resolve_task_metadata
 resolve_android_serial
 
 echo -e "${INFO} =========================================="
-echo -e "${INFO} Zero-Day Task Bundle Validation"
+echo -e "${INFO} Zero-Day Task Validation"
 echo -e "${INFO} =========================================="
 echo -e "${INFO} App:            $APP_NAME"
-echo -e "${INFO} Task bundle:    $TASK_DIR"
+echo -e "${INFO} Task dir:       $TASK_DIR"
 echo -e "${INFO} Task id:        $TASK_ID"
 echo -e "${INFO} Package:        $PACKAGE_NAME"
 echo -e "${INFO} Baseline commit: $BASELINE_COMMIT"
@@ -452,5 +452,5 @@ fi
 
 echo -e "${SUCCESS} Phase 2 PASSED: Vulnerable build IS vulnerable"
 echo -e "${SUCCESS} =========================================="
-echo -e "${SUCCESS} Zero-day task bundle validation PASSED for $TASK_ID"
+echo -e "${SUCCESS} Zero-day task validation PASSED for $TASK_ID"
 echo -e "${SUCCESS} =========================================="

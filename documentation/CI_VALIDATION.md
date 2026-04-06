@@ -94,7 +94,7 @@ Use `--skip-apk` to skip building and use existing APKs:
 2. If missing, downloads from `download_link` in metadata.json
 3. Fails if required APKs still don't exist after download
 
-## Testing Zero-Day Task Bundles
+## Testing Zero-Day Tasks
 
 Zero-day tasks use the same shared task-file contract as synthetic tasks; see
 `documentation/TASK.md`. The zero-day-specific differences are documented in
@@ -102,7 +102,7 @@ Zero-day tasks use the same shared task-file contract as synthetic tasks; see
 
 ### Build Semantics
 
-Zero-day task bundles use inverted comparator logic vs synthetic
+Zero-day tasks use inverted comparator logic vs synthetic
 vulnerabilities:
 
 - **Vulnerable APK** = baseline source as-is
@@ -112,7 +112,7 @@ The baseline revision comes from `task/metadata.json` (`baseline.commit`).
 
 ### Running Validation
 
-All entry points delegate to the same task-bundle validator.
+All entry points delegate to `scripts/validate_task_bundle.sh`.
 
 **Via `run_ci_local.sh`** (manages emulator lifecycle automatically):
 
@@ -121,12 +121,12 @@ All entry points delegate to the same task-bundle validator.
   --test-zero-day-vuln zero_day_vulnerabilities/location_spoofing
 ```
 
-**Task-bundle validator** (emulator must already be running):
+**Direct validator** (emulator must already be running):
 
 ```bash
 ./scripts/validate_task_bundle.sh \
   --app home-assistant-android \
-  --task-dir /path/to/task-bundle
+  --task-dir /path/to/task
 ```
 
 **External report wrapper** (emulator must already be running):
@@ -137,8 +137,9 @@ All entry points delegate to the same task-bundle validator.
   --report-dir /path/to/reports/app-name/report-n
 ```
 
-Compared with synthetic validation, zero-day validation:
-1. copies the task into a temporary workspace so the source checkout stays clean
+Compared with the current synthetic local CI path, zero-day validation:
+1. runs from a temporary copy of the task directory, so runtime artifacts do
+   not get written back into the task checkout
 2. builds the secure comparator from `fix.patch`
 3. builds the vulnerable comparator from the unpatched `baseline.commit`
 

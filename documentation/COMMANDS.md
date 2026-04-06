@@ -86,12 +86,12 @@ Flags:
 - `--test-synthetic-vuln <vuln_dir>`
 - `--test-zero-day-vuln <task_dir>`
 
-## Zero-day task-bundle validation
+## Zero-day task validation
 
 ```bash
 ./scripts/validate_task_bundle.sh \
   --app app-name \
-  --task-dir /path/to/task-bundle
+  --task-dir /path/to/task
 ```
 
 Details: `documentation/CI_VALIDATION.md` and `documentation/ZERODAY_TASKS.md`

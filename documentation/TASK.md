@@ -70,9 +70,9 @@ containers, databases, or filesystem directly.
 
 Task scripts should write outputs to `MCB_OUTPUT_DIR` when it is provided.
 
-Why: some entry points validate directly from the source tree, while others copy
-an entire task into a temporary workspace first. Writing to the provided output
-directory keeps the task portable across both modes.
+Why: some entry points run directly from the task checkout, while others first
+copy the task into a temporary execution directory. Writing to the provided
+output directory keeps the task portable across both modes.
 
 ### Shared environment variables
 
