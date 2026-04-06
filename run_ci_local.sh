@@ -395,9 +395,17 @@ run_build_apk_with_vuln_env() {
     fi
 
     if [ ${#VULN_BUILD_ENV_ARGS[@]} -gt 0 ]; then
-        env "${VULN_BUILD_ENV_ARGS[@]}" ./build_apk.sh "$app_name" "${build_args[@]}"
+        if [ ${#build_args[@]} -gt 0 ]; then
+            env "${VULN_BUILD_ENV_ARGS[@]}" ./build_apk.sh "$app_name" "${build_args[@]}"
+        else
+            env "${VULN_BUILD_ENV_ARGS[@]}" ./build_apk.sh "$app_name"
+        fi
     else
-        ./build_apk.sh "$app_name" "${build_args[@]}"
+        if [ ${#build_args[@]} -gt 0 ]; then
+            ./build_apk.sh "$app_name" "${build_args[@]}"
+        else
+            ./build_apk.sh "$app_name"
+        fi
     fi
 }
 
@@ -1128,6 +1136,53 @@ run_vuln_test() {
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETE: $vuln_dir"
 }
 
+# Create shared Docker network for SSRF / app-service connectivity checks.
+print_header "$CYAN" "CREATING DOCKER NETWORK"
+echo -e "${INFO} Creating shared_net network..."
+docker network create shared_net || echo -e "${INFO} shared_net network already exists"
+
+# Start SSRF Listener
+print_header "$CYAN" "STARTING SSRF LISTENER"
+start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF detection may not work"
+
+# Function to start emulator and configure ADB
+start_emulator_and_adb() {
+    if [ -f "start_emulator.sh" ]; then
+        print_header "$CYAN" "STARTING EMULATOR"
+        bash ./stop_emulator.sh >/dev/null  # Stop any emulator running in the background before starting local CI.
+        # Delegates to emulator.py start — handles boot wait and ADB setup
+        bash ./start_emulator.sh "$sdk" || { echo -e "${ERROR} Failed to start emulator"; exit 1; }
+
+        # Ensure emulator is stopped on any exit (success or failure)
+        trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT
+    else
+        echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
+    fi
+
+    # ADB -a binding is handled by EmulatorManager (via emulator.py start)
+
+    # Inject system CA so apps trust local HTTPS backends
+    echo -e "${INFO} Injecting system CA certificate..."
+    if [ -f "${ROOT_DIR}/utils/inject_system_ca.sh" ]; then
+        bash "${ROOT_DIR}/utils/inject_system_ca.sh" || echo -e "${WARNING} CA injection failed"
+    else
+        echo -e "${WARNING} inject_system_ca.sh not found, skipping CA injection"
+    fi
+}
+
+# Expand --test-all-synthetic-vulns into the list of vuln directories
+if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+    SYNTH_VULN_DIRS=()
+    for d in "$DIR"/synthetic_vulnerabilities/vuln_*/; do
+        [ -d "$d" ] && SYNTH_VULN_DIRS+=("synthetic_vulnerabilities/$(basename "$d")")
+    done
+    if [ ${#SYNTH_VULN_DIRS[@]} -eq 0 ]; then
+        echo -e "${ERROR} No synthetic vulnerability directories found in $DIR/synthetic_vulnerabilities/"
+        exit 1
+    fi
+    echo -e "${INFO} Found ${#SYNTH_VULN_DIRS[@]} synthetic vulnerability(ies): ${SYNTH_VULN_DIRS[*]}"
+fi
+
 # For synthetic vuln tests, delay emulator start until after APKs are built.
 # This avoids the emulator competing for CPU during long native builds.
 if [ -z "$TEST_SYNTHETIC_VULN" ] && [ -z "$TEST_ZERO_DAY_VULN" ] && [ "$TEST_ALL_SYNTHETIC_VULNS" = false ]; then
@@ -1185,7 +1240,10 @@ DURATION=$((END_TIME - START_TIME))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 
-SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
+SETUP_MODE_COUNT=0
+if [ "$SKIP_NORMAL_TESTS" = false ]; then
+    SETUP_MODE_COUNT=$(echo $SETUP_MODES | wc -w)
+fi
 
 # Handle synthetic vulnerability test results
 if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
@@ -1251,9 +1309,12 @@ cd $ROOT_DIR
 print_header "$CYAN" "STOPPING SSRF LISTENER"
 stop_ssrf_listener
 
-# Run linter
+# Run linter only for the normal local-CI path. Targeted task validation modes
+# should not fail on unrelated changed Python files or local lint PATH issues.
 print_header "$CYAN" "RUNNING LINTER"
-if [ -f "run_linter.sh" ]; then
+if [ "$SKIP_NORMAL_TESTS" = true ]; then
+    echo -e "${INFO} Skipping linter for targeted task validation mode"
+elif [ -f "run_linter.sh" ]; then
     echo -e "${INFO} Running linter..."
     { ./run_linter.sh; } || { echo -e "${ERROR} run_linter.sh failed"; exit 1; }
     echo -e "${SUCCESS} Linter completed successfully"
