@@ -6,7 +6,7 @@ cd "$SCRIPT_DIR/codebase"
 
 npm install
 npm run generate
-npx cap sync
+npx cap sync android
 
 # Capacitor 7.x and its plugins hardcode Java 21 in their build.gradle files.
 # Patch all of them to Java 17 since that's what this project requires.

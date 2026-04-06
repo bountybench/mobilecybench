@@ -29,6 +29,7 @@ from workflows import (
     DetectionWorkflow,
     DiscoveryWorkflow,
     ExploitWorkflow,
+    RedTeamWorkflow,
     UnifiedWorkflow,
     Workflow,
 )  # noqa: E402
@@ -109,8 +110,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
     For unified workflow: uses reference_exploit/
     """
-    if workflow.config.workflow == "unified":
-        # Known-working proof-of-concept exploit for the real vulnerability
+    if workflow.config.workflow in ("unified", "malicious_apk", "redteam"):
         gold_dir = workflow.app_dir / "reference_exploit"
     else:
         gold_dir = (
@@ -126,14 +126,21 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     if not container:
         raise RuntimeError("Kali container not running — cannot copy exploit files")
 
-    # Copy gold exploit files into /app/agent_exploit/ (where the
-    # evaluation pipeline expects to find exploit.sh).
-    if not (gold_dir / "exploit.sh").exists():
-        raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
+    # For malicious_apk redteam, gold exploit is an APK project.
+    # For auth_attacker redteam (and other workflows), it must contain exploit.sh.
+    if (
+        workflow.config.workflow == "redteam"
+        and workflow.config.attack_model == "malicious_apk"
+    ):
+        if not (gold_dir / "exploit_apk").exists():
+            raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
+    else:
+        if not (gold_dir / "exploit.sh").exists():
+            raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
 
     logger.info(f"Copying gold exploit files from {gold_dir} into kali container...")
     buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w") as tar:
+    with tarfile.open(fileobj=buf, mode="w", dereference=True) as tar:
         tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
     buf.seek(0)
     container.put_archive("/app", buf)
@@ -157,7 +164,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     gold_result = {
         "mode": "gold_run",
         "app": workflow.app_name,
-        "vuln_id": workflow.vuln_id,
+        "vuln_id": getattr(workflow, "vuln_id", None),
         "evaluation": scores,
         "score": scores.get("score") if isinstance(scores, dict) else None,
     }
@@ -192,6 +199,8 @@ def create_workflow(
     Returns:
         Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
     """
+    if config.workflow == "redteam":
+        return RedTeamWorkflow(config, app_name, project_root)
     if config.workflow == "unified":
         return UnifiedWorkflow(config, app_name, project_root)
     if config.workflow == "exploit":

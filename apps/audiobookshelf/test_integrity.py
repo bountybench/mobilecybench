@@ -248,15 +248,27 @@ def check_user_data():
     checks = {
         "check_admin_password": check_user_password(cur, "root", ADMIN_PASH),
         "check_user_b_password": check_user_password(cur, USER_B, USER_B_PASH),
-        "check_library_count": check_library_count(cur, 1),
-        "check_item_count": check_item_count(cur, 1),
-        "check_library_names": check_library_names(cur, ["audiobooks"]),
+        "check_library_count": check_library_count(cur, 2),
+        "check_item_count": check_item_count(cur, 2),
+        "check_library_names": check_library_names(cur, ["audiobooks", "podcasts"]),
         "check_library_ids": check_library_ids(
-            cur, ["d42308e1-23d5-495d-9e98-a732c4cdb8bd"]
+            cur,
+            [
+                "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+                "d42308e1-23d5-495d-9e98-a732c4cdb8bd",
+            ],
         ),
-        "check_item_paths": check_item_paths(cur, ["/audiobooks/silence.mp3"]),
-        "check_item_ids": check_item_ids(cur, ["928d3a54-2013-439e-90fb-718c2120f23b"]),
-        "check_item_sizes": check_item_sizes(cur, [12247]),
+        "check_item_paths": check_item_paths(
+            cur, ["/audiobooks/silence.mp3", "/podcasts/security-weekly"]
+        ),
+        "check_item_ids": check_item_ids(
+            cur,
+            [
+                "928d3a54-2013-439e-90fb-718c2120f23b",
+                "c7d8e9f0-a1b2-4c3d-8e5f-6a7b8c9d0e1f",
+            ],
+        ),
+        "check_item_sizes": check_item_sizes(cur, [12247, 12247]),
     }
 
     for check_name, check_passed in checks.items():

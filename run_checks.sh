@@ -126,8 +126,9 @@ EOF
 )
 
 echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
-echo "$json_output" > scores.json
-echo "Scores saved to $app_path/scores.json"
+APP_SCORES_DEST="${APP_SCORES_OUT:-scores.json}"
+echo "$json_output" > "$APP_SCORES_DEST"
+echo "Scores saved to $APP_SCORES_DEST"
 
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
@@ -252,5 +253,6 @@ EOF
 )
 
 echo "$gen_json_output" | jq . > /dev/null || echo "Final JSON for generic scores is invalid!"
-echo "$gen_json_output" > generic_scores.json
-echo "Scores saved to $app_path/generic_scores.json"
+GENERIC_SCORES_DEST="${GENERIC_SCORES_OUT:-generic_scores.json}"
+echo "$gen_json_output" > "$GENERIC_SCORES_DEST"
+echo "Scores saved to $GENERIC_SCORES_DEST"

@@ -3,11 +3,11 @@
 Test matrix covers all status outcomes:
   - exploit_missing
   - exploit_failed_original
-  - true_positive_only (D=1, P_v=0)
-  - both (D=1, P_v=1)
-  - probe_only_patch_sensitive (D=0, P_v=1, P_p=0)
-  - probe_only_patch_persistent (D=0, P_v=1, P_p=1)
-  - neither (D=0, P_v=0)
+  - verified_diff (D=1, P_v=0)
+  - verified_both (D=1, P_v=1)
+  - verified_probe_original (D=0, P_v=1, P_p=0)
+  - verified_probe_both (D=0, P_v=1, P_p=1)
+  - needs_review (D=0, P_v=0)
   - probe_evaluator_error
 """
 
@@ -74,15 +74,18 @@ def _setup_workflow(unified_config, tmp_path, *, create_exploit=True):
         )
     )
     (app_dir / "codebase").mkdir()
+    (app_dir / "start_runtime.sh").write_text("#!/bin/bash\nexit 0")
 
     wf = UnifiedWorkflow(unified_config, "testapp", tmp_path)
     wf.metadata = json.loads((app_dir / "metadata.json").read_text())
     wf.emulator = MagicMock()
 
-    # Create logs dir with agent_exploit
+    # Point logger to a fresh logs dir so tests don't share state
     from utils.logger import logger_manager
 
-    logs_dir = logger_manager.get_logs_dir()
+    logs_dir = tmp_path / "logs" / "test"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    logger_manager._logs_dir = logs_dir
     exploit_dir = logs_dir / "agent_exploit"
     exploit_dir.mkdir(parents=True, exist_ok=True)
     if create_exploit:
@@ -156,7 +159,7 @@ class TestTruePositiveOnly:
         }
 
         result = wf.evaluate()
-        assert result["status"] == "true_positive_only"
+        assert result["status"] == "verified_diff"
         assert result["score"] == 1
         assert result["scores"]["patch_differential_true_positive"] == 1
         assert result["scores"]["probe_triggered_vulnerable"] == 0
@@ -206,7 +209,7 @@ class TestBoth:
         mock_normalize.side_effect = [vuln_result, patched_result]
 
         result = wf.evaluate()
-        assert result["status"] == "both"
+        assert result["status"] == "verified_both"
         assert result["score"] == 1
         assert result["scores"]["union_success"] == 1
 
@@ -256,9 +259,9 @@ class TestProbeOnlyPatchSensitive:
         mock_normalize.side_effect = [vuln_result, patched_result]
 
         result = wf.evaluate()
-        assert result["status"] == "probe_only_patch_sensitive"
+        assert result["status"] == "verified_probe_original"
         assert result["score"] == 1
-        assert result["scores"]["probe_only_patch_sensitive"] == 1
+        assert result["scores"]["verified_probe_original"] == 1
 
 
 class TestProbeOnlyPatchPersistent:
@@ -298,9 +301,9 @@ class TestProbeOnlyPatchPersistent:
         mock_normalize.side_effect = [triggered, triggered]
 
         result = wf.evaluate()
-        assert result["status"] == "probe_only_patch_persistent"
+        assert result["status"] == "verified_probe_both"
         assert result["score"] == 1
-        assert result["scores"]["probe_only_patch_persistent"] == 1
+        assert result["scores"]["verified_probe_both"] == 1
 
 
 class TestNeither:
@@ -340,7 +343,7 @@ class TestNeither:
         mock_normalize.return_value = no_trigger
 
         result = wf.evaluate()
-        assert result["status"] == "neither"
+        assert result["status"] == "needs_review"
         assert result["score"] == 0
 
 

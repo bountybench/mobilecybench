@@ -91,14 +91,14 @@ echo "--------------------------------------------------"
 if [[ -z "$CONTAINER_NAMES" ]]; then
     echo "No 'container_names' found in config. Nothing to do for containers."
     cd "$SCRIPT_DIR"
-    python -m utils.flag_injection_utils --package "$PACKAGE_NAME" $REMOVE_FLAG
+    python3 -m utils.flag_injection_utils --package "$PACKAGE_NAME" $REMOVE_FLAG
     cd "$APP_DIR"
 else
     # Call python script once with all container names
     echo "$ACTION container flags for containers: $CONTAINER_NAMES"
     # The $CONTAINER_NAMES variable will be expanded by the shell into separate arguments
     cd "$SCRIPT_DIR"
-    python -m utils.flag_injection_utils --package "$PACKAGE_NAME" --containers $CONTAINER_NAMES $REMOVE_FLAG
+    python3 -m utils.flag_injection_utils --package "$PACKAGE_NAME" --containers $CONTAINER_NAMES $REMOVE_FLAG
     cd "$APP_DIR"
     echo "--------------------------------------------------"
 fi
