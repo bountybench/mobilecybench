@@ -8,17 +8,8 @@ from jsonschema import ValidationError, validate
 logger = logging.getLogger(__name__)
 
 SCHEMA_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "synthetic_vuln_metadata_schema.json"
+    os.path.dirname(os.path.dirname(__file__)), "zero_day_task_bundle_schema.json"
 )
-
-REQUIRED_FIELDS = {
-    "title": "Short name for the vulnerability (e.g. XMPP Carbon Copy Impersonation)",
-    "cwe_id": "CWE identifier matching the historic CVE (e.g. CWE-290)",
-    "cwe_name": "Human-readable CWE name (e.g. Authentication Bypass by Spoofing)",
-    "historic_cve": "Real CVE the synthetic is modeled after (e.g. CVE-2025-27916)",
-    "cvss_historic": "CVSS object with base_score, severity, vector from the historic CVE",
-    "cvss_synthetic": "CVSS object with base_score, severity, vector assessed for the synthetic vulnerability",
-}
 
 
 @pytest.fixture(scope="session")
@@ -26,19 +17,26 @@ def dirs(request):
     return request.config.getoption("--dirs")
 
 
-def test_synthetic_vuln_metadata(dirs: list[str]):
-    """Validate metadata.json files in synthetic vulnerability task directories.
+REQUIRED_FIELDS = {
+    "schema_version": "Task bundle schema version (currently 1)",
+    "task_id": "Stable benchmark task identifier (e.g. location_spoofing)",
+    "title": "Short task title",
+    "provenance": "Real-vulnerability provenance block with CWE data",
+    "severity": "Historic and benchmark CVSS objects",
+    "baseline": "Baseline app commit that defines the vulnerable build",
+    "build": "Build settings and secure/vulnerable comparator definitions",
+}
 
-    When --dirs is provided, validates only those directories.
-    Otherwise, discovers and validates all synthetic vulnerability task metadata files.
-    """
+
+def test_zero_day_task_bundle_metadata(dirs: list[str]):
+    """Validate metadata.json files in zero-day task bundle directories."""
     with open(SCHEMA_PATH, "r") as f:
         schema = json.load(f)
 
     metadata_files = _collect_metadata_files(dirs)
 
     if not metadata_files:
-        logger.info("No synthetic vulnerability metadata.json files found. Skipping.")
+        logger.info("No zero-day task bundle metadata.json files found. Skipping.")
         return
 
     for metadata_file in metadata_files:
@@ -47,7 +45,6 @@ def test_synthetic_vuln_metadata(dirs: list[str]):
 
 
 def _collect_metadata_files(dirs):
-    """Collect vulnerability task metadata.json files to validate."""
     metadata_files = []
 
     if dirs:
@@ -60,11 +57,11 @@ def _collect_metadata_files(dirs):
         apps_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "apps")
         if os.path.isdir(apps_dir):
             for app in sorted(os.listdir(apps_dir)):
-                task_dir = os.path.join(apps_dir, app, "synthetic_vulnerabilities")
+                task_dir = os.path.join(apps_dir, app, "zero_day_vulnerabilities")
                 if not os.path.isdir(task_dir):
                     continue
-                for vuln in sorted(os.listdir(task_dir)):
-                    metadata_file = os.path.join(task_dir, vuln, "metadata.json")
+                for task in sorted(os.listdir(task_dir)):
+                    metadata_file = os.path.join(task_dir, task, "metadata.json")
                     if os.path.isfile(metadata_file):
                         metadata_files.append(metadata_file)
 
@@ -72,7 +69,6 @@ def _collect_metadata_files(dirs):
 
 
 def _validate_metadata(metadata_file, schema):
-    """Validate a single metadata.json against the schema."""
     with open(metadata_file, "r") as f:
         data = json.load(f)
 
