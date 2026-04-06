@@ -94,6 +94,64 @@ Use `--skip-apk` to skip building and use existing APKs:
 2. If missing, downloads from `download_link` in metadata.json
 3. Fails if required APKs still don't exist after download
 
+## Testing Zero-Day Task Bundles
+
+Zero-day tasks are validated as **self-contained task bundles**. The canonical
+contract lives in `documentation/ZERO_DAY_CI_INTERFACE.md`.
+
+### Build Semantics
+
+Zero-day task bundles use inverted comparator logic vs synthetic
+vulnerabilities:
+
+- **Vulnerable APK** = baseline source as-is
+- **Secure APK** = baseline source + task-local `fix.patch`
+
+The baseline revision comes from `task/metadata.json` (`baseline.commit`).
+
+### Running Validation
+
+All entry points delegate to the canonical bundle validator.
+
+**Via `run_ci_local.sh`** (manages emulator lifecycle automatically):
+
+```bash
+./run_ci_local.sh apps/home-assistant-android \
+  --test-zero-day-vuln zero_day_vulnerabilities/location_spoofing
+```
+
+**Canonical bundle validator** (emulator must already be running):
+
+```bash
+./scripts/validate_task_bundle.sh \
+  --app home-assistant-android \
+  --task-dir /path/to/task-bundle
+```
+
+**External report wrapper** (emulator must already be running):
+
+```bash
+./scripts/validate_zero_day_report.sh \
+  --app home-assistant-android \
+  --report-dir /path/to/reports/app-name/report-n
+```
+
+The validator:
+1. Validates the task bundle structure and metadata schema
+2. Copies the bundle into an ephemeral workspace
+3. Builds the secure comparator from `fix.patch`
+4. Builds the vulnerable comparator from the unpatched baseline
+5. Phase 1: installs secure APK, runs exploit, verifies NOT vulnerable
+6. Phase 2: installs vulnerable APK, runs exploit, verifies IS vulnerable
+7. Cleans up the workspace unless `--keep-workspace` is used
+
+### Requirements
+
+- Emulator must be running and accessible via `adb`
+- Docker must be available (for exploit containers and app services)
+- The task bundle must contain: `metadata.json`, `fix.patch`,
+  `exploit_files/exploit.sh`, `verify_files/verify_exploit.sh`
+
 ## Flag injection utilities
 
 `inject_flags.sh` is used by CI/baseline checks to place or remove flags:

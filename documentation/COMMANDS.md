@@ -47,22 +47,27 @@ Flags:
 
 - `python download_apk.py <app_name>` — download APK (skips existing files)
 - `--force` — overwrite existing files
-- `--check [app_name]` — validate download_links against GitHub releases
+- `--check [app_name]` — validate `download_links` against GitHub releases
 
 ## Build and publish APKs
 
 ```bash
 ./build_apk.sh conversations
 ./build_apk.sh conversations --vuln vuln_0
+./build_apk.sh home-assistant-android --hardened-patch /path/to/fix.patch
 ./publish_apk_bundle.sh apps/conversations
 ```
 
-Details: `documentation/ADDING_APPS.md` and `documentation/SYNTHETIC_VULNERABILITIES.md`
+Details: `documentation/ADDING_APPS.md`, `documentation/SYNTHETIC_VULNERABILITIES.md`, and `documentation/ZERO_DAY_CI_INTERFACE.md`
 
 Flags:
 
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
+- `./build_apk.sh <app_name> --hardened` (uses app-local `security.patch`)
+- `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file)
 - `./publish_apk_bundle.sh apps/<app_name>`
+
+Note: `--vuln`, `--hardened`, and `--hardened-patch` are mutually exclusive.
 
 ## Local CI validation
 
@@ -79,6 +84,27 @@ Flags:
 - `--skip-apk`
 - `--unit-tests`
 - `--test-synthetic-vuln <vuln_dir>`
+- `--test-zero-day-vuln <task_dir>`
+
+## Zero-day task-bundle validation
+
+```bash
+./scripts/validate_task_bundle.sh \
+  --app app-name \
+  --task-dir /path/to/task-bundle
+```
+
+Details: `documentation/CI_VALIDATION.md` and `documentation/ZERO_DAY_CI_INTERFACE.md`
+
+## External zero-day report wrapper
+
+```bash
+./scripts/validate_zero_day_report.sh \
+  --app app-name \
+  --report-dir /path/to/reports/app-name/report-n
+```
+
+Details: `documentation/CI_VALIDATION.md` and `documentation/ZERO_DAY_CI_INTERFACE.md`
 
 ## Flag injection utilities
 
