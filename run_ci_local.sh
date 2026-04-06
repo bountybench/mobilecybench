@@ -375,9 +375,13 @@ determine_setup_modes() {
 }
 
 checkout_commit() {
+    local commit_override="${1:-}"
     echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
-        commit=$(jq -r '.["commit_version"] // empty' "metadata.json")
+        commit="$commit_override"
+        if [[ -z "$commit" ]]; then
+            commit=$(jq -r '.["commit_version"] // empty' "metadata.json")
+        fi
 
         if [[ -n "$commit" ]]; then
             echo "Found commit: $commit"
@@ -436,6 +440,55 @@ apply_vulnerability_patch() {
     fi
 }
 
+load_vuln_test_settings() {
+    local vuln_dir="$1"
+    local app_dir="$2"
+
+    VULN_METADATA_FILE="$ROOT_DIR/$app_dir/$vuln_dir/metadata.json"
+    if [ ! -f "$VULN_METADATA_FILE" ]; then
+        echo -e "${ERROR} metadata.json not found: $VULN_METADATA_FILE"
+        return 1
+    fi
+
+    VULN_CLEAN_APK_MODE=$(jq -r '.clean_apk_mode // "default"' "$VULN_METADATA_FILE")
+    VULN_BASELINE_COMMIT=$(jq -r '.baseline.commit // empty' "$VULN_METADATA_FILE")
+    VULN_TASK_ID=$(jq -r '.task_id // .task_slug // empty' "$VULN_METADATA_FILE")
+    VULN_PACKAGE_NAME=$(jq -r '.runtime.package_name // .app_metadata_overrides.package_name // empty' "$VULN_METADATA_FILE")
+    if [ -z "$VULN_PACKAGE_NAME" ] || [ "$VULN_PACKAGE_NAME" = "null" ]; then
+        VULN_PACKAGE_NAME=$(jq -r '.package_name // empty' "$ROOT_DIR/$app_dir/metadata.json")
+    fi
+    if [ -z "$VULN_PACKAGE_NAME" ] || [ "$VULN_PACKAGE_NAME" = "null" ]; then
+        echo -e "${ERROR} Failed to resolve package_name for $vuln_dir"
+        return 1
+    fi
+
+    VULN_BUILD_ENV_ARGS=()
+    while IFS=$'	' read -r key value; do
+        [ -n "$key" ] || continue
+        VULN_BUILD_ENV_ARGS+=("$key=$value")
+    done < <(
+        jq -r '(.build.env // .build_env // {}) | to_entries[]? | [.key, (.value | tostring)] | @tsv'             "$VULN_METADATA_FILE"
+    )
+
+    return 0
+}
+
+run_build_apk_with_vuln_env() {
+    local app_name="$1"
+    shift
+    local -a build_args=("$@")
+
+    if [ -n "${VULN_BASELINE_COMMIT:-}" ] && [ "$VULN_BASELINE_COMMIT" != "null" ]; then
+        build_args=(--commit "$VULN_BASELINE_COMMIT" "${build_args[@]}")
+    fi
+
+    if [ ${#VULN_BUILD_ENV_ARGS[@]} -gt 0 ]; then
+        env "${VULN_BUILD_ENV_ARGS[@]}" ./build_apk.sh "$app_name" "${build_args[@]}"
+    else
+        ./build_apk.sh "$app_name" "${build_args[@]}"
+    fi
+}
+
 # Run exploit and verification for synthetic vulnerability
 run_exploit_verification() {
     local vuln_dir="$1"
@@ -458,17 +511,6 @@ run_exploit_verification() {
         return 1
     fi
 
-    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
-    local prepare_app_hook="$vuln_dir/prepare_app.sh"
-    if [ -f "$prepare_app_hook" ]; then
-        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
-        if ! timeout 300 bash "$prepare_app_hook"; then
-            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
-            return 1
-        fi
-        echo -e "${SUCCESS} prepare_app hook completed"
-    fi
-
     # Run exploit in container
     echo -e "${INFO} Executing exploit in container..."
     local exploit_image="${EXPLOIT_IMAGE:-cybench/mobilecybench:latest}"
@@ -478,6 +520,35 @@ run_exploit_verification() {
     agent_output_abs_path="$(cd "$vuln_dir" && pwd)/agent_output"
     rm -rf "$agent_output_abs_path"
     mkdir -p "$agent_output_abs_path"
+    local task_abs_path
+    task_abs_path="$(cd "$vuln_dir" && pwd)"
+    local phase_name="secure"
+    if [ "$expect_vulnerable" = "true" ]; then
+        phase_name="vulnerable"
+    fi
+    local -a task_env=(
+        "MCB_TASK_DIR=$task_abs_path"
+        "MCB_OUTPUT_DIR=$agent_output_abs_path"
+        "MCB_APP_DIR=$(pwd)"
+        "MCB_TASK_METADATA_JSON=$task_abs_path/metadata.json"
+        "MCB_APP_METADATA_JSON=$(pwd)/metadata.json"
+        "MCB_FIX_PATCH=$task_abs_path/fix.patch"
+        "MCB_PACKAGE_NAME=$VULN_PACKAGE_NAME"
+        "MCB_TASK_ID=${VULN_TASK_ID:-$(basename "$vuln_dir")}"
+        "MCB_BASELINE_COMMIT=${VULN_BASELINE_COMMIT:-}"
+        "MCB_PHASE=$phase_name"
+    )
+
+    # Optional per-vuln app preparation hook (runs before exploit for both clean/vulnerable phases).
+    local prepare_app_hook="$vuln_dir/prepare_app.sh"
+    if [ -f "$prepare_app_hook" ]; then
+        echo -e "${INFO} Found prepare_app hook: $prepare_app_hook"
+        if ! env "${task_env[@]}" timeout 300 bash "$prepare_app_hook"; then
+            echo -e "${ERROR} prepare_app.sh failed or timed out: $prepare_app_hook"
+            return 1
+        fi
+        echo -e "${SUCCESS} prepare_app hook completed"
+    fi
     local codebase_abs_path
     codebase_abs_path="$(cd "codebase" && pwd)"
     "$ROOT_DIR/utils/run_exploit_container.sh" \
@@ -489,7 +560,7 @@ run_exploit_verification() {
     
     # Run verification
     echo -e "${INFO} Running verification..."
-    bash "$verify_script"
+    env "${task_env[@]}" bash "$verify_script"
     local verify_exit_code=$?
 
     if [ "$verify_exit_code" -eq 0 ]; then
@@ -524,7 +595,14 @@ SKIP_DOWNLOAD=false
 SKIP_APK=false
 RUN_UNIT_TESTS=false
 TEST_SYNTHETIC_VULN=""
+TEST_ZERO_DAY_VULN=""
 TEST_ALL_SYNTHETIC_VULNS=false
+VULN_METADATA_FILE=""
+VULN_CLEAN_APK_MODE="default"
+VULN_TASK_ID=""
+VULN_BASELINE_COMMIT=""
+VULN_PACKAGE_NAME=""
+declare -a VULN_BUILD_ENV_ARGS=()
 
 show_usage() {
     echo "Usage: $0 <dir> [options]"
@@ -539,6 +617,8 @@ show_usage() {
     echo "  --unit-tests      Run unit tests (opt-in)"
     echo "  --test-synthetic-vuln <vuln_dir>"
     echo "                    Test a synthetic vulnerability (e.g., synthetic_vulnerabilities/vuln_0)"
+    echo "  --test-zero-day-vuln <vuln_dir>"
+    echo "                    Test a zero-day vulnerability task (e.g., zero_day_vulnerabilities/location_spoofing)"
     echo "  --test-all-synthetic-vulns"
     echo "                    Test all synthetic vulnerabilities found in synthetic_vulnerabilities/"
     echo "  -h, --help        Show this help message"
@@ -551,6 +631,8 @@ show_usage() {
     echo "  $0 apps/joplin --unit-tests      # Run unit tests"
     echo "  $0 apps/conversations --test-synthetic-vuln synthetic_vulnerabilities/vuln_0"
     echo "                                   # Test synthetic vulnerability"
+    echo "  $0 apps/home-assistant-android --test-zero-day-vuln zero_day_vulnerabilities/location_spoofing"
+    echo "                                   # Test zero-day vulnerability task"
     echo "  $0 apps/conversations --test-all-synthetic-vulns"
     echo "                                   # Test all synthetic vulnerabilities"
     echo ""
@@ -586,6 +668,15 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             TEST_SYNTHETIC_VULN="$2"
+            shift 2
+            ;;
+        --test-zero-day-vuln)
+            if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo "Error: --test-zero-day-vuln requires a vulnerability directory argument"
+                show_usage
+                exit 1
+            fi
+            TEST_ZERO_DAY_VULN="$2"
             shift 2
             ;;
         --test-all-synthetic-vulns)
@@ -768,7 +859,7 @@ run_test_check() {
         echo -e "${SUCCESS} All scores are 1."
 
         # Check that all generic scores are 1
-        if ! jq -e '[.. | select(type == "number")] | length > 0 and all(. == 1)' generic_scores.json > /dev/null; then
+        if ! jq -e '[.. | select(type == "number")] | all(. == 1)' generic_scores.json > /dev/null; then
             echo -e "${ERROR} generic_scores.json does not contain all 1s."
             cat generic_scores.json
             echo -e "${INFO} Cleaning up..."
@@ -972,8 +1063,8 @@ EOF
     print_header "$GREEN" "SETUP MODE $setup_mode COMPLETED SUCCESSFULLY"
 }
 
-# Test synthetic vulnerability - both clean and vulnerable builds
-run_synthetic_vuln_test() {
+# Test a synthetic vulnerability task - both clean and vulnerable builds.
+run_vuln_test() {
     local vuln_dir="$1"
     local app_dir="$2"
 
@@ -989,7 +1080,9 @@ run_synthetic_vuln_test() {
     local patch_file="$ROOT_DIR/$app_dir/$vuln_dir/vulnerability.patch"
     local exploit_script="$ROOT_DIR/$app_dir/$vuln_dir/exploit_files/exploit.sh"
     local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_files/verify_exploit.sh"
-    
+    local metadata_file="$ROOT_DIR/$app_dir/$vuln_dir/metadata.json"
+    local clean_apk_mode="default"
+
     if [ ! -f "$patch_file" ]; then
         echo -e "${ERROR} Patch file not found: $patch_file"
         exit 1
@@ -1005,46 +1098,56 @@ run_synthetic_vuln_test() {
         exit 1
     fi
 
-    # Validate metadata.json schema
-    local metadata_file="$ROOT_DIR/$app_dir/$vuln_dir/metadata.json"
     if [ ! -f "$metadata_file" ]; then
         echo -e "${ERROR} metadata.json not found: $metadata_file"
         exit 1
     fi
+    if ! load_vuln_test_settings "$vuln_dir" "$app_dir"; then
+        exit 1
+    fi
+    clean_apk_mode="$VULN_CLEAN_APK_MODE"
 
     echo -e "${INFO} Validating metadata.json schema..."
-    if ! (cd "$ROOT_DIR" && python3 -m pytest --no-header -q \
-        tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata \
-        --dirs "$(dirname "$metadata_file")"); then
+    if ! (cd "$ROOT_DIR" && python3 -m pytest --no-header -q         tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata         --dirs "$(dirname "$metadata_file")"); then
         echo -e "${ERROR} metadata.json schema validation failed for $metadata_file"
         exit 1
     fi
 
     echo -e "${SUCCESS} Synthetic vulnerability structure validated"
 
-    # Get app name and package name from metadata
     local app_name
     app_name=$(basename "$app_dir")
-    local package_name
-    package_name=$(jq -r '.package_name' "$ROOT_DIR/$app_dir/metadata.json")
-    if [ -z "$package_name" ] || [ "$package_name" = "null" ]; then
-        echo -e "${ERROR} Failed to resolve package_name from $ROOT_DIR/$app_dir/metadata.json"
-        exit 1
-    fi
+    local package_name="$VULN_PACKAGE_NAME"
     echo -e "${INFO} Testing app: $app_name"
     echo -e "${INFO} Testing package: $package_name"
+    if [ -n "$VULN_TASK_ID" ] && [ "$VULN_TASK_ID" != "null" ]; then
+        echo -e "${INFO} Task ID: $VULN_TASK_ID"
+    fi
+    if [ -n "$VULN_BASELINE_COMMIT" ] && [ "$VULN_BASELINE_COMMIT" != "null" ]; then
+        echo -e "${INFO} Baseline commit: $VULN_BASELINE_COMMIT"
+    fi
+    if [ ${#VULN_BUILD_ENV_ARGS[@]} -gt 0 ]; then
+        echo -e "${INFO} Applying task build env: ${VULN_BUILD_ENV_ARGS[*]}"
+    fi
 
-    # Check for existing APKs when --skip-apk is set
     local APK_DIR="$ROOT_DIR/$app_dir/apk"
     local VULN_APK_DIR="$APK_DIR/$vuln_id"
+    local CLEAN_APK_DIR="$APK_DIR"
+    local clean_apk="apk/${app_name}.apk"
     local skip_build=false
+
+    if [ "$clean_apk_mode" = "security_patch" ]; then
+        CLEAN_APK_DIR="$APK_DIR/hardened"
+        clean_apk="apk/hardened/${app_name}.apk"
+    fi
 
     if [ "$SKIP_APK" = true ]; then
         echo -e "${INFO} --skip-apk: checking for existing APKs..."
 
-        # Check if base APK exists
-        local base_apk_count=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
-        local vuln_apk_count=$(find "$VULN_APK_DIR" -name "*.apk" -type f 2>/dev/null | wc -l)
+        local base_apk_count
+        base_apk_count=$(find "$CLEAN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+        local vuln_apk_count
+        vuln_apk_count=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
 
         if [ "$base_apk_count" -eq 0 ] || [ "$vuln_apk_count" -eq 0 ]; then
             echo -e "${INFO} Missing APKs (base: $base_apk_count, vuln: $vuln_apk_count), attempting download..."
@@ -1054,43 +1157,51 @@ run_synthetic_vuln_test() {
             fi
             cd "$ROOT_DIR/$app_dir"
 
-            # Recheck after download
-            base_apk_count=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
-            vuln_apk_count=$(find "$VULN_APK_DIR" -name "*.apk" -type f 2>/dev/null | wc -l)
+            base_apk_count=$(find "$CLEAN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+            vuln_apk_count=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
         fi
 
         if [ "$base_apk_count" -gt 0 ] && [ "$vuln_apk_count" -gt 0 ]; then
             echo -e "${SUCCESS} Found existing APKs: base=$base_apk_count, vuln=$vuln_apk_count"
             skip_build=true
         else
-            echo -e "${ERROR} --skip-apk requires both base APK and $vuln_id APK to exist"
-            echo -e "${ERROR} Base APK: $APK_DIR/*.apk ($base_apk_count found)"
+            echo -e "${ERROR} --skip-apk requires both base APK and vulnerable APK to exist"
+            echo -e "${ERROR} Base APK: $CLEAN_APK_DIR/*.apk ($base_apk_count found)"
             echo -e "${ERROR} Vuln APK: $VULN_APK_DIR/*.apk ($vuln_apk_count found)"
             echo -e "${ERROR} To fix: build APKs and publish:"
-            echo -e "${ERROR}   ./build_apk.sh $app_name"
-            echo -e "${ERROR}   ./build_apk.sh $app_name --vuln $vuln_id"
+            if [ "$clean_apk_mode" = "security_patch" ]; then
+                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --hardened"
+                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
+            else
+                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name"
+                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
+            fi
             echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
             exit 1
         fi
     fi
 
-    # =====================================================================
-    # BUILD PHASE: Build all APKs first (before starting the emulator)
-    # This avoids the emulator competing for CPU during long native builds.
-    # =====================================================================
     if [ "$skip_build" = false ]; then
         print_header "$CYAN" "BUILD PHASE: Building all APKs (emulator not running)"
 
         cd "$ROOT_DIR"
 
-        echo -e "${INFO} Building clean APK using build_apk.sh..."
-        if ! ./build_apk.sh "$app_name"; then
-            echo -e "${ERROR} Failed to build clean APK"
-            exit 1
+        if [ "$clean_apk_mode" = "security_patch" ]; then
+            echo -e "${INFO} Building clean hardened APK using build_apk.sh --hardened..."
+            if ! run_build_apk_with_vuln_env "$app_name" --hardened; then
+                echo -e "${ERROR} Failed to build hardened clean APK"
+                exit 1
+            fi
+        else
+            echo -e "${INFO} Building clean APK using build_apk.sh..."
+            if ! run_build_apk_with_vuln_env "$app_name"; then
+                echo -e "${ERROR} Failed to build clean APK"
+                exit 1
+            fi
         fi
 
-        echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_id..."
-        if ! ./build_apk.sh "$app_name" --vuln "$vuln_id"; then
+        echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_dir..."
+        if ! run_build_apk_with_vuln_env "$app_name" --vuln "$vuln_dir"; then
             echo -e "${ERROR} Failed to build vulnerable APK"
             exit 1
         fi
@@ -1098,33 +1209,25 @@ run_synthetic_vuln_test() {
         print_header "$GREEN" "BUILD PHASE COMPLETE: Both APKs built successfully"
     else
         echo -e "${INFO} Using existing APKs (--skip-apk)"
-        # Ensure codebase is at the correct commit (build_apk.sh normally handles this)
-        (cd "$ROOT_DIR/$app_dir" && checkout_commit)
+        (cd "$ROOT_DIR/$app_dir" && checkout_commit "${VULN_BASELINE_COMMIT:-}")
     fi
 
-    # =====================================================================
-    # START EMULATOR: Now that builds are done, start the emulator
-    # =====================================================================
     cd "$ROOT_DIR"
     start_emulator_and_adb
 
-    # =====================================================================
-    # TEST PHASE: Install, exploit, and verify each build
-    # =====================================================================
-
-    # Phase 1: Test clean build (should NOT be vulnerable)
     print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
 
     cd "$ROOT_DIR/$app_dir"
 
-    # Install and setup
     echo -e "${INFO} Installing clean APK..."
-    ./start_runtime.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
+    if [ "$clean_apk_mode" = "security_patch" ]; then
+        ./start_runtime.sh --apk "$clean_apk" || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
+    else
+        ./start_runtime.sh || { echo -e "${ERROR} Failed to install clean APK"; exit 1; }
+    fi
 
-    # Wait for containers
     check_app_containers_ready
 
-    # Run exploit and verify (should NOT be vulnerable)
     cd "$ROOT_DIR/$app_dir"
     run_exploit_verification "$vuln_dir" "false" || {
         echo -e "${ERROR} Phase 1 failed: Clean build verification failed"
@@ -1133,155 +1236,56 @@ run_synthetic_vuln_test() {
         exit 1
     }
 
-    # Cleanup
     echo -e "${INFO} Cleaning up Phase 1..."
     ./cleanup.sh
     uninstall_package "$package_name"
 
     print_header "$GREEN" "PHASE 1 PASSED: Clean build is NOT vulnerable"
 
-    # Phase 2: Test vulnerable build (should BE vulnerable)
     print_header "$CYAN" "PHASE 2: Testing Vulnerable Build (With Patch)"
 
     cd "$ROOT_DIR/$app_dir"
 
-    # Verify vulnerable APK exists
     local vuln_apk="apk/$vuln_id/${app_name}.apk"
     if [ ! -f "$vuln_apk" ]; then
         echo -e "${ERROR} Vulnerable APK not found: $vuln_apk"
         exit 1
     fi
 
-    # Install vulnerable APK directly using --apk flag
     echo -e "${INFO} Installing vulnerable APK via --apk flag..."
     ./start_runtime.sh --apk "$vuln_apk" || {
         echo -e "${ERROR} Failed to install vulnerable APK"
         exit 1
     }
 
-    # Wait for containers
     check_app_containers_ready
 
-    # Apply vulnerability patch so exploit container sees vulnerable source
     cd "$ROOT_DIR/$app_dir"
     apply_vulnerability_patch "$patch_file"
 
-    # Run exploit and verify (should BE vulnerable)
     cd "$ROOT_DIR/$app_dir"
     run_exploit_verification "$vuln_dir" "true" || {
         echo -e "${ERROR} Phase 2 failed: Vulnerable build verification failed"
-        # Restore codebase (including submodules) before exiting
-        (cd codebase && git reset --hard HEAD && git clean -fdx \
-            && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true \
-            && git submodule foreach --recursive git clean -fdx 2>/dev/null || true) 2>/dev/null || true
+        (cd codebase && git reset --hard HEAD && git clean -fdx             && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true             && git submodule foreach --recursive git clean -fdx 2>/dev/null || true) 2>/dev/null || true
         ./cleanup.sh
         uninstall_package "$package_name"
         exit 1
     }
 
-    # Restore codebase (including submodules) to clean state
     echo -e "${INFO} Restoring codebase after vulnerable phase..."
-    (cd codebase && git reset --hard HEAD && git clean -fdx \
-        && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true \
-        && git submodule foreach --recursive git clean -fdx 2>/dev/null || true)
+    (cd codebase && git reset --hard HEAD && git clean -fdx         && git submodule foreach --recursive git reset --hard HEAD 2>/dev/null || true         && git submodule foreach --recursive git clean -fdx 2>/dev/null || true)
 
-    # Cleanup
     echo -e "${INFO} Cleaning up Phase 2..."
     ./cleanup.sh
     uninstall_package "$package_name"
 
-    print_header "$GREEN" "PHASE 2 PASSED: Vulnerable build is vulnerable"
-
-    print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED SUCCESSFULLY"
-    echo -e "${SUCCESS} ✓ Clean build: NOT vulnerable (as expected)"
-    echo -e "${SUCCESS} ✓ Vulnerable build: VULNERABLE (as expected)"
+    print_header "$GREEN" "PHASE 2 PASSED: Vulnerable build IS vulnerable"
+    print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETE: $vuln_dir"
 }
-
-
-# Main Script Starts Here
-# Determine setup modes
-echo -e "${INFO} Determining setup modes for directory: $DIR"
-SETUP_MODES=$(determine_setup_modes "$DIR")
-if [ $? -ne 0 ] || [ -z "$SETUP_MODES" ]; then
-    echo -e "${ERROR} Failed to determine setup modes"
-    exit 1
-fi
-
-# Install mobilecybench utils
-pip install -e .
-
-# Run unit tests (only if --unit-tests flag is provided)
-if [ "$RUN_UNIT_TESTS" = true ]; then
-    print_header "$CYAN" "RUNNING UNIT TESTS"
-    echo -e "${INFO} Running unit tests..."
-    if pytest tests/ -v --tb=short; then
-        echo -e "${SUCCESS} Unit tests passed"
-    else
-        echo -e "${ERROR} Unit tests failed"
-        exit 1
-    fi
-else
-    echo -e "${INFO} Skipping unit tests (use --unit-tests flag to run them)"
-fi
-
-# Check if any setup mode has test_X.py to determine overall strategy
-cd "$DIR"
-HAS_PROBES=false
-if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
-    HAS_PROBES=true
-fi
-cd "$ROOT_DIR"
-
-# Create Docker Network
-print_header "$CYAN" "CREATING DOCKER NETWORK"
-echo -e "${INFO} Creating shared_net network..."
-docker network create shared_net || echo -e "${INFO} shared_net network already exists"
-
-# Start SSRF Listener
-print_header "$CYAN" "STARTING SSRF LISTENER"
-start_ssrf_listener || echo -e "${WARNING} SSRF listener not started - SSRF detection may not work"
-
-# Function to start emulator and configure ADB
-start_emulator_and_adb() {
-    if [ -f "start_emulator.sh" ]; then
-        print_header "$CYAN" "STARTING EMULATOR"
-        bash ./stop_emulator.sh >/dev/null  # Stop any emulator running in the background before starting local CI.
-        # Delegates to emulator.py start — handles boot wait and ADB setup
-        bash ./start_emulator.sh "$sdk" || { echo -e "${ERROR} Failed to start emulator"; exit 1; }
-
-        # Ensure emulator is stopped on any exit (success or failure)
-        trap 'echo -e "${INFO} Stopping emulator due to script exit..."; cd "$ROOT_DIR"; bash ./stop_emulator.sh' EXIT
-    else
-        echo -e "${WARNING} start_emulator.sh not found, assuming emulator is already running"
-    fi
-
-    # ADB -a binding is handled by EmulatorManager (via emulator.py start)
-
-    # Inject system CA so apps trust local HTTPS backends
-    echo -e "${INFO} Injecting system CA certificate..."
-    if [ -f "${ROOT_DIR}/utils/inject_system_ca.sh" ]; then
-        bash "${ROOT_DIR}/utils/inject_system_ca.sh" || echo -e "${WARNING} CA injection failed"
-    else
-        echo -e "${WARNING} inject_system_ca.sh not found, skipping CA injection"
-    fi
-}
-
-# Expand --test-all-synthetic-vulns into the list of vuln directories
-if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
-    SYNTH_VULN_DIRS=()
-    for d in "$DIR"/synthetic_vulnerabilities/vuln_*/; do
-        [ -d "$d" ] && SYNTH_VULN_DIRS+=("synthetic_vulnerabilities/$(basename "$d")")
-    done
-    if [ ${#SYNTH_VULN_DIRS[@]} -eq 0 ]; then
-        echo -e "${ERROR} No synthetic vulnerability directories found in $DIR/synthetic_vulnerabilities/"
-        exit 1
-    fi
-    echo -e "${INFO} Found ${#SYNTH_VULN_DIRS[@]} synthetic vulnerability(ies): ${SYNTH_VULN_DIRS[*]}"
-fi
 
 # For synthetic vuln tests, delay emulator start until after APKs are built.
 # This avoids the emulator competing for CPU during long native builds.
-if [ -z "$TEST_SYNTHETIC_VULN" ] && [ "$TEST_ALL_SYNTHETIC_VULNS" = false ]; then
+if [ -z "$TEST_SYNTHETIC_VULN" ] && [ -z "$TEST_ZERO_DAY_VULN" ] && [ "$TEST_ALL_SYNTHETIC_VULNS" = false ]; then
     start_emulator_and_adb
 fi
 
@@ -1290,7 +1294,7 @@ if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
     print_header "$CYAN" "RUNNING ALL SYNTHETIC VULNERABILITY TESTS"
     for VULN_DIR in "${SYNTH_VULN_DIRS[@]}"; do
         print_header "$CYAN" "TESTING SYNTHETIC VULNERABILITY: $VULN_DIR"
-        run_synthetic_vuln_test "$VULN_DIR" "$DIR"
+        run_vuln_test "$VULN_DIR" "$DIR"
     done
     SKIP_NORMAL_TESTS=true
 elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
@@ -1303,7 +1307,39 @@ elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     fi
 
     # Run synthetic vulnerability test
-    run_synthetic_vuln_test "$TEST_SYNTHETIC_VULN" "$DIR"
+    run_vuln_test "$TEST_SYNTHETIC_VULN" "$DIR"
+
+    # Skip normal test flow
+    SKIP_NORMAL_TESTS=true
+elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
+    print_header "$CYAN" "RUNNING ZERO-DAY TASK BUNDLE VALIDATION"
+
+    # Zero-day tasks delegate to the canonical task-bundle validator rather than
+    # reimplementing build/exploit/verify inline.  This keeps a single execution
+    # model: ephemeral workspace, immutable source, no agent_output/ created
+    # inside the task tree.  See scripts/validate_task_bundle.sh.
+
+    local_app_name=$(basename "$DIR")
+    local_task_dir="$ROOT_DIR/$DIR/$TEST_ZERO_DAY_VULN"
+
+    if [ ! -d "$local_task_dir" ]; then
+        echo -e "${ERROR} Task bundle directory not found: $local_task_dir"
+        exit 1
+    fi
+
+    # Start the emulator (the canonical validator expects it to be running)
+    start_emulator_and_adb
+
+    # Build validator arguments
+    local_validator_args=(--app "$local_app_name" --task-dir "$local_task_dir")
+    if [ "$SKIP_APK" = true ]; then
+        local_validator_args+=(--skip-build)
+    fi
+
+    echo -e "${INFO} Delegating to canonical task-bundle validator"
+    echo -e "${INFO}   validate_task_bundle.sh ${local_validator_args[*]}"
+
+    "$ROOT_DIR/scripts/validate_task_bundle.sh" "${local_validator_args[@]}"
 
     # Skip normal test flow
     SKIP_NORMAL_TESTS=true
@@ -1338,6 +1374,12 @@ elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     echo -e "${SUCCESS} Tested vulnerability: $TEST_SYNTHETIC_VULN"
     echo -e "${SUCCESS} ✓ Clean build verification passed"
     echo -e "${SUCCESS} ✓ Vulnerable build verification passed"
+    echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s"
+elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
+    print_header "$GREEN" "ZERO-DAY TASK BUNDLE VALIDATION COMPLETED"
+    echo -e "${SUCCESS} Tested task bundle: $TEST_ZERO_DAY_VULN"
+    echo -e "${SUCCESS} ✓ Secure build is NOT vulnerable"
+    echo -e "${SUCCESS} ✓ Vulnerable build IS vulnerable"
     echo -e "${INFO} Total runtime: ${MINUTES}m ${SECONDS}s"
 elif [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "ALL TESTS PASSED"
@@ -1401,6 +1443,9 @@ if [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
     echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
 elif [ -n "$TEST_SYNTHETIC_VULN" ]; then
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETED SUCCESSFULLY"
+    echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
+elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
+    print_header "$GREEN" "ZERO-DAY TASK BUNDLE VALIDATION COMPLETED SUCCESSFULLY"
     echo -e "${SUCCESS} Total execution time: ${MINUTES}m ${SECONDS}s"
 elif [ "$HAS_PROBES" = true ]; then
     print_header "$GREEN" "LOCAL CIA TESTS COMPLETED SUCCESSFULLY"
