@@ -270,7 +270,14 @@ def _fill_credentials_and_login(d, username, password):
 
     # Defocus text fields first so scrolling works
     d.press("back")
-    time.sleep(0.3)
+    time.sleep(0.5)
+
+    # Dismiss NotificationShade or other system overlays if they appeared
+    current_focus = d.info.get("currentPackageName", "")
+    if current_focus != "com.github.gotify":
+        log("System overlay detected, pressing back to dismiss", SCRIPT_NAME)
+        d.press("back")
+        time.sleep(0.5)
 
     if not login_btn.wait(timeout=TIMEOUT_NORMAL):
         # Button may be off-screen, try scrolling
