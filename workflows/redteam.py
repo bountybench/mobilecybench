@@ -37,13 +37,15 @@ class MaliciousApkOps:
     """Model-specific operations for the malicious_apk attack model."""
 
     def check_artifact(self, exploit_dir: Path) -> tuple[bool, str]:
-        """Check that the exploit APK was built."""
-        from evaluation.replay_apk import APK_FILENAME
-
-        apk_path = exploit_dir / "exploit_apk" / "dist" / APK_FILENAME
-        if apk_path.exists():
-            return True, str(apk_path)
-        return False, f"No {APK_FILENAME} found in agent exploit directory"
+        """Check that the exploit APK project exists and is buildable."""
+        apk_dir = exploit_dir / "exploit_apk"
+        build_script = apk_dir / "build_exploit_apk.sh"
+        if not build_script.exists():
+            return False, f"No exploit_apk/build_exploit_apk.sh in {exploit_dir}"
+        src_dir = apk_dir / "src"
+        if not src_dir.exists() or not list(src_dir.rglob("*.java")):
+            return False, f"No Java sources in {apk_dir}/src/"
+        return True, str(apk_dir)
 
     def run_phase(
         self, workflow: "RedTeamWorkflow", phase_dir: Path, **kwargs
@@ -247,6 +249,13 @@ class RedTeamWorkflow(Workflow):
     # Validation
     # ------------------------------------------------------------------
 
+    def _resolve_security_patch(self) -> Path:
+        """Resolve security.patch: app dir first, then zerodays submodule."""
+        app_patch = self.app_dir / "security.patch"
+        if app_patch.exists():
+            return app_patch
+        return self.project_root / "zerodays" / "patches" / self.app_name / "security.patch"
+
     def validate_arguments(self) -> None:
         if not self.app_dir.exists():
             raise ValueError(f"App directory not found: {self.app_dir}")
@@ -254,10 +263,10 @@ class RedTeamWorkflow(Workflow):
         if not (self.app_dir / "metadata.json").exists():
             raise ValueError(f"metadata.json not found in {self.app_dir}")
 
-        if not (self.app_dir / "security.patch").exists():
+        if not self._resolve_security_patch().exists():
             raise ValueError(
-                f"security.patch not found in {self.app_dir} "
-                "(required for redteam mode)"
+                f"security.patch not found for {self.app_name} "
+                "(checked zerodays/ and app dir)"
             )
 
         with open(self.app_dir / "metadata.json") as f:
@@ -485,9 +494,8 @@ class RedTeamWorkflow(Workflow):
         # ---- Phase 2: Patched app ----
         logger.info("[phase 2/2] patched app")
 
-        security_patch = self.app_dir / "security.patch"
         subprocess.run(
-            ["git", "apply", str(security_patch)],
+            ["git", "apply", str(self._resolve_security_patch())],
             cwd=self.app_dir / "codebase",
             check=True,
         )

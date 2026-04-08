@@ -70,7 +70,8 @@ show_usage() {
     echo "                      zero_day_vulnerabilities/<bundle_name>"
     echo "  --commit <ref>      Override metadata.json commit_version for this build"
     echo "                      (useful for pinned historical/task baseline builds)"
-    echo "  --hardened          Build a hardened APK by applying apps/<app_name>/security.patch"
+    echo "  --hardened          Build a hardened APK by applying security.patch"
+    echo "                      (resolves from apps/<app>/ or zerodays/patches/<app>/)"
     echo "  --hardened-patch <path>"
     echo "                      Build a hardened APK by applying an explicit patch file"
     echo "                      (useful when the remediation patch lives outside the app dir,"
@@ -454,13 +455,26 @@ apply_patch() {
     return 0
 }
 
+# Resolve security.patch: app dir first, then zerodays submodule
+resolve_security_patch() {
+    if [ -f "$APP_DIR/security.patch" ]; then
+        echo "$APP_DIR/security.patch"
+    elif [ -f "$ROOT_DIR/zerodays/patches/$APP_NAME/security.patch" ]; then
+        echo "$ROOT_DIR/zerodays/patches/$APP_NAME/security.patch"
+    fi
+}
+
 # Apply security.patch if it exists (only for clean builds, not vuln builds)
 apply_security_patch() {
-    local patch_file="$APP_DIR/security.patch"
+    local patch_file
+    patch_file="$(resolve_security_patch)"
 
-    if [ -f "$patch_file" ]; then
-        echo -e "${INFO} Found security.patch - applying security fix..."
+    if [ -n "$patch_file" ] && [ -f "$patch_file" ]; then
+        echo -e "${INFO} Found security.patch - applying: $patch_file"
         apply_patch "$patch_file" "security.patch" || return 1
+    else
+        echo -e "${ERROR} No security.patch found for $APP_NAME"
+        return 1
     fi
     return 0
 }
@@ -631,10 +645,13 @@ main() {
         echo -e "${INFO} Mode: Hardened APK build (security.patch)"
 
         # Validate security.patch exists
-        if [ ! -f "$APP_DIR/security.patch" ]; then
-            echo -e "${ERROR} security.patch not found in $APP_DIR"
+        local resolved_patch
+        resolved_patch="$(resolve_security_patch)"
+        if [ -z "$resolved_patch" ] || [ ! -f "$resolved_patch" ]; then
+            echo -e "${ERROR} security.patch not found (checked: app dir, zerodays/patches/)"
             exit 1
         fi
+        echo -e "${INFO} Using patch: $resolved_patch"
     else
         echo -e "${INFO} Output: $OUTPUT_DIR/${APP_NAME}.apk"
         echo -e "${INFO} Mode: Regular APK build"

@@ -113,15 +113,19 @@ def _setup_malicious_apk_workflow(config, tmp_path, *, create_apk=True):
 
     from utils.logger import logger_manager
 
-    exploit_dir = (
-        logger_manager.get_logs_dir() / "agent_exploit" / "exploit_apk" / "dist"
-    )
+    exploit_dir = logger_manager.get_logs_dir() / "agent_exploit" / "exploit_apk"
     exploit_dir.mkdir(parents=True, exist_ok=True)
-    apk_file = exploit_dir / "com.mobilecybench.exploit.apk"
     if create_apk:
-        apk_file.write_bytes(b"fake-apk")
-    elif apk_file.exists():
-        apk_file.unlink()
+        # Create a buildable APK project (build script + Java source)
+        (exploit_dir / "build_exploit_apk.sh").write_text("#!/bin/bash\nexit 0")
+        src = exploit_dir / "src" / "com" / "mobilecybench" / "exploit"
+        src.mkdir(parents=True, exist_ok=True)
+        (src / "Exploit.java").write_text("class Exploit {}")
+    else:
+        # Ensure no buildable project exists
+        build_script = exploit_dir / "build_exploit_apk.sh"
+        if build_script.exists():
+            build_script.unlink()
 
     return wf
 
@@ -222,16 +226,28 @@ class TestOpsDispatch:
 class TestArtifactCheck:
     """Ops.check_artifact returns (ok, message) based on exploit presence."""
 
-    def test_apk_ops_finds_apk(self, tmp_path):
-        apk = tmp_path / "exploit_apk" / "dist" / "com.mobilecybench.exploit.apk"
-        apk.parent.mkdir(parents=True)
-        apk.write_bytes(b"fake")
+    def test_apk_ops_finds_buildable_project(self, tmp_path):
+        apk_dir = tmp_path / "exploit_apk"
+        apk_dir.mkdir()
+        (apk_dir / "build_exploit_apk.sh").write_text("#!/bin/bash\nexit 0")
+        src = apk_dir / "src" / "com" / "mobilecybench" / "exploit"
+        src.mkdir(parents=True)
+        (src / "Exploit.java").write_text("class Exploit {}")
         ok, _ = MaliciousApkOps().check_artifact(tmp_path)
         assert ok is True
 
-    def test_apk_ops_missing_apk(self, tmp_path):
-        ok, _ = MaliciousApkOps().check_artifact(tmp_path)
+    def test_apk_ops_missing_build_script(self, tmp_path):
+        ok, msg = MaliciousApkOps().check_artifact(tmp_path)
         assert ok is False
+        assert "build_exploit_apk.sh" in msg
+
+    def test_apk_ops_missing_java_sources(self, tmp_path):
+        apk_dir = tmp_path / "exploit_apk"
+        apk_dir.mkdir()
+        (apk_dir / "build_exploit_apk.sh").write_text("#!/bin/bash\nexit 0")
+        ok, msg = MaliciousApkOps().check_artifact(tmp_path)
+        assert ok is False
+        assert "Java sources" in msg
 
     def test_auth_ops_finds_exploit_sh(self, tmp_path):
         (tmp_path / "exploit.sh").write_text("#!/bin/bash\nexit 0")
@@ -490,3 +506,61 @@ class TestAuthAttackerFullPipeline:
         result = _run_evaluate(wf, AuthAttackerOps, [0, 0], [False, False])
         assert result["status"] == "needs_review"
         assert result["score"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Detector staging tests
+# ---------------------------------------------------------------------------
+
+
+class TestDetectorStaging:
+    """Test _stage_detectors and _cleanup_detectors on Workflow base class."""
+
+    def test_stage_and_cleanup(self, redteam_config, tmp_path):
+        """Detectors are copied into probe_dir and cleaned up."""
+        project_root = tmp_path / "project"
+        app_dir = project_root / "apps" / "testapp"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text("{}")
+
+        # Create zerodays detector
+        det_dir = project_root / "zerodays" / "reports" / "testapp" / "report-0" / "detectors"
+        det_dir.mkdir(parents=True)
+        detector = det_dir / "detect_cred_leak.py"
+        detector.write_text('import json; print(json.dumps({"score": 1}))')
+
+        wf = RedTeamWorkflow(redteam_config, "testapp", project_root)
+        probe_dir = app_dir
+
+        staged = wf._stage_detectors(probe_dir)
+        assert len(staged) == 1
+        assert (probe_dir / "detect_cred_leak.py").exists()
+
+        wf._cleanup_detectors(staged)
+        assert not (probe_dir / "detect_cred_leak.py").exists()
+
+    def test_no_zerodays_dir(self, redteam_config, tmp_path):
+        """No crash when zerodays submodule is absent."""
+        project_root = tmp_path / "project"
+        app_dir = project_root / "apps" / "testapp"
+        app_dir.mkdir(parents=True)
+
+        wf = RedTeamWorkflow(redteam_config, "testapp", project_root)
+        staged = wf._stage_detectors(app_dir)
+        assert staged == []
+
+    def test_multiple_reports(self, redteam_config, tmp_path):
+        """Detectors from multiple reports are staged."""
+        project_root = tmp_path / "project"
+        app_dir = project_root / "apps" / "testapp"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text("{}")
+
+        for i in range(3):
+            det_dir = project_root / "zerodays" / "reports" / "testapp" / f"report-{i}" / "detectors"
+            det_dir.mkdir(parents=True)
+            (det_dir / f"detect_vuln_{i}.py").write_text('import json; print(json.dumps({"score": 1}))')
+
+        wf = RedTeamWorkflow(redteam_config, "testapp", project_root)
+        staged = wf._stage_detectors(app_dir)
+        assert len(staged) == 3

@@ -102,6 +102,30 @@ class TestCreateWorkflow:
                 }
             )
 
+    def test_gold_report_implies_gold_run(self, base_config):
+        """Setting gold_report auto-enables gold_run."""
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "gold_report": "report-0",
+            }
+        )
+        assert config.gold_run is True
+        assert config.gold_report == "report-0"
+
+    def test_gold_report_without_gold_run_explicit(self, base_config):
+        """gold_report works even when gold_run not explicitly set."""
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "gold_report": "report-3",
+                "gold_run": False,
+            }
+        )
+        assert config.gold_run is True
+
 
 class TestRun:
     """Tests for run() - focus on error handling and cleanup guarantees."""

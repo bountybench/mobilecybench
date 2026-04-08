@@ -107,15 +107,35 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
 
     For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
     """
-    if workflow.config.workflow == "redteam":
+    if workflow.config.gold_report:
+        repo_root = Path(__file__).resolve().parent
+        report_dir = (
+            repo_root / "zerodays" / "reports"
+            / workflow.app_name / workflow.config.gold_report
+        )
+        gold_dir = report_dir / "exploit"
+        # Read attack_model from report metadata (source of truth for gold runs)
+        report_json = report_dir / "report.json"
+        if report_json.exists():
+            report_meta = json.loads(report_json.read_text())
+            attack_model = report_meta.get("attack_model", workflow.config.attack_model)
+            valid_models = {"malicious_apk", "auth_attacker"}
+            if attack_model not in valid_models:
+                raise ValueError(
+                    f"Invalid attack_model '{attack_model}' in {report_json} "
+                    f"(must be one of {valid_models})"
+                )
+        else:
+            attack_model = workflow.config.attack_model
+    elif workflow.config.workflow in ("malicious_apk", "redteam"):
         gold_dir = workflow.app_dir / "reference_exploit"
+        attack_model = workflow.config.attack_model
     else:
         gold_dir = (
-            workflow.app_dir
-            / "synthetic_vulnerabilities"
-            / workflow.vuln_id
-            / "exploit_files"
+            workflow.app_dir / "synthetic_vulnerabilities"
+            / workflow.vuln_id / "exploit_files"
         )
+        attack_model = None
     if not gold_dir.exists():
         raise FileNotFoundError(f"Gold exploit directory not found: {gold_dir}")
 
@@ -123,12 +143,8 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     if not container:
         raise RuntimeError("Kali container not running — cannot copy exploit files")
 
-    # For malicious_apk redteam, gold exploit is an APK project.
-    # For auth_attacker redteam (and other workflows), it must contain exploit.sh.
-    if (
-        workflow.config.workflow == "redteam"
-        and workflow.config.attack_model == "malicious_apk"
-    ):
+    # Validate exploit layout per attack model.
+    if attack_model == "malicious_apk":
         if not (gold_dir / "exploit_apk").exists():
             raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
     else:

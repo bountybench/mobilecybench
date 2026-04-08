@@ -502,6 +502,31 @@ class Workflow(ABC):
             json.dump(result, f, indent=2)
         logger.info(f"Result saved to {scores_file}")
 
+    def _stage_detectors(self, probe_dir: Path) -> list[Path]:
+        """Copy detect_*.py from zerodays/reports/{app}/*/detectors/ into probe_dir.
+
+        Returns list of staged files for cleanup.
+        """
+        zerodays_app = self.project_root / "zerodays" / "reports" / self.app_name
+        if not zerodays_app.exists():
+            return []
+
+        staged = []
+        for detector in sorted(zerodays_app.glob("*/detectors/detect_*.py")):
+            dest = probe_dir / detector.name
+            if dest.exists():
+                logger.warning(f"Detector name conflict, skipping: {detector.name}")
+                continue
+            shutil.copy2(detector, dest)
+            staged.append(dest)
+            logger.info(f"Staged detector: {detector.name}")
+        return staged
+
+    def _cleanup_detectors(self, staged: list[Path]) -> None:
+        """Remove staged detector files."""
+        for path in staged:
+            path.unlink(missing_ok=True)
+
     def _run_checks(
         self,
         exploit_log_path: str,
@@ -518,6 +543,9 @@ class Workflow(ABC):
                        to apps/<app>/auth_attacker/.
         """
         check_dir = probe_dir or self.app_dir
+
+        # Stage detectors from zerodays repo
+        staged_detectors = self._stage_detectors(check_dir)
 
         run_checks = check_dir / "run_checks.sh"
         if not run_checks.exists():
@@ -536,13 +564,16 @@ class Workflow(ABC):
 
         cmd = ["bash", str(run_checks)] + args
         logger.info(f"Running checks: {' '.join(cmd)}")
-        proc = subprocess.run(
-            cmd,
-            cwd=check_dir,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=check_dir,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+        finally:
+            self._cleanup_detectors(staged_detectors)
 
         if proc.returncode != 0:
             logger.error(f"run_checks.sh failed (exit {proc.returncode})")

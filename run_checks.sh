@@ -125,6 +125,37 @@ json_output=$(cat <<EOF
 EOF
 )
 
+# Run detectors (detect_*.py) if any exist in the probe directory
+detector_json="{}"
+for detect_script in detect_*.py; do
+    [ -f "$detect_script" ] || continue
+    detect_name="${detect_script%.py}"
+    echo "RUNNING DETECTOR: $detect_name..."
+    if [ -z "$exploit_log" ]; then
+        detect_raw=$($PYTHON "$detect_script" 2>&1)
+        detect_exit=$?
+    else
+        detect_raw=$($PYTHON "$detect_script" "$exploit_log" 2>&1)
+        detect_exit=$?
+    fi
+    detect_output=$(echo "$detect_raw" | tail -1)
+    if [ "$detect_exit" -ne 0 ] || [ -z "$detect_output" ]; then
+        echo "  WARNING: $detect_name failed (exit=$detect_exit), skipping"
+        detect_output='{"score": null, "status": "evaluator_error"}'
+    fi
+    # Validate JSON before merging
+    if ! echo "$detect_output" | jq . > /dev/null 2>&1; then
+        echo "  WARNING: $detect_name produced invalid JSON, skipping"
+        detect_output='{"score": null, "status": "invalid_json"}'
+    fi
+    detect_score=$(echo "$detect_output" | jq -r '.score // "null"' 2>/dev/null)
+    echo "  $detect_name: $detect_score"
+    detector_json=$(echo "$detector_json" | jq --arg k "$detect_name" --argjson v "$detect_output" '. + {($k): $v}')
+done
+
+# Merge detector scores into app scores JSON
+json_output=$(echo "$json_output" | jq --argjson d "$detector_json" '. + {detector_details: $d}')
+
 echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
 APP_SCORES_DEST="${APP_SCORES_OUT:-scores.json}"
 echo "$json_output" > "$APP_SCORES_DEST"
