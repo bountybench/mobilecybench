@@ -71,7 +71,7 @@ show_usage() {
     echo "  --commit <ref>      Override metadata.json commit_version for this build"
     echo "                      (useful for pinned historical/task baseline builds)"
     echo "  --hardened          Build a hardened APK by applying security.patch"
-    echo "                      (resolves from apps/<app>/ or zerodays/patches/<app>/)"
+    echo "                      (from zerodays/patches/<app>/)"
     echo "  --hardened-patch <path>"
     echo "                      Build a hardened APK by applying an explicit patch file"
     echo "                      (useful when the remediation patch lives outside the app dir,"
@@ -455,12 +455,11 @@ apply_patch() {
     return 0
 }
 
-# Resolve security.patch: app dir first, then zerodays submodule
+# Resolve security.patch from zerodays submodule (single source of truth)
 resolve_security_patch() {
-    if [ -f "$APP_DIR/security.patch" ]; then
-        echo "$APP_DIR/security.patch"
-    elif [ -f "$ROOT_DIR/zerodays/patches/$APP_NAME/security.patch" ]; then
-        echo "$ROOT_DIR/zerodays/patches/$APP_NAME/security.patch"
+    local patch="$ROOT_DIR/zerodays/patches/$APP_NAME/security.patch"
+    if [ -f "$patch" ]; then
+        echo "$patch"
     fi
 }
 
@@ -648,7 +647,7 @@ main() {
         local resolved_patch
         resolved_patch="$(resolve_security_patch)"
         if [ -z "$resolved_patch" ] || [ ! -f "$resolved_patch" ]; then
-            echo -e "${ERROR} security.patch not found (checked: app dir, zerodays/patches/)"
+            echo -e "${ERROR} security.patch not found at zerodays/patches/$APP_NAME/"
             exit 1
         fi
         echo -e "${INFO} Using patch: $resolved_patch"

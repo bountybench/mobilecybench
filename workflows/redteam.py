@@ -250,10 +250,7 @@ class RedTeamWorkflow(Workflow):
     # ------------------------------------------------------------------
 
     def _resolve_security_patch(self) -> Path:
-        """Resolve security.patch: app dir first, then zerodays submodule."""
-        app_patch = self.app_dir / "security.patch"
-        if app_patch.exists():
-            return app_patch
+        """Resolve security.patch from zerodays submodule (single source of truth)."""
         return (
             self.project_root
             / "zerodays"
@@ -271,8 +268,7 @@ class RedTeamWorkflow(Workflow):
 
         if not self._resolve_security_patch().exists():
             raise ValueError(
-                f"security.patch not found for {self.app_name} "
-                "(checked zerodays/ and app dir)"
+                f"security.patch not found at zerodays/patches/{self.app_name}/"
             )
 
         with open(self.app_dir / "metadata.json") as f:

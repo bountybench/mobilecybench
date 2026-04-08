@@ -86,7 +86,9 @@ def _setup_malicious_apk_workflow(config, tmp_path, *, create_apk=True):
             }
         )
     )
-    (app_dir / "security.patch").write_text("")
+    patch_dir = tmp_path / "zerodays" / "patches" / "testapp"
+    patch_dir.mkdir(parents=True, exist_ok=True)
+    (patch_dir / "security.patch").write_text("")
     (app_dir / "hidden_eval_config.json").write_text(
         json.dumps(
             {
@@ -146,7 +148,9 @@ def _setup_auth_attacker_workflow(config, tmp_path, *, create_exploit=True):
             }
         )
     )
-    (app_dir / "security.patch").write_text("")
+    patch_dir = tmp_path / "zerodays" / "patches" / "testapp"
+    patch_dir.mkdir(parents=True, exist_ok=True)
+    (patch_dir / "security.patch").write_text("")
     (app_dir / "auth_attacker").mkdir()
     (app_dir / "codebase").mkdir()
 
@@ -360,7 +364,9 @@ class TestAuthAttackerValidation:
                 }
             )
         )
-        (app_dir / "security.patch").write_text("")
+        patch_dir = tmp_path / "zerodays" / "patches" / "testapp"
+        patch_dir.mkdir(parents=True, exist_ok=True)
+        (patch_dir / "security.patch").write_text("")
         wf = RedTeamWorkflow(auth_attacker_config, "testapp", tmp_path)
         with pytest.raises(ValueError, match="auth_attacker probe directory not found"):
             wf.validate_arguments()
@@ -378,7 +384,9 @@ class TestAuthAttackerValidation:
                 }
             )
         )
-        (app_dir / "security.patch").write_text("")
+        patch_dir = tmp_path / "zerodays" / "patches" / "testapp"
+        patch_dir.mkdir(parents=True, exist_ok=True)
+        (patch_dir / "security.patch").write_text("")
         (app_dir / "auth_attacker").mkdir()
         (app_dir / "auth_attacker" / "test_integrity.py").write_text("")
         wf = RedTeamWorkflow(auth_attacker_config, "testapp", tmp_path)
