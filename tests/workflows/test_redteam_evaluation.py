@@ -524,7 +524,9 @@ class TestDetectorStaging:
         (app_dir / "metadata.json").write_text("{}")
 
         # Create zerodays detector
-        det_dir = project_root / "zerodays" / "reports" / "testapp" / "report-0" / "detectors"
+        det_dir = (
+            project_root / "zerodays" / "reports" / "testapp" / "report-0" / "detectors"
+        )
         det_dir.mkdir(parents=True)
         detector = det_dir / "detect_cred_leak.py"
         detector.write_text('import json; print(json.dumps({"score": 1}))')
@@ -557,9 +559,18 @@ class TestDetectorStaging:
         (app_dir / "metadata.json").write_text("{}")
 
         for i in range(3):
-            det_dir = project_root / "zerodays" / "reports" / "testapp" / f"report-{i}" / "detectors"
+            det_dir = (
+                project_root
+                / "zerodays"
+                / "reports"
+                / "testapp"
+                / f"report-{i}"
+                / "detectors"
+            )
             det_dir.mkdir(parents=True)
-            (det_dir / f"detect_vuln_{i}.py").write_text('import json; print(json.dumps({"score": 1}))')
+            (det_dir / f"detect_vuln_{i}.py").write_text(
+                'import json; print(json.dumps({"score": 1}))'
+            )
 
         wf = RedTeamWorkflow(redteam_config, "testapp", project_root)
         staged = wf._stage_detectors(app_dir)

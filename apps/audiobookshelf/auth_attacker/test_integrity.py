@@ -29,6 +29,7 @@ EXPECTED_ITEM_IDS = sorted(
 EXPECTED_ITEM_PATHS = sorted(["/audiobooks/silence.mp3", "/podcasts/security-weekly"])
 EXPECTED_ITEM_SIZES = sorted([12247, 12247])
 
+
 def _open_db():
     try:
         conn = sqlite3.connect(DB_PATH)

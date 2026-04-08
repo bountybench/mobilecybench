@@ -110,8 +110,11 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     if workflow.config.gold_report:
         repo_root = Path(__file__).resolve().parent
         report_dir = (
-            repo_root / "zerodays" / "reports"
-            / workflow.app_name / workflow.config.gold_report
+            repo_root
+            / "zerodays"
+            / "reports"
+            / workflow.app_name
+            / workflow.config.gold_report
         )
         gold_dir = report_dir / "exploit"
         # Read attack_model from report metadata (source of truth for gold runs)
@@ -132,8 +135,10 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
         attack_model = workflow.config.attack_model
     else:
         gold_dir = (
-            workflow.app_dir / "synthetic_vulnerabilities"
-            / workflow.vuln_id / "exploit_files"
+            workflow.app_dir
+            / "synthetic_vulnerabilities"
+            / workflow.vuln_id
+            / "exploit_files"
         )
         attack_model = None
     if not gold_dir.exists():
@@ -159,9 +164,17 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
         # Gold exploit dirs ship exploit-specific files only (Exploit.java,
         # AndroidManifest.xml, ExploitRunner.java, MainActivity.java).
         if attack_model == "malicious_apk":
-            build_script = Path(__file__).resolve().parent / "templates" / "malicious_apk" / "build_exploit_apk.sh"
+            build_script = (
+                Path(__file__).resolve().parent
+                / "templates"
+                / "malicious_apk"
+                / "build_exploit_apk.sh"
+            )
             if build_script.exists():
-                tar.add(str(build_script), arcname="agent_exploit/exploit_apk/build_exploit_apk.sh")
+                tar.add(
+                    str(build_script),
+                    arcname="agent_exploit/exploit_apk/build_exploit_apk.sh",
+                )
     buf.seek(0)
     container.put_archive("/app", buf)
     logger.info("Gold exploit files copied into container at /app/agent_exploit/")

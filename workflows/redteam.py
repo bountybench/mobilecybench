@@ -254,7 +254,13 @@ class RedTeamWorkflow(Workflow):
         app_patch = self.app_dir / "security.patch"
         if app_patch.exists():
             return app_patch
-        return self.project_root / "zerodays" / "patches" / self.app_name / "security.patch"
+        return (
+            self.project_root
+            / "zerodays"
+            / "patches"
+            / self.app_name
+            / "security.patch"
+        )
 
     def validate_arguments(self) -> None:
         if not self.app_dir.exists():
