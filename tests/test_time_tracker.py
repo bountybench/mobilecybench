@@ -332,7 +332,7 @@ def test_logging_integration(tracker_with_calls):
     log_messages = [call[0][0] for call in log_calls]
 
     # Check for key log messages
-    assert any("EXPERIMENT TIMING SUMMARY" in msg for msg in log_messages)
+    assert any("Timing summary" in msg for msg in log_messages)
     assert any("total_experiment_clock_time:" in msg for msg in log_messages)
     assert any("total_llm_time:" in msg for msg in log_messages)
     assert any("llm_call_count:" in msg for msg in log_messages)

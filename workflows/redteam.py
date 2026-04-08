@@ -236,7 +236,6 @@ _OPS = {
 
 
 class RedTeamWorkflow(Workflow):
-
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
         self._original_apk = Path("apk") / f"{app_name}.apk"
@@ -378,10 +377,9 @@ class RedTeamWorkflow(Workflow):
             logger.info("Dry run — skipping evaluation")
             return {"scores": {}}
 
-        logger.info("=" * 60)
-        logger.info("RED TEAM EVALUATION PIPELINE")
-        logger.info(f"Attack model: {self._attack_model}")
-        logger.info("=" * 60)
+        logger.info(
+            f"Evaluation started: workflow=redteam attack_model={self._attack_model}"
+        )
 
         logs_dir = logger_manager.get_logs_dir()
         agent_exploit_dir = logs_dir / "agent_exploit"
@@ -428,9 +426,7 @@ class RedTeamWorkflow(Workflow):
             hidden_config = {"generic_probe_applicability": {}}
 
         # ---- Phase 1: Original (vulnerable) app ----
-        logger.info("-" * 40)
-        logger.info("Phase 1: Original (vulnerable) app")
-        logger.info("-" * 40)
+        logger.info("[phase 1/2] original app (vulnerable)")
 
         phase1_dir = replays_dir / "phase1_original"
         phase1_kwargs = self._ops.get_phase_kwargs(
@@ -442,7 +438,8 @@ class RedTeamWorkflow(Workflow):
         phase1_result = self._ops.run_phase(self, phase1_dir, **phase1_kwargs)
         phase1_exit = phase1_result.exit_code
         logger.info(
-            f"Phase 1: exit_code={phase1_exit} ({'SUCCESS' if phase1_exit == 0 else 'FAILED'})"
+            f"[phase 1/2] replay={'success' if phase1_exit == 0 else 'failed'} "
+            f"exit_code={phase1_exit}"
         )
 
         # Run probes on phase 1
@@ -467,6 +464,12 @@ class RedTeamWorkflow(Workflow):
             phase1_probes_triggered = probe_results_phase1["combined"]["triggered"]
             self._log_probe_results("Phase 1 (original)", probe_results_phase1)
 
+        logger.info(
+            f"[phase 1/2] summary: replay={'success' if phase1_exit == 0 else 'failed'} "
+            f"exit_code={phase1_exit} probes_triggered={phase1_probes_triggered} "
+            f"evidence={phase1_result.evidence_log_path}"
+        )
+
         # ---- Early-stop gate ----
         if phase1_exit != 0 and not phase1_probes_triggered:
             logger.info("No exploit impact detected — skipping Phase 2")
@@ -480,9 +483,7 @@ class RedTeamWorkflow(Workflow):
             return result
 
         # ---- Phase 2: Patched app ----
-        logger.info("-" * 40)
-        logger.info("Phase 2: Patched app")
-        logger.info("-" * 40)
+        logger.info("[phase 2/2] patched app")
 
         security_patch = self.app_dir / "security.patch"
         subprocess.run(
@@ -501,7 +502,8 @@ class RedTeamWorkflow(Workflow):
         phase2_result = self._ops.run_phase(self, phase2_dir, **phase2_kwargs)
         phase2_exit = phase2_result.exit_code
         logger.info(
-            f"Phase 2: exit_code={phase2_exit} ({'SUCCESS' if phase2_exit == 0 else 'FAILED'})"
+            f"[phase 2/2] replay={'success' if phase2_exit == 0 else 'failed'} "
+            f"exit_code={phase2_exit}"
         )
 
         # Restore codebase
@@ -534,6 +536,12 @@ class RedTeamWorkflow(Workflow):
             hidden_config,
         )
         self._log_probe_results("Phase 2 (patched)", probe_results_phase2)
+        logger.info(
+            f"[phase 2/2] summary: replay={'success' if phase2_exit == 0 else 'failed'} "
+            f"exit_code={phase2_exit} "
+            f"probes_triggered={probe_results_phase2['combined']['triggered']} "
+            f"evidence={phase2_result.evidence_log_path}"
+        )
 
         # ---- Compute score ----
         patch_diff = int(phase2_exit != 0)
@@ -544,9 +552,11 @@ class RedTeamWorkflow(Workflow):
             patch_diff, probe_vuln, probe_patched
         )
         logger.info(
-            f"[scoring] patch_diff={patch_diff} probe_vuln={probe_vuln} "
-            f"probe_patched={probe_patched} → status={status} score={score}"
+            f"[scoring] signals: patch_diff={patch_diff} "
+            f"probe_vuln={probe_vuln} probe_patched={probe_patched}"
         )
+        logger.info(f"[scoring] result: status={status} score={score}")
+        logger.info(f"[scoring] reason: {reason}")
 
         result = self._make_result(
             status,
@@ -590,7 +600,13 @@ class RedTeamWorkflow(Workflow):
     def _log_probe_results(label: str, probe_results: dict) -> None:
         """Log per-probe results for observability."""
         triggered = probe_results["combined"]["triggered"]
-        logger.info(f"[probes] {label}: triggered={triggered}")
+        app_specific_triggered = probe_results.get("app_specific_triggered", False)
+        generic_triggered = probe_results.get("generic_triggered", False)
+        logger.info(
+            f"[probes] {label}: triggered={triggered} "
+            f"app_specific={app_specific_triggered} generic={generic_triggered}"
+        )
+
         for category in ("app_specific", "generic"):
             for name, detail in probe_results.get(category, {}).items():
                 val = (
@@ -613,7 +629,7 @@ class RedTeamWorkflow(Workflow):
 
         from utils.command_executor import CommandExecutor
 
-        logger.info(f"Running prepare_victim hook: {hook}")
+        logger.info(f"prepare_victim hook: {hook}")
         cmd = CommandExecutor()
         cmd.run_with_progress(
             f"bash {hook}",

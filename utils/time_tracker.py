@@ -224,9 +224,7 @@ class TimeTracker:
 
     def log_summary(self, logger) -> None:
         """Log timing summary to the provided logger."""
-        logger.info("=" * LOG_SEPARATOR_LENGTH)
-        logger.info("EXPERIMENT TIMING SUMMARY")
-        logger.info("=" * LOG_SEPARATOR_LENGTH)
+        logger.info("Timing summary")
 
         experiment_duration = self.get_experiment_duration() or 0.0
         total_llm_time = self.get_total_llm_time()
@@ -252,8 +250,6 @@ class TimeTracker:
             )
             if call.error:
                 logger.info(f"  error: {call.error}")
-
-        logger.info("=" * LOG_SEPARATOR_LENGTH)
 
 
 # Global time tracker instance
