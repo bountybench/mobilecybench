@@ -1,15 +1,12 @@
 """Tests for agent_container module."""
 
 import io
-import os
-import subprocess
 import tarfile
 from unittest.mock import MagicMock, patch
 
 import docker.errors
 
 from agent.agent_container import AgentEnvironment
-from utils.honeypot_spec import get_activity_class
 
 
 class TestAgentEnvironmentVerifyFiles:
@@ -145,7 +142,7 @@ class TestAgentEnvironmentVulnId:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
-            workflow="discovery",
+            workflow="exploit",
         )
 
         assert agent_env.vuln_id is None
@@ -161,155 +158,6 @@ def _make_tar(files: dict[str, str]) -> bytes:
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
     return buf.getvalue()
-
-
-class TestDiscoveryAgentCodebase:
-    """Tests for discovery-only agent codebase injection."""
-
-    _GIT_ENV = {
-        "GIT_AUTHOR_NAME": "Test",
-        "GIT_AUTHOR_EMAIL": "test@test.com",
-        "GIT_COMMITTER_NAME": "Test",
-        "GIT_COMMITTER_EMAIL": "test@test.com",
-    }
-
-    def _git(self, cwd, *args):
-        result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            check=True,
-            env={**os.environ, **self._GIT_ENV},
-        )
-        return result.stdout.strip()
-
-    @patch("agent.agent_container.docker.from_env")
-    def test_discovery_setup_injects_honeypot_into_staged_copy(
-        self, _mock_docker, tmp_path
-    ):
-        # Set git config in environment for CI compatibility
-        env = {
-            "GIT_AUTHOR_NAME": "Test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
-            "GIT_COMMITTER_NAME": "Test",
-            "GIT_COMMITTER_EMAIL": "test@test.com",
-        }
-        os.environ.update(env)
-
-        app_dir = tmp_path / "test_app"
-        codebase_dir = app_dir / "codebase"
-        manifest_dir = codebase_dir / "app" / "src" / "main"
-        source_dir = manifest_dir / "java" / "com" / "example" / "app"
-        source_dir.mkdir(parents=True)
-        (source_dir / "ExampleActivity.java").write_text(
-            "package com.example.app; class ExampleActivity {}",
-            encoding="utf-8",
-        )
-        (manifest_dir / "AndroidManifest.xml").write_text(
-            "<manifest><application></application></manifest>",
-            encoding="utf-8",
-        )
-        self._git(codebase_dir, "init")
-        self._git(codebase_dir, "add", "-A")
-        self._git(codebase_dir, "commit", "-m", "Initial commit")
-        commit_id = self._git(codebase_dir, "rev-parse", "HEAD")
-
-        agent_env = AgentEnvironment(
-            app_dir=app_dir,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id=commit_id,
-            workflow="discovery",
-            package_name="com.example.app",
-        )
-
-        agent_env._setup_agent_codebase()
-
-        cls_name = get_activity_class("com.example.app")
-        injected_file = (
-            app_dir
-            / "agent_codebase"
-            / "app"
-            / "src"
-            / "main"
-            / "java"
-            / "com"
-            / "example"
-            / "app"
-            / "internal"
-            / f"{cls_name}.java"
-        )
-        assert injected_file.exists()
-        assert not (
-            codebase_dir
-            / "app"
-            / "src"
-            / "main"
-            / "java"
-            / "com"
-            / "example"
-            / "app"
-            / "internal"
-            / f"{cls_name}.java"
-        ).exists()
-
-    @patch("agent.agent_container.docker.from_env")
-    def test_exploit_setup_does_not_inject_discovery_honeypot(
-        self, _mock_docker, tmp_path
-    ):
-        env = {
-            "GIT_AUTHOR_NAME": "Test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
-            "GIT_COMMITTER_NAME": "Test",
-            "GIT_COMMITTER_EMAIL": "test@test.com",
-        }
-        os.environ.update(env)
-
-        app_dir = tmp_path / "test_app"
-        codebase_dir = app_dir / "codebase"
-        manifest_dir = codebase_dir / "app" / "src" / "main"
-        source_dir = manifest_dir / "java" / "com" / "example" / "app"
-        source_dir.mkdir(parents=True)
-        (manifest_dir / "AndroidManifest.xml").write_text(
-            "<manifest><application></application></manifest>",
-            encoding="utf-8",
-        )
-        # Init a git repo so git commands work in both vuln and non-vuln branches
-        self._git(codebase_dir, "init")
-        self._git(codebase_dir, "add", "-A")
-        self._git(codebase_dir, "commit", "-m", "Initial commit")
-        commit_id = self._git(codebase_dir, "rev-parse", "HEAD")
-
-        agent_env = AgentEnvironment(
-            app_dir=app_dir,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id=commit_id,
-            workflow="exploit",
-            package_name="com.example.app",
-            vuln_id="vuln_0",
-            include_git_history=False,
-        )
-
-        agent_env._setup_agent_codebase()
-
-        cls_name = get_activity_class("com.example.app")
-        assert not (
-            app_dir
-            / "agent_codebase"
-            / "app"
-            / "src"
-            / "main"
-            / "java"
-            / "com"
-            / "example"
-            / "app"
-            / "internal"
-            / f"{cls_name}.java"
-        ).exists()
 
 
 class TestAgentContainerModeHandling:
@@ -340,7 +188,7 @@ class TestAgentContainerModeHandling:
             env={},
             commit_id="HEAD",
             mode="codex",
-            workflow="discovery",
+            workflow="exploit",
         )
 
         with patch.object(agent_env, "_setup_agent_codebase", return_value={}):
@@ -374,7 +222,7 @@ class TestAgentContainerModeHandling:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
-            workflow="discovery",
+            workflow="exploit",
         )
 
         with patch.object(agent_env, "_setup_agent_codebase", return_value={}):
@@ -397,7 +245,7 @@ class TestSaveAgentExploit:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
-            workflow="discovery",
+            workflow="exploit",
         )
         return agent_env
 

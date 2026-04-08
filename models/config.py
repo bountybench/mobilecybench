@@ -17,9 +17,7 @@ class RunnerConfig(BaseModel):
     adb_access: Literal["none", "limited", "full"]
 
     # workflow type
-    workflow: Literal["discovery", "exploit", "detection", "unified", "redteam"] = (
-        "discovery"
-    )
+    workflow: Literal["exploit", "detection", "redteam"] = "exploit"
     attack_model: Literal["malicious_apk", "auth_attacker"] = "malicious_apk"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
 
@@ -80,9 +78,9 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_gold_run(self) -> "RunnerConfig":
-        if self.gold_run and self.workflow not in ("exploit", "unified", "redteam"):
+        if self.gold_run and self.workflow not in ("exploit", "redteam"):
             raise ValueError(
-                "gold_run=True is only valid with workflow='exploit', 'unified', or 'redteam'"
+                "gold_run=True is only valid with workflow='exploit' or 'redteam'"
             )
         if self.gold_run and self.dry_run:
             raise ValueError(
