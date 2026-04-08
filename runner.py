@@ -155,6 +155,13 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", dereference=True) as tar:
         tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
+        # Inject build script from template — single source of truth.
+        # Gold exploit dirs ship exploit-specific files only (Exploit.java,
+        # AndroidManifest.xml, ExploitRunner.java, MainActivity.java).
+        if attack_model == "malicious_apk":
+            build_script = Path(__file__).resolve().parent / "templates" / "malicious_apk" / "build_exploit_apk.sh"
+            if build_script.exists():
+                tar.add(str(build_script), arcname="agent_exploit/exploit_apk/build_exploit_apk.sh")
     buf.seek(0)
     container.put_archive("/app", buf)
     logger.info("Gold exploit files copied into container at /app/agent_exploit/")
