@@ -56,20 +56,23 @@ class MaliciousApkOps:
             uninstall,
         )
 
+        logger.info("[phase] Uninstalling previous exploit APK...")
         uninstall()
 
         if kwargs.get("needs_ssrf"):
             workflow._clear_ssrf_requests()
 
+        logger.info("[phase] Restarting runtime with target APK...")
         workflow._restart_runtime(
             kwargs["target_apk"],
             inject_flags=kwargs.get("needs_flags", False),
             start_ssrf=kwargs.get("needs_ssrf", False),
         )
 
-        # Malicious APK: victim logs in BEFORE replay (APK attacks live session)
+        logger.info("[phase] Running victim login (prepare_victim)...")
         workflow._run_prepare_victim()
 
+        logger.info("[phase] Replaying malicious APK...")
         timeout = workflow.config.apk_timeout
         try:
             result = replay_malicious_apk(
@@ -153,10 +156,10 @@ class AuthAttackerOps:
         """
         package_name = workflow.metadata.get("package_name", "")
 
-        # phase_setup: clean environment, no victim login
+        logger.info("[phase] Restarting runtime with target APK...")
         workflow._restart_runtime(kwargs["target_apk"])
 
-        # attacker_action: run exploit.sh in container
+        logger.info("[phase] Running exploit.sh in container...")
         exploit_result = workflow._run_exploit(
             kwargs["exploit_dir"],
             phase_dir,
@@ -176,7 +179,7 @@ class AuthAttackerOps:
                 timeout=30,
             )
 
-        # validation: victim logs into clean app, then probes run via evaluate()
+        logger.info("[phase] Running victim login (prepare_victim)...")
         try:
             workflow._run_prepare_victim()
         except Exception as e:
