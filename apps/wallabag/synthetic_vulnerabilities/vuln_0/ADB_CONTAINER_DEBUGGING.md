@@ -262,25 +262,164 @@ Docker Desktop Linux VM
 
 The only reliable way for a container on a custom bridge network to reach the Windows host is Docker Desktop's built-in `host.docker.internal` resolution — but that only works on the **default bridge** network, not custom ones like `shared_net`.
 
-## Possible Solutions (Not Yet Tried)
+## Solution Applied: Dual-Network Proxy (Session 2)
 
-1. **Run exploit container on default bridge + shared_net**: Use `--network bridge --network shared_net` so `host.docker.internal` is routable while still being able to reach other containers on `shared_net`.
+The fix uses a **dual-network** approach for the ADB proxy container. The key insight:
+`host.docker.internal` IS routable from the **default bridge** network, just not from custom
+bridge networks like `shared_net`.
 
-2. **Run ADB proxy container with `--network host`**: A container in host network mode can reach `127.0.0.1:5037` directly. Other containers on `shared_net` can reach it via the container's name if it's also connected to `shared_net` (dual-network).
+### Changes to `utils/run_exploit_container.sh`
 
-3. **Docker Desktop port forwarding trick**: Publish the host ADB port into a sidecar container using `-p 5037:5037`, then have the proxy container connect to the sidecar. This uses Docker's built-in NAT which does work cross-network.
+**1. Proxy container starts on default bridge, then joins shared_net**
 
-4. **Move ADB commands out of exploit container**: Have `prepare_app.sh` (which runs on the host) handle all ADB operations (start app, clear cache), and have `exploit.sh` only run the token capture server. This avoids the ADB-from-container problem entirely but changes the exploit architecture.
+Before (broken on Windows):
+```bash
+docker run -d --name adb-proxy --network shared_net ...
+```
 
-5. **Use `extra_hosts` in docker-compose**: For containers launched via docker-compose, the `extra_hosts` directive with `host-gateway` may work differently than the CLI `--add-host` flag.
+After (works on Windows and Linux):
+```bash
+# Start on default bridge — host.docker.internal is routable here
+docker run -d --name adb-proxy --add-host=host.docker.internal:host-gateway ...
+# Then also join shared_net so exploit containers can reach it by name
+docker network connect shared_net adb-proxy
+```
 
-6. **Windows Firewall rule + correct IP**: If we can find the correct IP that containers see for the Windows host (not the VM gateway), add a firewall rule for that IP on port 5037.
+This gives the proxy two network interfaces:
+- Default bridge: can reach `host.docker.internal:5037` (Windows host ADB)
+- shared_net: reachable by exploit container as `adb-proxy:5037`
+
+**2. MSYS_NO_PATHCONV=1 on all docker commands**
+
+Git Bash / MSYS2 on Windows silently converts Unix-style paths in arguments.
+For example, `/opt/adb_filter_proxy.py` becomes `C:/opt/adb_filter_proxy.py`.
+Added `MSYS_NO_PATHCONV=1` prefix to every `docker run`, `docker exec`, `docker cp`,
+and `tar` command that includes container-side paths.
+
+**3. Proxy log capture**
+
+`docker exec -d` output is NOT captured by `docker logs` (only PID 1 output is).
+Changed proxy startup to redirect stdout/stderr to `/tmp/proxy.log` inside the container:
+```bash
+docker exec -d adb-proxy bash -c 'python3 /opt/adb_filter_proxy.py > /tmp/proxy.log 2>&1'
+```
+Diagnostics read this file via `docker exec adb-proxy cat /tmp/proxy.log`.
+
+**4. Proxy health check after startup**
+
+Added a TCP connect check that verifies the proxy is actually listening on port 5037
+before proceeding. If it fails, the proxy log is printed and the script dies with a
+clear error instead of silently continuing.
+
+### Changes to `utils/adb_filter_proxy.py`
+
+**1. IPv4-first upstream connections**
+
+New `_connect_upstream_ipv4()` function replaces `socket.create_connection()` for
+upstream connections. On Docker Desktop Windows, `host.docker.internal` resolves to
+both IPv4 (`192.168.65.254`) and IPv6 (`fdc4:f303:9324::254`). Python's default
+`create_connection()` may try IPv6 first, but ADB only binds IPv4 (`0.0.0.0:5037`).
+The new function forces `AF_INET` first, with a fallback to default behavior.
+
+**2. Startup connectivity check**
+
+On startup, the proxy now attempts a test connection to the upstream ADB server and
+logs the result. This makes it immediately visible in the proxy log whether the
+upstream is reachable, rather than failing silently on the first client connection.
+
+### Verification
+
+Tested on Docker Desktop Windows (Docker Engine 29.3.1):
+```
+# Container on shared_net alone → FAILS
+IPv4 TCP connect to ('192.168.65.254', 5037) FAILED: [Errno 101] Network is unreachable
+
+# Container on default bridge + shared_net → WORKS
+IPv4 TCP connect to ('192.168.65.254', 5037) SUCCEEDED
+
+# Exploit container on shared_net resolves proxy by name → WORKS
+adb-proxy resolves to: ('172.19.0.3', 5037)
+
+# Full chain: exploit → proxy → host ADB → emulator
+adb devices from exploit container: List of devices attached (no emulator running at test time)
+# Key: no "Connection refused" — the proxy chain is functional
+```
+
+## Previous Attempts (Session 1, Reverted)
+
+These are all the changes we tried in the first debugging session. They were reverted
+via `git restore utils/` — documented here for reference.
+
+### Attempt 1: Rebind ADB server to 0.0.0.0
+
+**What:** Added a block that checks if ADB is bound to `127.0.0.1:5037` and, if so, kills it and restarts with `adb -a nodaemon server start &` to bind to `0.0.0.0:5037`.
+
+**Result:** ADB correctly rebinds to `0.0.0.0:5037` on the Windows host (verified with `netstat`). However, containers on `shared_net` still cannot reach it. The port is open on the *Windows* host, but containers route through the Docker Desktop Linux VM.
+
+### Attempt 2: Resolve IPv4 for host.docker.internal
+
+**What:** Inside the proxy container, used `getent ahostsv4 host.docker.internal` to resolve the IPv4 address explicitly, avoiding the IPv6 preference issue. Got `192.168.65.254`.
+
+**Result:** `192.168.65.254` is on the Docker Desktop management subnet, which is **not routable** from `shared_net` (`172.19.0.0/16`). Error: "Network is unreachable".
+
+### Attempt 3: Use shared_net bridge gateway IP
+
+**What:** Used `docker network inspect shared_net` to get the bridge gateway IP (`172.19.0.1`), then pointed the proxy at `172.19.0.1:5037` instead of `host.docker.internal:5037`.
+
+**Result:** "Connection refused". `172.19.0.1` is the gateway **inside the Docker Desktop Linux VM**, not the Windows host. Nothing listens on port 5037 at that address.
+
+### Attempt 4: Host-side proxy on port 15037
+
+**What:** Moved the ADB filter proxy out of a container and ran it directly on the Windows host as `python3 adb_filter_proxy.py 15037 127.0.0.1 5037`, binding to `0.0.0.0:15037`. Then pointed exploit container at `${SHARED_NET_GW}:15037` (i.e., `172.19.0.1:15037`).
+
+**Result:** Still "Connection refused". Same root cause — `172.19.0.1` is inside the Linux VM, so the host-side proxy on Windows `0.0.0.0:15037` is unreachable from there.
+
+### Attempt 5: Added `--add-host=host.docker.internal:host-gateway` to exploit container
+
+**What:** Added the `--add-host` flag to the `docker run` command for the exploit container, hoping `host.docker.internal` would resolve to a routable Windows host IP.
+
+**Result:** On custom bridge networks, `host-gateway` resolves to the Linux VM's gateway, not the Windows host. Same dead end.
+
+### Attempt 6: Extensive `[ADB-DIAG]` diagnostics
+
+**What:** Added diagnostic blocks throughout the script:
+- `[ADB-DIAG] HOST:` — checks ADB server binding, runs `adb devices`, checks port 5037 with `netstat`
+- `[ADB-DIAG] CONNECTIVITY TEST:` — runs a temp container to test TCP connectivity to host proxy
+- `[ADB-DIAG] EXPLOIT:` — tests proxy reachability and `adb devices` from inside the exploit container
+- Also added `su` disable via bind mount (`mount --bind /data/local/tmp/.fake_su /system/xbin/su`)
+
+**Result:** The diagnostics confirmed the root cause (see below) but did not fix anything.
+
+## Root Cause Analysis
+
+**On Windows Docker Desktop, containers on custom bridge networks (`shared_net`) fundamentally cannot reach ANY port on the Windows host.**
+
+The networking topology is:
+
+```
+Windows host (adb.exe on 0.0.0.0:5037)
+    ↑ cannot be reached from shared_net
+    |
+Docker Desktop Linux VM
+    ├── 172.19.0.1  (shared_net gateway — inside the VM, not Windows)
+    ├── 172.19.0.x  (containers on shared_net)
+    └── 192.168.65.254  (management subnet — not routable from shared_net)
+```
+
+- `172.19.0.1` is the bridge gateway **inside the Linux VM**. Nothing from Windows binds there.
+- `192.168.65.254` (`host.docker.internal`) is on the management subnet, which is **not routable** from custom bridge networks.
+- `--add-host=host.docker.internal:host-gateway` maps to the VM's gateway, not the Windows host.
+- Docker Desktop's port publishing (`-p`) only works for **inbound** traffic (host → container), not for container → host.
+
+**However**, `host.docker.internal` IS routable from the **default bridge** network. The solution
+is to start the proxy on the default bridge (where it can reach the host) and then also connect
+it to `shared_net` (where the exploit container can reach it).
 
 ## Linux vs Windows
 
-On **Linux**, this is a non-issue: ADB binds to `0.0.0.0` by default, and Docker's host network mode or `--add-host=host.docker.internal:host-gateway` works without firewall complications. `host.docker.internal` resolves to a real host IP that containers can reach.
+On **Linux**, this is a non-issue: ADB binds to `0.0.0.0` by default, and Docker's host network mode or `--add-host=host.docker.internal:host-gateway` works without firewall complications. `host.docker.internal` resolves to a real host IP that containers can reach from any network.
 
 On **Windows with Docker Desktop**, the virtual network adapter creates a NAT boundary through a Linux VM. Inbound connections to host ports from containers require either:
 - The host process binding to `0.0.0.0` (not `127.0.0.1`)
 - Windows Firewall allowing the inbound connection from the Docker subnet
-- **AND** a routable path from the container's network to the Windows host — which does not exist for custom bridge networks
+- **AND** a routable path from the container's network to the Windows host — which only exists on the default bridge network, not custom ones like `shared_net`
