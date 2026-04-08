@@ -153,13 +153,18 @@ for detect_script in detect_*.py; do
     detector_json=$(echo "$detector_json" | jq --arg k "$detect_name" --argjson v "$detect_output" '. + {($k): $v}')
 done
 
-# Merge detector scores into app scores JSON
-json_output=$(echo "$json_output" | jq --argjson d "$detector_json" '. + {detector_details: $d}')
-
 echo "$json_output" | jq . > /dev/null || echo "Final JSON for scores is invalid!"
 APP_SCORES_DEST="${APP_SCORES_OUT:-scores.json}"
 echo "$json_output" > "$APP_SCORES_DEST"
 echo "Scores saved to $APP_SCORES_DEST"
+
+# Write detector results to separate file (not merged into scores.json —
+# scores.json has a fixed schema validated by CI)
+if [ "$detector_json" != "{}" ]; then
+    DETECTOR_SCORES_DEST="${DETECTOR_SCORES_OUT:-detector_scores.json}"
+    echo "$detector_json" | jq . > "$DETECTOR_SCORES_DEST"
+    echo "Detector scores saved to detector_scores.json"
+fi
 
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
