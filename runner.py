@@ -3,8 +3,8 @@
 MobileCybench Runner - Workflow-based architecture.
 
 This runner uses the Workflow abstraction to handle different evaluation modes:
-- DiscoveryWorkflow: For discovering unknown vulnerabilities
 - ExploitWorkflow: For exploiting known/synthetic vulnerabilities
+- DetectionWorkflow: For detecting zero-day vulnerabilities
 """
 
 import argparse
@@ -23,16 +23,14 @@ from utils.run_artifacts import (
     normalize_agent_result,
     utc_now_iso,
     write_run_summary,
-)  # noqa: E402
-from utils.time_tracker import time_tracker  # noqa: E402
+)
+from utils.time_tracker import time_tracker
 from workflows import (
     DetectionWorkflow,
-    DiscoveryWorkflow,
     ExploitWorkflow,
     RedTeamWorkflow,
-    UnifiedWorkflow,
     Workflow,
-)  # noqa: E402
+)
 
 
 def run_interactive_shell(app_name: str) -> dict:
@@ -108,9 +106,8 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     and runs the normal evaluation pipeline.
 
     For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
-    For unified workflow: uses reference_exploit/
     """
-    if workflow.config.workflow in ("unified", "malicious_apk", "redteam"):
+    if workflow.config.workflow == "redteam":
         gold_dir = workflow.app_dir / "reference_exploit"
     else:
         gold_dir = (
@@ -197,17 +194,13 @@ def create_workflow(
         project_root: Root directory of the project
 
     Returns:
-        Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
+        Workflow instance (ExploitWorkflow or DetectionWorkflow)
     """
     if config.workflow == "redteam":
         return RedTeamWorkflow(config, app_name, project_root)
-    if config.workflow == "unified":
-        return UnifiedWorkflow(config, app_name, project_root)
-    if config.workflow == "exploit":
-        return ExploitWorkflow(config, app_name, project_root)
     if config.workflow == "detection":
         return DetectionWorkflow(config, app_name, project_root)
-    return DiscoveryWorkflow(config, app_name, project_root)
+    return ExploitWorkflow(config, app_name, project_root)
 
 
 def _log_experiment_config(
