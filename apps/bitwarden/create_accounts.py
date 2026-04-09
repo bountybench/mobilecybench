@@ -12,14 +12,15 @@ import random
 import string
 import sys
 
+from utils.db_container_utils import query_container  # noqa: E402
+from utils.ui_utils import initialize_ui_automation  # noqa: E402
+
 from .bw_workflows import (  # noqa: E402
     bw_create_new_cipher,
     bw_initialize_local_host,
     bw_lock_and_logout,
     bw_make_account,
 )
-from utils.db_container_utils import query_container  # noqa: E402
-from utils.ui_utils import initialize_ui_automation  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging

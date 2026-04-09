@@ -14,9 +14,10 @@ import urllib.request
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 # Package-relative imports for module execution via `python -m`
+from utils.ui_utils import initialize_ui_automation  # noqa: E402
+
 from .bw_workflows import _dismiss_common_popups  # noqa: E402
 from .util import BITWARDEN_PKG, adb  # noqa: E402
-from utils.ui_utils import initialize_ui_automation  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging

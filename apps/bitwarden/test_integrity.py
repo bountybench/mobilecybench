@@ -8,9 +8,10 @@ import logging
 import os
 import sys
 
+from utils.db_container_utils import query_container  # noqa: E402
+
 # Package-relative imports for module execution via `python -m`
 from .util import load_secrets  # noqa: E402
-from utils.db_container_utils import query_container  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging
