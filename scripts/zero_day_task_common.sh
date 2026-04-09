@@ -222,6 +222,10 @@ zero_day_task_run_validation() {
     fi
     _task_validation_log INFO "=========================================="
 
+    local build_manifest="$app_dir/apk/.zero_day_build_manifest.json"
+    local expected_patch_hash
+    expected_patch_hash="$(shasum -a 256 "$ZERO_DAY_SECURE_PATCH_ABS" | awk '{print $1}')"
+
     if [ "$skip_build" = true ]; then
         _task_validation_log INFO "BUILD PHASE: Skipped (--skip-build)"
         local secure_apk="$app_dir/apk/hardened/${app_name}.apk"
@@ -231,6 +235,20 @@ zero_day_task_run_validation() {
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
             return 1
         fi
+        if [ ! -f "$build_manifest" ]; then
+            _task_validation_log ERROR "--skip-build: no build manifest at $build_manifest; cannot verify APKs were built for this task. Re-run without --skip-build."
+            [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
+            return 1
+        fi
+        local manifest_commit manifest_patch_hash
+        manifest_commit="$(jq -r '.baseline_commit' "$build_manifest")"
+        manifest_patch_hash="$(jq -r '.fix_patch_sha256' "$build_manifest")"
+        if [ "$manifest_commit" != "$ZERO_DAY_BASELINE_COMMIT" ] || [ "$manifest_patch_hash" != "$expected_patch_hash" ]; then
+            _task_validation_log ERROR "--skip-build: existing APKs were built for a different baseline/patch (manifest commit=$manifest_commit, patch=$manifest_patch_hash). Re-run without --skip-build."
+            [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
+            return 1
+        fi
+        _task_validation_log INFO "Build manifest verified: APKs match this task's baseline and fix.patch"
     else
         _task_validation_log INFO "BUILD PHASE"
         cd "$ROOT_DIR"
@@ -245,6 +263,9 @@ zero_day_task_run_validation() {
             return 1
         fi
         _task_validation_log SUCCESS "Both APKs built successfully"
+        printf '{"baseline_commit":"%s","fix_patch_sha256":"%s","task_id":"%s"}\n' \
+            "$ZERO_DAY_BASELINE_COMMIT" "$expected_patch_hash" "$ZERO_DAY_TASK_ID" \
+            > "$build_manifest"
     fi
 
     task_validation_set_context \
