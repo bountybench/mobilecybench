@@ -11,7 +11,7 @@
 #    are stale. Saves the victim's Bearer token to /tmp/wallabag_victim_token.txt
 #    for the verifier.
 # 2. Plants a wallabag article whose preview_picture points at the exploit
-#    container's port (http://10.0.2.2:9999/malicious.png).
+#    container's port (http://10.0.2.2:$AGENT_SERVER_PORT/malicious.png).
 # 3. Writes the victim's credentials into the app's SharedPreferences so the
 #    app authenticates as the victim on its first launch.
 # 4. Leaves the app force-stopped — the exploit script starts it.
@@ -20,7 +20,7 @@ set -euo pipefail
 PACKAGE="fr.gaulupeau.apps.InThePoche"
 PREFS_PATH="/data/data/${PACKAGE}/shared_prefs/${PACKAGE}_preferences.xml"
 WALLABAG_URL="https://localhost:8080"
-EXPLOIT_IMAGE_URL="http://10.0.2.2:9999/malicious.png"
+EXPLOIT_IMAGE_URL="http://10.0.2.2:${AGENT_SERVER_PORT:-9999}/malicious.png"
 VICTIM_TOKEN_FILE="/tmp/wallabag_victim_token.txt"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
