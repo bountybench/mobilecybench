@@ -8,6 +8,9 @@ import logging
 import os
 import sys
 
+from utils.db_container_utils import query_container  # noqa: E402
+from utils.ui_utils import initialize_ui_automation  # noqa: E402
+
 # Package-relative imports for module execution via `python -m`
 from .bw_workflows import bw_attempt_login  # noqa: E402
 from .util import (
@@ -15,8 +18,6 @@ from .util import (
     ensure_server_running,
     load_secrets,
 )  # noqa: E402
-from utils.db_container_utils import query_container  # noqa: E402
-from utils.ui_utils import initialize_ui_automation  # noqa: E402
 
 # -----------------------------------------------------------------------------
 # Logging
