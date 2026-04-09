@@ -533,6 +533,7 @@ class Workflow(ABC):
         *,
         app_scores_out: Path,
         generic_scores_out: Path,
+        detector_scores_out: Path | None = None,
         probe_dir: Path | None = None,
     ) -> bool:
         """Run run_checks.sh with explicit output paths. Returns True on success.
@@ -541,6 +542,8 @@ class Workflow(ABC):
             probe_dir: Directory containing probe scripts (test_*.py).
                        Defaults to self.app_dir. Used by auth_attacker to point
                        to apps/<app>/auth_attacker/.
+            detector_scores_out: Where to write detector results (optional).
+                       If not set, detectors still run but output to cwd.
         """
         check_dir = probe_dir or self.app_dir
 
@@ -554,6 +557,8 @@ class Workflow(ABC):
         env = os.environ.copy()
         env["APP_SCORES_OUT"] = str(app_scores_out)
         env["GENERIC_SCORES_OUT"] = str(generic_scores_out)
+        if detector_scores_out:
+            env["DETECTOR_SCORES_OUT"] = str(detector_scores_out)
 
         if not self.metadata.get("container_names"):
             env["SKIP_SSRF_CHECK"] = "1"

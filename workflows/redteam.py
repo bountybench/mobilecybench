@@ -459,13 +459,16 @@ class RedTeamWorkflow(Workflow):
         # Run probes on phase 1
         phase1_probe_app = replays_dir / "probe_app_phase1.json"
         phase1_probe_generic = replays_dir / "probe_generic_phase1.json"
+        phase1_detector = replays_dir / "detector_phase1.json"
         phase1_probes_ok = self._run_checks(
             str(phase1_result.evidence_log_path or ""),
             app_scores_out=phase1_probe_app,
             generic_scores_out=phase1_probe_generic,
+            detector_scores_out=phase1_detector,
             probe_dir=probe_dir,
         )
 
+        probe_results_phase1 = {}
         phase1_probes_triggered = False
         if phase1_probes_ok:
             from evaluation.unified_metrics import normalize_probe_results
@@ -477,6 +480,9 @@ class RedTeamWorkflow(Workflow):
             )
             phase1_probes_triggered = probe_results_phase1["combined"]["triggered"]
             self._log_probe_results("Phase 1 (original)", probe_results_phase1)
+
+        detector_results_phase1 = self._load_detector_results(phase1_detector)
+        self._log_detector_results("Phase 1 (original)", detector_results_phase1)
 
         logger.info(
             f"[phase 1/2] summary: replay={'success' if phase1_exit == 0 else 'failed'} "
@@ -492,6 +498,7 @@ class RedTeamWorkflow(Workflow):
                 score=0,
                 reason="Exploit failed on original app and no probes triggered",
                 phases={"phase1_original": {"exit_code": phase1_exit}},
+                detector_results={"phase1_original": detector_results_phase1},
             )
             self._save_result(result, SCORE_FILE)
             return result
@@ -527,10 +534,12 @@ class RedTeamWorkflow(Workflow):
         # Run probes on phase 2
         phase2_probe_app = replays_dir / "probe_app_phase2.json"
         phase2_probe_generic = replays_dir / "probe_generic_phase2.json"
+        phase2_detector = replays_dir / "detector_phase2.json"
         phase2_probes_ok = self._run_checks(
             str(phase2_result.evidence_log_path or ""),
             app_scores_out=phase2_probe_app,
             generic_scores_out=phase2_probe_generic,
+            detector_scores_out=phase2_detector,
             probe_dir=probe_dir,
         )
 
@@ -549,6 +558,16 @@ class RedTeamWorkflow(Workflow):
             hidden_config,
         )
         self._log_probe_results("Phase 2 (patched)", probe_results_phase2)
+        logger.info(
+            f"[phase 2/2] summary: replay={'success' if phase2_exit == 0 else 'failed'} "
+            f"exit_code={phase2_exit} "
+            f"probes_triggered={probe_results_phase2['combined']['triggered']} "
+            f"evidence={phase2_result.evidence_log_path}"
+        )
+
+        detector_results_phase2 = self._load_detector_results(phase2_detector)
+        self._log_detector_results("Phase 2 (patched)", detector_results_phase2)
+
         logger.info(
             f"[phase 2/2] summary: replay={'success' if phase2_exit == 0 else 'failed'} "
             f"exit_code={phase2_exit} "
@@ -594,6 +613,10 @@ class RedTeamWorkflow(Workflow):
                 "phase1_original": probe_results_phase1,
                 "phase2_patched": probe_results_phase2,
             },
+            detector_results={
+                "phase1_original": detector_results_phase1,
+                "phase2_patched": detector_results_phase2,
+            },
         )
 
         self._save_result(result, SCORE_FILE)
@@ -628,6 +651,34 @@ class RedTeamWorkflow(Workflow):
                     else detail
                 )
                 logger.info(f"[probes]   {category}.{name} = {val}")
+
+    @staticmethod
+    def _load_detector_results(detector_path: Path) -> dict:
+        """Load detector results from JSON file. Returns empty dict if missing."""
+        if not detector_path.exists():
+            return {}
+        try:
+            return json.loads(detector_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.warning(f"Failed to read detector results from {detector_path}")
+            return {}
+
+    @staticmethod
+    def _log_detector_results(label: str, detector_results: dict) -> None:
+        """Log detector results for observability."""
+        if not detector_results:
+            return
+        triggered = [
+            name for name, detail in detector_results.items()
+            if isinstance(detail, dict) and detail.get("score") == 0
+        ]
+        logger.info(
+            f"[detectors] {label}: {len(detector_results)} detectors, "
+            f"{len(triggered)} triggered"
+        )
+        for name, detail in detector_results.items():
+            if isinstance(detail, dict):
+                logger.info(f"[detectors]   {name}: score={detail.get('score')}")
 
     # ------------------------------------------------------------------
     # Victim preparation
