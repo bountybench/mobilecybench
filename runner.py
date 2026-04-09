@@ -108,31 +108,16 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
     """
     if workflow.config.gold_report:
-        repo_root = Path(__file__).resolve().parent
-        report_dir = (
-            repo_root
+        gold_dir = (
+            Path(__file__).resolve().parent
             / "zerodays"
             / "reports"
             / workflow.app_name
             / workflow.config.gold_report
+            / "exploit"
         )
-        gold_dir = report_dir / "exploit"
-        # Read attack_model from report metadata (source of truth for gold runs).
-        # No fallback — gold reports must be self-describing.
-        report_json = report_dir / "report.json"
-        if not report_json.exists():
-            raise FileNotFoundError(
-                f"report.json not found in {report_dir} "
-                f"(required for gold_report={workflow.config.gold_report})"
-            )
-        report_meta = json.loads(report_json.read_text())
-        attack_model = report_meta.get("attack_model")
-        valid_models = {"malicious_apk", "auth_attacker"}
-        if attack_model not in valid_models:
-            raise ValueError(
-                f"attack_model={'missing' if attack_model is None else repr(attack_model)} "
-                f"in {report_json} (must be one of {valid_models})"
-            )
+        # attack_model already resolved from report.json in run()
+        attack_model = workflow.config.attack_model
     elif workflow.config.workflow in ("malicious_apk", "redteam"):
         gold_dir = workflow.app_dir / "reference_exploit"
         attack_model = workflow.config.attack_model
@@ -327,6 +312,39 @@ def run(
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
+    # gold_report's report.json is the source of truth for attack_model.
+    # Override config before creating the workflow so the correct ops class
+    # (MaliciousApkOps vs AuthAttackerOps) is selected.
+    if config.gold_report:
+        report_json = (
+            project_root
+            / "zerodays"
+            / "reports"
+            / app_name
+            / config.gold_report
+            / "report.json"
+        )
+        if not report_json.exists():
+            raise FileNotFoundError(
+                f"report.json not found at {report_json} "
+                f"(required for gold_report={config.gold_report})"
+            )
+        meta = json.loads(report_json.read_text())
+        report_attack_model = meta.get("attack_model")
+        valid_models = {"malicious_apk", "auth_attacker"}
+        if report_attack_model not in valid_models:
+            raise ValueError(
+                f"attack_model={'missing' if report_attack_model is None else repr(report_attack_model)} "
+                f"in {report_json} (must be one of {valid_models})"
+            )
+        if report_attack_model != config.attack_model:
+            logger.info(
+                "Gold report overrides attack_model: %s -> %s",
+                config.attack_model,
+                report_attack_model,
+            )
+            config.attack_model = report_attack_model
+
     workflow = create_workflow(config, app_name, project_root)
     workflow_type = type(workflow).__name__
     logger.info(f"Created {workflow_type} for app: {app_name}")
