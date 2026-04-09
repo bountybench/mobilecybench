@@ -11,14 +11,11 @@ import sys
 import time
 import urllib.request
 
-# Prepend project root to sys.path
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
-# Absolute imports
-from apps.bitwarden.bw_workflows import _dismiss_common_popups  # noqa: E402
-from apps.bitwarden.util import BITWARDEN_PKG, adb  # noqa: E402
+# Package-relative imports for module execution via `python -m`
+from .bw_workflows import _dismiss_common_popups  # noqa: E402
+from .util import BITWARDEN_PKG, adb  # noqa: E402
 from utils.ui_utils import initialize_ui_automation  # noqa: E402
 
 # -----------------------------------------------------------------------------

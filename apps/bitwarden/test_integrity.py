@@ -8,13 +8,8 @@ import logging
 import os
 import sys
 
-# Prepend project root to sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-# Absolute imports to prevent relative import errors in CI
-from apps.bitwarden.util import load_secrets  # noqa: E402
+# Package-relative imports for module execution via `python -m`
+from .util import load_secrets  # noqa: E402
 from utils.db_container_utils import query_container  # noqa: E402
 
 # -----------------------------------------------------------------------------
