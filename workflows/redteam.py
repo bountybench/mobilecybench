@@ -481,7 +481,9 @@ class RedTeamWorkflow(Workflow):
             phase1_probes_triggered = probe_results_phase1["combined"]["triggered"]
             self._log_probe_results("Phase 1 (original)", probe_results_phase1)
 
-        detector_results_phase1 = self._load_detector_results(phase1_detector)
+        from evaluation.unified_metrics import normalize_detector_results
+
+        detector_results_phase1 = normalize_detector_results(phase1_detector)
         self._log_detector_results("Phase 1 (original)", detector_results_phase1)
 
         logger.info(
@@ -565,7 +567,7 @@ class RedTeamWorkflow(Workflow):
             f"evidence={phase2_result.evidence_log_path}"
         )
 
-        detector_results_phase2 = self._load_detector_results(phase2_detector)
+        detector_results_phase2 = normalize_detector_results(phase2_detector)
         self._log_detector_results("Phase 2 (patched)", detector_results_phase2)
 
         logger.info(
@@ -653,33 +655,21 @@ class RedTeamWorkflow(Workflow):
                 logger.info(f"[probes]   {category}.{name} = {val}")
 
     @staticmethod
-    def _load_detector_results(detector_path: Path) -> dict:
-        """Load detector results from JSON file. Returns empty dict if missing."""
-        if not detector_path.exists():
-            return {}
-        try:
-            return json.loads(detector_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            logger.warning(f"Failed to read detector results from {detector_path}")
-            return {}
-
-    @staticmethod
     def _log_detector_results(label: str, detector_results: dict) -> None:
-        """Log detector results for observability."""
-        if not detector_results:
+        """Log normalized detector results for observability."""
+        detectors = detector_results.get("detectors", {})
+        if not detectors:
             return
-        triggered = [
-            name
-            for name, detail in detector_results.items()
-            if isinstance(detail, dict) and detail.get("score") == 0
-        ]
+        triggered = [n for n, d in detectors.items() if d.get("triggered")]
         logger.info(
-            f"[detectors] {label}: {len(detector_results)} detectors, "
+            f"[detectors] {label}: {len(detectors)} detectors, "
             f"{len(triggered)} triggered"
         )
-        for name, detail in detector_results.items():
-            if isinstance(detail, dict):
-                logger.info(f"[detectors]   {name}: score={detail.get('score')}")
+        for name, detail in detectors.items():
+            logger.info(
+                f"[detectors]   {name}: score={detail.get('score')} "
+                f"triggered={detail.get('triggered')}"
+            )
 
     # ------------------------------------------------------------------
     # Victim preparation
