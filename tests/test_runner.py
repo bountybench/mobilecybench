@@ -369,6 +369,68 @@ class TestAttackModelConfig:
         assert isinstance(workflow, RedTeamWorkflow)
 
 
+class TestGoldReportAttackModelOverride:
+    """gold_report's report.json overrides config.attack_model before workflow creation."""
+
+    def test_overrides_attack_model_from_report_json(self, base_config, tmp_path):
+        """run() reads attack_model from report.json and overrides config default."""
+        # Set up zerodays report with auth_attacker
+        report_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4"
+        report_dir.mkdir(parents=True)
+        (report_dir / "report.json").write_text(
+            json.dumps({"attack_model": "auth_attacker"})
+        )
+        (report_dir / "exploit").mkdir()
+        (report_dir / "exploit" / "exploit.sh").write_text("#!/bin/bash\nexit 0")
+
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "gold_report": "report-4",
+            }
+        )
+        # Config defaults to malicious_apk
+        assert config.attack_model == "malicious_apk"
+
+        # run() should override before creating workflow, then fail at validate
+        with patch("runner.ensure_app_submodule"), patch.object(
+            __import__("workflows").RedTeamWorkflow, "cleanup"
+        ):
+            run(config, "testapp", tmp_path)
+
+        # After run(), config.attack_model should be overridden
+        assert config.attack_model == "auth_attacker"
+
+    def test_missing_attack_model_in_report_json_raises(self, base_config, tmp_path):
+        """gold_report with missing attack_model in report.json raises ValueError."""
+        report_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-0"
+        report_dir.mkdir(parents=True)
+        (report_dir / "report.json").write_text(json.dumps({"title": "no model"}))
+
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "gold_report": "report-0",
+            }
+        )
+        with pytest.raises(ValueError, match="attack_model=missing"):
+            run(config, "testapp", tmp_path)
+
+    def test_missing_report_json_raises(self, base_config, tmp_path):
+        """gold_report with no report.json raises FileNotFoundError."""
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "gold_report": "report-99",
+            }
+        )
+        with pytest.raises(FileNotFoundError, match="report.json not found"):
+            run(config, "testapp", tmp_path)
+
+
 class TestMain:
     """Tests for CLI entry point."""
 

