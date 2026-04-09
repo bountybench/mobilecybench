@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
-"""Drive Thunderbird inbox sync via pull-to-refresh in the account inbox.
+"""Drive Thunderbird mailbox sync via the navigation drawer refresh path.
 
-MessageListFragment wires swipeRefreshLayout to checkMail(), which fetches
-new IMAP messages and posts notifications.  Pull-to-refresh is the simplest
-reliable path; navigation-drawer sync is redundant and brittle.
+This is intentionally aligned to the vendored Thunderbird code in this repo:
 
-Key details from the codebase:
-- The app's exported entrypoint is MainActivity. It routes to
-  MessageHomeActivity after account setup is complete.
-- MessageHomeActivity is launched internally by the app. From adb/UI
-  automation, the code-truth equivalent is opening Thunderbird through its
-  launcher entrypoint instead of trying to start internal activities directly.
-- initializeSwipeRefreshLayout() sets isEnabled=false at inflation; isEnabled
-  is only set to true inside setMessageList() after the local DB query finishes.
-- checkMail() in isSingleAccountMode && isSingleFolderMode calls
-  synchronizeMailbox(account, folderId, notify=false, listener), which runs
-  backend.sync() on the background thread, writing messages to the local DB.
-- SwipeRefreshLayout.onRefresh() fires only when the list is at the top AND
-  the gesture crosses the trigger threshold.  Using d.swipe() with explicit
-  steps produces a smooth, gradual gesture that SwipeRefreshLayout can
-  distinguish from a fling.  adb input swipe can be too fast/coarse.
+- `MessageListFragment.initializeSwipeRefreshLayout()` does *not* make the
+  message-list pull-to-refresh path call `checkMail()` for a normal
+  single-account local inbox. In that state `isCheckMailSupported` is false,
+  so swiping the inbox can be a no-op for sync.
+- `MessageList.onOptionsItemSelected(android.R.id.home)` opens the
+  `NavigationDrawer` while the message list is displayed.
+- Both drawer implementations wrap their content in `PullToRefreshBox` with
+  `onRefresh = OnSyncAccount`.
+- `DrawerViewModel.onSyncAccount()` calls
+  `messagingController.checkMail(account, ignoreLastCheckedTime=true, ...)`,
+  which is the real UI-backed sync path for the selected account.
+
+So the correct automation target is the drawer refresh gesture, not the inbox
+list refresh gesture.
 """
 import os
 import subprocess
@@ -31,7 +28,7 @@ import uiautomator2 as u2
 APP_PKG = os.environ["PKG"]
 ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
 
-# Post-swipe wait: allow time for IMAP fetch, DB write, and notification posting.
+# Post-sync wait: allow time for IMAP fetch, DB write, and notification posting.
 _POST_SYNC_WAIT_SECS = 20
 
 
@@ -67,57 +64,88 @@ def _launch_inbox() -> None:
 
 
 def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
-    """Wait until swipeRefreshLayout is present AND enabled.
-
-    MessageListFragment.initializeSwipeRefreshLayout() sets isEnabled=false
-    immediately after inflating the layout.  isEnabled is only set to true
-    inside setMessageList(), which runs after the local DB query completes.
-    Swiping before that returns no-op because SwipeRefreshLayout ignores
-    gestures while disabled.
-    """
+    """Wait until the inbox screen is ready for drawer-based sync automation."""
     msg_list = d(resourceIdMatches=_rid("message_list"))
     end = time.time() + timeout
     while time.time() < end:
         app = d.app_current() or {}
         if app.get("package") == APP_PKG and msg_list.exists:
-            # SwipeRefreshLayout must be enabled (setMessageList() has run).
-            enabled_refresh = d(resourceIdMatches=_rid("swiperefresh"), enabled=True)
-            if enabled_refresh.exists:
-                return
+            return
         time.sleep(0.5)
     raise RuntimeError(
-        "swipeRefreshLayout not enabled after "
-        f"{timeout:.0f}s; screen={_current_screen(d)}"
+        f"message list not ready after {timeout:.0f}s; screen={_current_screen(d)}"
     )
 
 
-def _pull_to_refresh(d) -> None:
-    """Swipe down to trigger MessageListFragment.checkMail() via swipeRefreshLayout.
+def _drawer_is_open(d) -> bool:
+    drawer = d(resourceIdMatches=_rid("navigation_drawer_content"))
+    if not drawer.exists:
+        return False
 
-    Uses d.swipe() (UiDevice.swipe via UiAutomation) with explicit steps=50
-    to produce a smooth 500 ms gesture.  SwipeRefreshLayout needs a gradual
-    drag past its trigger offset; a coarse or fast swipe may be interpreted
-    as a fling and leave onRefresh() uncalled.
+    bounds = drawer.info.get("bounds") or {}
+    left = int(bounds.get("left", -1))
+    right = int(bounds.get("right", -1))
+    return left >= 0 and right > left
 
-    SwipeRefreshLayout only engages when the list is at scroll position 0.
-    We scroll to the beginning first so that residual scroll state (e.g. from
-    a previous test phase that did not fully reset the activity) cannot silently
-    turn our pull-to-refresh into an ordinary scroll and leave onRefresh uncalled.
-    """
-    msg_list = d(resourceIdMatches=_rid("message_list"))
-    try:
-        msg_list.scroll.toBeginning(max_swipes=5)
-    except Exception:
-        pass  # non-fatal; list may already be at top
+
+def _open_navigation_drawer(d, timeout: float = 15.0) -> None:
+    if _drawer_is_open(d):
+        return
+
+    for description in ("Navigate up", "Open navigation drawer"):
+        try:
+            d(descriptionContains=description).click_exists(timeout=2.0)
+        except Exception:
+            pass
+        if _drawer_is_open(d):
+            return
 
     width, height = d.window_size()
-    mid_x = width // 2
-    # Start below the toolbar (~20 % height) and drag well past the trigger
-    # threshold (~70 % height).  steps=50 yields ~500 ms at 10 ms/step.
-    d.swipe(mid_x, int(height * 0.20), mid_x, int(height * 0.70), steps=50)
+    top_y = max(int(height * 0.15), 1)
+
+    # MessageList uses DrawerLayout and toggles the drawer from the toolbar home
+    # affordance. An edge swipe is the least locale-dependent way to expose it.
+    d.swipe(1, top_y, int(width * 0.55), top_y, steps=40)
+
+    end = time.time() + timeout
+    while time.time() < end:
+        if _drawer_is_open(d):
+            return
+        time.sleep(0.25)
+
+    raise RuntimeError(f"navigation drawer did not open; screen={_current_screen(d)}")
+
+
+def _pull_to_refresh_drawer(d) -> None:
+    """Swipe the drawer's PullToRefreshBox to trigger OnSyncAccount.
+
+    Both drawer variants wrap their content in PullToRefreshBox and dispatch
+    OnSyncAccount on refresh. DrawerViewModel then calls
+    messagingController.checkMail(... ignoreLastCheckedTime=true ...).
+    """
+    refresh_box = d(resourceIdMatches=_rid("PullToRefreshBox"))
+    if not refresh_box.exists:
+        raise RuntimeError("drawer PullToRefreshBox not visible before refresh")
+
+    bounds = refresh_box.info.get("bounds") or {}
+    left = int(bounds.get("left", 0))
+    right = int(bounds.get("right", 0))
+    top = int(bounds.get("top", 0))
+    bottom = int(bounds.get("bottom", 0))
+
+    if not (right > left and bottom > top):
+        raise RuntimeError(f"invalid drawer refresh bounds: {bounds}")
+
+    mid_x = left + (right - left) // 2
+    start_y = top + max(32, int((bottom - top) * 0.12))
+    end_y = min(bottom - 24, top + int((bottom - top) * 0.72))
+    if end_y <= start_y:
+        raise RuntimeError(f"drawer refresh swipe would be degenerate: {bounds}")
+    d.swipe(mid_x, start_y, mid_x, end_y, steps=50)
+
     time.sleep(_POST_SYNC_WAIT_SECS)
     print(
-        f"[drive_inbox_refresh] attempt={ATTEMPT} pull_to_refresh_done=true",
+        f"[drive_inbox_refresh] attempt={ATTEMPT} drawer_pull_to_refresh_done=true",
         flush=True,
     )
 
@@ -133,7 +161,12 @@ def main() -> int:
             f"[drive_inbox_refresh] attempt={ATTEMPT} inbox_ready=true screen={_current_screen(d)}",
             flush=True,
         )
-        _pull_to_refresh(d)
+        _open_navigation_drawer(d)
+        print(
+            f"[drive_inbox_refresh] attempt={ATTEMPT} drawer_open=true",
+            flush=True,
+        )
+        _pull_to_refresh_drawer(d)
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} sync_complete screen={_current_screen(d)}",
             flush=True,
