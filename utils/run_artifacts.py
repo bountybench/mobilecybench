@@ -183,7 +183,8 @@ _SCORE_FILES: dict[str, tuple[str, set[str]]] = {
 def _score_files_for_workflow(workflow_name: str) -> list[str]:
     """Return filenames of score files produced by the given workflow."""
     return [
-        filename for filename, workflows in _SCORE_FILES.values()
+        filename
+        for filename, workflows in _SCORE_FILES.values()
         if workflow_name in workflows
     ]
 
@@ -327,7 +328,9 @@ def write_run_summary(
         "results": {
             "agent_status": str(run_result.get("status", "unknown")),
             "score": evaluation.get("score") if isinstance(evaluation, dict) else None,
-            "status": evaluation.get("status") if isinstance(evaluation, dict) else None,
+            "status": (
+                evaluation.get("status") if isinstance(evaluation, dict) else None
+            ),
             "scores": scores,
         },
         "artifacts": {

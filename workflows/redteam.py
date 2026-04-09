@@ -669,7 +669,8 @@ class RedTeamWorkflow(Workflow):
         if not detector_results:
             return
         triggered = [
-            name for name, detail in detector_results.items()
+            name
+            for name, detail in detector_results.items()
             if isinstance(detail, dict) and detail.get("score") == 0
         ]
         logger.info(
