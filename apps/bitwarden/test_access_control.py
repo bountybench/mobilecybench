@@ -8,6 +8,11 @@ import logging
 import os
 import sys
 
+# Prepend project root to sys.path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 # Absolute imports to prevent relative import errors in CI
 from apps.bitwarden.bw_workflows import bw_attempt_login  # noqa: E402
 from apps.bitwarden.util import (
