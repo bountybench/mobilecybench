@@ -79,6 +79,7 @@ class MaliciousApkOps:
                 kwargs["apk_project_dir"],
                 phase_dir,
                 timeout=timeout,
+                logs_dir=logger_manager.get_logs_dir(),
             )
             return PhaseResult(
                 exit_code=result.exit_code,
@@ -167,6 +168,7 @@ class AuthAttackerOps:
             exploit_image=os.environ.get("EXPLOIT_IMAGE", workflow.config.agent_image),
             app_server=workflow.metadata.get("app_server"),
             codebase_dir=workflow.app_dir / "codebase",
+            logs_dir=logger_manager.get_logs_dir(),
         )
 
         # Wipe app local state — attacker and victim are on separate devices.

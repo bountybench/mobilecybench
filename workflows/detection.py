@@ -142,6 +142,7 @@ class DetectionWorkflow(Workflow):
             exploit_image,
             app_server,
             codebase_dir=codebase_dir,
+            logs_dir=logs_dir,
         )
 
         if original_exploit["replay_exit_code"] != 0:
@@ -178,6 +179,7 @@ class DetectionWorkflow(Workflow):
             exploit_image,
             app_server,
             codebase_dir=codebase_dir,
+            logs_dir=logs_dir,
         )
         # codebase restore handled by Workflow.cleanup()
 
