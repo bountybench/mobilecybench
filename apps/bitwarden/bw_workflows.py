@@ -436,6 +436,31 @@ def _complete_post_registration_setup(d) -> None:
     _dismiss_common_popups(d)
 
 
+def _wait_for_unlocked_vault(d, timeout: float = 10.0) -> bool:
+    start = time.time()
+    while time.time() - start < timeout:
+        _dismiss_common_popups(d)
+        if d(resourceId="AddItemButton").exists:
+            return True
+        time.sleep(0.5)
+    return d(resourceId="AddItemButton").exists
+
+
+def _normalize_to_unlocked_vault(d, email: str, master_password: str) -> None:
+    _complete_post_registration_setup(d)
+
+    if _wait_for_unlocked_vault(d, timeout=10.0):
+        return
+
+    logger.info(
+        "Unlocked vault was not reached during onboarding; relaunching and logging in to normalize state."
+    )
+    if not bw_attempt_login(d, email, master_password):
+        raise RuntimeError(
+            "Account was created, but the app could not be normalized to an unlocked vault."
+        )
+
+
 def _fetch_verification_token_for_email(email: str) -> str | None:
     try:
         from utils.db_container_utils import query_container
@@ -606,10 +631,7 @@ def bw_make_account(d, email, name, master_password):
             raise RuntimeError("CreateAccountScreen did not submit successfully.")
 
         _dismiss_common_popups(d)
-        if not bw_attempt_login(d, email, master_password):
-            raise RuntimeError(
-                "Direct create-account flow completed but login did not reach the vault."
-            )
+        _normalize_to_unlocked_vault(d, email, master_password)
         return
 
     # Step 2.1: Enter the email address
@@ -681,11 +703,7 @@ def bw_make_account(d, email, name, master_password):
     ):
         raise RuntimeError("Complete Registration did not advance after submitting.")
 
-    _dismiss_common_popups(d)
-    _complete_post_registration_setup(d)
-
-    if not d(resourceId="AddItemButton").exists(timeout=10):
-        raise RuntimeError("Account setup did not reach the unlocked vault screen.")
+    _normalize_to_unlocked_vault(d, email, master_password)
 
     logger.info("Account for %s created successfully", email)
 
