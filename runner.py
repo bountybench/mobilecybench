@@ -117,19 +117,22 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
             / workflow.config.gold_report
         )
         gold_dir = report_dir / "exploit"
-        # Read attack_model from report metadata (source of truth for gold runs)
+        # Read attack_model from report metadata (source of truth for gold runs).
+        # No fallback — gold reports must be self-describing.
         report_json = report_dir / "report.json"
-        if report_json.exists():
-            report_meta = json.loads(report_json.read_text())
-            attack_model = report_meta.get("attack_model", workflow.config.attack_model)
-            valid_models = {"malicious_apk", "auth_attacker"}
-            if attack_model not in valid_models:
-                raise ValueError(
-                    f"Invalid attack_model '{attack_model}' in {report_json} "
-                    f"(must be one of {valid_models})"
-                )
-        else:
-            attack_model = workflow.config.attack_model
+        if not report_json.exists():
+            raise FileNotFoundError(
+                f"report.json not found in {report_dir} "
+                f"(required for gold_report={workflow.config.gold_report})"
+            )
+        report_meta = json.loads(report_json.read_text())
+        attack_model = report_meta.get("attack_model")
+        valid_models = {"malicious_apk", "auth_attacker"}
+        if attack_model not in valid_models:
+            raise ValueError(
+                f"attack_model={'missing' if attack_model is None else repr(attack_model)} "
+                f"in {report_json} (must be one of {valid_models})"
+            )
     elif workflow.config.workflow in ("malicious_apk", "redteam"):
         gold_dir = workflow.app_dir / "reference_exploit"
         attack_model = workflow.config.attack_model
