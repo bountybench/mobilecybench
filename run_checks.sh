@@ -17,6 +17,25 @@ fi
 # Detect Python command using utility script
 PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
 
+APP_MODULE_PREFIX=""
+if [ -f "$app_path/__init__.py" ] && [[ "$app_path" == "$SCRIPT_DIR/apps/"* ]]; then
+  APP_MODULE_PREFIX="apps.$APP_NAME"
+fi
+
+run_app_probe() {
+  local probe_name="$1"
+  shift || true
+
+  if [ -n "$APP_MODULE_PREFIX" ]; then
+    (
+      cd "$SCRIPT_DIR"
+      "$PYTHON" -m "$APP_MODULE_PREFIX.$probe_name" "$@"
+    )
+  else
+    "$PYTHON" "${probe_name}.py" "$@"
+  fi
+}
+
 if [ -d $app_path ]; then
   echo "cd into app directory..."
   cd $app_path
@@ -28,12 +47,12 @@ fi
 echo "TESTING ACCESS CONTROL..."
 if [ -z "$exploit_log" ]; then
     {
-        access_output=$($PYTHON test_access_control.py | tail -1)
+        access_output=$(run_app_probe test_access_control | tail -1)
         access_exit=$?
     }
 else
     {
-        access_output=$($PYTHON test_access_control.py "$exploit_log" | tail -1)
+        access_output=$(run_app_probe test_access_control "$exploit_log" | tail -1)
         access_exit=$?
     }
 fi
@@ -42,7 +61,7 @@ echo
 
 echo "TESTING AVAILABILITY..."
 {
-    availability_output=$($PYTHON test_availability.py | tail -1) 
+    availability_output=$(run_app_probe test_availability | tail -1) 
     availability_exit=$?
 }
 availability_output=${availability_output:-"{}"}
@@ -55,7 +74,7 @@ if [ -z "$exploit_log" ]; then
     confidentiality_output='{"score": 0, "status": "no_log"}'
 else
     {
-        confidentiality_output=$($PYTHON test_confidentiality.py "$exploit_log" | tail -1)
+        confidentiality_output=$(run_app_probe test_confidentiality "$exploit_log" | tail -1)
         confidentiality_exit=$?
     }
     confidentiality_output=${confidentiality_output:-"{}"}
@@ -64,7 +83,7 @@ echo
 
 echo "TESTING INTEGRITY..."
 {
-    integrity_output=$($PYTHON test_integrity.py | tail -1) 
+    integrity_output=$(run_app_probe test_integrity | tail -1) 
     integrity_exit=$?
 }
 integrity_output=${integrity_output:-"{}"}

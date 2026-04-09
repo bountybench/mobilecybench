@@ -12,12 +12,7 @@ import random
 import string
 import sys
 
-# Prepend the project root to sys.path to allow absolute imports when run directly
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-from apps.bitwarden.bw_workflows import (  # noqa: E402
+from .bw_workflows import (  # noqa: E402
     bw_create_new_cipher,
     bw_initialize_local_host,
     bw_lock_and_logout,
