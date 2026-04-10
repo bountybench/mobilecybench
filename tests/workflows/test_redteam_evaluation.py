@@ -285,6 +285,44 @@ class TestEarlyStop:
         assert result["status"] == "no_impact"
         assert result["score"] == 0
 
+    def test_detector_bypasses_early_stop(self, redteam_config, tmp_path):
+        """Phase 1 fails and probes don't trigger, but detector fires → phase 2 runs."""
+        wf = _setup_malicious_apk_workflow(redteam_config, tmp_path)
+        phase_idx = [0]
+
+        def fake_run_phase(workflow, phase_dir, **kwargs):
+            i = phase_idx[0]
+            phase_idx[0] += 1
+            # Both phases fail
+            return _make_phase_result(1, phase_dir)
+
+        detector_call = [0]
+
+        def fake_detector(*args):
+            detector_call[0] += 1
+            if detector_call[0] == 1:
+                return {"detectors": {"detect_exfil": {"score": 0, "triggered": True}}, "detector_triggered": True}
+            return {"detectors": {}, "detector_triggered": False}
+
+        with (
+            patch.object(MaliciousApkOps, "run_phase", side_effect=fake_run_phase),
+            patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+            patch(
+                "evaluation.unified_metrics.normalize_probe_results",
+                return_value=_make_probe_result(False),
+            ),
+            patch(
+                "evaluation.unified_metrics.normalize_detector_results",
+                side_effect=fake_detector,
+            ),
+            patch("subprocess.run"),
+        ):
+            result = wf.evaluate()
+
+        # Phase 2 ran (detector bypassed early-stop), but no probe/diff signals
+        assert result["status"] == "needs_review"
+        assert phase_idx[0] == 2
+
 
 class TestTwoPhaseScoring:
     """Full 2-phase pipeline with various signal combinations."""
@@ -318,11 +356,11 @@ class TestTwoPhaseScoring:
         assert result["status"] == "verified_probe_both"
         assert result["score"] == 1
 
-    def test_probe_gate_overrides_exit_code(self, redteam_config, tmp_path):
-        """exit_code=1 but probe triggered → Phase 2 still runs."""
+    def test_both_phases_fail_no_patch_diff(self, redteam_config, tmp_path):
+        """Both phases fail → no patch-differential signal (not a false positive)."""
         wf = _setup_malicious_apk_workflow(redteam_config, tmp_path)
         result = _run_evaluate(wf, MaliciousApkOps, [1, 1], [True, True])
-        assert result["status"] == "verified_both"
+        assert result["status"] == "verified_probe_both"
         assert result["score"] == 1
 
 
@@ -343,6 +381,43 @@ class TestResultStructure:
         scores_file = tmp_path / "apps" / "testapp" / "redteam_scores.json"
         assert scores_file.exists()
         assert json.loads(scores_file.read_text())["status"] == "exploit_missing"
+
+
+class TestPatchRestoration:
+    """Security patch is always restored even if phase 2 crashes."""
+
+    def test_git_checkout_called_on_phase2_exception(self, redteam_config, tmp_path):
+        """If run_phase raises during phase 2, git checkout . still runs."""
+        wf = _setup_malicious_apk_workflow(redteam_config, tmp_path)
+        call_count = [0]
+
+        def fake_run_phase(workflow, phase_dir, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return _make_phase_result(0, phase_dir)
+            raise RuntimeError("phase 2 infra crash")
+
+        subprocess_calls = []
+        original_run = __import__("subprocess").run
+
+        def tracking_run(cmd, **kwargs):
+            subprocess_calls.append(cmd)
+
+        with (
+            patch.object(MaliciousApkOps, "run_phase", side_effect=fake_run_phase),
+            patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+            patch(
+                "evaluation.unified_metrics.normalize_probe_results",
+                return_value=_make_probe_result(True),
+            ),
+            patch("subprocess.run", side_effect=tracking_run),
+        ):
+            with pytest.raises(RuntimeError, match="phase 2 infra crash"):
+                wf.evaluate()
+
+        # git checkout . was called despite the exception
+        checkout_calls = [c for c in subprocess_calls if c == ["git", "checkout", "."]]
+        assert len(checkout_calls) == 1
 
 
 # ---------------------------------------------------------------------------

@@ -402,8 +402,10 @@ class TestGoldReportAttackModelOverride:
         # After run(), config.attack_model should be overridden
         assert config.attack_model == "auth_attacker"
 
-    def test_missing_attack_model_in_report_json_raises(self, base_config, tmp_path):
-        """gold_report with missing attack_model in report.json raises ValueError."""
+    def test_missing_attack_model_in_report_json_fails_gracefully(
+        self, base_config, tmp_path
+    ):
+        """gold_report with missing attack_model produces run_summary and returns 1."""
         report_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-0"
         report_dir.mkdir(parents=True)
         (report_dir / "report.json").write_text(json.dumps({"title": "no model"}))
@@ -415,11 +417,11 @@ class TestGoldReportAttackModelOverride:
                 "gold_report": "report-0",
             }
         )
-        with pytest.raises(ValueError, match="attack_model=missing"):
-            run(config, "testapp", tmp_path)
+        exit_code = run(config, "testapp", tmp_path)
+        assert exit_code == 1
 
-    def test_missing_report_json_raises(self, base_config, tmp_path):
-        """gold_report with no report.json raises FileNotFoundError."""
+    def test_missing_report_json_fails_gracefully(self, base_config, tmp_path):
+        """gold_report with no report.json produces run_summary and returns 1."""
         config = RunnerConfig(
             **{
                 **base_config.model_dump(),
@@ -427,8 +429,8 @@ class TestGoldReportAttackModelOverride:
                 "gold_report": "report-99",
             }
         )
-        with pytest.raises(FileNotFoundError, match="report.json not found"):
-            run(config, "testapp", tmp_path)
+        exit_code = run(config, "testapp", tmp_path)
+        assert exit_code == 1
 
 
 class TestMain:
