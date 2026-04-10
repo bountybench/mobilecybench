@@ -270,7 +270,6 @@ class TestEarlyStop:
         phase_idx = [0]
 
         def fake_run_phase(workflow, phase_dir, **kwargs):
-            i = phase_idx[0]
             phase_idx[0] += 1
             # Both phases fail
             return _make_phase_result(1, phase_dir)
@@ -280,7 +279,10 @@ class TestEarlyStop:
         def fake_detector(*args):
             detector_call[0] += 1
             if detector_call[0] == 1:
-                return {"detectors": {"detect_exfil": {"score": 0, "triggered": True}}, "detector_triggered": True}
+                return {
+                    "detectors": {"detect_exfil": {"score": 0, "triggered": True}},
+                    "detector_triggered": True,
+                }
             return {"detectors": {}, "detector_triggered": False}
 
         with (
@@ -363,7 +365,6 @@ class TestPatchRestoration:
             raise RuntimeError("phase 2 infra crash")
 
         subprocess_calls = []
-        original_run = __import__("subprocess").run
 
         def tracking_run(cmd, **kwargs):
             subprocess_calls.append(cmd)
@@ -410,6 +411,7 @@ class TestAuthAttackerValidation:
         wf = RedTeamWorkflow(auth_attacker_config, "testapp", tmp_path)
         with pytest.raises(ValueError, match="auth_attacker probe directory not found"):
             wf.validate_arguments()
+
 
 class TestAuthAttackerPhaseSequence:
     """Verify auth_attacker phase ordering: exploit → pm clear → victim login."""
@@ -539,4 +541,3 @@ class TestDetectorStaging:
 
         wf._cleanup_detectors(staged)
         assert not (probe_dir / "detect_cred_leak.py").exists()
-

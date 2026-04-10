@@ -532,9 +532,7 @@ class RedTeamWorkflow(Workflow):
                 f"exit_code={phase2_exit}"
             )
         finally:
-            subprocess.run(
-                ["git", "checkout", "."], cwd=codebase_dir, check=True
-            )
+            subprocess.run(["git", "checkout", "."], cwd=codebase_dir, check=True)
 
         # Run probes on phase 2
         phase2_probe_app = replays_dir / "probe_app_phase2.json"

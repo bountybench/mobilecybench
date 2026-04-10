@@ -115,7 +115,6 @@ class TestCreateWorkflow:
         assert config.gold_report == "report-0"
 
 
-
 class TestRun:
     """Tests for run() - focus on error handling and cleanup guarantees."""
 
@@ -334,6 +333,7 @@ class TestAttackModelConfig:
                 }
             )
 
+
 class TestGoldReportAttackModelOverride:
     """gold_report's report.json overrides config.attack_model before workflow creation."""
 
@@ -384,6 +384,7 @@ class TestGoldReportAttackModelOverride:
         )
         exit_code = run(config, "testapp", tmp_path)
         assert exit_code == 1
+
 
 class TestMain:
     """Tests for CLI entry point."""
