@@ -11,7 +11,7 @@ Tracks:
 import json
 import time
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -33,6 +33,8 @@ class LLMCallTiming:
     turn: Optional[int] = None
     success: bool = True
     error: Optional[str] = None
+    attempt_count: int = 0
+    retry_durations: list = field(default_factory=list)
 
 
 @dataclass

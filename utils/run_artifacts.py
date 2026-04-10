@@ -233,7 +233,7 @@ def write_run_summary(
             "scores.json",
             "synthetic_scores.json",
             "detection_scores.json",
-            "unified_scores.json",
+            "redteam_scores.json",
         ]:
             src = workflow.app_dir / score_file
             if src.exists():
@@ -258,9 +258,7 @@ def write_run_summary(
             "app_name": app_name,
             "workflow": config.workflow,
             "vuln_id": (
-                config.synthetic_vuln_id
-                if config.workflow in ("exploit", "unified")
-                else None
+                config.synthetic_vuln_id if config.workflow == "exploit" else None
             ),
             "agent_type": run_result.get("agent_type", "custom"),
             "model": config.model,
@@ -334,13 +332,13 @@ def write_run_summary(
                     else None
                 )
             ),
-            "unified_scores_json": (
-                str(logs_dir / "unified_scores.json")
-                if (logs_dir / "unified_scores.json").exists()
+            "redteam_scores_json": (
+                str(logs_dir / "redteam_scores.json")
+                if (logs_dir / "redteam_scores.json").exists()
                 else (
-                    str(workflow.app_dir / "unified_scores.json")
+                    str(workflow.app_dir / "redteam_scores.json")
                     if hasattr(workflow, "app_dir")
-                    and (workflow.app_dir / "unified_scores.json").exists()
+                    and (workflow.app_dir / "redteam_scores.json").exists()
                     else None
                 )
             ),

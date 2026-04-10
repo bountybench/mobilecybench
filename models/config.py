@@ -17,7 +17,8 @@ class RunnerConfig(BaseModel):
     adb_access: Literal["none", "limited", "full"]
 
     # workflow type
-    workflow: Literal["discovery", "exploit", "detection", "unified"] = "discovery"
+    workflow: Literal["exploit", "detection", "redteam"] = "exploit"
+    attack_model: Literal["malicious_apk", "auth_attacker"] = "malicious_apk"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
 
     # agent limits
@@ -43,6 +44,9 @@ class RunnerConfig(BaseModel):
     # General timeout (seconds) for long-running scripts (setup, exploit, verify, etc.)
     script_timeout: int = Field(default=600, gt=0)
     build_command_timeout: int = Field(default=1200, gt=0)
+    apk_timeout: int = Field(
+        default=60, gt=0
+    )  # am instrument timeout for malicious APK replay
     emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
 
     # Claude Code CLI timeout (seconds). Only used when agent_mode="claude-code".
@@ -65,10 +69,18 @@ class RunnerConfig(BaseModel):
         return cls(**c_dict)
 
     @model_validator(mode="after")
-    def validate_gold_run(self) -> "RunnerConfig":
-        if self.gold_run and self.workflow not in ("exploit", "unified"):
+    def validate_attack_model(self) -> "RunnerConfig":
+        if self.attack_model != "malicious_apk" and self.workflow != "redteam":
             raise ValueError(
-                "gold_run=True is only valid with workflow='exploit' or 'unified'"
+                f"attack_model='{self.attack_model}' requires workflow='redteam'"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_gold_run(self) -> "RunnerConfig":
+        if self.gold_run and self.workflow not in ("exploit", "redteam"):
+            raise ValueError(
+                "gold_run=True is only valid with workflow='exploit' or 'redteam'"
             )
         if self.gold_run and self.dry_run:
             raise ValueError(

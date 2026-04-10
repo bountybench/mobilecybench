@@ -50,12 +50,22 @@ def ensure_app_submodule(project_root: PathLike, app_name: str) -> None:
 
     Runs ``git submodule update --init`` for just ``apps/<app_name>/codebase``.
     Does NOT recurse into the codebase's own submodules.
+    Skips gracefully for closed-source apps that have no submodule registered.
     """
     project_root = Path(project_root)
     codebase_dir = project_root / "apps" / app_name / "codebase"
 
     if codebase_dir.exists() and any(codebase_dir.iterdir()):
         logger.debug(f"Submodule already initialized: {codebase_dir}")
+        return
+
+    # Closed-source apps have no codebase submodule in .gitmodules — skip.
+    gitmodules = project_root / ".gitmodules"
+    submodule_path = f"apps/{app_name}/codebase"
+    if not gitmodules.exists() or submodule_path not in gitmodules.read_text():
+        logger.info(
+            f"No submodule registered for {app_name} — skipping (closed-source app)"
+        )
         return
 
     logger.info(f"Initializing submodule for {app_name}...")

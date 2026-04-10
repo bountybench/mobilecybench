@@ -18,7 +18,7 @@ def privilege_escalation():
     cur.execute('SELECT permissions FROM users WHERE username = "usera"')
     row = cur.fetchone()
     if row[0] != (
-        '{"download":true,"update":false,"delete":false,"upload":false,"createEreader":false,'
+        '{"download":true,"update":true,"delete":false,"upload":false,"createEreader":false,'
         '"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":false,'
         '"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}'
     ):

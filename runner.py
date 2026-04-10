@@ -3,8 +3,8 @@
 MobileCybench Runner - Workflow-based architecture.
 
 This runner uses the Workflow abstraction to handle different evaluation modes:
-- DiscoveryWorkflow: For discovering unknown vulnerabilities
 - ExploitWorkflow: For exploiting known/synthetic vulnerabilities
+- DetectionWorkflow: For detecting zero-day vulnerabilities
 """
 
 import argparse
@@ -23,15 +23,14 @@ from utils.run_artifacts import (
     normalize_agent_result,
     utc_now_iso,
     write_run_summary,
-)  # noqa: E402
-from utils.time_tracker import time_tracker  # noqa: E402
+)
+from utils.time_tracker import time_tracker
 from workflows import (
     DetectionWorkflow,
-    DiscoveryWorkflow,
     ExploitWorkflow,
-    UnifiedWorkflow,
+    RedTeamWorkflow,
     Workflow,
-)  # noqa: E402
+)
 
 
 def run_interactive_shell(app_name: str) -> dict:
@@ -107,10 +106,8 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     and runs the normal evaluation pipeline.
 
     For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
-    For unified workflow: uses reference_exploit/
     """
-    if workflow.config.workflow == "unified":
-        # Known-working proof-of-concept exploit for the real vulnerability
+    if workflow.config.workflow == "redteam":
         gold_dir = workflow.app_dir / "reference_exploit"
     else:
         gold_dir = (
@@ -126,14 +123,21 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     if not container:
         raise RuntimeError("Kali container not running — cannot copy exploit files")
 
-    # Copy gold exploit files into /app/agent_exploit/ (where the
-    # evaluation pipeline expects to find exploit.sh).
-    if not (gold_dir / "exploit.sh").exists():
-        raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
+    # For malicious_apk redteam, gold exploit is an APK project.
+    # For auth_attacker redteam (and other workflows), it must contain exploit.sh.
+    if (
+        workflow.config.workflow == "redteam"
+        and workflow.config.attack_model == "malicious_apk"
+    ):
+        if not (gold_dir / "exploit_apk").exists():
+            raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
+    else:
+        if not (gold_dir / "exploit.sh").exists():
+            raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
 
     logger.info(f"Copying gold exploit files from {gold_dir} into kali container...")
     buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w") as tar:
+    with tarfile.open(fileobj=buf, mode="w", dereference=True) as tar:
         tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
     buf.seek(0)
     container.put_archive("/app", buf)
@@ -157,7 +161,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     gold_result = {
         "mode": "gold_run",
         "app": workflow.app_name,
-        "vuln_id": workflow.vuln_id,
+        "vuln_id": getattr(workflow, "vuln_id", None),
         "evaluation": scores,
         "score": scores.get("score") if isinstance(scores, dict) else None,
     }
@@ -190,15 +194,13 @@ def create_workflow(
         project_root: Root directory of the project
 
     Returns:
-        Workflow instance (DiscoveryWorkflow or ExploitWorkflow)
+        Workflow instance (ExploitWorkflow or DetectionWorkflow)
     """
-    if config.workflow == "unified":
-        return UnifiedWorkflow(config, app_name, project_root)
-    if config.workflow == "exploit":
-        return ExploitWorkflow(config, app_name, project_root)
+    if config.workflow == "redteam":
+        return RedTeamWorkflow(config, app_name, project_root)
     if config.workflow == "detection":
         return DetectionWorkflow(config, app_name, project_root)
-    return DiscoveryWorkflow(config, app_name, project_root)
+    return ExploitWorkflow(config, app_name, project_root)
 
 
 def _log_experiment_config(

@@ -10,8 +10,10 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    build_discovery_prompt,
-    build_unified_prompt,
+    build_auth_attacker_prompt,
+    build_detection_prompt,
+    build_redteam_prompt,
+    build_synthetic_prompt,
 )
 from utils.logger import logger, logger_manager
 
@@ -30,7 +32,8 @@ class CodexAgent:
         username: Optional[str] = None,
         password: Optional[str] = None,
         include_ssrf: bool = True,
-        workflow: str = "discovery",
+        workflow: str = "exploit",
+        attack_model: str = "malicious_apk",
         additional_context: Optional[str] = None,
     ):
         """
@@ -46,7 +49,8 @@ class CodexAgent:
             username: Username for the app
             password: Password for the app
             include_ssrf: Whether to include SSRF instructions in the prompt
-            workflow: Workflow type (discovery, detection, exploit, unified)
+            workflow: Workflow type (exploit, detection, redteam)
+            attack_model: Attack model for redteam workflow
         """
         self.app_name = app_name
         self.dry_run = dry_run
@@ -58,6 +62,7 @@ class CodexAgent:
         self.password = password
         self.include_ssrf = include_ssrf
         self.workflow = workflow
+        self.attack_model = attack_model
         self.additional_context = additional_context
 
         # Load environment variables
@@ -223,8 +228,22 @@ class CodexAgent:
         return result
 
     def _get_default_system_prompt(self) -> str:
-        if self.workflow == "unified":
-            prompt = build_unified_prompt(
+        if self.workflow == "detection":
+            prompt = build_detection_prompt(
+                package_name=self.package_name,
+                codebase_tree=self._initial_tree_context,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
+                username=self.username,
+                password=self.password,
+            )
+        elif self.workflow == "redteam":
+            builder = (
+                build_auth_attacker_prompt
+                if self.attack_model == "auth_attacker"
+                else build_redteam_prompt
+            )
+            prompt = builder(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
                 app_server=self.app_server,
@@ -233,14 +252,12 @@ class CodexAgent:
                 password=self.password,
             )
         else:
-            prompt = build_discovery_prompt(
+            prompt = build_synthetic_prompt(
                 package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
-                app_server=self.app_server,
-                emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
-                include_ssrf=self.include_ssrf,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
             )
 
         if self.additional_context:

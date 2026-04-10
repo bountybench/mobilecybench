@@ -22,40 +22,6 @@ from .base import FunctionCall, ModelProvider, ProviderResponse
 litellm.suppress_debug_info = True
 
 
-# Lightweight wrappers for TokenTracker compatibility
-
-
-class _TokenDetails:
-    def __init__(self, cached_tokens: int) -> None:
-        self.cached_tokens = cached_tokens
-
-
-class _UsageInfo:
-    def __init__(
-        self,
-        input_tokens: int,
-        output_tokens: int,
-        total_tokens: int,
-        cached_tokens: int = 0,
-    ) -> None:
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
-        self.total_tokens = total_tokens
-        self.prompt_tokens = input_tokens
-        self.completion_tokens = output_tokens
-        details = _TokenDetails(cached_tokens)
-        self.prompt_tokens_details = details
-        self.input_tokens_details = details
-
-
-class _RawResponseWrapper:
-    """Minimal wrapper for raw_response so TokenTracker can read .id and .usage."""
-
-    def __init__(self, id: str, usage: _UsageInfo) -> None:
-        self.id = id
-        self.usage = usage
-
-
 class LiteLLMProvider(ModelProvider):
     """LiteLLM-based provider for non-OpenAI models.
 
@@ -266,32 +232,14 @@ class LiteLLMProvider(ModelProvider):
         )
         self._messages.append(assistant_msg)
 
-        # Build usage wrapper for token tracker
-        usage_obj = getattr(raw_response, "usage", None)
-        input_tokens = getattr(usage_obj, "prompt_tokens", 0) or 0
-        output_tokens = getattr(usage_obj, "completion_tokens", 0) or 0
-        total_tokens = getattr(usage_obj, "total_tokens", 0) or 0
-
-        cached_tokens = 0
-        raw_details = getattr(usage_obj, "prompt_tokens_details", None)
-        if raw_details is not None:
-            if isinstance(raw_details, dict):
-                ct = raw_details.get("cached_tokens")
-            else:
-                ct = getattr(raw_details, "cached_tokens", None)
-            if ct is not None:
-                cached_tokens = int(ct)
-
-        response_id = f"litellm_{uuid.uuid4().hex}"
-        usage = _UsageInfo(input_tokens, output_tokens, total_tokens, cached_tokens)
-        raw_wrapper = _RawResponseWrapper(id=response_id, usage=usage)
+        response_id = getattr(raw_response, "id", None) or ""
 
         resp = ProviderResponse(
             response_id=response_id,
             assistant_text=assistant_text,
             function_calls=function_calls,
             reasoning_summary=reasoning_summary,
-            raw_response=raw_wrapper,
+            raw_response=raw_response,
         )
         self._record_history(resp)
         return resp

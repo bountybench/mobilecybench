@@ -7,7 +7,6 @@ import pytest
 
 from models.config import RunnerConfig
 from workflows.detection import DetectionWorkflow
-from workflows.discovery import DiscoveryWorkflow
 from workflows.exploit import ExploitWorkflow
 
 
@@ -29,23 +28,6 @@ def _config(**overrides) -> RunnerConfig:
         "script_timeout": 600,
     }
     return RunnerConfig(**{**defaults, **overrides})
-
-
-class TestDiscoveryWorkflow:
-    """Tests for DiscoveryWorkflow."""
-
-    def test_validate_arguments_fails_missing_app_dir(self, tmp_path):
-        """validate_arguments raises error if app_dir doesn't exist."""
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
-        with pytest.raises(ValueError, match="App directory not found"):
-            workflow.validate_arguments()
-
-    def test_validate_arguments_fails_missing_metadata(self, tmp_path):
-        """validate_arguments raises error if metadata.json doesn't exist."""
-        (tmp_path / "apps" / "test_app").mkdir(parents=True)
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
-        with pytest.raises(ValueError, match="metadata.json not found"):
-            workflow.validate_arguments()
 
 
 class TestExploitWorkflow:
@@ -114,115 +96,6 @@ class TestExploitWorkflow:
             ValueError, match="Vulnerability directory not found.*vuln_1"
         ):
             workflow.validate_arguments()
-
-
-class TestDiscoveryWorkflowFlagGeneration:
-    """Tests for flag generation in DiscoveryWorkflow."""
-
-    def test_discovery_workflow_generates_flags_on_setup(self, tmp_path):
-        """setup_runtime_environment generates fresh flags before install."""
-        (tmp_path / "apps" / "test_app").mkdir(parents=True)
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
-        workflow.metadata = {"container_names": ["redis", "postgres"]}
-
-        # Mock the heavy dependencies (must mock at source module for lazy imports)
-        with patch("docker.from_env"), patch(
-            "utils.uuid_flags_utils.generate_and_save_flags"
-        ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
-            "workflows.base.Workflow.setup_apks"
-        ), patch(
-            "utils.command_executor.CommandExecutor"
-        ), patch(
-            "utils.emulator_certs.inject_system_ca"
-        ), patch(
-            "utils.setup_utils.install_app_and_setup_backend"
-        ), patch(
-            "workflows.discovery.check_connectivity"
-        ) as mock_check_connectivity, patch(
-            "agent.agent_container.setup_agent_environment"
-        ) as mock_setup_agent_environment:
-            workflow.setup_runtime_environment()
-            mock_generate.assert_called_once_with(str(tmp_path), ["redis", "postgres"])
-            mock_check_connectivity.assert_called_once_with(
-                mock_setup_agent_environment.return_value.container, None
-            )
-
-    def test_discovery_workflow_runs_preflight_cleanup(self, tmp_path):
-        """setup_runtime_environment cleans stale same-app runtime before setup."""
-        (tmp_path / "apps" / "test_app").mkdir(parents=True)
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
-        workflow.metadata = {}
-
-        with patch.object(
-            workflow, "_preflight_cleanup_app_runtime"
-        ) as mock_preflight, patch("docker.from_env"), patch(
-            "utils.uuid_flags_utils.generate_and_save_flags"
-        ), patch(
-            "utils.emulator_manager.EmulatorManager"
-        ), patch(
-            "workflows.base.Workflow.setup_apks"
-        ), patch(
-            "utils.command_executor.CommandExecutor"
-        ), patch(
-            "utils.emulator_certs.inject_system_ca"
-        ), patch(
-            "utils.setup_utils.install_app_and_setup_backend"
-        ), patch(
-            "workflows.discovery.check_connectivity"
-        ), patch(
-            "agent.agent_container.setup_agent_environment"
-        ):
-            workflow.setup_runtime_environment()
-
-        mock_preflight.assert_called_once_with()
-
-    def test_preflight_cleans_only_stale_marked_app(self, tmp_path):
-        apps_dir = tmp_path / "apps"
-        stale_app_dir = apps_dir / "stale_app"
-        current_app_dir = apps_dir / "test_app"
-        stale_app_dir.mkdir(parents=True)
-        current_app_dir.mkdir(parents=True)
-        (stale_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
-        (current_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
-
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
-        workflow._backend_runtime_state_file().write_text("stale_app\n")
-
-        with patch("workflows.base.subprocess.run") as mock_run:
-            workflow._preflight_cleanup_app_runtime()
-
-        assert mock_run.call_count == 2
-        first_call = mock_run.call_args_list[0]
-        second_call = mock_run.call_args_list[1]
-        assert first_call.kwargs["cwd"] == stale_app_dir
-        assert second_call.kwargs["cwd"] == current_app_dir
-
-    def test_discovery_workflow_generates_flags_with_empty_containers(self, tmp_path):
-        """setup_runtime_environment generates flags even without containers."""
-        (tmp_path / "apps" / "test_app").mkdir(parents=True)
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
-        workflow.metadata = {}
-
-        with patch("docker.from_env"), patch(
-            "utils.uuid_flags_utils.generate_and_save_flags"
-        ) as mock_generate, patch("utils.emulator_manager.EmulatorManager"), patch(
-            "workflows.base.Workflow.setup_apks"
-        ), patch(
-            "utils.command_executor.CommandExecutor"
-        ), patch(
-            "utils.emulator_certs.inject_system_ca"
-        ), patch(
-            "utils.setup_utils.install_app_and_setup_backend"
-        ), patch(
-            "workflows.discovery.check_connectivity"
-        ) as mock_check_connectivity, patch(
-            "agent.agent_container.setup_agent_environment"
-        ) as mock_setup_agent_environment:
-            workflow.setup_runtime_environment()
-            mock_generate.assert_called_once_with(str(tmp_path), [])
-            mock_check_connectivity.assert_called_once_with(
-                mock_setup_agent_environment.return_value.container, None
-            )
 
 
 class TestExploitWorkflowEvaluation:
@@ -377,7 +250,9 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        workflow = DetectionWorkflow(
+            _config(workflow="detection"), "test_app", tmp_path
+        )
 
         with patch("workflows.base.subprocess.run") as mock_run:
             workflow.cleanup()
@@ -396,7 +271,9 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        workflow = DetectionWorkflow(
+            _config(workflow="detection"), "test_app", tmp_path
+        )
         state_file = workflow._backend_runtime_state_file()
         state_file.write_text("test_app\n")
 
@@ -418,7 +295,9 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        workflow = DetectionWorkflow(
+            _config(workflow="detection"), "test_app", tmp_path
+        )
         state_file = workflow._backend_runtime_state_file()
         state_file.write_text("test_app\n")
 
@@ -469,7 +348,9 @@ class TestWorkflowRuntimeCleanup:
         (stale_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
         (current_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = DiscoveryWorkflow(_config(), "test_app", tmp_path)
+        workflow = DetectionWorkflow(
+            _config(workflow="detection"), "test_app", tmp_path
+        )
         workflow._backend_runtime_state_file().write_text("stale_app\n")
 
         with patch(

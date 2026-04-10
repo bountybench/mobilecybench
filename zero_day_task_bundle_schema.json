@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Execution-focused schema for zero-day task metadata.json files",
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Zero-day task metadata schema version"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "Stable task identifier"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short task title"
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "commit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "App revision that defines the vulnerable baseline"
+        }
+      },
+      "required": ["commit"]
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "integer", "boolean"]
+          },
+          "description": "Environment variables passed to build_apk.sh"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "package_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional task-specific package name override"
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "title",
+    "baseline"
+  ]
+}

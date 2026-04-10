@@ -1,0 +1,12 @@
+{
+  "db_container": "gotify-db",
+  "db_user": "gotify",
+  "db_name": "gotify",
+  "app_package": "com.github.gotify",
+  "server_container": "gotify-server",
+  "admin_user_id": 1,
+  "admin_client_token": "Cjb1qWnNo4P8sT5vX9yZ2bCf",
+  "max_app_id": 7,
+  "prepared_at": "2026-03-26 19:20:31.338166+00",
+  "server_log_baseline_lines": 14
+}

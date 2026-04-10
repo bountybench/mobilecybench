@@ -1,5 +1,6 @@
 import pytest
 
+from agent.model_providers.factory import SupportedModel
 from utils.token_costs import (
     HighContextPricing,
     ModelPricing,
@@ -53,6 +54,61 @@ def test_compute_cost_with_cache_read_only():
 
 
 @pytest.mark.pricing
+def test_compute_cost_with_reasoning_tokens_uses_separate_rate_without_double_counting():
+    """Reasoning tokens should be split out of output tokens, not double-counted."""
+    p = ModelPricing(input=5.0, output=15.0, reasoning=7.5)
+    cost = compute_cost_usd(
+        p,
+        input_tokens=2000,
+        output_tokens=1000,
+        reasoning_tokens=400,
+    )
+    scale = 1_000_000.0
+    expected_cost = (2000 / scale) * 5.0 + (600 / scale) * 15.0 + (400 / scale) * 7.5
+    assert cost == pytest.approx(expected_cost, rel=1e-9)
+
+
+@pytest.mark.pricing
+def test_compute_cost_with_reasoning_tokens_falls_back_to_high_context_output_rate():
+    """Reasoning fallback should use the active tier's output rate, not the base tier."""
+    p = ModelPricing(
+        input=2.5,
+        output=15.0,
+        cache_input=0.25,
+        high_context=HighContextPricing(
+            input_threshold=272_000,
+            input=5.0,
+            output=22.5,
+            cache_input=0.5,
+        ),
+    )
+    cost = compute_cost_usd(
+        p,
+        input_tokens=300_000,
+        output_tokens=1000,
+        reasoning_tokens=400,
+    )
+    scale = 1_000_000.0
+    expected_cost = (300_000 / scale) * 5.0 + (1000 / scale) * 22.5
+    assert cost == pytest.approx(expected_cost, rel=1e-9)
+
+
+@pytest.mark.pricing
+def test_compute_cost_with_reasoning_tokens_exceeding_output_tokens_no_double_count():
+    """If reasoning exceeds output (inconsistent data), text portion clamps to zero."""
+    p = ModelPricing(input=5.0, output=15.0, reasoning=7.5)
+    cost = compute_cost_usd(
+        p,
+        output_tokens=1000,
+        reasoning_tokens=1200,
+    )
+    scale = 1_000_000.0
+    # text = max(1000-1200, 0) = 0; all output billed as reasoning
+    expected_cost = (1200 / scale) * 7.5
+    assert cost == pytest.approx(expected_cost, rel=1e-9)
+
+
+@pytest.mark.pricing
 @pytest.mark.parametrize(
     "input_tokens, expected_input_rate, expected_output_rate",
     [
@@ -94,6 +150,7 @@ def test_strip_date_suffix():
     assert _strip_date_suffix("gpt-5-2025-08-07") == "gpt-5"
     assert _strip_date_suffix("gpt-5-mini-2025-08-07") == "gpt-5-mini"
     assert _strip_date_suffix("gpt-5-nano-2025-08-07") == "gpt-5-nano"
+    assert _strip_date_suffix("claude-sonnet-4-5-20250929") == "claude-sonnet-4-5"
 
     # Test without date suffix (should remain unchanged)
     assert _strip_date_suffix("gpt-5") == "gpt-5"
@@ -111,6 +168,7 @@ def test_get_pricing_for_model_with_date_suffix():
     pricing_map = {
         "gpt-5": ModelPricing(input=1.25, output=10.0, cache_input=0.125),
         "gpt-5-mini": ModelPricing(input=0.25, output=2.0, cache_input=0.025),
+        "claude-sonnet-4-5": ModelPricing(input=3.0, output=15.0, cache_input=0.3),
     }
 
     # Test exact match
@@ -125,6 +183,11 @@ def test_get_pricing_for_model_with_date_suffix():
         "gpt-5-mini-2025-08-07", pricing_map=pricing_map, warn=False
     )
     assert p.input == 0.25 and p.output == 2.0 and p.cache_input == 0.025
+
+    p = get_pricing_for_model(
+        "claude-sonnet-4-5-20250929", pricing_map=pricing_map, warn=False
+    )
+    assert p.input == 3.0 and p.output == 15.0 and p.cache_input == 0.3
 
     # Test unknown model with date suffix (should default to zeros)
     p = get_pricing_for_model(
@@ -173,6 +236,27 @@ def test_get_pricing_for_model_with_provider_prefix():
     assert p.input == 0.0 and p.output == 0.0 and p.cache_input == 0.0
 
 
+@pytest.mark.pricing
+def test_supported_models_have_nonzero_pricing():
+    """Every supported model should resolve to non-zero input/output pricing."""
+    pricing_map = load_pricing()
+
+    for model in SupportedModel:
+        pricing = get_pricing_for_model(
+            model.value.api_id, pricing_map=pricing_map, warn=False
+        )
+        assert pricing.input > 0.0, f"{model.value.api_id} missing input pricing"
+        assert pricing.output > 0.0, f"{model.value.api_id} missing output pricing"
+
+
+@pytest.mark.pricing
+def test_o4_mini_cached_input_pricing_matches_official_docs():
+    pricing = get_pricing_for_model("o4-mini", pricing_map=load_pricing(), warn=False)
+    assert pricing.input == pytest.approx(1.1, rel=1e-9)
+    assert pricing.cache_input == pytest.approx(0.275, rel=1e-9)
+    assert pricing.output == pytest.approx(4.4, rel=1e-9)
+
+
 ##########################################
 #          Token Tracker Tests           #
 ##########################################
@@ -197,12 +281,37 @@ class _InputDetails:
         self.cached_tokens = cached_tokens
 
 
+class _OutputDetails:
+    def __init__(self, reasoning_tokens: int):
+        self.reasoning_tokens = reasoning_tokens
+
+
 class _UsageWithDetails(_Usage):
     """Mock usage object with input_tokens_details similar to OpenAI response."""
 
     def __init__(self, input_tokens, output_tokens, cached_tokens):
         super().__init__(input_tokens=input_tokens, output_tokens=output_tokens)
         self.input_tokens_details = _InputDetails(cached_tokens)
+
+
+class _UsageWithReasoningDetails(_UsageWithDetails):
+    """Mock usage object with cache and reasoning details."""
+
+    def __init__(self, input_tokens, output_tokens, cached_tokens, reasoning_tokens):
+        super().__init__(input_tokens, output_tokens, cached_tokens)
+        self.output_tokens_details = _OutputDetails(reasoning_tokens)
+
+
+class _ChatCompletionUsageWithReasoning:
+    """Mock usage object similar to LiteLLM / Chat Completions format."""
+
+    def __init__(
+        self, prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens
+    ):
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.prompt_tokens_details = _InputDetails(cached_tokens)
+        self.completion_tokens_details = _OutputDetails(reasoning_tokens)
 
 
 @pytest.mark.token_tracker
@@ -215,6 +324,7 @@ def test_tracker_record_known_model_no_cache_details():
     assert rec.request_id == "r1"
     assert rec.input_tokens == 1000
     assert rec.output_tokens == 500
+    assert rec.reasoning_tokens == 0
     assert rec.cache_input_tokens == 0
     assert rec.cost_usd > 0
 
@@ -232,7 +342,73 @@ def test_tracker_record_known_model_with_cache_details():
     assert rec.request_id == "r2"
     assert rec.input_tokens == 200
     assert rec.output_tokens == 100
+    assert rec.reasoning_tokens == 0
     assert rec.cache_input_tokens == 50
+
+
+@pytest.mark.token_tracker
+@pytest.mark.parametrize("model", ["gpt-5.2-pro", "gpt-5.2-codex"])
+def test_tracker_supported_openai_models_compute_nonzero_cost(model):
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
+    mock_resp = _Resp(
+        rid=f"{model}-resp", usage=_Usage(input_tokens=200, output_tokens=100)
+    )
+    rec = tracker.record_from_openai_response(mock_resp, model=model)
+
+    assert rec.input_tokens == 200
+    assert rec.output_tokens == 100
+    assert rec.cost_usd > 0.0
+
+
+@pytest.mark.token_tracker
+def test_tracker_record_known_model_with_reasoning_details():
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
+    mock_resp = _Resp(rid="r2b", usage=_UsageWithReasoningDetails(200, 100, 50, 40))
+    rec = tracker.record_from_openai_response(mock_resp, model="o3")
+
+    assert rec.model == "o3"
+    assert rec.request_id == "r2b"
+    assert rec.input_tokens == 200
+    assert rec.output_tokens == 100
+    assert rec.reasoning_tokens == 40
+    assert rec.cache_input_tokens == 50
+
+    totals = tracker.totals()
+    assert totals["reasoning_tokens"] == 40
+
+
+@pytest.mark.token_tracker
+def test_tracker_extracts_chat_completions_style_reasoning_details():
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
+    mock_resp = _Resp(
+        rid="r2c",
+        usage=_ChatCompletionUsageWithReasoning(200, 100, 50, 40),
+    )
+    rec = tracker.record_from_openai_response(mock_resp, model="o3")
+
+    assert rec.input_tokens == 200
+    assert rec.output_tokens == 100
+    assert rec.reasoning_tokens == 40
+    assert rec.cache_input_tokens == 50
+
+
+@pytest.mark.token_tracker
+def test_tracker_extracts_top_level_reasoning_tokens_from_dict_usage():
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
+    mock_resp = {
+        "id": "r2d",
+        "usage": {
+            "prompt_tokens": 200,
+            "completion_tokens": 100,
+            "reasoning_tokens": 40,
+        },
+    }
+    rec = tracker.record_from_openai_response(mock_resp, model="o3")
+
+    assert rec.input_tokens == 200
+    assert rec.output_tokens == 100
+    assert rec.reasoning_tokens == 40
+    assert rec.cache_input_tokens == 0
 
 
 @pytest.mark.token_tracker
@@ -241,6 +417,7 @@ def test_tracker_unknown_model_cost_zero_with_warning():
     mock_resp = _Resp(rid="r3", usage=_Usage(input_tokens=1000, output_tokens=1000))
     rec = tracker.record_from_openai_response(mock_resp, model="unknown-model")
 
+    assert rec.reasoning_tokens == 0
     assert rec.cost_usd == 0.0  # unknown model yields zero with warning in logs
 
 
@@ -266,6 +443,7 @@ def test_tracker_multiple_records_accumulate_totals():
     assert totals["calls"] == 2
     assert totals["input_tokens"] == 800
     assert totals["output_tokens"] == 300
+    assert totals["reasoning_tokens"] == 0
     assert totals["cache_input_tokens"] == 50
 
     excepted_cost = compute_cost_usd(
@@ -273,6 +451,7 @@ def test_tracker_multiple_records_accumulate_totals():
         input_tokens=800,
         output_tokens=300,
         cache_input_tokens=50,
+        reasoning_tokens=0,
     )
     assert totals["cost_usd"] == pytest.approx(excepted_cost, rel=1e-9)
     print(f"totals['cost_usd']: {totals['cost_usd']}")

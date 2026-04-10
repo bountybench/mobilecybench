@@ -43,3 +43,16 @@ index 9a82f453..da239ddd 100644
  
          Build.VERSION.SDK_INT >= Build.VERSION_CODES.O -> {
              WebViewDatabase.getInstance(context)
+diff --git a/mobile/src/main/java/org/openhab/habdroid/background/NfcReceiveActivity.kt b/mobile/src/main/java/org/openhab/habdroid/background/NfcReceiveActivity.kt
+index f2cb7895..09e018d1 100644
+--- a/mobile/src/main/java/org/openhab/habdroid/background/NfcReceiveActivity.kt
++++ b/mobile/src/main/java/org/openhab/habdroid/background/NfcReceiveActivity.kt
+@@ -29,7 +29,7 @@ class NfcReceiveActivity : Activity() {
+             return
+         }
+
+-        if (intent.action == Intent.ACTION_VIEW || intent.action == NfcAdapter.ACTION_NDEF_DISCOVERED) {
++        if (intent.action == NfcAdapter.ACTION_NDEF_DISCOVERED) {
+             val tag = intent.data?.toTagData()
+             val sitemap = tag?.sitemap
+             BackgroundTasksManager.enqueueNfcUpdateIfNeeded(this, tag)
