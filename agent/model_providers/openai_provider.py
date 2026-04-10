@@ -31,7 +31,7 @@ class OpenAIProvider(ModelProvider):
             raise ValueError(
                 "OPENAI_API_KEY environment variable is required but not set."
             )
-        self._client = OpenAI()
+        self._client = OpenAI(max_retries=5)
         self._model = model
         self._instructions = instructions
         self._tools = self._convert_tools(tools)
