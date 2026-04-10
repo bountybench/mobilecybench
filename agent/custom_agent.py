@@ -195,7 +195,6 @@ class CustomAgent:
     def _check_exploit_exists(self) -> bool:
         """Check whether exploit.sh exists in the kali container."""
         try:
-
             result = CommandExecutor().run(
                 "docker exec kali-container test -f /app/agent_exploit/exploit.sh",
                 capture_output=True,
@@ -413,56 +412,59 @@ class CustomAgent:
             max_retries = 5
             base_retry_delay = 10  # seconds
 
-            for attempt in range(max_retries):
-                try:
-                    with time_tracker.llm_timing(
-                        model=self.model,
-                        conversation_id=self.app_name,
-                        turn=turn + 1,
-                    ):
+            with time_tracker.llm_timing(
+                model=self.model,
+                conversation_id=self.app_name,
+                turn=turn + 1,
+            ) as timing_entry:
+                for attempt in range(max_retries):
+                    attempt_start = time.perf_counter()
+                    try:
                         resp = self.provider.call(call_input)
-                    print("[Agent] API call completed")
-                    break  # Success, exit retry loop
-                except Exception as e:
-                    error_str = str(e).lower()
-                    is_retryable = False
-                    retry_delay = base_retry_delay
-                    error_type = "Unknown"
+                        print("[Agent] API call completed")
+                        timing_entry.attempt_count += 1
+                        break
+                    except Exception as e:
+                        timing_entry.retry_durations.append(
+                            time.perf_counter() - attempt_start
+                        )
+                        timing_entry.attempt_count += 1
+                        error_str = str(e).lower()
+                        is_retryable = False
+                        retry_delay = base_retry_delay
+                        error_type = "Unknown"
 
-                    # Check for rate limit and service unavailable errors
-                    if any(
-                        indicator in error_str
-                        for indicator in [
-                            "rate_limit",
-                            "rate limit",
-                            "too many requests",
-                            "quota exceeded",
-                            "429",
-                            "503",
-                            "service unavailable",
-                        ]
-                    ):
-                        is_retryable = True
-                        error_type = "Rate limit / Service unavailable"
-                        # Use exponential backoff for rate limits
-                        retry_delay = base_retry_delay * (2**attempt)
+                        if any(
+                            indicator in error_str
+                            for indicator in [
+                                "rate_limit",
+                                "rate limit",
+                                "too many requests",
+                                "quota exceeded",
+                                "429",
+                                "503",
+                                "service unavailable",
+                            ]
+                        ):
+                            is_retryable = True
+                            error_type = "Rate limit / Service unavailable"
+                            retry_delay = base_retry_delay * (2**attempt)
 
-                    if is_retryable:
-                        if attempt < max_retries - 1:
-                            agent_logger.warning(
-                                f"{error_type} error on attempt {attempt + 1}/{max_retries}. "
-                                f"Retrying in {retry_delay} seconds..."
-                            )
-                            time.sleep(retry_delay)
-                            continue
+                        if is_retryable:
+                            if attempt < max_retries - 1:
+                                agent_logger.warning(
+                                    f"{error_type} error on attempt {attempt + 1}/{max_retries}. "
+                                    f"Retrying in {retry_delay} seconds..."
+                                )
+                                time.sleep(retry_delay)
+                                continue
+                            else:
+                                agent_logger.error(
+                                    f"{error_type} error after {max_retries} attempts. Giving up."
+                                )
+                                raise
                         else:
-                            agent_logger.error(
-                                f"{error_type} error after {max_retries} attempts. Giving up."
-                            )
                             raise
-                    else:
-                        # Not a retryable error, re-raise immediately
-                        raise
 
             # Record token usage and cost
             try:
