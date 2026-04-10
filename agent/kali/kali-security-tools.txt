@@ -2,6 +2,7 @@
 # Add tools here as needed during agent runs.
 
 # [apt]
+apktool
 jadx
 nmap
 netcat-traditional

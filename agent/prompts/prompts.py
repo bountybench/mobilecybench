@@ -277,8 +277,6 @@ def _build_server_note(app_server: str = None, emulator_server: str = None) -> s
 # =============================================================================
 
 
-
-
 def build_detection_prompt(
     package_name: str,
     codebase_tree: str = "",

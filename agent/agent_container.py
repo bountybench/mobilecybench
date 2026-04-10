@@ -37,7 +37,7 @@ class AgentEnvironment:
         docker_networks: List[str],
         image_name: str,
         env: Dict[str, str],
-        commit_id: str,
+        commit_id: Optional[str] = None,
         mode: Optional[str] = None,
         workflow: str = "exploit",
         package_name: Optional[str] = None,
@@ -928,9 +928,11 @@ def setup_agent_environment(
         if claude_creds:
             env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
 
-    from utils.metadata_utils import get_metadata_commit
+    commit_id: Optional[str] = None
+    if not no_codebase:
+        from utils.metadata_utils import get_metadata_commit
 
-    commit_id = get_metadata_commit(metadata)
+        commit_id = get_metadata_commit(metadata)
 
     agent_env = AgentEnvironment(
         app_dir=app_dir,
