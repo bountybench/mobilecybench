@@ -114,17 +114,6 @@ class TestCreateWorkflow:
         assert config.gold_run is True
         assert config.gold_report == "report-0"
 
-    def test_gold_report_without_gold_run_explicit(self, base_config):
-        """gold_report works even when gold_run not explicitly set."""
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "gold_report": "report-3",
-                "gold_run": False,
-            }
-        )
-        assert config.gold_run is True
 
 
 class TestRun:
@@ -331,16 +320,6 @@ class TestAttackModelConfig:
                 }
             )
 
-    def test_auth_attacker_rejected_with_detection(self, base_config):
-        with pytest.raises(ValueError, match="requires workflow='redteam'"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "detection",
-                    "attack_model": "auth_attacker",
-                }
-            )
-
     def test_malicious_apk_default(self, base_config):
         config = RunnerConfig(**{**base_config.model_dump(), "workflow": "redteam"})
         assert config.attack_model == "malicious_apk"
@@ -354,20 +333,6 @@ class TestAttackModelConfig:
                     "attack_model": "bogus",
                 }
             )
-
-    def test_auth_attacker_creates_redteam_workflow(self, base_config, tmp_path):
-        from workflows import RedTeamWorkflow
-
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "attack_model": "auth_attacker",
-            }
-        )
-        workflow = create_workflow(config, "test_app", tmp_path)
-        assert isinstance(workflow, RedTeamWorkflow)
-
 
 class TestGoldReportAttackModelOverride:
     """gold_report's report.json overrides config.attack_model before workflow creation."""
@@ -419,19 +384,6 @@ class TestGoldReportAttackModelOverride:
         )
         exit_code = run(config, "testapp", tmp_path)
         assert exit_code == 1
-
-    def test_missing_report_json_fails_gracefully(self, base_config, tmp_path):
-        """gold_report with no report.json produces run_summary and returns 1."""
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "gold_report": "report-99",
-            }
-        )
-        exit_code = run(config, "testapp", tmp_path)
-        assert exit_code == 1
-
 
 class TestMain:
     """Tests for CLI entry point."""

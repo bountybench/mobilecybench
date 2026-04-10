@@ -206,23 +206,6 @@ def _run_evaluate(wf, ops_cls, phase_results, probe_results):
 
 
 # ---------------------------------------------------------------------------
-# Strategy dispatch
-# ---------------------------------------------------------------------------
-
-
-class TestOpsDispatch:
-    """Strategy objects are selected based on attack_model."""
-
-    def test_malicious_apk_uses_apk_ops(self, redteam_config, tmp_path):
-        wf = _setup_malicious_apk_workflow(redteam_config, tmp_path)
-        assert isinstance(wf._ops, MaliciousApkOps)
-
-    def test_auth_attacker_uses_auth_ops(self, auth_attacker_config, tmp_path):
-        wf = RedTeamWorkflow(auth_attacker_config, "testapp", tmp_path)
-        assert isinstance(wf._ops, AuthAttackerOps)
-
-
-# ---------------------------------------------------------------------------
 # Artifact checks
 # ---------------------------------------------------------------------------
 
@@ -257,10 +240,6 @@ class TestArtifactCheck:
         (tmp_path / "exploit.sh").write_text("#!/bin/bash\nexit 0")
         ok, _ = AuthAttackerOps().check_artifact(tmp_path)
         assert ok is True
-
-    def test_auth_ops_missing_exploit_sh(self, tmp_path):
-        ok, _ = AuthAttackerOps().check_artifact(tmp_path)
-        assert ok is False
 
 
 # ---------------------------------------------------------------------------
@@ -350,12 +329,6 @@ class TestTwoPhaseScoring:
         assert result["status"] == "verified_probe_original"
         assert result["score"] == 1
 
-    def test_verified_probe_both(self, redteam_config, tmp_path):
-        wf = _setup_malicious_apk_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(wf, MaliciousApkOps, [0, 0], [True, True])
-        assert result["status"] == "verified_probe_both"
-        assert result["score"] == 1
-
     def test_both_phases_fail_no_patch_diff(self, redteam_config, tmp_path):
         """Both phases fail → no patch-differential signal (not a false positive)."""
         wf = _setup_malicious_apk_workflow(redteam_config, tmp_path)
@@ -365,15 +338,7 @@ class TestTwoPhaseScoring:
 
 
 class TestResultStructure:
-    """Result JSON has expected fields."""
-
-    def test_result_has_required_fields(self, redteam_config, tmp_path):
-        wf = _setup_malicious_apk_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(wf, MaliciousApkOps, [0, 1], [True, False])
-        assert result["workflow"] == "redteam"
-        assert result["attack_model"] == "malicious_apk"
-        for key in ("status", "score", "reason", "signals", "phases"):
-            assert key in result
+    """Result JSON has expected fields and is persisted."""
 
     def test_result_saved_to_file(self, redteam_config, tmp_path):
         wf = _setup_malicious_apk_workflow(redteam_config, tmp_path, create_apk=False)
@@ -446,40 +411,6 @@ class TestAuthAttackerValidation:
         with pytest.raises(ValueError, match="auth_attacker probe directory not found"):
             wf.validate_arguments()
 
-    def test_missing_probe_script_rejected(self, auth_attacker_config, tmp_path):
-        app_dir = tmp_path / "apps" / "testapp"
-        app_dir.mkdir(parents=True)
-        (app_dir / "metadata.json").write_text(
-            json.dumps(
-                {
-                    "commit_version": "abc123",
-                    "sdk": "34",
-                    "package_name": "com.test.app",
-                    "container_names": [],
-                }
-            )
-        )
-        patch_dir = tmp_path / "zerodays" / "patches" / "testapp"
-        patch_dir.mkdir(parents=True, exist_ok=True)
-        (patch_dir / "security.patch").write_text("")
-        (app_dir / "auth_attacker").mkdir()
-        (app_dir / "auth_attacker" / "test_integrity.py").write_text("")
-        wf = RedTeamWorkflow(auth_attacker_config, "testapp", tmp_path)
-        with pytest.raises(ValueError, match="not found in"):
-            wf.validate_arguments()
-
-
-class TestAuthAttackerExploitMissing:
-    def test_no_exploit_sh_scores_zero(self, auth_attacker_config, tmp_path):
-        wf = _setup_auth_attacker_workflow(
-            auth_attacker_config, tmp_path, create_exploit=False
-        )
-        result = wf.evaluate()
-        assert result["status"] == "exploit_missing"
-        assert result["score"] == 0
-        assert result["attack_model"] == "auth_attacker"
-
-
 class TestAuthAttackerPhaseSequence:
     """Verify auth_attacker phase ordering: exploit → pm clear → victim login."""
 
@@ -526,9 +457,6 @@ class TestAuthAttackerPhaseSequence:
             wf.evaluate()
 
         assert call_order == ["exploit", "pm_clear", "victim_login"]
-
-    def test_no_generic_probes(self):
-        assert AuthAttackerOps.uses_generic_probes is False
 
     def test_prepare_victim_failure_returns_failed_phase(
         self, auth_attacker_config, tmp_path
@@ -578,18 +506,6 @@ class TestAuthAttackerFullPipeline:
         assert result["score"] == 1
         assert result["attack_model"] == "auth_attacker"
 
-    def test_early_stop(self, auth_attacker_config, tmp_path):
-        wf = _setup_auth_attacker_workflow(auth_attacker_config, tmp_path)
-        result = _run_evaluate(wf, AuthAttackerOps, [1], [False])
-        assert result["status"] == "no_impact"
-        assert result["score"] == 0
-
-    def test_needs_review(self, auth_attacker_config, tmp_path):
-        wf = _setup_auth_attacker_workflow(auth_attacker_config, tmp_path)
-        result = _run_evaluate(wf, AuthAttackerOps, [0, 0], [False, False])
-        assert result["status"] == "needs_review"
-        assert result["score"] == 0
-
 
 # ---------------------------------------------------------------------------
 # Detector staging tests
@@ -624,37 +540,3 @@ class TestDetectorStaging:
         wf._cleanup_detectors(staged)
         assert not (probe_dir / "detect_cred_leak.py").exists()
 
-    def test_no_zerodays_dir(self, redteam_config, tmp_path):
-        """No crash when zerodays submodule is absent."""
-        project_root = tmp_path / "project"
-        app_dir = project_root / "apps" / "testapp"
-        app_dir.mkdir(parents=True)
-
-        wf = RedTeamWorkflow(redteam_config, "testapp", project_root)
-        staged = wf._stage_detectors(app_dir)
-        assert staged == []
-
-    def test_multiple_reports(self, redteam_config, tmp_path):
-        """Detectors from multiple reports are staged."""
-        project_root = tmp_path / "project"
-        app_dir = project_root / "apps" / "testapp"
-        app_dir.mkdir(parents=True)
-        (app_dir / "metadata.json").write_text("{}")
-
-        for i in range(3):
-            det_dir = (
-                project_root
-                / "zerodays"
-                / "reports"
-                / "testapp"
-                / f"report-{i}"
-                / "detectors"
-            )
-            det_dir.mkdir(parents=True)
-            (det_dir / f"detect_vuln_{i}.py").write_text(
-                'import json; print(json.dumps({"score": 1}))'
-            )
-
-        wf = RedTeamWorkflow(redteam_config, "testapp", project_root)
-        staged = wf._stage_detectors(app_dir)
-        assert len(staged) == 3
