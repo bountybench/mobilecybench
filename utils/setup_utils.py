@@ -44,7 +44,6 @@ def install_app_and_setup_backend(
     runtime_script = app_dir / "start_runtime.sh"
     legacy_script = app_dir / "setup.sh"
 
-    logger.info("Setting up backend and installing APK...")
     if runtime_script.exists():
         runtime_cmd = "bash ./start_runtime.sh"
         if apk_path:

@@ -76,11 +76,17 @@ class LoggerManager:
         logs_dir: The directory where all experiment artifacts are stored.
     """
 
-    def __init__(self, name: str = "MobileCyBench", config: dict = None) -> None:
+    def __init__(
+        self,
+        name: str = "MobileCyBench",
+        config: dict = None,
+        *,
+        announce: bool = True,
+    ) -> None:
         self._name = name
-        self.configure(config or self._default_config())
+        self.configure(config or self._default_config(), announce=announce)
 
-    def configure(self, config: dict) -> None:
+    def configure(self, config: dict, *, announce: bool = True) -> None:
         """(Re)configure the logger manager with new settings."""
         self._config = config
 
@@ -126,12 +132,13 @@ class LoggerManager:
             self._setup_ui_debug_logger()
 
         # Keep canonical UUID for machines while surfacing a short human-friendly hint.
-        self._logger.info(
-            "Logging initialized (run_id=%s, short_id=%s, logs_dir=%s)",
-            self.run_id,
-            self.run_id[:8],
-            self._logs_dir,
-        )
+        if announce:
+            self._logger.info(
+                "Logging initialized (run_id=%s, short_id=%s, logs_dir=%s)",
+                self.run_id,
+                self.run_id[:8],
+                self._logs_dir,
+            )
 
     def _resolve_run_id(self) -> str:
         """Resolve the run ID from environment or generate a new UUID."""
@@ -344,10 +351,10 @@ def get_logger_manager(config: dict = None) -> LoggerManager:
     """
     global _instance
     if _instance is None:
-        _instance = LoggerManager(config=config)
+        _instance = LoggerManager(config=config, announce=config is not None)
     elif config is not None:
         # Re-configure existing instance if new config provided
-        _instance.configure(config)
+        _instance.configure(config, announce=True)
     return _instance
 
 

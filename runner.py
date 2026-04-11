@@ -168,16 +168,19 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     gold_result_path = logs_dir / "gold_run_result.json"
     gold_result_path.write_text(json.dumps(gold_result, indent=2))
 
-    # Clear pass/fail banner
     score = gold_result["score"]
-    logger.info("=" * 60)
+    if isinstance(scores, dict):
+        logger.info(
+            "Gold run evaluation: status=%s score=%s reason=%s",
+            scores.get("status"),
+            scores.get("score"),
+            scores.get("reason"),
+        )
     if score == 1:
-        logger.info("GOLD RUN PASSED — exploit verified successfully (score=1)")
+        logger.info("Gold run passed: exploit verified successfully")
     else:
-        logger.info(f"GOLD RUN FAILED — score={score}")
-        logger.info(f"Evaluation details: {scores}")
-    logger.info(f"Result saved to: {gold_result_path}")
-    logger.info("=" * 60)
+        logger.info(f"Gold run failed: score={score}")
+    logger.info(f"Gold run result saved to: {gold_result_path}")
 
     return scores
 
@@ -228,7 +231,42 @@ def _log_experiment_config(
         }
 
     logger.info(
-        "Experiment configuration:\n%s",
+        "Run config: app=%s workflow=%s attack_model=%s",
+        app_name,
+        config.workflow,
+        config.attack_model,
+    )
+    logger.info(
+        "Runner settings: gold_run=%s gold_report=%s dry_run=%s model=%s iterations=%s",
+        str(config.gold_run).lower(),
+        getattr(config, "gold_report", None),
+        str(config.dry_run).lower(),
+        config.model,
+        config.max_iterations,
+    )
+    logger.info(
+        "Access: adb=%s server_access=%s emulator=%s/%s",
+        config.adb_access,
+        str(config.server_access).lower(),
+        config.emulator_backend,
+        config.emulator_display,
+    )
+    logger.info(
+        "App config: package=%s commit=%s",
+        metadata.get("package_name"),
+        metadata.get("commit_version"),
+    )
+    if metadata.get("app_server") or metadata.get("emulator_server"):
+        logger.info(
+            "App endpoints: app_server=%s emulator_server=%s",
+            metadata.get("app_server"),
+            metadata.get("emulator_server"),
+        )
+    container_names = metadata.get("container_names", [])
+    if container_names:
+        logger.info("App containers: %s", ", ".join(container_names))
+    logger.info(
+        "Experiment configuration (full):\n%s",
         json.dumps(experiment_config, indent=2, default=str),
     )
 
@@ -288,7 +326,6 @@ def run(
             evaluation = scores or {}
             run_result = normalize_agent_result({"status": "gold_run_completed"})
             gold_score = scores.get("score") if isinstance(scores, dict) else None
-            logger.info(f"Gold run complete: {scores}")
             outcome = "success" if gold_score == 1 else "failure"
             exit_reason = "gold_run_completed"
             exit_code = 0 if gold_score == 1 else 1
@@ -322,7 +359,15 @@ def run(
 
             logger.info("Evaluating results...")
             evaluation = workflow.evaluate() or {}
-            logger.info(f"Evaluation complete: {evaluation}")
+            if isinstance(evaluation, dict):
+                logger.info(
+                    "Evaluation complete: status=%s score=%s reason=%s",
+                    evaluation.get("status"),
+                    evaluation.get("score"),
+                    evaluation.get("reason"),
+                )
+            else:
+                logger.info("Evaluation complete")
             outcome = "success"
             exit_reason = "completed"
             exit_code = 0
