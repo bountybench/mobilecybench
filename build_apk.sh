@@ -6,12 +6,27 @@
 # and output for all apps.
 #
 # Usage:
-#   ./build_apk.sh <app_name> [--output <dir>] [--vuln <vuln_id>]
+#   ./build_apk.sh <app_name> [--output <dir>] [--vuln <vuln_ref>] [--commit <ref>]
+#   ./build_apk.sh <app_name> --hardened-patch <patch_path> [--commit <ref>]
 #
 # Examples:
-#   ./build_apk.sh conversations                    # Build regular APK
-#   ./build_apk.sh conversations --output ./out     # Build to custom output dir
-#   ./build_apk.sh conversations --vuln vuln_0      # Build with vulnerability patch
+#   ./build_apk.sh conversations
+#     # Build the regular APK from the app's baseline commit
+#   ./build_apk.sh conversations --output ./out
+#     # Build to a custom output directory
+#   ./build_apk.sh conversations --vuln vuln_0
+#     # Build a vulnerable APK by applying vuln_0's vulnerability.patch
+#     # (bare IDs are shorthand and must be unambiguous for the app)
+#   ./build_apk.sh conversations --vuln synthetic_vulnerabilities/vuln_0
+#     # Build a vulnerable APK from an explicit synthetic vulnerability bundle
+#   ./build_apk.sh <app_name> --vuln zero_day_vulnerabilities/<bundle_name>
+#     # Build a vulnerable APK from an explicit zero-day vulnerability bundle
+#   ./build_apk.sh conversations --commit 60a32b1
+#     # Build from an explicit commit instead of metadata.json commit_version
+#   ./build_apk.sh conversations --hardened
+#     # Build a hardened APK by applying apps/conversations/security.patch
+#   ./build_apk.sh conversations --hardened-patch /path/to/fix.patch
+#     # Build a hardened APK from an explicit patch file (for example a task/report fix.patch)
 #
 
 set -e
@@ -35,7 +50,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME=""
 VULN_ID=""
 HARDENED=""
+HARDENED_PATCH_PATH=""
 OUTPUT_DIR=""
+BUILD_COMMIT_OVERRIDE=""
 
 show_usage() {
     echo "Usage: $0 <app_name> [options]"
@@ -45,20 +62,44 @@ show_usage() {
     echo ""
     echo "Options:"
     echo "  --output <dir>      Output directory for the APK (default: apps/<app_name>/apk/)"
-    echo "  --vuln <vuln_id>    Build APK with synthetic vulnerability patch applied"
-    echo "                      (e.g., vuln_0, vuln_1)"
-    echo "  --hardened          Build hardened APK with security.patch applied (requires security.patch in app dir)"
+    echo "  --vuln <vuln_ref>   Build a vulnerable APK by applying"
+    echo "                      <resolved_vuln_dir>/vulnerability.patch"
+    echo "                      <vuln_ref> may be a bare ID like vuln_0"
+    echo "                      (only if unambiguous for the app), or an explicit path like"
+    echo "                      synthetic_vulnerabilities/vuln_0 or"
+    echo "                      zero_day_vulnerabilities/<bundle_name>"
+    echo "  --commit <ref>      Override metadata.json commit_version for this build"
+    echo "                      (useful for pinned historical/task baseline builds)"
+    echo "  --hardened          Build a hardened APK by applying apps/<app_name>/security.patch"
+    echo "  --hardened-patch <path>"
+    echo "                      Build a hardened APK by applying an explicit patch file"
+    echo "                      (useful when the remediation patch lives outside the app dir,"
+    echo "                       e.g. a task/report fix.patch)"
     echo "  -h, --help          Show this help message"
     echo ""
+    echo "Note: --vuln, --hardened, and --hardened-patch are mutually exclusive."
+    echo ""
     echo "Examples:"
-    echo "  $0 conversations                        # Build regular APK"
-    echo "  $0 conversations --output ./artifacts   # Build to custom dir"
-    echo "  $0 conversations --vuln vuln_0          # Build with vuln_0 patch"
-    echo "  $0 simplelogin --hardened               # Build hardened APK (requires security.patch)"
+    echo "  $0 conversations"
+    echo "    Build the regular APK from the app's baseline commit"
+    echo "  $0 conversations --output ./artifacts"
+    echo "    Build to a custom output directory"
+    echo "  $0 conversations --vuln vuln_0"
+    echo "    Build a vulnerable APK from vuln_0's vulnerability.patch"
+    echo "  $0 conversations --vuln synthetic_vulnerabilities/vuln_0"
+    echo "    Build a vulnerable APK from an explicit synthetic vulnerability bundle"
+    echo "  $0 <app_name> --vuln zero_day_vulnerabilities/<bundle_name>"
+    echo "    Build a vulnerable APK from an explicit zero-day vulnerability bundle"
+    echo "  $0 conversations --commit 60a32b1"
+    echo "    Build from an explicit commit"
+    echo "  $0 simplelogin --hardened"
+    echo "    Build a hardened APK from apps/simplelogin/security.patch"
+    echo "  $0 conversations --hardened-patch /path/to/fix.patch"
+    echo "    Build a hardened APK from an explicit patch file"
     echo ""
     echo "Output naming:"
     echo "  Regular build:    apk/<app_name>.apk"
-    echo "  Vuln build:       apk/<vuln_id>/<app_name>.apk"
+    echo "  Vuln build:       apk/<basename(vuln_ref)>/<app_name>.apk"
     echo "  Hardened build:   apk/hardened/<app_name>.apk"
 }
 
@@ -67,7 +108,7 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --vuln)
             if [ -z "$2" ] || [[ "$2" == -* ]]; then
-                echo -e "${ERROR} --vuln requires a vulnerability ID argument (e.g., vuln_0)"
+                echo -e "${ERROR} --vuln requires a vulnerability reference argument (e.g., vuln_0)"
                 show_usage
                 exit 1
             fi
@@ -78,6 +119,15 @@ while [[ $# -gt 0 ]]; do
             HARDENED="1"
             shift
             ;;
+        --hardened-patch)
+            if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo -e "${ERROR} --hardened-patch requires a patch file path"
+                show_usage
+                exit 1
+            fi
+            HARDENED_PATCH_PATH="$2"
+            shift 2
+            ;;
         --output)
             if [ -z "$2" ] || [[ "$2" == -* ]]; then
                 echo -e "${ERROR} --output requires a directory path"
@@ -85,6 +135,15 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        --commit)
+            if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo -e "${ERROR} --commit requires a git ref or commit"
+                show_usage
+                exit 1
+            fi
+            BUILD_COMMIT_OVERRIDE="$2"
             shift 2
             ;;
         -h|--help)
@@ -128,11 +187,58 @@ if [ -z "$OUTPUT_DIR" ]; then
     OUTPUT_DIR="$APP_DIR/apk"
 fi
 
+VULN_OUTPUT_NAME=""
+if [ -n "$VULN_ID" ]; then
+    VULN_OUTPUT_NAME="$(basename "$VULN_ID")"
+fi
+
 # Validate build script exists
 if [ ! -f "$APP_DIR/build.sh" ]; then
     echo -e "${ERROR} build.sh not found in $APP_DIR"
     exit 1
 fi
+
+resolve_vuln_dir() {
+    local vuln_id="$1"
+    local synthetic_dir="$APP_DIR/synthetic_vulnerabilities/$vuln_id"
+    local zero_day_dir="$APP_DIR/zero_day_vulnerabilities/$vuln_id"
+
+    if [[ "$vuln_id" == */* ]]; then
+        local explicit_dir="$APP_DIR/$vuln_id"
+        if [ -d "$explicit_dir" ]; then
+            printf '%s\n' "$explicit_dir"
+            return 0
+        fi
+        if [ -d "$vuln_id" ]; then
+            printf '%s\n' "$vuln_id"
+            return 0
+        fi
+        return 1
+    fi
+
+    if [ -d "$synthetic_dir" ] && [ -d "$zero_day_dir" ]; then
+        echo -e "${ERROR} Ambiguous vulnerability ID '$vuln_id' for $APP_NAME" >&2
+        echo -e "${ERROR} Both directories exist:" >&2
+        echo -e "${ERROR}   $synthetic_dir" >&2
+        echo -e "${ERROR}   $zero_day_dir" >&2
+        echo -e "${ERROR} Re-run with an explicit path, for example:" >&2
+        echo -e "${ERROR}   --vuln synthetic_vulnerabilities/$vuln_id" >&2
+        echo -e "${ERROR}   --vuln zero_day_vulnerabilities/$vuln_id" >&2
+        return 1
+    fi
+
+    if [ -d "$synthetic_dir" ]; then
+        printf '%s\n' "$synthetic_dir"
+        return 0
+    fi
+
+    if [ -d "$zero_day_dir" ]; then
+        printf '%s\n' "$zero_day_dir"
+        return 0
+    fi
+
+    return 1
+}
 
 # Check codebase submodule is initialized
 check_submodule_initialized() {
@@ -269,9 +375,14 @@ sign_apk() {
     echo -e "${SUCCESS} APK signed: $output_apk"
 }
 
-# Checkout the commit specified in metadata.json
+# Checkout the commit specified in metadata.json, unless an explicit
+# --commit override was provided.
 checkout_commit() {
-    echo -e "${INFO} Checking out commit from metadata.json..."
+    if [ -n "$BUILD_COMMIT_OVERRIDE" ]; then
+        echo -e "${INFO} Checking out explicit build commit override..."
+    else
+        echo -e "${INFO} Checking out commit from metadata.json..."
+    fi
 
     local metadata_file="$APP_DIR/metadata.json"
     if [ ! -f "$metadata_file" ]; then
@@ -279,11 +390,15 @@ checkout_commit() {
         return 1
     fi
 
-    local commit
-    commit=$(jq -r '.commit_version // empty' "$metadata_file")
+    local commit=""
+    if [ -n "$BUILD_COMMIT_OVERRIDE" ]; then
+        commit="$BUILD_COMMIT_OVERRIDE"
+    else
+        commit=$(jq -r '.commit_version // empty' "$metadata_file")
+    fi
 
     if [ -z "$commit" ]; then
-        echo -e "${ERROR} No commit_version found in metadata.json"
+        echo -e "${ERROR} No build commit could be resolved"
         return 1
     fi
 
@@ -353,7 +468,12 @@ apply_security_patch() {
 # Apply vulnerability patch for synthetic vuln builds
 apply_vulnerability_patch() {
     local vuln_id="$1"
-    local patch_file="$APP_DIR/synthetic_vulnerabilities/$vuln_id/vulnerability.patch"
+    local vuln_dir
+    vuln_dir="$(resolve_vuln_dir "$vuln_id")" || {
+        echo -e "${ERROR} Vulnerability directory not found for $vuln_id"
+        return 1
+    }
+    local patch_file="$vuln_dir/vulnerability.patch"
     apply_patch "$patch_file" "vulnerability.patch"
 }
 
@@ -394,9 +514,9 @@ build_and_package() {
             -dname "CN=MobileCyBench, OU=Test, O=Test, L=Test, S=Test, C=US"
     fi
 
-    # Disable Gradle build cache for vuln builds to prevent stale cached
+    # Disable Gradle build cache for patched builds to prevent stale cached
     # compilation outputs from a prior clean build being reused.
-    if [[ -n "$VULN_ID" ]]; then
+    if [[ -n "$VULN_ID" || -n "$HARDENED" || -n "$HARDENED_PATCH_PATH" ]]; then
         export GRADLE_EXTRA_ARGS="--no-build-cache"
     else
         export GRADLE_EXTRA_ARGS=""
@@ -434,9 +554,9 @@ build_and_package() {
     # Determine output path (vuln/hardened builds go in subdirectory)
     local output_path
     if [[ -n "$VULN_ID" ]]; then
-        mkdir -p "$OUTPUT_DIR/$VULN_ID"
-        output_path="$OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
-    elif [[ -n "$HARDENED" ]]; then
+        mkdir -p "$OUTPUT_DIR/$VULN_OUTPUT_NAME"
+        output_path="$OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+    elif [[ -n "$HARDENED" || -n "$HARDENED_PATCH_PATH" ]]; then
         mkdir -p "$OUTPUT_DIR/hardened"
         output_path="$OUTPUT_DIR/hardened/${APP_NAME}.apk"
     else
@@ -463,26 +583,47 @@ main() {
     echo -e "${INFO} APK Build Wrapper"
     echo -e "${INFO} =================================="
     echo -e "${INFO} App: $APP_NAME"
+    if [ -n "$BUILD_COMMIT_OVERRIDE" ]; then
+        echo -e "${INFO} Commit override: $BUILD_COMMIT_OVERRIDE"
+    fi
 
     # Validate mutually exclusive flags
-    if [[ -n "$VULN_ID" && -n "$HARDENED" ]]; then
-        echo -e "${ERROR} --vuln and --hardened are mutually exclusive"
+    local mode_count=0
+    [[ -n "$VULN_ID" ]] && mode_count=$((mode_count + 1))
+    [[ -n "$HARDENED" ]] && mode_count=$((mode_count + 1))
+    [[ -n "$HARDENED_PATCH_PATH" ]] && mode_count=$((mode_count + 1))
+    if [ "$mode_count" -gt 1 ]; then
+        echo -e "${ERROR} --vuln, --hardened, and --hardened-patch are mutually exclusive"
         exit 1
     fi
 
     if [ -n "$VULN_ID" ]; then
-        echo -e "${INFO} Output: $OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
+        echo -e "${INFO} Output: $OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
         echo -e "${INFO} Mode: Vulnerable APK build ($VULN_ID)"
 
         # Validate vulnerability directory exists
-        local vuln_dir="$APP_DIR/synthetic_vulnerabilities/$VULN_ID"
-        if [ ! -d "$vuln_dir" ]; then
-            echo -e "${ERROR} Vulnerability directory not found: $vuln_dir"
+        local vuln_dir
+        vuln_dir="$(resolve_vuln_dir "$VULN_ID")" || {
+            echo -e "${ERROR} Vulnerability directory not found or ambiguous for: $VULN_ID"
             exit 1
-        fi
+        }
 
         if [ ! -f "$vuln_dir/vulnerability.patch" ]; then
             echo -e "${ERROR} vulnerability.patch not found in $vuln_dir"
+            exit 1
+        fi
+    elif [ -n "$HARDENED_PATCH_PATH" ]; then
+        echo -e "${INFO} Output: $OUTPUT_DIR/hardened/${APP_NAME}.apk"
+        echo -e "${INFO} Mode: Hardened APK build (explicit patch)"
+        echo -e "${INFO} Patch: $HARDENED_PATCH_PATH"
+
+        # Resolve to absolute path
+        if [[ "$HARDENED_PATCH_PATH" != /* ]]; then
+            HARDENED_PATCH_PATH="$(cd "$(dirname "$HARDENED_PATCH_PATH")" && pwd)/$(basename "$HARDENED_PATCH_PATH")"
+        fi
+
+        if [ ! -f "$HARDENED_PATCH_PATH" ]; then
+            echo -e "${ERROR} Patch file not found: $HARDENED_PATCH_PATH"
             exit 1
         fi
     elif [ -n "$HARDENED" ]; then
@@ -531,7 +672,32 @@ main() {
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Vulnerable APK build completed!"
-        echo -e "${SUCCESS} Output: $OUTPUT_DIR/$VULN_ID/${APP_NAME}.apk"
+        echo -e "${SUCCESS} Output: $OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        echo -e "${SUCCESS} =================================="
+    elif [ -n "$HARDENED_PATCH_PATH" ]; then
+        # Hardened build with explicit patch file
+
+        # Step 3: Apply the provided patch
+        if ! apply_patch "$HARDENED_PATCH_PATH" "hardened patch"; then
+            echo -e "${ERROR} Failed to apply hardened patch"
+            checkout_commit || true
+            exit 1
+        fi
+
+        # Step 4: Build, sign, and package
+        if ! build_and_package; then
+            echo -e "${ERROR} Build failed"
+            checkout_commit || true
+            exit 1
+        fi
+
+        # Step 5: Restore clean codebase state
+        echo -e "${INFO} Restoring clean codebase state..."
+        checkout_commit || true
+
+        echo -e "${SUCCESS} =================================="
+        echo -e "${SUCCESS} Hardened APK build completed!"
+        echo -e "${SUCCESS} Output: $OUTPUT_DIR/hardened/${APP_NAME}.apk"
         echo -e "${SUCCESS} =================================="
     elif [ -n "$HARDENED" ]; then
         # Hardened build — apply security.patch

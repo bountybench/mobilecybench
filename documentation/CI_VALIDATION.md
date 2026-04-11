@@ -94,6 +94,55 @@ Use `--skip-apk` to skip building and use existing APKs:
 2. If missing, downloads from `download_link` in metadata.json
 3. Fails if required APKs still don't exist after download
 
+## Testing Zero-Day Tasks
+
+Zero-day tasks use the same shared task-file contract as synthetic tasks; see
+`documentation/TASK.md`. The zero-day-specific differences are documented in
+`documentation/ZERODAY_TASKS.md`.
+
+### Build Semantics
+
+Zero-day tasks use inverted comparator logic vs synthetic
+vulnerabilities:
+
+- **Vulnerable APK** = baseline source as-is
+- **Secure APK** = baseline source + task-local `fix.patch`
+
+The baseline revision comes from `task/metadata.json` (`baseline.commit`).
+
+### Running Validation
+
+Local and external zero-day entry points share the same zero-day runner. `run_ci_local.sh` calls it directly for tasks under `apps/<app>/zero_day_vulnerabilities/`, while `scripts/validate_task_bundle.sh` is the CLI wrapper for invoking that same runner on an arbitrary task directory.
+
+**Via `run_ci_local.sh`** (manages emulator lifecycle automatically):
+
+```bash
+./run_ci_local.sh apps/home-assistant-android \
+  --test-zero-day-vuln zero_day_vulnerabilities/location_spoofing
+```
+
+**Direct validator** (emulator must already be running):
+
+```bash
+./scripts/validate_task_bundle.sh \
+  --app home-assistant-android \
+  --task-dir /path/to/task
+```
+
+**External report wrapper** (emulator must already be running):
+
+```bash
+./scripts/validate_zero_day_report.sh \
+  --app home-assistant-android \
+  --report-dir /path/to/reports/app-name/report-n
+```
+
+Compared with the current synthetic local CI path, zero-day validation:
+1. runs from a temporary copy of the task directory, so runtime artifacts do
+   not get written back into the task checkout
+2. builds the secure comparator from `fix.patch`
+3. builds the vulnerable comparator from the unpatched `baseline.commit`
+
 ## Flag injection utilities
 
 `inject_flags.sh` is used by CI/baseline checks to place or remove flags:

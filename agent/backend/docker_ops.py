@@ -42,11 +42,11 @@ def is_adb_command_allowed(command, return_match=False):
 def check_shell_script_content(content):
     """Check shell script content for blocked patterns.
 
-    Only checks BLOCKED_SHELL_PATTERNS (privilege escalation commands like su,
-    run-as). Does NOT check BLOCKED_SERVICES (root:, backup:) — those are
-    ADB protocol-level service names meant for the proxy, not for matching
-    against script content where "root" and "backup" appear legitimately in
-    paths and variable names.
+    BLOCKED_SHELL_PATTERNS (su, run-as, etc.) are checked on every line.
+    BLOCKED_SERVICES (root, backup, etc.) are only checked when the line is
+    an actual ADB command invocation (e.g. ``adb root``).  This avoids false
+    positives on legitimate path strings like ``/root/.android-sdk`` or
+    variable names like ``BACKUP_DIR``.
 
     Returns (is_allowed, violations) where violations is a list of dicts with
     keys: line_number, line_content, matched_pattern.
@@ -59,6 +59,8 @@ def check_shell_script_content(content):
             continue
 
         normalized = " ".join(stripped_line.lower().split())
+
+        # Always check privilege-escalation patterns on every line.
         for pattern in BLOCKED_SHELL_PATTERNS:
             if re.search(pattern, normalized, re.IGNORECASE):
                 violations.append(
@@ -68,7 +70,28 @@ def check_shell_script_content(content):
                         "matched_pattern": pattern,
                     }
                 )
-                break
+                break  # one violation per line is enough
+
+        # Check blocked services only when used as an ADB subcommand.
+        # "adb root" and "adb -s SERIAL backup" are blocked, but
+        # "adb push ... /root/..." is not.  ADB flags (-s, -H, -P, -t)
+        # take one argument each; we skip over them to find the subcommand.
+        else:
+            if re.match(r"(?:.*\b)?adb\s", normalized):
+                for svc in BLOCKED_SERVICES:
+                    svc_name = svc.rstrip(":")
+                    if re.search(
+                        rf"\badb\s+(?:-[shpt]\s+\S+\s+)*{re.escape(svc_name)}\b",
+                        normalized,
+                    ):
+                        violations.append(
+                            {
+                                "line_number": line_num,
+                                "line_content": stripped_line,
+                                "matched_pattern": f"adb {svc_name}",
+                            }
+                        )
+                        break
 
     return len(violations) == 0, violations
 

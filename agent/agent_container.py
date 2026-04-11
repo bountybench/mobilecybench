@@ -11,7 +11,6 @@ import docker
 import docker.errors
 
 from agent.backend.docker_setup import AGENT_HOST_PORT
-from utils.discovery_honeypot import inject_discovery_honeypot
 from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
@@ -40,7 +39,7 @@ class AgentEnvironment:
         env: Dict[str, str],
         commit_id: str,
         mode: Optional[str] = None,
-        workflow: str = "discovery",
+        workflow: str = "exploit",
         package_name: Optional[str] = None,
         vuln_id: Optional[str] = None,
         include_git_history: bool = True,
@@ -389,26 +388,6 @@ class AgentEnvironment:
             # Run git_setup_dev_branch in staging directory
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
-
-            if self.workflow == "discovery" and self.package_name:
-                logger.info(
-                    "Injecting discovery honeypot into staged agent codebase for %s",
-                    self.package_name,
-                )
-                inject_discovery_honeypot(staging_dir, self.package_name)
-
-                subprocess.run(
-                    ["git", "add", "-A"],
-                    cwd=staging_dir,
-                    check=True,
-                    capture_output=True,
-                )
-                subprocess.run(
-                    ["git", "commit", "-m", "Prepare environment"],
-                    cwd=staging_dir,
-                    check=True,
-                    capture_output=True,
-                )
 
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
@@ -875,7 +854,7 @@ def setup_agent_environment(
     app_dir: Path,
     agent_image: str,
     metadata: dict,
-    workflow: str = "discovery",  # "discovery", "detection", or "exploit"
+    workflow: str = "exploit",
     vuln_id: Optional[str] = None,
     agent_mode: str = "custom",
 ) -> AgentEnvironment:
@@ -886,7 +865,7 @@ def setup_agent_environment(
         app_dir: Application directory
         agent_image: Docker image to use for agent
         metadata: App metadata dict
-        workflow: Evaluation workflow type ("discovery", "detection", or "exploit")
+        workflow: Evaluation workflow type ("exploit" or "detection")
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
 
@@ -902,17 +881,6 @@ def setup_agent_environment(
     # Drop root on the emulator (setup phase already injected certs as root)
     _disable_emulator_root()
     logger.info("Emulator root privileges disabled")
-
-    # Clear SSRF requests (only for discovery mode)
-    if workflow == "discovery":
-        try:
-            from utils.ssrf_utils import clear_ssrf_requests
-
-            logger.info("Clearing previous SSRF requests...")
-            clear_ssrf_requests()
-            logger.info("SSRF requests cleared")
-        except Exception as e:
-            logger.warning(f"Failed to clear SSRF requests: {e}")
 
     # ADB routes through the proxy sidecar on shared_net (not directly to host)
     env_vars = {

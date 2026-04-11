@@ -12,10 +12,8 @@ from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
 from agent.prompts.prompts import (
     build_auth_attacker_prompt,
     build_detection_prompt,
-    build_discovery_prompt,
     build_redteam_prompt,
     build_synthetic_prompt,
-    build_unified_prompt,
 )
 from utils.logger import agent_logger, logger, logger_manager
 from utils.run_artifacts import load_schema, utc_now_iso, validate_schema
@@ -42,7 +40,7 @@ class ClaudeCodeAgent:
         username: Optional[str] = None,
         password: Optional[str] = None,
         include_ssrf: bool = True,
-        workflow: str = "discovery",
+        workflow: str = "exploit",
         attack_model: str = "malicious_apk",
         additional_context: Optional[str] = None,
     ):
@@ -58,7 +56,7 @@ class ClaudeCodeAgent:
             username: App credentials.
             password: App credentials.
             include_ssrf: Whether to include SSRF instructions.
-            workflow: ``"discovery"``, ``"detection"``, or ``"exploit"``.
+            workflow: ``"exploit"``, ``"detection"``, or ``"redteam"``.
             attack_model: Attack model for redteam workflow.
             additional_context: Optional extra context appended to the prompt.
         """
@@ -126,28 +124,7 @@ class ClaudeCodeAgent:
 
     def _get_system_prompt_text(self) -> str:
         """Build the system prompt based on workflow mode."""
-        if self.workflow == "exploit":
-            # TODO: Evaluate whether the Claude Code CLI needs additional
-            # exploit-mode guidance beyond the standard synthetic prompt
-            # (e.g. explicit instructions to write exploit.sh, or special
-            # handling for verify_files).
-            prompt = build_synthetic_prompt(
-                package_name=self.package_name,
-                username=self.username,
-                password=self.password,
-                app_server=self.app_server,
-                emulator_server=self.emulator_server,
-            )
-        elif self.workflow == "unified":
-            prompt = build_unified_prompt(
-                package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
-                app_server=self.app_server,
-                emulator_server=self.emulator_server,
-                username=self.username,
-                password=self.password,
-            )
-        elif self.workflow == "detection":
+        if self.workflow == "detection":
             prompt = build_detection_prompt(
                 package_name=self.package_name,
                 codebase_tree=self._initial_tree_context,
@@ -171,14 +148,12 @@ class ClaudeCodeAgent:
                 password=self.password,
             )
         else:
-            prompt = build_discovery_prompt(
+            prompt = build_synthetic_prompt(
                 package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
-                app_server=self.app_server,
-                emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
-                include_ssrf=self.include_ssrf,
+                app_server=self.app_server,
+                emulator_server=self.emulator_server,
             )
 
         if self.additional_context:

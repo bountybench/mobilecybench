@@ -57,9 +57,7 @@ class Workflow(ABC):
 
         agent_mode = self.config.agent_mode
         workflow = self.config.workflow
-        include_ssrf = workflow == "discovery" and bool(
-            self.metadata.get("container_names")
-        )
+        include_ssrf = False
 
         additional_context = self.metadata.get("additional_info")
 
