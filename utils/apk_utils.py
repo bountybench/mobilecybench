@@ -10,7 +10,10 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
+from utils.command_executor import CommandExecutor
+
 logger = logging.getLogger("MobileCyBench.apk_utils")
+timeout_s = 600
 
 # Matches: https://github.com/<owner>/<repo>/releases/download/<tag>/<filename>
 _RELEASE_URL_RE = re.compile(
@@ -62,6 +65,7 @@ def download_apk(
                 "--clobber",
             ],
             check=True,
+            timeout=timeout_s,
         )
         tmp_path = Path(tmpdir) / filename
         if not tmp_path.exists():
@@ -164,10 +168,10 @@ def check_releases(app_names: list[str], project_root: Path) -> dict[str, str]:
             continue
         owner, repo, tag, _ = match.groups()
         try:
-            result = subprocess.run(
-                ["gh", "release", "view", tag, "--repo", f"{owner}/{repo}"],
+            result = CommandExecutor().run(
+                f"gh release view {tag} --repo {owner}/{repo}",
                 capture_output=True,
-                text=True,
+                timeout=timeout_s,
             )
             results[name] = "ok" if result.returncode == 0 else "missing"
         except FileNotFoundError:

@@ -15,6 +15,7 @@
   "agent_image": "cybench/mobilecybench:latest",
   "emulator_display": "headed",
   "emulator_backend": "native",
+  "timeout_ms": 600000,
   "allowed_tools": [
     "execute_command",
     "get_current_ui_state",
