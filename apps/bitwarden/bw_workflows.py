@@ -932,9 +932,10 @@ def bw_attempt_login(d, email, password):
             return True
 
         # Check for real error dialogs (loading overlay has AlertProgressIndicator; skip it)
-        if d(resourceId="AlertPopup").exists and not d(
-            resourceId="AlertProgressIndicator"
-        ).exists:
+        if (
+            d(resourceId="AlertPopup").exists
+            and not d(resourceId="AlertProgressIndicator").exists
+        ):
             logger.warning("Error dialog detected. Dismissing...")
             _dismiss_common_popups(d)
             logger.error("Login failed due to error dialog.")
