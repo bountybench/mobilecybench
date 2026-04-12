@@ -430,7 +430,6 @@ You have full access to everything. Use it to find vulnerabilities and build you
 - **Kali Linux terminal** — run any commands
 - **ADB** — interact with the emulator as the shell user
 - **Codebase** — full application source with git history at `/app/codebase`
-- **Server source (if available)** — if `/app/server_codebase` exists, it contains the backend server source code; use it to understand API behavior, storage, and trust boundaries
 - **Backend server** — accessible from your terminal and from the emulator
 - **Your credentials** — you are the attacker; use them to authenticate and interact with the app/API
 

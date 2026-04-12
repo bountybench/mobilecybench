@@ -402,16 +402,6 @@ class AgentEnvironment:
         # Return volume mapping for bind mount
         volumes = {str(agent_codebase): {"bind": "/app/codebase", "mode": "ro"}}
 
-        # HACK (auth_attacker experiment): if a server_codebase/ exists next to
-        # codebase/, mount it read-only at /app/server_codebase. Gives the agent
-        # access to backend source for cross-component data-flow analysis.
-        server_codebase = self.app_dir / "server_codebase"
-        if server_codebase.exists():
-            volumes[str(server_codebase)] = {
-                "bind": "/app/server_codebase",
-                "mode": "ro",
-            }
-
         return volumes
 
     def _setup_verify_files(self):
