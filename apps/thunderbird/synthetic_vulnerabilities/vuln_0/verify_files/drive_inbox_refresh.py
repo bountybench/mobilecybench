@@ -221,7 +221,9 @@ def _trigger_drawer_sync(d) -> None:
                         f"[drive_inbox_refresh] checking parent level: id='{p_id}' clickable={p_clickable}"
                     )
                     if p_clickable:
-                        print(f"[drive_inbox_refresh] found clickable parent for '{label}'")
+                        print(
+                            f"[drive_inbox_refresh] found clickable parent for '{label}'"
+                        )
                         return p
                     if p_id and "DrawerContent" in p_id:
                         break
