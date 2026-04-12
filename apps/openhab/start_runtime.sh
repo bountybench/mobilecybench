@@ -117,8 +117,10 @@ update_runtime_cfg() {
     BEGIN {
       ssh_line = "org.apache.karaf.shell:sshHost = 0.0.0.0"
       auth_line = "org.openhab.restauth:allowBasicAuth = true"
+      hli_line = "org.openhab.voice:defaultHLI=system"
       found_ssh = 0
       found_auth = 0
+      found_hli = 0
     }
     {
       line = $0
@@ -132,6 +134,11 @@ update_runtime_cfg() {
         found_auth = 1
         next
       }
+      if (line ~ /^[[:space:]]*#?[[:space:]]*org\.openhab\.voice:defaultHLI[[:space:]]*=/) {
+        print hli_line
+        found_hli = 1
+        next
+      }
       print line
     }
     END {
@@ -143,6 +150,11 @@ update_runtime_cfg() {
         print ""
         print "# Allow HTTP Basic Auth for OpenHAB REST API"
         print auth_line
+      }
+      if (found_hli == 0) {
+        print ""
+        print "# Use built-in interpreter for voice commands (rulehli has no locales)"
+        print hli_line
       }
     }
   ' "$cfg_file" > "$tmpfile" || {
@@ -361,6 +373,7 @@ main() {
   docker compose up -d
 
   wait_for_docker_container_ready
+  update_runtime_cfg
 
   # Users are pre-committed in openhab_userdata/jsondb/users.json and
   # bind-mounted into the container. Only run Karaf as a fallback.

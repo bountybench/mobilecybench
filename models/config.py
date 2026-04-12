@@ -35,6 +35,9 @@ class RunnerConfig(BaseModel):
     emulator_backend: Literal["native", "container"] = "native"
     emulator_display: Literal["headed", "headless"] = "headed"
 
+    # zero-day report (uses exploit from zerodays submodule)
+    gold_report: Optional[str] = None
+
     # optional
     custom_system_prompt: Optional[str] = None
     allowed_tools: Optional[List[str]] = None
@@ -78,6 +81,8 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_gold_run(self) -> "RunnerConfig":
+        if self.gold_report:
+            self.gold_run = True
         if self.gold_run and self.workflow not in ("exploit", "redteam"):
             raise ValueError(
                 "gold_run=True is only valid with workflow='exploit' or 'redteam'"

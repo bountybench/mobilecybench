@@ -107,8 +107,20 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
 
     For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
     """
-    if workflow.config.workflow == "redteam":
+    if workflow.config.gold_report:
+        gold_dir = (
+            Path(__file__).resolve().parent
+            / "zerodays"
+            / "reports"
+            / workflow.app_name
+            / workflow.config.gold_report
+            / "exploit"
+        )
+        # attack_model already resolved from report.json in run()
+        attack_model = workflow.config.attack_model
+    elif workflow.config.workflow in ("malicious_apk", "redteam"):
         gold_dir = workflow.app_dir / "reference_exploit"
+        attack_model = workflow.config.attack_model
     else:
         gold_dir = (
             workflow.app_dir
@@ -116,6 +128,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
             / workflow.vuln_id
             / "exploit_files"
         )
+        attack_model = None
     if not gold_dir.exists():
         raise FileNotFoundError(f"Gold exploit directory not found: {gold_dir}")
 
@@ -123,12 +136,8 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     if not container:
         raise RuntimeError("Kali container not running — cannot copy exploit files")
 
-    # For malicious_apk redteam, gold exploit is an APK project.
-    # For auth_attacker redteam (and other workflows), it must contain exploit.sh.
-    if (
-        workflow.config.workflow == "redteam"
-        and workflow.config.attack_model == "malicious_apk"
-    ):
+    # Validate exploit layout per attack model.
+    if attack_model == "malicious_apk":
         if not (gold_dir / "exploit_apk").exists():
             raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
     else:
@@ -139,6 +148,21 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", dereference=True) as tar:
         tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
+        # Inject build script from template — single source of truth.
+        # Gold exploit dirs ship exploit-specific files only (Exploit.java,
+        # AndroidManifest.xml, ExploitRunner.java, MainActivity.java).
+        if attack_model == "malicious_apk":
+            build_script = (
+                Path(__file__).resolve().parent
+                / "templates"
+                / "malicious_apk"
+                / "build_exploit_apk.sh"
+            )
+            if build_script.exists():
+                tar.add(
+                    str(build_script),
+                    arcname="agent_exploit/exploit_apk/build_exploit_apk.sh",
+                )
     buf.seek(0)
     container.put_archive("/app", buf)
     logger.info("Gold exploit files copied into container at /app/agent_exploit/")
@@ -288,10 +312,6 @@ def run(
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
-    workflow = create_workflow(config, app_name, project_root)
-    workflow_type = type(workflow).__name__
-    logger.info(f"Created {workflow_type} for app: {app_name}")
-
     # Start experiment timing with the shared session ID
     run_id = logger_manager.get_run_id()
     logger_manager.update_latest_symlink()
@@ -300,6 +320,7 @@ def run(
     timing_start_idx = len(time_tracker.llm_calls)
     time_tracker.start_experiment(app_name, run_id=run_id)
 
+    workflow = None
     run_result: dict = normalize_agent_result(None)
     evaluation: dict = {}
     outcome = "failure"
@@ -307,6 +328,43 @@ def run(
     exit_code = 1
 
     try:
+        # gold_report's report.json is the source of truth for attack_model.
+        # Override config before creating the workflow so the correct ops class
+        # (MaliciousApkOps vs AuthAttackerOps) is selected.
+        if config.gold_report:
+            report_json = (
+                project_root
+                / "zerodays"
+                / "reports"
+                / app_name
+                / config.gold_report
+                / "report.json"
+            )
+            if not report_json.exists():
+                raise FileNotFoundError(
+                    f"report.json not found at {report_json} "
+                    f"(required for gold_report={config.gold_report})"
+                )
+            meta = json.loads(report_json.read_text())
+            report_attack_model = meta.get("attack_model")
+            valid_models = {"malicious_apk", "auth_attacker"}
+            if report_attack_model not in valid_models:
+                raise ValueError(
+                    f"attack_model={'missing' if report_attack_model is None else repr(report_attack_model)} "
+                    f"in {report_json} (must be one of {valid_models})"
+                )
+            if report_attack_model != config.attack_model:
+                logger.info(
+                    "Gold report overrides attack_model: %s -> %s",
+                    config.attack_model,
+                    report_attack_model,
+                )
+                config.attack_model = report_attack_model
+
+        workflow = create_workflow(config, app_name, project_root)
+        workflow_type = type(workflow).__name__
+        logger.info(f"Created {workflow_type} for app: {app_name}")
+
         logger.info("Validating arguments...")
         workflow.validate_arguments()
         logger.info("Arguments validated")
@@ -393,7 +451,7 @@ def run(
         logger.info("Cleaning up resources...")
 
         # Capture Logcat before stopping emulator
-        if workflow.emulator:
+        if workflow and workflow.emulator:
             try:
                 logcat_path = logger_manager.get_logs_dir() / "android_system.log"
                 logger.info(f"Capturing Android Logcat to {logcat_path}...")
@@ -404,10 +462,11 @@ def run(
             except Exception as e:
                 logger.warning(f"Failed to capture logcat: {e}")
 
-        try:
-            workflow.cleanup()
-        except Exception as cleanup_error:
-            logger.warning(f"Cleanup error: {cleanup_error}")
+        if workflow:
+            try:
+                workflow.cleanup()
+            except Exception as cleanup_error:
+                logger.warning(f"Cleanup error: {cleanup_error}")
 
         write_run_summary(
             project_root=project_root,

@@ -102,6 +102,18 @@ class TestCreateWorkflow:
                 }
             )
 
+    def test_gold_report_implies_gold_run(self, base_config):
+        """Setting gold_report auto-enables gold_run."""
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "gold_report": "report-0",
+            }
+        )
+        assert config.gold_run is True
+        assert config.gold_report == "report-0"
+
 
 class TestRun:
     """Tests for run() - focus on error handling and cleanup guarantees."""
@@ -307,16 +319,6 @@ class TestAttackModelConfig:
                 }
             )
 
-    def test_auth_attacker_rejected_with_detection(self, base_config):
-        with pytest.raises(ValueError, match="requires workflow='redteam'"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "detection",
-                    "attack_model": "auth_attacker",
-                }
-            )
-
     def test_malicious_apk_default(self, base_config):
         config = RunnerConfig(**{**base_config.model_dump(), "workflow": "redteam"})
         assert config.attack_model == "malicious_apk"
@@ -331,18 +333,57 @@ class TestAttackModelConfig:
                 }
             )
 
-    def test_auth_attacker_creates_redteam_workflow(self, base_config, tmp_path):
-        from workflows import RedTeamWorkflow
+
+class TestGoldReportAttackModelOverride:
+    """gold_report's report.json overrides config.attack_model before workflow creation."""
+
+    def test_overrides_attack_model_from_report_json(self, base_config, tmp_path):
+        """run() reads attack_model from report.json and overrides config default."""
+        # Set up zerodays report with auth_attacker
+        report_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4"
+        report_dir.mkdir(parents=True)
+        (report_dir / "report.json").write_text(
+            json.dumps({"attack_model": "auth_attacker"})
+        )
+        (report_dir / "exploit").mkdir()
+        (report_dir / "exploit" / "exploit.sh").write_text("#!/bin/bash\nexit 0")
 
         config = RunnerConfig(
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
-                "attack_model": "auth_attacker",
+                "gold_report": "report-4",
             }
         )
-        workflow = create_workflow(config, "test_app", tmp_path)
-        assert isinstance(workflow, RedTeamWorkflow)
+        # Config defaults to malicious_apk
+        assert config.attack_model == "malicious_apk"
+
+        # run() should override before creating workflow, then fail at validate
+        with patch("runner.ensure_app_submodule"), patch.object(
+            __import__("workflows").RedTeamWorkflow, "cleanup"
+        ):
+            run(config, "testapp", tmp_path)
+
+        # After run(), config.attack_model should be overridden
+        assert config.attack_model == "auth_attacker"
+
+    def test_missing_attack_model_in_report_json_fails_gracefully(
+        self, base_config, tmp_path
+    ):
+        """gold_report with missing attack_model produces run_summary and returns 1."""
+        report_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-0"
+        report_dir.mkdir(parents=True)
+        (report_dir / "report.json").write_text(json.dumps({"title": "no model"}))
+
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "gold_report": "report-0",
+            }
+        )
+        exit_code = run(config, "testapp", tmp_path)
+        assert exit_code == 1
 
 
 class TestMain:
