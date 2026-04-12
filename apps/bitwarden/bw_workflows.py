@@ -179,6 +179,14 @@ def _is_login_screen(d) -> bool:
     )
 
 
+def _is_vault_unlock_screen(d) -> bool:
+    return (
+        d(resourceId="MasterPasswordEntry").exists
+        and d(resourceId="UnlockVaultButton").exists
+        and d(resourceId="UserAndEnvironmentDataLabel").exists
+    )
+
+
 def _open_account_switcher(d, expected_account_email: str | None = None) -> bool:
     account_button = d(resourceId="CurrentActiveAccount")
     if not account_button.exists:
@@ -835,10 +843,7 @@ def bw_attempt_login(d, email, password):
             except Exception as exc:
                 logger.warning("Could not pre-logout from unlocked state: %s", exc)
 
-        if (
-            d(resourceId="MasterPasswordEntry").exists
-            and d(resourceId="NotYouLabel").exists
-        ):
+        if _is_login_screen(d):
             label_text = ""
             if d(resourceId="LoggingInAsLabel").exists:
                 try:
@@ -885,10 +890,22 @@ def bw_attempt_login(d, email, password):
         wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
 
         # --- Submitting and Verifying Outcome ---
-        logger.info("Clicking 'Unlock' to log in...")
+        submit_button = None
+        if _is_login_screen(d):
+            submit_button = d(resourceId="LogInWithMasterPasswordButton")
+        elif _is_vault_unlock_screen(d):
+            submit_button = d(resourceId="UnlockVaultButton")
+
+        if submit_button is None:
+            logger.error(
+                "Master password is visible, but neither LoginScreen nor VaultUnlockScreen submit controls were detected."
+            )
+            return False
+
+        logger.info("Submitting authentication on the current Bitwarden screen...")
         if not click_then_expect(
             d,
-            d(resourceId="LogInWithMasterPasswordButton"),
+            submit_button,
             lambda: d(resourceId="VaultTab").exists
             or d(resourceId="AddItemButton").exists
             or d(resourceId="AlertPopup").exists
