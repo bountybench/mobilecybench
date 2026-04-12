@@ -3,30 +3,62 @@
 
 This is intentionally aligned to the vendored Thunderbird code in this repo:
 
-- `MessageListFragment.initializeSwipeRefreshLayout()` does *not* make the
-  message-list pull-to-refresh path call `checkMail()` for a normal
-  single-account local inbox. In that state `isCheckMailSupported` is false,
-  so swiping the inbox can be a no-op for sync.
-- `MessageList.onOptionsItemSelected(android.R.id.home)` opens the
-  `NavigationDrawer` while the message list is displayed.
+- `apps/thunderbird/codebase/legacy/ui/legacy/src/main/java/com/fsck/k9/activity/MessageList.kt`
+  enables the action bar home affordance and handles `android.R.id.home` by
+  opening the navigation drawer.
 - Both drawer implementations wrap their content in `PullToRefreshBox` with
-  `onRefresh = OnSyncAccount`.
+  `onRefresh = OnSyncAccount`, and expose the drawer root via
+  `testTagAsResourceId("DrawerContent")`.
+- The drawer action label is defined in the drawer feature resources as
+  `Sync all accounts` and wired in
+  `apps/thunderbird/codebase/feature/navigation/drawer/dropdown/src/main/kotlin/net/thunderbird/feature/navigation/drawer/dropdown/ui/setting/AccountSettingList.kt`
+  and
+  `apps/thunderbird/codebase/feature/navigation/drawer/siderail/src/main/kotlin/net/thunderbird/feature/navigation/drawer/siderail/ui/account/AccountList.kt`.
 - `DrawerViewModel.onSyncAccount()` calls
   `messagingController.checkMail(account, ignoreLastCheckedTime=true, ...)`,
   which is the real UI-backed sync path for the selected account.
 
-So the correct automation target is the drawer refresh gesture, not the inbox
-list refresh gesture.
+So the correct automation target is the drawer sync action, backed by the app's
+own UI helper layer and real selectors, not the inbox list refresh gesture.
 """
+import json
 import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-import uiautomator2 as u2
+REPO_ROOT = Path(__file__).resolve().parents[5]
+APP_DIR = Path(__file__).resolve().parents[3]
+META_JSON = APP_DIR / "metadata.json"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 APP_PKG = os.environ["PKG"]
 ATTEMPT = os.environ.get("TB_REFRESH_ATTEMPT", "?")
+os.environ.setdefault("UI_TARGET_PACKAGE", APP_PKG)
+
+try:
+    _META = json.loads(META_JSON.read_text())
+except Exception:
+    _META = {}
+ACCOUNT_DISPLAY_NAME = os.environ.get(
+    "TB_ACCOUNT_DISPLAY_NAME",
+    _META.get("additional_info", {})
+    .get("account_config", {})
+    .get("display_name", "User A"),
+)
+ACCOUNT_EMAIL = os.environ.get(
+    "TB_ACCOUNT_EMAIL",
+    _META.get("username", "usera@test.com"),
+)
+
+from utils.ui_utils import (  # noqa: E402
+    click_then_expect,
+    initialize_ui_automation,
+    wait_and_click,
+    wait_for_ui_stable,
+)
 
 # Post-sync wait: allow time for IMAP fetch, DB write, and notification posting.
 _POST_SYNC_WAIT_SECS = 20
@@ -63,6 +95,14 @@ def _launch_inbox() -> None:
     )
 
 
+def _ensure_app_foreground(d) -> None:
+    # `monkey` can leave the fake launcher visible on some emulator boots even
+    # when Thunderbird is already installed, so force the app task into the
+    # foreground before waiting for the message list.
+    d.app_start(APP_PKG, stop=True, wait=True, use_monkey=True)
+    wait_for_ui_stable(d)
+
+
 def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
     """Wait until the inbox screen is ready for drawer-based sync automation."""
     msg_list = d(resourceIdMatches=_rid("message_list"))
@@ -77,12 +117,17 @@ def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
     )
 
 
+def _drawer_content(d):
+    return d(resourceIdMatches=_rid("DrawerContent"))
+
+
 def _drawer_is_open(d) -> bool:
-    drawer = d(resourceIdMatches=_rid("navigation_drawer_content"))
+    drawer = _drawer_content(d)
     if not drawer.exists:
         return False
 
-    bounds = drawer.info.get("bounds") or {}
+    info = drawer.info or {}
+    bounds = info.get("visibleBounds") or info.get("bounds") or {}
     left = int(bounds.get("left", -1))
     right = int(bounds.get("right", -1))
     return left >= 0 and right > left
@@ -92,9 +137,25 @@ def _open_navigation_drawer(d, timeout: float = 15.0) -> None:
     if _drawer_is_open(d):
         return
 
+    # The actual drawer opener is the app bar home/up affordance from
+    # MessageList.kt, but its accessibility node is framework-generated rather
+    # than app-defined. Try the most stable selectors first, then the exposed
+    # content description labels, then the edge-swipe fallback.
+    for name in ("home", "up"):
+        try:
+            nav = d(resourceIdMatches=rf"(^|.*:)id/{name}$")
+            if click_then_expect(d, nav, _drawer_is_open, timeout=5):
+                return
+        except Exception:
+            pass
+        if _drawer_is_open(d):
+            return
+
     for description in ("Navigate up", "Open navigation drawer"):
         try:
-            d(descriptionContains=description).click_exists(timeout=2.0)
+            nav = d(description=description)
+            if click_then_expect(d, nav, _drawer_is_open, timeout=5):
+                return
         except Exception:
             pass
         if _drawer_is_open(d):
@@ -104,7 +165,8 @@ def _open_navigation_drawer(d, timeout: float = 15.0) -> None:
     top_y = max(int(height * 0.15), 1)
 
     # MessageList uses DrawerLayout and toggles the drawer from the toolbar home
-    # affordance. An edge swipe is the least locale-dependent way to expose it.
+    # affordance. An edge swipe remains a last-resort fallback when the app bar
+    # navigation button is not exposed by uiautomator2 on this build.
     d.swipe(1, top_y, int(width * 0.55), top_y, steps=40)
 
     end = time.time() + timeout
@@ -116,38 +178,89 @@ def _open_navigation_drawer(d, timeout: float = 15.0) -> None:
     raise RuntimeError(f"navigation drawer did not open; screen={_current_screen(d)}")
 
 
-def _pull_to_refresh_drawer(d) -> None:
-    """Swipe the drawer's PullToRefreshBox to trigger OnSyncAccount.
+def _trigger_drawer_sync(d) -> None:
+    """Trigger the drawer's real sync action using the code-defined label.
 
     Both drawer variants wrap their content in PullToRefreshBox and dispatch
     OnSyncAccount on refresh. DrawerViewModel then calls
     messagingController.checkMail(... ignoreLastCheckedTime=true ...).
     """
-    refresh_box = d(resourceIdMatches=_rid("PullToRefreshBox"))
-    if not refresh_box.exists:
-        raise RuntimeError("drawer PullToRefreshBox not visible before refresh")
 
-    bounds = refresh_box.info.get("bounds") or {}
-    left = int(bounds.get("left", 0))
-    right = int(bounds.get("right", 0))
-    top = int(bounds.get("top", 0))
-    bottom = int(bounds.get("bottom", 0))
+    def _sync_label():
+        return d(text="Sync all accounts")
 
-    if not (right > left and bottom > top):
-        raise RuntimeError(f"invalid drawer refresh bounds: {bounds}")
+    def _show_accounts_label():
+        return d(text="Show accounts")
 
-    mid_x = left + (right - left) // 2
-    start_y = top + max(32, int((bottom - top) * 0.12))
-    end_y = min(bottom - 24, top + int((bottom - top) * 0.72))
-    if end_y <= start_y:
-        raise RuntimeError(f"drawer refresh swipe would be degenerate: {bounds}")
-    d.swipe(mid_x, start_y, mid_x, end_y, steps=50)
+    def _account_selector():
+        for label in (ACCOUNT_DISPLAY_NAME, ACCOUNT_EMAIL):
+            if not label:
+                continue
+            candidate = d(text=label)
+            if candidate.exists:
+                return candidate
+        return None
 
-    time.sleep(_POST_SYNC_WAIT_SECS)
+    def _make_sync_visible() -> bool:
+        sync_label = _sync_label()
+        if sync_label.exists:
+            return True
+
+        show_accounts = _show_accounts_label()
+        if show_accounts.exists:
+            if click_then_expect(
+                d, show_accounts, lambda: _sync_label().exists, timeout=10
+            ):
+                return True
+
+        account_selector = _account_selector()
+        if account_selector is not None:
+            if click_then_expect(
+                d, account_selector, lambda: _sync_label().exists, timeout=10
+            ):
+                return True
+
+        try:
+            d(scrollable=True).scroll.to(text="Sync all accounts")
+        except Exception:
+            pass
+
+        return _sync_label().exists
+
+    if not _make_sync_visible():
+        raise RuntimeError("drawer sync label 'Sync all accounts' not visible")
+
+    sync_label = _sync_label()
+    wait_and_click(d, sync_label, timeout=8)
+    wait_for_ui_stable(d)
+
     print(
-        f"[drive_inbox_refresh] attempt={ATTEMPT} drawer_pull_to_refresh_done=true",
+        f"[drive_inbox_refresh] attempt={ATTEMPT} drawer_sync_label_clicked=true",
         flush=True,
     )
+
+    indicator = d(resourceIdMatches=_rid("PullToRefreshIndicator"))
+    saw_indicator = False
+    indicator_wait_end = time.time() + 10
+    while time.time() < indicator_wait_end:
+        if indicator.exists:
+            saw_indicator = True
+            break
+        time.sleep(0.25)
+
+    if saw_indicator:
+        indicator_clear_end = time.time() + 35
+        while time.time() < indicator_clear_end:
+            if not indicator.exists:
+                break
+            time.sleep(0.25)
+    else:
+        print(
+            f"[drive_inbox_refresh] attempt={ATTEMPT} sync_indicator_absent=true",
+            flush=True,
+        )
+
+    time.sleep(_POST_SYNC_WAIT_SECS)
 
 
 def main() -> int:
@@ -155,7 +268,8 @@ def main() -> int:
         _adb("shell", "am", "force-stop", APP_PKG, check=False)
         time.sleep(1)
         _launch_inbox()
-        d = u2.connect()
+        d = initialize_ui_automation(max_retries=4, retry_delay=2)
+        _ensure_app_foreground(d)
         _wait_for_inbox_ready(d)
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} inbox_ready=true screen={_current_screen(d)}",
@@ -166,7 +280,7 @@ def main() -> int:
             f"[drive_inbox_refresh] attempt={ATTEMPT} drawer_open=true",
             flush=True,
         )
-        _pull_to_refresh_drawer(d)
+        _trigger_drawer_sync(d)
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} sync_complete screen={_current_screen(d)}",
             flush=True,
