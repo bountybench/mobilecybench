@@ -18,7 +18,7 @@ launch_home_assistant() {
 }
 
 seed_home_assistant_config() {
-    log_info "Seeding Home Assistant config (if needed)..."
+    log_info "Seeding Home Assistant config..."
     mkdir -p ./config/.storage
 
     if [ ! -s ./config/configuration.yaml ]; then
@@ -29,13 +29,11 @@ seed_home_assistant_config() {
         [ ! -f "./config/$file" ] && echo "[]" > "./config/$file"
     done
 
-    if [ ! -f ./config/.storage/auth ]; then
-        cp ./seeded-files/demo-auth ./config/.storage/auth
-    fi
-
-    if [ ! -f ./config/.storage/auth_provider.homeassistant ]; then
-        cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
-    fi
+    # Always force-copy auth files to reset server-side state (refresh tokens,
+    # etc.) between gold-run phases. Without this, tokens created during the
+    # vulnerable run persist into the clean run via the bind-mounted config dir.
+    cp ./seeded-files/demo-auth ./config/.storage/auth
+    cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
 
     if [ -f ./seeded-files/seeded-onboarding-file ] && [ ! -f ./config/.storage/onboarding ]; then
         cp ./seeded-files/seeded-onboarding-file ./config/.storage/onboarding

@@ -49,6 +49,7 @@ services:
     container_name: ha-ssrf-listener
     networks:
       - ssrf_net
+      - shared_net
     ports:
       - "127.0.0.1:14378:14378"
     volumes:
