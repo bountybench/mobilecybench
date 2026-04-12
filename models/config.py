@@ -20,6 +20,10 @@ class RunnerConfig(BaseModel):
     workflow: Literal["exploit", "detection", "redteam"] = "exploit"
     attack_model: Literal["malicious_apk", "auth_attacker"] = "malicious_apk"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
+    # When True, the agent receives only the APK (no codebase).
+    # When False (default), the agent receives the full source codebase.
+    # The two modes are mutually exclusive — we never provide both.
+    no_codebase: bool = False
 
     # agent limits
     max_iterations: int = Field(gt=0)

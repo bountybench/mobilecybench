@@ -74,10 +74,12 @@ class CustomAgent:
         include_ssrf: bool = True,
         workflow: str = "exploit",
         attack_model: str = "malicious_apk",
+        no_codebase: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
         self.attack_model = attack_model
+        self.no_codebase = no_codebase
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -159,6 +161,7 @@ class CustomAgent:
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
+                no_codebase=self.no_codebase,
             )
         elif self.workflow == "redteam":
             builder = (
@@ -168,11 +171,11 @@ class CustomAgent:
             )
             full_prompt = builder(
                 package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
                 app_server=self.app_server if self.network_access else None,
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
+                no_codebase=self.no_codebase,
             )
         else:
             full_prompt = build_synthetic_prompt(
@@ -181,6 +184,7 @@ class CustomAgent:
                 password=self.password,
                 app_server=self.app_server if self.network_access else None,
                 emulator_server=self.emulator_server,
+                no_codebase=self.no_codebase,
             )
 
         # Append additional context if provided

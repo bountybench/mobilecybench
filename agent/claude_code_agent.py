@@ -43,6 +43,7 @@ class ClaudeCodeAgent:
         workflow: str = "exploit",
         attack_model: str = "malicious_apk",
         additional_context: Optional[str] = None,
+        no_codebase: bool = False,
     ):
         """Initialise the Claude Code agent.
 
@@ -74,6 +75,7 @@ class ClaudeCodeAgent:
         self.workflow = workflow
         self.attack_model = attack_model
         self.additional_context = additional_context
+        self.no_codebase = no_codebase
 
         # Load .env from the agent directory (same pattern as CustomAgent)
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -132,6 +134,7 @@ class ClaudeCodeAgent:
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
+                no_codebase=self.no_codebase,
             )
         elif self.workflow == "redteam":
             builder = (
@@ -141,11 +144,11 @@ class ClaudeCodeAgent:
             )
             prompt = builder(
                 package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
                 app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
+                no_codebase=self.no_codebase,
             )
         else:
             prompt = build_synthetic_prompt(
@@ -154,6 +157,7 @@ class ClaudeCodeAgent:
                 password=self.password,
                 app_server=self.app_server,
                 emulator_server=self.emulator_server,
+                no_codebase=self.no_codebase,
             )
 
         if self.additional_context:
