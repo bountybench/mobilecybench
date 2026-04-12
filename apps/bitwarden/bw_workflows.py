@@ -1036,7 +1036,9 @@ def bw_attempt_login(d, email, password):
         wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
         if _vault_unlocked_visible(d):
-            logger.info("Vault already visible after password entry; skipping submit tap.")
+            logger.info(
+                "Vault already visible after password entry; skipping submit tap."
+            )
             return True
 
         on_vault_unlock = _is_vault_unlock_screen(d)
