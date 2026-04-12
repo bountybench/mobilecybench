@@ -342,13 +342,31 @@ EOF
 
 create_env_file() {
   local env_file="$SCRIPT_DIR/.env"
+  local state_dir="$SCRIPT_DIR/openhab_userdata/jsondb"
 
   log_info "Creating .env file at $env_file"
 
-  # Use a non-root UID/GID. Inside DinD, id -u returns 0 (root), which
-  # causes the openhab entrypoint to fail when trying to drop privileges.
-  local user_id=9001
-  local group_id=9001
+  local user_id
+  local group_id
+  user_id="$(id -u)"
+  group_id="$(id -g)"
+
+  if [ "$user_id" = "0" ] || [ "$group_id" = "0" ]; then
+    local owner_uid
+    local owner_gid
+    owner_uid="$(stat -c '%u' "$state_dir" 2>/dev/null || stat -f '%u' "$state_dir" 2>/dev/null || printf '0')"
+    owner_gid="$(stat -c '%g' "$state_dir" 2>/dev/null || stat -f '%g' "$state_dir" 2>/dev/null || printf '0')"
+
+    if [ "$owner_uid" != "0" ] && [ "$owner_gid" != "0" ]; then
+      log_warn "Detected root UID/GID from id; using ownership from $state_dir instead"
+      user_id="$owner_uid"
+      group_id="$owner_gid"
+    else
+      log_warn "Detected root UID/GID from id; falling back to openHAB defaults"
+      user_id=9001
+      group_id=9001
+    fi
+  fi
 
   cat > "$env_file" << EOF
 # OpenHAB Docker Environment Variables
