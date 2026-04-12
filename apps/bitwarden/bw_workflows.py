@@ -34,6 +34,7 @@ logger.handlers[:] = [_handler]
 logger.propagate = False
 
 SHORT_WAIT = 5
+NETWORK_WAIT = 30  # network-bound operations (TLS + server round-trip on emulator)
 
 
 def _resource_matches(resource_id: str | None, target: str) -> bool:
@@ -371,7 +372,7 @@ def _configure_self_hosted_environment(d) -> None:
             lambda: _is_landing_screen(d)
             or _is_start_registration_screen(d)
             or _is_create_account_screen(d),
-            timeout=SHORT_WAIT,
+            timeout=NETWORK_WAIT,
         ):
             raise RuntimeError("Failed to save the self-hosted environment.")
         return
@@ -396,7 +397,7 @@ def _configure_self_hosted_environment(d) -> None:
         lambda: _is_landing_screen(d)
         or _is_start_registration_screen(d)
         or _is_create_account_screen(d),
-        timeout=SHORT_WAIT,
+        timeout=NETWORK_WAIT,
     ):
         raise RuntimeError("Failed to save the self-hosted environment.")
 
@@ -444,12 +445,17 @@ def _complete_post_registration_setup(d) -> None:
     _dismiss_common_popups(d)
 
 
-def _wait_for_unlocked_vault(d, timeout: float = 10.0) -> bool:
+def _wait_for_unlocked_vault(d, timeout: float = 25.0) -> bool:
     start = time.time()
     while time.time() - start < timeout:
         _dismiss_common_popups(d)
         if d(resourceId="AddItemButton").exists:
             return True
+        # VaultTab present without AddItemButton means vault is unlocked but on wrong tab
+        if d(resourceId="VaultTab").exists:
+            d(resourceId="VaultTab").click()
+            time.sleep(0.5)
+            continue
         time.sleep(0.5)
     return d(resourceId="AddItemButton").exists
 
@@ -457,7 +463,7 @@ def _wait_for_unlocked_vault(d, timeout: float = 10.0) -> bool:
 def _normalize_to_unlocked_vault(d, email: str, master_password: str) -> None:
     _complete_post_registration_setup(d)
 
-    if _wait_for_unlocked_vault(d, timeout=10.0):
+    if _wait_for_unlocked_vault(d, timeout=25.0):
         return
 
     logger.info(
@@ -908,17 +914,27 @@ def bw_attempt_login(d, email, password):
             submit_button,
             lambda: d(resourceId="VaultTab").exists
             or d(resourceId="AddItemButton").exists
-            or d(resourceId="AlertPopup").exists
-            or d(resourceId="MasterPasswordEntry").exists,
-            timeout=20,
+            or d(resourceId="MasterPasswordEntry").exists
+            or (
+                d(resourceId="AlertPopup").exists
+                and not d(resourceId="AlertProgressIndicator").exists
+            ),
+            timeout=30,
         ):
             logger.error(
                 "Login submission did not produce an expected post-submit state."
             )
             return False
 
-        # Check for error dialogs first (non-fatal dismissal + settle)
-        if d(resourceId="AlertPopup").exists:
+        # Check success first — if vault is visible, we're done regardless of overlay state
+        if d(resourceId="VaultTab").exists or d(resourceId="AddItemButton").exists:
+            logger.info("Login successful. Main vault is visible.")
+            return True
+
+        # Check for real error dialogs (loading overlay has AlertProgressIndicator; skip it)
+        if d(resourceId="AlertPopup").exists and not d(
+            resourceId="AlertProgressIndicator"
+        ).exists:
             logger.warning("Error dialog detected. Dismissing...")
             _dismiss_common_popups(d)
             logger.error("Login failed due to error dialog.")
