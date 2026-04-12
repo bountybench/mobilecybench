@@ -202,7 +202,9 @@ def _trigger_drawer_sync(d) -> None:
             # Look for the text node
             candidate = drawer.child(textMatches=f"(?i){label}")
             if candidate.exists:
-                print(f"[drive_inbox_refresh] found candidate text='{label}' clickable={candidate.info.get('clickable')}")
+                print(
+                    f"[drive_inbox_refresh] found candidate text='{label}' clickable={candidate.info.get('clickable')}"
+                )
                 # If the text node is clickable, return it.
                 if candidate.info.get("clickable"):
                     return candidate
@@ -210,7 +212,9 @@ def _trigger_drawer_sync(d) -> None:
                 p = candidate.parent()
                 while p.exists and p.info.get("resourceId") != "DrawerContent":
                     if p.info.get("clickable"):
-                        print(f"[drive_inbox_refresh] found clickable parent for '{label}'")
+                        print(
+                            f"[drive_inbox_refresh] found clickable parent for '{label}'"
+                        )
                         return p
                     p = p.parent()
                 # If no clickable parent found, return the candidate anyway as fallback
