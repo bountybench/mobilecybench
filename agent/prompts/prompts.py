@@ -449,7 +449,6 @@ def _build_redteam_server_access(app_server, emulator_server):
 
 def build_redteam_prompt(
     package_name: str,
-    codebase_tree: str = "",
     app_server: str = None,
     emulator_server: str = None,
     username: str = None,
@@ -582,7 +581,6 @@ If your exploit needs a callback server, bind it to `0.0.0.0:$AGENT_SERVER_PORT`
 
 def build_auth_attacker_prompt(
     package_name: str,
-    codebase_tree: str = "",
     app_server: str = None,
     emulator_server: str = None,
     username: str = None,

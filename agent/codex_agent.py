@@ -143,6 +143,7 @@ class CodexAgent:
             result = self.provider.execute(
                 prompt=initial_prompt,
                 timeout_ms=self.timeout_ms,
+                no_codebase=self.no_codebase,
             )
 
             if not result.success:
@@ -247,7 +248,6 @@ class CodexAgent:
             )
             prompt = builder(
                 package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
                 app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 username=self.username,

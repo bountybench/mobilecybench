@@ -73,6 +73,7 @@ class CodexCLIProvider:
         prompt: str,
         timeout_ms: int = 1_200_000,
         codex_config: Optional[dict] = None,
+        no_codebase: bool = False,
     ) -> CodexCLIResult:
         """
         Execute Codex CLI in single-iteration mode (no session resumption).
@@ -81,8 +82,9 @@ class CodexCLIProvider:
         timeout_sec = timeout_ms / 1000
 
         try:
-            # Default to /app/codebase inside container if not specified
-            app_codebase_dir = "/app/codebase"
+            # When no_codebase is set, agent_container mounts the APK at
+            # /app/apk and does not bind /app/codebase into the agent's view.
+            app_codebase_dir = "/app/apk" if no_codebase else "/app/codebase"
 
             logger.info("🚀 Starting Codex execution (single iteration)")
             logger.info(f"Working directory: {app_codebase_dir}")

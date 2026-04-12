@@ -171,7 +171,6 @@ class CustomAgent:
             )
             full_prompt = builder(
                 package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
                 app_server=self.app_server if self.network_access else None,
                 emulator_server=self.emulator_server,
                 username=self.username,
