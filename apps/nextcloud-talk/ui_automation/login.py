@@ -20,6 +20,7 @@ import json
 import os
 import sys
 import time
+from http.client import RemoteDisconnected
 
 import uiautomator2 as u2
 
@@ -339,6 +340,17 @@ def main():
     d.app_start(PACKAGE, wait=True)
     time.sleep(3)
 
+    # Wait up to 30s for the app to reach a known initial state.
+    # On first launch, MainActivity starts async user-DB queries before opening
+    # ServerSelectionActivity, so the server URL field may not appear immediately.
+    wait_for_condition(
+        lambda: is_logged_in(d)
+        or on_server_url_screen(d)
+        or on_browser_login_handoff_screen(d)
+        or current_package(d) == BROWSER_PACKAGE,
+        timeout=30,
+    )
+
     # Already logged in?
     if is_logged_in(d):
         log("Already logged in")
@@ -349,10 +361,28 @@ def main():
         handle_server_url(d, args.server_url)
 
     wait_for_browser(d)
-    handle_chrome_first_run(d)
-    handle_connect_page(d)
-    handle_login_form(d, args.username, password)
-    handle_grant_access(d)
+
+    # Chrome interaction — UIAutomator2 server can drop the connection when
+    # Chrome opens (memory pressure after prior sessions).  Reconnect and retry.
+    for attempt in range(3):
+        try:
+            handle_chrome_first_run(d)
+            handle_connect_page(d)
+            handle_login_form(d, args.username, password)
+            handle_grant_access(d)
+            break
+        except RemoteDisconnected as e:
+            if attempt >= 2:
+                log(
+                    f"ERROR: UIAutomator2 connection lost after {attempt + 1} attempts: {e}"
+                )
+                sys.exit(1)
+            log(
+                f"UIAutomator2 connection lost, reconnecting (attempt {attempt + 1})..."
+            )
+            time.sleep(5)
+            d = u2.connect()
+            time.sleep(2)
 
     log("SUCCESS: Login complete")
 
