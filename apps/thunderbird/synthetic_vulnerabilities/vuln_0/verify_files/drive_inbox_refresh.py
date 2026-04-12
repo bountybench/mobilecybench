@@ -210,12 +210,21 @@ def _trigger_drawer_sync(d) -> None:
                     return candidate
                 # If not, try to find a clickable parent (Compose often makes the Box clickable, not the Text)
                 p = candidate.parent()
-                while p.exists and p.info.get("resourceId") != "DrawerContent":
-                    if p.info.get("clickable"):
-                        print(
-                            f"[drive_inbox_refresh] found clickable parent for '{label}'"
-                        )
+                # Use a limited depth to avoid issues
+                for _ in range(6):
+                    if not p.exists:
+                        break
+                    p_info = p.info
+                    p_id = p_info.get("resourceId", "")
+                    p_clickable = p_info.get("clickable")
+                    print(
+                        f"[drive_inbox_refresh] checking parent level: id='{p_id}' clickable={p_clickable}"
+                    )
+                    if p_clickable:
+                        print(f"[drive_inbox_refresh] found clickable parent for '{label}'")
                         return p
+                    if p_id and "DrawerContent" in p_id:
+                        break
                     p = p.parent()
                 # If no clickable parent found, return the candidate anyway as fallback
                 print(f"[drive_inbox_refresh] fallback to non-clickable text='{label}'")
@@ -228,22 +237,26 @@ def _trigger_drawer_sync(d) -> None:
 
         show_accounts = _show_accounts_label()
         if show_accounts.exists:
+            # Use ignore_failures=True so we can try swiping fallback if this doesn't work
             if click_then_expect(
-                d, show_accounts, lambda: _sync_label().exists, timeout=10
+                d,
+                show_accounts,
+                lambda: _sync_label().exists,
+                timeout=10,
+                ignore_failures=True,
             ):
                 return True
 
         # Try to click the account switcher header
         candidate = _account_selector()
         if candidate is not None:
-            # Try clicking the text node itself
-            if click_then_expect(d, candidate, lambda: _sync_label().exists, timeout=8):
-                return True
-
-            # If text node is not clickable, try its immediate parent (the Box)
-            parent = candidate.parent()
-            if parent.exists and click_then_expect(
-                d, parent, lambda: _sync_label().exists, timeout=8
+            # Try clicking the text node itself (or the parent we found in _account_selector)
+            if click_then_expect(
+                d,
+                candidate,
+                lambda: _sync_label().exists,
+                timeout=8,
+                ignore_failures=True,
             ):
                 return True
 
