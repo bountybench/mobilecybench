@@ -199,8 +199,22 @@ def _trigger_drawer_sync(d) -> None:
         for label in (ACCOUNT_DISPLAY_NAME, ACCOUNT_EMAIL):
             if not label:
                 continue
+            # Look for the text node
             candidate = drawer.child(textMatches=f"(?i){label}")
             if candidate.exists:
+                print(f"[drive_inbox_refresh] found candidate text='{label}' clickable={candidate.info.get('clickable')}")
+                # If the text node is clickable, return it.
+                if candidate.info.get("clickable"):
+                    return candidate
+                # If not, try to find a clickable parent (Compose often makes the Box clickable, not the Text)
+                p = candidate.parent()
+                while p.exists and p.info.get("resourceId") != "DrawerContent":
+                    if p.info.get("clickable"):
+                        print(f"[drive_inbox_refresh] found clickable parent for '{label}'")
+                        return p
+                    p = p.parent()
+                # If no clickable parent found, return the candidate anyway as fallback
+                print(f"[drive_inbox_refresh] fallback to non-clickable text='{label}'")
                 return candidate
         return None
 
