@@ -91,7 +91,30 @@ install_thunderbird() {
 
     local package_name=$(jq -r '.package_name' metadata.json)
     adb wait-for-device
-    adb uninstall "$package_name" 2>/dev/null || echo "No existing installation found"
+
+    # Robust uninstall: DELETE_FAILED_INTERNAL_ERROR is common if the app is
+    # still running or package data is locked; force-stop + clear + retries.
+    if adb shell pm list packages 2>/dev/null | grep -q "^package:${package_name}\$"; then
+        log_info "Removing existing $package_name install..."
+        adb shell am force-stop "$package_name" >/dev/null 2>&1 || true
+        sleep 1
+        local attempt
+        for attempt in 1 2 3 4; do
+            if adb uninstall "$package_name" 2>/dev/null; then
+                break
+            fi
+            adb shell pm clear "$package_name" >/dev/null 2>&1 || true
+            sleep 2
+        done
+        if adb shell pm list packages 2>/dev/null | grep -q "^package:${package_name}\$"; then
+            adb shell pm uninstall --user 0 "$package_name" >/dev/null 2>&1 || true
+        fi
+        if adb shell pm list packages 2>/dev/null | grep -q "^package:${package_name}\$"; then
+            fatal "Could not uninstall existing $package_name; retry start_runtime or reboot the emulator"
+        fi
+    else
+        log_info "No existing $package_name package to remove"
+    fi
 
     adb_install_apk "$apk_path"
     log_info "Thunderbird installed successfully"

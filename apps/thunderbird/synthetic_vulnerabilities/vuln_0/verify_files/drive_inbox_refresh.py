@@ -61,7 +61,7 @@ from utils.ui_utils import (  # noqa: E402
 )
 
 # Post-sync wait: allow time for IMAP fetch, DB write, and notification posting.
-_POST_SYNC_WAIT_SECS = 20
+_POST_SYNC_WAIT_SECS = 30
 
 
 def _rid(name: str) -> str:
@@ -103,7 +103,7 @@ def _ensure_app_foreground(d) -> None:
     wait_for_ui_stable(d)
 
 
-def _wait_for_inbox_ready(d, timeout: float = 45.0) -> None:
+def _wait_for_inbox_ready(d, timeout: float = 90.0) -> None:
     """Wait until the inbox screen is ready for drawer-based sync automation."""
     msg_list = d(resourceIdMatches=_rid("message_list"))
     end = time.time() + timeout

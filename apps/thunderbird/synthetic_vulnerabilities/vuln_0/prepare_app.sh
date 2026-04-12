@@ -52,8 +52,20 @@ mynetworks = 127.0.0.0/8, 10.0.2.0/24, 172.16.0.0/12, 192.168.0.0/16
 smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination
 EOF
 
-log_info "Restarting mail server to apply changes..."
-docker exec thunderbird-app supervisorctl restart postfix
+log_info "Reloading Postfix to apply main.cf changes..."
+# Prefer postfix reload: full supervisorctl restarts have been flaky on some
+# docker-mailserver builds (signal handling / brief SMTP downtime) and can
+# fail CI under load. reload picks up postfix-main.cf without tearing down smtpd.
+if docker exec thunderbird-app postfix reload >/dev/null 2>&1; then
+  log_info "postfix reload succeeded"
+elif docker exec thunderbird-app bash -lc "postfix reload" >/dev/null 2>&1; then
+  log_info "postfix reload succeeded (via bash -lc)"
+elif docker exec thunderbird-app supervisorctl signal hup postfix >/dev/null 2>&1; then
+  log_info "Sent HUP to postfix via supervisorctl"
+else
+  log_info "Falling back to supervisorctl restart postfix..."
+  docker exec thunderbird-app supervisorctl restart postfix
+fi
 
 log_info "Ensuring no synthetic sidecar is publishing SMTP on host..."
 docker rm -f tb-port-25-proxy 2>/dev/null || true
