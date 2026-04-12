@@ -158,23 +158,41 @@ def _scroll_to(d, resource_id: str = None, text: str = None) -> bool:
     """
     Attempts to scroll to an element within a scrollable container.
     """
+    if resource_id and d(resourceId=resource_id).exists:
+        return True
+    if text and d(text=text).exists:
+        return True
+
     try:
         scrollable = d(scrollable=True)
-        if not scrollable.exists:
-            return False
-
-        if resource_id:
-            return scrollable.scroll.to(resourceId=resource_id)
-        if text:
-            return scrollable.scroll.to(text=text)
+        if scrollable.exists:
+            if resource_id:
+                if scrollable.scroll.to(resourceId=resource_id):
+                    return True
+            if text:
+                if scrollable.scroll.to(text=text):
+                    return True
     except Exception as exc:
-        logger.debug("Scroll attempt failed: %s", exc)
+        logger.debug("Standard scroll attempt failed: %s", exc)
+
+    # Fallback to manual swipes if standard scrolling fails or container isn't 'scrollable'
+    for _ in range(3):
+        d.swipe_ext("up", scale=0.7)
+        time.sleep(1)
+        if resource_id and d(resourceId=resource_id).exists:
+            return True
+        if text and d(text=text).exists:
+            return True
     return False
 
 
 def _is_landing_screen(d) -> bool:
     # A LandingScreen should have an email field and either a Create Account label or the Region/Environment selector.
     if not d(resourceId="EmailAddressEntry").exists:
+        return False
+
+    # Stricter check: if NameEntry exists, we are on the StartRegistrationScreen
+    if d(resourceId="NameEntry").exists:
         return False
 
     if (
