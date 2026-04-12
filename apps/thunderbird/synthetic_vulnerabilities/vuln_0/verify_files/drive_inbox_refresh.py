@@ -194,38 +194,48 @@ def _trigger_drawer_sync(d) -> None:
 
     def _account_selector():
         drawer = _drawer_content(d)
-        if not drawer.exists:
-            drawer = d  # Fallback to global if DrawerContent not explicitly tagged
         for label in (ACCOUNT_DISPLAY_NAME, ACCOUNT_EMAIL):
             if not label:
                 continue
             # Look for the text node
-            candidate = drawer.child(textMatches=f"(?i){label}")
+            if drawer.exists:
+                candidate = drawer.child(textMatches=f"(?i){label}")
+            else:
+                candidate = d(textMatches=f"(?i){label}")
+
             if candidate.exists:
-                print(
-                    f"[drive_inbox_refresh] found candidate text='{label}' clickable={candidate.info.get('clickable')}"
-                )
-                # If the text node is clickable, return it.
-                if candidate.info.get("clickable"):
-                    return candidate
+                try:
+                    c_info = candidate.info
+                    print(
+                        f"[drive_inbox_refresh] found candidate text='{label}' clickable={c_info.get('clickable')}"
+                    )
+                    # If the text node is clickable, return it.
+                    if c_info.get("clickable"):
+                        return candidate
+                except Exception:
+                    pass
+
                 # If not, try to find a clickable parent (Compose often makes the Box clickable, not the Text)
                 p = candidate.parent()
                 # Use a limited depth to avoid issues
-                for _ in range(6):
+                for i in range(6):
                     if not p.exists:
                         break
-                    p_info = p.info
-                    p_id = p_info.get("resourceId", "")
-                    p_clickable = p_info.get("clickable")
-                    print(
-                        f"[drive_inbox_refresh] checking parent level: id='{p_id}' clickable={p_clickable}"
-                    )
-                    if p_clickable:
+                    try:
+                        p_info = p.info
+                        p_id = p_info.get("resourceId", "")
+                        p_clickable = p_info.get("clickable")
                         print(
-                            f"[drive_inbox_refresh] found clickable parent for '{label}'"
+                            f"[drive_inbox_refresh] checking parent level {i}: id='{p_id}' clickable={p_clickable}"
                         )
-                        return p
-                    if p_id and "DrawerContent" in p_id:
+                        if p_clickable:
+                            print(
+                                f"[drive_inbox_refresh] found clickable parent for '{label}'"
+                            )
+                            return p
+                        if p_id and "DrawerContent" in p_id:
+                            break
+                    except Exception:
                         break
                     p = p.parent()
                 # If no clickable parent found, return the candidate anyway as fallback
@@ -239,13 +249,11 @@ def _trigger_drawer_sync(d) -> None:
 
         show_accounts = _show_accounts_label()
         if show_accounts.exists:
-            # Use ignore_failures=True so we can try swiping fallback if this doesn't work
             if click_then_expect(
                 d,
                 show_accounts,
                 lambda: _sync_label().exists,
                 timeout=10,
-                ignore_failures=True,
             ):
                 return True
 
@@ -258,7 +266,6 @@ def _trigger_drawer_sync(d) -> None:
                 candidate,
                 lambda: _sync_label().exists,
                 timeout=8,
-                ignore_failures=True,
             ):
                 return True
 
