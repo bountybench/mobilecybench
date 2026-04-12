@@ -345,11 +345,10 @@ create_env_file() {
 
   log_info "Creating .env file at $env_file"
 
-  local user_id=$(id -u)
-  local group_id=$(id -g)
-
-  user_id=${user_id:-9001}
-  group_id=${group_id:-9001}
+  # Use a non-root UID/GID. Inside DinD, id -u returns 0 (root), which
+  # causes the openhab entrypoint to fail when trying to drop privileges.
+  local user_id=9001
+  local group_id=9001
 
   cat > "$env_file" << EOF
 # OpenHAB Docker Environment Variables
@@ -372,7 +371,7 @@ main() {
   log_info "Starting docker compose services..."
   docker compose up -d
 
-  wait_for_docker_container_ready
+  wait_for_docker_container_ready 600
   update_runtime_cfg
 
   # Users are pre-committed in openhab_userdata/jsondb/users.json and
