@@ -226,22 +226,23 @@ def _trigger_drawer_sync(d) -> None:
             if candidate.exists:
                 try:
                     c_info = candidate.info
+                    c_clickable = c_info.get("clickable")
                     print(
-                        f"[drive_inbox_refresh] found candidate text='{label}' clickable={c_info.get('clickable')}"
+                        f"[drive_inbox_refresh] found candidate text='{label}' clickable={c_clickable}"
                     )
                     # If the text node is clickable, return it.
-                    if c_info.get("clickable"):
+                    if c_clickable:
                         return candidate
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[drive_inbox_refresh] error getting candidate info: {e}")
 
                 # If not, try to find a clickable parent (Compose often makes the Box clickable, not the Text)
-                p = candidate.parent()
-                # Use a limited depth to avoid issues
-                for i in range(6):
-                    if not p.exists:
-                        break
-                    try:
+                try:
+                    p = candidate.parent()
+                    # Use a limited depth to avoid issues
+                    for i in range(8):
+                        if not p.exists:
+                            break
                         p_info = p.info
                         p_id = p_info.get("resourceId", "")
                         p_clickable = p_info.get("clickable")
@@ -255,9 +256,10 @@ def _trigger_drawer_sync(d) -> None:
                             return p
                         if p_id and "DrawerContent" in p_id:
                             break
-                    except Exception:
-                        break
-                    p = p.parent()
+                        p = p.parent()
+                except Exception as e:
+                    print(f"[drive_inbox_refresh] error traversing parents: {e}")
+
                 # If no clickable parent found, return the candidate anyway as fallback
                 print(f"[drive_inbox_refresh] fallback to non-clickable text='{label}'")
                 return candidate
@@ -269,6 +271,9 @@ def _trigger_drawer_sync(d) -> None:
 
         show_accounts = _show_accounts_label()
         if show_accounts.exists:
+            print(
+                "[drive_inbox_refresh] clicking 'Show accounts' to reveal sync action"
+            )
             if click_then_expect(
                 d,
                 show_accounts,
@@ -280,6 +285,9 @@ def _trigger_drawer_sync(d) -> None:
         # Try to click the account switcher header
         candidate = _account_selector()
         if candidate is not None:
+            print(
+                "[drive_inbox_refresh] clicking account selector to reveal sync action"
+            )
             # Try clicking the text node itself (or the parent we found in _account_selector)
             if click_then_expect(
                 d,
@@ -290,9 +298,18 @@ def _trigger_drawer_sync(d) -> None:
                 return True
 
         # Try searching for "Sync all accounts" globally and scrolling
+        print(
+            "[drive_inbox_refresh] 'Sync all accounts' not visible, attempting scroll"
+        )
         try:
-            d(scrollable=True).scroll.to(textMatches="(?i)Sync all accounts")
-        except Exception:
+            # Try scrolling the drawer specifically
+            drawer = _drawer_content(d)
+            if drawer.exists and drawer.info.get("scrollable"):
+                drawer.scroll.to(textMatches="(?i)Sync all accounts")
+            else:
+                d(scrollable=True).scroll.to(textMatches="(?i)Sync all accounts")
+        except Exception as e:
+            print(f"[drive_inbox_refresh] scroll failed: {e}")
             # Manual swipe if u2 scroll fails on Compose list
             width, height = d.window_size()
             x = int(width * 0.3)
@@ -313,7 +330,8 @@ def _trigger_drawer_sync(d) -> None:
         )
         drawer = _drawer_content(d)
         if drawer.exists:
-            bounds = drawer.info.get("bounds", {})
+            info = drawer.info
+            bounds = info.get("visibleBounds") or info.get("bounds") or {}
             left = int(bounds.get("left", 0))
             right = int(bounds.get("right", 0))
             top = int(bounds.get("top", 0))
@@ -334,6 +352,7 @@ def _trigger_drawer_sync(d) -> None:
             )
     else:
         sync_label = _sync_label()
+        print("[drive_inbox_refresh] clicking 'Sync all accounts'")
         wait_and_click(d, sync_label, timeout=8)
 
     wait_for_ui_stable(d)
@@ -348,13 +367,15 @@ def _trigger_drawer_sync(d) -> None:
     while time.time() < indicator_wait_end:
         if indicator.exists:
             saw_indicator = True
+            print("[drive_inbox_refresh] sync indicator appeared")
             break
         time.sleep(0.25)
 
     if saw_indicator:
-        indicator_clear_end = time.time() + 45  # Increased timeout for slow IMAP
+        indicator_clear_end = time.time() + 60  # Increased timeout for slow IMAP
         while time.time() < indicator_clear_end:
             if not indicator.exists:
+                print("[drive_inbox_refresh] sync indicator cleared")
                 break
             time.sleep(0.5)
     else:
@@ -390,11 +411,14 @@ def main() -> int:
         )
         return 0
     except Exception as exc:
+        import traceback
+
         print(
             f"[drive_inbox_refresh] INFRA: could not drive Thunderbird inbox sync: {exc}",
             file=sys.stderr,
             flush=True,
         )
+        traceback.print_exc(file=sys.stderr)
         return 2
 
 
