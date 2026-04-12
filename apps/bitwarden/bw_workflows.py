@@ -155,10 +155,11 @@ def _is_start_registration_screen(d) -> bool:
 
 
 def _is_landing_screen(d) -> bool:
-    return (
-        d(resourceId="EmailAddressEntry").exists
-        and d(resourceId="ContinueButton").exists
-        and d(resourceId="CreateAccountLabel").exists
+    # A LandingScreen should have an email field and either a Create Account label or the Region/Environment selector.
+    return d(resourceId="EmailAddressEntry").exists and (
+        d(resourceId="CreateAccountLabel").exists
+        or d(resourceId="RegionSelectorDropdown").exists
+        or d(resourceId="ContinueButton").exists
     )
 
 
@@ -313,7 +314,7 @@ def _navigate_to_start_registration(d) -> None:
 
 
 def _navigate_to_auth_entry(d) -> None:
-    for _ in range(4):
+    for _ in range(6):  # Increased attempts
         _dismiss_common_popups(d)
 
         if (
@@ -322,6 +323,7 @@ def _navigate_to_auth_entry(d) -> None:
             or _is_start_registration_screen(d)
             or _is_create_account_screen(d)
             or d(resourceId="ServerUrlEntry").exists
+            or d(resourceId="RegionSelectorDropdown").exists
         ):
             return
 
@@ -337,9 +339,13 @@ def _navigate_to_auth_entry(d) -> None:
                 or d(resourceId="AlertPopup").exists,
                 timeout=SHORT_WAIT,
             ):
-                raise RuntimeError(
-                    "Failed to advance from WelcomeScreen to the authentication entry flow."
-                )
+                logger.warning("Attempt to click ChooseLoginButton failed, retrying...")
+            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            continue
+
+        # If we see the create account button on the welcome screen, maybe we can click it to get to the landing screen too
+        if d(resourceId="ChooseAccountCreationButton").exists:
+            d(resourceId="ChooseAccountCreationButton").click()
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
             continue
 
@@ -364,7 +370,9 @@ def _configure_self_hosted_environment(d) -> None:
             )
         wait_for_ui_stable(d, timeout=SHORT_WAIT)
 
+    # If the URL entry is already visible, we are already in self-hosted mode or similar.
     if server_url_entry.exists:
+        logger.info("ServerUrlEntry already visible, skipping environment selection.")
         wait_and_set_text(d, server_url_entry, SERVER_URL)
         if not click_then_expect(
             d,
@@ -377,18 +385,37 @@ def _configure_self_hosted_environment(d) -> None:
             raise RuntimeError("Failed to save the self-hosted environment.")
         return
 
-    if not click_then_expect(
-        d, region_selector, d(text="Self-hosted"), timeout=SHORT_WAIT
-    ):
-        raise RuntimeError("Failed to open the environment selector.")
+    # Check if the region selector is already set to Self-hosted
+    if region_selector.exists and "Self-hosted" in (region_selector.get_text() or ""):
+        logger.info(
+            "Region selector already shows 'Self-hosted'. Clicking to enter URL."
+        )
+        region_selector.click()
+        time.sleep(1)
+        if not server_url_entry.exists(timeout=SHORT_WAIT):
+            # Fallback: if it didn't open the URL entry, maybe it needs a re-selection
+            logger.info(
+                "ServerUrlEntry not visible after click, re-selecting from list."
+            )
+            if not click_then_expect(
+                d, d(text="Self-hosted"), server_url_entry, timeout=SHORT_WAIT
+            ):
+                raise RuntimeError("Failed to select 'Self-hosted' from the list.")
+    else:
+        if not click_then_expect(
+            d, region_selector, d(text="Self-hosted"), timeout=SHORT_WAIT
+        ):
+            raise RuntimeError("Failed to open the environment selector.")
 
-    if not click_then_expect(
-        d,
-        d(text="Self-hosted"),
-        server_url_entry,
-        timeout=SHORT_WAIT,
-    ):
-        raise RuntimeError("Failed to navigate to the self-hosted environment screen.")
+        if not click_then_expect(
+            d,
+            d(text="Self-hosted"),
+            server_url_entry,
+            timeout=SHORT_WAIT,
+        ):
+            raise RuntimeError(
+                "Failed to navigate to the self-hosted environment screen."
+            )
 
     wait_and_set_text(d, server_url_entry, SERVER_URL)
     if not click_then_expect(
