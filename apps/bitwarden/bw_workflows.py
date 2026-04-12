@@ -123,6 +123,44 @@ def _dismiss_common_popups(d, max_rounds: int = 4) -> None:
         break
 
 
+def _vault_unlocked_visible(d) -> bool:
+    """True when the main vault chrome is on-screen (Compose testTags → resource-id)."""
+    return bool(
+        d(resourceId="VaultTab").exists
+        or d(resourceId="AddItemButton").exists
+        or d(resourceId="HeaderBarComponent").exists
+    )
+
+
+def _auth_submit_terminal_state(d) -> bool:
+    """
+    True once login/unlock either opened the vault or surfaced a stable (non-spinner) modal.
+
+    Must not use MasterPasswordEntry: it often stays in the hierarchy while the server
+    round-trip is in flight, which caused click_then_expect to succeed before navigation.
+    """
+    if _vault_unlocked_visible(d):
+        return True
+    if (
+        d(resourceId="AlertPopup").exists
+        and not d(resourceId="AlertProgressIndicator").exists
+    ):
+        return True
+    return False
+
+
+def _select_auth_submit_control(d):
+    """Return the primary submit control for LoginScreen or VaultUnlockScreen, if any."""
+    if _is_login_screen(d):
+        return d(resourceId="LogInWithMasterPasswordButton")
+    unlock = d(resourceId="UnlockVaultButton")
+    if unlock.exists:
+        return unlock
+    if d(resourceId="MasterPasswordEntry").exists and d(text="Unlock").exists:
+        return d(text="Unlock")
+    return None
+
+
 def _scroll_until_visible(d, element, max_swipes: int = 4) -> bool:
     if element.exists:
         return True
@@ -525,13 +563,12 @@ def _complete_post_registration_setup(d) -> None:
     _dismiss_common_popups(d)
 
 
-def _wait_for_unlocked_vault(d, timeout: float = 25.0) -> bool:
+def _wait_for_unlocked_vault(d, timeout: float = 35.0) -> bool:
     start = time.time()
     while time.time() - start < timeout:
         _dismiss_common_popups(d)
         if d(resourceId="AddItemButton").exists:
             return True
-        # VaultTab present without AddItemButton means vault is unlocked but on wrong tab
         if d(resourceId="VaultTab").exists:
             d(resourceId="VaultTab").click()
             time.sleep(0.5)
@@ -996,13 +1033,27 @@ def bw_attempt_login(d, email, password):
 
         logger.info("Entering master password...")
         wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
+        wait_for_ui_stable(d, min_consecutive=2, timeout=10)
+
+        if _vault_unlocked_visible(d):
+            logger.info("Vault already visible after password entry; skipping submit tap.")
+            return True
+
+        on_vault_unlock = _is_vault_unlock_screen(d)
+        if on_vault_unlock:
+            try:
+                d.press("enter")
+            except Exception:
+                pass
+            time.sleep(1.5)
+            if _vault_unlocked_visible(d):
+                logger.info("Vault unlocked via IME action on vault-unlock screen.")
+                return True
+
+        _dismiss_common_popups(d)
 
         # --- Submitting and Verifying Outcome ---
-        submit_button = None
-        if _is_login_screen(d):
-            submit_button = d(resourceId="LogInWithMasterPasswordButton")
-        elif _is_vault_unlock_screen(d):
-            submit_button = d(resourceId="UnlockVaultButton")
+        submit_button = _select_auth_submit_control(d)
 
         if submit_button is None:
             logger.error(
@@ -1014,14 +1065,8 @@ def bw_attempt_login(d, email, password):
         if not click_then_expect(
             d,
             submit_button,
-            lambda: d(resourceId="VaultTab").exists
-            or d(resourceId="AddItemButton").exists
-            or d(resourceId="MasterPasswordEntry").exists
-            or (
-                d(resourceId="AlertPopup").exists
-                and not d(resourceId="AlertProgressIndicator").exists
-            ),
-            timeout=30,
+            _auth_submit_terminal_state,
+            timeout=NETWORK_WAIT + 15,
         ):
             logger.error(
                 "Login submission did not produce an expected post-submit state."
@@ -1029,7 +1074,7 @@ def bw_attempt_login(d, email, password):
             return False
 
         # Check success first — if vault is visible, we're done regardless of overlay state
-        if d(resourceId="VaultTab").exists or d(resourceId="AddItemButton").exists:
+        if _vault_unlocked_visible(d):
             logger.info("Login successful. Main vault is visible.")
             return True
 
@@ -1046,10 +1091,7 @@ def bw_attempt_login(d, email, password):
         # Success is defined by the appearance of the main vault screen's header.
         # A failed login will not proceed to this screen.
         logger.info("Verifying login outcome...")
-        if (
-            d(resourceId="VaultTab").wait(timeout=5.0)
-            or d(resourceId="AddItemButton").exists
-        ):
+        if d(resourceId="VaultTab").wait(timeout=8.0) or _vault_unlocked_visible(d):
             logger.info("Login successful. Main vault is visible.")
             return True
         else:
@@ -1059,6 +1101,8 @@ def bw_attempt_login(d, email, password):
                 missing.append("VaultTab")
             if not d(resourceId="AddItemButton").exists:
                 missing.append("AddItemButton")
+            if not d(resourceId="HeaderBarComponent").exists:
+                missing.append("HeaderBarComponent")
             logger.error(
                 "Main vault not visible after timeout. Missing: %s", ", ".join(missing)
             )
