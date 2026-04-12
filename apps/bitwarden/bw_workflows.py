@@ -154,13 +154,38 @@ def _is_start_registration_screen(d) -> bool:
     )
 
 
+def _scroll_to(d, resource_id: str = None, text: str = None) -> bool:
+    """
+    Attempts to scroll to an element within a scrollable container.
+    """
+    try:
+        scrollable = d(scrollable=True)
+        if not scrollable.exists:
+            return False
+
+        if resource_id:
+            return scrollable.scroll.to(resourceId=resource_id)
+        if text:
+            return scrollable.scroll.to(text=text)
+    except Exception as exc:
+        logger.debug("Scroll attempt failed: %s", exc)
+    return False
+
+
 def _is_landing_screen(d) -> bool:
     # A LandingScreen should have an email field and either a Create Account label or the Region/Environment selector.
-    return d(resourceId="EmailAddressEntry").exists and (
+    if not d(resourceId="EmailAddressEntry").exists:
+        return False
+
+    if (
         d(resourceId="CreateAccountLabel").exists
         or d(resourceId="RegionSelectorDropdown").exists
         or d(resourceId="ContinueButton").exists
-    )
+    ):
+        return True
+
+    # Try scrolling to find the CreateAccountLabel if it's off-screen
+    return _scroll_to(d, resource_id="CreateAccountLabel")
 
 
 def _is_create_account_screen(d) -> bool:
@@ -289,7 +314,9 @@ def _navigate_to_start_registration(d) -> None:
             _navigate_to_auth_entry(d)
             continue
 
-        if d(resourceId="CreateAccountLabel").exists:
+        if d(resourceId="CreateAccountLabel").exists or _scroll_to(
+            d, resource_id="CreateAccountLabel"
+        ):
             if not click_then_expect(
                 d,
                 d(resourceId="CreateAccountLabel"),
@@ -386,7 +413,9 @@ def _configure_self_hosted_environment(d) -> None:
         return
 
     # Check if the region selector is already set to Self-hosted
-    if region_selector.exists and "Self-hosted" in (region_selector.get_text() or ""):
+    if (
+        region_selector.exists or _scroll_to(d, resource_id="RegionSelectorDropdown")
+    ) and "Self-hosted" in (region_selector.get_text() or ""):
         logger.info(
             "Region selector already shows 'Self-hosted'. Clicking to enter URL."
         )
@@ -402,6 +431,12 @@ def _configure_self_hosted_environment(d) -> None:
             ):
                 raise RuntimeError("Failed to select 'Self-hosted' from the list.")
     else:
+        if not (
+            region_selector.exists
+            or _scroll_to(d, resource_id="RegionSelectorDropdown")
+        ):
+            raise RuntimeError("RegionSelectorDropdown not found.")
+
         if not click_then_expect(
             d, region_selector, d(text="Self-hosted"), timeout=SHORT_WAIT
         ):
@@ -627,15 +662,22 @@ def bw_make_account(d, email, name, master_password):
 
     _dismiss_common_popups(d)
     if _is_landing_screen(d):
-        if not click_then_expect(
-            d,
-            d(resourceId="CreateAccountLabel"),
-            lambda: _is_start_registration_screen(d)
-            or _is_create_account_screen(d)
-            or d(resourceId="AlertPopup").exists,
-            timeout=SHORT_WAIT,
+        if d(resourceId="CreateAccountLabel").exists or _scroll_to(
+            d, resource_id="CreateAccountLabel"
         ):
-            raise RuntimeError("Landing screen did not advance into account creation.")
+            if not click_then_expect(
+                d,
+                d(resourceId="CreateAccountLabel"),
+                lambda: _is_start_registration_screen(d)
+                or _is_create_account_screen(d)
+                or d(resourceId="AlertPopup").exists,
+                timeout=SHORT_WAIT,
+            ):
+                raise RuntimeError(
+                    "Landing screen did not advance into account creation."
+                )
+        else:
+            raise RuntimeError("Could not find CreateAccountLabel on LandingScreen.")
         wait_for_ui_stable(d, timeout=SHORT_WAIT)
         _dismiss_common_popups(d)
 
@@ -799,25 +841,40 @@ def bw_create_new_cipher(d, cipher):
 
     # Step 3.3: Enter the item name from the cipher data.
     logger.info("Step 3.3: Entering item name '%s'...", cipher["name"])
-    wait_and_set_text(d, d(resourceId="ItemNameEntry"), cipher["name"])
+    name_entry = d(resourceId="ItemNameEntry")
+    if not _scroll_until_visible(d, name_entry):
+        raise RuntimeError("ItemNameEntry not visible")
+    wait_and_set_text(d, name_entry, cipher["name"])
 
     # Step 3.4: Enter the username from the cipher data.
     logger.info("Step 3.4: Entering username '%s'...", cipher["username"])
-    wait_and_set_text(d, d(resourceId="LoginUsernameEntry"), cipher["username"])
+    user_entry = d(resourceId="LoginUsernameEntry")
+    if not _scroll_until_visible(d, user_entry):
+        raise RuntimeError("LoginUsernameEntry not visible")
+    wait_and_set_text(d, user_entry, cipher["username"])
 
     # Step 3.5: Enter the password from the cipher data.
     logger.info("Step 3.5: Entering password '%s'...", cipher["password"])
-    wait_and_set_text(d, d(resourceId="LoginPasswordEntry"), cipher["password"])
+    pass_entry = d(resourceId="LoginPasswordEntry")
+    if not _scroll_until_visible(d, pass_entry):
+        raise RuntimeError("LoginPasswordEntry not visible")
+    wait_and_set_text(d, pass_entry, cipher["password"])
 
     # Step 3.6: Enter the website URI from the cipher data.
     logger.info("Step 3.6: Entering website URI '%s'...", cipher["website"])
-    wait_and_set_text(d, d(resourceId="LoginUriEntry"), cipher["website"])
+    uri_entry = d(resourceId="LoginUriEntry")
+    if not _scroll_until_visible(d, uri_entry):
+        raise RuntimeError("LoginUriEntry not visible")
+    wait_and_set_text(d, uri_entry, cipher["website"])
 
     # Step 3.7: Click the Save button to save the cipher.
     logger.info("Step 3.7: Clicking the Save button...")
+    save_button = d(resourceId="SaveButton")
+    if not _scroll_until_visible(d, save_button):
+        raise RuntimeError("SaveButton not visible")
     if not click_then_expect(
         d,
-        d(resourceId="SaveButton"),
+        save_button,
         lambda: d(resourceId="AddItemButton").exists
         or d(resourceId="AlertPopup").exists,
         timeout=15,
