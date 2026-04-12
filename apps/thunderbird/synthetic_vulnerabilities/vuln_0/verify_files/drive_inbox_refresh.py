@@ -122,15 +122,34 @@ def _drawer_content(d):
 
 
 def _drawer_is_open(d) -> bool:
+    # First try the reliable resource ID
     drawer = _drawer_content(d)
-    if not drawer.exists:
-        return False
+    if drawer.exists:
+        info = drawer.info or {}
+        bounds = info.get("visibleBounds") or info.get("bounds") or {}
+        left = int(bounds.get("left", -1))
+        right = int(bounds.get("right", -1))
+        if left >= 0 and right > left:
+            return True
 
-    info = drawer.info or {}
-    bounds = info.get("visibleBounds") or info.get("bounds") or {}
-    left = int(bounds.get("left", -1))
-    right = int(bounds.get("right", -1))
-    return left >= 0 and right > left
+    # Fallback: check for elements that only appear in the drawer
+    if d(textMatches="(?i)Sync all accounts").exists:
+        return True
+    if d(textMatches="(?i)Show accounts").exists:
+        return True
+
+    # Check if the account email/name is visible AND MessageList is NOT the primary content
+    # (The drawer overlays the MessageList)
+    for label in (ACCOUNT_DISPLAY_NAME, ACCOUNT_EMAIL):
+        if not label:
+            continue
+        if (
+            d(textMatches=f"(?i){label}").exists
+            and not d(resourceIdMatches=_rid("message_list")).exists
+        ):
+            return True
+
+    return False
 
 
 def _open_navigation_drawer(d, timeout: float = 15.0) -> None:
@@ -201,6 +220,7 @@ def _trigger_drawer_sync(d) -> None:
             if drawer.exists:
                 candidate = drawer.child(textMatches=f"(?i){label}")
             else:
+                # Global search if DrawerContent not found/reliable
                 candidate = d(textMatches=f"(?i){label}")
 
             if candidate.exists:
@@ -269,7 +289,7 @@ def _trigger_drawer_sync(d) -> None:
             ):
                 return True
 
-        # Last resort: scroll or swipe to reveal
+        # Try searching for "Sync all accounts" globally and scrolling
         try:
             d(scrollable=True).scroll.to(textMatches="(?i)Sync all accounts")
         except Exception:
@@ -286,8 +306,7 @@ def _trigger_drawer_sync(d) -> None:
         return _sync_label().exists
 
     if not _make_sync_visible():
-        # Fallback: If the button is still not visible, try a pull-to-refresh on the drawer itself.
-        # The drawer uses PullToRefreshBox(onRefresh = OnSyncAccount).
+        # Fallback 1: pull-to-refresh on the drawer
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} sync_label_missing=true fallback_to_drawer_swipe=true",
             flush=True,
@@ -304,7 +323,15 @@ def _trigger_drawer_sync(d) -> None:
             end_y = top + int((bottom - top) * 0.8)
             d.swipe(mid_x, start_y, mid_x, end_y, steps=50)
         else:
-            raise RuntimeError("drawer sync label 'Sync all accounts' not visible")
+            # Fallback 2: last-ditch effort, swipe the whole screen if drawer content not found but we think it's open
+            width, height = d.window_size()
+            d.swipe(
+                int(width * 0.5),
+                int(height * 0.2),
+                int(width * 0.5),
+                int(height * 0.8),
+                steps=50,
+            )
     else:
         sync_label = _sync_label()
         wait_and_click(d, sync_label, timeout=8)
