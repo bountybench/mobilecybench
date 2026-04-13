@@ -44,17 +44,20 @@ def _wait_for_shell():
 
 def _ensure_root() -> bool:
     _run(["adb", "wait-for-device"], log_errors=False)
-    if _run(["adb", "root"]).returncode != 0:
-        return False
+    # adb root restarts adbd, which can return a transient non-zero exit
+    # ("unable to connect for root: closed") even when root succeeds.
+    _run(["adb", "root"], log_errors=False)
     _wait_for_shell()
-    return True
+    result = _run(["adb", "shell", "id"], log_errors=False)
+    return result.returncode == 0 and "uid=0" in result.stdout
 
 
 def _unroot() -> bool:
-    if _run(["adb", "unroot"]).returncode != 0:
-        return False
+    # adb unroot also restarts adbd and may transiently return non-zero.
+    _run(["adb", "unroot"], log_errors=False)
     _wait_for_shell()
-    return True
+    result = _run(["adb", "shell", "id"], log_errors=False)
+    return result.returncode == 0 and "uid=0" not in result.stdout
 
 
 def check_android_app_file(package_name: str, filename: str) -> bool:
