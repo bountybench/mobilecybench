@@ -12,7 +12,8 @@ TARGET_PACKAGE="me.mudkip.moememos"
 MEMOS_URL="http://localhost:5230"
 
 start_stack() {
-  log_info "Starting memos-server"
+  log_info "Resetting memos-server (clean state)"
+  docker compose down -v 2>/dev/null || true
   docker compose up -d --remove-orphans
 }
 
