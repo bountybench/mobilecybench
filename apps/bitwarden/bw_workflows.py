@@ -21,6 +21,11 @@ from utils.ui_utils import (
     wait_for_ui_stable,
 )  # noqa: E402
 
+from .bw_ui_source import (  # noqa: E402
+    ComposeTags as CT,
+    LOG_IN_WITH_MASTER_PASSWORD_TEXT_PREFIX,
+    StringsEn as SE,
+)
 from .util import BITWARDEN_PKG, SERVER_URL  # noqa: E402
 
 # -----------------------------------------------------------------------------
@@ -63,7 +68,7 @@ def _dump_ui_root(d) -> ET.Element | None:
 
 def _iter_account_cells(root: ET.Element):
     for node in root.iter():
-        if _resource_matches(node.attrib.get("resource-id"), "AccountCell"):
+        if _resource_matches(node.attrib.get("resource-id"), CT.ACCOUNT_CELL):
             yield node
 
 
@@ -89,7 +94,7 @@ def _find_account_cell_center(d, email: str) -> tuple[int, int] | None:
         return None
 
     for cell in _iter_account_cells(root):
-        if _descendant_text(cell, "AccountEmailLabel") == email:
+        if _descendant_text(cell, CT.ACCOUNT_EMAIL_LABEL) == email:
             return _parse_bounds_center(cell.attrib.get("bounds"))
     return None
 
@@ -100,14 +105,14 @@ def _find_active_account_email(d) -> str | None:
         return None
 
     for cell in _iter_account_cells(root):
-        if _has_descendant_resource(cell, "ActiveVaultIcon"):
-            return _descendant_text(cell, "AccountEmailLabel")
+        if _has_descendant_resource(cell, CT.ACTIVE_VAULT_ICON):
+            return _descendant_text(cell, CT.ACCOUNT_EMAIL_LABEL)
     return None
 
 
 def _dismiss_alert_popup(d, timeout: float = 1.0) -> bool:
-    alert = d(resourceId="AlertPopup")
-    accept = d(resourceId="AcceptAlertButton")
+    alert = d(resourceId=CT.ALERT_POPUP)
+    accept = d(resourceId=CT.ACCEPT_ALERT_BUTTON)
     if alert.exists(timeout=timeout) and accept.exists(timeout=timeout):
         logger.info("Dismissing Bitwarden alert popup.")
         wait_and_click(d, accept)
@@ -125,7 +130,7 @@ def _dismiss_common_popups(d, max_rounds: int = 4) -> None:
 
 def _vault_unlocked_visible(d) -> bool:
     """True when the vault item-listing screen is actually ready for item creation."""
-    return bool(d(resourceId="AddItemButton").exists)
+    return bool(d(resourceId=CT.ADD_ITEM_BUTTON).exists)
 
 
 def _auth_submit_terminal_state(d) -> bool:
@@ -138,8 +143,8 @@ def _auth_submit_terminal_state(d) -> bool:
     if _vault_unlocked_visible(d):
         return True
     if (
-        d(resourceId="AlertPopup").exists
-        and not d(resourceId="AlertProgressIndicator").exists
+        d(resourceId=CT.ALERT_POPUP).exists
+        and not d(resourceId=CT.ALERT_PROGRESS_INDICATOR).exists
     ):
         return True
     return False
@@ -152,35 +157,35 @@ def _select_auth_submit_control(d):
     # Complete registration (and similar) shows both password fields; the CTA is often text
     # "Next" with no resource id. If confirm is empty, the CTA stays disabled and may be
     # absent from the accessibility tree — fill confirm in bw_attempt_login when present.
-    if d(resourceId="ConfirmMasterPasswordEntry").exists:
-        next_button = d(text="Next")
+    if d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists:
+        next_button = d(text=SE.NEXT)
         if _scroll_until_visible(d, next_button, max_swipes=max_sw):
             return next_button
-        submit_button = d(resourceId="SubmitButton")
+        submit_button = d(resourceId=CT.SUBMIT_BUTTON)
         if _scroll_until_visible(d, submit_button, max_swipes=max_sw):
             return submit_button
 
-    login_button = d(resourceId="LogInWithMasterPasswordButton")
+    login_button = d(resourceId=CT.LOG_IN_WITH_MASTER_PASSWORD_BUTTON)
     if _scroll_until_visible(d, login_button, max_swipes=max_sw):
         return login_button
 
-    unlock_button = d(resourceId="UnlockVaultButton")
+    unlock_button = d(resourceId=CT.UNLOCK_VAULT_BUTTON)
     if _scroll_until_visible(d, unlock_button, max_swipes=max_sw):
         return unlock_button
 
-    login_label = d(text="Log in with master password")
+    login_label = d(text=SE.LOG_IN_WITH_MASTER_PASSWORD)
     if _scroll_until_visible(d, login_label, max_swipes=max_sw):
         return login_label
 
-    login_partial = d(textContains="Log in with master")
+    login_partial = d(textContains=LOG_IN_WITH_MASTER_PASSWORD_TEXT_PREFIX)
     if _scroll_until_visible(d, login_partial, max_swipes=max_sw):
         return login_partial
 
-    unlock_label = d(text="Unlock")
+    unlock_label = d(text=SE.UNLOCK)
     if _scroll_until_visible(d, unlock_label, max_swipes=max_sw):
         return unlock_label
 
-    unlock_desc = d(description="Unlock")
+    unlock_desc = d(description=SE.UNLOCK)
     if _scroll_until_visible(d, unlock_desc, max_swipes=max_sw):
         return unlock_desc
 
@@ -212,9 +217,9 @@ def _scroll_until_visible(d, element, max_swipes: int = 4) -> bool:
 
 def _is_start_registration_screen(d) -> bool:
     return (
-        d(resourceId="EmailAddressEntry").exists
-        and d(resourceId="NameEntry").exists
-        and d(resourceId="ContinueButton").exists
+        d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists
+        and d(resourceId=CT.NAME_ENTRY).exists
+        and d(resourceId=CT.CONTINUE_BUTTON).exists
     )
 
 
@@ -252,57 +257,60 @@ def _scroll_to(d, resource_id: str = None, text: str = None) -> bool:
 
 def _is_landing_screen(d) -> bool:
     # A LandingScreen should have an email field and either a Create Account label or the Region/Environment selector.
-    if not d(resourceId="EmailAddressEntry").exists:
+    if not d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists:
         return False
 
     # Stricter check: if NameEntry exists, we are on the StartRegistrationScreen
-    if d(resourceId="NameEntry").exists:
+    if d(resourceId=CT.NAME_ENTRY).exists:
         return False
 
     if (
-        d(resourceId="CreateAccountLabel").exists
-        or d(resourceId="RegionSelectorDropdown").exists
-        or d(resourceId="ContinueButton").exists
+        d(resourceId=CT.CREATE_ACCOUNT_LABEL).exists
+        or d(resourceId=CT.REGION_SELECTOR_DROPDOWN).exists
+        or d(resourceId=CT.CONTINUE_BUTTON).exists
     ):
         return True
 
     # Try scrolling to find the CreateAccountLabel if it's off-screen
-    return _scroll_to(d, resource_id="CreateAccountLabel")
+    return _scroll_to(d, resource_id=CT.CREATE_ACCOUNT_LABEL)
 
 
 def _is_create_account_screen(d) -> bool:
+    # CreateAccountScreen.kt — full registration form + toolbar SubmitButton (not Next).
     return (
-        d(resourceId="EmailAddressEntry").exists
-        and d(resourceId="MasterPasswordEntry").exists
-        and d(resourceId="ConfirmMasterPasswordEntry").exists
-        and d(text="Next").exists
+        d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists
+        and d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists
+        and d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists
+        and d(resourceId=CT.SUBMIT_BUTTON).exists
     )
 
 
 def _is_login_screen(d) -> bool:
-    if not d(resourceId="MasterPasswordEntry").exists:
+    if not d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists:
         return False
-    if d(resourceId="ConfirmMasterPasswordEntry").exists:
+    if d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists:
         return False
     return bool(
-        d(resourceId="LogInWithMasterPasswordButton").exists
-        or d(resourceId="LoggingInAsLabel").exists
-        or d(text="Log in with master password").exists
+        d(resourceId=CT.LOG_IN_WITH_MASTER_PASSWORD_BUTTON).exists
+        or d(resourceId=CT.LOGGING_IN_AS_LABEL).exists
+        or d(text=SE.LOG_IN_WITH_MASTER_PASSWORD).exists
     )
 
 
 def _is_vault_unlock_screen(d) -> bool:
-    if not d(resourceId="MasterPasswordEntry").exists:
+    if not d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists:
         return False
-    if d(resourceId="ConfirmMasterPasswordEntry").exists:
+    if d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists:
         return False
-    return bool(d(resourceId="UnlockVaultButton").exists or d(text="Unlock").exists)
+    return bool(
+        d(resourceId=CT.UNLOCK_VAULT_BUTTON).exists or d(text=SE.UNLOCK).exists
+    )
 
 
 def _open_account_switcher(d, expected_account_email: str | None = None) -> bool:
-    account_button = d(resourceId="CurrentActiveAccount")
+    account_button = d(resourceId=CT.CURRENT_ACTIVE_ACCOUNT)
     if not account_button.exists:
-        account_button = d(description="Account")
+        account_button = d(description=SE.ACCOUNT)
     if not account_button.exists:
         return False
 
@@ -310,9 +318,9 @@ def _open_account_switcher(d, expected_account_email: str | None = None) -> bool
         if expected_account_email:
             return d(text=expected_account_email).exists
         return (
-            d(resourceId="AccountListView").exists
-            or d(resourceId="AddAccountButton").exists
-            or d(resourceId="AccountEmailLabel").exists
+            d(resourceId=CT.ACCOUNT_LIST_VIEW).exists
+            or d(resourceId=CT.ADD_ACCOUNT_BUTTON).exists
+            or d(resourceId=CT.ACCOUNT_EMAIL_LABEL).exists
         )
 
     return click_then_expect(d, account_button, switcher_visible, timeout=SHORT_WAIT)
@@ -336,9 +344,9 @@ def _show_account_actions(d, email: str) -> bool:
 
     time.sleep(1)
     return (
-        d(text="Log out").exists
-        or d(text="Lock").exists
-        or d(text="Remove account").exists
+        d(text=SE.LOG_OUT).exists
+        or d(text=SE.LOCK).exists
+        or d(text=SE.REMOVE_ACCOUNT).exists
     )
 
 
@@ -346,42 +354,42 @@ def _logout_via_account_actions(d, email: str) -> bool:
     if not _show_account_actions(d, email):
         return False
 
-    logout_option = d(text="Log out")
+    logout_option = d(text=SE.LOG_OUT)
     if not logout_option.exists:
         return False
 
-    if not click_then_expect(d, logout_option, d(text="Yes"), timeout=SHORT_WAIT):
+    if not click_then_expect(d, logout_option, d(text=SE.YES), timeout=SHORT_WAIT):
         return False
 
     return click_then_expect(
         d,
-        d(text="Yes"),
-        lambda: d(resourceId="EmailAddressEntry").exists
-        or d(resourceId="MasterPasswordEntry").exists
-        or d(resourceId="ChooseAccountCreationButton").exists,
+        d(text=SE.YES),
+        lambda: d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists
+        or d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists
+        or d(resourceId=CT.CHOOSE_ACCOUNT_CREATION_BUTTON).exists,
         timeout=15,
     )
 
 
 def _logout_via_overflow(d) -> bool:
-    more_button = d(description="More")
+    more_button = d(description=SE.MORE)
     if not more_button.exists:
         return False
 
-    if not click_then_expect(d, more_button, d(text="Log out"), timeout=SHORT_WAIT):
+    if not click_then_expect(d, more_button, d(text=SE.LOG_OUT), timeout=SHORT_WAIT):
         return False
 
-    logout_option = d(text="Log out")
+    logout_option = d(text=SE.LOG_OUT)
     logout_option.click()
     time.sleep(1)
 
-    yes_button = d(text="Yes")
+    yes_button = d(text=SE.YES)
     if yes_button.exists:
         return click_then_expect(
             d,
             yes_button,
-            lambda: d(resourceId="EmailAddressEntry").exists
-            or d(resourceId="MasterPasswordEntry").exists,
+            lambda: d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists
+            or d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists,
             timeout=15,
         )
 
@@ -395,20 +403,20 @@ def _navigate_to_start_registration(d) -> None:
         if _is_start_registration_screen(d) or _is_create_account_screen(d):
             return
 
-        if d(resourceId="ChooseLoginButton").exists or _is_login_screen(d):
+        if d(resourceId=CT.CHOOSE_LOGIN_BUTTON).exists or _is_login_screen(d):
             _navigate_to_auth_entry(d)
             continue
 
-        if d(resourceId="CreateAccountLabel").exists or _scroll_to(
-            d, resource_id="CreateAccountLabel"
+        if d(resourceId=CT.CREATE_ACCOUNT_LABEL).exists or _scroll_to(
+            d, resource_id=CT.CREATE_ACCOUNT_LABEL
         ):
             if not click_then_expect(
                 d,
-                d(resourceId="CreateAccountLabel"),
+                d(resourceId=CT.CREATE_ACCOUNT_LABEL),
                 lambda: _is_start_registration_screen(d)
                 or _is_create_account_screen(d)
-                or d(resourceId="ServerUrlEntry").exists
-                or d(resourceId="AlertPopup").exists,
+                or d(resourceId=CT.SERVER_URL_ENTRY).exists
+                or d(resourceId=CT.ALERT_POPUP).exists,
                 timeout=SHORT_WAIT,
             ):
                 raise RuntimeError(
@@ -417,7 +425,7 @@ def _navigate_to_start_registration(d) -> None:
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
             continue
 
-        if d(resourceId="ServerUrlEntry").exists:
+        if d(resourceId=CT.SERVER_URL_ENTRY).exists:
             return
 
         wait_for_ui_stable(d, timeout=SHORT_WAIT)
@@ -434,21 +442,21 @@ def _navigate_to_auth_entry(d) -> None:
             or _is_login_screen(d)
             or _is_start_registration_screen(d)
             or _is_create_account_screen(d)
-            or d(resourceId="ServerUrlEntry").exists
-            or d(resourceId="RegionSelectorDropdown").exists
+            or d(resourceId=CT.SERVER_URL_ENTRY).exists
+            or d(resourceId=CT.REGION_SELECTOR_DROPDOWN).exists
         ):
             return
 
-        if d(resourceId="ChooseLoginButton").exists:
+        if d(resourceId=CT.CHOOSE_LOGIN_BUTTON).exists:
             if not click_then_expect(
                 d,
-                d(resourceId="ChooseLoginButton"),
+                d(resourceId=CT.CHOOSE_LOGIN_BUTTON),
                 lambda: _is_landing_screen(d)
                 or _is_login_screen(d)
                 or _is_start_registration_screen(d)
                 or _is_create_account_screen(d)
-                or d(resourceId="ServerUrlEntry").exists
-                or d(resourceId="AlertPopup").exists,
+                or d(resourceId=CT.SERVER_URL_ENTRY).exists
+                or d(resourceId=CT.ALERT_POPUP).exists,
                 timeout=SHORT_WAIT,
             ):
                 logger.warning("Attempt to click ChooseLoginButton failed, retrying...")
@@ -456,8 +464,8 @@ def _navigate_to_auth_entry(d) -> None:
             continue
 
         # If we see the create account button on the welcome screen, maybe we can click it to get to the landing screen too
-        if d(resourceId="ChooseAccountCreationButton").exists:
-            d(resourceId="ChooseAccountCreationButton").click()
+        if d(resourceId=CT.CHOOSE_ACCOUNT_CREATION_BUTTON).exists:
+            d(resourceId=CT.CHOOSE_ACCOUNT_CREATION_BUTTON).click()
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
             continue
 
@@ -467,13 +475,13 @@ def _navigate_to_auth_entry(d) -> None:
 
 
 def _configure_self_hosted_environment(d) -> None:
-    region_selector = d(resourceId="RegionSelectorDropdown")
-    server_url_entry = d(resourceId="ServerUrlEntry")
+    region_selector = d(resourceId=CT.REGION_SELECTOR_DROPDOWN)
+    server_url_entry = d(resourceId=CT.SERVER_URL_ENTRY)
 
     if _is_login_screen(d):
         if not click_then_expect(
             d,
-            d(resourceId="NotYouLabel"),
+            d(resourceId=CT.NOT_YOU_LABEL),
             _is_landing_screen,
             timeout=SHORT_WAIT,
         ):
@@ -488,7 +496,7 @@ def _configure_self_hosted_environment(d) -> None:
         wait_and_set_text(d, server_url_entry, SERVER_URL)
         if not click_then_expect(
             d,
-            d(resourceId="SaveButton"),
+            d(resourceId=CT.SAVE_BUTTON),
             lambda: _is_landing_screen(d)
             or _is_start_registration_screen(d)
             or _is_create_account_screen(d),
@@ -499,7 +507,7 @@ def _configure_self_hosted_environment(d) -> None:
 
     # Check if the region selector is already set to Self-hosted
     if (
-        region_selector.exists or _scroll_to(d, resource_id="RegionSelectorDropdown")
+        region_selector.exists or _scroll_to(d, resource_id=CT.REGION_SELECTOR_DROPDOWN)
     ) and "Self-hosted" in (region_selector.get_text() or ""):
         logger.info(
             "Region selector already shows 'Self-hosted'. Clicking to enter URL."
@@ -512,24 +520,24 @@ def _configure_self_hosted_environment(d) -> None:
                 "ServerUrlEntry not visible after click, re-selecting from list."
             )
             if not click_then_expect(
-                d, d(text="Self-hosted"), server_url_entry, timeout=SHORT_WAIT
+                d, d(text=SE.SELF_HOSTED), server_url_entry, timeout=SHORT_WAIT
             ):
                 raise RuntimeError("Failed to select 'Self-hosted' from the list.")
     else:
         if not (
             region_selector.exists
-            or _scroll_to(d, resource_id="RegionSelectorDropdown")
+            or _scroll_to(d, resource_id=CT.REGION_SELECTOR_DROPDOWN)
         ):
             raise RuntimeError("RegionSelectorDropdown not found.")
 
         if not click_then_expect(
-            d, region_selector, d(text="Self-hosted"), timeout=SHORT_WAIT
+            d, region_selector, d(text=SE.SELF_HOSTED), timeout=SHORT_WAIT
         ):
             raise RuntimeError("Failed to open the environment selector.")
 
         if not click_then_expect(
             d,
-            d(text="Self-hosted"),
+            d(text=SE.SELF_HOSTED),
             server_url_entry,
             timeout=SHORT_WAIT,
         ):
@@ -540,7 +548,7 @@ def _configure_self_hosted_environment(d) -> None:
     wait_and_set_text(d, server_url_entry, SERVER_URL)
     if not click_then_expect(
         d,
-        d(resourceId="SaveButton"),
+        d(resourceId=CT.SAVE_BUTTON),
         lambda: _is_landing_screen(d)
         or _is_start_registration_screen(d)
         or _is_create_account_screen(d),
@@ -550,42 +558,42 @@ def _configure_self_hosted_environment(d) -> None:
 
 
 def _complete_post_registration_setup(d) -> None:
-    if d(resourceId="SetUpLaterButton").exists:
+    if d(resourceId=CT.SET_UP_LATER_BUTTON).exists:
         if click_then_expect(
             d,
-            d(resourceId="SetUpLaterButton"),
-            d(text="Confirm"),
+            d(resourceId=CT.SET_UP_LATER_BUTTON),
+            d(text=SE.CONFIRM),
             timeout=SHORT_WAIT,
         ):
             click_then_expect(
                 d,
-                d(text="Confirm"),
-                lambda: d(text="Turn on later").exists
-                or d(text="Continue").exists
-                or d(resourceId="AddItemButton").exists,
+                d(text=SE.CONFIRM),
+                lambda: d(text=SE.TURN_ON_LATER).exists
+                or d(text=SE.CONTINUE).exists
+                or d(resourceId=CT.ADD_ITEM_BUTTON).exists,
                 timeout=SHORT_WAIT,
             )
 
-    if d(text="Turn on later").exists:
+    if d(text=SE.TURN_ON_LATER).exists:
         if click_then_expect(
             d,
-            d(text="Turn on later"),
-            d(text="Confirm"),
+            d(text=SE.TURN_ON_LATER),
+            d(text=SE.CONFIRM),
             timeout=SHORT_WAIT,
         ):
             click_then_expect(
                 d,
-                d(text="Confirm"),
-                lambda: d(text="Continue").exists
-                or d(resourceId="AddItemButton").exists,
+                d(text=SE.CONFIRM),
+                lambda: d(text=SE.CONTINUE).exists
+                or d(resourceId=CT.ADD_ITEM_BUTTON).exists,
                 timeout=SHORT_WAIT,
             )
 
-    if d(text="Continue").exists and not d(resourceId="AddItemButton").exists:
+    if d(text=SE.CONTINUE).exists and not d(resourceId=CT.ADD_ITEM_BUTTON).exists:
         click_then_expect(
             d,
-            d(text="Continue"),
-            d(resourceId="AddItemButton"),
+            d(text=SE.CONTINUE),
+            d(resourceId=CT.ADD_ITEM_BUTTON),
             timeout=15,
         )
 
@@ -596,14 +604,14 @@ def _wait_for_unlocked_vault(d, timeout: float = 35.0) -> bool:
     start = time.time()
     while time.time() - start < timeout:
         _dismiss_common_popups(d)
-        if d(resourceId="AddItemButton").exists:
+        if d(resourceId=CT.ADD_ITEM_BUTTON).exists:
             return True
-        if d(resourceId="VaultTab").exists:
-            d(resourceId="VaultTab").click()
+        if d(resourceId=CT.VAULT_TAB).exists:
+            d(resourceId=CT.VAULT_TAB).click()
             time.sleep(0.5)
             continue
         time.sleep(0.5)
-    return d(resourceId="AddItemButton").exists
+    return d(resourceId=CT.ADD_ITEM_BUTTON).exists
 
 
 def _normalize_to_unlocked_vault(d, email: str, master_password: str) -> None:
@@ -749,8 +757,8 @@ def bw_make_account(d, email, name, master_password):
         # LandingScreen can match via RegionSelectorDropdown / ContinueButton while the
         # "Create an account" control (CreateAccountLabel) sits below the fold — _scroll_to
         # is weaker than _scroll_until_visible for tall Compose layouts.
-        create_by_id = d(resourceId="CreateAccountLabel")
-        create_by_text = d(text="Create an account")
+        create_by_id = d(resourceId=CT.CREATE_ACCOUNT_LABEL)
+        create_by_text = d(text=SE.CREATE_AN_ACCOUNT)
         if not _scroll_until_visible(d, create_by_id):
             _scroll_until_visible(d, create_by_text)
         if create_by_id.exists:
@@ -767,7 +775,7 @@ def bw_make_account(d, email, name, master_password):
             create_entry,
             lambda: _is_start_registration_screen(d)
             or _is_create_account_screen(d)
-            or d(resourceId="AlertPopup").exists,
+            or d(resourceId=CT.ALERT_POPUP).exists,
             timeout=15,
         ):
             raise RuntimeError("Landing screen did not advance into account creation.")
@@ -778,13 +786,13 @@ def bw_make_account(d, email, name, master_password):
 
     if _is_create_account_screen(d):
         logger.info("Detected CreateAccountScreen flow for %s", email)
-        wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
-        wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), master_password)
+        wait_and_set_text(d, d(resourceId=CT.EMAIL_ADDRESS_ENTRY), email)
+        wait_and_set_text(d, d(resourceId=CT.MASTER_PASSWORD_ENTRY), master_password)
         wait_and_set_text(
-            d, d(resourceId="ConfirmMasterPasswordEntry"), master_password
+            d, d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY), master_password
         )
 
-        accept_policies = d(description="AcceptPoliciesToggle")
+        accept_policies = d(description=CT.ACCEPT_POLICIES_TOGGLE)
         if accept_policies.exists:
             try:
                 info = accept_policies.info
@@ -797,11 +805,11 @@ def bw_make_account(d, email, name, master_password):
 
         if not click_then_expect(
             d,
-            d(resourceId="SubmitButton"),
-            lambda: d(resourceId="EmailAddressEntry").exists
-            or d(resourceId="MasterPasswordEntry").exists
-            or d(resourceId="AlertPopup").exists
-            or d(resourceId="AddItemButton").exists,
+            d(resourceId=CT.SUBMIT_BUTTON),
+            lambda: d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists
+            or d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists
+            or d(resourceId=CT.ALERT_POPUP).exists
+            or d(resourceId=CT.ADD_ITEM_BUTTON).exists,
             timeout=20,
         ):
             raise RuntimeError("CreateAccountScreen did not submit successfully.")
@@ -812,27 +820,27 @@ def bw_make_account(d, email, name, master_password):
 
     # Step 2.1: Enter the email address
     logger.info("Step 2.1: Entering email address: %s...", email)
-    wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
+    wait_and_set_text(d, d(resourceId=CT.EMAIL_ADDRESS_ENTRY), email)
 
     # Step 2.2: Enter the user's name
     logger.info("Step 2.2: Entering name: %s...", name)
-    wait_and_set_text(d, d(resourceId="NameEntry"), name)
+    wait_and_set_text(d, d(resourceId=CT.NAME_ENTRY), name)
 
     # Step 2.3: Click the Continue button to proceed with account creation
     logger.info("Step 2.3: Clicking Continue button...")
     if not click_then_expect(
         d,
-        d(resourceId="ContinueButton"),
-        lambda: d(resourceId="MasterPasswordEntry").exists
-        or d(resourceId="OpenEmailApp").exists
-        or d(resourceId="AlertPopup").exists,
+        d(resourceId=CT.CONTINUE_BUTTON),
+        lambda: d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists
+        or d(resourceId=CT.OPEN_EMAIL_APP).exists
+        or d(resourceId=CT.ALERT_POPUP).exists,
         timeout=20,
     ):
         raise RuntimeError(
             "Start Registration did not advance to the expected next screen."
         )
 
-    if d(resourceId="OpenEmailApp").exists:
+    if d(resourceId=CT.OPEN_EMAIL_APP).exists:
         verification_token = _fetch_verification_token_for_email(email)
         if not verification_token:
             raise RuntimeError(
@@ -843,7 +851,7 @@ def bw_make_account(d, email, name, master_password):
             f"?email={quote(email)}&token={quote(verification_token)}&fromEmail=true"
         )
         d.shell(f'am start -a android.intent.action.VIEW -d "{deep_link}"')
-        if not d(resourceId="MasterPasswordEntry").wait(timeout=20):
+        if not d(resourceId=CT.MASTER_PASSWORD_ENTRY).wait(timeout=20):
             raise RuntimeError(
                 "Recovered verification token but deep link did not open Complete Registration."
             )
@@ -852,17 +860,17 @@ def bw_make_account(d, email, name, master_password):
 
     # Step 2.4: Enter the master password
     logger.info("Step 2.4: Entering master password: %s...", master_password)
-    wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), master_password)
+    wait_and_set_text(d, d(resourceId=CT.MASTER_PASSWORD_ENTRY), master_password)
 
     # Step 2.5: Enter the master password confirmation
     logger.info(
         "Step 2.5: Entering master password confirmation: %s...", master_password
     )
-    wait_and_set_text(d, d(resourceId="ConfirmMasterPasswordEntry"), master_password)
+    wait_and_set_text(d, d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY), master_password)
 
     # Step 2.6: Click the Next button to proceed with account creation
     logger.info("Step 2.6: Clicking Next button...")
-    next_button = d(text="Next")
+    next_button = d(text=SE.NEXT)
     if not _scroll_until_visible(d, next_button):
         raise RuntimeError(
             "Complete Registration CTA was not visible after scrolling the form."
@@ -870,11 +878,11 @@ def bw_make_account(d, email, name, master_password):
     if not click_then_expect(
         d,
         next_button,
-        lambda: d(resourceId="SetUpLaterButton").exists
-        or d(text="Turn on later").exists
-        or d(text="Continue").exists
-        or d(resourceId="AddItemButton").exists
-        or d(resourceId="AlertPopup").exists,
+        lambda: d(resourceId=CT.SET_UP_LATER_BUTTON).exists
+        or d(text=SE.TURN_ON_LATER).exists
+        or d(text=SE.CONTINUE).exists
+        or d(resourceId=CT.ADD_ITEM_BUTTON).exists
+        or d(resourceId=CT.ALERT_POPUP).exists,
         timeout=20,
     ):
         raise RuntimeError("Complete Registration did not advance after submitting.")
@@ -896,9 +904,9 @@ def bw_create_new_cipher(d, cipher):
     logger.info("Step 3.1: Clicking the 'Add Item' button...")
     if not click_then_expect(
         d,
-        d(resourceId="AddItemButton"),
-        lambda: d(resourceId="AlertSelectionOption", text="Login").exists
-        or d(resourceId="AlertPopup").exists,
+        d(resourceId=CT.ADD_ITEM_BUTTON),
+        lambda: d(resourceId=CT.ALERT_SELECTION_OPTION, text=SE.TYPE_LOGIN).exists
+        or d(resourceId=CT.ALERT_POPUP).exists,
         timeout=SHORT_WAIT,
     ):
         raise RuntimeError("Add Item did not open the item type selector.")
@@ -907,10 +915,10 @@ def bw_create_new_cipher(d, cipher):
     logger.info("Step 3.2: Selecting 'Login' as the item type...")
     if not click_then_expect(
         d,
-        d(resourceId="AlertSelectionOption", text="Login"),
-        lambda: d(resourceId="ItemNameEntry").exists
-        or d(resourceId="AcceptAlertButton").exists
-        or d(resourceId="AlertPopup").exists,
+        d(resourceId=CT.ALERT_SELECTION_OPTION, text=SE.TYPE_LOGIN),
+        lambda: d(resourceId=CT.ITEM_NAME_ENTRY).exists
+        or d(resourceId=CT.ACCEPT_ALERT_BUTTON).exists
+        or d(resourceId=CT.ALERT_POPUP).exists,
         timeout=SHORT_WAIT,
     ):
         raise RuntimeError("Login item type did not open the cipher form.")
@@ -918,14 +926,14 @@ def bw_create_new_cipher(d, cipher):
     # Handle the optional "Bitwarden Autofill Service" dialog that may appear.
     logger.info("Step 3.2: Checking for Autofill Service dialog...")
     if (
-        d(resourceId="AcceptAlertButton").exists(timeout=1)
-        and not d(resourceId="ItemNameEntry").exists
+        d(resourceId=CT.ACCEPT_ALERT_BUTTON).exists(timeout=1)
+        and not d(resourceId=CT.ITEM_NAME_ENTRY).exists
     ):
         logger.info("Step 3.2: Autofill dialog found. Clicking 'Okay'...")
         if not click_then_expect(
             d,
-            d(resourceId="AcceptAlertButton"),
-            d(resourceId="ItemNameEntry"),
+            d(resourceId=CT.ACCEPT_ALERT_BUTTON),
+            d(resourceId=CT.ITEM_NAME_ENTRY),
             timeout=SHORT_WAIT,
         ):
             raise RuntimeError("Autofill dialog did not dismiss to the cipher form.")
@@ -934,42 +942,42 @@ def bw_create_new_cipher(d, cipher):
 
     # Step 3.3: Enter the item name from the cipher data.
     logger.info("Step 3.3: Entering item name '%s'...", cipher["name"])
-    name_entry = d(resourceId="ItemNameEntry")
+    name_entry = d(resourceId=CT.ITEM_NAME_ENTRY)
     if not _scroll_until_visible(d, name_entry):
         raise RuntimeError("ItemNameEntry not visible")
     wait_and_set_text(d, name_entry, cipher["name"])
 
     # Step 3.4: Enter the username from the cipher data.
     logger.info("Step 3.4: Entering username '%s'...", cipher["username"])
-    user_entry = d(resourceId="LoginUsernameEntry")
+    user_entry = d(resourceId=CT.LOGIN_USERNAME_ENTRY)
     if not _scroll_until_visible(d, user_entry):
         raise RuntimeError("LoginUsernameEntry not visible")
     wait_and_set_text(d, user_entry, cipher["username"])
 
     # Step 3.5: Enter the password from the cipher data.
     logger.info("Step 3.5: Entering password '%s'...", cipher["password"])
-    pass_entry = d(resourceId="LoginPasswordEntry")
+    pass_entry = d(resourceId=CT.LOGIN_PASSWORD_ENTRY)
     if not _scroll_until_visible(d, pass_entry):
         raise RuntimeError("LoginPasswordEntry not visible")
     wait_and_set_text(d, pass_entry, cipher["password"])
 
     # Step 3.6: Enter the website URI from the cipher data.
     logger.info("Step 3.6: Entering website URI '%s'...", cipher["website"])
-    uri_entry = d(resourceId="LoginUriEntry")
+    uri_entry = d(resourceId=CT.LOGIN_URI_ENTRY)
     if not _scroll_until_visible(d, uri_entry):
         raise RuntimeError("LoginUriEntry not visible")
     wait_and_set_text(d, uri_entry, cipher["website"])
 
     # Step 3.7: Click the Save button to save the cipher.
     logger.info("Step 3.7: Clicking the Save button...")
-    save_button = d(resourceId="SaveButton")
+    save_button = d(resourceId=CT.SAVE_BUTTON)
     if not _scroll_until_visible(d, save_button):
         raise RuntimeError("SaveButton not visible")
     if not click_then_expect(
         d,
         save_button,
-        lambda: d(resourceId="AddItemButton").exists
-        or d(resourceId="AlertPopup").exists,
+        lambda: d(resourceId=CT.ADD_ITEM_BUTTON).exists
+        or d(resourceId=CT.ALERT_POPUP).exists,
         timeout=15,
     ):
         raise RuntimeError("Saving the cipher did not return to the vault screen.")
@@ -986,7 +994,7 @@ def bw_lock_and_logout(d, email: str | None = None):
     logger.info("Logging out of the current account")
     _dismiss_common_popups(d)
 
-    if email and d(resourceId="AddItemButton").exists:
+    if email and d(resourceId=CT.ADD_ITEM_BUTTON).exists:
         if _logout_via_account_actions(d, email):
             logger.info("Logout complete.")
             return
@@ -1014,7 +1022,7 @@ def bw_attempt_login(d, email, password):
         wait_for_ui_stable(d, timeout=15)
         _dismiss_common_popups(d)
 
-        if d(resourceId="AddItemButton").exists:
+        if d(resourceId=CT.ADD_ITEM_BUTTON).exists:
             logger.info("Unlocked vault detected. Logging out before login attempt.")
             try:
                 active_email = None
@@ -1028,9 +1036,9 @@ def bw_attempt_login(d, email, password):
 
         if _is_login_screen(d):
             label_text = ""
-            if d(resourceId="LoggingInAsLabel").exists:
+            if d(resourceId=CT.LOGGING_IN_AS_LABEL).exists:
                 try:
-                    label_text = d(resourceId="LoggingInAsLabel").get_text()
+                    label_text = d(resourceId=CT.LOGGING_IN_AS_LABEL).get_text()
                 except Exception:
                     label_text = ""
             if email not in label_text:
@@ -1039,44 +1047,44 @@ def bw_attempt_login(d, email, password):
                 )
                 if click_then_expect(
                     d,
-                    d(resourceId="NotYouLabel"),
-                    d(resourceId="EmailAddressEntry"),
+                    d(resourceId=CT.NOT_YOU_LABEL),
+                    d(resourceId=CT.EMAIL_ADDRESS_ENTRY),
                     timeout=SHORT_WAIT,
                 ):
                     wait_for_ui_stable(d, timeout=SHORT_WAIT)
 
         if (
-            d(resourceId="EmailAddressEntry").exists
-            and not d(resourceId="NameEntry").exists
+            d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists
+            and not d(resourceId=CT.NAME_ENTRY).exists
         ):
             logger.info("Entering email: %s...", email)
-            wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
+            wait_and_set_text(d, d(resourceId=CT.EMAIL_ADDRESS_ENTRY), email)
 
             logger.info("Clicking 'Continue'...")
             if not click_then_expect(
                 d,
-                d(resourceId="ContinueButton"),
-                lambda: d(resourceId="MasterPasswordEntry").exists
-                or d(resourceId="AlertPopup").exists,
+                d(resourceId=CT.CONTINUE_BUTTON),
+                lambda: d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists
+                or d(resourceId=CT.ALERT_POPUP).exists,
                 timeout=15,
             ):
                 logger.error("Landing screen did not advance to the Login screen.")
                 return False
 
-        if not d(resourceId="MasterPasswordEntry").exists:
+        if not d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists:
             logger.error("Master password field is not visible for %s.", email)
             return False
 
         _dismiss_common_popups(d)
 
         logger.info("Entering master password...")
-        wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
-        if d(resourceId="ConfirmMasterPasswordEntry").exists:
+        wait_and_set_text(d, d(resourceId=CT.MASTER_PASSWORD_ENTRY), password)
+        if d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists:
             logger.info(
                 "Confirm master password field visible; filling (complete registration path)."
             )
             wait_and_set_text(
-                d, d(resourceId="ConfirmMasterPasswordEntry"), password
+                d, d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY), password
             )
         wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
@@ -1136,8 +1144,8 @@ def bw_attempt_login(d, email, password):
 
         # Check for real error dialogs (loading overlay has AlertProgressIndicator; skip it)
         if (
-            d(resourceId="AlertPopup").exists
-            and not d(resourceId="AlertProgressIndicator").exists
+            d(resourceId=CT.ALERT_POPUP).exists
+            and not d(resourceId=CT.ALERT_PROGRESS_INDICATOR).exists
         ):
             logger.warning("Error dialog detected. Dismissing...")
             _dismiss_common_popups(d)
@@ -1147,17 +1155,17 @@ def bw_attempt_login(d, email, password):
         # Success is defined by the appearance of the main vault screen's header.
         # A failed login will not proceed to this screen.
         logger.info("Verifying login outcome...")
-        if d(resourceId="VaultTab").wait(timeout=8.0) or _vault_unlocked_visible(d):
+        if d(resourceId=CT.VAULT_TAB).wait(timeout=8.0) or _vault_unlocked_visible(d):
             logger.info("Login successful. Main vault is visible.")
             return True
         else:
             # Log a quick diagnostic snapshot to aid debugging
             missing = []
-            if not d(resourceId="VaultTab").exists:
+            if not d(resourceId=CT.VAULT_TAB).exists:
                 missing.append("VaultTab")
-            if not d(resourceId="AddItemButton").exists:
+            if not d(resourceId=CT.ADD_ITEM_BUTTON).exists:
                 missing.append("AddItemButton")
-            if not d(resourceId="HeaderBarComponent").exists:
+            if not d(resourceId=CT.HEADER_BAR_COMPONENT).exists:
                 missing.append("HeaderBarComponent")
             logger.error(
                 "Main vault not visible after timeout. Missing: %s", ", ".join(missing)

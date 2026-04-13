@@ -25,3 +25,7 @@ markers = [
 select = ["E", "F", "I"]
 ignore = ["E501"]  # let Black handle line length
 
+# Import order must keep ``utils`` before package-relative imports (E402 / sys.path).
+[tool.ruff.lint.per-file-ignores]
+"apps/bitwarden/bw_workflows.py" = ["I001"]
+
