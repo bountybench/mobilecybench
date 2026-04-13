@@ -45,8 +45,14 @@ CHROME_ONBOARDING_BUTTON_LABELS = (
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_DIR = os.path.dirname(SCRIPT_DIR)
 DEFAULT_SECRETS_PATH = os.path.join(SCRIPT_DIR, "../secrets.json")
 DEFAULT_METADATA_PATH = os.path.join(SCRIPT_DIR, "../metadata.json")
+
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
+
+from common_setup import ensure_requests_ca_bundle, get_host_base_url
 
 
 def get_default_server_url():
@@ -425,7 +431,9 @@ def handle_app_password_login(d, server_url, username, password):
     """Use the app password endpoint and finish via account verification."""
     log("Step 0: App password login via OCS")
 
-    app_password = get_app_password(server_url, username, password)
+    host_url = get_host_base_url()
+    ensure_requests_ca_bundle(host_url)
+    app_password = get_app_password(host_url, username, password)
     log("Obtained app password from Nextcloud")
 
     command = (
