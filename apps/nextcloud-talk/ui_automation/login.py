@@ -33,7 +33,6 @@ BROWSER_PACKAGE = "com.android.chrome"
 ACCOUNT_VERIFICATION_ACTIVITY = (
     f"{PACKAGE}/com.nextcloud.talk.account.AccountVerificationActivity"
 )
-WEBVIEW_LOGIN_ACTIVITY = f"{PACKAGE}/com.nextcloud.talk.account.WebViewLoginActivity"
 CHROME_ONBOARDING_BUTTON_LABELS = (
     "Use without an account",
     "Accept & continue",
@@ -138,6 +137,8 @@ def get_app_password(server_url, username, password):
 def is_logged_in(d):
     """Check if we're on the main conversation list."""
     if d(text="Join a conversation or start a new one").exists:
+        return True
+    if d(text="Conversations").exists:
         return True
     if d(resourceId=f"{PACKAGE}:id/floatingActionButton").exists:
         return True
@@ -311,7 +312,7 @@ def handle_server_url(d, server_url):
 def handle_connect_page(d):
     """Tap 'Log in' on the browser connect page."""
     log("Step 2: Browser connect page")
-    deadline = time.time() + 60
+    deadline = time.time() + 120
     while time.time() < deadline:
         handle_chrome_first_run(d)
 
@@ -411,28 +412,13 @@ def handle_grant_access(d):
 
 
 def handle_webview_login(d, server_url, username, password):
-    """Use the app's native WebView login flow."""
-    log("Step 0: Native WebView login flow")
-
-    d.app_stop(PACKAGE)
-    time.sleep(2)
-
-    command = (
-        f"am start -W -n {WEBVIEW_LOGIN_ACTIVITY} "
-        f"--es KEY_BASE_URL {shlex.quote(server_url)} "
-        f"--es KEY_USERNAME {shlex.quote(username)} "
-        f"--es KEY_PASSWORD {shlex.quote(password)}"
+    """Legacy WebView login was removed upstream (replaced by BrowserLoginActivity)."""
+    _ = (d, server_url, username, password)
+    log(
+        "Skipping native WebView login (WebViewLoginActivity removed); "
+        "continuing with browser handoff flow."
     )
-    launch_result = d.shell(command, timeout=30)
-    output = getattr(launch_result, "output", launch_result)
-    log(f"WebView login launch output: {output}")
-
-    if not wait_for_condition(lambda: is_logged_in(d), timeout=90):
-        log("ERROR: Native WebView login did not reach the main screen")
-        return False
-
-    log("Native WebView login complete")
-    return True
+    return False
 
 
 def handle_app_password_login(d, server_url, username, password):
@@ -454,7 +440,7 @@ def handle_app_password_login(d, server_url, username, password):
     output = getattr(launch_result, "output", launch_result)
     log(f"Account verification launch output: {output}")
 
-    if not wait_for_condition(lambda: is_logged_in(d), timeout=90):
+    if not wait_for_condition(lambda: is_logged_in(d), timeout=150):
         log("ERROR: App password login did not reach the main screen")
         return False
 
