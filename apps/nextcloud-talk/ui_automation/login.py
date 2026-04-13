@@ -3,9 +3,10 @@
 Log in to Nextcloud Talk on the emulator.
 
 Flow:
-1. Native WebView login flow -> launch `WebViewLoginActivity`
-2. Fallback browser flow if the WebView path does not reach the main screen
-3. Main conversation list (native) -> verify logged in
+1. App password flow -> request token via `/ocs/v2.php/core/getapppassword`
+2. Native WebView login flow -> launch `WebViewLoginActivity`
+3. Fallback browser flow if the native paths do not reach the main screen
+4. Main conversation list (native) -> verify logged in
 
 Usage:
     python login.py --username admin --password secretpass
@@ -18,8 +19,10 @@ import os
 import shlex
 import sys
 import time
+import xml.etree.ElementTree as ET
 from http.client import RemoteDisconnected
 
+import requests
 import uiautomator2 as u2
 
 from utils.ui_utils import click_then_expect
@@ -27,6 +30,9 @@ from utils.ui_utils import click_then_expect
 SCRIPT_NAME = "nc_login"
 PACKAGE = "com.nextcloud.talk2"
 BROWSER_PACKAGE = "com.android.chrome"
+ACCOUNT_VERIFICATION_ACTIVITY = (
+    f"{PACKAGE}/com.nextcloud.talk.account.AccountVerificationActivity"
+)
 WEBVIEW_LOGIN_ACTIVITY = f"{PACKAGE}/com.nextcloud.talk.account.WebViewLoginActivity"
 CHROME_ONBOARDING_BUTTON_LABELS = (
     "Use without an account",
@@ -84,6 +90,35 @@ def get_password(args):
         log(f"ERROR: Key '{key}' not found in {args.secrets}")
         sys.exit(1)
     return secrets[key]
+
+
+def get_app_password(server_url, username, password):
+    headers = {"OCS-APIRequest": "true", "Accept": "application/json"}
+    response = requests.get(
+        f"{server_url}/ocs/v2.php/core/getapppassword",
+        headers=headers,
+        auth=(username, password),
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    try:
+        payload = response.json()
+        app_password = payload["ocs"]["data"]["apppassword"]
+        if app_password:
+            return app_password
+    except Exception:
+        pass
+
+    try:
+        root = ET.fromstring(response.text)
+        app_password = root.findtext(".//data/apppassword")
+        if app_password:
+            return app_password
+    except ET.ParseError:
+        pass
+
+    raise RuntimeError("Could not obtain app password from Nextcloud")
 
 
 def is_logged_in(d):
@@ -369,18 +404,45 @@ def handle_webview_login(d, server_url, username, password):
     time.sleep(2)
 
     command = (
-        f"am start -n {WEBVIEW_LOGIN_ACTIVITY} "
+        f"am start -W -n {WEBVIEW_LOGIN_ACTIVITY} "
         f"--es KEY_BASE_URL {shlex.quote(server_url)} "
         f"--es KEY_USERNAME {shlex.quote(username)} "
         f"--es KEY_PASSWORD {shlex.quote(password)}"
     )
-    d.shell(command, timeout=30)
+    launch_result = d.shell(command, timeout=30)
+    output = getattr(launch_result, "output", launch_result)
+    log(f"WebView login launch output: {output}")
 
     if not wait_for_condition(lambda: is_logged_in(d), timeout=90):
         log("ERROR: Native WebView login did not reach the main screen")
         return False
 
     log("Native WebView login complete")
+    return True
+
+
+def handle_app_password_login(d, server_url, username, password):
+    """Use the app password endpoint and finish via account verification."""
+    log("Step 0: App password login via OCS")
+
+    app_password = get_app_password(server_url, username, password)
+    log("Obtained app password from Nextcloud")
+
+    command = (
+        f"am start -W -n {ACCOUNT_VERIFICATION_ACTIVITY} "
+        f"--es KEY_BASE_URL {shlex.quote(server_url)} "
+        f"--es KEY_USERNAME {shlex.quote(username)} "
+        f"--es KEY_TOKEN {shlex.quote(app_password)}"
+    )
+    launch_result = d.shell(command, timeout=30)
+    output = getattr(launch_result, "output", launch_result)
+    log(f"Account verification launch output: {output}")
+
+    if not wait_for_condition(lambda: is_logged_in(d), timeout=90):
+        log("ERROR: App password login did not reach the main screen")
+        return False
+
+    log("App password login complete")
     return True
 
 
@@ -392,6 +454,11 @@ def main():
 
     d = u2.connect()
 
+    if handle_app_password_login(d, args.server_url, args.username, password):
+        log("SUCCESS: Login complete")
+        sys.exit(0)
+
+    log("Falling back to native WebView login flow")
     if handle_webview_login(d, args.server_url, args.username, password):
         log("SUCCESS: Login complete")
         sys.exit(0)
