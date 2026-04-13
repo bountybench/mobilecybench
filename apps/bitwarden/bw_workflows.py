@@ -124,12 +124,8 @@ def _dismiss_common_popups(d, max_rounds: int = 4) -> None:
 
 
 def _vault_unlocked_visible(d) -> bool:
-    """True when the main vault chrome is on-screen (Compose testTags → resource-id)."""
-    return bool(
-        d(resourceId="VaultTab").exists
-        or d(resourceId="AddItemButton").exists
-        or d(resourceId="HeaderBarComponent").exists
-    )
+    """True when the vault item-listing screen is actually ready for item creation."""
+    return bool(d(resourceId="AddItemButton").exists)
 
 
 def _auth_submit_terminal_state(d) -> bool:
