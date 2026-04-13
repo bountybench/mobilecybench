@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+#
+# Lock screen baseline values must match K9.LockScreenNotificationVisibility in
+# apps/thunderbird/codebase/legacy/core/src/main/java/com/fsck/k9/K9.kt and the
+# persisted key lockScreenNotificationVisibility (GeneralSettingsDescriptions).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -13,8 +17,8 @@ command -v jq >/dev/null 2>&1 || fail "jq is required"
 PKG="$(jq -r '.package_name' "$META_JSON")"
 LOCKSCREEN_BASELINE="${LOCKSCREEN_BASELINE:-MESSAGE_COUNT}"
 case "$LOCKSCREEN_BASELINE" in
-  NOTHING|APP_NAME|MESSAGE_COUNT|SENDERS) ;;
-  *) fail "Invalid LOCKSCREEN_BASELINE='$LOCKSCREEN_BASELINE' (expected NOTHING|APP_NAME|MESSAGE_COUNT|SENDERS)" ;;
+  NOTHING|APP_NAME|MESSAGE_COUNT|SENDERS|EVERYTHING) ;;
+  *) fail "Invalid LOCKSCREEN_BASELINE='$LOCKSCREEN_BASELINE' (expected K9.LockScreenNotificationVisibility names)" ;;
 esac
 
 adb_priv_sqlite() {
