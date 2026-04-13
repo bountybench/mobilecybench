@@ -149,14 +149,9 @@ def _select_auth_submit_control(d):
     """Return the primary submit control for LoginScreen or VaultUnlockScreen, if any."""
     max_sw = 10
 
-    login_button = d(resourceId="LogInWithMasterPasswordButton")
-    if _scroll_until_visible(d, login_button, max_swipes=max_sw):
-        return login_button
-
-    unlock_button = d(resourceId="UnlockVaultButton")
-    if _scroll_until_visible(d, unlock_button, max_swipes=max_sw):
-        return unlock_button
-
+    # Complete registration (and similar) shows both password fields; the CTA is often text
+    # "Next" with no resource id. If confirm is empty, the CTA stays disabled and may be
+    # absent from the accessibility tree — fill confirm in bw_attempt_login when present.
     if d(resourceId="ConfirmMasterPasswordEntry").exists:
         next_button = d(text="Next")
         if _scroll_until_visible(d, next_button, max_swipes=max_sw):
@@ -164,6 +159,14 @@ def _select_auth_submit_control(d):
         submit_button = d(resourceId="SubmitButton")
         if _scroll_until_visible(d, submit_button, max_swipes=max_sw):
             return submit_button
+
+    login_button = d(resourceId="LogInWithMasterPasswordButton")
+    if _scroll_until_visible(d, login_button, max_swipes=max_sw):
+        return login_button
+
+    unlock_button = d(resourceId="UnlockVaultButton")
+    if _scroll_until_visible(d, unlock_button, max_swipes=max_sw):
+        return unlock_button
 
     login_label = d(text="Log in with master password")
     if _scroll_until_visible(d, login_label, max_swipes=max_sw):
@@ -1068,6 +1071,13 @@ def bw_attempt_login(d, email, password):
 
         logger.info("Entering master password...")
         wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
+        if d(resourceId="ConfirmMasterPasswordEntry").exists:
+            logger.info(
+                "Confirm master password field visible; filling (complete registration path)."
+            )
+            wait_and_set_text(
+                d, d(resourceId="ConfirmMasterPasswordEntry"), password
+            )
         wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
         if _vault_unlocked_visible(d):
