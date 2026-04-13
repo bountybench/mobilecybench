@@ -54,28 +54,81 @@ PY
 
 log_info "Importing victim config (user=$VICTIM_USER) via LoadActivity intent"
 
-adb shell am start -a android.intent.action.VIEW \
+adb wait-for-device >/dev/null 2>&1 || true
+adb shell am start -W -a android.intent.action.VIEW \
     -n "$PKG/.ui.preferences.load.LoadActivity" \
     -d "$INLINE_URI"
 
 log_info "Tapping Save button"
 python3 - <<'PY'
-import sys, time
+import subprocess
+import sys
+import time
+
 import uiautomator2 as u2
 
-d = u2.connect()
-btn = d(resourceId="org.owntracks.android:id/save")
-# Wait up to 30s for the LoadActivity to render the Save button.
-# uiautomator2 polls deterministically — proceeds as soon as the
-# element appears, no arbitrary sleep needed.
-if not btn.wait(timeout=30):
-    d.dump_hierarchy()
-    print("[prepare_app] ERROR: Save button not found after 30s", file=sys.stderr)
-    sys.exit(1)
-btn.click()
-# Wait for the config import to complete
-d(text="Preferences imported").wait(timeout=10)
-print("[prepare_app] Save clicked", file=sys.stderr)
+BTN_ID = "org.owntracks.android:id/save"
+
+
+def log(msg):
+    print(f"[prepare_app] {msg}", file=sys.stderr)
+
+
+def wait_for_device():
+    subprocess.run(
+        ["adb", "wait-for-device"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    time.sleep(1)
+
+
+def connect(max_retries=3):
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            wait_for_device()
+            d = u2.connect()
+            _ = d.info
+            return d
+        except Exception as exc:
+            last_exc = exc
+            log(f"uiautomator2 connect attempt {attempt}/{max_retries} failed: {exc}")
+            time.sleep(2)
+    raise RuntimeError("Failed to connect to uiautomator2") from last_exc
+
+
+last_exc = None
+for attempt in range(1, 4):
+    d = connect()
+    btn = d(resourceId=BTN_ID)
+    # Wait up to 30s for the LoadActivity to render the Save button.
+    if not btn.wait(timeout=30):
+        try:
+            print(d.dump_hierarchy(), file=sys.stderr)
+        except Exception:
+            pass
+        log("ERROR: Save button not found after 30s")
+        sys.exit(1)
+
+    try:
+        btn.click()
+    except Exception as exc:
+        last_exc = exc
+        log(f"Save click attempt {attempt}/3 failed: {exc}")
+        time.sleep(2)
+        continue
+
+    # Give the import a brief moment to settle before the verifier starts.
+    if not d(text="Preferences imported").wait(timeout=10):
+        log("Preferences imported confirmation not observed; continuing anyway")
+    time.sleep(2)
+    log("Save clicked")
+    sys.exit(0)
+
+log(f"ERROR: Save click failed after 3 attempts: {last_exc}")
+sys.exit(1)
 PY
 
 # Start a background MQTT subscriber to capture victim messages.
