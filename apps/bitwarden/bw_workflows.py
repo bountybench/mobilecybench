@@ -3,7 +3,12 @@ Bitwarden-specific UI workflows built on top of generic ui_utils primitives.
 
 These functions orchestrate common Bitwarden flows such as initial setup,
 account creation, cipher creation, logging out, and attempting login.
+
+UI selectors are documented in ``bw_ui_source`` (aligned with ``apps/bitwarden/codebase``).
 """
+
+# ruff: noqa: I001
+# Imports: keep ``utils`` before package-relative imports (E402 for script entrypoints).
 
 import logging
 import os
