@@ -147,11 +147,14 @@ def _auth_submit_terminal_state(d) -> bool:
 
 def _select_auth_submit_control(d):
     """Return the primary submit control for LoginScreen or VaultUnlockScreen, if any."""
-    if _is_login_screen(d):
-        return d(resourceId="LogInWithMasterPasswordButton")
-    unlock = d(resourceId="UnlockVaultButton")
-    if unlock.exists:
-        return unlock
+    login_button = d(resourceId="LogInWithMasterPasswordButton")
+    if login_button.exists:
+        return login_button
+    unlock_button = d(resourceId="UnlockVaultButton")
+    if unlock_button.exists:
+        return unlock_button
+    if d(resourceId="ConfirmMasterPasswordEntry").exists and d(text="Next").exists:
+        return d(text="Next")
     if d(resourceId="MasterPasswordEntry").exists and d(text="Unlock").exists:
         return d(text="Unlock")
     return None
@@ -245,7 +248,7 @@ def _is_create_account_screen(d) -> bool:
         d(resourceId="EmailAddressEntry").exists
         and d(resourceId="MasterPasswordEntry").exists
         and d(resourceId="ConfirmMasterPasswordEntry").exists
-        and d(resourceId="SubmitButton").exists
+        and d(text="Next").exists
     )
 
 
@@ -253,8 +256,6 @@ def _is_login_screen(d) -> bool:
     return (
         d(resourceId="MasterPasswordEntry").exists
         and d(resourceId="LogInWithMasterPasswordButton").exists
-        and d(resourceId="LoggingInAsLabel").exists
-        and d(resourceId="NotYouLabel").exists
     )
 
 
@@ -262,7 +263,6 @@ def _is_vault_unlock_screen(d) -> bool:
     return (
         d(resourceId="MasterPasswordEntry").exists
         and d(resourceId="UnlockVaultButton").exists
-        and d(resourceId="UserAndEnvironmentDataLabel").exists
     )
 
 
