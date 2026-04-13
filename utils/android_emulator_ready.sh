@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ------------ Configurable timeouts (seconds) ------------
-TIMEOUT_CORE="${TIMEOUT_CORE:-10}"   # core service responsiveness
+TIMEOUT_CORE="${TIMEOUT_CORE:-30}"   # core service responsiveness; provisioning can lag on cold boots
 TIMEOUT_UIA="${TIMEOUT_UIA:-15}"     # uiautomator readiness
 TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-10}"  # resumed activity window
 POLL_INTERVAL="${POLL_INTERVAL:-1}"   # interval for polling loops
