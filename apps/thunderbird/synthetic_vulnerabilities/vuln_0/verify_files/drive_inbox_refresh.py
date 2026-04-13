@@ -154,6 +154,10 @@ def _drawer_is_open(d) -> bool:
         return True
     if d(descriptionMatches="(?i)Show accounts").exists:
         return True
+    if d(textMatches="(?i)Hide accounts").exists:
+        return True
+    if d(descriptionMatches="(?i)Hide accounts").exists:
+        return True
 
     # Check if the account email/name is visible AND MessageList is NOT the primary content
     # (The drawer overlays the MessageList)
@@ -161,8 +165,8 @@ def _drawer_is_open(d) -> bool:
         if not label:
             continue
         if (
-            d(textMatches=f"(?i){label}").exists
-            or d(descriptionMatches=f"(?i){label}").exists
+            d(textMatches=rf"(?i){re.escape(label)}").exists
+            or d(descriptionMatches=rf"(?i){re.escape(label)}").exists
         ) and not d(resourceIdMatches=_rid("message_list")).exists:
             return True
 
@@ -265,15 +269,12 @@ def _trigger_drawer_sync(d) -> None:
         return False
 
     def _activate_account_selector() -> bool:
-        drawer = _drawer_content(d)
         for label in (ACCOUNT_DISPLAY_NAME, ACCOUNT_EMAIL):
             if not label:
                 continue
-            selector = (
-                drawer.child(textMatches=rf"(?i){re.escape(label)}")
-                if drawer.exists
-                else d(textMatches=rf"(?i){re.escape(label)}")
-            )
+            selector = d(textMatches=rf"(?i){re.escape(label)}")
+            if not selector.exists:
+                selector = d(descriptionMatches=rf"(?i){re.escape(label)}")
             if not selector.exists:
                 continue
 
@@ -312,10 +313,11 @@ def _trigger_drawer_sync(d) -> None:
         )
         try:
             drawer = _drawer_content(d)
+            target = _sync_label()
             if drawer.exists and drawer.info.get("scrollable"):
-                drawer.scroll.to(textMatches="(?i)Sync all accounts")
+                drawer.scroll.to(target)
             else:
-                d(scrollable=True).scroll.to(textMatches="(?i)Sync all accounts")
+                d(scrollable=True).scroll.to(target)
         except Exception as e:
             print(f"[drive_inbox_refresh] scroll failed: {e}")
             width, height = d.window_size()
