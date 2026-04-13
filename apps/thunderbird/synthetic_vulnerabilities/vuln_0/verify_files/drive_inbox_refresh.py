@@ -280,6 +280,16 @@ def _trigger_drawer_sync(d) -> None:
             return False
         return False
 
+    def _tap_clickable_node(node) -> bool:
+        if not _node_is_visible(node):
+            return False
+
+        clickable = _find_clickable_ancestor(node)
+        if clickable is not None and _node_is_visible(clickable):
+            node = clickable
+
+        return _tap_node(node)
+
     def _activate_account_selector() -> bool:
         for label in (ACCOUNT_DISPLAY_NAME, ACCOUNT_EMAIL):
             if not label:
@@ -371,8 +381,9 @@ def _trigger_drawer_sync(d) -> None:
             )
 
     sync_label = _sync_label()
+    sync_target = _find_clickable_ancestor(sync_label) or sync_label
     print("[drive_inbox_refresh] clicking 'Sync all accounts'")
-    if not _tap_node(sync_label):
+    if not _tap_clickable_node(sync_target):
         raise RuntimeError("sync action not tappable")
     print(
         f"[drive_inbox_refresh] attempt={ATTEMPT} sync_trigger_done=true",
