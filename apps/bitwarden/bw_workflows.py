@@ -717,22 +717,31 @@ def bw_make_account(d, email, name, master_password):
 
     _dismiss_common_popups(d)
     if _is_landing_screen(d):
-        if d(resourceId="CreateAccountLabel").exists or _scroll_to(
-            d, resource_id="CreateAccountLabel"
-        ):
-            if not click_then_expect(
-                d,
-                d(resourceId="CreateAccountLabel"),
-                lambda: _is_start_registration_screen(d)
-                or _is_create_account_screen(d)
-                or d(resourceId="AlertPopup").exists,
-                timeout=SHORT_WAIT,
-            ):
-                raise RuntimeError(
-                    "Landing screen did not advance into account creation."
-                )
+        # LandingScreen can match via RegionSelectorDropdown / ContinueButton while the
+        # "Create an account" control (CreateAccountLabel) sits below the fold — _scroll_to
+        # is weaker than _scroll_until_visible for tall Compose layouts.
+        create_by_id = d(resourceId="CreateAccountLabel")
+        create_by_text = d(text="Create an account")
+        if not _scroll_until_visible(d, create_by_id):
+            _scroll_until_visible(d, create_by_text)
+        if create_by_id.exists:
+            create_entry = create_by_id
+        elif create_by_text.exists:
+            create_entry = create_by_text
         else:
-            raise RuntimeError("Could not find CreateAccountLabel on LandingScreen.")
+            raise RuntimeError(
+                "Could not find account creation control on LandingScreen "
+                "(expected CreateAccountLabel or text 'Create an account')."
+            )
+        if not click_then_expect(
+            d,
+            create_entry,
+            lambda: _is_start_registration_screen(d)
+            or _is_create_account_screen(d)
+            or d(resourceId="AlertPopup").exists,
+            timeout=15,
+        ):
+            raise RuntimeError("Landing screen did not advance into account creation.")
         wait_for_ui_stable(d, timeout=SHORT_WAIT)
         _dismiss_common_popups(d)
 
