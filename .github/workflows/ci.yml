@@ -1422,29 +1422,8 @@ jobs:
           disable-animations: true
           script: |
             # Restart ADB on all interfaces so exploit containers can reach
-            # the emulator via host.docker.internal:5037. The emulator-runner
-            # leaves a server on 5037; a tight kill+start can race and fail with
-            # "could not install *smartsocket* listener: Address already in use".
-            adb kill-server || true
-            sleep 3
-            fuser -k 5037/tcp 2>/dev/null || true
-            sleep 2
-            ok=0
-            for i in 1 2 3 4 5; do
-              if adb -a -P 5037 start-server; then
-                ok=1
-                break
-              fi
-              echo "ADB start-server failed (attempt $i), freeing 5037 and retrying..."
-              adb kill-server || true
-              fuser -k 5037/tcp 2>/dev/null || true
-              pkill -9 adb 2>/dev/null || true
-              sleep 2
-            done
-            if [ "$ok" != 1 ]; then
-              echo "ERROR: adb -a -P 5037 start-server failed after retries"
-              exit 1
-            fi
+            # the emulator via host.docker.internal:5037
+            adb kill-server && adb -a -P 5037 start-server
             adb wait-for-device
             utils/android_emulator_ready.sh
             utils/inject_system_ca.sh
