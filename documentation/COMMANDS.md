@@ -15,8 +15,8 @@ Details: `documentation/GETTING_STARTED.md`
 
 Flags:
 
-- `setup.sh --sdk <version> --system-image <google_apis|google_apis_playstore> --init-submodules [app_name]`
-- `start_emulator.sh [google_apis|google_apis_playstore]`
+- `setup.sh [app_name] --init-submodules [app_name]`
+- `start_emulator.sh <33|34|35>`
 - `check_device.sh -s <serial>`
 - `stop_emulator.sh -s <serial> -p <port>`
 
