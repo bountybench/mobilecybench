@@ -1,6 +1,7 @@
 import json
 import ssl
 import time
+import uuid
 
 from websocket import create_connection
 
@@ -23,7 +24,9 @@ def login_with_llat(hostname, access_token):
         ws.close()
         return None
 
-    client_name = f"pentest-script-{int(time.time())}"
+    # This helper can be called several times in quick succession during the
+    # access-control test suite; a second-granularity name can collide.
+    client_name = f"pentest-script-{int(time.time())}-{uuid.uuid4().hex[:8]}"
     req = {
         "id": 1,
         "type": "auth/long_lived_access_token",
