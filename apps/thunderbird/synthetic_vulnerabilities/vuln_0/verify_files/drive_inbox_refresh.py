@@ -59,9 +59,9 @@ from utils.ui_utils import (  # noqa: E402
     initialize_ui_automation,
 )
 
-# Keep the helper fast: the verifier already polls for local DB ingestion after
-# this script returns, so we should not spend time waiting after the sync tap.
-_POST_SYNC_WAIT_SECS = 0
+# Allow IMAP fetch + DB write to start before returning. Remote CI is slow; 0s
+# caused races where the verifier polled before sync work had begun.
+_POST_SYNC_WAIT_SECS = 20
 
 
 def _rid(name: str) -> str:
@@ -99,7 +99,7 @@ def _ensure_app_foreground(d) -> None:
     # `monkey` can leave the fake launcher visible on some emulator boots even
     # when Thunderbird is already installed, so force the app task into the
     # foreground before waiting for the message list.
-    d.app_start(APP_PKG, wait=True, use_monkey=True)
+    d.app_start(APP_PKG, stop=True, wait=True, use_monkey=True)
 
 
 def _wait_for_inbox_ready(d, timeout: float = 90.0) -> None:
@@ -185,12 +185,28 @@ def _drawer_is_open(d) -> bool:
     return False
 
 
-def _open_navigation_drawer(d, timeout: float = 15.0) -> None:
+def _open_navigation_drawer(d, timeout: float = 20.0) -> None:
     if _drawer_is_open(d):
         return
 
-    # The actual drawer opener is framework-generated in this build, so the
-    # stable signal we can rely on is the exposed accessibility label.
+    # Toolbar home/up IDs are the primary opener in MessageList; descriptions
+    # are the fallback when nodes are framework-generated.
+    for name in ("home", "up"):
+        try:
+            nav = d(resourceIdMatches=rf"(^|.*:)id/{name}$")
+            if nav.exists and click_then_expect(
+                d,
+                nav,
+                lambda: _drawer_is_open(d),
+                timeout=12,
+                retries=3,
+            ):
+                return
+        except Exception:
+            pass
+        if _drawer_is_open(d):
+            return
+
     for description in ("Navigate up", "Open navigation drawer"):
         try:
             nav = d(description=description)
@@ -198,8 +214,8 @@ def _open_navigation_drawer(d, timeout: float = 15.0) -> None:
                 d,
                 nav,
                 lambda: _drawer_is_open(d),
-                timeout=2,
-                retries=1,
+                timeout=12,
+                retries=3,
             ):
                 return
         except Exception:
@@ -380,19 +396,38 @@ def _trigger_drawer_sync(d) -> None:
                 steps=50,
             )
 
-    sync_label = _sync_label()
-    sync_target = _find_clickable_ancestor(sync_label) or sync_label
-    print("[drive_inbox_refresh] clicking 'Sync all accounts'")
-    if not _tap_clickable_node(sync_target):
+    tapped = False
+    for tap_round in range(1, 5):
+        if not _node_is_visible(_sync_label()) and not _make_sync_visible():
+            time.sleep(0.75)
+            continue
+        sync_label = _sync_label()
+        sync_target = _find_clickable_ancestor(sync_label) or sync_label
+        print(
+            f"[drive_inbox_refresh] clicking 'Sync all accounts' (try {tap_round})",
+            flush=True,
+        )
+        if _tap_clickable_node(sync_target):
+            tapped = True
+            break
+        time.sleep(1.0)
+    if not tapped:
         raise RuntimeError("sync action not tappable")
+
     print(
         f"[drive_inbox_refresh] attempt={ATTEMPT} sync_trigger_done=true",
         flush=True,
     )
 
     indicator = d(resourceIdMatches=_rid("PullToRefreshIndicator"))
+    indicator_clear_end = time.time() + 75
     if indicator.exists:
         print("[drive_inbox_refresh] sync indicator appeared")
+        while time.time() < indicator_clear_end:
+            if not indicator.exists:
+                print("[drive_inbox_refresh] sync indicator cleared")
+                break
+            time.sleep(0.5)
     else:
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} sync_indicator_absent=true",
@@ -419,6 +454,7 @@ def main() -> int:
             f"[drive_inbox_refresh] attempt={ATTEMPT} drawer_open=true",
             flush=True,
         )
+        time.sleep(0.5)
         _trigger_drawer_sync(d)
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} sync_complete screen={_current_screen(d)}",
