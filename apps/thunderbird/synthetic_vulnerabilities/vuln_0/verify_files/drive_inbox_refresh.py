@@ -120,6 +120,23 @@ def _drawer_content(d):
     return d(resourceIdMatches=_rid("DrawerContent"))
 
 
+def _node_is_visible(node) -> bool:
+    if not node.exists:
+        return False
+
+    try:
+        info = node.info or {}
+    except Exception:
+        return False
+
+    bounds = info.get("visibleBounds") or info.get("bounds") or {}
+    left = int(bounds.get("left", -1))
+    right = int(bounds.get("right", -1))
+    top = int(bounds.get("top", -1))
+    bottom = int(bounds.get("bottom", -1))
+    return left >= 0 and right > left and top >= 0 and bottom > top
+
+
 def _sync_label(d):
     """Return a selector for the 'Sync all accounts' action.
 
@@ -137,26 +154,21 @@ def _sync_label(d):
 def _drawer_is_open(d) -> bool:
     # First try the reliable resource ID
     drawer = _drawer_content(d)
-    if drawer.exists:
-        info = drawer.info or {}
-        bounds = info.get("visibleBounds") or info.get("bounds") or {}
-        left = int(bounds.get("left", -1))
-        right = int(bounds.get("right", -1))
-        if left >= 0 and right > left:
-            return True
+    if _node_is_visible(drawer):
+        return True
 
     # Fallback: check for elements that only appear in the drawer
-    if d(textMatches="(?i)Sync all accounts").exists:
+    if _node_is_visible(d(textMatches="(?i)Sync all accounts")):
         return True
-    if d(descriptionMatches="(?i)Sync all accounts").exists:
+    if _node_is_visible(d(descriptionMatches="(?i)Sync all accounts")):
         return True
-    if d(textMatches="(?i)Show accounts").exists:
+    if _node_is_visible(d(textMatches="(?i)Show accounts")):
         return True
-    if d(descriptionMatches="(?i)Show accounts").exists:
+    if _node_is_visible(d(descriptionMatches="(?i)Show accounts")):
         return True
-    if d(textMatches="(?i)Hide accounts").exists:
+    if _node_is_visible(d(textMatches="(?i)Hide accounts")):
         return True
-    if d(descriptionMatches="(?i)Hide accounts").exists:
+    if _node_is_visible(d(descriptionMatches="(?i)Hide accounts")):
         return True
 
     # Check if the account email/name is visible AND MessageList is NOT the primary content
@@ -165,8 +177,8 @@ def _drawer_is_open(d) -> bool:
         if not label:
             continue
         if (
-            d(textMatches=rf"(?i){re.escape(label)}").exists
-            or d(descriptionMatches=rf"(?i){re.escape(label)}").exists
+            _node_is_visible(d(textMatches=rf"(?i){re.escape(label)}"))
+            or _node_is_visible(d(descriptionMatches=rf"(?i){re.escape(label)}"))
         ) and not d(resourceIdMatches=_rid("message_list")).exists:
             return True
 
@@ -222,13 +234,13 @@ def _trigger_drawer_sync(d) -> None:
 
     def _sync_label():
         by_description = d(descriptionMatches=r"(?i)Sync all accounts")
-        if by_description.exists:
+        if _node_is_visible(by_description):
             return by_description
         return d(textMatches=r"(?i)Sync all accounts")
 
     def _show_accounts_label():
         by_description = d(descriptionMatches=r"(?i)Show accounts")
-        if by_description.exists:
+        if _node_is_visible(by_description):
             return by_description
         return d(textMatches=r"(?i)Show accounts")
 
@@ -247,7 +259,7 @@ def _trigger_drawer_sync(d) -> None:
         return None
 
     def _tap_node(node) -> bool:
-        if not node.exists:
+        if not _node_is_visible(node):
             return False
         try:
             if node.click_exists(timeout=2):
@@ -273,9 +285,9 @@ def _trigger_drawer_sync(d) -> None:
             if not label:
                 continue
             selector = d(textMatches=rf"(?i){re.escape(label)}")
-            if not selector.exists:
+            if not _node_is_visible(selector):
                 selector = d(descriptionMatches=rf"(?i){re.escape(label)}")
-            if not selector.exists:
+            if not _node_is_visible(selector):
                 continue
 
             print(f"[drive_inbox_refresh] found account selector candidate='{label}'")
@@ -287,25 +299,25 @@ def _trigger_drawer_sync(d) -> None:
         return False
 
     def _make_sync_visible() -> bool:
-        if _sync_label().exists:
+        if _node_is_visible(_sync_label()):
             return True
 
         show_accounts = _show_accounts_label()
-        if show_accounts.exists:
+        if _node_is_visible(show_accounts):
             print(
                 "[drive_inbox_refresh] clicking 'Show accounts' to reveal sync action"
             )
             if _tap_node(show_accounts):
                 time.sleep(0.5)
-            if _sync_label().exists:
+            if _node_is_visible(_sync_label()):
                 return True
 
         if _activate_account_selector():
             time.sleep(0.5)
-            if _sync_label().exists:
+            if _node_is_visible(_sync_label()):
                 return True
 
-        if _sync_label().exists:
+        if _node_is_visible(_sync_label()):
             return True
 
         print(
@@ -326,10 +338,10 @@ def _trigger_drawer_sync(d) -> None:
             y_end = int(height * 0.3)
             for _ in range(2):
                 d.swipe(x, y_start, x, y_end, steps=30)
-                if _sync_label().exists:
+                if _node_is_visible(_sync_label()):
                     return True
 
-        return _sync_label().exists
+        return _node_is_visible(_sync_label())
 
     if not _make_sync_visible():
         print(
