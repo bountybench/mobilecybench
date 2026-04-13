@@ -18,8 +18,11 @@ This is intentionally aligned to the vendored Thunderbird code in this repo:
   `messagingController.checkMail(account, ignoreLastCheckedTime=true, ...)`,
   which is the real UI-backed sync path for the selected account.
 
-So the correct automation target is the drawer sync action, backed by the app's
-own UI helper layer and real selectors, not the inbox list refresh gesture.
+- `MessageListFragment.initializeSwipeRefreshLayout()` wires
+  `R.id.swiperefresh` to `checkMail()` when the list has finished loading
+  (`legacy/ui/.../MessageListFragment.kt`). After drawer sync, we close the
+  drawer and pull-to-refresh on that layout so CI hits the same code path as
+  an in-inbox manual refresh (belt-and-suspenders with drawer "Sync all").
 """
 import json
 import os
@@ -437,6 +440,55 @@ def _trigger_drawer_sync(d) -> None:
     time.sleep(_POST_SYNC_WAIT_SECS)
 
 
+def _close_drawer_if_open(d) -> None:
+    if not _drawer_is_open(d):
+        return
+    try:
+        d.press("back")
+    except Exception:
+        _adb("shell", "input", "keyevent", "KEYCODE_BACK", check=False)
+    time.sleep(0.6)
+
+
+def _trigger_message_list_pull_refresh(d, rounds: int = 2) -> None:
+    """SwipeRefreshLayout on the inbox triggers checkMail() (see MessageListFragment)."""
+    swipe_target = d(resourceIdMatches=_rid("swiperefresh"))
+    if not swipe_target.exists:
+        swipe_target = d(resourceIdMatches=_rid("message_list"))
+    if not swipe_target.exists:
+        print(
+            "[drive_inbox_refresh] pull_refresh skipped (no swiperefresh/message_list)",
+            flush=True,
+        )
+        return
+
+    for r in range(1, rounds + 1):
+        try:
+            info = swipe_target.info or {}
+            bounds = info.get("visibleBounds") or info.get("bounds") or {}
+            left = int(bounds.get("left", 0))
+            right = int(bounds.get("right", 0))
+            top = int(bounds.get("top", 0))
+            bottom = int(bounds.get("bottom", 0))
+            if right <= left or bottom <= top:
+                continue
+            cx = left + (right - left) // 2
+            span = bottom - top
+            y0 = top + max(int(span * 0.22), 8)
+            y1 = top + min(int(span * 0.58), span - 8)
+            print(
+                f"[drive_inbox_refresh] message_list pull-to-refresh round {r}/{rounds}",
+                flush=True,
+            )
+            d.swipe(cx, y0, cx, y1, steps=45)
+            time.sleep(2.5)
+        except Exception as exc:
+            print(
+                f"[drive_inbox_refresh] pull_refresh round {r} failed: {exc}",
+                flush=True,
+            )
+
+
 def main() -> int:
     try:
         _adb("shell", "am", "force-stop", APP_PKG, check=False)
@@ -458,6 +510,14 @@ def main() -> int:
         _trigger_drawer_sync(d)
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} sync_complete screen={_current_screen(d)}",
+            flush=True,
+        )
+        _close_drawer_if_open(d)
+        _wait_for_inbox_ready(d, timeout=45.0)
+        _trigger_message_list_pull_refresh(d, rounds=2)
+        time.sleep(12)
+        print(
+            f"[drive_inbox_refresh] attempt={ATTEMPT} inbox_pull_refresh_done screen={_current_screen(d)}",
             flush=True,
         )
         return 0
