@@ -283,10 +283,7 @@ def _is_vault_unlock_screen(d) -> bool:
         return False
     if d(resourceId="ConfirmMasterPasswordEntry").exists:
         return False
-    return bool(
-        d(resourceId="UnlockVaultButton").exists
-        or d(text="Unlock").exists
-    )
+    return bool(d(resourceId="UnlockVaultButton").exists or d(text="Unlock").exists)
 
 
 def _open_account_switcher(d, expected_account_email: str | None = None) -> bool:
