@@ -147,29 +147,39 @@ def _auth_submit_terminal_state(d) -> bool:
 
 def _select_auth_submit_control(d):
     """Return the primary submit control for LoginScreen or VaultUnlockScreen, if any."""
+    max_sw = 10
+
     login_button = d(resourceId="LogInWithMasterPasswordButton")
-    if _scroll_until_visible(d, login_button):
+    if _scroll_until_visible(d, login_button, max_swipes=max_sw):
         return login_button
 
     unlock_button = d(resourceId="UnlockVaultButton")
-    if _scroll_until_visible(d, unlock_button):
+    if _scroll_until_visible(d, unlock_button, max_swipes=max_sw):
         return unlock_button
 
     if d(resourceId="ConfirmMasterPasswordEntry").exists:
         next_button = d(text="Next")
-        if _scroll_until_visible(d, next_button):
+        if _scroll_until_visible(d, next_button, max_swipes=max_sw):
             return next_button
         submit_button = d(resourceId="SubmitButton")
-        if _scroll_until_visible(d, submit_button):
+        if _scroll_until_visible(d, submit_button, max_swipes=max_sw):
             return submit_button
 
     login_label = d(text="Log in with master password")
-    if _scroll_until_visible(d, login_label):
+    if _scroll_until_visible(d, login_label, max_swipes=max_sw):
         return login_label
 
+    login_partial = d(textContains="Log in with master")
+    if _scroll_until_visible(d, login_partial, max_swipes=max_sw):
+        return login_partial
+
     unlock_label = d(text="Unlock")
-    if _scroll_until_visible(d, unlock_label):
+    if _scroll_until_visible(d, unlock_label, max_swipes=max_sw):
         return unlock_label
+
+    unlock_desc = d(description="Unlock")
+    if _scroll_until_visible(d, unlock_desc, max_swipes=max_sw):
+        return unlock_desc
 
     return None
 
@@ -1064,6 +1074,15 @@ def bw_attempt_login(d, email, password):
             logger.info(
                 "Vault already visible after password entry; skipping submit tap."
             )
+            return True
+
+        try:
+            d.press("enter")
+        except Exception:
+            pass
+        time.sleep(1.5)
+        if _vault_unlocked_visible(d):
+            logger.info("Vault reached via IME submit after master password entry.")
             return True
 
         on_vault_unlock = _is_vault_unlock_screen(d)
