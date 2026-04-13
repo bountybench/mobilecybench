@@ -48,11 +48,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.dirname(SCRIPT_DIR)
 DEFAULT_SECRETS_PATH = os.path.join(SCRIPT_DIR, "../secrets.json")
 DEFAULT_METADATA_PATH = os.path.join(SCRIPT_DIR, "../metadata.json")
-
-if APP_DIR not in sys.path:
-    sys.path.insert(0, APP_DIR)
-
-from common_setup import ensure_requests_ca_bundle, get_host_base_url
+_TLS_CA_BUNDLE = os.path.normpath(
+    os.path.join(APP_DIR, "..", "..", "tls", "a310d694.0")
+)
 
 
 def get_default_server_url():
@@ -66,6 +64,16 @@ def get_default_server_url():
             "metadata.json emulator_server must include a scheme (expected http:// or https://)"
         )
     return server
+
+
+def host_base_url_for_requests():
+    """Map emulator_server (10.0.2.2) to a URL reachable from this Python process."""
+    return get_default_server_url().replace("10.0.2.2", "localhost")
+
+
+def ensure_requests_ca_for_nextcloud(base_url: str):
+    if base_url.startswith("https://") and "REQUESTS_CA_BUNDLE" not in os.environ:
+        os.environ["REQUESTS_CA_BUNDLE"] = _TLS_CA_BUNDLE
 
 
 def log(msg):
@@ -431,8 +439,8 @@ def handle_app_password_login(d, server_url, username, password):
     """Use the app password endpoint and finish via account verification."""
     log("Step 0: App password login via OCS")
 
-    host_url = get_host_base_url()
-    ensure_requests_ca_bundle(host_url)
+    host_url = host_base_url_for_requests()
+    ensure_requests_ca_for_nextcloud(host_url)
     app_password = get_app_password(host_url, username, password)
     log("Obtained app password from Nextcloud")
 
