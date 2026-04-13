@@ -23,6 +23,7 @@ own UI helper layer and real selectors, not the inbox list refresh gesture.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -56,12 +57,11 @@ ACCOUNT_EMAIL = os.environ.get(
 from utils.ui_utils import (  # noqa: E402
     click_then_expect,
     initialize_ui_automation,
-    wait_and_click,
-    wait_for_ui_stable,
 )
 
-# Post-sync wait: allow time for IMAP fetch, DB write, and notification posting.
-_POST_SYNC_WAIT_SECS = 30
+# Keep the helper fast: the verifier already polls for local DB ingestion after
+# this script returns, so we should not spend time waiting after the sync tap.
+_POST_SYNC_WAIT_SECS = 0
 
 
 def _rid(name: str) -> str:
@@ -99,8 +99,7 @@ def _ensure_app_foreground(d) -> None:
     # `monkey` can leave the fake launcher visible on some emulator boots even
     # when Thunderbird is already installed, so force the app task into the
     # foreground before waiting for the message list.
-    d.app_start(APP_PKG, stop=True, wait=True, use_monkey=True)
-    wait_for_ui_stable(d)
+    d.app_start(APP_PKG, wait=True, use_monkey=True)
 
 
 def _wait_for_inbox_ready(d, timeout: float = 90.0) -> None:
@@ -121,6 +120,20 @@ def _drawer_content(d):
     return d(resourceIdMatches=_rid("DrawerContent"))
 
 
+def _sync_label(d):
+    """Return a selector for the 'Sync all accounts' action.
+
+    The dropdown drawer exposes this as a text node via NavigationDrawerItem,
+    so textMatches works there.  The siderail drawer exposes it as an icon
+    button whose label is only set as contentDescription (SettingItem uses
+    Icon(contentDescription=label, …)), so we must also check description.
+    """
+    by_description = d(descriptionMatches=r"(?i)Sync all accounts")
+    if by_description.exists:
+        return by_description
+    return d(textMatches=r"(?i)Sync all accounts")
+
+
 def _drawer_is_open(d) -> bool:
     # First try the reliable resource ID
     drawer = _drawer_content(d)
@@ -135,7 +148,11 @@ def _drawer_is_open(d) -> bool:
     # Fallback: check for elements that only appear in the drawer
     if d(textMatches="(?i)Sync all accounts").exists:
         return True
+    if d(descriptionMatches="(?i)Sync all accounts").exists:
+        return True
     if d(textMatches="(?i)Show accounts").exists:
+        return True
+    if d(descriptionMatches="(?i)Show accounts").exists:
         return True
 
     # Check if the account email/name is visible AND MessageList is NOT the primary content
@@ -145,8 +162,8 @@ def _drawer_is_open(d) -> bool:
             continue
         if (
             d(textMatches=f"(?i){label}").exists
-            and not d(resourceIdMatches=_rid("message_list")).exists
-        ):
+            or d(descriptionMatches=f"(?i){label}").exists
+        ) and not d(resourceIdMatches=_rid("message_list")).exists:
             return True
 
     return False
@@ -156,24 +173,18 @@ def _open_navigation_drawer(d, timeout: float = 15.0) -> None:
     if _drawer_is_open(d):
         return
 
-    # The actual drawer opener is the app bar home/up affordance from
-    # MessageList.kt, but its accessibility node is framework-generated rather
-    # than app-defined. Try the most stable selectors first, then the exposed
-    # content description labels, then the edge-swipe fallback.
-    for name in ("home", "up"):
-        try:
-            nav = d(resourceIdMatches=rf"(^|.*:)id/{name}$")
-            if click_then_expect(d, nav, lambda: _drawer_is_open(d), timeout=5):
-                return
-        except Exception:
-            pass
-        if _drawer_is_open(d):
-            return
-
+    # The actual drawer opener is framework-generated in this build, so the
+    # stable signal we can rely on is the exposed accessibility label.
     for description in ("Navigate up", "Open navigation drawer"):
         try:
             nav = d(description=description)
-            if click_then_expect(d, nav, lambda: _drawer_is_open(d), timeout=5):
+            if nav.exists and click_then_expect(
+                d,
+                nav,
+                lambda: _drawer_is_open(d),
+                timeout=2,
+                retries=1,
+            ):
                 return
         except Exception:
             pass
@@ -206,64 +217,73 @@ def _trigger_drawer_sync(d) -> None:
     """
 
     def _sync_label():
-        return d(textMatches="(?i)Sync all accounts")
+        by_description = d(descriptionMatches=r"(?i)Sync all accounts")
+        if by_description.exists:
+            return by_description
+        return d(textMatches=r"(?i)Sync all accounts")
 
     def _show_accounts_label():
-        return d(textMatches="(?i)Show accounts")
+        by_description = d(descriptionMatches=r"(?i)Show accounts")
+        if by_description.exists:
+            return by_description
+        return d(textMatches=r"(?i)Show accounts")
 
-    def _account_selector():
+    def _find_clickable_ancestor(node):
+        try:
+            current = node
+            for _ in range(8):
+                if not current.exists:
+                    break
+                info = current.info or {}
+                if info.get("clickable"):
+                    return current
+                current = current.parent()
+        except Exception:
+            return None
+        return None
+
+    def _tap_node(node) -> bool:
+        if not node.exists:
+            return False
+        try:
+            if node.click_exists(timeout=2):
+                return True
+        except Exception:
+            pass
+        try:
+            info = node.info or {}
+            bounds = info.get("visibleBounds") or info.get("bounds") or {}
+            left = int(bounds.get("left", -1))
+            right = int(bounds.get("right", -1))
+            top = int(bounds.get("top", -1))
+            bottom = int(bounds.get("bottom", -1))
+            if left >= 0 and right > left and top >= 0 and bottom > top:
+                d.click(left + (right - left) // 2, top + (bottom - top) // 2)
+                return True
+        except Exception:
+            return False
+        return False
+
+    def _activate_account_selector() -> bool:
         drawer = _drawer_content(d)
         for label in (ACCOUNT_DISPLAY_NAME, ACCOUNT_EMAIL):
             if not label:
                 continue
-            # Look for the text node
-            if drawer.exists:
-                candidate = drawer.child(textMatches=f"(?i){label}")
-            else:
-                # Global search if DrawerContent not found/reliable
-                candidate = d(textMatches=f"(?i){label}")
+            selector = (
+                drawer.child(textMatches=rf"(?i){re.escape(label)}")
+                if drawer.exists
+                else d(textMatches=rf"(?i){re.escape(label)}")
+            )
+            if not selector.exists:
+                continue
 
-            if candidate.exists:
-                try:
-                    c_info = candidate.info
-                    c_clickable = c_info.get("clickable")
-                    print(
-                        f"[drive_inbox_refresh] found candidate text='{label}' clickable={c_clickable}"
-                    )
-                    # If the text node is clickable, return it.
-                    if c_clickable:
-                        return candidate
-                except Exception as e:
-                    print(f"[drive_inbox_refresh] error getting candidate info: {e}")
-
-                # If not, try to find a clickable parent (Compose often makes the Box clickable, not the Text)
-                try:
-                    p = candidate.parent()
-                    # Use a limited depth to avoid issues
-                    for i in range(8):
-                        if not p.exists:
-                            break
-                        p_info = p.info
-                        p_id = p_info.get("resourceId", "")
-                        p_clickable = p_info.get("clickable")
-                        print(
-                            f"[drive_inbox_refresh] checking parent level {i}: id='{p_id}' clickable={p_clickable}"
-                        )
-                        if p_clickable:
-                            print(
-                                f"[drive_inbox_refresh] found clickable parent for '{label}'"
-                            )
-                            return p
-                        if p_id and "DrawerContent" in p_id:
-                            break
-                        p = p.parent()
-                except Exception as e:
-                    print(f"[drive_inbox_refresh] error traversing parents: {e}")
-
-                # If no clickable parent found, return the candidate anyway as fallback
-                print(f"[drive_inbox_refresh] fallback to non-clickable text='{label}'")
-                return candidate
-        return None
+            print(f"[drive_inbox_refresh] found account selector candidate='{label}'")
+            clickable = _find_clickable_ancestor(selector)
+            if clickable is None:
+                clickable = selector
+            if _tap_node(clickable):
+                return True
+        return False
 
     def _make_sync_visible() -> bool:
         if _sync_label().exists:
@@ -274,35 +294,23 @@ def _trigger_drawer_sync(d) -> None:
             print(
                 "[drive_inbox_refresh] clicking 'Show accounts' to reveal sync action"
             )
-            if click_then_expect(
-                d,
-                show_accounts,
-                lambda: _sync_label().exists,
-                timeout=10,
-            ):
+            if _tap_node(show_accounts):
+                time.sleep(0.5)
+            if _sync_label().exists:
                 return True
 
-        # Try to click the account switcher header
-        candidate = _account_selector()
-        if candidate is not None:
-            print(
-                "[drive_inbox_refresh] clicking account selector to reveal sync action"
-            )
-            # Try clicking the text node itself (or the parent we found in _account_selector)
-            if click_then_expect(
-                d,
-                candidate,
-                lambda: _sync_label().exists,
-                timeout=8,
-            ):
+        if _activate_account_selector():
+            time.sleep(0.5)
+            if _sync_label().exists:
                 return True
 
-        # Try searching for "Sync all accounts" globally and scrolling
+        if _sync_label().exists:
+            return True
+
         print(
             "[drive_inbox_refresh] 'Sync all accounts' not visible, attempting scroll"
         )
         try:
-            # Try scrolling the drawer specifically
             drawer = _drawer_content(d)
             if drawer.exists and drawer.info.get("scrollable"):
                 drawer.scroll.to(textMatches="(?i)Sync all accounts")
@@ -310,12 +318,11 @@ def _trigger_drawer_sync(d) -> None:
                 d(scrollable=True).scroll.to(textMatches="(?i)Sync all accounts")
         except Exception as e:
             print(f"[drive_inbox_refresh] scroll failed: {e}")
-            # Manual swipe if u2 scroll fails on Compose list
             width, height = d.window_size()
             x = int(width * 0.3)
             y_start = int(height * 0.7)
             y_end = int(height * 0.3)
-            for _ in range(3):
+            for _ in range(2):
                 d.swipe(x, y_start, x, y_end, steps=30)
                 if _sync_label().exists:
                     return True
@@ -323,7 +330,6 @@ def _trigger_drawer_sync(d) -> None:
         return _sync_label().exists
 
     if not _make_sync_visible():
-        # Fallback 1: pull-to-refresh on the drawer
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} sync_label_missing=true fallback_to_drawer_swipe=true",
             flush=True,
@@ -341,7 +347,6 @@ def _trigger_drawer_sync(d) -> None:
             end_y = top + int((bottom - top) * 0.8)
             d.swipe(mid_x, start_y, mid_x, end_y, steps=50)
         else:
-            # Fallback 2: last-ditch effort, swipe the whole screen if drawer content not found but we think it's open
             width, height = d.window_size()
             d.swipe(
                 int(width * 0.5),
@@ -350,34 +355,19 @@ def _trigger_drawer_sync(d) -> None:
                 int(height * 0.8),
                 steps=50,
             )
-    else:
-        sync_label = _sync_label()
-        print("[drive_inbox_refresh] clicking 'Sync all accounts'")
-        wait_and_click(d, sync_label, timeout=8)
 
-    wait_for_ui_stable(d)
+    sync_label = _sync_label()
+    print("[drive_inbox_refresh] clicking 'Sync all accounts'")
+    if not _tap_node(sync_label):
+        raise RuntimeError("sync action not tappable")
     print(
         f"[drive_inbox_refresh] attempt={ATTEMPT} sync_trigger_done=true",
         flush=True,
     )
 
     indicator = d(resourceIdMatches=_rid("PullToRefreshIndicator"))
-    saw_indicator = False
-    indicator_wait_end = time.time() + 10
-    while time.time() < indicator_wait_end:
-        if indicator.exists:
-            saw_indicator = True
-            print("[drive_inbox_refresh] sync indicator appeared")
-            break
-        time.sleep(0.25)
-
-    if saw_indicator:
-        indicator_clear_end = time.time() + 60  # Increased timeout for slow IMAP
-        while time.time() < indicator_clear_end:
-            if not indicator.exists:
-                print("[drive_inbox_refresh] sync indicator cleared")
-                break
-            time.sleep(0.5)
+    if indicator.exists:
+        print("[drive_inbox_refresh] sync indicator appeared")
     else:
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} sync_indicator_absent=true",
