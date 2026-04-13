@@ -29,6 +29,15 @@ from utils.ui_utils import click_then_expect
 SCRIPT_NAME = "nc_login"
 PACKAGE = "com.nextcloud.talk2"
 BROWSER_PACKAGE = "com.android.chrome"
+CHROME_ONBOARDING_BUTTON_LABELS = (
+    "Use without an account",
+    "Accept & continue",
+    "Accept and continue",
+    "Continue",
+    "Skip",
+    "Not now",
+    "Got it",
+)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_SECRETS_PATH = os.path.join(SCRIPT_DIR, "../secrets.json")
@@ -106,10 +115,23 @@ def on_browser_login_handoff_screen(d):
     )
 
 
+def find_browser_button(d, label):
+    """Return a Chrome button selector, falling back to text-only matching."""
+    button = d(text=label, className="android.widget.Button")
+    if button.exists:
+        return button
+
+    button = d(text=label)
+    if button.exists:
+        return button
+
+    return None
+
+
 def on_chrome_welcome_screen(d):
-    return (
-        current_package(d) == BROWSER_PACKAGE
-        and d(text="Use without an account", className="android.widget.Button").exists
+    return current_package(d) == BROWSER_PACKAGE and any(
+        find_browser_button(d, label) is not None
+        for label in CHROME_ONBOARDING_BUTTON_LABELS
     )
 
 
@@ -125,7 +147,7 @@ def on_chrome_notifications_dialog(d):
 def on_connect_page(d):
     return (
         current_package(d) == BROWSER_PACKAGE
-        and d(text="Log in", className="android.widget.Button").exists
+        and find_browser_button(d, "Log in") is not None
     )
 
 
@@ -138,7 +160,7 @@ def on_login_form(d):
 def on_grant_access_page(d):
     return (
         current_package(d) == BROWSER_PACKAGE
-        and d(text="Grant access", className="android.widget.Button").exists
+        and find_browser_button(d, "Grant access") is not None
     )
 
 
@@ -177,21 +199,25 @@ def wait_for_browser(d, timeout=30):
 
 def handle_chrome_first_run(d):
     while True:
-        if on_chrome_welcome_screen(d):
-            log("Chrome first run: choosing 'Use without an account'")
-            d(text="Use without an account", className="android.widget.Button").click()
-            time.sleep(2)
-            continue
+        for label in CHROME_ONBOARDING_BUTTON_LABELS:
+            button = find_browser_button(d, label)
+            if button is None:
+                continue
 
-        if on_chrome_notifications_dialog(d):
-            log("Chrome first run: dismissing notifications prompt")
-            d(
-                resourceId=f"{BROWSER_PACKAGE}:id/negative_button", text="No thanks"
-            ).click()
+            log(f"Chrome first run: choosing '{label}'")
+            button.click()
             time.sleep(2)
-            continue
+            break
+        else:
+            if on_chrome_notifications_dialog(d):
+                log("Chrome first run: dismissing notifications prompt")
+                d(
+                    resourceId=f"{BROWSER_PACKAGE}:id/negative_button", text="No thanks"
+                ).click()
+                time.sleep(2)
+                continue
 
-        return
+            return
 
 
 def handle_server_url(d, server_url):
@@ -246,8 +272,12 @@ def handle_connect_page(d):
             return
 
         if on_connect_page(d):
-            login_btn = d(text="Log in", className="android.widget.Button")
+            login_btn = find_browser_button(d, "Log in")
             # Chrome may have a cached session — grant page can appear directly
+            if login_btn is None:
+                log("ERROR: Connect page button did not appear")
+                sys.exit(1)
+
             if not click_then_expect(
                 d,
                 login_btn,
@@ -291,8 +321,8 @@ def handle_login_form(d, username, password):
     pwd_field.set_text(password)
     time.sleep(0.3)
 
-    login_btn = d(text="Log in", className="android.widget.Button")
-    if login_btn.exists:
+    login_btn = find_browser_button(d, "Log in")
+    if login_btn is not None:
         if not click_then_expect(
             d, login_btn, lambda: on_grant_access_page(d), timeout=30
         ):
@@ -311,7 +341,11 @@ def handle_login_form(d, username, password):
 def handle_grant_access(d):
     """Tap 'Grant access' and return to the app."""
     log("Step 4: Granting access")
-    grant_btn = d(text="Grant access", className="android.widget.Button")
+    grant_btn = find_browser_button(d, "Grant access")
+
+    if grant_btn is None:
+        log("ERROR: Grant access button did not appear")
+        sys.exit(1)
 
     if not click_then_expect(
         d, grant_btn, lambda: on_account_connected_page(d), timeout=20
