@@ -148,15 +148,29 @@ def _auth_submit_terminal_state(d) -> bool:
 def _select_auth_submit_control(d):
     """Return the primary submit control for LoginScreen or VaultUnlockScreen, if any."""
     login_button = d(resourceId="LogInWithMasterPasswordButton")
-    if login_button.exists:
+    if _scroll_until_visible(d, login_button):
         return login_button
+
     unlock_button = d(resourceId="UnlockVaultButton")
-    if unlock_button.exists:
+    if _scroll_until_visible(d, unlock_button):
         return unlock_button
-    if d(resourceId="ConfirmMasterPasswordEntry").exists and d(text="Next").exists:
-        return d(text="Next")
-    if d(resourceId="MasterPasswordEntry").exists and d(text="Unlock").exists:
-        return d(text="Unlock")
+
+    if d(resourceId="ConfirmMasterPasswordEntry").exists:
+        next_button = d(text="Next")
+        if _scroll_until_visible(d, next_button):
+            return next_button
+        submit_button = d(resourceId="SubmitButton")
+        if _scroll_until_visible(d, submit_button):
+            return submit_button
+
+    login_label = d(text="Log in with master password")
+    if _scroll_until_visible(d, login_label):
+        return login_label
+
+    unlock_label = d(text="Unlock")
+    if _scroll_until_visible(d, unlock_label):
+        return unlock_label
+
     return None
 
 
@@ -253,16 +267,25 @@ def _is_create_account_screen(d) -> bool:
 
 
 def _is_login_screen(d) -> bool:
-    return (
-        d(resourceId="MasterPasswordEntry").exists
-        and d(resourceId="LogInWithMasterPasswordButton").exists
+    if not d(resourceId="MasterPasswordEntry").exists:
+        return False
+    if d(resourceId="ConfirmMasterPasswordEntry").exists:
+        return False
+    return bool(
+        d(resourceId="LogInWithMasterPasswordButton").exists
+        or d(resourceId="LoggingInAsLabel").exists
+        or d(text="Log in with master password").exists
     )
 
 
 def _is_vault_unlock_screen(d) -> bool:
-    return (
-        d(resourceId="MasterPasswordEntry").exists
-        and d(resourceId="UnlockVaultButton").exists
+    if not d(resourceId="MasterPasswordEntry").exists:
+        return False
+    if d(resourceId="ConfirmMasterPasswordEntry").exists:
+        return False
+    return bool(
+        d(resourceId="UnlockVaultButton").exists
+        or d(text="Unlock").exists
     )
 
 
@@ -576,7 +599,7 @@ def _wait_for_unlocked_vault(d, timeout: float = 35.0) -> bool:
 def _normalize_to_unlocked_vault(d, email: str, master_password: str) -> None:
     _complete_post_registration_setup(d)
 
-    if _wait_for_unlocked_vault(d, timeout=25.0):
+    if _wait_for_unlocked_vault(d, timeout=45.0):
         return
 
     logger.info(
