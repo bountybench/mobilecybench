@@ -47,6 +47,54 @@ SHORT_WAIT = 5
 NETWORK_WAIT = 30  # network-bound operations (TLS + server round-trip on emulator)
 
 
+def _set_bitwarden_password_field(d, field, password: str) -> None:
+    """
+    Fill a Bitwarden Compose password field so ViewModel state updates.
+
+    UiAutomator ``set_text`` often updates the visible field without firing
+    ``onValueChange``, leaving CTAs disabled (e.g. CompleteRegistration ``Next``).
+    IME input matches real typing and enables ``validSubmissionReady``.
+    """
+
+    def _field_reports_focus() -> bool:
+        try:
+            return bool((field.info or {}).get("focused"))
+        except Exception:
+            return False
+
+    wait_and_click(d, field)
+    time.sleep(0.2)
+    if not _field_reports_focus():
+        time.sleep(0.35)
+        try:
+            wait_and_click(d, field)
+        except Exception as exc:
+            logger.debug("Second focus click on password field: %s", exc)
+        time.sleep(0.15)
+
+    try:
+        field.clear_text()
+    except Exception:
+        pass
+    try:
+        d.send_keys(password, clear=True)
+    except Exception as exc:
+        logger.warning("IME password entry failed (%s); using set_text fallback.", exc)
+        wait_and_set_text(d, field, password)
+        return
+    wait_for_ui_stable(d, min_consecutive=2, timeout=10)
+
+
+def _fill_bitwarden_master_password_fields(d, password: str) -> None:
+    """Set master password and confirmation when the confirm field exists."""
+    master = d(resourceId=CT.MASTER_PASSWORD_ENTRY)
+    _set_bitwarden_password_field(d, master, password)
+    confirm = d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY)
+    if not confirm.exists:
+        return
+    _set_bitwarden_password_field(d, confirm, password)
+
+
 def _resource_matches(resource_id: str | None, target: str) -> bool:
     return bool(resource_id) and (
         resource_id == target or resource_id.endswith(f"/{target}")
@@ -156,19 +204,27 @@ def _auth_submit_terminal_state(d) -> bool:
 
 
 def _select_auth_submit_control(d):
-    """Return the primary submit control for LoginScreen or VaultUnlockScreen, if any."""
+    """Return the primary submit control for the current auth or registration password step."""
     max_sw = 10
 
-    # Complete registration (and similar) shows both password fields; the CTA is often text
-    # "Next" with no resource id. If confirm is empty, the CTA stays disabled and may be
-    # absent from the accessibility tree — fill confirm in bw_attempt_login when present.
+    # Create-account / complete-registration screens expose ConfirmMasterPasswordEntry.
+    # CTA is often untagged "Next" or toolbar SubmitButton. When this branch runs from
+    # ``bw_attempt_login`` (e.g. after relaunch), we must finish that step — do not fall
+    # through to Log in / Unlock, which would scroll pointlessly or match the wrong control.
     if d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists:
-        next_button = d(text=SE.NEXT)
-        if _scroll_until_visible(d, next_button, max_swipes=max_sw):
-            return next_button
-        submit_button = d(resourceId=CT.SUBMIT_BUTTON)
-        if _scroll_until_visible(d, submit_button, max_swipes=max_sw):
-            return submit_button
+        _scroll_to(d, text=SE.NEXT)
+        _scroll_to(d, resource_id=CT.SUBMIT_BUTTON)
+        for candidate in (
+            d(text=SE.NEXT),
+            d(description=SE.NEXT),
+            d(textContains=SE.NEXT),
+            d(resourceId=CT.SUBMIT_BUTTON),
+            d(text=SE.CONTINUE),
+            d(resourceId=CT.CONTINUE_BUTTON),
+        ):
+            if _scroll_until_visible(d, candidate, max_swipes=max_sw):
+                return candidate
+        return None
 
     login_button = d(resourceId=CT.LOG_IN_WITH_MASTER_PASSWORD_BUTTON)
     if _scroll_until_visible(d, login_button, max_swipes=max_sw):
@@ -790,10 +846,7 @@ def bw_make_account(d, email, name, master_password):
     if _is_create_account_screen(d):
         logger.info("Detected CreateAccountScreen flow for %s", email)
         wait_and_set_text(d, d(resourceId=CT.EMAIL_ADDRESS_ENTRY), email)
-        wait_and_set_text(d, d(resourceId=CT.MASTER_PASSWORD_ENTRY), master_password)
-        wait_and_set_text(
-            d, d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY), master_password
-        )
+        _fill_bitwarden_master_password_fields(d, master_password)
 
         accept_policies = d(description=CT.ACCEPT_POLICIES_TOGGLE)
         if accept_policies.exists:
@@ -863,15 +916,7 @@ def bw_make_account(d, email, name, master_password):
 
     # Step 2.4: Enter the master password
     logger.info("Step 2.4: Entering master password: %s...", master_password)
-    wait_and_set_text(d, d(resourceId=CT.MASTER_PASSWORD_ENTRY), master_password)
-
-    # Step 2.5: Enter the master password confirmation
-    logger.info(
-        "Step 2.5: Entering master password confirmation: %s...", master_password
-    )
-    wait_and_set_text(
-        d, d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY), master_password
-    )
+    _fill_bitwarden_master_password_fields(d, master_password)
 
     # Step 2.6: Click the Next button to proceed with account creation
     logger.info("Step 2.6: Clicking Next button...")
@@ -1083,14 +1128,7 @@ def bw_attempt_login(d, email, password):
         _dismiss_common_popups(d)
 
         logger.info("Entering master password...")
-        wait_and_set_text(d, d(resourceId=CT.MASTER_PASSWORD_ENTRY), password)
-        if d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists:
-            logger.info(
-                "Confirm master password field visible; filling (complete registration path)."
-            )
-            wait_and_set_text(
-                d, d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY), password
-            )
+        _fill_bitwarden_master_password_fields(d, password)
         wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
         if _vault_unlocked_visible(d):
@@ -1125,9 +1163,16 @@ def bw_attempt_login(d, email, password):
         submit_button = _select_auth_submit_control(d)
 
         if submit_button is None:
-            logger.error(
-                "Master password is visible, but neither LoginScreen nor VaultUnlockScreen submit controls were detected."
-            )
+            if d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists:
+                logger.error(
+                    "Registration password step is visible, but no Next/Submit/Continue "
+                    "control was found after scrolling."
+                )
+            else:
+                logger.error(
+                    "Master password is visible, but neither LoginScreen nor "
+                    "VaultUnlockScreen submit controls were detected."
+                )
             return False
 
         logger.info("Submitting authentication on the current Bitwarden screen...")
