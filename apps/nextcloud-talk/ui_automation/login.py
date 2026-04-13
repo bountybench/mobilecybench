@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-Log in to Nextcloud Talk on the emulator via the browser-based login flow.
+Log in to Nextcloud Talk on the emulator.
 
 Flow:
-1. Server URL screen (native) -> enter URL, tap arrow
-2. Browser handoff (native) -> wait for Chrome
-3. Chrome connect page -> tap "Log in"
-4. Chrome login form -> fill username/password, tap "Log in"
-5. Chrome grant page -> tap "Grant access"
-6. Main conversation list (native) -> verify logged in
+1. Native WebView login flow -> launch `WebViewLoginActivity`
+2. Fallback browser flow if the WebView path does not reach the main screen
+3. Main conversation list (native) -> verify logged in
 
 Usage:
     python login.py --username admin --password secretpass
@@ -18,6 +15,7 @@ Usage:
 import argparse
 import json
 import os
+import shlex
 import sys
 import time
 from http.client import RemoteDisconnected
@@ -29,6 +27,7 @@ from utils.ui_utils import click_then_expect
 SCRIPT_NAME = "nc_login"
 PACKAGE = "com.nextcloud.talk2"
 BROWSER_PACKAGE = "com.android.chrome"
+WEBVIEW_LOGIN_ACTIVITY = f"{PACKAGE}/com.nextcloud.talk.account.WebViewLoginActivity"
 CHROME_ONBOARDING_BUTTON_LABELS = (
     "Use without an account",
     "Accept & continue",
@@ -362,6 +361,29 @@ def handle_grant_access(d):
     log("Main screen reached")
 
 
+def handle_webview_login(d, server_url, username, password):
+    """Use the app's native WebView login flow."""
+    log("Step 0: Native WebView login flow")
+
+    d.app_stop(PACKAGE)
+    time.sleep(2)
+
+    command = (
+        f"am start -n {WEBVIEW_LOGIN_ACTIVITY} "
+        f"--es KEY_BASE_URL {shlex.quote(server_url)} "
+        f"--es KEY_USERNAME {shlex.quote(username)} "
+        f"--es KEY_PASSWORD {shlex.quote(password)}"
+    )
+    d.shell(command, timeout=30)
+
+    if not wait_for_condition(lambda: is_logged_in(d), timeout=90):
+        log("ERROR: Native WebView login did not reach the main screen")
+        return False
+
+    log("Native WebView login complete")
+    return True
+
+
 def main():
     args = parse_args()
     password = get_password(args)
@@ -369,6 +391,12 @@ def main():
     log(f"Logging in {args.username} on {PACKAGE}")
 
     d = u2.connect()
+
+    if handle_webview_login(d, args.server_url, args.username, password):
+        log("SUCCESS: Login complete")
+        sys.exit(0)
+
+    log("Falling back to browser-based login flow")
 
     # Launch app
     d.app_start(PACKAGE, wait=True)
