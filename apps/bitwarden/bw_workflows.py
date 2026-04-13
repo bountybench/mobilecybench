@@ -307,9 +307,7 @@ def _is_vault_unlock_screen(d) -> bool:
         return False
     if d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY).exists:
         return False
-    return bool(
-        d(resourceId=CT.UNLOCK_VAULT_BUTTON).exists or d(text=SE.UNLOCK).exists
-    )
+    return bool(d(resourceId=CT.UNLOCK_VAULT_BUTTON).exists or d(text=SE.UNLOCK).exists)
 
 
 def _open_account_switcher(d, expected_account_email: str | None = None) -> bool:
@@ -871,7 +869,9 @@ def bw_make_account(d, email, name, master_password):
     logger.info(
         "Step 2.5: Entering master password confirmation: %s...", master_password
     )
-    wait_and_set_text(d, d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY), master_password)
+    wait_and_set_text(
+        d, d(resourceId=CT.CONFIRM_MASTER_PASSWORD_ENTRY), master_password
+    )
 
     # Step 2.6: Click the Next button to proceed with account creation
     logger.info("Step 2.6: Clicking Next button...")

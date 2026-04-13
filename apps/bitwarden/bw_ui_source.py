@@ -79,7 +79,9 @@ class StringsEn:
     CONTINUE = "Continue"  # R.string.continue_text
     CREATE_AN_ACCOUNT = "Create an account"  # R.string.create_an_account
     LOCK = "Lock"  # R.string.lock
-    LOG_IN_WITH_MASTER_PASSWORD = "Log in with master password"  # R.string.log_in_with_master_password
+    LOG_IN_WITH_MASTER_PASSWORD = (
+        "Log in with master password"  # R.string.log_in_with_master_password
+    )
     LOG_OUT = "Log out"  # R.string.log_out
     MORE = "More"  # R.string.more
     NEXT = "Next"  # R.string.next
