@@ -3,10 +3,11 @@
 Log in to Nextcloud Talk on the emulator.
 
 Flow:
-1. App password flow -> request token via `/ocs/v2.php/core/getapppassword`
-2. Native WebView login flow -> launch `WebViewLoginActivity`
-3. Fallback browser flow if the native paths do not reach the main screen
-4. Main conversation list (native) -> verify logged in
+1. App password flow -> OCS `/ocs/v2.php/core/getapppassword`, then
+   `AccountVerificationActivity` via adb (requires `android:exported="true"` on that activity).
+2. Legacy WebView login (removed upstream) -> skipped.
+3. Browser handoff flow if app-password path does not reach the main screen.
+4. Main conversation list (native) -> verify logged in.
 
 Usage:
     python login.py --username admin --password secretpass
@@ -41,6 +42,13 @@ CHROME_ONBOARDING_BUTTON_LABELS = (
     "Skip",
     "Not now",
     "Got it",
+)
+
+# Nextcloud web "connect" step labels vary by server / theme / locale.
+CONNECT_PAGE_LOGIN_LABELS = (
+    "Log in",
+    "Login",
+    "Sign in",
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -194,9 +202,10 @@ def on_chrome_notifications_dialog(d):
 
 
 def on_connect_page(d):
-    return (
-        current_package(d) == BROWSER_PACKAGE
-        and find_browser_button(d, "Log in") is not None
+    if current_package(d) != BROWSER_PACKAGE:
+        return False
+    return any(
+        find_browser_button(d, label) is not None for label in CONNECT_PAGE_LOGIN_LABELS
     )
 
 
@@ -310,9 +319,9 @@ def handle_server_url(d, server_url):
 
 
 def handle_connect_page(d):
-    """Tap 'Log in' on the browser connect page."""
+    """Tap the Nextcloud connect / login entry on the browser page."""
     log("Step 2: Browser connect page")
-    deadline = time.time() + 120
+    deadline = time.time() + 180
     while time.time() < deadline:
         handle_chrome_first_run(d)
 
@@ -321,17 +330,20 @@ def handle_connect_page(d):
             return
 
         if on_connect_page(d):
-            login_btn = find_browser_button(d, "Log in")
-            # Chrome may have a cached session — grant page can appear directly
+            login_btn = None
+            for label in CONNECT_PAGE_LOGIN_LABELS:
+                login_btn = find_browser_button(d, label)
+                if login_btn is not None:
+                    break
             if login_btn is None:
-                log("ERROR: Connect page button did not appear")
+                log("ERROR: Connect page login button did not appear")
                 sys.exit(1)
 
             if not click_then_expect(
                 d,
                 login_btn,
                 lambda: on_login_form(d) or on_grant_access_page(d),
-                timeout=20,
+                timeout=30,
             ):
                 log("ERROR: Login form did not appear")
                 sys.exit(1)
@@ -370,7 +382,13 @@ def handle_login_form(d, username, password):
     pwd_field.set_text(password)
     time.sleep(0.3)
 
-    login_btn = find_browser_button(d, "Log in")
+    login_btn = None
+    for label in CONNECT_PAGE_LOGIN_LABELS:
+        login_btn = find_browser_button(d, label)
+        if login_btn is not None:
+            break
+    if login_btn is None:
+        login_btn = find_browser_button(d, "Log in")
     if login_btn is not None:
         if not click_then_expect(
             d, login_btn, lambda: on_grant_access_page(d), timeout=30
@@ -438,7 +456,15 @@ def handle_app_password_login(d, server_url, username, password):
     )
     launch_result = d.shell(command, timeout=30)
     output = getattr(launch_result, "output", launch_result)
-    log(f"Account verification launch output: {output}")
+    out_txt = output.decode() if isinstance(output, (bytes, bytearray)) else str(output)
+    log(f"Account verification launch output: {out_txt}")
+
+    if "SecurityException" in out_txt or "Permission Denial" in out_txt:
+        log(
+            "App password path cannot start AccountVerificationActivity from adb "
+            "(activity not exported); falling back to other login flows"
+        )
+        return False
 
     if not wait_for_condition(lambda: is_logged_in(d), timeout=150):
         log("ERROR: App password login did not reach the main screen")
