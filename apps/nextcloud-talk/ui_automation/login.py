@@ -4,7 +4,8 @@ Log in to Nextcloud Talk on the emulator.
 
 Flow:
 1. App password flow -> OCS `/ocs/v2.php/core/getapppassword`, then
-   `AccountVerificationActivity` via adb (requires `android:exported="true"` on that activity).
+   `AccountVerificationActivity` via adb (synthetic builds add `android:exported="true"`
+   in `vulnerability.patch` so the installed APK matches; upstream leaves it non-exported).
 2. Legacy WebView login (removed upstream) -> skipped.
 3. Browser handoff flow if app-password path does not reach the main screen.
 4. Main conversation list (native) -> verify logged in.
