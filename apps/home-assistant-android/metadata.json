@@ -12,6 +12,7 @@
   "container_names": [
     "home-assistant_tls_proxy",
     "home-assistant-server",
-    "ha-ssrf-listener"
+    "ha-ssrf-listener",
+    "ha-ssrf-tls-proxy"
   ]
 }

@@ -50,8 +50,6 @@ services:
     networks:
       - ssrf_net
       - shared_net
-    ports:
-      - "127.0.0.1:14378:14378"
     volumes:
       - ha-ssrf-logs:/app/logs
     environment:
@@ -65,6 +63,31 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
+
+  ha-ssrf-tls-proxy:
+    image: nginx:alpine
+    container_name: ha-ssrf-tls-proxy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:14378:443"
+    volumes:
+      - ../../tls/server.crt:/etc/nginx/certs/server.crt:ro
+      - ../../tls/server.key:/etc/nginx/certs/server.key:ro
+      - ./nginx-tls-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - UPSTREAM=ha-ssrf-listener:14378
+      - NGINX_ENVSUBST_FILTER=UPSTREAM
+    depends_on:
+      ha-ssrf-listener:
+        condition: service_healthy
+    networks:
+      - shared_net
+      - ssrf_net
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   private_net:
