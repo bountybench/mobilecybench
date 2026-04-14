@@ -219,7 +219,6 @@ def _detect_inconsistencies(
     issues: list[str] = []
     agent_status = str(run_result.get("status", "unknown"))
     eval_score = evaluation.get("score") if isinstance(evaluation, dict) else None
-    eval_status = evaluation.get("status") if isinstance(evaluation, dict) else None
 
     if agent_status in ("timeout", "error") and outcome == "success":
         issues.append(
