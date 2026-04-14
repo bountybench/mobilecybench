@@ -242,7 +242,8 @@ docker run --rm \
 
         # Start DinD
         rm -f /var/run/docker.pid
-        # --dns: force IPv4 DNS to avoid IPv6-only resolution failures inside DinD
+        # Explicit DNS: avoid emulator's 10.0.2.3 polluting DinD resolver
+        # and prevent IPv6-only resolution failures inside DinD
         dockerd --host=unix:///var/run/docker.sock --dns 1.1.1.1 --dns 8.8.8.8 &
         timeout=30
         while [ $timeout -gt 0 ]; do
