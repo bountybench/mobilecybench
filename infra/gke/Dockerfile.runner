@@ -1,11 +1,20 @@
-# GKE Runner — extends the orchestrator image with gcloud CLI and baked-in APKs.
+# GKE Runner — extends the orchestrator image with gcloud CLI for container-mode
+# emulator runs. The emulator runs in a separate Docker container
+# (Dockerfile.emulator) inside DinD, so this image does NOT need the emulator
+# binary or system images baked in.
+#
+# Prerequisites:
+#   1. Build the orchestrator base:
+#        docker build -f orchestrator/Dockerfile.orchestrator \
+#          -t mobilecybench-orchestrator:latest .
+#
+#   2. Initialize git submodules for any apps you want to test BEFORE building:
+#        git submodule update --init apps/moememos/codebase apps/nextcloud-talk/codebase ...
+#      (Submodule URLs are relative, so they can't be cloned inside docker build.)
 #
 # Build:
 #   docker build -f infra/gke/Dockerfile.runner \
 #     -t us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest .
-#
-# The orchestrator base image must be built first:
-#   docker build -f orchestrator/Dockerfile.orchestrator -t mobilecybench-orchestrator:latest .
 
 ARG BASE_IMAGE=mobilecybench-orchestrator:latest
 FROM ${BASE_IMAGE}
@@ -21,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends google-cloud-cli \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy full codebase (not volume-mounted on GKE)
+# Copy full codebase (submodules must be initialized on the host before build)
 COPY . /mobilecybench
 WORKDIR /mobilecybench
 

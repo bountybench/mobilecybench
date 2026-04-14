@@ -146,7 +146,7 @@ GKE Node (n2d-standard-8, nested virt enabled)
 ```
 
 Key infrastructure components:
-- **Orchestrator images**: `Dockerfile.orchestrator` (full, ~31 GB) or `Dockerfile.orchestrator-slim` (no emulator, ~5-6 GB) + separate `Dockerfile.emulator` (~8-10 GB)
+- **Orchestrator images**: `Dockerfile.orchestrator` (no emulator, ~5-6 GB) + separate `Dockerfile.emulator` (~8-10 GB)
 - **Emulator modes**: `container` (emulator as a separate Docker container inside DinD) or `native` (emulator as a process inside the orchestrator)
 - **Job generation**: `infra/gke/generate_jobs.py` creates Kubernetes Job manifests for experiment matrices (apps x models x vulnerabilities)
 - **Results collection**: Experiment results are uploaded to GCS and aggregated via `infra/gke/collect_results.py`

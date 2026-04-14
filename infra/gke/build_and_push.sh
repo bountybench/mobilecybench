@@ -1,16 +1,16 @@
 #!/bin/bash
 #
-# Build all synthetic-vuln APKs and the slim GKE runner Docker image.
+# Build all synthetic-vuln APKs and the GKE runner Docker image.
 #
 # Usage (on a Linux VM with Docker):
-#   bash infra/gke/build_and_push.sh [--push] [--image <name:tag>]
+#   bash infra/gke/build_and_push.sh [--push] [--image <name:tag>] [--build-base]
 #
 # Steps:
 #   1. Init git submodules for apps with synthetic vulnerabilities
-#   2. Build clean + vulnerable APKs for each app/vuln pair
-#   3. Build orchestrator-slim base image
-#   4. Build runner-slim image (with APKs baked in)
-#   5. Optionally push to Docker Hub
+#   2. Ensure orchestrator base image (pull from Docker Hub, or build locally with --build-base)
+#   3. Build clean + vulnerable APKs for each app/vuln pair
+#   4. Build runner image (with APKs baked in)
+#   5. Optionally push to Docker Hub (--push pushes both base and runner if --build-base)
 #
 # Prerequisites:
 #   - Docker installed and running
@@ -22,13 +22,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 IMAGE_NAME="cybench/mobilecybench-runner:latest"
-BASE_IMAGE="cybench/mobilecybench-orchestrator-slim:latest"
+BASE_IMAGE="cybench/mobilecybench-orchestrator:latest"
 PUSH=false
+BUILD_BASE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --push) PUSH=true; shift ;;
         --image) IMAGE_NAME="$2"; shift 2 ;;
+        --build-base) BUILD_BASE=true; shift ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -68,8 +70,21 @@ echo "Initializing submodules: $SUBMODULE_PATHS"
 git submodule update --init $SUBMODULE_PATHS
 
 echo ""
-echo "=== Step 2: Build APKs (inside orchestrator-slim container) ==="
-docker pull "$BASE_IMAGE"
+echo "=== Step 2: Ensure orchestrator base image ==="
+if [ "$BUILD_BASE" = true ]; then
+    echo "Building base image from orchestrator/Dockerfile.orchestrator ..."
+    docker build -f orchestrator/Dockerfile.orchestrator -t "$BASE_IMAGE" .
+    if [ "$PUSH" = true ]; then
+        echo "Pushing base image: $BASE_IMAGE"
+        docker push "$BASE_IMAGE"
+    fi
+else
+    echo "Pulling base image from Docker Hub ..."
+    docker pull "$BASE_IMAGE"
+fi
+
+echo ""
+echo "=== Step 3: Build APKs (inside orchestrator container) ==="
 
 # Build a list of build commands for all apps
 BUILD_CMDS=""
@@ -124,8 +139,8 @@ for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
 done
 
 echo ""
-echo "=== Step 3: Build runner-slim image ==="
-docker build -f infra/gke/Dockerfile.runner-slim \
+echo "=== Step 4: Build runner image ==="
+docker build -f infra/gke/Dockerfile.runner \
     --build-arg BASE_IMAGE="$BASE_IMAGE" \
     -t "$IMAGE_NAME" .
 
@@ -135,7 +150,7 @@ echo "Image: $IMAGE_NAME"
 
 if [ "$PUSH" = true ]; then
     echo ""
-    echo "=== Step 5: Pushing to Docker Hub ==="
+    echo "=== Step 5: Pushing runner to Docker Hub ==="
     docker push "$IMAGE_NAME"
     echo "Push complete: $IMAGE_NAME"
 else
