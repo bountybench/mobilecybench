@@ -171,6 +171,44 @@ def _existing_path(path_value: Optional[str]) -> Optional[str]:
     return str(candidate) if candidate.exists() else None
 
 
+# Maps artifact key → filename, and which workflows produce each file.
+_SCORE_FILES: dict[str, tuple[str, set[str]]] = {
+    "scores_json": ("scores.json", {"exploit", "detection"}),
+    "synthetic_scores_json": ("synthetic_scores.json", {"exploit"}),
+    "detection_scores_json": ("detection_scores.json", {"detection"}),
+    "redteam_scores_json": ("redteam_scores.json", {"redteam"}),
+}
+
+
+def _score_files_for_workflow(workflow_name: str) -> list[str]:
+    """Return filenames of score files produced by the given workflow."""
+    return [
+        filename
+        for filename, workflows in _SCORE_FILES.values()
+        if workflow_name in workflows
+    ]
+
+
+def _score_artifact_paths(
+    workflow_name: str, logs_dir: Path, workflow: Any
+) -> dict[str, Optional[str]]:
+    """Return artifact pointers for only the score files this workflow produces."""
+    app_dir = getattr(workflow, "app_dir", None)
+
+    def _find(name: str) -> Optional[str]:
+        log_copy = logs_dir / name
+        if log_copy.exists():
+            return str(log_copy)
+        if app_dir and (app_dir / name).exists():
+            return str(app_dir / name)
+        return None
+
+    return {
+        key: _find(filename) if workflow_name in workflows else None
+        for key, (filename, workflows) in _SCORE_FILES.items()
+    }
+
+
 def write_run_summary(
     *,
     project_root: Path,
@@ -226,22 +264,16 @@ def write_run_summary(
 
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
 
-    # Copy scores to logs directory for self-containment
-    scores_log_path = None
+    # Copy the workflow's score file to logs directory for self-containment.
+    # Only copy the file that belongs to THIS workflow — stale files from
+    # previous runs of other workflows would be misleading.
     if hasattr(workflow, "app_dir"):
-        for score_file in [
-            "scores.json",
-            "synthetic_scores.json",
-            "detection_scores.json",
-            "redteam_scores.json",
-        ]:
+        for score_file in _score_files_for_workflow(config.workflow):
             src = workflow.app_dir / score_file
             if src.exists():
                 dst = logs_dir / score_file
                 try:
                     shutil.copy2(src, dst)
-                    if score_file == "scores.json":
-                        scores_log_path = str(dst)
                 except Exception as e:
                     logger.warning("Failed to copy %s: %s", score_file, e)
 
@@ -295,6 +327,10 @@ def write_run_summary(
         },
         "results": {
             "agent_status": str(run_result.get("status", "unknown")),
+            "score": evaluation.get("score") if isinstance(evaluation, dict) else None,
+            "status": (
+                evaluation.get("status") if isinstance(evaluation, dict) else None
+            ),
             "scores": scores,
         },
         "artifacts": {
@@ -305,43 +341,7 @@ def write_run_summary(
             ),
             "conversation_jsonl": conversation_path,
             "system_prompt_file": system_prompt_path,
-            "scores_json": scores_log_path
-            or (
-                str(workflow.app_dir / "scores.json")
-                if hasattr(workflow, "app_dir")
-                and (workflow.app_dir / "scores.json").exists()
-                else None
-            ),
-            "synthetic_scores_json": (
-                str(logs_dir / "synthetic_scores.json")
-                if (logs_dir / "synthetic_scores.json").exists()
-                else (
-                    str(workflow.app_dir / "synthetic_scores.json")
-                    if hasattr(workflow, "app_dir")
-                    and (workflow.app_dir / "synthetic_scores.json").exists()
-                    else None
-                )
-            ),
-            "detection_scores_json": (
-                str(logs_dir / "detection_scores.json")
-                if (logs_dir / "detection_scores.json").exists()
-                else (
-                    str(workflow.app_dir / "detection_scores.json")
-                    if hasattr(workflow, "app_dir")
-                    and (workflow.app_dir / "detection_scores.json").exists()
-                    else None
-                )
-            ),
-            "redteam_scores_json": (
-                str(logs_dir / "redteam_scores.json")
-                if (logs_dir / "redteam_scores.json").exists()
-                else (
-                    str(workflow.app_dir / "redteam_scores.json")
-                    if hasattr(workflow, "app_dir")
-                    and (workflow.app_dir / "redteam_scores.json").exists()
-                    else None
-                )
-            ),
+            **_score_artifact_paths(config.workflow, logs_dir, workflow),
             "logs_dir": str(logs_dir),
         },
         "app": app_metadata,

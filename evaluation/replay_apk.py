@@ -170,12 +170,26 @@ def collect_evidence(phase_dir: Path, instrument_stdout: str) -> EvidenceBundle:
     )
 
 
-def assemble_evidence_log(evidence: EvidenceBundle, phase_dir: Path) -> Path:
-    """Combine all evidence sources into replay_evidence.log.
+def assemble_evidence_log(
+    evidence: EvidenceBundle,
+    phase_dir: Path,
+    *,
+    logs_dir: Path | None = None,
+) -> Path:
+    """Combine attacker-controlled evidence sources into replay_evidence.log.
 
-    This is the file that probes read to detect leaked secrets/flags.
-    Same format as the existing replay_evidence.log from exploit.sh replays.
+    Security boundary: only attacker-produced output belongs here.
+    Infrastructure logs (server logs, full logcat) must NOT be included.
+
+    Sources:
+      - instrument_stdout: am instrument output (attacker APK)
+      - logcat MOBILECYBENCH: attacker APK's tagged log output
+      - apk_evidence: files the APK wrote to its external dir
+      - agent_exploit: exploit source code the agent produced (from logs_dir)
+      - agent.log: agent conversation/reasoning trace (from logs_dir)
     """
+    from workflows.base import Workflow
+
     parts = []
 
     if evidence.instrument_stdout:
@@ -194,6 +208,16 @@ def assemble_evidence_log(evidence: EvidenceBundle, phase_dir: Path) -> Path:
                 except (UnicodeDecodeError, OSError):
                     pass  # skip binary files
 
+    if logs_dir:
+        parts.extend(Workflow._collect_text_files(logs_dir / "agent_exploit"))
+        agent_log = logs_dir / "agent.log"
+        if agent_log.is_file():
+            try:
+                text = agent_log.read_text(encoding="utf-8", errors="replace")
+                parts.append(f"=== agent.log ===\n{text}")
+            except OSError:
+                pass
+
     log_path = phase_dir / "replay_evidence.log"
     log_path.write_text("\n".join(parts))
     return log_path
@@ -203,6 +227,8 @@ def replay_malicious_apk(
     apk_project_dir: Path,
     phase_dir: Path,
     timeout: int = 60,
+    *,
+    logs_dir: Path | None = None,
 ) -> ReplayResult:
     """Full replay: build → install → run → collect evidence → uninstall.
 
@@ -246,7 +272,7 @@ def replay_malicious_apk(
     # Step 4: Collect evidence
     logger.info("[replay] Step 4/5: Collecting evidence (logcat, files)...")
     evidence = collect_evidence(phase_dir, instrument_stdout)
-    evidence_log = assemble_evidence_log(evidence, phase_dir)
+    evidence_log = assemble_evidence_log(evidence, phase_dir, logs_dir=logs_dir)
     logger.info(f"[replay] Step 4/5: Evidence saved to {evidence_log}")
 
     # Step 5: Uninstall (clean state for next phase)

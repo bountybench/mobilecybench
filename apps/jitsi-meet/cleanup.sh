@@ -4,12 +4,14 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-cd jitsi-docker/jitsi-latest
-
-echo "Removing Docker containers..."
-docker compose down -v
-
-cd ../..
+if [ -d jitsi-docker/jitsi-latest ]; then
+    cd jitsi-docker/jitsi-latest
+    echo "Removing Docker containers..."
+    docker compose down -v 2>/dev/null || true
+    cd ../..
+else
+    echo "jitsi-docker/jitsi-latest not found, skipping container cleanup"
+fi
 
 echo "Cleaning up docker volumes..."
 docker volume prune -f

@@ -79,6 +79,7 @@ class Workflow(ABC):
                 workflow=workflow,
                 attack_model=self.config.attack_model,
                 additional_context=additional_context,
+                no_codebase=self.config.no_codebase,
             )
         elif agent_mode == "codex":
             from agent.codex_agent import CodexAgent
@@ -94,6 +95,7 @@ class Workflow(ABC):
                 workflow=workflow,
                 attack_model=self.config.attack_model,
                 additional_context=additional_context,
+                no_codebase=self.config.no_codebase,
             )
         else:
             from agent.custom_agent import CustomAgent
@@ -114,6 +116,7 @@ class Workflow(ABC):
                 workflow=workflow,
                 attack_model=self.config.attack_model,
                 reasoning_effort=self.config.reasoning_effort,
+                no_codebase=self.config.no_codebase,
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
@@ -355,22 +358,6 @@ class Workflow(ABC):
 
         logger.info(f"Restarting runtime with APK: {apk_path}")
 
-        # Tear down backend containers so they start with clean state.
-        # Without this, Docker containers persist across emulator restarts
-        # and retain any state changes the agent made (modified items,
-        # created users, changed configs, etc.).
-        compose_file = self.app_dir / "docker-compose.yml"
-        if compose_file.exists():
-            import subprocess as _sp
-
-            logger.info("Tearing down backend containers for clean replay...")
-            _sp.run(
-                ["docker", "compose", "down", "--volumes", "--remove-orphans"],
-                cwd=self.app_dir,
-                capture_output=True,
-                timeout=60,
-            )
-
         self.emulator.restart()
         self.emulator.wait_until_ready(
             timeout=self.config.emulator_boot_timeout_seconds
@@ -401,6 +388,59 @@ class Workflow(ABC):
 
         logger.info("Runtime restarted successfully")
 
+    @staticmethod
+    def _collect_text_files(directory: Path, label_root: Path = None) -> list[str]:
+        """Collect all decodable text files from a directory as labeled sections."""
+        parts = []
+        if not directory.is_dir():
+            return parts
+        root = label_root or directory
+        for fpath in sorted(directory.rglob("*")):
+            if fpath.is_file():
+                try:
+                    text = fpath.read_text(encoding="utf-8", errors="strict")
+                    parts.append(f"=== {fpath.relative_to(root)} ===\n{text}")
+                except (UnicodeDecodeError, OSError):
+                    pass
+        return parts
+
+    @staticmethod
+    def build_evidence_log(
+        evidence_path: Path,
+        *,
+        replay_stdout: str = "",
+        agent_output_dir: Path | None = None,
+        agent_exploit_dir: Path | None = None,
+        agent_log: Path | None = None,
+    ) -> None:
+        """Assemble evidence log from attacker-controlled sources only.
+
+        Security boundary: evidence_log must contain ONLY attacker-produced
+        output. Infrastructure logs (server logs, logcat) must NOT be included
+        as they would cause false positives in confidentiality probes (e.g.
+        server legitimately logs admin credentials during normal auth).
+
+        Sources (all attacker-controlled):
+          - replay_stdout: exploit replay stdout/stderr
+          - agent_output_dir: files the agent/exploit wrote (/app/agent_output)
+          - agent_exploit_dir: exploit source code the agent produced
+          - agent_log: agent conversation log (reasoning, tool calls, extracted data)
+        """
+        parts = []
+        if replay_stdout:
+            parts.append(f"=== replay_stdout ===\n{replay_stdout}")
+        if agent_output_dir:
+            parts.extend(Workflow._collect_text_files(agent_output_dir))
+        if agent_exploit_dir:
+            parts.extend(Workflow._collect_text_files(agent_exploit_dir))
+        if agent_log and agent_log.is_file():
+            try:
+                text = agent_log.read_text(encoding="utf-8", errors="replace")
+                parts.append(f"=== agent.log ===\n{text}")
+            except OSError:
+                pass
+        evidence_path.write_text("\n".join(parts), encoding="utf-8")
+
     def _run_exploit(
         self,
         exploit_dir: Path,
@@ -410,6 +450,7 @@ class Workflow(ABC):
         app_server: str = None,
         *,
         codebase_dir: Path,
+        logs_dir: Path | None = None,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
@@ -446,33 +487,31 @@ class Workflow(ABC):
             line = line.rstrip("\n")
             lines.append(line)
             logger.info(f"[replay] {line}")
-        proc.wait()
+
+        try:
+            proc.wait(timeout=self.config.script_timeout)
+        except subprocess.TimeoutExpired:
+            logger.error(
+                f"Exploit replay timed out after {self.config.script_timeout}s, killing process"
+            )
+            proc.kill()
+            proc.wait()
+
         stdout = "\n".join(lines)
 
         logger.info(f"Exploit replay exit_code={proc.returncode}")
 
-        # Persist replay evidence files
         stdout_path = output_dir / "stdout.txt"
         evidence_path = output_dir / "replay_evidence.log"
-
         stdout_path.write_text(stdout, encoding="utf-8")
 
-        # Build evidence log: stdout + decodable text from agent_output
-        evidence_parts = []
-        if stdout:
-            evidence_parts.append(f"=== stdout ===\n{stdout}")
-        agent_output = output_dir / "agent_output"
-        if agent_output.is_dir():
-            for fpath in sorted(agent_output.rglob("*")):
-                if fpath.is_file():
-                    try:
-                        text = fpath.read_text(encoding="utf-8", errors="strict")
-                        evidence_parts.append(
-                            f"=== {fpath.relative_to(output_dir)} ===\n{text}"
-                        )
-                    except (UnicodeDecodeError, OSError):
-                        pass
-        evidence_path.write_text("\n".join(evidence_parts), encoding="utf-8")
+        self.build_evidence_log(
+            evidence_path,
+            replay_stdout=stdout,
+            agent_output_dir=output_dir / "agent_output",
+            agent_exploit_dir=logs_dir / "agent_exploit" if logs_dir else None,
+            agent_log=logs_dir / "agent.log" if logs_dir else None,
+        )
 
         return {
             "replay_exit_code": proc.returncode,
@@ -493,12 +532,38 @@ class Workflow(ABC):
             json.dump(result, f, indent=2)
         logger.info(f"Result saved to {scores_file}")
 
+    def _stage_detectors(self, probe_dir: Path) -> list[Path]:
+        """Copy detect_*.py from zerodays/reports/{app}/*/detectors/ into probe_dir.
+
+        Returns list of staged files for cleanup.
+        """
+        zerodays_app = self.project_root / "zerodays" / "reports" / self.app_name
+        if not zerodays_app.exists():
+            return []
+
+        staged = []
+        for detector in sorted(zerodays_app.glob("*/detectors/detect_*.py")):
+            dest = probe_dir / detector.name
+            if dest.exists():
+                logger.warning(f"Detector name conflict, skipping: {detector.name}")
+                continue
+            shutil.copy2(detector, dest)
+            staged.append(dest)
+            logger.info(f"Staged detector: {detector.name}")
+        return staged
+
+    def _cleanup_detectors(self, staged: list[Path]) -> None:
+        """Remove staged detector files."""
+        for path in staged:
+            path.unlink(missing_ok=True)
+
     def _run_checks(
         self,
         exploit_log_path: str,
         *,
         app_scores_out: Path,
         generic_scores_out: Path,
+        detector_scores_out: Path | None = None,
         probe_dir: Path | None = None,
     ) -> bool:
         """Run run_checks.sh with explicit output paths. Returns True on success.
@@ -507,8 +572,13 @@ class Workflow(ABC):
             probe_dir: Directory containing probe scripts (test_*.py).
                        Defaults to self.app_dir. Used by auth_attacker to point
                        to apps/<app>/auth_attacker/.
+            detector_scores_out: Where to write detector results (optional).
+                       If not set, detectors still run but output to cwd.
         """
         check_dir = probe_dir or self.app_dir
+
+        # Stage detectors from zerodays repo
+        staged_detectors = self._stage_detectors(check_dir)
 
         run_checks = check_dir / "run_checks.sh"
         if not run_checks.exists():
@@ -517,6 +587,8 @@ class Workflow(ABC):
         env = os.environ.copy()
         env["APP_SCORES_OUT"] = str(app_scores_out)
         env["GENERIC_SCORES_OUT"] = str(generic_scores_out)
+        if detector_scores_out:
+            env["DETECTOR_SCORES_OUT"] = str(detector_scores_out)
 
         if not self.metadata.get("container_names"):
             env["SKIP_SSRF_CHECK"] = "1"
@@ -527,13 +599,16 @@ class Workflow(ABC):
 
         cmd = ["bash", str(run_checks)] + args
         logger.info(f"Running checks: {' '.join(cmd)}")
-        proc = subprocess.run(
-            cmd,
-            cwd=check_dir,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=check_dir,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+        finally:
+            self._cleanup_detectors(staged_detectors)
 
         if proc.returncode != 0:
             logger.error(f"run_checks.sh failed (exit {proc.returncode})")
@@ -626,3 +701,12 @@ class Workflow(ABC):
                 logger.info("Deleted agent_codebase")
             except Exception as e:
                 logger.warning(f"Failed to delete agent_codebase: {e}")
+
+        # Delete agent_apk staging directory (created when no_codebase=True)
+        agent_apk = self.app_dir / "agent_apk"
+        if agent_apk.exists():
+            try:
+                shutil.rmtree(agent_apk)
+                logger.info("Deleted agent_apk")
+            except Exception as e:
+                logger.warning(f"Failed to delete agent_apk: {e}")

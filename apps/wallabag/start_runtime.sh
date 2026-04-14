@@ -7,7 +7,12 @@ APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "wallabag" "$@")
 cd "$SCRIPT_DIR"
 
 export REQUESTS_CA_BUNDLE="$SCRIPT_DIR/../../tls/rootCA.pem"
-CA_FLAG="--cacert $REQUESTS_CA_BUNDLE"
+# --ssl-no-revoke: Git for Windows curl uses the Schannel TLS backend, which
+# enforces CRL/OCSP revocation checking. Self-signed local CAs have no
+# revocation endpoints, causing CERT_TRUST_REVOCATION_STATUS_UNKNOWN (exit 60).
+# --ssl-no-revoke disables this check on Schannel; it is silently ignored on
+# OpenSSL (Linux/macOS), so it is safe to set unconditionally.
+CA_FLAG="--cacert $REQUESTS_CA_BUNDLE --ssl-no-revoke"
 
 # ---------------------------------------------------------------------------
 # Helper: get an OAuth token for a given user
@@ -296,14 +301,23 @@ sleep 2
 adb shell am force-stop "$PACKAGE"
 
 # Get the app's UID for correct file ownership
-APP_UID=$(adb shell stat -c '%u' "/data/data/$PACKAGE")
+# MSYS_NO_PATHCONV=1: prevents MSYS2 from converting the Android device path
+# /data/data/… to a Windows path when passed to adb.exe on Windows.
+APP_UID=$(MSYS_NO_PATHCONV=1 adb shell stat -c '%u' "/data/data/$PACKAGE" | tr -d '\r')
 
 # Use agentuser tokens (set by seed_data)
 AGENT_TOKEN_VAL="${AGENT_OAUTH_TOKEN:-}"
 AGENT_REFRESH_VAL="${AGENT_REFRESH_TOKEN:-}"
 
-# Write the SharedPreferences file with agentuser connection settings
-adb shell "cat > '$PREFS_FILE'" <<PREFS_EOF
+# Write the SharedPreferences XML to a host temp file, then push to the device.
+# This avoids two Windows/Git-for-Windows pitfalls with the original
+# "adb shell cat > $PREFS_FILE <<HEREDOC" approach:
+#   1. MSYS2 path conversion: MSYS2 rewrites Android device paths (/data/data/…)
+#      to Windows paths when they appear in arguments to adb.exe.
+#   2. CRLF line endings: Git Bash heredocs can introduce \r\n, which corrupts
+#      the XML and breaks SharedPreferences parsing on the device.
+PREFS_TMP="$(mktemp)"
+cat > "$PREFS_TMP" <<PREFS_EOF
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <map>
     <string name="connection.url">https://10.0.2.2:8080</string>
@@ -330,7 +344,20 @@ adb shell "cat > '$PREFS_FILE'" <<PREFS_EOF
 </map>
 PREFS_EOF
 
-adb shell "chown $APP_UID:$APP_UID '$PREFS_FILE'"
+# Strip any carriage returns Git Bash may have introduced
+sed -i 's/\r//' "$PREFS_TMP" 2>/dev/null || true
+
+# Convert the host temp path to a Windows path for adb push (no-op on Linux/macOS)
+PREFS_HOST_PATH="$PREFS_TMP"
+if command -v cygpath >/dev/null 2>&1; then
+    PREFS_HOST_PATH="$(cygpath -w "$PREFS_TMP")"
+fi
+
+# Push to a device staging path, then move into place
+MSYS_NO_PATHCONV=1 adb push "$PREFS_HOST_PATH" "/data/local/tmp/wallabag_prefs.xml" >/dev/null
+rm -f "$PREFS_TMP"
+MSYS_NO_PATHCONV=1 adb shell "mv /data/local/tmp/wallabag_prefs.xml $PREFS_FILE"
+MSYS_NO_PATHCONV=1 adb shell "chown $APP_UID:$APP_UID $PREFS_FILE"
 log_info "App configured with agentuser connection."
 
 # Clean up temp files

@@ -19,7 +19,9 @@ services:
     ports:
       - 8082:8082
     networks:
-      - shared_net
+      shared_net:
+        aliases:
+          - token-catcher
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
       interval: 10s

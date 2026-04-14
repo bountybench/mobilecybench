@@ -100,6 +100,7 @@ class DetectionWorkflow(Workflow):
             metadata=self.metadata,
             workflow=self.config.workflow,
             agent_mode=self.config.agent_mode,
+            no_codebase=self.config.no_codebase,
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
@@ -142,6 +143,7 @@ class DetectionWorkflow(Workflow):
             exploit_image,
             app_server,
             codebase_dir=codebase_dir,
+            logs_dir=logs_dir,
         )
 
         if original_exploit["replay_exit_code"] != 0:
@@ -178,6 +180,7 @@ class DetectionWorkflow(Workflow):
             exploit_image,
             app_server,
             codebase_dir=codebase_dir,
+            logs_dir=logs_dir,
         )
         # codebase restore handled by Workflow.cleanup()
 

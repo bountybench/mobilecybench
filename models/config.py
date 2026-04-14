@@ -20,6 +20,10 @@ class RunnerConfig(BaseModel):
     workflow: Literal["exploit", "detection", "redteam"] = "exploit"
     attack_model: Literal["malicious_apk", "auth_attacker"] = "malicious_apk"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
+    # When True, the agent receives only the APK (no codebase).
+    # When False (default), the agent receives the full source codebase.
+    # The two modes are mutually exclusive — we never provide both.
+    no_codebase: bool = False
 
     # agent limits
     max_iterations: int = Field(gt=0)
@@ -34,6 +38,9 @@ class RunnerConfig(BaseModel):
     gold_run: bool = False
     emulator_backend: Literal["native", "container"] = "native"
     emulator_display: Literal["headed", "headless"] = "headed"
+
+    # zero-day report (uses exploit from zerodays submodule)
+    gold_report: Optional[str] = None
 
     # optional
     custom_system_prompt: Optional[str] = None
@@ -78,6 +85,8 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_gold_run(self) -> "RunnerConfig":
+        if self.gold_report:
+            self.gold_run = True
         if self.gold_run and self.workflow not in ("exploit", "redteam"):
             raise ValueError(
                 "gold_run=True is only valid with workflow='exploit' or 'redteam'"

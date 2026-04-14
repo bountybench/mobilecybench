@@ -7,6 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agent.agent_helpers import get_directory_tree
+from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
@@ -17,6 +18,7 @@ from agent.prompts.prompts import (
 )
 from agent.tools.runtime import ToolRuntime
 from utils.agent_utils import take_screenshot
+from utils.command_executor import CommandExecutor
 from utils.logger import agent_logger, logger_manager
 from utils.run_artifacts import jsonable, load_schema, utc_now_iso, validate_schema
 from utils.time_tracker import time_tracker
@@ -26,6 +28,28 @@ try:
     from jsonschema import validate as _jsonschema_validate
 except Exception:
     _jsonschema_validate = None
+
+# Grab data from runner_config
+with open("runner_config.json", "r") as file:
+    data = json.load(file)
+
+timeout_ms = data.get("timeout_ms", 600_000)
+
+# Only scan files that could plausibly be executed as scripts.
+_SCANNABLE_EXTENSIONS = frozenset(
+    {
+        "",  # no extension (executable scripts)
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".py",
+        ".rb",
+        ".pl",
+        ".expect",
+        ".exp",  # Expect scripts (automate interactive adb sessions)
+    }
+)
 
 
 class CustomAgent:
@@ -39,7 +63,7 @@ class CustomAgent:
         screenshot_enabled: bool,
         app_name: str,
         additional_context: str = None,
-        timeout_ms: int = 600_000,
+        timeout_ms: int = timeout_ms,
         app_server: str = None,
         emulator_server: str = None,
         network_access: bool = True,
@@ -50,10 +74,12 @@ class CustomAgent:
         include_ssrf: bool = True,
         workflow: str = "exploit",
         attack_model: str = "malicious_apk",
+        no_codebase: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
         self.attack_model = attack_model
+        self.no_codebase = no_codebase
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -135,6 +161,7 @@ class CustomAgent:
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
+                no_codebase=self.no_codebase,
             )
         elif self.workflow == "redteam":
             builder = (
@@ -144,11 +171,11 @@ class CustomAgent:
             )
             full_prompt = builder(
                 package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
                 app_server=self.app_server if self.network_access else None,
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
+                no_codebase=self.no_codebase,
             )
         else:
             full_prompt = build_synthetic_prompt(
@@ -157,6 +184,7 @@ class CustomAgent:
                 password=self.password,
                 app_server=self.app_server if self.network_access else None,
                 emulator_server=self.emulator_server,
+                no_codebase=self.no_codebase,
             )
 
         # Append additional context if provided
@@ -173,16 +201,81 @@ class CustomAgent:
             )
         else:
             check_path = "/app/agent_exploit/exploit.sh"
+
         try:
-            result = subprocess.run(
-                ["docker", "exec", "kali-container", "test", "-f", check_path],
+            result = CommandExecutor().run(
+                f"docker exec kali-container test -f {check_path}",
                 capture_output=True,
-                text=True,
+                timeout=self.timeout_ms // 1000,
             )
             return result.returncode == 0
         except Exception as e:
             agent_logger.warning(f"Failed to check for exploit artifact: {e}")
             return False
+
+    def _check_exploit_script_for_blocked_patterns(self) -> tuple[bool, list]:
+        """Pull all files under /app/agent_exploit/ from the container and check
+        for blocked patterns (e.g. adb root) in each one.
+
+        Scanning every file (not just exploit.sh) closes the gap where an agent
+        bundles a helper script with privileged operations and calls it from a
+        clean exploit.sh.
+
+        Returns (is_allowed, violations) where violations is a list of dicts with
+        keys: file, line_number, line_content, matched_pattern.
+        """
+        try:
+            # List all files in the agent_exploit directory
+            ls_result = CommandExecutor().run(
+                "docker exec kali-container find /app/agent_exploit -type f",
+                capture_output=True,
+                timeout=self.timeout_ms // 1000,
+            )
+
+            if ls_result.returncode != 0:
+                agent_logger.warning(
+                    "Could not list agent_exploit in container — blocking submission"
+                )
+                return False, []
+
+            files = [p.strip() for p in ls_result.stdout.splitlines() if p.strip()]
+            if not files:
+                agent_logger.warning(
+                    "No files found in agent_exploit — blocking submission"
+                )
+                return False, []
+
+            all_violations = []
+
+            for container_path in files:
+                ext = os.path.splitext(container_path)[1].lower()
+                if ext not in _SCANNABLE_EXTENSIONS:
+                    continue
+
+                cat_result = subprocess.run(
+                    ["docker", "exec", "kali-container", "cat", container_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout_ms // 1000,
+                )
+                if cat_result.returncode != 0:
+                    agent_logger.warning(
+                        f"Could not read {container_path} from container — blocking submission"
+                    )
+                    return False, []
+
+                _, violations = check_shell_script_content(cat_result.stdout)
+
+                for v in violations:
+                    v["file"] = container_path
+                all_violations.extend(violations)
+
+            return len(all_violations) == 0, all_violations
+        except Exception as e:
+            agent_logger.warning(
+                f"Failed to check agent_exploit for blocked patterns: {e} — blocking submission"
+            )
+            return False, []
 
     def _finish_run(self, turns: int, final_message: str = None) -> dict:
         """Log summary, archive conversation, and return the result dict."""
