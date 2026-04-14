@@ -1,0 +1,16 @@
+{
+  "title": "OAuth Bearer Token Forwarded to External Image Hosts",
+  "cwe_id": "CWE-200",
+  "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
+  "historic_cve": "CVE-2025-29805",
+  "cvss_historic": {
+    "base_score": 7.5,
+    "severity": "HIGH",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+  },
+  "cvss_synthetic": {
+    "base_score": 6.8,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N"
+  }
+}
