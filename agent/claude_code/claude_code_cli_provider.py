@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from utils.docker_utils import run_command_in_container
 from utils.logger import agent_logger, logger
+from utils.run_artifacts import utc_now_iso
 
 
 class ClaudeCodeCLIResult(BaseModel):
@@ -165,6 +166,7 @@ class ClaudeCodeCLIProvider:
                 conversation_events.append(
                     {
                         "turn": current_turn,
+                        "timestamp": utc_now_iso(),
                         "assistant_text": "\n".join(current_turn_text),
                         "tool_calls": list(current_turn_tool_calls),
                         "observations": list(current_turn_observations),

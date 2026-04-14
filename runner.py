@@ -426,9 +426,32 @@ def run(
                 )
             else:
                 logger.info("Evaluation complete")
-            outcome = "success"
-            exit_reason = "completed"
-            exit_code = 0
+
+            # Derive outcome from agent_status and evaluation rather than
+            # unconditionally reporting success.
+            agent_status = run_result.get("status", "unknown")
+            eval_score = (
+                evaluation.get("score") if isinstance(evaluation, dict) else None
+            )
+
+            if agent_status in ("timeout", "error"):
+                outcome = "failure"
+                exit_reason = agent_status
+                exit_code = 1
+            elif eval_score == 1:
+                outcome = "success"
+                exit_reason = "completed"
+                exit_code = 0
+            elif eval_score is not None:
+                # Evaluation ran but the exploit did not succeed
+                outcome = "failure"
+                exit_reason = "completed"
+                exit_code = 1
+            else:
+                # No evaluation score (non-exploit workflow or eval skipped)
+                outcome = "success"
+                exit_reason = "completed"
+                exit_code = 0
 
     except ValueError as e:
         logger.error(f"Validation error: {e}")
