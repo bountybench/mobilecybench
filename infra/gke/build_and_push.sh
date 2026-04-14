@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Build all synthetic-vuln APKs and the slim GKE runner Docker image.
+# Build all synthetic-vuln APKs and the GKE runner Docker image.
 #
 # Usage (on a Linux VM with Docker):
 #   bash infra/gke/build_and_push.sh [--push] [--image <name:tag>] [--build-base]
@@ -9,7 +9,7 @@
 #   1. Init git submodules for apps with synthetic vulnerabilities
 #   2. Ensure orchestrator base image (pull from Docker Hub, or build locally with --build-base)
 #   3. Build clean + vulnerable APKs for each app/vuln pair
-#   4. Build runner-slim image (with APKs baked in)
+#   4. Build runner image (with APKs baked in)
 #   5. Optionally push to Docker Hub (--push pushes both base and runner if --build-base)
 #
 # Prerequisites:
@@ -139,8 +139,8 @@ for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
 done
 
 echo ""
-echo "=== Step 4: Build runner-slim image ==="
-docker build -f infra/gke/Dockerfile.runner-slim \
+echo "=== Step 4: Build runner image ==="
+docker build -f infra/gke/Dockerfile.runner \
     --build-arg BASE_IMAGE="$BASE_IMAGE" \
     -t "$IMAGE_NAME" .
 
