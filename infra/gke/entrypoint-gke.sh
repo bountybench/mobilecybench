@@ -84,6 +84,9 @@ echo "Runner config:"
 cat "$CONFIG_DST"
 
 # ─── Run experiment ─────────────────────────────────────────────────────────
+# Set logs dir so GCS upload can find experiment results
+export MOBILECYBENCH_LOGS_DIR="${MOBILECYBENCH_LOGS_DIR:-/mobilecybench/logs}"
+
 cd /mobilecybench
 python3 runner.py "$APP_NAME" --config "$CONFIG_DST"
 EXIT_CODE=$?
