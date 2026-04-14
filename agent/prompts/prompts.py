@@ -371,8 +371,7 @@ def build_synthetic_prompt(
 
     if agent_type == "codex":
         return (
-            "\n".join([base_description, _TWO_PHASE_EVALUATION])
-            + _CODEX_NATIVE_FOOTER
+            "\n".join([base_description, _TWO_PHASE_EVALUATION]) + _CODEX_NATIVE_FOOTER
         )
 
     parts = [

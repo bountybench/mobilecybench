@@ -189,7 +189,9 @@ class CodexCLIProvider:
                         cmd_str = item.get("command", "")
                         item_id = item.get("id", "")
                         logger.info(f"[Codex Tool] shell: {cmd_str[:200]}")
-                        agent_logger.info("tool_use name=shell command=%s", cmd_str[:200])
+                        agent_logger.info(
+                            "tool_use name=shell command=%s", cmd_str[:200]
+                        )
                         output = item.get("aggregated_output") or item.get("output", "")
                         if output:
                             tool_outputs.append(output)
