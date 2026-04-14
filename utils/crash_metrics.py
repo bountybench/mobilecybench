@@ -12,14 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 LOGCAT_TIMESTAMP_RE = re.compile(r"^(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)")
 DROPBOX_TIMESTAMP_RE = re.compile(
     r"(?:Timestamp:|time:)\s*([0-9T:\-+.Z ]+)", re.IGNORECASE
 )
-EXCEPTION_RE = re.compile(
-    r"\b([A-Za-z0-9_.$]*(?:Exception|Error))(?::\s*([^\n]+))?"
-)
+EXCEPTION_RE = re.compile(r"\b([A-Za-z0-9_.$]*(?:Exception|Error))(?::\s*([^\n]+))?")
 PROCESS_RE = re.compile(r"Process:\s*([A-Za-z0-9_.$]+)")
 CMDLINE_RE = re.compile(r"Cmd line:\s*([A-Za-z0-9_.$]+)")
 CRASH_TAG_RE = re.compile(r"\b(?:data_app_crash|system_app_crash|app_crash)\b")
@@ -248,7 +245,9 @@ def _collect_anr_text() -> tuple[str, str | None]:
     files = [
         line.strip()
         for line in listing.splitlines()
-        if line.strip() and "No such file" not in line and "Permission denied" not in line
+        if line.strip()
+        and "No such file" not in line
+        and "Permission denied" not in line
     ]
     if not files:
         return "", None
