@@ -10,6 +10,7 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 import argparse
 import io
 import json
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -31,6 +32,38 @@ from workflows import (
     RedTeamWorkflow,
     Workflow,
 )
+
+
+def collect_runtime_metrics(
+    config: RunnerConfig, workflow: Workflow, project_root: Path
+) -> None:
+    """Run best-effort post-agent metrics that should not affect scoring."""
+    if config.dry_run:
+        return
+
+    package_name = getattr(workflow, "metadata", {}).get("package_name")
+    if not package_name or not getattr(workflow, "emulator", None):
+        return
+
+    from utils.command_executor import CommandExecutor
+
+    app_relative_path = f"apps/{workflow.app_name}"
+    command = f"bash ./run_metrics.sh {shlex.quote(app_relative_path)}"
+
+    logger.info("Collecting runtime metrics for package: %s", package_name)
+    try:
+        result = CommandExecutor().run(
+            command,
+            cwd=project_root,
+            check=False,
+            timeout=min(config.script_timeout, 60),
+        )
+        if result.stdout:
+            logger.info(result.stdout)
+        if result.stderr:
+            logger.info(result.stderr)
+    except Exception as exc:
+        logger.warning("Failed to collect runtime metrics: %s", exc)
 
 
 def run_interactive_shell(app_name: str) -> dict:
@@ -449,6 +482,8 @@ def run(
 
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
+
+        collect_runtime_metrics(config, workflow, project_root)
 
         # Capture Logcat before stopping emulator
         if workflow and workflow.emulator:

@@ -8,7 +8,7 @@ import pytest
 from jsonschema import validate
 
 from models.config import RunnerConfig
-from runner import create_workflow, main, run
+from runner import collect_runtime_metrics, create_workflow, main, run
 from utils.logger import logger_manager
 from workflows import (
     DetectionWorkflow,
@@ -229,6 +229,25 @@ class TestRun:
         assert summary["results"]["scores"] == {"probe_a": 1}
         assert "conversation_jsonl" in summary["artifacts"]
         validate(instance=summary, schema=_load_run_summary_schema())
+
+    def test_collect_runtime_metrics_runs_standalone_script(
+        self, base_config, tmp_path
+    ):
+        """Crash metrics are collected via the standalone script."""
+        workflow = ExploitWorkflow(base_config, "test_app", tmp_path)
+        workflow.metadata = {"package_name": "com.test.app"}
+        workflow.emulator = object()
+
+        with patch("utils.command_executor.CommandExecutor") as mock_executor_cls:
+            mock_executor = mock_executor_cls.return_value
+            mock_executor.run.return_value.stdout = '{"crashes_detected": 0}'
+            mock_executor.run.return_value.stderr = ""
+
+            collect_runtime_metrics(base_config, workflow, tmp_path)
+
+        mock_executor.run.assert_called_once()
+        command = mock_executor.run.call_args.args[0]
+        assert command.startswith("bash ./run_metrics.sh ")
 
     def test_writes_run_summary_on_validation_error(self, base_config, tmp_path):
         """Run writes run_summary.json even on validation failure."""
