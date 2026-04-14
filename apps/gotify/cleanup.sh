@@ -93,7 +93,7 @@ if [ -d codebase ]; then
 fi
 
 adb uninstall com.github.gotify.synthetichelper >/dev/null 2>&1 || true
-adb uninstall com.github.gotify
+adb uninstall com.github.gotify >/dev/null 2>&1 || true
 
 info "Cleanup completed!"
 
