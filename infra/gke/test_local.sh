@@ -243,7 +243,8 @@ docker run --rm \
 
         # Start DinD
         rm -f /var/run/docker.pid
-        dockerd --host=unix:///var/run/docker.sock &
+        # Use explicit DNS to avoid emulator's 10.0.2.3 polluting DinD resolver
+        dockerd --host=unix:///var/run/docker.sock --dns 8.8.8.8 --dns 8.8.4.4 &
         timeout=30
         while [ $timeout -gt 0 ]; do
             docker info >/dev/null 2>&1 && break

@@ -3,7 +3,10 @@ set -e
 
 # ─── DinD setup (same as orchestrator/entrypoint.sh) ───────────────────────
 rm -f /var/run/docker.pid
-dockerd --host=unix:///var/run/docker.sock &
+# Use explicit DNS servers to prevent the Android emulator's virtual DNS
+# (10.0.2.3) from polluting the DinD daemon's resolver. Without this,
+# image pulls and builds fail after the emulator container starts.
+dockerd --host=unix:///var/run/docker.sock --dns 8.8.8.8 --dns 8.8.4.4 &
 
 echo "Waiting for Docker daemon to start..."
 timeout=30
