@@ -1,8 +1,10 @@
-#!/usr/bin/env python3
+"""Codex agent — delegates multi-turn execution to the Codex CLI."""
 
+import json
 import os
 import signal
 import sys
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
@@ -15,12 +17,18 @@ from agent.prompts.prompts import (
     build_redteam_prompt,
     build_synthetic_prompt,
 )
-from utils.logger import logger, logger_manager
-
-# from utils.mcp_utils import get_mcp_server_config
+from utils.logger import agent_logger, logger, logger_manager
+from utils.run_artifacts import load_schema, utc_now_iso, validate_schema
 
 
 class CodexAgent:
+    """Thin wrapper around the Codex CLI.
+
+    Delegates the entire agentic loop to the ``codex`` CLI running inside
+    the kali container.  The CLI streams JSON events that we parse into
+    the same ``conversation.jsonl`` format used by the claude-code agent.
+    """
+
     def __init__(
         self,
         app_name: str = "",
@@ -36,23 +44,9 @@ class CodexAgent:
         attack_model: str = "malicious_apk",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
+        model: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ):
-        """
-        Initialize the Codex agent.
-
-        Args:
-            app_name: Name of the mobile application being tested
-            dry_run: If True, skip actual execution for testing
-            app_server: Optional app server URL for network testing
-            emulator_server: Optional backend URL from the emulator's perspective
-            timeout_ms: Timeout for Codex CLI calls in milliseconds
-            package_name: Android package name for the app being tested
-            username: Username for the app
-            password: Password for the app
-            include_ssrf: Whether to include SSRF instructions in the prompt
-            workflow: Workflow type (exploit, detection, redteam)
-            attack_model: Attack model for redteam workflow
-        """
         self.app_name = app_name
         self.dry_run = dry_run
         self.app_server = app_server
@@ -66,17 +60,20 @@ class CodexAgent:
         self.attack_model = attack_model
         self.additional_context = additional_context
         self.no_codebase = no_codebase
+        self.model = model
+        self.reasoning_effort = reasoning_effort
 
         # Load environment variables
-        # TODO: Refactor codex agent to share provider config and key handling with standard agents.
         agent_dir = os.path.dirname(os.path.abspath(__file__))
         env_file = os.path.join(agent_dir, ".env")
         if os.path.exists(env_file):
             load_dotenv(env_file, override=True)
 
-        # Get initial directory tree context
+        # Build system prompt
         self._initial_tree_context = get_directory_tree()
+        self._instructions = self._get_system_prompt_text()
 
+        # Provider handles CLI execution inside the kali container
         self.provider = CodexCLIProvider()
 
         # Set up signal handler for graceful cleanup on Ctrl-C
@@ -89,148 +86,41 @@ class CodexAgent:
                     "Codex CLI validation failed. Please ensure Codex CLI is installed and accessible."
                 )
 
-        # Initialize state
-        self.conversation_history = []
-        self.current_turn = 0
-
-        # Use shared logger's file name for consistency
-        self.log_file = logger_manager.get_log_file_name()
-
-        # Log initialization
-        self._log_section(
-            "AGENT CONFIGURATION",
-            [
-                f"App: {self.app_name}",
-                f"Package: {self.package_name}",
-                f"App Server: {app_server or 'None'}",
-                f"Dry Run: {dry_run}",
-            ],
+        # Logging & artifact paths
+        self.log_file = logger_manager.get_agent_log_file_name()
+        self._logs_dir = Path(logger_manager.get_logs_dir())
+        self._conversation_file = str(self._logs_dir / "conversation.jsonl")
+        self._system_prompt_file = str(self._logs_dir / "system_prompt.txt")
+        self._conversation_schema = load_schema(
+            Path(__file__).parent.parent, "conversation_turn.schema.json"
         )
 
-    def run(self) -> Dict[str, Any]:
-        """
-        Execute the mobile security testing analysis.
+        # Tracking (populated after CLI execution)
+        self._tool_call_count = 0
+        self._unique_tools: set = set()
 
-        Returns:
-            Dictionary with execution results and metadata
-        """
-        logger.info("Starting Codex Agent execution...")
+        # Reset conversation artifact
+        with open(self._conversation_file, "w", encoding="utf-8"):
+            pass
+        # Persist system prompt for reproducibility
+        with open(self._system_prompt_file, "w", encoding="utf-8") as f:
+            f.write(self._instructions)
+            f.write("\n")
 
-        if self.dry_run:
-            logger.info("DRY RUN MODE - No actual Codex CLI execution")
-            return self._create_dry_run_result()
+        agent_logger.info("Agent Run Started")
+        agent_logger.info("Agent: codex")
+        agent_logger.info(f"App: {self.app_name}")
+        agent_logger.info(f"Workflow: {self.workflow}")
+        agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
+        agent_logger.info(f"System prompt:\n{self._instructions}")
+        agent_logger.info("=" * 80)
 
-        try:
-            # Generate initial security testing prompt using standardized components
-            initial_prompt = self._get_default_system_prompt()
+    # ------------------------------------------------------------------
+    # Prompt building (identical to ClaudeCodeAgent)
+    # ------------------------------------------------------------------
 
-            # Execute using provider's multi-turn execute method
-            return self._execute_analysis(initial_prompt)
-
-        except Exception as e:
-            logger.error(f"Codex Agent execution failed: {e}")
-            return self._create_result("error", str(e))
-
-    def _execute_analysis(self, initial_prompt: str) -> Dict[str, Any]:
-        """
-        Execute analysis using provider's built-in multi-turn support.
-        """
-        try:
-            self._log_section("STARTING CODEX CLI EXECUTION")
-            self._log_content("INITIAL PROMPT", initial_prompt)
-
-            # Single call to execute() handles all turns automatically
-            result = self.provider.execute(
-                prompt=initial_prompt,
-                timeout_ms=self.timeout_ms,
-                no_codebase=self.no_codebase,
-            )
-
-            if not result.success:
-                is_timeout = result.exit_code == -1
-                status = "timeout" if is_timeout else "error"
-                msg = f"Codex execution {status}: {result.stderr}"
-                if is_timeout:
-                    logger.info(msg)
-                else:
-                    logger.error(msg)
-                return self._create_result(status, result.stderr)
-
-            # Log final results
-            self._log_content("FINAL OUTPUT", result.output_text)
-
-            if result.tool_outputs:
-                logger.info(f"[TOOL CALLS DETECTED: {len(result.tool_outputs)}]")
-                for i, tool_output in enumerate(result.tool_outputs):
-                    logger.info(f"Tool Output {i + 1}: {tool_output}")
-                logger.info("-" * 40)
-
-            # Add complete execution to history
-            self.conversation_history.append(
-                {
-                    "initial_prompt": initial_prompt,
-                    "final_output": result.output_text,
-                    "tool_outputs": result.tool_outputs,
-                    "execution_time": result.execution_time,
-                    "turns": result.turns,
-                }
-            )
-
-            return self._create_result("completed", turns=result.turns)
-
-        except Exception as e:
-            logger.error(f"Codex execution failed: {e}")
-            return self._create_result("error", str(e))
-
-    def _log_section(self, title: str, details: list = None) -> None:
-        """Log a section with consistent formatting."""
-        logger.info("=" * 80)
-        logger.info(title)
-        logger.info("=" * 80)
-        if details:
-            for detail in details:
-                logger.info(detail)
-            logger.info("=" * 80)
-
-    def _log_content(self, label: str, content: str) -> None:
-        """Log content with label and character count."""
-        logger.info(f"[{label} - {len(content)} chars]")
-        logger.info(content)
-        logger.info("-" * 40)
-
-    def _create_result(
-        self, status: str, error: str = None, turns: int = 0
-    ) -> Dict[str, Any]:
-        """Create result dictionary with common structure."""
-        result = {
-            "agent_type": "codex",
-            "status": status,
-            "turns_taken": turns,
-            "tool_call_count": 0,
-            "unique_tools": [],
-            "token_totals": {},
-            "final_message": (
-                self.conversation_history[-1]["final_output"]
-                if self.conversation_history and status == "completed"
-                else None
-            ),
-            "log_file": self.log_file,
-            "conversation_file": None,
-            "conversation_history": self.conversation_history,
-        }
-
-        if error:
-            result["error"] = error
-
-        if status == "completed":
-            logger.info(f"{'=' * 20} ANALYSIS COMPLETED {'=' * 20}")
-            logger.info("Status: Completed")
-            logger.info(f"Turns: {turns}")
-            logger.info(f"Log file: {self.log_file}")
-
-        return result
-
-    def _get_default_system_prompt(self) -> str:
+    def _get_system_prompt_text(self) -> str:
+        """Build the system prompt based on workflow mode."""
         if self.workflow == "detection":
             prompt = build_detection_prompt(
                 package_name=self.package_name,
@@ -239,6 +129,8 @@ class CodexAgent:
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
+                no_codebase=self.no_codebase,
+                agent_type="codex",
             )
         elif self.workflow == "redteam":
             builder = (
@@ -253,6 +145,7 @@ class CodexAgent:
                 username=self.username,
                 password=self.password,
                 no_codebase=self.no_codebase,
+                agent_type="codex",
             )
         else:
             prompt = build_synthetic_prompt(
@@ -262,6 +155,7 @@ class CodexAgent:
                 app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 no_codebase=self.no_codebase,
+                agent_type="codex",
             )
 
         if self.additional_context:
@@ -269,19 +163,199 @@ class CodexAgent:
 
         return prompt
 
-    def _create_dry_run_result(self) -> Dict[str, Any]:
-        """Create a mock result for dry run mode."""
+    # ------------------------------------------------------------------
+    # Run
+    # ------------------------------------------------------------------
+
+    def run(self) -> Dict[str, Any]:
+        """Execute the Codex CLI and return a result dict."""
+        agent_logger.info("Starting Codex CLI execution...")
+
+        if self.dry_run:
+            logger.info("DRY RUN MODE - No actual Codex CLI execution")
+            return self._finish_run(turns=0, status="dry_run_completed")
+
+        codex_config: Dict[str, Any] = {}
+        if self.model:
+            codex_config["model"] = self.model
+        if self.reasoning_effort:
+            codex_config["model_reasoning_effort"] = self.reasoning_effort
+
+        try:
+            result = self.provider.execute(
+                prompt=self._instructions,
+                timeout_ms=self.timeout_ms,
+                codex_config=codex_config or None,
+                no_codebase=self.no_codebase,
+            )
+
+            # Ingest CLI conversation events into our standard JSONL format
+            self._ingest_conversation_events(result.conversation_events)
+
+            # Fall back to number of conversation events if turns is 0
+            effective_turns = result.turns or len(result.conversation_events)
+
+            # Build token totals from provider's accumulated usage
+            token_totals = {}
+            if result.token_usage:
+                token_totals = dict(result.token_usage)
+
+            if not result.success:
+                is_timeout = result.exit_code == -1
+                status = "timeout" if is_timeout else "error"
+                parts = []
+                if is_timeout:
+                    parts.append(f"CLI timed out after {self.timeout_ms / 1000:.0f}s")
+                else:
+                    parts.append(f"CLI exited with code {result.exit_code}")
+                if result.stderr:
+                    parts.append(f"stderr: {result.stderr}")
+                msg = " | ".join(parts)
+                if is_timeout:
+                    agent_logger.info(f"Codex execution {status}: {msg}")
+                    logger.info(f"Codex execution {status}: {msg}")
+                else:
+                    agent_logger.error(f"Codex execution {status}: {msg}")
+                    logger.error(f"Codex execution {status}: {msg}")
+                return self._finish_run(
+                    turns=effective_turns,
+                    status=status,
+                    final_message=msg,
+                    token_totals=token_totals,
+                )
+
+            return self._finish_run(
+                turns=effective_turns,
+                status="completed",
+                final_message=result.output_text,
+                token_totals=token_totals,
+            )
+
+        except Exception as e:
+            agent_logger.error(f"Codex execution failed: {e}", exc_info=True)
+            logger.error(f"Codex execution failed: {e}", exc_info=True)
+            return self._finish_run(turns=0, status="error", final_message=str(e))
+
+    # ------------------------------------------------------------------
+    # Conversation tracking (mirrors ClaudeCodeAgent)
+    # ------------------------------------------------------------------
+
+    def _ingest_conversation_events(self, events: list) -> None:
+        """Convert CLI conversation events to schema-validated turn events."""
+        run_id = logger_manager.get_run_id()
+
+        for event in events:
+            turn_number = event.get("turn", 0)
+            tool_calls = event.get("tool_calls", [])
+            observations = event.get("observations", [])
+
+            # Normalise tool_calls to match conversation_turn schema
+            normalised_tool_calls = []
+            for tc in tool_calls:
+                tool_name = tc.get("name", "unknown")
+                self._unique_tools.add(tool_name)
+                normalised_tool_calls.append(
+                    {
+                        "tool_call_id": tc.get("tool_call_id", ""),
+                        "name": tool_name,
+                        "arguments": tc.get("arguments", {}),
+                    }
+                )
+            self._tool_call_count += len(normalised_tool_calls)
+
+            # Normalise observations
+            normalised_obs = []
+            for obs in observations:
+                normalised_obs.append(
+                    {
+                        "tool_call_id": obs.get("tool_call_id", ""),
+                        "type": "tool_result",
+                        "content": obs.get("content", ""),
+                        "truncated": obs.get("truncated", False),
+                    }
+                )
+
+            turn_event = {
+                "run_id": run_id,
+                "turn_number": turn_number,
+                "timestamp": utc_now_iso(),
+                "role": "assistant",
+                "response_id": None,
+                "assistant_text": event.get("assistant_text", ""),
+                "reasoning_summary": "",
+                "tool_calls": normalised_tool_calls,
+                "observations": normalised_obs,
+                "status": "ok",
+            }
+
+            self._append_turn_event(turn_event)
+
+    def _append_turn_event(self, event: dict) -> None:
+        """Validate and append a turn event to conversation.jsonl."""
+        validate_schema(event, self._conversation_schema, "conversation turn")
+        try:
+            with open(self._conversation_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except Exception as e:
+            agent_logger.warning(f"Failed to append conversation turn JSONL: {e}")
+
+    # ------------------------------------------------------------------
+    # Exploit check (same as ClaudeCodeAgent)
+    # ------------------------------------------------------------------
+
+    def _check_exploit_exists(self) -> bool:
+        """Check whether the expected exploit artifact exists in the kali container."""
+        if self.workflow == "redteam" and self.attack_model == "malicious_apk":
+            check_path = (
+                "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
+            )
+        else:
+            check_path = "/app/agent_exploit/exploit.sh"
+        try:
+            container = self.provider.client.containers.get(
+                self.provider.container_name
+            )
+            result = container.exec_run(["test", "-f", check_path])
+            return result.exit_code == 0
+        except Exception as e:
+            agent_logger.warning(f"Failed to check for exploit artifact: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # Result (mirrors ClaudeCodeAgent._finish_run)
+    # ------------------------------------------------------------------
+
+    def _finish_run(
+        self,
+        turns: int,
+        status: str = "completed",
+        final_message: Optional[str] = None,
+        token_totals: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Build result dict compatible with run_artifacts.normalize_agent_result."""
+        exploit_exists = self._check_exploit_exists()
+
+        agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
+        agent_logger.info(f"Turns: {turns}")
+        agent_logger.info(f"Exploit exists: {exploit_exists}")
+        if final_message:
+            agent_logger.info(f"Final message: {final_message}")
+
         return {
             "agent_type": "codex",
-            "status": "dry_run_completed",
-            "turns_taken": 0,
-            "tool_call_count": 0,
-            "unique_tools": [],
-            "token_totals": {},
-            "final_message": f"DRY RUN: Codex Agent configured for {self.app_name}",
+            "status": status,
+            "turns_taken": turns,
+            "max_turns": 0,  # CLI manages its own turn limit
+            "exploit_exists": exploit_exists,
+            "final_message": final_message,
+            "token_totals": token_totals or {},
             "log_file": self.log_file,
-            "conversation_file": None,
-            "app_name": self.app_name,
+            "conversation_file": self._conversation_file,
+            "system_prompt_file": self._system_prompt_file,
+            "tool_call_count": self._tool_call_count,
+            "unique_tools": sorted(self._unique_tools),
         }
 
     def _signal_handler(self, _sig, _frame):

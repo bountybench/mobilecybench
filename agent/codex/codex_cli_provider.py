@@ -2,7 +2,7 @@
 
 import json
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import docker
 from pydantic import BaseModel
@@ -21,6 +21,8 @@ class CodexCLIResult(BaseModel):
     stderr: Optional[str] = None
     exit_code: int = -1
     turns: int = 0
+    conversation_events: List[Dict[str, Any]] = []
+    token_usage: Dict[str, int] = {}
 
 
 class CodexCLIProvider:
@@ -91,15 +93,14 @@ class CodexCLIProvider:
             logger.info(f"Timeout: {timeout_ms}ms")
 
             # Default headless configuration
-            # TODO: Move these Codex-specific configurations to runner_config.json to avoid duplication and allow overrides
             config = {
                 "history.persistence": "none",
                 "tui.animations": False,
                 "tui.notifications": False,
                 "approval_policy": "never",
                 "sandbox_mode": "danger-full-access",
-                "model_reasoning_effort": "xhigh",
-                "model": "gpt-5.1-codex-max",
+                "model_reasoning_effort": "high",
+                "model": "gpt-5.2",
                 "model_reasoning_summary": "detailed",
                 "model_verbosity": "high",
             }
@@ -107,10 +108,7 @@ class CodexCLIProvider:
                 config.update(codex_config)
 
             # Construct command
-            # We inject PYTHONUNBUFFERED=1 to ensure Python flushing if codex is Python-based
             # stdbuf is used to force line buffering
-
-            # Base command: stdbuf -oL -eL codex
             cmd = [
                 "stdbuf",
                 "-oL",
@@ -146,54 +144,179 @@ class CodexCLIProvider:
             # State for callbacks
             tool_outputs = []
             assistant_messages = []
+            turn_count = 0
+
+            # Conversation event tracking (per-turn accumulation)
+            current_turn_tool_calls = []
+            current_turn_observations = []
+            current_turn_text = []
+            conversation_events = []
+
+            # Buffer for incomplete lines across chunks.  Docker streaming
+            # delivers raw byte chunks that can split a JSONL line.
+            line_buffer = ""
+
+            # Token usage accumulator
+            token_usage = {"input_tokens": 0, "output_tokens": 0}
+
+            def _flush_turn():
+                """Flush the current turn's accumulated events."""
+                if not current_turn_tool_calls and not current_turn_text:
+                    return
+                conversation_events.append(
+                    {
+                        "turn": turn_count,
+                        "assistant_text": "\n".join(current_turn_text),
+                        "tool_calls": list(current_turn_tool_calls),
+                        "observations": list(current_turn_observations),
+                    }
+                )
+                current_turn_tool_calls.clear()
+                current_turn_observations.clear()
+                current_turn_text.clear()
+
+            def _handle_event(data: dict):
+                """Handle a single parsed JSONL event from codex --json."""
+                nonlocal turn_count
+
+                event_type = data.get("type", "")
+                item = data.get("item") or data.get("output_item") or {}
+                item_type = item.get("type", "")
+
+                # --- item lifecycle events ---
+                if event_type == "item.completed":
+                    if item_type == "command_execution":
+                        cmd_str = item.get("command", "")
+                        item_id = item.get("id", "")
+                        logger.info(f"[Codex Tool] shell: {cmd_str[:200]}")
+                        agent_logger.info("tool_use name=shell command=%s", cmd_str[:200])
+                        output = item.get("aggregated_output") or item.get("output", "")
+                        if output:
+                            tool_outputs.append(output)
+                            agent_logger.info(
+                                "tool_result has_content=%s", bool(output)
+                            )
+                        # Track for conversation events
+                        current_turn_tool_calls.append(
+                            {
+                                "tool_call_id": item_id,
+                                "name": "shell",
+                                "arguments": {"command": cmd_str},
+                            }
+                        )
+                        current_turn_observations.append(
+                            {
+                                "tool_call_id": item_id,
+                                "type": "tool_result",
+                                "content": output[:10000] if output else "",
+                                "truncated": len(output) > 10000 if output else False,
+                            }
+                        )
+                    elif item_type == "agent_message":
+                        # Assistant text response
+                        text = item.get("text", "")
+                        if text:
+                            assistant_messages.append(text)
+                            current_turn_text.append(text)
+                            preview = (text[:200] + "...") if len(text) > 200 else text
+                            logger.info(f"[Codex Message] {preview}")
+                    elif item_type == "function_call":
+                        name = item.get("name", "unknown")
+                        item_id = item.get("id", "")
+                        logger.info(f"[Codex Tool] {name}")
+                        agent_logger.info("tool_use name=%s", name)
+                        current_turn_tool_calls.append(
+                            {
+                                "tool_call_id": item_id,
+                                "name": name,
+                                "arguments": item.get("arguments", {}),
+                            }
+                        )
+                    elif item_type == "function_call_output":
+                        output = item.get("output", "")
+                        item_id = item.get("call_id", item.get("id", ""))
+                        if output:
+                            tool_outputs.append(output)
+                        current_turn_observations.append(
+                            {
+                                "tool_call_id": item_id,
+                                "type": "tool_result",
+                                "content": output[:10000] if output else "",
+                                "truncated": len(output) > 10000 if output else False,
+                            }
+                        )
+
+                # --- turn lifecycle ---
+                elif event_type == "turn.completed":
+                    turn_count += 1
+                    usage = data.get("usage", {})
+                    if usage:
+                        token_usage["input_tokens"] += usage.get("input_tokens", 0)
+                        token_usage["output_tokens"] += usage.get("output_tokens", 0)
+                        cached = usage.get("cached_input_tokens", 0)
+                        if cached:
+                            token_usage["cached_input_tokens"] = (
+                                token_usage.get("cached_input_tokens", 0) + cached
+                            )
+                    logger.info(f"[Codex] Turn {turn_count} completed")
+                    _flush_turn()
+
+                elif event_type == "error":
+                    msg = data.get("message", "")
+                    logger.error(f"[Codex Error] {msg}")
+
+                # --- informational events ---
+                elif event_type in ("thread.started", "turn.started", "item.started"):
+                    pass
+
+                # --- catch-all ---
+                else:
+                    logger.debug(f"[Codex Event] {event_type}")
 
             def parse_output_chunk(text: str):
-                """Parse JSONL chunks from stdout."""
-                for line in text.strip().split("\n"):
+                """Parse JSONL chunks from stdout with line buffering."""
+                nonlocal line_buffer
+
+                text = line_buffer + text
+                line_buffer = ""
+
+                lines = text.split("\n")
+                # Last element is either "" (line ended with \n) or a partial
+                # line — save it for the next chunk.
+                if not text.endswith("\n"):
+                    line_buffer = lines.pop()
+                else:
+                    lines.pop()  # remove trailing empty string
+
+                for line in lines:
+                    line = line.strip()
                     if not line:
                         continue
                     try:
                         data = json.loads(line)
-                        event_type = data.get("type")
-
-                        if event_type == "log":
-                            content = data.get("content", "").strip()
-                            if content:
-                                logger.info(f"[Codex Log] {content}")
-                        elif event_type == "tool_use":
-                            tool = data.get("name", "unknown")
-                            logger.info(f"[Codex Tool] Using tool: {tool}")
-                            agent_logger.info("tool_use name=%s", tool)
-                        elif event_type == "assistant_message":
-                            content = data.get("content", "")
-                            if content:
-                                assistant_messages.append(content)
-                                preview = (
-                                    (content[:200] + "...")
-                                    if len(content) > 200
-                                    else content
-                                )
-                                logger.info(f"[Codex Message] {preview}")
-                        elif event_type == "tool_result":
-                            content = data.get("content", {})
-                            tool_outputs.append(json.dumps(content))
-                            agent_logger.info(
-                                "tool_result has_content=%s", bool(content)
-                            )
-
+                        _handle_event(data)
                     except json.JSONDecodeError:
-                        # Raw output (not JSON)
-                        if line.strip():
-                            logger.info(f"[Codex Raw] {line.strip()}")
+                        if line:
+                            logger.info(f"[Codex Raw] {line}")
 
             # Execute using helper
-            # Note: run_command_in_container returns (stdout, stderr, exit_code)
             _, stderr_text, exit_code = run_command_in_container(
                 self.container_name,
                 cmd,
                 timeout_sec,
                 stdout_callback=parse_output_chunk,
             )
+
+            # Flush any remaining buffered partial line
+            if line_buffer.strip():
+                try:
+                    data = json.loads(line_buffer.strip())
+                    _handle_event(data)
+                except json.JSONDecodeError:
+                    logger.info(f"[Codex Raw] {line_buffer.strip()}")
+
+            # Flush any remaining turn data
+            _flush_turn()
 
             final_output = "\n".join(assistant_messages)
 
@@ -208,6 +331,9 @@ class CodexCLIProvider:
                 execution_time=total_time,
                 stderr=stderr_text,
                 exit_code=exit_code,
+                turns=turn_count,
+                conversation_events=conversation_events,
+                token_usage=token_usage,
             )
 
         except Exception as e:

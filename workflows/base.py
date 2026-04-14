@@ -86,6 +86,7 @@ class Workflow(ABC):
 
             self.agent = CodexAgent(
                 app_name=self.app_name,
+                timeout_ms=self.config.agent_timeout * 1000,
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
@@ -96,6 +97,8 @@ class Workflow(ABC):
                 attack_model=self.config.attack_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
+                model=self.config.model,
+                reasoning_effort=self.config.reasoning_effort,
             )
         else:
             from agent.custom_agent import CustomAgent
