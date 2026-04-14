@@ -178,6 +178,24 @@ def _dismiss_common_popups(d, max_rounds: int = 4) -> None:
         if _dismiss_alert_popup(d):
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
             continue
+
+        # Handle generic continue/next/yes buttons that might appear in modals
+        # without the specific AcceptAlertButton tag.
+        dismissed = False
+        if d(resourceId=CT.ALERT_POPUP).exists:
+            for label in (SE.CONTINUE, SE.NEXT, SE.YES, SE.CONFIRM):
+                btn = d(resourceId=CT.ALERT_POPUP).child(text=label)
+                if not btn.exists:
+                    btn = d(resourceId=CT.ALERT_POPUP).child(description=label)
+                if btn.exists:
+                    logger.info("Dismissing Bitwarden alert popup via generic button: %s", label)
+                    wait_and_click(d, btn)
+                    dismissed = True
+                    break
+        
+        if dismissed:
+            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            continue
         break
 
 
@@ -226,6 +244,7 @@ def _select_auth_submit_control(d):
                 return candidate
         return None
 
+    # Normal Login/Unlock buttons
     login_button = d(resourceId=CT.LOG_IN_WITH_MASTER_PASSWORD_BUTTON)
     if _scroll_until_visible(d, login_button, max_swipes=max_sw):
         return login_button
@@ -233,6 +252,15 @@ def _select_auth_submit_control(d):
     unlock_button = d(resourceId=CT.UNLOCK_VAULT_BUTTON)
     if _scroll_until_visible(d, unlock_button, max_swipes=max_sw):
         return unlock_button
+
+    # Fallback to "Set up later" or "Turn on later" if an onboarding screen is blocking
+    # but a master password field was detected.
+    for candidate in (
+        d(resourceId=CT.SET_UP_LATER_BUTTON),
+        d(text=SE.TURN_ON_LATER),
+    ):
+        if candidate.exists:
+            return candidate
 
     login_label = d(text=SE.LOG_IN_WITH_MASTER_PASSWORD)
     if _scroll_until_visible(d, login_label, max_swipes=max_sw):
@@ -617,46 +645,58 @@ def _configure_self_hosted_environment(d) -> None:
 
 
 def _complete_post_registration_setup(d) -> None:
-    if d(resourceId=CT.SET_UP_LATER_BUTTON).exists:
-        if click_then_expect(
-            d,
-            d(resourceId=CT.SET_UP_LATER_BUTTON),
-            d(text=SE.CONFIRM),
-            timeout=SHORT_WAIT,
-        ):
-            click_then_expect(
-                d,
-                d(text=SE.CONFIRM),
-                lambda: d(text=SE.TURN_ON_LATER).exists
-                or d(text=SE.CONTINUE).exists
-                or d(resourceId=CT.ADD_ITEM_BUTTON).exists,
-                timeout=SHORT_WAIT,
-            )
+    """
+    Dismiss onboarding/setup screens after registration (biometrics, keep-safe, etc).
+    
+    Bitwarden versions vary in which screens they show and in what order. This loop
+    aggressively dismisses everything until the vault (AddItemButton) is visible.
+    """
+    max_rounds = 10
+    for round_idx in range(max_rounds):
+        _dismiss_common_popups(d)
+        
+        if _vault_unlocked_visible(d):
+            logger.info("Reached unlocked vault after %d dismissal rounds.", round_idx)
+            return
 
-    if d(text=SE.TURN_ON_LATER).exists:
-        if click_then_expect(
-            d,
-            d(text=SE.TURN_ON_LATER),
-            d(text=SE.CONFIRM),
-            timeout=SHORT_WAIT,
-        ):
-            click_then_expect(
-                d,
-                d(text=SE.CONFIRM),
-                lambda: d(text=SE.CONTINUE).exists
-                or d(resourceId=CT.ADD_ITEM_BUTTON).exists,
-                timeout=SHORT_WAIT,
-            )
+        # Check for various 'Skip' or 'Later' buttons
+        setup_later = d(resourceId=CT.SET_UP_LATER_BUTTON)
+        if setup_later.exists:
+            logger.info("Dismissing 'Set up later' onboarding screen.")
+            setup_later.click()
+            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            continue
 
-    if d(text=SE.CONTINUE).exists and not d(resourceId=CT.ADD_ITEM_BUTTON).exists:
-        click_then_expect(
-            d,
-            d(text=SE.CONTINUE),
-            d(resourceId=CT.ADD_ITEM_BUTTON),
-            timeout=15,
-        )
+        turn_on_later = d(text=SE.TURN_ON_LATER)
+        if turn_on_later.exists:
+            logger.info("Dismissing 'Turn on later' onboarding screen.")
+            turn_on_later.click()
+            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            continue
 
-    _dismiss_common_popups(d)
+        # Generic Next/Continue/Confirm/Yes buttons
+        for label in (SE.CONTINUE, SE.NEXT, SE.CONFIRM, SE.YES):
+            btn = d(text=label)
+            if not btn.exists:
+                btn = d(description=label)
+            if btn.exists:
+                logger.info("Dismissing onboarding screen via generic button: %s", label)
+                btn.click()
+                wait_for_ui_stable(d, timeout=SHORT_WAIT)
+                break
+        else:
+            # If no buttons matched and vault not visible, try a manual back press
+            # but only if we're not on a primary screen (EmailEntry / MasterPasswordEntry).
+            if not d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists and \
+               not d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists:
+                logger.info("No onboarding controls detected; attempting back-press to clear potential modal.")
+                d.press("back")
+                wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            else:
+                break
+                
+    if not _vault_unlocked_visible(d):
+        logger.warning("Finished onboarding loop but AddItemButton is still not visible.")
 
 
 def _wait_for_unlocked_vault(d, timeout: float = 35.0) -> bool:
@@ -1071,6 +1111,7 @@ def bw_attempt_login(d, email, password):
         logger.info("Waiting for the initial UI to stabilize after launch...")
         wait_for_ui_stable(d, timeout=15)
         _dismiss_common_popups(d)
+        _complete_post_registration_setup(d)
 
         if d(resourceId=CT.ADD_ITEM_BUTTON).exists:
             logger.info("Unlocked vault detected. Logging out before login attempt.")
