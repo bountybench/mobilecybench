@@ -595,21 +595,32 @@ def _configure_self_hosted_environment(d) -> None:
         return
 
     # Check if the region selector is already set to Self-hosted
-    if (
-        region_selector.exists or _scroll_to(d, resource_id=CT.REGION_SELECTOR_DROPDOWN)
-    ) and "Self-hosted" in (region_selector.get_text() or ""):
+    current_region = ""
+    if region_selector.exists or _scroll_to(d, resource_id=CT.REGION_SELECTOR_DROPDOWN):
+        try:
+            current_region = region_selector.get_text() or ""
+        except Exception:
+            current_region = ""
+
+    if "Self-hosted" in current_region:
         logger.info(
             "Region selector already shows 'Self-hosted'. Clicking to enter URL."
         )
         region_selector.click()
         time.sleep(1)
         if not server_url_entry.exists(timeout=SHORT_WAIT):
-            # Fallback: if it didn't open the URL entry, maybe it needs a re-selection
-            logger.info(
-                "ServerUrlEntry not visible after click, re-selecting from list."
-            )
+            # Fallback: if it didn't open the URL entry, maybe it needs a re-selection from the list
+            logger.info("ServerUrlEntry not visible after click; re-opening list.")
+            region_selector.click()
+            wait_for_ui_stable(d, timeout=SHORT_WAIT)
+
+            # Look for Self-hosted in the list (it might be in a popup/bottom sheet)
+            self_hosted_item = d(text=SE.SELF_HOSTED)
+            if not self_hosted_item.exists:
+                self_hosted_item = d(scrollable=True).child(text=SE.SELF_HOSTED)
+
             if not click_then_expect(
-                d, d(text=SE.SELF_HOSTED), server_url_entry, timeout=SHORT_WAIT
+                d, self_hosted_item, server_url_entry, timeout=SHORT_WAIT
             ):
                 raise RuntimeError("Failed to select 'Self-hosted' from the list.")
     else:
@@ -622,11 +633,20 @@ def _configure_self_hosted_environment(d) -> None:
         if not click_then_expect(
             d, region_selector, d(text=SE.SELF_HOSTED), timeout=SHORT_WAIT
         ):
-            raise RuntimeError("Failed to open the environment selector.")
+            # Fallback for list item if first click didn't find it directly
+            self_hosted_item = d(scrollable=True).child(text=SE.SELF_HOSTED)
+            if not click_then_expect(
+                d, region_selector, self_hosted_item, timeout=SHORT_WAIT
+            ):
+                raise RuntimeError("Failed to open the environment selector.")
+
+        self_hosted_item = d(text=SE.SELF_HOSTED)
+        if not self_hosted_item.exists:
+            self_hosted_item = d(scrollable=True).child(text=SE.SELF_HOSTED)
 
         if not click_then_expect(
             d,
-            d(text=SE.SELF_HOSTED),
+            self_hosted_item,
             server_url_entry,
             timeout=SHORT_WAIT,
         ):
