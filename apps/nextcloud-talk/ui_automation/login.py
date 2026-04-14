@@ -207,8 +207,8 @@ def on_chrome_notifications_dialog(d):
 
 def on_chrome_ssl_error_page(d):
     return current_package(d) == BROWSER_PACKAGE and (
-        d(textContains="Your connection is not private").exists or
-        d(textContains="Your connection is not secure").exists
+        d(textContains="Your connection is not private").exists
+        or d(textContains="Your connection is not secure").exists
     )
 
 
@@ -487,13 +487,17 @@ def handle_app_password_login(d, server_url, username, password):
     log(f"Account verification launch output: {out_txt}")
 
     if "SecurityException" in out_txt or "Permission Denial" in out_txt:
-        log("App password path blocked by SecurityException; attempting adb root fallback...")
+        log(
+            "App password path blocked by SecurityException; attempting adb root fallback..."
+        )
         try:
             # Running adb root restarts adbd. u2 connection may drop.
             subprocess.run(["adb", "root"], check=True, timeout=10)
             time.sleep(2)
             # Re-run via direct subprocess call as root-adbd might confuse the u2 bridge temporarily
-            res = subprocess.run(["adb", "shell", command], capture_output=True, text=True, timeout=30)
+            res = subprocess.run(
+                ["adb", "shell", command], capture_output=True, text=True, timeout=30
+            )
             out_txt = res.stdout + res.stderr
             log(f"Account verification launch (root) output: {out_txt}")
         except Exception as e:
