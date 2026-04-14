@@ -24,7 +24,8 @@
 #   ./build_apk.sh conversations --commit 60a32b1
 #     # Build from an explicit commit instead of metadata.json commit_version
 #   ./build_apk.sh conversations --hardened
-#     # Build a hardened APK by applying apps/conversations/security.patch
+#     # Build a hardened APK by applying apps/conversations/security.patch in the mobilecybench-zerodays repository
+#     # Places the sensitive hardened APK into the zerodays submodule
 #   ./build_apk.sh conversations --hardened-patch /path/to/fix.patch
 #     # Build a hardened APK from an explicit patch file (for example a task/report fix.patch)
 #
@@ -188,6 +189,12 @@ if [ -z "$OUTPUT_DIR" ]; then
     OUTPUT_DIR="$APP_DIR/apk"
 fi
 
+# Set default pure hardened output directory
+ZERODAY_HARDENED_DIR=""
+if [ -n "$HARDENED" ]; then
+    ZERODAY_HARDENED_DIR="$ROOT_DIR/zerodays/patches/$APP_NAME/hardened"
+fi
+
 VULN_OUTPUT_NAME=""
 if [ -n "$VULN_ID" ]; then
     VULN_OUTPUT_NAME="$(basename "$VULN_ID")"
@@ -259,6 +266,27 @@ check_submodule_initialized() {
     fi
 
     echo -e "${INFO} Codebase submodule is initialized"
+    return 0
+}
+
+# Check zerodays submodule is initialized (only for hardened APK build mode)
+check_zerodays_submodule_initialized() {
+    if [ -n "$HARDENED" ]; then
+        local zerodays_dir="$ROOT_DIR/zerodays"
+        
+        if [ ! -d "$zerodays_dir" ] || [ -z "$(ls -A "$zerodays_dir" 2>/dev/null)" ]; then
+            echo -e "${INFO} Initializing zerodays submodule..."
+            git submodule update --init zerodays 2>/dev/null || true
+        fi
+
+        if [ -z "$(ls -A "$zerodays_dir" 2>/dev/null)" ]; then
+            echo -e "${ERROR} zerodays submodule is not initialized (directory is empty)"
+            echo -e "${ERROR} Please initialize the submodule: git submodule update --init zerodays"
+            return 1
+        fi
+        
+        echo -e "${INFO} zerodays submodule is initialized"
+    fi
     return 0
 }
 
@@ -565,11 +593,15 @@ build_and_package() {
     echo -e "${INFO} Found unsigned APK: $UNSIGNED_APK"
 
     # Determine output path (vuln/hardened builds go in subdirectory)
+    # Hardened builds from security patches will directly go to the zerodays submodule
     local output_path
     if [[ -n "$VULN_ID" ]]; then
         mkdir -p "$OUTPUT_DIR/$VULN_OUTPUT_NAME"
         output_path="$OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
-    elif [[ -n "$HARDENED" || -n "$HARDENED_PATCH_PATH" ]]; then
+    elif [[ -n "$HARDENED" ]]; then
+        mkdir -p "$ZERODAY_HARDENED_DIR"
+        output_path="$ZERODAY_HARDENED_DIR/${APP_NAME}.apk"
+    elif [[ -n "$HARDENED_PATCH_PATH" ]]; then
         mkdir -p "$OUTPUT_DIR/hardened"
         output_path="$OUTPUT_DIR/hardened/${APP_NAME}.apk"
     else
@@ -640,8 +672,10 @@ main() {
             exit 1
         fi
     elif [ -n "$HARDENED" ]; then
-        echo -e "${INFO} Output: $OUTPUT_DIR/hardened/${APP_NAME}.apk"
-        echo -e "${INFO} Mode: Hardened APK build (security.patch)"
+        echo -e "${INFO} Output: $ZERODAY_HARDENED_DIR/${APP_NAME}.apk"
+        echo -e "${INFO} Mode: Hardened APK build (using zerodays' security.patch)"
+
+        check_zerodays_submodule_initialized || exit 1
 
         # Validate security.patch exists
         local resolved_patch
@@ -738,7 +772,7 @@ main() {
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Hardened APK build completed!"
-        echo -e "${SUCCESS} Output: $OUTPUT_DIR/hardened/${APP_NAME}.apk"
+        echo -e "${SUCCESS} Output: $ZERODAY_HARDENED_DIR/${APP_NAME}.apk"
         echo -e "${SUCCESS} =================================="
     else
         # Regular (original) build — NO patches applied
