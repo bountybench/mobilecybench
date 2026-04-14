@@ -21,15 +21,15 @@ class DetectionWorkflow(Workflow):
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
         # Relative to app_dir — used by both setup and evaluate
-        self._original_apk = Path("apk") / f"{app_name}.apk"
+        self._original_apk = Path("apk") / f"{self.app_name}.apk"
         # Hardened APK lives in zerodays submodule (absolute path)
         self._hardened_apk = (
-            project_root
+            self.project_root
             / "zerodays"
             / "patches"
-            / app_name
+            / self.app_name
             / "hardened"
-            / f"{app_name}.apk"
+            / f"{self.app_name}.apk"
         )
 
     def _resolve_security_patch(self) -> Path:
