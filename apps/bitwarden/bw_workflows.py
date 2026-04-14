@@ -188,11 +188,13 @@ def _dismiss_common_popups(d, max_rounds: int = 4) -> None:
                 if not btn.exists:
                     btn = d(resourceId=CT.ALERT_POPUP).child(description=label)
                 if btn.exists:
-                    logger.info("Dismissing Bitwarden alert popup via generic button: %s", label)
+                    logger.info(
+                        "Dismissing Bitwarden alert popup via generic button: %s", label
+                    )
                     wait_and_click(d, btn)
                     dismissed = True
                     break
-        
+
         if dismissed:
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
             continue
@@ -647,14 +649,14 @@ def _configure_self_hosted_environment(d) -> None:
 def _complete_post_registration_setup(d) -> None:
     """
     Dismiss onboarding/setup screens after registration (biometrics, keep-safe, etc).
-    
+
     Bitwarden versions vary in which screens they show and in what order. This loop
     aggressively dismisses everything until the vault (AddItemButton) is visible.
     """
     max_rounds = 10
     for round_idx in range(max_rounds):
         _dismiss_common_popups(d)
-        
+
         if _vault_unlocked_visible(d):
             logger.info("Reached unlocked vault after %d dismissal rounds.", round_idx)
             return
@@ -680,23 +682,31 @@ def _complete_post_registration_setup(d) -> None:
             if not btn.exists:
                 btn = d(description=label)
             if btn.exists:
-                logger.info("Dismissing onboarding screen via generic button: %s", label)
+                logger.info(
+                    "Dismissing onboarding screen via generic button: %s", label
+                )
                 btn.click()
                 wait_for_ui_stable(d, timeout=SHORT_WAIT)
                 break
         else:
             # If no buttons matched and vault not visible, try a manual back press
             # but only if we're not on a primary screen (EmailEntry / MasterPasswordEntry).
-            if not d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists and \
-               not d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists:
-                logger.info("No onboarding controls detected; attempting back-press to clear potential modal.")
+            if (
+                not d(resourceId=CT.EMAIL_ADDRESS_ENTRY).exists
+                and not d(resourceId=CT.MASTER_PASSWORD_ENTRY).exists
+            ):
+                logger.info(
+                    "No onboarding controls detected; attempting back-press to clear potential modal."
+                )
                 d.press("back")
                 wait_for_ui_stable(d, timeout=SHORT_WAIT)
             else:
                 break
-                
+
     if not _vault_unlocked_visible(d):
-        logger.warning("Finished onboarding loop but AddItemButton is still not visible.")
+        logger.warning(
+            "Finished onboarding loop but AddItemButton is still not visible."
+        )
 
 
 def _wait_for_unlocked_vault(d, timeout: float = 35.0) -> bool:
