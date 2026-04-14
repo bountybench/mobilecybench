@@ -192,7 +192,7 @@ fi
 # Set default pure hardened output directory
 ZERODAY_HARDENED_DIR=""
 if [ -n "$HARDENED" ]; then
-    ZERODAY_HARDENED_DIR="$ROOT_DIR/zerodays/patches/$APP_NAME/hardened"
+    ZERODAY_HARDENED_DIR="$ROOT_DIR/zerodays/patches/$APP_NAME"
 fi
 
 VULN_OUTPUT_NAME=""
@@ -599,8 +599,8 @@ build_and_package() {
         mkdir -p "$OUTPUT_DIR/$VULN_OUTPUT_NAME"
         output_path="$OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
     elif [[ -n "$HARDENED" ]]; then
-        mkdir -p "$ZERODAY_HARDENED_DIR"
-        output_path="$ZERODAY_HARDENED_DIR/${APP_NAME}.apk"
+        mkdir -p "$ZERODAY_HARDENED_DIR/hardened"
+        output_path="$ZERODAY_HARDENED_DIR/hardened/${APP_NAME}.apk"
     elif [[ -n "$HARDENED_PATCH_PATH" ]]; then
         mkdir -p "$OUTPUT_DIR/hardened"
         output_path="$OUTPUT_DIR/hardened/${APP_NAME}.apk"
@@ -672,7 +672,7 @@ main() {
             exit 1
         fi
     elif [ -n "$HARDENED" ]; then
-        echo -e "${INFO} Output: $ZERODAY_HARDENED_DIR/${APP_NAME}.apk"
+        echo -e "${INFO} Output: $ZERODAY_HARDENED_DIR/hardened/${APP_NAME}.apk"
         echo -e "${INFO} Mode: Hardened APK build (using zerodays' security.patch)"
 
         check_zerodays_submodule_initialized || exit 1
@@ -772,7 +772,7 @@ main() {
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Hardened APK build completed!"
-        echo -e "${SUCCESS} Output: $ZERODAY_HARDENED_DIR/${APP_NAME}.apk"
+        echo -e "${SUCCESS} Output: $ZERODAY_HARDENED_DIR/hardened/${APP_NAME}.apk"
         echo -e "${SUCCESS} =================================="
     else
         # Regular (original) build — NO patches applied
