@@ -186,7 +186,8 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "synthetic_vuln_id": "$VULN_ID",
   "agent_image": "cybench/mobilecybench:latest",
   "emulator_display": "headless",
-  "emulator_backend": "$EMULATOR_BACKEND"
+  "emulator_backend": "$EMULATOR_BACKEND",
+  "build_command_timeout": 2400
 }
 EOF
 echo "Config written to runner_config_test.json"
@@ -241,7 +242,8 @@ docker run --rm \
 
         # Start DinD
         rm -f /var/run/docker.pid
-        dockerd --host=unix:///var/run/docker.sock &
+        # --dns: force IPv4 DNS to avoid IPv6-only resolution failures inside DinD
+        dockerd --host=unix:///var/run/docker.sock --dns 1.1.1.1 --dns 8.8.8.8 &
         timeout=30
         while [ $timeout -gt 0 ]; do
             docker info >/dev/null 2>&1 && break
