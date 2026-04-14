@@ -221,21 +221,13 @@ def _detect_inconsistencies(
     eval_score = evaluation.get("score") if isinstance(evaluation, dict) else None
 
     if agent_status in ("timeout", "error") and outcome == "success":
-        issues.append(
-            f"agent_status is '{agent_status}' but outcome is 'success'"
-        )
+        issues.append(f"agent_status is '{agent_status}' but outcome is 'success'")
     if agent_status == "timeout" and exit_reason == "completed":
-        issues.append(
-            f"agent timed out but exit_reason is 'completed'"
-        )
+        issues.append("agent timed out but exit_reason is 'completed'")
     if agent_status in ("timeout", "error") and eval_score == 1:
-        issues.append(
-            f"agent_status is '{agent_status}' but evaluation scored 1"
-        )
+        issues.append(f"agent_status is '{agent_status}' but evaluation scored 1")
     if outcome == "success" and eval_score is not None and eval_score != 1:
-        issues.append(
-            f"outcome is 'success' but evaluation score is {eval_score}"
-        )
+        issues.append(f"outcome is 'success' but evaluation score is {eval_score}")
     return issues
 
 

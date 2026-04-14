@@ -291,7 +291,7 @@ class ClaudeCodeAgent:
                 "role": "assistant",
                 "response_id": None,
                 "assistant_text": event.get("assistant_text", ""),
-                "reasoning_summary": "",
+                "reasoning_summary": event.get("reasoning_summary", ""),
                 "tool_calls": normalised_tool_calls,
                 "observations": normalised_obs,
                 "status": "ok",

@@ -157,6 +157,7 @@ class ClaudeCodeCLIProvider:
             current_turn_text = []
             current_turn_tool_calls = []
             current_turn_observations = []
+            current_turn_reasoning = []
 
             def _flush_turn():
                 """Flush accumulated turn data into a conversation event."""
@@ -168,6 +169,7 @@ class ClaudeCodeCLIProvider:
                         "turn": current_turn,
                         "timestamp": utc_now_iso(),
                         "assistant_text": "\n".join(current_turn_text),
+                        "reasoning_summary": "\n".join(current_turn_reasoning),
                         "tool_calls": list(current_turn_tool_calls),
                         "observations": list(current_turn_observations),
                     }
@@ -175,6 +177,7 @@ class ClaudeCodeCLIProvider:
                 current_turn_text.clear()
                 current_turn_tool_calls.clear()
                 current_turn_observations.clear()
+                current_turn_reasoning.clear()
                 current_turn += 1
 
             def parse_output_chunk(text: str):
@@ -220,6 +223,10 @@ class ClaudeCodeCLIProvider:
                                         logger.info(
                                             f"[ClaudeCode Message] {text_content}"
                                         )
+                                elif content_type == "thinking":
+                                    thinking_text = content.get("thinking", "")
+                                    if thinking_text:
+                                        current_turn_reasoning.append(thinking_text)
                                 elif content_type == "tool_use":
                                     tool_name = content.get("name", "unknown")
                                     tool_input = content.get("input", {})
