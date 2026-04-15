@@ -151,7 +151,7 @@ class TestExploitWorkflowEvaluation:
                     },
                 ],
             ), patch.object(
-                workflow, "_save_eval_result"
+                workflow, "_save_result"
             ) as mock_save:
                 result = workflow.evaluate()
 

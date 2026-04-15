@@ -534,11 +534,13 @@ class Workflow(ABC):
 
     # -- Shared evaluation helpers -----------------------------------------------
 
+    SCORE_FILE = "scores.json"
+
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
         return {"status": status, "score": score, "scores": {}, **kwargs}
 
-    def _save_result(self, result: dict, filename: str = "scores.json") -> None:
-        scores_file = self.app_dir / filename
+    def _save_result(self, result: dict) -> None:
+        scores_file = self.app_dir / self.SCORE_FILE
         with open(scores_file, "w") as f:
             json.dump(result, f, indent=2)
         logger.info(f"Result saved to {scores_file}")

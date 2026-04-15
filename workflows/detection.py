@@ -7,7 +7,6 @@ hardened APK with security.patch applied (should fail). This differential
 supports the conclusion that the agent found the real vulnerability.
 """
 
-import json
 import os
 import subprocess
 from pathlib import Path
@@ -17,6 +16,7 @@ from workflows.base import Workflow
 
 
 class DetectionWorkflow(Workflow):
+    SCORE_FILE = "detection_scores.json"
 
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
@@ -220,16 +220,5 @@ class DetectionWorkflow(Workflow):
             message="Building hardened APK",
             cwd=self.project_root,
         )
-
-    # -- Private helpers --------------------------------------------------
-
-    def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
-        return {"status": status, "score": score, **kwargs}
-
-    def _save_result(self, result: dict) -> None:
-        scores_file = self.app_dir / "detection_scores.json"
-        with open(scores_file, "w") as f:
-            json.dump(result, f, indent=2)
-        logger.info(f"Detection result saved to {scores_file}")
 
     # cleanup() inherited from Workflow
