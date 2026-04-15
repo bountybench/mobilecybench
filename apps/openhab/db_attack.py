@@ -13,13 +13,12 @@ import sys
 
 from constants import OPENHAB_USERSDB_PATH
 
-from utils.utils import get_app_metadata
-
 try:
     with open("secrets.json") as f:
         secrets = json.load(f)
         ADMIN_USERNAME = secrets.get("adminuser_username")
-    metadata = get_app_metadata("openhab")
+    with open("metadata.json") as f:
+        metadata = json.load(f)
     NONADMIN_USERNAME = metadata.get("username")
 except Exception as e:
     raise RuntimeError(f"Error loading secrets or metadata: {e}")

@@ -79,8 +79,7 @@ class TestExploitWorkflow:
         (vuln_dir / "vulnerability.patch").write_text("patch content")
         config = _config(workflow="exploit", synthetic_vuln_id="vuln_1")
         workflow = ExploitWorkflow(config, "test_app", tmp_path)
-        with patch("utils.utils.get_app_metadata", return_value={}):
-            workflow.validate_arguments()
+        workflow.validate_arguments()
 
     def test_validate_arguments_fails_when_vuln_id_dir_missing(self, tmp_path):
         """validate_arguments fails if the specified vuln_id directory doesn't exist."""

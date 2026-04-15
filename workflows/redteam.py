@@ -7,7 +7,6 @@ Supports two attack models via lightweight strategy objects:
 Both share: 2-phase pipeline, compute_redteam_score, probes, result schema.
 """
 
-import json
 import os
 import subprocess
 from dataclasses import dataclass
