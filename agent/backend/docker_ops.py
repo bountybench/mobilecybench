@@ -39,7 +39,6 @@ def is_adb_command_allowed(command, return_match=False):
     return True
 
 
-# We check exploit.sh if there are any blocked patterns in it, and if there are, we report the line number and the matched pattern for each violation
 def check_shell_script_content(content):
     """Check shell script content for blocked patterns.
 
