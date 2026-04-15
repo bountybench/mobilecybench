@@ -40,7 +40,7 @@ class CodexAgent:
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_apk",
+        attack_model: str = "malicious_app",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
         model: Optional[str] = None,
