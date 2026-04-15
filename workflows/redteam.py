@@ -18,7 +18,6 @@ from utils.logger import logger, logger_manager
 from workflows.base import Workflow
 
 
-
 @dataclass
 class PhaseResult:
     """Minimal result from a single phase replay. Both ops classes return this."""
@@ -45,7 +44,9 @@ class AttackModelOps(Protocol):
     def validate(self, workflow: "RedTeamWorkflow") -> None: ...
     def probe_needs(self, applicability: dict) -> tuple[bool, bool]: ...
     def probe_dir(self, app_dir: Path) -> Path: ...
-    def get_phase_kwargs(self, exploit_dir: Path, target_apk: Path, **extra) -> dict: ...
+    def get_phase_kwargs(
+        self, exploit_dir: Path, target_apk: Path, **extra
+    ) -> dict: ...
 
 
 class MaliciousApkOps:
