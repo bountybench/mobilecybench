@@ -251,18 +251,19 @@ class Workflow(ABC):
             return None
         return stale_app_dir
 
-    def _run_app_cleanup_script(self, *, check: bool) -> bool:
-        """Run the app's cleanup.sh script when present."""
-        cleanup_script = self.app_dir / "cleanup.sh"
+    def _run_cleanup_script(self, app_dir: Path | None = None, *, check: bool) -> bool:
+        """Run cleanup.sh for the given (or current) app directory. Returns success."""
+        app_dir = app_dir or self.app_dir
+        cleanup_script = app_dir / "cleanup.sh"
         if not cleanup_script.exists():
-            logger.info("No cleanup.sh found for app backend cleanup")
+            logger.info(f"No cleanup.sh found in {app_dir}")
             return True
 
-        logger.info(f"Running app cleanup script: {cleanup_script}")
+        logger.info(f"Running cleanup script: {cleanup_script}")
         try:
             result = subprocess.run(
                 ["bash", str(cleanup_script)],
-                cwd=self.app_dir,
+                cwd=app_dir,
                 timeout=60,
                 capture_output=True,
                 text=True,
@@ -270,8 +271,7 @@ class Workflow(ABC):
             )
             if result.returncode != 0:
                 logger.warning(
-                    "App cleanup script exited non-zero (exit code %s)",
-                    result.returncode,
+                    "cleanup.sh exited non-zero (exit code %s)", result.returncode
                 )
                 if result.stdout:
                     logger.warning(f"cleanup.sh stdout:\n{result.stdout.strip()}")
@@ -280,32 +280,7 @@ class Workflow(ABC):
                 return False
             return True
         except subprocess.CalledProcessError as e:
-            logger.error(f"App cleanup script failed with exit code {e.returncode}")
-            if e.stdout:
-                logger.error(f"cleanup.sh stdout:\n{e.stdout.strip()}")
-            if e.stderr:
-                logger.error(f"cleanup.sh stderr:\n{e.stderr.strip()}")
-            raise
-
-    def _run_cleanup_script_for_app_dir(self, app_dir: Path, *, check: bool) -> None:
-        """Run cleanup.sh for the given app directory when present."""
-        cleanup_script = app_dir / "cleanup.sh"
-        if not cleanup_script.exists():
-            logger.info(f"No cleanup.sh found for app backend cleanup in {app_dir}")
-            return
-
-        logger.info(f"Running app cleanup script: {cleanup_script}")
-        try:
-            subprocess.run(
-                ["bash", str(cleanup_script)],
-                cwd=app_dir,
-                timeout=60,
-                capture_output=True,
-                text=True,
-                check=check,
-            )
-        except subprocess.CalledProcessError as e:
-            logger.error(f"App cleanup script failed with exit code {e.returncode}")
+            logger.error(f"cleanup.sh failed with exit code {e.returncode}")
             if e.stdout:
                 logger.error(f"cleanup.sh stdout:\n{e.stdout.strip()}")
             if e.stderr:
@@ -319,8 +294,8 @@ class Workflow(ABC):
             logger.info(
                 f"Cleaning up stale backend from previous app: {stale_app_dir.name}"
             )
-            self._run_cleanup_script_for_app_dir(stale_app_dir, check=True)
-        self._run_app_cleanup_script(check=True)
+            self._run_cleanup_script(stale_app_dir, check=True)
+        self._run_cleanup_script(check=True)
 
     def _reset_app_backend_state(self) -> None:
         """Drop app backend containers and volumes before replaying evaluation."""
@@ -347,12 +322,12 @@ class Workflow(ABC):
                 f"docker compose down -v exited {result.returncode}"
             )
 
-    # -- Shared replay helpers (used by exploit & detection workflows) --------
+    # -- Shared replay helpers ------------------------------------------------
 
     def _restart_runtime(
         self,
         apk_path: Path,
-        prepare_app_hook: Path = None,
+        prepare_app_hook: Path | None = None,
         *,
         inject_flags: bool = False,
         start_ssrf: bool = False,
@@ -403,7 +378,9 @@ class Workflow(ABC):
         logger.info("Runtime restarted successfully")
 
     @staticmethod
-    def _collect_text_files(directory: Path, label_root: Path = None) -> list[str]:
+    def _collect_text_files(
+        directory: Path, label_root: Path | None = None
+    ) -> list[str]:
         """Collect all decodable text files from a directory as labeled sections."""
         parts = []
         if not directory.is_dir():
@@ -542,6 +519,12 @@ class Workflow(ABC):
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
         return {"status": status, "score": score, "scores": {}, **kwargs}
 
+    def _save_and_return(self, status: str, score: int = 0, **kwargs) -> dict:
+        """Build result, save, and return. Reduces early-return boilerplate."""
+        result = self._make_result(status, score=score, **kwargs)
+        self._save_result(result)
+        return result
+
     def _save_result(self, result: dict) -> None:
         scores_file = self.app_dir / self.SCORE_FILE
         with open(scores_file, "w") as f:
@@ -677,7 +660,7 @@ class Workflow(ABC):
         """Clean up resources (emulator, agent env, app backends) and restore codebase."""
         cleanup_ok = True
         try:
-            cleanup_ok = self._run_app_cleanup_script(check=False)
+            cleanup_ok = self._run_cleanup_script(check=False)
         except Exception as e:
             cleanup_ok = False
             logger.warning(f"App backend cleanup failed: {e}")
