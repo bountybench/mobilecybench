@@ -287,11 +287,11 @@ class ClaudeCodeAgent:
             turn_event = {
                 "run_id": run_id,
                 "turn_number": turn_number,
-                "timestamp": utc_now_iso(),
+                "timestamp": event.get("timestamp") or utc_now_iso(),
                 "role": "assistant",
                 "response_id": None,
                 "assistant_text": event.get("assistant_text", ""),
-                "reasoning_summary": "",
+                "reasoning_summary": event.get("reasoning_summary", ""),
                 "tool_calls": normalised_tool_calls,
                 "observations": normalised_obs,
                 "status": "ok",

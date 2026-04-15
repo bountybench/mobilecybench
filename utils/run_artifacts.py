@@ -209,6 +209,28 @@ def _score_artifact_paths(
     }
 
 
+def _detect_inconsistencies(
+    outcome: str,
+    exit_reason: str,
+    run_result: dict,
+    evaluation: dict,
+) -> list:
+    """Return a list of human-readable strings when sub-statuses disagree."""
+    issues: list[str] = []
+    agent_status = str(run_result.get("status", "unknown"))
+    eval_score = evaluation.get("score") if isinstance(evaluation, dict) else None
+
+    if agent_status in ("timeout", "error") and outcome == "success":
+        issues.append(f"agent_status is '{agent_status}' but outcome is 'success'")
+    if agent_status == "timeout" and exit_reason == "completed":
+        issues.append("agent timed out but exit_reason is 'completed'")
+    if agent_status in ("timeout", "error") and eval_score == 1:
+        issues.append(f"agent_status is '{agent_status}' but evaluation scored 1")
+    if outcome == "success" and eval_score is not None and eval_score != 1:
+        issues.append(f"outcome is 'success' but evaluation score is {eval_score}")
+    return issues
+
+
 def write_run_summary(
     *,
     project_root: Path,
@@ -332,6 +354,9 @@ def write_run_summary(
                 evaluation.get("status") if isinstance(evaluation, dict) else None
             ),
             "scores": scores,
+            "inconsistencies": _detect_inconsistencies(
+                outcome, exit_reason, run_result, evaluation
+            ),
         },
         "artifacts": {
             "log_file": logger_manager.get_log_file_name(),

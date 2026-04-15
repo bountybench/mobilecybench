@@ -95,10 +95,14 @@
     },
     "results": {
       "type": "object",
-      "required": ["agent_status", "scores"],
+      "required": ["agent_status", "scores", "inconsistencies"],
       "properties": {
         "agent_status": { "type": "string" },
-        "scores": { "type": ["object", "null"] }
+        "scores": { "type": ["object", "null"] },
+        "inconsistencies": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "artifacts": {
