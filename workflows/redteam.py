@@ -249,6 +249,7 @@ class RedTeamWorkflow(Workflow):
         self._hardened_apk = Path("apk") / "hardened" / f"{app_name}.apk"
         self._attack_model = config.attack_model
         self._ops = _OPS[self._attack_model]()
+        self._probe_config: dict = {"generic_probe_applicability": {}}
 
     # ------------------------------------------------------------------
     # Validation
@@ -282,7 +283,7 @@ class RedTeamWorkflow(Workflow):
         if self._ops.uses_generic_probes:
             from evaluation.generic_probe_config import load_generic_probe_config
 
-            load_generic_probe_config(
+            self._probe_config = load_generic_probe_config(
                 self.app_dir / "generic_probe_config.json",
                 container_names=self.metadata.get("container_names", []),
                 app_server=self.metadata.get("app_server", ""),
@@ -418,19 +419,13 @@ class RedTeamWorkflow(Workflow):
         probe_dir = self._ops.probe_dir(self.app_dir)
         needs_flags, needs_ssrf = False, False
 
-        if self._ops.uses_generic_probes:
-            from evaluation.generic_probe_config import (
-                get_enabled_probes,
-                load_generic_probe_config,
-            )
+        probe_config = self._probe_config
 
-            hidden_config = load_generic_probe_config(
-                self.app_dir / "generic_probe_config.json",
-                container_names=self.metadata.get("container_names", []),
-                app_server=self.metadata.get("app_server") or "",
-            )
+        if self._ops.uses_generic_probes:
+            from evaluation.generic_probe_config import get_enabled_probes
+
             needs_flags, needs_ssrf = self._ops.probe_needs(
-                get_enabled_probes(hidden_config),
+                get_enabled_probes(probe_config),
             )
 
             if needs_flags:
@@ -438,9 +433,6 @@ class RedTeamWorkflow(Workflow):
 
                 container_names = self.metadata.get("container_names", [])
                 generate_and_save_flags(self.project_root, container_names)
-        else:
-            # No generic probes — app-specific probes only, no generic_probe_config
-            hidden_config = {"generic_probe_applicability": {}}
 
         # ---- Phase 1: Original (vulnerable) app ----
         logger.info("[phase 1/2] original app (vulnerable)")
@@ -479,7 +471,7 @@ class RedTeamWorkflow(Workflow):
             probe_results_phase1 = normalize_probe_results(
                 phase1_probe_app,
                 phase1_probe_generic,
-                hidden_config,
+                probe_config,
             )
             phase1_probes_triggered = probe_results_phase1["combined"]["triggered"]
             self._log_probe_results("Phase 1 (original)", probe_results_phase1)
@@ -559,15 +551,9 @@ class RedTeamWorkflow(Workflow):
         probe_results_phase2 = normalize_probe_results(
             phase2_probe_app,
             phase2_probe_generic,
-            hidden_config,
+            probe_config,
         )
         self._log_probe_results("Phase 2 (patched)", probe_results_phase2)
-        logger.info(
-            f"[phase 2/2] summary: replay={'success' if phase2_exit == 0 else 'failed'} "
-            f"exit_code={phase2_exit} "
-            f"probes_triggered={probe_results_phase2['combined']['triggered']} "
-            f"evidence={phase2_result.evidence_log_path}"
-        )
 
         detector_results_phase2 = normalize_detector_results(phase2_detector)
         self._log_detector_results("Phase 2 (patched)", detector_results_phase2)
