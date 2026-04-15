@@ -89,7 +89,7 @@ def _setup_malicious_apk_workflow(config, tmp_path, *, create_apk=True):
     patch_dir = tmp_path / "zerodays" / "patches" / "testapp"
     patch_dir.mkdir(parents=True, exist_ok=True)
     (patch_dir / "security.patch").write_text("")
-    (app_dir / "hidden_eval_config.json").write_text(
+    (app_dir / "generic_probe_config.json").write_text(
         json.dumps(
             {
                 "version": 1,
