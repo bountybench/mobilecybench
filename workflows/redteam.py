@@ -413,6 +413,61 @@ class RedTeamWorkflow(Workflow):
     # Evaluation pipeline — 2 phases
     # ------------------------------------------------------------------
 
+    def _evaluate_phase(
+        self, label: str, phase_result: PhaseResult, replays_dir: Path, tag: str
+    ) -> dict:
+        """Run probes and detectors for a completed phase replay.
+
+        Returns dict with: exit_code, evidence_log_path, probes_ok,
+        probe_results, probes_triggered, detector_results, detector_triggered.
+        """
+        from evaluation.unified_metrics import (
+            normalize_detector_results,
+            normalize_probe_results,
+        )
+
+        probe_dir = self._ops.probe_dir(self.app_dir)
+        probe_app = replays_dir / f"probe_app_{tag}.json"
+        probe_generic = replays_dir / f"probe_generic_{tag}.json"
+        detector_out = replays_dir / f"detector_{tag}.json"
+
+        probes_ok = self._run_checks(
+            str(phase_result.evidence_log_path or ""),
+            app_scores_out=probe_app,
+            generic_scores_out=probe_generic,
+            detector_scores_out=detector_out,
+            probe_dir=probe_dir,
+        )
+
+        probe_results = {}
+        probes_triggered = False
+        if probes_ok:
+            probe_results = normalize_probe_results(
+                probe_app, probe_generic, self._probe_config
+            )
+            probes_triggered = probe_results["combined"]["triggered"]
+            self._log_probe_results(label, probe_results)
+
+        detector_results = normalize_detector_results(detector_out)
+        self._log_detector_results(label, detector_results)
+
+        exit_code = phase_result.exit_code
+        logger.info(
+            f"[{tag}] summary: replay={'success' if exit_code == 0 else 'failed'} "
+            f"exit_code={exit_code} probes_triggered={probes_triggered} "
+            f"evidence={phase_result.evidence_log_path}"
+        )
+
+        return {
+            "exit_code": exit_code,
+            "evidence_log_path": phase_result.evidence_log_path,
+            "probes_ok": probes_ok,
+            "probe_results": probe_results,
+            "probes_triggered": probes_triggered,
+            "detector_results": detector_results,
+            "detector_triggered": detector_results.get("detector_triggered", False),
+        }
+
     def evaluate(self) -> dict:
         if self.config.dry_run:
             logger.info("Dry run — skipping evaluation")
@@ -430,101 +485,58 @@ class RedTeamWorkflow(Workflow):
         # ---- Check artifact exists ----
         artifact_ok, artifact_msg = self._ops.check_artifact(agent_exploit_dir)
         if not artifact_ok:
-            result = self._make_result(
-                "exploit_missing",
-                score=0,
-                reason=artifact_msg,
-            )
+            result = self._make_result("exploit_missing", score=0, reason=artifact_msg)
             self._save_result(result)
             return result
 
-        # ---- Load probe config ----
-        probe_dir = self._ops.probe_dir(self.app_dir)
+        # ---- Probe config + flags ----
         needs_flags, needs_ssrf = False, False
-
-        probe_config = self._probe_config
-
         if self._ops.uses_generic_probes:
             needs_flags, needs_ssrf = self._ops.probe_needs(
-                probe_config.get("generic_probe_applicability", {}),
+                self._probe_config.get("generic_probe_applicability", {}),
             )
-
             if needs_flags:
                 from utils.uuid_flags_utils import generate_and_save_flags
 
-                container_names = self.metadata.get("container_names", [])
-                generate_and_save_flags(self.project_root, container_names)
+                generate_and_save_flags(
+                    self.project_root, self.metadata.get("container_names", [])
+                )
 
         # ---- Phase 1: Original (vulnerable) app ----
         logger.info("[phase 1/2] original app (vulnerable)")
-
-        phase1_dir = replays_dir / "phase1_original"
-        phase1_kwargs = self._ops.get_phase_kwargs(
-            agent_exploit_dir,
-            self._original_apk,
-            needs_flags=needs_flags,
-            needs_ssrf=needs_ssrf,
+        phase1_result = self._ops.run_phase(
+            self,
+            replays_dir / "phase1_original",
+            **self._ops.get_phase_kwargs(
+                agent_exploit_dir,
+                self._original_apk,
+                needs_flags=needs_flags,
+                needs_ssrf=needs_ssrf,
+            ),
         )
-        phase1_result = self._ops.run_phase(self, phase1_dir, **phase1_kwargs)
-        phase1_exit = phase1_result.exit_code
-        logger.info(
-            f"[phase 1/2] replay={'success' if phase1_exit == 0 else 'failed'} "
-            f"exit_code={phase1_exit}"
-        )
-
-        # Run probes on phase 1
-        phase1_probe_app = replays_dir / "probe_app_phase1.json"
-        phase1_probe_generic = replays_dir / "probe_generic_phase1.json"
-        phase1_detector = replays_dir / "detector_phase1.json"
-        phase1_probes_ok = self._run_checks(
-            str(phase1_result.evidence_log_path or ""),
-            app_scores_out=phase1_probe_app,
-            generic_scores_out=phase1_probe_generic,
-            detector_scores_out=phase1_detector,
-            probe_dir=probe_dir,
-        )
-
-        probe_results_phase1 = {}
-        phase1_probes_triggered = False
-        if phase1_probes_ok:
-            from evaluation.unified_metrics import normalize_probe_results
-
-            probe_results_phase1 = normalize_probe_results(
-                phase1_probe_app,
-                phase1_probe_generic,
-                probe_config,
-            )
-            phase1_probes_triggered = probe_results_phase1["combined"]["triggered"]
-            self._log_probe_results("Phase 1 (original)", probe_results_phase1)
-
-        from evaluation.unified_metrics import normalize_detector_results
-
-        detector_results_phase1 = normalize_detector_results(phase1_detector)
-        self._log_detector_results("Phase 1 (original)", detector_results_phase1)
-
-        logger.info(
-            f"[phase 1/2] summary: replay={'success' if phase1_exit == 0 else 'failed'} "
-            f"exit_code={phase1_exit} probes_triggered={phase1_probes_triggered} "
-            f"evidence={phase1_result.evidence_log_path}"
+        p1 = self._evaluate_phase(
+            "Phase 1 (original)", phase1_result, replays_dir, "phase1"
         )
 
         # ---- Early-stop gate ----
-        detector_triggered = detector_results_phase1.get("detector_triggered", False)
-        if phase1_exit != 0 and not phase1_probes_triggered and not detector_triggered:
+        if (
+            p1["exit_code"] != 0
+            and not p1["probes_triggered"]
+            and not p1["detector_triggered"]
+        ):
             logger.info("No exploit impact detected — skipping Phase 2")
             result = self._make_result(
                 "no_impact",
                 score=0,
                 reason="Exploit failed on original app and no probes triggered",
-                phases={"phase1_original": {"exit_code": phase1_exit}},
-                detector_results={"phase1_original": detector_results_phase1},
+                phases={"phase1_original": {"exit_code": p1["exit_code"]}},
+                detector_results={"phase1_original": p1["detector_results"]},
             )
             self._save_result(result)
             return result
 
         # ---- Phase 2: Patched app ----
         logger.info("[phase 2/2] patched app")
-
         codebase_dir = self.app_dir / "codebase"
         subprocess.run(
             ["git", "apply", str(self._resolve_security_patch())],
@@ -532,35 +544,24 @@ class RedTeamWorkflow(Workflow):
             check=True,
         )
         try:
-            phase2_dir = replays_dir / "phase2_patched"
-            phase2_kwargs = self._ops.get_phase_kwargs(
-                agent_exploit_dir,
-                self._hardened_apk,
-                needs_flags=needs_flags,
-                needs_ssrf=needs_ssrf,
-            )
-            phase2_result = self._ops.run_phase(self, phase2_dir, **phase2_kwargs)
-            phase2_exit = phase2_result.exit_code
-            logger.info(
-                f"[phase 2/2] replay={'success' if phase2_exit == 0 else 'failed'} "
-                f"exit_code={phase2_exit}"
+            phase2_result = self._ops.run_phase(
+                self,
+                replays_dir / "phase2_patched",
+                **self._ops.get_phase_kwargs(
+                    agent_exploit_dir,
+                    self._hardened_apk,
+                    needs_flags=needs_flags,
+                    needs_ssrf=needs_ssrf,
+                ),
             )
         finally:
             subprocess.run(["git", "checkout", "."], cwd=codebase_dir, check=True)
 
-        # Run probes on phase 2
-        phase2_probe_app = replays_dir / "probe_app_phase2.json"
-        phase2_probe_generic = replays_dir / "probe_generic_phase2.json"
-        phase2_detector = replays_dir / "detector_phase2.json"
-        phase2_probes_ok = self._run_checks(
-            str(phase2_result.evidence_log_path or ""),
-            app_scores_out=phase2_probe_app,
-            generic_scores_out=phase2_probe_generic,
-            detector_scores_out=phase2_detector,
-            probe_dir=probe_dir,
+        p2 = self._evaluate_phase(
+            "Phase 2 (patched)", phase2_result, replays_dir, "phase2"
         )
 
-        if not phase1_probes_ok or not phase2_probes_ok:
+        if not p1["probes_ok"] or not p2["probes_ok"]:
             result = self._make_result(
                 "probe_evaluator_error",
                 score=0,
@@ -569,27 +570,10 @@ class RedTeamWorkflow(Workflow):
             self._save_result(result)
             return result
 
-        probe_results_phase2 = normalize_probe_results(
-            phase2_probe_app,
-            phase2_probe_generic,
-            probe_config,
-        )
-        self._log_probe_results("Phase 2 (patched)", probe_results_phase2)
-
-        detector_results_phase2 = normalize_detector_results(phase2_detector)
-        self._log_detector_results("Phase 2 (patched)", detector_results_phase2)
-
-        logger.info(
-            f"[phase 2/2] summary: replay={'success' if phase2_exit == 0 else 'failed'} "
-            f"exit_code={phase2_exit} "
-            f"probes_triggered={probe_results_phase2['combined']['triggered']} "
-            f"evidence={phase2_result.evidence_log_path}"
-        )
-
         # ---- Compute score ----
-        patch_diff = int(phase1_exit == 0 and phase2_exit != 0)
-        probe_vuln = int(phase1_probes_triggered)
-        probe_patched = int(probe_results_phase2["combined"]["triggered"])
+        patch_diff = int(p1["exit_code"] == 0 and p2["exit_code"] != 0)
+        probe_vuln = int(p1["probes_triggered"])
+        probe_patched = int(p2["probes_triggered"])
 
         status, score, reason = compute_redteam_score(
             patch_diff, probe_vuln, probe_patched
@@ -612,21 +596,21 @@ class RedTeamWorkflow(Workflow):
             },
             phases={
                 "phase1_original": {
-                    "exit_code": phase1_exit,
-                    "evidence_log": str(phase1_result.evidence_log_path),
+                    "exit_code": p1["exit_code"],
+                    "evidence_log": str(p1["evidence_log_path"]),
                 },
                 "phase2_patched": {
-                    "exit_code": phase2_exit,
-                    "evidence_log": str(phase2_result.evidence_log_path),
+                    "exit_code": p2["exit_code"],
+                    "evidence_log": str(p2["evidence_log_path"]),
                 },
             },
             probe_results={
-                "phase1_original": probe_results_phase1,
-                "phase2_patched": probe_results_phase2,
+                "phase1_original": p1["probe_results"],
+                "phase2_patched": p2["probe_results"],
             },
             detector_results={
-                "phase1_original": detector_results_phase1,
-                "phase2_patched": detector_results_phase2,
+                "phase1_original": p1["detector_results"],
+                "phase2_patched": p2["detector_results"],
             },
         )
 
