@@ -39,10 +39,20 @@ class Workflow(ABC):
         self.agent = None
         self.agent_result: dict = {}
 
-    @abstractmethod
     def validate_arguments(self) -> None:
-        """Validate all arguments before starting the workflow."""
-        pass
+        """Validate common preconditions and load metadata.
+
+        Subclasses override to add workflow-specific checks, calling super() first.
+        """
+        if not self.app_dir.exists():
+            raise ValueError(f"App directory not found: {self.app_dir}")
+
+        metadata_path = self.app_dir / "metadata.json"
+        if not metadata_path.exists():
+            raise ValueError(f"metadata.json not found in {self.app_dir}")
+
+        with open(metadata_path, encoding="utf-8") as f:
+            self.metadata = json.load(f)
 
     @abstractmethod
     def setup_runtime_environment(self) -> None:
@@ -373,6 +383,7 @@ class Workflow(ABC):
             apk_path=apk_path,
             inject_flags=inject_flags,
             start_ssrf=start_ssrf,
+            container_names=self.metadata.get("container_names", []),
             build_command_timeout=self.config.build_command_timeout,
         )
 

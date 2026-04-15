@@ -266,19 +266,12 @@ class RedTeamWorkflow(Workflow):
         )
 
     def validate_arguments(self) -> None:
-        if not self.app_dir.exists():
-            raise ValueError(f"App directory not found: {self.app_dir}")
-
-        if not (self.app_dir / "metadata.json").exists():
-            raise ValueError(f"metadata.json not found in {self.app_dir}")
+        super().validate_arguments()
 
         if not self._resolve_security_patch().exists():
             raise ValueError(
                 f"security.patch not found at zerodays/patches/{self.app_name}/"
             )
-
-        with open(self.app_dir / "metadata.json") as f:
-            self.metadata = json.load(f)
 
         if self._ops.uses_generic_probes:
             from evaluation.generic_probe_config import load_generic_probe_config

@@ -25,21 +25,13 @@ class DetectionWorkflow(Workflow):
         self._hardened_apk = Path("apk") / "hardened" / f"{app_name}.apk"
 
     def validate_arguments(self) -> None:
-        if not self.app_dir.exists():
-            raise ValueError(f"App directory not found: {self.app_dir}")
-
-        if not (self.app_dir / "metadata.json").exists():
-            raise ValueError(f"metadata.json not found in {self.app_dir}")
+        super().validate_arguments()
 
         if not (self.app_dir / "security.patch").exists():
             raise ValueError(
                 f"security.patch not found in {self.app_dir} "
                 "(required for detection mode)"
             )
-
-        from utils.utils import get_app_metadata
-
-        self.metadata = get_app_metadata(self.app_name)
 
     def setup_runtime_environment(self) -> None:
         from agent.agent_container import setup_agent_environment

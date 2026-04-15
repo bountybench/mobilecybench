@@ -15,6 +15,7 @@ def install_app_and_setup_backend(
     *,
     build_command_timeout: int,
     start_ssrf: bool = False,
+    container_names: list[str] | None = None,
     apk_path: Optional[Path] = None,
     inject_flags: bool = True,
 ) -> None:
@@ -27,11 +28,11 @@ def install_app_and_setup_backend(
         emulator: EmulatorManager instance
         project_root: Project root directory
         start_ssrf: Whether to start the SSRF listener (discovery mode only)
+        container_names: Backend container names (required when start_ssrf=True)
         apk_path: Optional path to APK file (passed to start_runtime.sh --apk)
         inject_flags: Whether to inject security flags (discovery mode only)
     """
     from utils.command_executor import CommandExecutor
-    from utils.utils import get_app_metadata
 
     cmd = CommandExecutor()
 
@@ -81,10 +82,6 @@ def install_app_and_setup_backend(
 
     # Start SSRF listener if requested (discovery mode only)
     if start_ssrf:
-        app_name = app_dir.name
-        metadata = get_app_metadata(app_name)
-        container_names = metadata.get("container_names", [])
-
         if container_names:
             from utils.ssrf_utils import start_ssrf_listener
 
