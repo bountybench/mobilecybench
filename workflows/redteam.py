@@ -414,8 +414,9 @@ class RedTeamWorkflow(Workflow):
             cwd=self.project_root,
         )
         logger.info("Building hardened APK...")
+        fix_patch = self._task_dir / "fix.patch"
         cmd.run_with_progress(
-            f"bash ./build_apk.sh {self.app_name} --hardened",
+            f"bash ./build_apk.sh {self.app_name} --hardened-patch {fix_patch}",
             timeout=self.config.build_command_timeout,
             message="Building hardened APK",
             cwd=self.project_root,
