@@ -21,6 +21,7 @@ PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
 # Default SDK version and system image
 DEFAULT_SDK_VERSION=35
 DEFAULT_SYSTEM_IMAGE="google_apis"
+SUPPORTED_SDK_VERSIONS=(33 34 35)
 
 # Load app metadata if app name provided
 load_app_metadata() {
@@ -225,6 +226,11 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
+# Logging function that takes into account all supported SDK Versions
+log_supported_sdks() {
+    local label="${1:-SDK versions}"
+    log "${label}: ${SUPPORTED_SDK_VERSIONS[*]}"
+}
 # Error handling
 error_exit() {
     log "ERROR: $1"
@@ -530,14 +536,9 @@ get_system_image() {
 # Install required Android packages
 install_android_packages() {
     local arch="$1"
-    local system_image_google_apis33=$(get_system_image "$arch" "google_apis" "33")
-    local system_image_google_apis34=$(get_system_image "$arch" "google_apis" "34")
-    local system_image_google_apis35=$(get_system_image "$arch" "google_apis" "35")
 
     log "Installing required Android packages for $arch architecture"
-    log "SDK version: 33"
-    log "SDK version: 34"
-    log "SDK version: 35"
+    log "SDK versions: ${SUPPORTED_SDK_VERSIONS[*]}"
     log "Installing system image type: google_apis"
     log "This may take a few minutes if you are installing for the first time..."
 
@@ -553,15 +554,14 @@ install_android_packages() {
     # Accept licenses
     yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
 
-    # Install essential packages including BOTH system images
-    "$sdkmanager" \
-        "platform-tools" \
-        "emulator" \
-        "platforms;android-${SDK_VERSION}" \
-        "$system_image_google_apis33" \
-        "$system_image_google_apis34" \
-        "$system_image_google_apis35" \
-        >/dev/null
+    # Install essential packages using SDKManager for all supported versions
+    local packages=("platform-tools" "emulator")
+    for sdk_v in "${SUPPORTED_SDK_VERSIONS[@]}"; do
+        packages+=("platforms;android-${sdk_v}")
+        packages+=("$(get_system_image "$arch" "google_apis" "$sdk_v")")
+    done
+
+    "$sdkmanager" "${packages[@]}" >/dev/null
 
     log "Android packages installed successfully (both google_apis)"
 }
@@ -569,12 +569,9 @@ install_android_packages() {
 # Create Android Virtual Device
 create_avd() {
     local arch="$1"
-    local system_image_google_apis33=$(get_system_image "$arch" "google_apis" "33")
-    local system_image_google_apis34=$(get_system_image "$arch" "google_apis" "34")
-    local system_image_google_apis35=$(get_system_image "$arch" "google_apis" "35")
 
-    log "Creating Android Virtual Devices for SDK $SDK_VERSION ($arch architecture)"
-    log "Will create BOTH: google_apis (rootable)"
+    log_supported_sdks "Creating Android Virtual Devices for SDK"
+    log "Will create google_apis AVD for all SDK versions (rootable)"
 
     local avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 
@@ -585,73 +582,32 @@ create_avd() {
         }
     fi
 
-    # Create google_apis AVD (rootable)
-    local avd_name_google_apis33="MobileCybenchEmulatorAPI33_google_apis"
-    log "Creating AVD: $avd_name_google_apis33"
-    echo "no" | "$avdmanager" create avd \
-        -n "$avd_name_google_apis33" \
-        -k "$system_image_google_apis33" \
-        -d "pixel_2" \
-        --force >/dev/null
-
-    # Create google_apis AVD (rootable)
-    local avd_name_google_apis34="MobileCybenchEmulatorAPI34_google_apis"
-    log "Creating AVD: $avd_name_google_apis34"
-    echo "no" | "$avdmanager" create avd \
-        -n "$avd_name_google_apis34" \
-        -k "$system_image_google_apis34" \
-        -d "pixel_2" \
-        --force >/dev/null
-
-    # Create google_apis AVD (rootable)
-    local avd_name_google_apis35="MobileCybenchEmulatorAPI35_google_apis"
-    log "Creating AVD: $avd_name_google_apis35"
-    echo "no" | "$avdmanager" create avd \
-        -n "$avd_name_google_apis35" \
-        -k "$system_image_google_apis35" \
-        -d "pixel_2" \
-        --force >/dev/null
-
-    local avd_config="$HOME/.android/avd/${avd_name_google_apis33}.avd/config.ini"
-    if [[ -f "$avd_config" ]]; then
-        {
-            echo "hw.ramSize=2048"
-            echo "hw.gpu.enabled=yes"
-            echo "hw.gpu.mode=host"
-            echo "hw.keyboard=yes"
-            echo "showDeviceFrame=no"
-            echo "skin.dynamic=yes"
-        } >> "$avd_config"
-    fi
-
-    local avd_config="$HOME/.android/avd/${avd_name_google_apis34}.avd/config.ini"
-    if [[ -f "$avd_config" ]]; then
-        {
-            echo "hw.ramSize=2048"
-            echo "hw.gpu.enabled=yes"
-            echo "hw.gpu.mode=host"
-            echo "hw.keyboard=yes"
-            echo "showDeviceFrame=no"
-            echo "skin.dynamic=yes"
-        } >> "$avd_config"
-    fi
-
-    local avd_config="$HOME/.android/avd/${avd_name_google_apis35}.avd/config.ini"
-    if [[ -f "$avd_config" ]]; then
-        {
-            echo "hw.ramSize=2048"
-            echo "hw.gpu.enabled=yes"
-            echo "hw.gpu.mode=host"
-            echo "hw.keyboard=yes"
-            echo "showDeviceFrame=no"
-            echo "skin.dynamic=yes"
-        } >> "$avd_config"
-    fi
-
-    log "Android Virtual Devices created successfully:"
-    log "  - $avd_name_google_apis33 (rootable with 'adb root')"
-    log "  - $avd_name_google_apis34 (rootable with 'adb root')"
-    log "  - $avd_name_google_apis35 (rootable with 'adb root')"
+    for sdk_v in "${SUPPORTED_SDK_VERSIONS[@]}"; do
+        local system_image
+        system_image=$(get_system_image "$arch" "google_apis" "$sdk_v")
+        local avd_name="MobileCybenchEmulatorAPI${sdk_v}_google_apis"
+ 
+        log "Creating AVD: $avd_name"
+        echo "no" | "$avdmanager" create avd \
+            -n "$avd_name" \
+            -k "$system_image" \
+            -d "pixel_2" \
+            --force >/dev/null
+ 
+        local avd_config="$HOME/.android/avd/${avd_name}.avd/config.ini"
+        if [[ -f "$avd_config" ]]; then
+            {
+                echo "hw.ramSize=2048"
+                echo "hw.gpu.enabled=yes"
+                echo "hw.gpu.mode=host"
+                echo "hw.keyboard=yes"
+                echo "showDeviceFrame=no"
+                echo "skin.dynamic=yes"
+            } >> "$avd_config"
+        fi
+ 
+        log "  - $avd_name created (rootable with 'adb root')"
+    done
 }
 
 # Main setup function
@@ -659,9 +615,8 @@ main() {
     pip install -e .
 
     log "Starting Android Emulator Setup"
-    log "SDK version: 33,34,35"
+    log_supported_sdks "This script will install & prepare an emulator for the following Android SDK Versions"
     log "System image type: $SYSTEM_IMAGE_TYPE"
-    log "This script will install Android SDK and create an emulator"
     
     # Detect operating system and architecture
     local os=$(detect_os)
