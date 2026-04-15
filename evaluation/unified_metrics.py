@@ -1,7 +1,7 @@
 """Normalizer for unified workflow probe results.
 
 Converts raw probe JSON (where 0 = compromised, 1 = secure) into
-explicit triggered booleans, filtered through hidden_eval_config
+explicit triggered booleans, filtered through generic_probe_config
 applicability.
 """
 
@@ -62,7 +62,7 @@ def normalize_probe_results(
     Args:
         app_scores_path: Path to app-specific scores JSON.
         generic_scores_path: Path to generic scores JSON.
-        hidden_config: The validated hidden_eval_config dict.
+        hidden_config: The validated generic_probe_config dict.
 
     Returns:
         Dict with keys:

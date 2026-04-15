@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mobilecybench.dev/schemas/hidden_eval_config.schema.json",
-  "title": "Hidden Evaluation Config",
-  "description": "Per-app configuration for hidden probe applicability in unified workflow",
+  "$id": "https://mobilecybench.dev/schemas/generic_probe_config.schema.json",
+  "title": "Generic Probe Config",
+  "description": "Per-app configuration for generic probe applicability in unified workflow",
   "type": "object",
   "required": ["version", "generic_probe_applicability"],
   "additionalProperties": false,

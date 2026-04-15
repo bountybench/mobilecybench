@@ -280,10 +280,10 @@ class RedTeamWorkflow(Workflow):
             self.metadata = json.load(f)
 
         if self._ops.uses_generic_probes:
-            from evaluation.hidden_eval_config import load_hidden_eval_config
+            from evaluation.generic_probe_config import load_generic_probe_config
 
-            load_hidden_eval_config(
-                self.app_dir / "hidden_eval_config.json",
+            load_generic_probe_config(
+                self.app_dir / "generic_probe_config.json",
                 container_names=self.metadata.get("container_names", []),
                 app_server=self.metadata.get("app_server", ""),
             )
@@ -419,13 +419,13 @@ class RedTeamWorkflow(Workflow):
         needs_flags, needs_ssrf = False, False
 
         if self._ops.uses_generic_probes:
-            from evaluation.hidden_eval_config import (
+            from evaluation.generic_probe_config import (
                 get_enabled_probes,
-                load_hidden_eval_config,
+                load_generic_probe_config,
             )
 
-            hidden_config = load_hidden_eval_config(
-                self.app_dir / "hidden_eval_config.json",
+            hidden_config = load_generic_probe_config(
+                self.app_dir / "generic_probe_config.json",
                 container_names=self.metadata.get("container_names", []),
                 app_server=self.metadata.get("app_server") or "",
             )
@@ -439,7 +439,7 @@ class RedTeamWorkflow(Workflow):
                 container_names = self.metadata.get("container_names", [])
                 generate_and_save_flags(self.project_root, container_names)
         else:
-            # No generic probes — app-specific probes only, no hidden_eval_config
+            # No generic probes — app-specific probes only, no generic_probe_config
             hidden_config = {"generic_probe_applicability": {}}
 
         # ---- Phase 1: Original (vulnerable) app ----
