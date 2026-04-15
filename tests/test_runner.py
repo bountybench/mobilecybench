@@ -343,9 +343,7 @@ class TestTaskMetadataOverride:
 
         assert config.attack_model == "auth_attacker"
 
-    def test_missing_attacker_model_in_task_metadata_fails(
-        self, base_config, tmp_path
-    ):
+    def test_missing_attacker_model_in_task_metadata_fails(self, base_config, tmp_path):
         """task/metadata.json with missing attacker_model returns exit code 1."""
         task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-0" / "task"
         task_dir.mkdir(parents=True)

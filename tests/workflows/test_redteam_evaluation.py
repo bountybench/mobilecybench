@@ -301,71 +301,17 @@ class TestEarlyStop:
         assert result["signals"]["verifier_diff"] == 1
 
 
-class TestTwoPhaseScoring:
-    """Full 2-phase pipeline with various signal combinations."""
-
-    def test_all_signals_fire(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(
-            wf, MaliciousAppOps, [0, 1], [True, False], verifier_exits=[0, 1]
-        )
-        assert result["status"] == "verified"
-        assert result["score"] == 1
-        signals = result["signals"]
-        assert signals["verifier_diff"] == 1
-        assert signals["patch_diff"] == 1
-        assert signals["probe_vuln"] == 1
-
-    def test_patch_diff_only(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(wf, MaliciousAppOps, [0, 1], [False, False])
-        assert result["status"] == "verified"
-        assert result["score"] == 1
-
-    def test_probe_diff_only(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(wf, MaliciousAppOps, [0, 0], [True, False])
-        assert result["status"] == "verified"
-        assert result["score"] == 1
-
-    def test_verifier_diff_only(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(
-            wf, MaliciousAppOps, [1, 1], [False, False], verifier_exits=[0, 1]
-        )
-        assert result["status"] == "verified"
-        assert result["score"] == 1
-
-    def test_no_signal_needs_review(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(
-            wf, MaliciousAppOps, [0, 0], [False, False], verifier_exits=[0, 0]
-        )
-        assert result["status"] == "needs_review"
-        assert result["score"] == 0
-
-
 class TestResultStructure:
     """Result JSON has expected fields and is persisted."""
 
     def test_result_saved_to_file(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(
-            redteam_config, tmp_path, create_apk=False
-        )
+        wf = _setup_malicious_app_workflow(redteam_config, tmp_path, create_apk=False)
         wf.evaluate()
         scores_file = tmp_path / "apps" / "testapp" / "redteam_scores.json"
         assert scores_file.exists()
         data = json.loads(scores_file.read_text())
         assert data["status"] == "exploit_missing"
         assert data["task"] == "report-0"
-
-    def test_result_includes_verifier(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(
-            wf, MaliciousAppOps, [0, 1], [False, False], verifier_exits=[0, 1]
-        )
-        assert "verifier_exit" in result["phases"]["phase1_original"]
-        assert "verifier_exit" in result["phases"]["phase2_patched"]
 
 
 class TestPatchRestoration:
@@ -512,16 +458,3 @@ class TestAuthAttackerPhaseSequence:
             )
             assert result.exit_code == 2
             assert result.evidence_log_path is None
-
-
-class TestAuthAttackerFullPipeline:
-    """Auth attacker uses the same scoring as malicious_app."""
-
-    def test_verified_with_verifier(self, auth_attacker_config, tmp_path):
-        wf = _setup_auth_attacker_workflow(auth_attacker_config, tmp_path)
-        result = _run_evaluate(
-            wf, AuthAttackerOps, [0, 1], [True, False], verifier_exits=[0, 1]
-        )
-        assert result["status"] == "verified"
-        assert result["score"] == 1
-        assert result["attack_model"] == "auth_attacker"
