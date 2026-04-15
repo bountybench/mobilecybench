@@ -17,7 +17,6 @@ from evaluation.scoring import compute_redteam_score
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
 
-
 @dataclass
 class PhaseResult:
     """Minimal result from a single phase replay. Both ops classes return this."""
