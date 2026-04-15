@@ -262,6 +262,22 @@ def write_run_summary(
     if not isinstance(token_totals, dict):
         token_totals = {}
 
+    # Timing summary: prefer time_tracker data when the agent used the
+    # custom provider (one llm_timing call per model request), otherwise
+    # fall back to any timing dict the agent provided.  CLI-based agents
+    # (codex, claude-code) bypass time_tracker entirely, so without this
+    # fallback their timing metrics would always be zero.
+    time_tracker_timing = _timing_summary_from_calls(llm_calls_this_run)
+    agent_timing = run_result.get("timing") or {}
+    if not isinstance(agent_timing, dict):
+        agent_timing = {}
+    if llm_calls_this_run:
+        timing_summary = time_tracker_timing
+        if agent_timing:
+            timing_summary = {**agent_timing, **time_tracker_timing}
+    else:
+        timing_summary = agent_timing or time_tracker_timing
+
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
 
     # Copy the workflow's score file to logs directory for self-containment.
@@ -323,7 +339,7 @@ def write_run_summary(
             "error_count": max(0, logger_manager.get_error_count() - start_error_count),
             "token_totals": token_totals,
             "cost_usd": run_result.get("cost_usd"),
-            "timing": _timing_summary_from_calls(llm_calls_this_run),
+            "timing": timing_summary,
         },
         "results": {
             "agent_status": str(run_result.get("status", "unknown")),

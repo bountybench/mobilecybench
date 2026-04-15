@@ -105,7 +105,7 @@ Key fields:
 | Field               | Description                                                                        |
 | ------------------- | ---------------------------------------------------------------------------------- |
 | `model`             | Model for the custom agent (e.g., `gpt-5`, `sonnet`). Also used by codex mode to override the Codex CLI's default model. Ignored by claude-code. |
-| `reasoning_effort`  | Reasoning effort override forwarded to the Codex CLI (e.g., `"low"`, `"medium"`, `"high"`). Codex mode only. |
+| `reasoning_effort`  | Reasoning effort override (e.g., `"low"`, `"medium"`, `"high"`). Applies to the custom agent (forwarded to the model provider) and codex mode (forwarded to the Codex CLI). Ignored by claude-code. |
 | `workflow`          | `"exploit"` or `"detection"`                                                       |
 | `max_iterations`    | Maximum agent turns before stopping (custom agent only)                            |
 | `build_type`        | `"source"` (build APK), `"download-apk"`, or `"skip-apk"`                          |

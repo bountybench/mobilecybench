@@ -23,6 +23,21 @@ class CodexCLIResult(BaseModel):
     turns: int = 0
     conversation_events: List[Dict[str, Any]] = []
     token_usage: Dict[str, int] = {}
+    thread_id: Optional[str] = None
+    # Per-turn wall-clock durations, in seconds, measured from turn.started
+    # to turn.completed (one entry per successfully completed model request).
+    turn_durations: List[float] = []
+    # Raw usage payload emitted on each turn.completed event, in order.
+    per_turn_usage: List[Dict[str, Any]] = []
+    # Number of turn.failed events seen (request-level failures).
+    failed_turns: int = 0
+    # Tool invocation breakdown by tool name.
+    tool_call_breakdown: Dict[str, int] = {}
+    # Exit codes from every command_execution item we saw.
+    shell_exit_codes: List[int] = []
+    # Configured model for this run (codex --json does not yet report
+    # per-turn model; track what we asked for until it does).
+    configured_model: Optional[str] = None
 
 
 class CodexCLIProvider:
@@ -100,7 +115,7 @@ class CodexCLIProvider:
                 "approval_policy": "never",
                 "sandbox_mode": "danger-full-access",
                 "model_reasoning_effort": "high",
-                "model": "gpt-5.2",
+                "model": "gpt-5.4",
                 "model_reasoning_summary": "detailed",
                 "model_verbosity": "high",
             }
@@ -159,6 +174,25 @@ class CodexCLIProvider:
             # Token usage accumulator
             token_usage = {"input_tokens": 0, "output_tokens": 0}
 
+            # Richer metrics: per-turn wall-clock durations, per-turn usage,
+            # request/tool breakdowns, and failure counts.
+            turn_start_time: Optional[float] = None
+            turn_durations: List[float] = []
+            per_turn_usage: List[Dict[str, Any]] = []
+            failed_turns = 0
+            tool_call_breakdown: Dict[str, int] = {}
+            shell_exit_codes: List[int] = []
+            thread_id: Optional[str] = None
+            configured_model: Optional[str] = None
+            if codex_config:
+                maybe_model = codex_config.get("model")
+                if isinstance(maybe_model, str):
+                    configured_model = maybe_model
+            if configured_model is None:
+                maybe_default_model = config.get("model")
+                if isinstance(maybe_default_model, str):
+                    configured_model = maybe_default_model
+
             def _flush_turn():
                 """Flush the current turn's accumulated events."""
                 if not current_turn_tool_calls and not current_turn_text:
@@ -177,7 +211,7 @@ class CodexCLIProvider:
 
             def _handle_event(data: dict):
                 """Handle a single parsed JSONL event from codex --json."""
-                nonlocal turn_count
+                nonlocal turn_count, turn_start_time, thread_id, failed_turns
 
                 event_type = data.get("type", "")
                 item = data.get("item") or data.get("output_item") or {}
@@ -188,10 +222,14 @@ class CodexCLIProvider:
                     if item_type == "command_execution":
                         cmd_str = item.get("command", "")
                         item_id = item.get("id", "")
-                        logger.info(f"[Codex Tool] shell: {cmd_str[:200]}")
-                        agent_logger.info(
-                            "tool_use name=shell command=%s", cmd_str[:200]
+                        exit_code = item.get("exit_code")
+                        if isinstance(exit_code, int):
+                            shell_exit_codes.append(exit_code)
+                        tool_call_breakdown["shell"] = (
+                            tool_call_breakdown.get("shell", 0) + 1
                         )
+                        logger.info(f"[Codex Tool] shell: {cmd_str}")
+                        agent_logger.info("tool_use name=shell command=%s", cmd_str)
                         output = item.get("aggregated_output") or item.get("output", "")
                         if output:
                             tool_outputs.append(output)
@@ -210,8 +248,8 @@ class CodexCLIProvider:
                             {
                                 "tool_call_id": item_id,
                                 "type": "tool_result",
-                                "content": output[:10000] if output else "",
-                                "truncated": len(output) > 10000 if output else False,
+                                "content": output if output else "",
+                                "truncated": False,
                             }
                         )
                     elif item_type == "agent_message":
@@ -220,11 +258,11 @@ class CodexCLIProvider:
                         if text:
                             assistant_messages.append(text)
                             current_turn_text.append(text)
-                            preview = (text[:200] + "...") if len(text) > 200 else text
-                            logger.info(f"[Codex Message] {preview}")
+                            logger.info(f"[Codex Message] {text}")
                     elif item_type == "function_call":
                         name = item.get("name", "unknown")
                         item_id = item.get("id", "")
+                        tool_call_breakdown[name] = tool_call_breakdown.get(name, 0) + 1
                         logger.info(f"[Codex Tool] {name}")
                         agent_logger.info("tool_use name=%s", name)
                         current_turn_tool_calls.append(
@@ -243,16 +281,23 @@ class CodexCLIProvider:
                             {
                                 "tool_call_id": item_id,
                                 "type": "tool_result",
-                                "content": output[:10000] if output else "",
-                                "truncated": len(output) > 10000 if output else False,
+                                "content": output if output else "",
+                                "truncated": False,
                             }
                         )
 
                 # --- turn lifecycle ---
+                elif event_type == "turn.started":
+                    turn_start_time = time.time()
+
                 elif event_type == "turn.completed":
                     turn_count += 1
+                    if turn_start_time is not None:
+                        turn_durations.append(time.time() - turn_start_time)
+                        turn_start_time = None
                     usage = data.get("usage", {})
                     if usage:
+                        per_turn_usage.append(dict(usage))
                         token_usage["input_tokens"] += usage.get("input_tokens", 0)
                         token_usage["output_tokens"] += usage.get("output_tokens", 0)
                         cached = usage.get("cached_input_tokens", 0)
@@ -260,15 +305,44 @@ class CodexCLIProvider:
                             token_usage["cached_input_tokens"] = (
                                 token_usage.get("cached_input_tokens", 0) + cached
                             )
-                    logger.info(f"[Codex] Turn {turn_count} completed")
+                        # Reasoning tokens: codex has not shipped this field
+                        # as of the current CLI (tracked upstream in
+                        # openai/codex#5276), but accept whichever naming it
+                        # lands on so we capture them automatically.
+                        reasoning = (
+                            usage.get("reasoning_output_tokens")
+                            or usage.get("reasoning_tokens")
+                            or 0
+                        )
+                        if reasoning:
+                            token_usage["reasoning_output_tokens"] = token_usage.get(
+                                "reasoning_output_tokens", 0
+                            ) + int(reasoning)
+                    duration_msg = ""
+                    if turn_durations:
+                        duration_msg = f" ({turn_durations[-1]:.1f}s)"
+                    logger.info(f"[Codex] Turn {turn_count} completed{duration_msg}")
                     _flush_turn()
+
+                elif event_type == "turn.failed":
+                    failed_turns += 1
+                    # Reset timer so the next turn's duration is measured
+                    # from its own turn.started event.
+                    turn_start_time = None
+                    err = data.get("error") or data.get("message") or {}
+                    logger.error(f"[Codex] Turn failed: {err}")
+
+                elif event_type == "thread.started":
+                    tid = data.get("thread_id")
+                    if isinstance(tid, str):
+                        thread_id = tid
 
                 elif event_type == "error":
                     msg = data.get("message", "")
                     logger.error(f"[Codex Error] {msg}")
 
                 # --- informational events ---
-                elif event_type in ("thread.started", "turn.started", "item.started"):
+                elif event_type in ("item.started",):
                     pass
 
                 # --- catch-all ---
@@ -325,6 +399,13 @@ class CodexCLIProvider:
             total_time = time.time() - start_time
             logger.info(f"🏁 Completed execution in {total_time:.1f}s")
             logger.info(f"Output length: {len(final_output)} chars")
+            if turn_durations:
+                mean_dur = sum(turn_durations) / len(turn_durations)
+                logger.info(
+                    f"[Codex] {len(turn_durations)} model requests, "
+                    f"total={sum(turn_durations):.1f}s, "
+                    f"mean={mean_dur:.1f}s, max={max(turn_durations):.1f}s"
+                )
 
             return CodexCLIResult(
                 success=(exit_code == 0),
@@ -336,6 +417,13 @@ class CodexCLIProvider:
                 turns=turn_count,
                 conversation_events=conversation_events,
                 token_usage=token_usage,
+                thread_id=thread_id,
+                turn_durations=turn_durations,
+                per_turn_usage=per_turn_usage,
+                failed_turns=failed_turns,
+                tool_call_breakdown=tool_call_breakdown,
+                shell_exit_codes=shell_exit_codes,
+                configured_model=configured_model,
             )
 
         except Exception as e:

@@ -195,10 +195,9 @@ class CodexAgent:
             # Fall back to number of conversation events if turns is 0
             effective_turns = result.turns or len(result.conversation_events)
 
-            # Build token totals from provider's accumulated usage
-            token_totals = {}
-            if result.token_usage:
-                token_totals = dict(result.token_usage)
+            # Build token totals + request/latency metrics from provider data.
+            token_totals = self._build_token_totals(result)
+            timing_summary = self._build_timing_summary(result)
 
             if not result.success:
                 is_timeout = result.exit_code == -1
@@ -222,6 +221,7 @@ class CodexAgent:
                     status=status,
                     final_message=msg,
                     token_totals=token_totals,
+                    timing=timing_summary,
                 )
 
             return self._finish_run(
@@ -229,6 +229,7 @@ class CodexAgent:
                 status="completed",
                 final_message=result.output_text,
                 token_totals=token_totals,
+                timing=timing_summary,
             )
 
         except Exception as e:
@@ -327,12 +328,79 @@ class CodexAgent:
     # Result (mirrors ClaudeCodeAgent._finish_run)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _build_token_totals(result) -> Dict[str, Any]:
+        """Flatten provider usage + per-request metadata into token_totals."""
+        totals: Dict[str, Any] = {}
+        if result.token_usage:
+            totals.update(result.token_usage)
+
+        # Per-request and model context
+        totals["num_requests"] = len(result.turn_durations) or int(result.turns or 0)
+        totals["failed_requests"] = int(result.failed_turns or 0)
+        if result.configured_model:
+            totals["model"] = result.configured_model
+            # Mirrors Claude Code's per_model shape so downstream tooling can
+            # handle both uniformly.  Codex currently reports a single model
+            # per run (the configured one), so the list has one entry.
+            totals["models_used"] = [result.configured_model]
+        if result.thread_id:
+            totals["thread_id"] = result.thread_id
+        if result.per_turn_usage:
+            totals["per_request_usage"] = result.per_turn_usage
+        if result.tool_call_breakdown:
+            totals["tool_call_breakdown"] = dict(result.tool_call_breakdown)
+        if result.shell_exit_codes:
+            totals["shell_exit_codes"] = list(result.shell_exit_codes)
+            totals["shell_failure_count"] = sum(
+                1 for c in result.shell_exit_codes if c != 0
+            )
+        return totals
+
+    @staticmethod
+    def _build_timing_summary(result) -> Dict[str, Any]:
+        """Derive latency stats from per-turn wall-clock durations."""
+        durations = list(result.turn_durations or [])
+        summary: Dict[str, Any] = {
+            "total_execution_time": float(result.execution_time or 0.0),
+            "llm_call_count": len(durations),
+        }
+        if not durations:
+            summary.update(
+                {
+                    "total_llm_time": 0.0,
+                    "mean": None,
+                    "p50": None,
+                    "p95": None,
+                    "min": None,
+                    "max": None,
+                    "per_request_durations": [],
+                }
+            )
+            return summary
+
+        ordered = sorted(durations)
+        n = len(ordered)
+        summary.update(
+            {
+                "total_llm_time": float(sum(ordered)),
+                "mean": float(sum(ordered) / n),
+                "p50": float(ordered[n // 2]),
+                "p95": float(ordered[min(int(n * 0.95), n - 1)]),
+                "min": float(ordered[0]),
+                "max": float(ordered[-1]),
+                "per_request_durations": [float(d) for d in durations],
+            }
+        )
+        return summary
+
     def _finish_run(
         self,
         turns: int,
         status: str = "completed",
         final_message: Optional[str] = None,
         token_totals: Optional[Dict[str, Any]] = None,
+        timing: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Build result dict compatible with run_artifacts.normalize_agent_result."""
         exploit_exists = self._check_exploit_exists()
@@ -340,6 +408,17 @@ class CodexAgent:
         agent_logger.info(f"{'=' * 20} RUN COMPLETED {'=' * 20}")
         agent_logger.info(f"Turns: {turns}")
         agent_logger.info(f"Exploit exists: {exploit_exists}")
+        if timing and timing.get("llm_call_count"):
+            agent_logger.info(
+                "Model requests: %s | total=%0.1fs | mean=%0.1fs | p95=%0.1fs | max=%0.1fs",
+                timing.get("llm_call_count"),
+                timing.get("total_llm_time") or 0.0,
+                timing.get("mean") or 0.0,
+                timing.get("p95") or 0.0,
+                timing.get("max") or 0.0,
+            )
+        if token_totals and token_totals.get("model"):
+            agent_logger.info(f"Model: {token_totals['model']}")
         if final_message:
             agent_logger.info(f"Final message: {final_message}")
 
@@ -351,6 +430,7 @@ class CodexAgent:
             "exploit_exists": exploit_exists,
             "final_message": final_message,
             "token_totals": token_totals or {},
+            "timing": timing or {},
             "log_file": self.log_file,
             "conversation_file": self._conversation_file,
             "system_prompt_file": self._system_prompt_file,
