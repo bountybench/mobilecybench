@@ -45,12 +45,12 @@ echo "--- Creating GKE cluster ---"
 gcloud container clusters create "$CLUSTER_NAME" \
   --project="$PROJECT_ID" \
   --zone="$ZONE" \
-  --machine-type=n2d-standard-8 \
+  --machine-type=n2-standard-8 \
   --image-type=UBUNTU_CONTAINERD \
   --num-nodes=1 \
   --enable-autoscaling --min-nodes=0 --max-nodes=20 \
   --spot \
-  --disk-size=100 --disk-type=pd-ssd \
+  --disk-size=200 --disk-type=pd-ssd \
   --metadata=enable-nested-virtualization=TRUE \
   --workload-pool="${PROJECT_ID}.svc.id.goog"
 
@@ -77,6 +77,34 @@ kubectl create secret generic dockerhub-credentials \
   --from-literal=DOCKERHUB_USERNAME="${DOCKERHUB_USERNAME:-placeholder}" \
   --from-literal=DOCKERHUB_TOKEN="${DOCKERHUB_TOKEN:-placeholder}" \
   --dry-run=client -o yaml | kubectl apply -f -
+
+# ─── 7. Workload Identity binding for GCS uploads ─────────────────────────
+# Create a Google Service Account and bind it to the default KSA in the
+# mobilecybench namespace so pods can upload results to GCS via gsutil.
+GSA_NAME="mcb-runner"
+GSA_EMAIL="${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+KSA_NAME="default"
+NAMESPACE="mobilecybench"
+
+echo "--- Setting up Workload Identity for GCS access ---"
+gcloud iam service-accounts create "$GSA_NAME" \
+  --project="$PROJECT_ID" \
+  --display-name="MobileCyBench runner" \
+  2>/dev/null || echo "Service account already exists"
+
+gsutil iam ch "serviceAccount:${GSA_EMAIL}:objectAdmin" "gs://$GCS_BUCKET"
+
+gcloud iam service-accounts add-iam-policy-binding "$GSA_EMAIL" \
+  --project="$PROJECT_ID" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${KSA_NAME}]"
+
+kubectl annotate serviceaccount "$KSA_NAME" \
+  --namespace="$NAMESPACE" \
+  --overwrite \
+  "iam.gke.io/gcp-service-account=${GSA_EMAIL}"
+
+echo "Workload Identity binding: ${NAMESPACE}/${KSA_NAME} -> ${GSA_EMAIL}"
 
 echo ""
 echo "=== Setup complete ==="
