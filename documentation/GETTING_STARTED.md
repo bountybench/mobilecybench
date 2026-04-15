@@ -126,6 +126,32 @@ Tokens expire periodically — re-run the extraction before each session.
 
 The Docker image is pulled automatically. `agent_timeout` controls how long (in seconds) the CLI is allowed to run (default: 1800).
 
+### Codex agent mode
+
+To use the Codex CLI agent (`"agent_mode": "codex"` in your runner config), you need an OpenAI API key exported as `CODEX_API_KEY` so the Codex CLI running inside the container can authenticate.
+
+**Step 1: Add your key to `agent/.env`**
+
+```bash
+echo CODEX_API_KEY="sk-..." >> agent/.env
+```
+
+`CODEX_API_KEY` is read separately from `OPENAI_API_KEY` — codex mode will not fall back to `OPENAI_API_KEY`, so set it explicitly even if you already have one configured for the custom agent.
+
+**Step 2: Configure `runner_config.json`**
+
+```json
+{
+  "agent_mode": "codex",
+  "agent_image": "cybench/mobilecybench-codex:latest",
+  "agent_timeout": 1800,
+  "model": "gpt-5.2",
+  "reasoning_effort": "high"
+}
+```
+
+The Docker image is pulled automatically. `agent_timeout` controls how long (in seconds) the CLI is allowed to run (default: 1800). `model` and `reasoning_effort` are optional overrides forwarded to the Codex CLI; omit them to use the agent's defaults.
+
 ## 5) Pick an app
 
 List available apps:

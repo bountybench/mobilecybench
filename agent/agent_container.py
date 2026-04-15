@@ -921,6 +921,13 @@ def setup_agent_environment(
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
 
+    # Ensure agent/.env is loaded so mode-specific keys are available.
+    from dotenv import load_dotenv
+
+    agent_env_file = Path(__file__).parent / ".env"
+    if agent_env_file.exists():
+        load_dotenv(agent_env_file, override=True)
+
     # Inject mode-specific environment variables
     if agent_mode == "codex":
         codex_key = os.environ.get("CODEX_API_KEY", "")
