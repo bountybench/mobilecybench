@@ -137,13 +137,3 @@ def validate_generic_probe_config(
         raise GenericProbeConfigError(
             "Generic probe config validation errors:\n  - " + "\n  - ".join(errors)
         )
-
-
-def get_enabled_probes(config: dict) -> dict:
-    """Return the subset of generic probes that are enabled.
-
-    Returns:
-        Dict mapping probe key to True for enabled probes.
-    """
-    probes = config.get("generic_probe_applicability", {})
-    return {k: v for k, v in probes.items() if v}
