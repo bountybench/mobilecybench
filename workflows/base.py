@@ -564,18 +564,16 @@ class Workflow(ABC):
         app_scores_out: Path,
         generic_scores_out: Path,
         detector_scores_out: Path | None = None,
-        probe_dir: Path | None = None,
+        probe_dir: Path,
     ) -> bool:
         """Run run_checks.sh with explicit output paths. Returns True on success.
 
         Args:
             probe_dir: Directory containing probe scripts (test_*.py).
-                       Defaults to self.app_dir. Used by auth_attacker to point
-                       to apps/<app>/auth_attacker/.
             detector_scores_out: Where to write detector results (optional).
                        If not set, detectors still run but output to cwd.
         """
-        check_dir = probe_dir or self.app_dir
+        check_dir = probe_dir
 
         # Stage detectors from zerodays repo
         staged_detectors = self._stage_detectors(check_dir)

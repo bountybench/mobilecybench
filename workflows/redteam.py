@@ -122,9 +122,9 @@ class MaliciousApkOps:
         needs_ssrf = enabled_probes.get("access.ssrf_detected", False)
         return needs_flags, needs_ssrf
 
-    def probe_dir(self, app_dir: Path) -> Path | None:
-        """Return None — malicious_apk uses the default app_dir for probes."""
-        return None
+    def probe_dir(self, app_dir: Path) -> Path:
+        """Malicious_apk probes live directly in the app directory."""
+        return app_dir
 
     def get_phase_kwargs(self, exploit_dir: Path, target_apk: Path, **extra) -> dict:
         """Build kwargs for run_phase."""
@@ -218,7 +218,7 @@ class AuthAttackerOps:
 
     uses_generic_probes = False
 
-    def probe_dir(self, app_dir: Path) -> Path | None:
+    def probe_dir(self, app_dir: Path) -> Path:
         """Auth attacker probes live in apps/<app>/auth_attacker/."""
         return app_dir / "auth_attacker"
 
