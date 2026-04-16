@@ -23,6 +23,40 @@ ZERO_DAY_TASK_ID=""
 ZERO_DAY_PACKAGE_NAME=""
 ZERO_DAY_BASELINE_COMMIT=""
 ZERO_DAY_SECURE_PATCH_ABS=""
+ZERO_DAY_ATTACK_MODEL=""
+
+zero_day_task_read_attack_model() {
+    local metadata_file="$1"
+    jq -r '.attacker_model // .attack_model // empty' "$metadata_file"
+}
+
+zero_day_task_validate_apk_project() {
+    local task_dir="$1"
+    local apk_dir=""
+
+    if [ -d "$task_dir/exploit_files/exploit_apk" ]; then
+        apk_dir="$task_dir/exploit_files/exploit_apk"
+    elif [ -d "$task_dir/exploit_files/attacker_app" ]; then
+        apk_dir="$task_dir/exploit_files/attacker_app"
+    fi
+
+    if [ -z "$apk_dir" ]; then
+        _task_validation_log ERROR "Required exploit APK directory not found under $task_dir/exploit_files/"
+        return 1
+    fi
+
+    if ! find "$apk_dir" -name 'AndroidManifest.xml' -type f -print -quit | grep -q .; then
+        _task_validation_log ERROR "Exploit APK directory missing AndroidManifest.xml: $apk_dir"
+        return 1
+    fi
+
+    if ! find "$apk_dir" -name '*.java' -type f -print -quit | grep -q .; then
+        _task_validation_log ERROR "Exploit APK directory must contain at least one .java source file: $apk_dir"
+        return 1
+    fi
+
+    return 0
+}
 
 zero_day_task_resolve_abs_dir() {
     local dir="$1"
@@ -68,12 +102,37 @@ PY
 zero_day_task_validate_source_dir() {
     local task_dir="$1"
     local req_file
-    for req_file in "metadata.json" "fix.patch" "exploit_files/exploit.sh" "verify_files/verify_exploit.sh"; do
+    for req_file in "metadata.json" "fix.patch" "verify_files/verify_exploit.sh"; do
         if [ ! -f "$task_dir/$req_file" ]; then
             _task_validation_log ERROR "Required task file not found: $task_dir/$req_file"
             return 1
         fi
     done
+
+    local attack_model=""
+    attack_model="$(zero_day_task_read_attack_model "$task_dir/metadata.json")"
+
+    case "$attack_model" in
+        malicious_apk|malicious_app)
+            zero_day_task_validate_apk_project "$task_dir" || return 1
+            ;;
+        auth_attacker)
+            if [ ! -f "$task_dir/exploit_files/exploit.sh" ]; then
+                _task_validation_log ERROR "Required task file not found: $task_dir/exploit_files/exploit.sh"
+                return 1
+            fi
+            ;;
+        *)
+            if [ -f "$task_dir/exploit_files/exploit.sh" ]; then
+                :
+            elif [ -d "$task_dir/exploit_files/exploit_apk" ] || [ -d "$task_dir/exploit_files/attacker_app" ]; then
+                zero_day_task_validate_apk_project "$task_dir" || return 1
+            else
+                _task_validation_log ERROR "Task must contain either exploit_files/exploit.sh or an exploit APK directory (exploit_apk/ or attacker_app/)"
+                return 1
+            fi
+            ;;
+    esac
 
     if find "$task_dir" -type d \( -name 'agent_output' -o -name '__pycache__' -o -name '.pytest_cache' -o -name 'build' -o -name 'dist' \) -print -quit | grep -q .; then
         _task_validation_log ERROR "Task directory contains generated runtime artifacts; zero-day tasks must stay source-only"
@@ -90,6 +149,11 @@ zero_day_task_resolve_metadata() {
 
     ZERO_DAY_TASK_METADATA="$task_dir/metadata.json"
     zero_day_task_validate_metadata_schema_if_present "$ZERO_DAY_TASK_METADATA" || return 1
+    ZERO_DAY_ATTACK_MODEL="$(zero_day_task_read_attack_model "$ZERO_DAY_TASK_METADATA")"
+    if [ "$ZERO_DAY_ATTACK_MODEL" = "malicious_app" ]; then
+        _task_validation_log WARNING "metadata.json uses legacy attacker_model=malicious_app; prefer malicious_apk"
+        ZERO_DAY_ATTACK_MODEL="malicious_apk"
+    fi
 
     if ! jq -e '.schema_version' "$ZERO_DAY_TASK_METADATA" >/dev/null 2>&1; then
         _task_validation_log WARNING "Task metadata has no schema_version; using older-field compatibility"
@@ -281,6 +345,7 @@ zero_day_task_run_validation() {
         "$ZERO_DAY_PACKAGE_NAME" \
         "$ZERO_DAY_TASK_ID" \
         "$ZERO_DAY_BASELINE_COMMIT" \
+        "$ZERO_DAY_ATTACK_MODEL" \
         "$ZERO_DAY_SECURE_PATCH_ABS" \
         "$ZERO_DAY_WORKSPACE" \
         "per_phase" \

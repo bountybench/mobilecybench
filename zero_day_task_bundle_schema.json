@@ -19,6 +19,11 @@
       "minLength": 1,
       "description": "Short task title"
     },
+    "attacker_model": {
+      "type": "string",
+      "enum": ["malicious_apk", "auth_attacker", "malicious_app"],
+      "description": "Optional attack-model selector. malicious_app is accepted as a legacy alias for malicious_apk."
+    },
     "baseline": {
       "type": "object",
       "additionalProperties": true,

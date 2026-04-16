@@ -12,6 +12,7 @@ TASK_RUNTIME_APP_METADATA_JSON=""
 TASK_RUNTIME_PACKAGE_NAME=""
 TASK_RUNTIME_TASK_ID=""
 TASK_RUNTIME_BASELINE_COMMIT=""
+TASK_RUNTIME_ATTACK_MODEL=""
 TASK_RUNTIME_PHASE=""
 TASK_RUNTIME_FIX_PATCH=""
 TASK_RUNTIME_WORKSPACE_DIR=""
@@ -26,9 +27,10 @@ task_runtime_set_context() {
     local package_name="$6"
     local task_id="$7"
     local baseline_commit="$8"
-    local phase="$9"
-    local fix_patch="${10:-}"
-    local workspace_dir="${11:-}"
+    local attack_model="${9:-}"
+    local phase="${10:-}"
+    local fix_patch="${11:-}"
+    local workspace_dir="${12:-}"
 
     TASK_RUNTIME_TASK_DIR="$task_dir"
     TASK_RUNTIME_OUTPUT_DIR="$output_dir"
@@ -38,6 +40,7 @@ task_runtime_set_context() {
     TASK_RUNTIME_PACKAGE_NAME="$package_name"
     TASK_RUNTIME_TASK_ID="$task_id"
     TASK_RUNTIME_BASELINE_COMMIT="$baseline_commit"
+    TASK_RUNTIME_ATTACK_MODEL="$attack_model"
     TASK_RUNTIME_PHASE="$phase"
     TASK_RUNTIME_FIX_PATCH="$fix_patch"
     TASK_RUNTIME_WORKSPACE_DIR="$workspace_dir"
@@ -55,6 +58,7 @@ task_runtime_set_context() {
         "MCB_PACKAGE_NAME=$TASK_RUNTIME_PACKAGE_NAME"
         "MCB_TASK_ID=$TASK_RUNTIME_TASK_ID"
         "MCB_BASELINE_COMMIT=$TASK_RUNTIME_BASELINE_COMMIT"
+        "MCB_ATTACK_MODEL=$TASK_RUNTIME_ATTACK_MODEL"
         "MCB_PHASE=$TASK_RUNTIME_PHASE"
     )
     if [ -n "$TASK_RUNTIME_FIX_PATCH" ]; then
@@ -126,6 +130,65 @@ task_runtime_run_exploit_container() {
             --utils-dir "$root_dir/utils" \
             --codebase-dir "$codebase_dir"
     )
+}
+
+task_runtime_run_exploit_apk() {
+    local root_dir="$1"
+    local log_file="${2:-}"
+    local apk_project_dir=""
+
+    if [ -d "$TASK_RUNTIME_TASK_DIR/exploit_files/exploit_apk" ]; then
+        apk_project_dir="$TASK_RUNTIME_TASK_DIR/exploit_files/exploit_apk"
+    elif [ -d "$TASK_RUNTIME_TASK_DIR/exploit_files/attacker_app" ]; then
+        apk_project_dir="$TASK_RUNTIME_TASK_DIR/exploit_files/attacker_app"
+    else
+        echo -e "${ERROR} No exploit APK directory found under $TASK_RUNTIME_TASK_DIR/exploit_files/"
+        return 1
+    fi
+
+    if [ ! -f "$apk_project_dir/build_exploit_apk.sh" ]; then
+        cp "$root_dir/templates/malicious_apk/build_exploit_apk.sh" "$apk_project_dir/build_exploit_apk.sh"
+        chmod +x "$apk_project_dir/build_exploit_apk.sh"
+    fi
+
+    echo -e "${INFO} Executing malicious APK replay on host..."
+    local -a cmd=(
+        python3 - "$root_dir" "$apk_project_dir" "$TASK_RUNTIME_OUTPUT_DIR" "${APK_TIMEOUT:-60}"
+    )
+    local script='from pathlib import Path
+import sys
+
+root_dir = Path(sys.argv[1])
+apk_project_dir = Path(sys.argv[2])
+output_dir = Path(sys.argv[3])
+timeout = int(sys.argv[4])
+
+sys.path.insert(0, str(root_dir))
+from evaluation.replay_apk import replay_malicious_apk
+
+result = replay_malicious_apk(apk_project_dir, output_dir, timeout=timeout)
+raise SystemExit(result.exit_code)'
+
+    if [ -n "$log_file" ]; then
+        env "${TASK_RUNTIME_ENV[@]}" "${cmd[@]}" >"$log_file" 2>&1 <<<"$script"
+        return $?
+    fi
+    env "${TASK_RUNTIME_ENV[@]}" "${cmd[@]}" <<<"$script"
+}
+
+task_runtime_run_exploit() {
+    local root_dir="$1"
+    local codebase_dir="$2"
+    local log_file="${3:-}"
+
+    case "$TASK_RUNTIME_ATTACK_MODEL" in
+        malicious_apk|malicious_app)
+            task_runtime_run_exploit_apk "$root_dir" "$log_file"
+            ;;
+        *)
+            task_runtime_run_exploit_container "$root_dir" "$codebase_dir" "$log_file"
+            ;;
+    esac
 }
 
 task_runtime_run_verifier() {
