@@ -22,6 +22,8 @@
 #   bash infra/gke/test_local.sh moememos --container   # emulator in separate container
 #   bash infra/gke/test_local.sh moememos --skip-build   # never build, only use existing/pull
 #   bash infra/gke/test_local.sh moememos --gold-run     # run reference exploits
+#   bash infra/gke/test_local.sh moememos --gold-run --gke-mode  # replicate GKE conditions
+#   bash infra/gke/test_local.sh ntfy-android --gold-run --vuln vuln_1  # specific vuln
 
 set -euo pipefail
 
@@ -30,6 +32,8 @@ EMULATOR_BACKEND="native"
 SKIP_BUILD=false
 DRY_RUN=true
 GOLD_RUN=false
+VULN_ID="vuln_0"
+GKE_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -39,6 +43,8 @@ while [[ $# -gt 0 ]]; do
         --dry-run) DRY_RUN=true; GOLD_RUN=false; shift ;;
         --gold-run) GOLD_RUN=true; DRY_RUN=false; shift ;;
         --no-dry-run) DRY_RUN=false; shift ;;
+        --vuln) VULN_ID="$2"; shift 2 ;;
+        --gke-mode) GKE_MODE=true; EMULATOR_BACKEND="container"; shift ;;
         --*) echo "Unknown arg: $1"; exit 1 ;;
         *) APP_NAME="$1"; shift ;;
     esac
@@ -54,9 +60,11 @@ DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
+echo "Vuln ID:        $VULN_ID"
 echo "Emulator backend: $EMULATOR_BACKEND"
 echo "Dry run:        $DRY_RUN"
 echo "Gold run:       $GOLD_RUN"
+echo "GKE mode:       $GKE_MODE"
 echo "Project root:   $PROJECT_ROOT"
 echo ""
 
@@ -154,7 +162,7 @@ fi
 
 # ─── Step 2: Determine build_type ─────────────────────────────────────────
 CLEAN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/$APP_NAME.apk"
-VULN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/vuln_0/$APP_NAME.apk"
+VULN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/$VULN_ID/$APP_NAME.apk"
 
 if [ -f "$CLEAN_APK" ] && [ -f "$VULN_APK" ]; then
     BUILD_TYPE="skip-apk"
@@ -170,6 +178,7 @@ fi
 echo ""
 
 # ─── Step 3: Create dry-run config ─────────────────────────────────────────
+# Default cleanup trap (may be overridden by --gke-mode)
 trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"' EXIT
 
 echo "--- Step 3: Creating test config ---"
@@ -185,10 +194,11 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "dry_run": $DRY_RUN,
   "gold_run": $GOLD_RUN,
   "workflow": "exploit",
-  "synthetic_vuln_id": "vuln_0",
+  "synthetic_vuln_id": "$VULN_ID",
   "agent_image": "cybench/mobilecybench:latest",
   "emulator_display": "headless",
-  "emulator_backend": "$EMULATOR_BACKEND"
+  "emulator_backend": "$EMULATOR_BACKEND",
+  "build_command_timeout": 2400
 }
 EOF
 echo "Config written to runner_config_test.json"
@@ -211,7 +221,7 @@ echo ""
 # If the image is on Docker Hub, inner DinD pulls directly.
 # If local-only, save as tar and mount into the container.
 EMULATOR_IMAGE_TAR=""
-if [ "$EMULATOR_BACKEND" = "container" ]; then
+if [ "$EMULATOR_BACKEND" = "container" ] && [ "$GKE_MODE" = false ]; then
     if [[ "$EMULATOR_IMAGE_NAME" == cybench/* ]]; then
         # Docker Hub image — inner DinD will pull it directly
         echo "Emulator image on Docker Hub — DinD will pull inside container"
@@ -222,21 +232,50 @@ if [ "$EMULATOR_BACKEND" = "container" ]; then
         docker save "$EMULATOR_IMAGE_NAME" -o "$EMULATOR_IMAGE_TAR"
         echo "Image saved ($(du -h "$EMULATOR_IMAGE_TAR" | cut -f1))"
     fi
+elif [ "$GKE_MODE" = true ]; then
+    echo "GKE mode — DinD will pull emulator from Docker Hub (no local tar)"
+    EMULATOR_IMAGE_NAME="$DOCKERHUB_EMULATOR"
 fi
 
-docker run --rm \
-    --privileged \
-    --device /dev/kvm \
-    --entrypoint bash \
-    -v "$PROJECT_ROOT:/mobilecybench" \
-    -v mobilecybench-docker-data:/var/lib/docker \
-    -v mobilecybench-gradle-cache:/root/.gradle \
-    ${EMULATOR_IMAGE_TAR:+-v "$EMULATOR_IMAGE_TAR:/tmp/emulator-image.tar"} \
-    -e APP_NAME="$APP_NAME" \
-    -e EMULATOR_IMAGE="${EMULATOR_IMAGE_NAME}" \
-    -e DOCKER_TLS_CERTDIR= \
-    -e DOCKERHUB_USERNAME="${DOCKERHUB_USERNAME:-}" \
-    -e DOCKERHUB_TOKEN="${DOCKERHUB_TOKEN:-}" \
+# ─── Build docker run arguments ──────────────────────────────────────────
+DOCKER_RUN_ARGS=(
+    --rm
+    --privileged
+    --device /dev/kvm
+    --entrypoint bash
+    -v "$PROJECT_ROOT:/mobilecybench"
+    -e APP_NAME="$APP_NAME"
+    -e "EMULATOR_IMAGE=${EMULATOR_IMAGE_NAME}"
+    -e DOCKER_TLS_CERTDIR=
+    -e "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-}"
+    -e "DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN:-}"
+)
+
+if [ "$GKE_MODE" = true ]; then
+    # GKE mode: fresh volumes, CPU/memory constraints — replicates GKE pod conditions
+    GKE_DOCKER_VOL="mobilecybench-gke-test-$$"
+    echo "GKE mode: using ephemeral Docker volume ($GKE_DOCKER_VOL), no Gradle cache"
+    echo "GKE mode: CPU limit=6, memory limit=16g"
+    DOCKER_RUN_ARGS+=(
+        -v "$GKE_DOCKER_VOL:/var/lib/docker"
+        --cpus=6
+        --memory=16g
+    )
+    # Clean up ephemeral volume on exit
+    trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"; docker volume rm "$GKE_DOCKER_VOL" 2>/dev/null || true' EXIT
+else
+    # Normal mode: persistent volumes for fast iteration
+    DOCKER_RUN_ARGS+=(
+        -v mobilecybench-docker-data:/var/lib/docker
+        -v mobilecybench-gradle-cache:/root/.gradle
+    )
+fi
+
+if [ -n "$EMULATOR_IMAGE_TAR" ]; then
+    DOCKER_RUN_ARGS+=(-v "$EMULATOR_IMAGE_TAR:/tmp/emulator-image.tar")
+fi
+
+docker run "${DOCKER_RUN_ARGS[@]}" \
     "$IMAGE_NAME" \
     -c '
         set -e

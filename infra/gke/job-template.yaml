@@ -26,10 +26,10 @@ spec:
             privileged: true
           resources:
             requests:
-              cpu: "2"
+              cpu: "4"
               memory: "8Gi"
             limits:
-              cpu: "4"
+              cpu: "6"
               memory: "16Gi"
           env:
             - name: APP_NAME
