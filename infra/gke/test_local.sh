@@ -254,11 +254,13 @@ DOCKER_RUN_ARGS=(
 if [ "$GKE_MODE" = true ]; then
     # GKE mode: fresh volumes, CPU/memory constraints — replicates GKE pod conditions
     GKE_DOCKER_VOL="mobilecybench-gke-test-$$"
+    HOST_CPUS=$(nproc 2>/dev/null || echo 8)
+    GKE_CPU_LIMIT=$(( HOST_CPUS < 6 ? HOST_CPUS : 6 ))
     echo "GKE mode: using ephemeral Docker volume ($GKE_DOCKER_VOL), no Gradle cache"
-    echo "GKE mode: CPU limit=6, memory limit=16g"
+    echo "GKE mode: CPU limit=$GKE_CPU_LIMIT (host has $HOST_CPUS), memory limit=16g"
     DOCKER_RUN_ARGS+=(
         -v "$GKE_DOCKER_VOL:/var/lib/docker"
-        --cpus=6
+        --cpus="$GKE_CPU_LIMIT"
         --memory=16g
     )
     # Clean up ephemeral volume on exit
