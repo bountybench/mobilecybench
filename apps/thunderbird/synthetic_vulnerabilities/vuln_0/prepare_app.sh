@@ -15,7 +15,11 @@ fail() { echo "[prepare_app] ERROR: $*" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 
 PKG="$(jq -r '.package_name' "$META_JSON")"
-LOCKSCREEN_BASELINE="${LOCKSCREEN_BASELINE:-MESSAGE_COUNT}"
+
+# Ensure cold start so settings are read from disk
+adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+
+LOCKSCREEN_BASELINE="${EXPECTED_LOCKSCREEN_BASELINE:-MESSAGE_COUNT}"
 case "$LOCKSCREEN_BASELINE" in
   NOTHING|APP_NAME|MESSAGE_COUNT|SENDERS|EVERYTHING) ;;
   *) fail "Invalid LOCKSCREEN_BASELINE='$LOCKSCREEN_BASELINE' (expected K9.LockScreenNotificationVisibility names)" ;;
@@ -29,7 +33,7 @@ adb_priv_sqlite() {
 
 wait_for_preferences_db() {
   local pref_db="$1"
-  local deadline=$((SECONDS + 90))
+  local deadline=$((SECONDS + 150))
   local table_ready account_uuids
 
   while (( SECONDS < deadline )); do
@@ -90,5 +94,6 @@ fi
 effective_lock_pref="$(adb_priv_sqlite "$PREF_DB" "SELECT value FROM preferences_storage WHERE primkey='lockScreenNotificationVisibility' LIMIT 1;" | tr -d '\r')"
 [[ "$effective_lock_pref" == "$LOCKSCREEN_BASELINE" ]] || fail "Failed to set lockscreen baseline (got '$effective_lock_pref')"
 
-adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+# Restart app to ensure it picks up DB changes and is alive for background push/sync
+adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
 log_info "prepare_app.sh complete (SMTP ingress configured, no host port sidecar, lockscreen baseline=$LOCKSCREEN_BASELINE)"

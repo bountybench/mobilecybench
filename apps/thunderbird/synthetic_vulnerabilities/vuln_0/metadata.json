@@ -16,5 +16,10 @@
   "clean_apk_mode": "default",
   "baseline": {
     "commit": "32a673732e"
+  },
+  "runtime": {
+    "env": {
+      "EXPECTED_LOCKSCREEN_BASELINE": "MESSAGE_COUNT"
+    }
   }
 }
