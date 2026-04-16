@@ -180,6 +180,18 @@ _SCORE_FILES: dict[str, tuple[str, set[str]]] = {
 }
 
 
+def _optional_artifact_path(
+    logs_dir: Path, workflow: Any, filename: str
+) -> Optional[str]:
+    app_dir = getattr(workflow, "app_dir", None)
+    log_copy = logs_dir / filename
+    if log_copy.exists():
+        return str(log_copy)
+    if app_dir and (app_dir / filename).exists():
+        return str(app_dir / filename)
+    return None
+
+
 def _score_files_for_workflow(workflow_name: str) -> list[str]:
     """Return filenames of score files produced by the given workflow."""
     return [
@@ -306,7 +318,10 @@ def write_run_summary(
     # Only copy the file that belongs to THIS workflow — stale files from
     # previous runs of other workflows would be misleading.
     if hasattr(workflow, "app_dir"):
-        for score_file in _score_files_for_workflow(config.workflow):
+        for score_file in [
+            *_score_files_for_workflow(config.workflow),
+            "crash_report.json",
+        ]:
             src = workflow.app_dir / score_file
             if src.exists():
                 dst = logs_dir / score_file
@@ -383,6 +398,9 @@ def write_run_summary(
             "conversation_jsonl": conversation_path,
             "system_prompt_file": system_prompt_path,
             **_score_artifact_paths(config.workflow, logs_dir, workflow),
+            "crash_report_json": _optional_artifact_path(
+                logs_dir, workflow, "crash_report.json"
+            ),
             "logs_dir": str(logs_dir),
         },
         "app": app_metadata,
