@@ -1225,6 +1225,7 @@ elif [ -n "$TEST_ZERO_DAY_VULN" ]; then
     SKIP_NORMAL_TESTS=true
 else
     SKIP_NORMAL_TESTS=false
+    SETUP_MODES=$(determine_setup_modes "$DIR")
 fi
 
 # Run tests for each setup mode (unless we're in synthetic vuln test mode)
