@@ -5,19 +5,15 @@ cd "$SCRIPT_DIR"
 
 echo "Cleaning up OpenVPN testing environment..."
 
-# Stop and remove Docker containers (preserves images and network for next phase)
+# Stop and remove Docker containers
 echo "Stopping Docker containers..."
-docker compose down -v 2>/dev/null || echo "No compose services to stop"
+timeout 30 docker compose down -v 2>/dev/null || echo "No compose services to stop"
 
 # Clean up generated files
 echo "Cleaning up generated files..."
 rm -rf client-configs/ logs/ output/ downloads/ || true
 rm -f secrets.json || true
 rm -rf /tmp/vuln_scenario_* || true
-
-# Remove Docker network (optional - may be used by other projects)
-echo "Removing Docker network..."
-docker network rm shared_net 2>/dev/null || echo "shared_net network not found or in use"
 
 # Uninstall app from emulator if connected
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/.android-sdk}"
