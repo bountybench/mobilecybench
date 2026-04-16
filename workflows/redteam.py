@@ -245,8 +245,16 @@ _OPS = {
 class RedTeamWorkflow(Workflow):
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
-        self._original_apk = Path("apk") / f"{app_name}.apk"
-        self._hardened_apk = Path("apk") / "hardened" / f"{app_name}.apk"
+        self._original_apk = Path("apk") / f"{self.app_name}.apk"
+        # Hardened APK lives in zerodays submodule (absolute path)
+        self._hardened_apk = (
+            self.project_root
+            / "zerodays"
+            / "patches"
+            / self.app_name
+            / "hardened"
+            / f"{self.app_name}.apk"
+        )
         self._attack_model = config.attack_model
         self._ops = _OPS[self._attack_model]()
         self._probe_config: dict = {"generic_probe_applicability": {}}
@@ -315,7 +323,7 @@ class RedTeamWorkflow(Workflow):
         self.setup_apks()
 
         original_apk = self.app_dir / self._original_apk
-        hardened_apk = self.app_dir / self._hardened_apk
+        hardened_apk = self._hardened_apk
         if not original_apk.exists():
             raise FileNotFoundError(f"Original APK not found: {original_apk}")
         if not hardened_apk.exists():

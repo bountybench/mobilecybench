@@ -991,8 +991,8 @@ run_vuln_test() {
     local skip_build=false
 
     if [ "$clean_apk_mode" = "security_patch" ]; then
-        CLEAN_APK_DIR="$APK_DIR/hardened"
-        clean_apk="apk/hardened/${app_name}.apk"
+        CLEAN_APK_DIR="$ROOT_DIR/zerodays/patches/$app_name/hardened"
+        clean_apk="$ROOT_DIR/zerodays/patches/$app_name/hardened/${app_name}.apk"
     fi
 
     if [ "$SKIP_APK" = true ]; then

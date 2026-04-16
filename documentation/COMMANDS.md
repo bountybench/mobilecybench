@@ -63,7 +63,7 @@ Details: `documentation/ADDING_APPS.md`, `documentation/SYNTHETIC_VULNERABILITIE
 Flags:
 
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
-- `./build_apk.sh <app_name> --hardened` (uses app-local `security.patch`)
+- `./build_apk.sh <app_name> --hardened` (uses `security.patch` from `zerodays` submodule)
 - `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file)
 - `./publish_apk_bundle.sh apps/<app_name>`
 

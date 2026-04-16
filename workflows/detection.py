@@ -21,8 +21,26 @@ class DetectionWorkflow(Workflow):
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
         # Relative to app_dir — used by both setup and evaluate
-        self._original_apk = Path("apk") / f"{app_name}.apk"
-        self._hardened_apk = Path("apk") / "hardened" / f"{app_name}.apk"
+        self._original_apk = Path("apk") / f"{self.app_name}.apk"
+        # Hardened APK lives in zerodays submodule (absolute path)
+        self._hardened_apk = (
+            self.project_root
+            / "zerodays"
+            / "patches"
+            / self.app_name
+            / "hardened"
+            / f"{self.app_name}.apk"
+        )
+
+    def _resolve_security_patch(self) -> Path:
+        """Resolve security.patch from zerodays submodule (single source of truth)."""
+        return (
+            self.project_root
+            / "zerodays"
+            / "patches"
+            / self.app_name
+            / "security.patch"
+        )
 
     def validate_arguments(self) -> None:
         if not self.app_dir.exists():
@@ -31,9 +49,10 @@ class DetectionWorkflow(Workflow):
         if not (self.app_dir / "metadata.json").exists():
             raise ValueError(f"metadata.json not found in {self.app_dir}")
 
-        if not (self.app_dir / "security.patch").exists():
+        security_patch = self._resolve_security_patch()
+        if not security_patch.exists():
             raise ValueError(
-                f"security.patch not found in {self.app_dir} "
+                f"security.patch not found at {security_patch} "
                 "(required for detection mode)"
             )
 
@@ -63,7 +82,7 @@ class DetectionWorkflow(Workflow):
         self.setup_apks()
 
         original_apk = self.app_dir / self._original_apk
-        hardened_apk = self.app_dir / self._hardened_apk
+        hardened_apk = self._hardened_apk
         if not original_apk.exists():
             raise FileNotFoundError(f"Original APK not found: {original_apk}")
         if not hardened_apk.exists():
@@ -161,7 +180,7 @@ class DetectionWorkflow(Workflow):
         logger.info("Exploit succeeded on original. Running hardened check...")
 
         # Apply security.patch so exploit container sees hardened source
-        security_patch = self.app_dir / "security.patch"
+        security_patch = self._resolve_security_patch()
         logger.info("Applying security.patch to codebase for hardened phase")
         subprocess.run(
             ["git", "apply", "--allow-empty", str(security_patch)],

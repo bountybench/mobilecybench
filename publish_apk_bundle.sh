@@ -3,6 +3,7 @@
 # Publish APK bundle to GitHub release.
 # Bundles everything under apk/ including subdirectories
 # (e.g. apk/hardened/ for detection mode, apk/vuln_0/ for exploit mode).
+# Any hardened APKs in the bundle are built will be from custom/explicit patches, not from zerodays
 #
 # Usage: ./publish_apk_bundle.sh apps/<app_name>
 

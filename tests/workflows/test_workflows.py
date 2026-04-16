@@ -175,7 +175,9 @@ class TestDetectionWorkflowEvaluation:
 
         app_dir.mkdir(parents=True)
         (app_dir / "codebase").mkdir()
-        (app_dir / "security.patch").write_text("")
+        zerodays_patch_dir = tmp_path / "zerodays" / "patches" / "test_app"
+        zerodays_patch_dir.mkdir(parents=True)
+        (zerodays_patch_dir / "security.patch").write_text("")
         agent_exploit_dir.mkdir(parents=True)
         exploit_runner.parent.mkdir(parents=True)
         (agent_exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0")

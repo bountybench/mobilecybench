@@ -30,12 +30,16 @@ echo "Using image: $IMAGE"
 echo "Args: $*"
 echo ""
 
-# Extract app name (first non-flag arg) for submodule init
+# Extract app name (first non-flag arg) and detect --hardened flag
 APP_NAME=""
+HARDENED=""
 for arg in "$@"; do
+    if [[ "$arg" == "--hardened" ]]; then
+        HARDENED=1
+        continue
+    fi
     [[ "$arg" == --* ]] && continue
-    APP_NAME="$arg"
-    break
+    [ -z "$APP_NAME" ] && APP_NAME="$arg"
 done
 
 if [ -z "$APP_NAME" ]; then
@@ -44,8 +48,11 @@ if [ -z "$APP_NAME" ]; then
     exit 1
 fi
 
-# Init submodule on host (needs git credentials, easier outside container)
+# Init submodules on host (needs git credentials, easier outside container)
 git submodule update --init "apps/$APP_NAME/codebase" 2>/dev/null || true
+if [ -n "$HARDENED" ]; then
+    git submodule update --init zerodays 2>/dev/null || true
+fi
 
 docker run --rm \
     -v "$PROJECT_ROOT:/mobilecybench" \
