@@ -112,6 +112,13 @@ CONVERSATION_LABEL="$(python3 -c "import json; print(json.load(open('$SYNTH_STAT
 ROOM_TOKEN="$(python3 -c "import json; print(json.load(open('$SYNTH_STATE_PATH'))['room_token'])")"
 python3 "$SEED_HELPER" --conversation-label "$CONVERSATION_LABEL" --room-token "$ROOM_TOKEN"
 
+log_info "Priming the room with a real online message so queued temp messages can flush later"
+PRIME_MESSAGE="synth-prime-$(python3 -c "import secrets; print(secrets.token_hex(8))")"
+python3 "$SEED_HELPER" \
+    --conversation-label "$CONVERSATION_LABEL" \
+    --room-token "$ROOM_TOKEN" \
+    --message "$PRIME_MESSAGE"
+
 log_info "Disabling network and creating a real queued message through the normal UI"
 SYNTH_MESSAGE="$(python3 -c "import json; print(json.load(open('$SYNTH_STATE_PATH'))['expected_message'])")"
 disable_network
