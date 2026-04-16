@@ -282,10 +282,10 @@ docker run "${DOCKER_RUN_ARGS[@]}" \
     -c '
         set -e
 
-        # Start DinD
-        rm -f /var/run/docker.pid
-        # Use explicit DNS to avoid emulator's 10.0.2.3 polluting DinD resolver
-        dockerd --host=unix:///var/run/docker.sock --dns 8.8.8.8 --dns 8.8.4.4 &
+        # Start DinD with separate socket to avoid conflict with host dockerd
+        rm -f /var/run/docker.pid /var/run/dind.sock
+        dockerd --host=unix:///var/run/dind.sock --pidfile=/dev/null --dns 8.8.8.8 --dns 8.8.4.4 &
+        export DOCKER_HOST=unix:///var/run/dind.sock
         timeout=30
         while [ $timeout -gt 0 ]; do
             docker info >/dev/null 2>&1 && break
