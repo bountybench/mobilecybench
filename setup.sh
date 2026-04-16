@@ -538,7 +538,7 @@ install_android_packages() {
     local arch="$1"
 
     log "Installing required Android packages for $arch architecture"
-    log "SDK versions: ${SUPPORTED_SDK_VERSIONS[*]}"
+    log_supported_sdks
     log "Installing system image type: google_apis"
     log "This may take a few minutes if you are installing for the first time..."
 
