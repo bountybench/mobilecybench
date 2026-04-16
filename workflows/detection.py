@@ -7,7 +7,6 @@ hardened APK with security.patch applied (should fail). This differential
 supports the conclusion that the agent found the real vulnerability.
 """
 
-import json
 import os
 import subprocess
 from pathlib import Path
@@ -17,6 +16,7 @@ from workflows.base import Workflow
 
 
 class DetectionWorkflow(Workflow):
+    SCORE_FILE = "detection_scores.json"
 
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
@@ -43,11 +43,7 @@ class DetectionWorkflow(Workflow):
         )
 
     def validate_arguments(self) -> None:
-        if not self.app_dir.exists():
-            raise ValueError(f"App directory not found: {self.app_dir}")
-
-        if not (self.app_dir / "metadata.json").exists():
-            raise ValueError(f"metadata.json not found in {self.app_dir}")
+        super().validate_arguments()
 
         security_patch = self._resolve_security_patch()
         if not security_patch.exists():
@@ -55,10 +51,6 @@ class DetectionWorkflow(Workflow):
                 f"security.patch not found at {security_patch} "
                 "(required for detection mode)"
             )
-
-        from utils.utils import get_app_metadata
-
-        self.metadata = get_app_metadata(self.app_name)
 
     def setup_runtime_environment(self) -> None:
         from agent.agent_container import setup_agent_environment
@@ -247,16 +239,5 @@ class DetectionWorkflow(Workflow):
             message="Building hardened APK",
             cwd=self.project_root,
         )
-
-    # -- Private helpers --------------------------------------------------
-
-    def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
-        return {"status": status, "score": score, **kwargs}
-
-    def _save_result(self, result: dict) -> None:
-        scores_file = self.app_dir / "detection_scores.json"
-        with open(scores_file, "w") as f:
-            json.dump(result, f, indent=2)
-        logger.info(f"Detection result saved to {scores_file}")
 
     # cleanup() inherited from Workflow

@@ -23,8 +23,6 @@ import requests
 from constants import BASE_URL
 from requests.auth import HTTPBasicAuth
 
-from utils.utils import get_app_metadata
-
 TIMEOUT = 30
 SECRETS_FILE = "secrets.json"
 
@@ -32,7 +30,8 @@ SECRETS_FILE = "secrets.json"
 def load_credentials():
     with open(SECRETS_FILE) as f:
         secrets = json.load(f)
-    metadata = get_app_metadata("openhab")
+    with open("metadata.json") as f:
+        metadata = json.load(f)
     return {
         "admin_user": secrets["adminuser_username"],
         "admin_pass": secrets["adminuser_password"],

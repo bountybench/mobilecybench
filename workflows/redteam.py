@@ -7,17 +7,15 @@ Supports two attack models via lightweight strategy objects:
 Both share: 2-phase pipeline, compute_redteam_score, probes, result schema.
 """
 
-import json
 import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from evaluation.scoring import compute_redteam_score
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
-
-SCORE_FILE = "redteam_scores.json"
 
 
 @dataclass
@@ -31,6 +29,24 @@ class PhaseResult:
 # =============================================================================
 # Attack model ops — strategy objects
 # =============================================================================
+
+
+class AttackModelOps(Protocol):
+    """Contract for attack model strategy objects."""
+
+    uses_generic_probes: bool
+
+    def check_artifact(self, exploit_dir: Path) -> tuple[bool, str]: ...
+    def run_phase(
+        self, workflow: "RedTeamWorkflow", phase_dir: Path, **kwargs
+    ) -> PhaseResult: ...
+    def setup_agent_extras(self, workflow: "RedTeamWorkflow") -> None: ...
+    def validate(self, workflow: "RedTeamWorkflow") -> None: ...
+    def probe_needs(self, applicability: dict) -> tuple[bool, bool]: ...
+    def probe_dir(self, app_dir: Path) -> Path: ...
+    def get_phase_kwargs(
+        self, exploit_dir: Path, target_apk: Path, **extra
+    ) -> dict: ...
 
 
 class MaliciousApkOps:
@@ -110,21 +126,21 @@ class MaliciousApkOps:
 
     uses_generic_probes = True
 
-    def probe_needs(self, enabled_probes: dict) -> tuple[bool, bool]:
-        """Return (needs_flags, needs_ssrf) based on enabled generic probes."""
-        FLAG_BASED_PROBES = {
+    def probe_needs(self, applicability: dict) -> tuple[bool, bool]:
+        """Return (needs_flags, needs_ssrf) from generic_probe_applicability."""
+        FLAG_PROBES = {
             "confidentiality.app_flag",
             "confidentiality.container_flag",
             "integrity.app_flag",
             "integrity.container_flag",
         }
-        needs_flags = bool(FLAG_BASED_PROBES & set(enabled_probes))
-        needs_ssrf = enabled_probes.get("access.ssrf_detected", False)
+        needs_flags = any(applicability.get(k) for k in FLAG_PROBES)
+        needs_ssrf = applicability.get("access.ssrf_detected", False)
         return needs_flags, needs_ssrf
 
-    def probe_dir(self, app_dir: Path) -> Path | None:
-        """Return None — malicious_apk uses the default app_dir for probes."""
-        return None
+    def probe_dir(self, app_dir: Path) -> Path:
+        """Malicious_apk probes live directly in the app directory."""
+        return app_dir
 
     def get_phase_kwargs(self, exploit_dir: Path, target_apk: Path, **extra) -> dict:
         """Build kwargs for run_phase."""
@@ -218,7 +234,11 @@ class AuthAttackerOps:
 
     uses_generic_probes = False
 
-    def probe_dir(self, app_dir: Path) -> Path | None:
+    def probe_needs(self, applicability: dict) -> tuple[bool, bool]:
+        """Auth attacker does not use generic probes."""
+        return False, False
+
+    def probe_dir(self, app_dir: Path) -> Path:
         """Auth attacker probes live in apps/<app>/auth_attacker/."""
         return app_dir / "auth_attacker"
 
@@ -243,6 +263,8 @@ _OPS = {
 
 
 class RedTeamWorkflow(Workflow):
+    SCORE_FILE = "redteam_scores.json"
+
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
         self._original_apk = Path("apk") / f"{self.app_name}.apk"
@@ -256,7 +278,7 @@ class RedTeamWorkflow(Workflow):
             / f"{self.app_name}.apk"
         )
         self._attack_model = config.attack_model
-        self._ops = _OPS[self._attack_model]()
+        self._ops: AttackModelOps = _OPS[self._attack_model]()
         self._probe_config: dict = {"generic_probe_applicability": {}}
 
     # ------------------------------------------------------------------
@@ -274,19 +296,12 @@ class RedTeamWorkflow(Workflow):
         )
 
     def validate_arguments(self) -> None:
-        if not self.app_dir.exists():
-            raise ValueError(f"App directory not found: {self.app_dir}")
-
-        if not (self.app_dir / "metadata.json").exists():
-            raise ValueError(f"metadata.json not found in {self.app_dir}")
+        super().validate_arguments()
 
         if not self._resolve_security_patch().exists():
             raise ValueError(
                 f"security.patch not found at zerodays/patches/{self.app_name}/"
             )
-
-        with open(self.app_dir / "metadata.json") as f:
-            self.metadata = json.load(f)
 
         if self._ops.uses_generic_probes:
             from evaluation.generic_probe_config import load_generic_probe_config
@@ -420,7 +435,7 @@ class RedTeamWorkflow(Workflow):
                 score=0,
                 reason=artifact_msg,
             )
-            self._save_result(result, SCORE_FILE)
+            self._save_result(result)
             return result
 
         # ---- Load probe config ----
@@ -430,10 +445,8 @@ class RedTeamWorkflow(Workflow):
         probe_config = self._probe_config
 
         if self._ops.uses_generic_probes:
-            from evaluation.generic_probe_config import get_enabled_probes
-
             needs_flags, needs_ssrf = self._ops.probe_needs(
-                get_enabled_probes(probe_config),
+                probe_config.get("generic_probe_applicability", {}),
             )
 
             if needs_flags:
@@ -506,7 +519,7 @@ class RedTeamWorkflow(Workflow):
                 phases={"phase1_original": {"exit_code": phase1_exit}},
                 detector_results={"phase1_original": detector_results_phase1},
             )
-            self._save_result(result, SCORE_FILE)
+            self._save_result(result)
             return result
 
         # ---- Phase 2: Patched app ----
@@ -553,7 +566,7 @@ class RedTeamWorkflow(Workflow):
                 score=0,
                 reason="Probe evaluator failed to produce valid JSON",
             )
-            self._save_result(result, SCORE_FILE)
+            self._save_result(result)
             return result
 
         probe_results_phase2 = normalize_probe_results(
@@ -617,7 +630,7 @@ class RedTeamWorkflow(Workflow):
             },
         )
 
-        self._save_result(result, SCORE_FILE)
+        self._save_result(result)
         return result
 
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:

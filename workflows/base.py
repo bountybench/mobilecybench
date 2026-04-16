@@ -39,10 +39,20 @@ class Workflow(ABC):
         self.agent = None
         self.agent_result: dict = {}
 
-    @abstractmethod
     def validate_arguments(self) -> None:
-        """Validate all arguments before starting the workflow."""
-        pass
+        """Validate common preconditions and load metadata.
+
+        Subclasses override to add workflow-specific checks, calling super() first.
+        """
+        if not self.app_dir.exists():
+            raise ValueError(f"App directory not found: {self.app_dir}")
+
+        metadata_path = self.app_dir / "metadata.json"
+        if not metadata_path.exists():
+            raise ValueError(f"metadata.json not found in {self.app_dir}")
+
+        with open(metadata_path, encoding="utf-8") as f:
+            self.metadata = json.load(f)
 
     @abstractmethod
     def setup_runtime_environment(self) -> None:
@@ -376,6 +386,7 @@ class Workflow(ABC):
             apk_path=apk_path,
             inject_flags=inject_flags,
             start_ssrf=start_ssrf,
+            container_names=self.metadata.get("container_names", []),
             build_command_timeout=self.config.build_command_timeout,
         )
 
@@ -526,11 +537,13 @@ class Workflow(ABC):
 
     # -- Shared evaluation helpers -----------------------------------------------
 
+    SCORE_FILE = "scores.json"
+
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
         return {"status": status, "score": score, "scores": {}, **kwargs}
 
-    def _save_result(self, result: dict, filename: str = "scores.json") -> None:
-        scores_file = self.app_dir / filename
+    def _save_result(self, result: dict) -> None:
+        scores_file = self.app_dir / self.SCORE_FILE
         with open(scores_file, "w") as f:
             json.dump(result, f, indent=2)
         logger.info(f"Result saved to {scores_file}")
@@ -567,18 +580,16 @@ class Workflow(ABC):
         app_scores_out: Path,
         generic_scores_out: Path,
         detector_scores_out: Path | None = None,
-        probe_dir: Path | None = None,
+        probe_dir: Path,
     ) -> bool:
         """Run run_checks.sh with explicit output paths. Returns True on success.
 
         Args:
             probe_dir: Directory containing probe scripts (test_*.py).
-                       Defaults to self.app_dir. Used by auth_attacker to point
-                       to apps/<app>/auth_attacker/.
             detector_scores_out: Where to write detector results (optional).
                        If not set, detectors still run but output to cwd.
         """
-        check_dir = probe_dir or self.app_dir
+        check_dir = probe_dir
 
         # Stage detectors from zerodays repo
         staged_detectors = self._stage_detectors(check_dir)
