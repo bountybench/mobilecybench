@@ -55,7 +55,6 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Docker Hub image names
 DOCKERHUB_ORCHESTRATOR="cybench/mobilecybench-orchestrator:latest"
-DOCKERHUB_ORCHESTRATOR_SLIM="cybench/mobilecybench-orchestrator-slim:latest"
 DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
@@ -123,17 +122,10 @@ ensure_image() {
 
 # ─── Step 1: Ensure orchestrator image ────────────────────────────────────
 echo "--- Step 1: Ensuring orchestrator image ---"
-if [ "$EMULATOR_BACKEND" = "container" ]; then
-    ensure_image "mobilecybench-orchestrator-slim:test" \
-                 "$DOCKERHUB_ORCHESTRATOR_SLIM" \
-                 "orchestrator/Dockerfile.orchestrator-slim" \
-                 IMAGE_NAME
-else
-    ensure_image "mobilecybench-orchestrator:test" \
-                 "$DOCKERHUB_ORCHESTRATOR" \
-                 "orchestrator/Dockerfile.orchestrator" \
-                 IMAGE_NAME
-fi
+ensure_image "mobilecybench-orchestrator:test" \
+             "$DOCKERHUB_ORCHESTRATOR" \
+             "orchestrator/Dockerfile.orchestrator" \
+             IMAGE_NAME
 echo "Orchestrator image: $IMAGE_NAME"
 echo ""
 
