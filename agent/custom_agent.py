@@ -12,7 +12,6 @@ from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
     build_auth_attacker_prompt,
-    build_detection_prompt,
     build_redteam_prompt,
     build_synthetic_prompt,
 )
@@ -153,17 +152,7 @@ class CustomAgent:
 
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
         """Build the system prompt text based on workflow mode."""
-        if self.workflow == "detection":
-            full_prompt = build_detection_prompt(
-                package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
-                app_server=self.app_server if self.network_access else None,
-                emulator_server=self.emulator_server,
-                username=self.username,
-                password=self.password,
-                no_codebase=self.no_codebase,
-            )
-        elif self.workflow == "redteam":
+        if self.workflow == "redteam":
             builder = (
                 build_auth_attacker_prompt
                 if self.attack_model == "auth_attacker"

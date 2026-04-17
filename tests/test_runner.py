@@ -10,10 +10,7 @@ from jsonschema import validate
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
 from utils.logger import logger_manager
-from workflows import (
-    DetectionWorkflow,
-    ExploitWorkflow,
-)
+from workflows import ExploitWorkflow
 
 
 def _load_run_summary_schema() -> dict:
@@ -68,14 +65,6 @@ class TestCreateWorkflow:
         workflow = create_workflow(exploit_config, "test_app", tmp_path)
         assert isinstance(workflow, ExploitWorkflow)
 
-    def test_creates_detection_workflow_when_configured(self, base_config, tmp_path):
-        """DetectionWorkflow is created when config.workflow == 'detection'."""
-        detection_config = RunnerConfig(
-            **{**base_config.model_dump(), "workflow": "detection"}
-        )
-        workflow = create_workflow(detection_config, "test_app", tmp_path)
-        assert isinstance(workflow, DetectionWorkflow)
-
     def test_creates_redteam_workflow_when_configured(self, base_config, tmp_path):
         """RedTeamWorkflow is created when config.workflow == 'redteam'."""
         from workflows import RedTeamWorkflow
@@ -90,17 +79,6 @@ class TestCreateWorkflow:
             **{**base_config.model_dump(), "workflow": "redteam", "gold_run": True}
         )
         assert config.gold_run is True
-
-    def test_gold_run_rejected_with_detection(self, base_config):
-        """gold_run=True is invalid with workflow='detection'."""
-        with pytest.raises(ValueError, match="gold_run"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "detection",
-                    "gold_run": True,
-                }
-            )
 
     def test_gold_report_implies_gold_run(self, base_config):
         """Setting gold_report auto-enables gold_run."""

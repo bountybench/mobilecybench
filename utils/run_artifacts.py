@@ -173,9 +173,8 @@ def _existing_path(path_value: Optional[str]) -> Optional[str]:
 
 # Maps artifact key → filename, and which workflows produce each file.
 _SCORE_FILES: dict[str, tuple[str, set[str]]] = {
-    "scores_json": ("scores.json", {"exploit", "detection"}),
+    "scores_json": ("scores.json", {"exploit"}),
     "synthetic_scores_json": ("synthetic_scores.json", {"exploit"}),
-    "detection_scores_json": ("detection_scores.json", {"detection"}),
     "redteam_scores_json": ("redteam_scores.json", {"redteam"}),
 }
 

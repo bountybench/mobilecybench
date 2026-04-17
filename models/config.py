@@ -17,7 +17,7 @@ class RunnerConfig(BaseModel):
     adb_access: Literal["none", "limited", "full"]
 
     # workflow type
-    workflow: Literal["exploit", "detection", "redteam"] = "exploit"
+    workflow: Literal["exploit", "redteam"] = "exploit"
     attack_model: Literal["malicious_apk", "auth_attacker"] = "malicious_apk"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
     # When True, the agent receives only the APK (no codebase).

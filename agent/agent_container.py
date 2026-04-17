@@ -896,7 +896,7 @@ def setup_agent_environment(
         app_dir: Application directory
         agent_image: Docker image to use for agent
         metadata: App metadata dict
-        workflow: Evaluation workflow type ("exploit" or "detection")
+        workflow: Evaluation workflow type ("exploit" or "redteam")
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
         no_codebase: Whether to copy the built APK into the agent environment
