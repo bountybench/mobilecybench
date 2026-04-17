@@ -118,6 +118,30 @@ def test_source_validation_rejects_mixed_exploit_artifacts(tmp_path: Path) -> No
     assert "must not mix exploit_files/exploit.sh" in (result.stderr + result.stdout)
 
 
+def test_source_validation_rejects_conflicting_attack_model_fields(
+    tmp_path: Path,
+) -> None:
+    task_dir = tmp_path / "task"
+    metadata = _base_metadata(attack_model="malicious_apk")
+    metadata["attacker_model"] = "auth_attacker"
+    _write_task_metadata(task_dir, metadata)
+    _write(
+        task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
+        "<manifest/>\n",
+    )
+    _write(
+        task_dir / "exploit_files" / "exploit_apk" / "src" / "Exploit.java",
+        "class Exploit {}\n",
+    )
+
+    result = _run_bash(
+        f'source "$ROOT_DIR/scripts/zero_day_task_common.sh"\nzero_day_task_validate_source_dir "{task_dir}"'
+    )
+
+    assert result.returncode != 0
+    assert "conflicting attack_model" in (result.stderr + result.stdout)
+
+
 def test_source_validation_rejects_apk_task_without_java_sources(
     tmp_path: Path,
 ) -> None:

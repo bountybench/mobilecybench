@@ -58,6 +58,26 @@ zero_day_task_infer_attack_model() {
     fi
 }
 
+zero_day_task_validate_attack_model_fields() {
+    local metadata_file="$1"
+    local canonical_raw=""
+    local legacy_raw=""
+
+    canonical_raw="$(jq -r '.attack_model // empty' "$metadata_file")"
+    legacy_raw="$(jq -r '.attacker_model // empty' "$metadata_file")"
+
+    if [ -n "$canonical_raw" ] && [ -n "$legacy_raw" ]; then
+        local canonical_norm=""
+        local legacy_norm=""
+        canonical_norm="$(zero_day_task_normalize_attack_model "$canonical_raw")"
+        legacy_norm="$(zero_day_task_normalize_attack_model "$legacy_raw")"
+        if [ "$canonical_norm" != "$legacy_norm" ]; then
+            _task_validation_log ERROR "metadata.json sets conflicting attack_model ($canonical_raw) and attacker_model ($legacy_raw)"
+            return 1
+        fi
+    fi
+}
+
 zero_day_task_validate_apk_project() {
     local task_dir="$1"
     local apk_dir=""
@@ -129,6 +149,7 @@ PY
 
 zero_day_task_validate_source_dir() {
     local task_dir="$1"
+    zero_day_task_validate_attack_model_fields "$task_dir/metadata.json" || return 1
     local req_file
     for req_file in "metadata.json" "fix.patch" "verify_files/verify_exploit.sh"; do
         if [ ! -f "$task_dir/$req_file" ]; then
@@ -197,6 +218,7 @@ zero_day_task_resolve_metadata() {
 
     ZERO_DAY_TASK_METADATA="$task_dir/metadata.json"
     zero_day_task_validate_metadata_schema_if_present "$ZERO_DAY_TASK_METADATA" || return 1
+    zero_day_task_validate_attack_model_fields "$ZERO_DAY_TASK_METADATA" || return 1
     local raw_attack_model=""
     raw_attack_model="$(zero_day_task_read_attack_model_raw "$ZERO_DAY_TASK_METADATA")"
     ZERO_DAY_ATTACK_MODEL="$(zero_day_task_normalize_attack_model "$raw_attack_model")"
