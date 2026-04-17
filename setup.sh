@@ -14,7 +14,6 @@ if [[ -n "$MOBILECYBENCH_SESSION_ID" ]]; then
 fi
 
 ANDROID_HOME="${HOME}/.android-sdk"
-EMULATOR_NAME="MobileCybenchEmu"
 
 # Detect Python command using utility script
 PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
@@ -22,6 +21,7 @@ PYTHON=$("${SCRIPT_DIR}/utils/detect_python.sh") || exit 1
 # Default SDK version and system image
 DEFAULT_SDK_VERSION=35
 DEFAULT_SYSTEM_IMAGE="google_apis"
+SUPPORTED_SDK_VERSIONS=(33 34 35)
 
 # Load app metadata if app name provided
 load_app_metadata() {
@@ -146,24 +146,6 @@ else
     # Standard flag parsing mode
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --sdk)
-                SDK_VERSION="$2"
-                warn_old_sdk_version "$SDK_VERSION"
-                shift 2
-                ;;
-            --sdk=*)
-                SDK_VERSION="${1#*=}"
-                warn_old_sdk_version "$SDK_VERSION"
-                shift
-                ;;
-            --system-image)
-                SYSTEM_IMAGE_TYPE="$2"
-                shift 2
-                ;;
-            --system-image=*)
-                SYSTEM_IMAGE_TYPE="${1#*=}"
-                shift
-                ;;
             --init-submodules)
                 if [[ -n "$2" && "$2" != -* ]]; then
                     INIT_SUBMODULE_APP="$2"
@@ -180,7 +162,7 @@ else
             -h|--help)
                 echo "Usage: $0"
                 echo "   or: $0 APP_NAME"
-                echo "   or: $0 [--sdk SDK_VERSION] [--system-image SYSTEM_IMAGE_TYPE] [--init-submodules [app_name]]"
+                echo "   or: $0 [--init-submodules [app_name]]"
                 echo ""
                 echo "Mode 1: Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
                 echo "Mode 2: Auto-configure from app metadata (Recommended)"
@@ -188,8 +170,6 @@ else
                 echo ""
                 echo "Arguments:"
                 echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
-                echo "  --sdk SDK_VERSION              Android SDK version (default: $DEFAULT_SDK_VERSION)"
-                echo "  --system-image SYSTEM_IMAGE    System image type (default: $DEFAULT_SYSTEM_IMAGE)"
                 echo "  --init-submodules [app_name]   Initialize submodules (optionally only for one app)"
                 echo "  -h, --help                     Show this help message"
                 echo ""
@@ -246,6 +226,11 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
+# Logging function that takes into account all supported SDK Versions
+log_supported_sdks() {
+    local label="${1:-SDK versions}"
+    log "${label}: ${SUPPORTED_SDK_VERSIONS[*]}"
+}
 # Error handling
 error_exit() {
     log "ERROR: $1"
@@ -536,6 +521,7 @@ setup_environment() {
 get_system_image() {
     local arch="$1"
     local image_type="$2"
+    local sdk_v="$3"
     
     local arch_suffix
     if [[ "$arch" == "arm64" ]]; then
@@ -544,18 +530,16 @@ get_system_image() {
         arch_suffix="x86_64"
     fi
     
-    echo "system-images;android-${SDK_VERSION};${image_type};${arch_suffix}"
+    echo "system-images;android-${sdk_v};${image_type};${arch_suffix}"
 }
 
 # Install required Android packages
 install_android_packages() {
     local arch="$1"
-    local system_image_google_apis=$(get_system_image "$arch" "google_apis")
-    local system_image_playstore=$(get_system_image "$arch" "google_apis_playstore")
 
     log "Installing required Android packages for $arch architecture"
-    log "SDK version: $SDK_VERSION"
-    log "Installing BOTH system image types: google_apis and google_apis_playstore"
+    log_supported_sdks
+    log "Installing system image type: google_apis"
     log "This may take a few minutes if you are installing for the first time..."
 
     local sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -570,26 +554,24 @@ install_android_packages() {
     # Accept licenses
     yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
 
-    # Install essential packages including BOTH system images
-    "$sdkmanager" \
-        "platform-tools" \
-        "emulator" \
-        "platforms;android-${SDK_VERSION}" \
-        "$system_image_google_apis" \
-        "$system_image_playstore" \
-        >/dev/null
+    # Install essential packages using SDKManager for all supported versions
+    local packages=("platform-tools" "emulator")
+    for sdk_v in "${SUPPORTED_SDK_VERSIONS[@]}"; do
+        packages+=("platforms;android-${sdk_v}")
+        packages+=("$(get_system_image "$arch" "google_apis" "$sdk_v")")
+    done
 
-    log "Android packages installed successfully (both google_apis and google_apis_playstore)"
+    "$sdkmanager" "${packages[@]}" >/dev/null
+
+    log "Android packages installed successfully (both google_apis)"
 }
 
 # Create Android Virtual Device
 create_avd() {
     local arch="$1"
-    local system_image_google_apis=$(get_system_image "$arch" "google_apis")
-    local system_image_playstore=$(get_system_image "$arch" "google_apis_playstore")
 
-    log "Creating Android Virtual Devices for SDK $SDK_VERSION ($arch architecture)"
-    log "Will create BOTH: google_apis (rootable) and google_apis_playstore (non-rootable)"
+    log_supported_sdks "Creating Android Virtual Devices for SDK"
+    log "Will create google_apis AVD for all SDK versions (rootable)"
 
     local avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 
@@ -600,52 +582,32 @@ create_avd() {
         }
     fi
 
-    # Create google_apis AVD (rootable)
-    local avd_name_google_apis="MobileCybenchEmulatorAPI${SDK_VERSION}_google_apis"
-    log "Creating AVD: $avd_name_google_apis"
-    echo "no" | "$avdmanager" create avd \
-        -n "$avd_name_google_apis" \
-        -k "$system_image_google_apis" \
-        -d "pixel_2" \
-        --force >/dev/null
-
-    local avd_config="$HOME/.android/avd/${avd_name_google_apis}.avd/config.ini"
-    if [[ -f "$avd_config" ]]; then
-        {
-            echo "hw.ramSize=2048"
-            echo "hw.gpu.enabled=yes"
-            echo "hw.gpu.mode=host"
-            echo "hw.keyboard=yes"
-            echo "showDeviceFrame=no"
-            echo "skin.dynamic=yes"
-        } >> "$avd_config"
-    fi
-
-    # Create google_apis_playstore AVD (non-rootable)
-    local avd_name_playstore="MobileCybenchEmulatorAPI${SDK_VERSION}_google_apis_playstore"
-    log "Creating AVD: $avd_name_playstore"
-    echo "no" | "$avdmanager" create avd \
-        -n "$avd_name_playstore" \
-        -k "$system_image_playstore" \
-        -d "pixel_2" \
-        --force >/dev/null
-
-    # Configure playstore AVD
-    local avd_config_playstore="$HOME/.android/avd/${avd_name_playstore}.avd/config.ini"
-    if [[ -f "$avd_config_playstore" ]]; then
-        {
-            echo "hw.ramSize=2048"
-            echo "hw.gpu.enabled=yes"
-            echo "hw.gpu.mode=host"
-            echo "hw.keyboard=yes"
-            echo "showDeviceFrame=no"
-            echo "skin.dynamic=yes"
-        } >> "$avd_config_playstore"
-    fi
-
-    log "Android Virtual Devices created successfully:"
-    log "  - $avd_name_google_apis (rootable with 'adb root')"
-    log "  - $avd_name_playstore (non-rootable, production-like)"
+    for sdk_v in "${SUPPORTED_SDK_VERSIONS[@]}"; do
+        local system_image
+        system_image=$(get_system_image "$arch" "google_apis" "$sdk_v")
+        local avd_name="MobileCybenchEmulatorAPI${sdk_v}_google_apis"
+ 
+        log "Creating AVD: $avd_name"
+        echo "no" | "$avdmanager" create avd \
+            -n "$avd_name" \
+            -k "$system_image" \
+            -d "pixel_2" \
+            --force >/dev/null
+ 
+        local avd_config="$HOME/.android/avd/${avd_name}.avd/config.ini"
+        if [[ -f "$avd_config" ]]; then
+            {
+                echo "hw.ramSize=2048"
+                echo "hw.gpu.enabled=yes"
+                echo "hw.gpu.mode=host"
+                echo "hw.keyboard=yes"
+                echo "showDeviceFrame=no"
+                echo "skin.dynamic=yes"
+            } >> "$avd_config"
+        fi
+ 
+        log "  - $avd_name created (rootable with 'adb root')"
+    done
 }
 
 # Main setup function
@@ -653,9 +615,8 @@ main() {
     pip install -e .
 
     log "Starting Android Emulator Setup"
-    log "SDK version: $SDK_VERSION"
+    log_supported_sdks "This script will install & prepare an emulator for the following Android SDK Versions"
     log "System image type: $SYSTEM_IMAGE_TYPE"
-    log "This script will install Android SDK and create an emulator"
     
     # Detect operating system and architecture
     local os=$(detect_os)
@@ -702,11 +663,13 @@ main() {
     echo "======================================================================"
     echo ""
     echo "Created AVDs:"
-    echo "  1. MobileCybenchEmulatorAPI${SDK_VERSION}_google_apis"
+    echo "  1. MobileCybenchEmulatorAPI33_google_apis"
+    echo "     - Rootable with 'adb root' (for security testing)"
+    echo "  2. MobileCybenchEmulatorAPI34_google_apis"
+    echo "     - Rootable with 'adb root' (for security testing)"
+    echo "  3. MobileCybenchEmulatorAPI35_google_apis"
     echo "     - Rootable with 'adb root' (for security testing)"
     echo ""
-    echo "  2. MobileCybenchEmulatorAPI${SDK_VERSION}_google_apis_playstore"
-    echo "     - Non-rootable (production-like environment)"
     echo ""
     if [[ "$APP_NAME" == "deltachat-android" ]]; then
         echo "  Note: ARM64 architecture (required for DeltaChat)"
@@ -715,17 +678,14 @@ main() {
     fi
     echo ""
     echo "Quick Start:"
-    echo "  ./start_emulator.sh ${SDK_VERSION}              # Start SDK ${SDK_VERSION} emulator (waits for boot)"
+    echo "  ./start_emulator.sh 33              # Start SDK 33 emulator (waits for boot)"
+    echo "  ./start_emulator.sh 34              # Start SDK 34 emulator (waits for boot)"
+    echo "  ./start_emulator.sh 35              # Start SDK 35 emulator (waits for boot)"
     echo "  ./check_device.sh                    # Check device status"
     echo "  ./stop_emulator.sh                   # Stop all emulators"
     echo ""
     echo "Note: You may need to restart your terminal or run:"
     echo "  source ~/.bashrc  (or ~/.zshrc)"
-
-    # notes on SDK versions
-    echo ""
-    echo -e "\033[33mNote: Setup installed SDK $SDK_VERSION. To use a different SDK:\033[0m"
-    echo -e "\033[33m  ./setup.sh --sdk <sdk_version>\033[0m"
 }
 
 # Run main function
