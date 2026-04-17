@@ -233,6 +233,90 @@ task_validation_copy_phase_artifacts() {
     fi
 }
 
+task_validation_run_prepare_victim_hook() {
+    local log_file="${1:-}"
+    local prepare_victim_hook="$TASK_VALIDATION_APP_DIR/prepare_victim.sh"
+
+    if [ ! -f "$prepare_victim_hook" ]; then
+        _task_validation_log INFO "No prepare_victim.sh found — skipping victim setup"
+        return 0
+    fi
+
+    echo -e "${INFO} Running prepare_victim.sh..."
+    if [ -n "$log_file" ]; then
+        if ! (
+            cd "$TASK_VALIDATION_APP_DIR" && \
+            env "${TASK_RUNTIME_ENV[@]}" timeout 300 bash "$prepare_victim_hook" >"$log_file" 2>&1
+        ); then
+            cat "$log_file" >&2 || true
+            echo -e "${ERROR} prepare_victim.sh failed or timed out"
+            return 1
+        fi
+        cat "$log_file" || true
+    else
+        if ! (
+            cd "$TASK_VALIDATION_APP_DIR" && \
+            env "${TASK_RUNTIME_ENV[@]}" timeout 300 bash "$prepare_victim_hook"
+        ); then
+            echo -e "${ERROR} prepare_victim.sh failed or timed out"
+            return 1
+        fi
+    fi
+
+    echo -e "${SUCCESS} prepare_victim.sh completed"
+}
+
+task_validation_clear_package_data() {
+    local package_name="$1"
+    local log_file="${2:-}"
+
+    [ -n "$package_name" ] || return 0
+
+    _task_validation_log INFO "Clearing app data (pm clear $package_name)"
+    if [ -n "$log_file" ]; then
+        if ! adb shell pm clear "$package_name" >"$log_file" 2>&1; then
+            cat "$log_file" >&2 || true
+            _task_validation_log ERROR "pm clear failed for $package_name"
+            return 1
+        fi
+        cat "$log_file" || true
+        return 0
+    fi
+
+    if ! adb shell pm clear "$package_name"; then
+        _task_validation_log ERROR "pm clear failed for $package_name"
+        return 1
+    fi
+}
+
+task_validation_run_attack_model_setup_before_exploit() {
+    local victim_log="${1:-}"
+
+    case "$TASK_VALIDATION_ATTACK_MODEL" in
+        malicious_apk|malicious_app)
+            task_validation_run_prepare_victim_hook "$victim_log"
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+task_validation_run_attack_model_setup_after_exploit() {
+    local clear_log="${1:-}"
+    local victim_log="${2:-}"
+
+    case "$TASK_VALIDATION_ATTACK_MODEL" in
+        auth_attacker)
+            task_validation_clear_package_data "$TASK_VALIDATION_PACKAGE_NAME" "$clear_log" || return 1
+            task_validation_run_prepare_victim_hook "$victim_log"
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
 task_validation_run_phase() {
     local phase_name="$1"
     local phase_slug="$2"
@@ -250,14 +334,18 @@ task_validation_run_phase() {
 
     local phase_logs=""
     local prepare_log=""
+    local victim_log=""
     local exploit_log=""
+    local clear_log=""
     local verify_log=""
     if [ -n "$TASK_VALIDATION_LOG_ROOT" ]; then
         phase_logs="$TASK_VALIDATION_LOG_ROOT/$phase_slug"
         rm -rf "$phase_logs"
         mkdir -p "$phase_logs"
         prepare_log="$phase_logs/prepare.log"
+        victim_log="$phase_logs/prepare_victim.log"
         exploit_log="$phase_logs/exploit.log"
+        clear_log="$phase_logs/pm_clear.log"
         verify_log="$phase_logs/verify.log"
     fi
 
@@ -313,11 +401,21 @@ task_validation_run_phase() {
         return 1
     fi
 
+    if ! task_validation_run_attack_model_setup_before_exploit "$victim_log"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
+    fi
+
     if ! task_runtime_run_exploit \
         "$TASK_VALIDATION_ROOT_DIR" \
         "$TASK_VALIDATION_CODEBASE_DIR" \
         "$exploit_log"; then
         _task_validation_log WARNING "Exploit returned non-zero (may be expected)"
+    fi
+
+    if ! task_validation_run_attack_model_setup_after_exploit "$clear_log" "$victim_log"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
     fi
 
     task_runtime_run_verifier "$verify_log"

@@ -19,10 +19,15 @@
       "minLength": 1,
       "description": "Short task title"
     },
+    "attack_model": {
+      "type": "string",
+      "enum": ["malicious_apk", "auth_attacker", "malicious_app"],
+      "description": "Optional canonical attack-model selector. malicious_app is accepted as a legacy alias for malicious_apk."
+    },
     "attacker_model": {
       "type": "string",
       "enum": ["malicious_apk", "auth_attacker", "malicious_app"],
-      "description": "Optional attack-model selector. malicious_app is accepted as a legacy alias for malicious_apk."
+      "description": "Deprecated alias for attack_model. malicious_app is accepted as a legacy alias for malicious_apk."
     },
     "baseline": {
       "type": "object",
@@ -66,5 +71,13 @@
     "task_id",
     "title",
     "baseline"
+  ],
+  "anyOf": [
+    {
+      "required": ["attack_model"]
+    },
+    {
+      "required": ["attacker_model"]
+    }
   ]
 }

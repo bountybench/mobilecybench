@@ -25,9 +25,37 @@ ZERO_DAY_BASELINE_COMMIT=""
 ZERO_DAY_SECURE_PATCH_ABS=""
 ZERO_DAY_ATTACK_MODEL=""
 
+zero_day_task_read_attack_model_raw() {
+    local metadata_file="$1"
+    jq -r '.attack_model // .attacker_model // empty' "$metadata_file"
+}
+
+zero_day_task_normalize_attack_model() {
+    local attack_model="$1"
+    case "$attack_model" in
+        malicious_app)
+            echo "malicious_apk"
+            ;;
+        *)
+            echo "$attack_model"
+            ;;
+    esac
+}
+
 zero_day_task_read_attack_model() {
     local metadata_file="$1"
-    jq -r '.attacker_model // .attack_model // empty' "$metadata_file"
+    zero_day_task_normalize_attack_model "$(zero_day_task_read_attack_model_raw "$metadata_file")"
+}
+
+zero_day_task_infer_attack_model() {
+    local task_dir="$1"
+    if [ -f "$task_dir/exploit_files/exploit.sh" ]; then
+        echo "auth_attacker"
+    elif [ -d "$task_dir/exploit_files/exploit_apk" ] || [ -d "$task_dir/exploit_files/attacker_app" ]; then
+        echo "malicious_apk"
+    else
+        echo ""
+    fi
 }
 
 zero_day_task_validate_apk_project() {
@@ -109,11 +137,27 @@ zero_day_task_validate_source_dir() {
         fi
     done
 
+    local raw_attack_model=""
     local attack_model=""
-    attack_model="$(zero_day_task_read_attack_model "$task_dir/metadata.json")"
+    raw_attack_model="$(zero_day_task_read_attack_model_raw "$task_dir/metadata.json")"
+    attack_model="$(zero_day_task_normalize_attack_model "$raw_attack_model")"
+
+    local has_exploit_sh=false
+    local has_exploit_apk=false
+    if [ -f "$task_dir/exploit_files/exploit.sh" ]; then
+        has_exploit_sh=true
+    fi
+    if [ -d "$task_dir/exploit_files/exploit_apk" ] || [ -d "$task_dir/exploit_files/attacker_app" ]; then
+        has_exploit_apk=true
+    fi
+
+    if [ "$has_exploit_sh" = true ] && [ "$has_exploit_apk" = true ]; then
+        _task_validation_log ERROR "Task must not mix exploit_files/exploit.sh with an APK exploit directory; choose exactly one exploit format"
+        return 1
+    fi
 
     case "$attack_model" in
-        malicious_apk|malicious_app)
+        malicious_apk)
             zero_day_task_validate_apk_project "$task_dir" || return 1
             ;;
         auth_attacker)
@@ -122,16 +166,20 @@ zero_day_task_validate_source_dir() {
                 return 1
             fi
             ;;
-        *)
-            if [ -f "$task_dir/exploit_files/exploit.sh" ]; then
+        "")
+            if [ "$has_exploit_sh" = true ]; then
                 :
-            elif [ -d "$task_dir/exploit_files/exploit_apk" ] || [ -d "$task_dir/exploit_files/attacker_app" ]; then
+            elif [ "$has_exploit_apk" = true ]; then
                 zero_day_task_validate_apk_project "$task_dir" || return 1
             else
                 _task_validation_log ERROR "Task must contain either exploit_files/exploit.sh or an exploit APK directory (exploit_apk/ or attacker_app/)"
                 return 1
             fi
             ;;
+        *)
+            _task_validation_log ERROR "Unknown attack_model in metadata.json: $raw_attack_model"
+            return 1
+        ;;
     esac
 
     if find "$task_dir" -type d \( -name 'agent_output' -o -name '__pycache__' -o -name '.pytest_cache' -o -name 'build' -o -name 'dist' \) -print -quit | grep -q .; then
@@ -149,14 +197,30 @@ zero_day_task_resolve_metadata() {
 
     ZERO_DAY_TASK_METADATA="$task_dir/metadata.json"
     zero_day_task_validate_metadata_schema_if_present "$ZERO_DAY_TASK_METADATA" || return 1
-    ZERO_DAY_ATTACK_MODEL="$(zero_day_task_read_attack_model "$ZERO_DAY_TASK_METADATA")"
-    if [ "$ZERO_DAY_ATTACK_MODEL" = "malicious_app" ]; then
-        _task_validation_log WARNING "metadata.json uses legacy attacker_model=malicious_app; prefer malicious_apk"
-        ZERO_DAY_ATTACK_MODEL="malicious_apk"
+    local raw_attack_model=""
+    raw_attack_model="$(zero_day_task_read_attack_model_raw "$ZERO_DAY_TASK_METADATA")"
+    ZERO_DAY_ATTACK_MODEL="$(zero_day_task_normalize_attack_model "$raw_attack_model")"
+
+    if jq -e '.attacker_model? != null and (.attack_model? == null)' "$ZERO_DAY_TASK_METADATA" >/dev/null 2>&1; then
+        _task_validation_log WARNING "metadata.json uses legacy attacker_model; prefer attack_model"
+    fi
+    if [ "$raw_attack_model" = "malicious_app" ]; then
+        _task_validation_log WARNING "metadata.json uses legacy attack_model=malicious_app; prefer malicious_apk"
     fi
 
     if ! jq -e '.schema_version' "$ZERO_DAY_TASK_METADATA" >/dev/null 2>&1; then
         _task_validation_log WARNING "Task metadata has no schema_version; using older-field compatibility"
+    fi
+
+    if [ -z "$ZERO_DAY_ATTACK_MODEL" ]; then
+        ZERO_DAY_ATTACK_MODEL="$(zero_day_task_infer_attack_model "$task_dir")"
+        if [ -n "$ZERO_DAY_ATTACK_MODEL" ]; then
+            _task_validation_log WARNING "metadata.json has no attack_model; inferred $ZERO_DAY_ATTACK_MODEL from exploit_files/"
+        fi
+    fi
+    if [ -z "$ZERO_DAY_ATTACK_MODEL" ]; then
+        _task_validation_log ERROR "Could not resolve attack_model from metadata.json or exploit_files/"
+        return 1
     fi
 
     ZERO_DAY_TASK_ID="$(jq -r '.task_id // .task_slug // empty' "$ZERO_DAY_TASK_METADATA")"
@@ -276,6 +340,7 @@ zero_day_task_run_validation() {
     _task_validation_log INFO "Task id:         $ZERO_DAY_TASK_ID"
     _task_validation_log INFO "Package:         $ZERO_DAY_PACKAGE_NAME"
     _task_validation_log INFO "Baseline commit: $ZERO_DAY_BASELINE_COMMIT"
+    _task_validation_log INFO "Attack model:    $ZERO_DAY_ATTACK_MODEL"
     _task_validation_log INFO "Android serial:  ${ANDROID_SERIAL}"
     if [ ${#ZERO_DAY_BUILD_ENV_ARGS[@]} -gt 0 ]; then
         _task_validation_log INFO "Build env:       ${ZERO_DAY_BUILD_ENV_ARGS[*]}"

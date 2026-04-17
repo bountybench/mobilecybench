@@ -48,6 +48,7 @@ The validator only reads a small execution-focused subset of fields:
 | `schema_version` | Version marker for the documented zero-day metadata shape |
 | `task_id` | Stable task identifier |
 | `title` | Human-readable task name |
+| `attack_model` | Which exploit format and replay model the task uses |
 | `baseline.commit` | The vulnerable source revision to build from |
 | `build.env` | Optional task-specific build env vars |
 | `runtime.package_name` | Optional package-name override |
@@ -63,6 +64,7 @@ classification or disclosure fields if a task owner wants them.
   "schema_version": 1,
   "task_id": "location_spoofing",
   "title": "Location spoofing via exported receiver",
+  "attack_model": "malicious_apk",
   "baseline": {
     "commit": "23766ac"
   },
@@ -76,6 +78,35 @@ classification or disclosure fields if a task owner wants them.
   }
 }
 ```
+
+Legacy compatibility:
+- `attacker_model` is accepted as a deprecated alias for `attack_model`
+- `malicious_app` is accepted as a deprecated alias for `malicious_apk`
+
+## Attack models
+
+Zero-day tasks support two replay models:
+
+| `attack_model` | Exploit artifact | What it represents |
+|---|---|---|
+| `malicious_apk` | `exploit_files/exploit_apk/` | Unprivileged app on the victim device |
+| `auth_attacker` | `exploit_files/exploit.sh` | Authenticated low-privilege user acting from a separate device/session |
+
+The validator uses the same high-level attacker split as the red-team
+workflow:
+
+- **`malicious_apk`**: install target APK → run `prepare_app.sh` if present →
+  run app-level `prepare_victim.sh` if present → replay the exploit APK on the
+  same emulator → run `verify_exploit.sh`
+- **`auth_attacker`**: install target APK → run `prepare_app.sh` if present →
+  replay `exploit.sh` in the exploit container → `adb shell pm clear
+  <package>` to wipe app-local state → run app-level `prepare_victim.sh` if
+  present → run `verify_exploit.sh`
+
+The optional app-level `prepare_victim.sh` hook lives under `apps/<app>/` and
+is owned by the app integration, not by the task bundle. Zero-day validation
+reuses it when present so task replay matches the intended victim-session
+timing for each attack model.
 
 ## Building and validating
 
