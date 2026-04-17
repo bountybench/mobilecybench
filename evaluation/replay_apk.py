@@ -230,7 +230,7 @@ def replay_malicious_apk(
     *,
     logs_dir: Path | None = None,
 ) -> ReplayResult:
-    """Full replay: build → install → run → collect evidence → uninstall.
+    """Full replay: build → install → run → collect evidence.
 
     Args:
         apk_project_dir: Path to the APK project (contains build_exploit_apk.sh)
@@ -243,7 +243,7 @@ def replay_malicious_apk(
     phase_dir.mkdir(parents=True, exist_ok=True)
 
     # Step 1: Build
-    logger.info("[replay] Step 1/5: Building exploit APK...")
+    logger.info("[replay] Step 1/4: Building exploit APK...")
     apk_path = build_apk(apk_project_dir)
     build_stdout = (
         (apk_project_dir / "dist" / "build.log").read_text()
@@ -251,34 +251,33 @@ def replay_malicious_apk(
         else ""
     )
     (phase_dir / "build_stdout.txt").write_text(build_stdout)
-    logger.info(f"[replay] Step 1/5: Build OK → {apk_path.name}")
+    logger.info(f"[replay] Step 1/4: Build OK → {apk_path.name}")
 
     # Step 2: Install (uninstalls first for clean state)
-    logger.info("[replay] Step 2/5: Installing exploit APK...")
+    logger.info("[replay] Step 2/4: Installing exploit APK...")
     install_apk(apk_path)
-    logger.info("[replay] Step 2/5: Install OK")
+    logger.info("[replay] Step 2/4: Install OK")
 
     # Step 3: Run instrumentation
-    logger.info(f"[replay] Step 3/5: Running am instrument (timeout={timeout}s)...")
+    logger.info(f"[replay] Step 3/4: Running am instrument (timeout={timeout}s)...")
     exit_code, instrument_stdout = run_instrument(timeout=timeout)
     status_str = "SUCCEEDED" if exit_code == 0 else "FAILED"
     logger.info(
-        f"[replay] Step 3/5: am instrument {status_str} (exit_code={exit_code})"
+        f"[replay] Step 3/4: am instrument {status_str} (exit_code={exit_code})"
     )
     if instrument_stdout:
         for line in instrument_stdout.strip().splitlines():
             logger.info(f"[replay]   {line}")
 
     # Step 4: Collect evidence
-    logger.info("[replay] Step 4/5: Collecting evidence (logcat, files)...")
+    logger.info("[replay] Step 4/4: Collecting evidence (logcat, files)...")
     evidence = collect_evidence(phase_dir, instrument_stdout)
     evidence_log = assemble_evidence_log(evidence, phase_dir, logs_dir=logs_dir)
-    logger.info(f"[replay] Step 4/5: Evidence saved to {evidence_log}")
+    logger.info(f"[replay] Step 4/4: Evidence saved to {evidence_log}")
 
-    # Step 5: Uninstall (clean state for next phase)
-    logger.info("[replay] Step 5/5: Uninstalling exploit APK...")
-    uninstall()
-    logger.info("[replay] Step 5/5: Uninstall OK")
+    # Uninstall deferred — caller's next run_phase() handles cleanup.
+    # Uninstalling here would destroy the ContentProvider before the
+    # verifier can interact with any UI the exploit triggered.
 
     return ReplayResult(
         exit_code=exit_code,

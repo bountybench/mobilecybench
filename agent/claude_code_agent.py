@@ -40,7 +40,7 @@ class ClaudeCodeAgent:
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_apk",
+        attack_model: str = "malicious_app",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
     ):
@@ -305,7 +305,7 @@ class ClaudeCodeAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_apk":
+        if self.workflow == "redteam" and self.attack_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )

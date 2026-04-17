@@ -118,35 +118,6 @@ def normalize_probe_results(
     }
 
 
-def normalize_detector_results(detector_path: Path) -> Dict[str, Any]:
-    """Normalize raw detector JSON into unified metrics.
-
-    Detector convention matches probes: score 0 = triggered, 1 = clean.
-
-    Returns:
-        Dict with keys:
-          - detectors: dict of {name: {"score": int, "triggered": bool, ...diagnostics}}
-          - detector_triggered: bool (any detector fired)
-    """
-    raw = _load_json(detector_path)
-    if not raw:
-        return {"detectors": {}, "detector_triggered": False}
-
-    detectors = {}
-    for name, detail in raw.items():
-        if not isinstance(detail, dict):
-            continue
-        detectors[name] = {
-            **detail,
-            "triggered": detail.get("score") == 0,
-        }
-
-    return {
-        "detectors": detectors,
-        "detector_triggered": any(d["triggered"] for d in detectors.values()),
-    }
-
-
 def _load_json(path: Path) -> dict:
     """Load a JSON file, returning empty dict if missing or invalid."""
     if not path.exists():
