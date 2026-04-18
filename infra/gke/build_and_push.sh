@@ -101,6 +101,7 @@ if [ -n "$BUILD_CMDS" ]; then
     docker run --rm \
         --entrypoint bash \
         -v "$ROOT_DIR:/mobilecybench" \
+        -v mobilecybench-gradle-cache:/root/.gradle \
         -w /mobilecybench \
         "$BASE_IMAGE" \
         -c "git config --global --add safe.directory /mobilecybench && $BUILD_CMDS"
