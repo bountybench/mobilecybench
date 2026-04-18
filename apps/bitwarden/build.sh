@@ -9,6 +9,7 @@ SDK_REPO_DIR="${TMPDIR:-/tmp}/mobilecybench-bitwarden-sdk-internal"
 SDK_COMMIT="f43bbc685c747c7362e23bae87b1a4977aea4f05"
 SDK_KOTLIN_DIR="$SDK_REPO_DIR/crates/bitwarden-uniffi/kotlin"
 LOCAL_SDK_AAR="$HOME/.m2/repository/com/bitwarden/sdk-android-temp/LOCAL/sdk-android-temp-LOCAL.aar"
+LOCAL_SDK_STAMP="$HOME/.m2/repository/com/bitwarden/sdk-android-temp/LOCAL/sdk-android-temp-LOCAL.stamp"
 BUILD_LOG="$(mktemp /tmp/bitwarden-build.XXXXXX.log)"
 BW_FAST_RELEASE="${BW_FAST_RELEASE:-true}"
 
@@ -45,8 +46,29 @@ ensure_rust_toolchain() {
     fi
 }
 
+file_digest() {
+    shasum -a 256 "$1" | awk '{print $1}'
+}
+
+local_sdk_stamp() {
+    printf '%s %s %s\n' \
+        "$SDK_COMMIT" \
+        "$(file_digest "$LOCAL_SDK_PATCH")" \
+        "$(file_digest "$FAST_RELEASE_PATCH")"
+}
+
+local_sdk_is_fresh() {
+    [ -f "$LOCAL_SDK_AAR" ] && [ -f "$LOCAL_SDK_STAMP" ] && [ "$(cat "$LOCAL_SDK_STAMP")" = "$(local_sdk_stamp)" ]
+}
+
+write_local_sdk_stamp() {
+    mkdir -p "$(dirname "$LOCAL_SDK_STAMP")"
+    local_sdk_stamp > "$LOCAL_SDK_STAMP"
+}
+
 prepare_sdk_repo() {
-    if [ ! -d "$SDK_REPO_DIR/.git" ]; then
+    if [ ! -d "$SDK_REPO_DIR/.git" ] || ! git -C "$SDK_REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        rm -rf "$SDK_REPO_DIR"
         git clone https://github.com/bitwarden/sdk-internal.git "$SDK_REPO_DIR"
     fi
 
@@ -107,6 +129,8 @@ build_local_sdk() {
         cd "$SDK_KOTLIN_DIR"
         ./gradlew sdk:publishToMavenLocal -Pversion=LOCAL --no-daemon
     )
+
+    write_local_sdk_stamp
 }
 
 prepare_bitwarden_codebase() {
@@ -140,7 +164,7 @@ echo "=== Building Bitwarden (FdroidRelease) ==="
 ensure_rust_toolchain
 prepare_sdk_repo
 
-if [ ! -f "$LOCAL_SDK_AAR" ]; then
+if ! local_sdk_is_fresh; then
     echo "[INFO] Building and publishing local Bitwarden SDK..."
     build_local_sdk
 else

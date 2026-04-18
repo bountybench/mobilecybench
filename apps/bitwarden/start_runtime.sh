@@ -12,6 +12,8 @@ cd "$SCRIPT_DIR"
 
 echo "=== Starting Bitwarden Runtime ==="
 
+HOST_ALIVE_TIMEOUT=${HOST_ALIVE_TIMEOUT:-180}
+
 dump_runtime_diagnostics() {
   echo "[ERROR] Bitwarden runtime startup diagnostics:"
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps || true
@@ -29,14 +31,28 @@ if ! wait_healthy "bitwarden_tls_proxy" 180; then
   fatal "bitwarden_tls_proxy did not become healthy"
 fi
 
+wait_for_host_alive() {
+  local elapsed=0
+  echo "[INFO] Waiting for Bitwarden TLS proxy to serve https://localhost:8000/alive (timeout ${HOST_ALIVE_TIMEOUT}s)..."
+
+  while [ "$elapsed" -lt "$HOST_ALIVE_TIMEOUT" ]; do
+    if curl --silent --show-error --fail --connect-timeout 5 --max-time 15 \
+      --cacert "$ROOT_DIR/tls/rootCA.pem" \
+      https://localhost:8000/alive >/dev/null; then
+      echo "[INFO] Bitwarden TLS proxy is healthy."
+      return 0
+    fi
+
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  dump_runtime_diagnostics
+  fatal "Timed out waiting for Bitwarden TLS proxy to serve /alive after ${HOST_ALIVE_TIMEOUT}s"
+}
+
 # 2. Verify the proxy endpoint from the host using the shared CA
-echo "[INFO] Waiting for Bitwarden TLS proxy to serve https://localhost:8000/alive..."
-until curl --silent --show-error --fail --cacert "$ROOT_DIR/tls/rootCA.pem" \
-  https://localhost:8000/alive > /dev/null; do
-  echo "Still waiting for Bitwarden TLS proxy..."
-  sleep 5
-done
-echo "[INFO] Bitwarden TLS proxy is healthy."
+wait_for_host_alive
 
 # 3. Install the APK (standardized helper)
 echo "[INFO] Installing Bitwarden APK..."
