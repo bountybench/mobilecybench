@@ -14,7 +14,6 @@ sys.path.insert(0, str(REPO_ROOT / "utils"))
 
 import uiautomator2 as u2  # noqa: E402
 from ui_utils import (  # noqa: E402
-    click_then_expect,
     initialize_ui_automation,
     wait_and_set_text,
     wait_for_ui_stable,
@@ -176,30 +175,53 @@ def view_malicious_memo(d: u2.Device) -> bool:
     ensure_app_foreground(d, "me.mudkip.moememos")
     wait_for_ui_stable(d, min_consecutive=2, timeout=TIMEOUT_NORMAL)
 
-    # Step 1: Open the navigation drawer via the Menu button
-    log("Looking for menu button...")
-    menu_btn = first_existing(
-        [d(description="Menu"), d(description="Open navigation drawer")],
-        timeout=2,
-    )
+    # Step 1: Open the navigation drawer so Explore becomes visible.
+    #
+    # Why not click_then_expect: the Menu button is a drawer TOGGLE. If the first
+    # click opens the drawer but Explore is slow to render, click_then_expect's
+    # retry clicks Menu again — which closes the drawer. On the next retry it
+    # re-opens, etc. On slower runtimes (GKE with memory pressure) this oscillated
+    # until timeout, and Explore was never caught.
+    #
+    # The fix: probe for Explore first (drawer may already be open), click Menu
+    # only when Explore is absent, and recover with `back` between attempts so we
+    # never re-toggle an already-open drawer.
+    explore_btn = d(text="Explore")
+    drawer_opened = False
+    for attempt in range(1, 4):
+        if explore_btn.exists(timeout=0.5):
+            log(f"Explore visible (attempt {attempt})")
+            drawer_opened = True
+            break
 
-    if menu_btn is not None:
-        log("Found menu button, clicking it...")
-        # Use click_then_expect to wait for drawer to open (Explore item appears)
-        click_then_expect(d, menu_btn, d(text="Explore"), timeout=TIMEOUT_FAST)
-    else:
-        log("Warning: Could not find menu button, clicking top-left corner...")
-        d.click(75, 148)
-        time.sleep(2)
+        menu_btn = first_existing(
+            [d(description="Menu"), d(description="Open navigation drawer")],
+            timeout=2,
+        )
+        if menu_btn is not None:
+            log(f"Clicking Menu button to open drawer (attempt {attempt})")
+            menu_btn.click()
+        else:
+            log("Menu button not found, clicking top-left corner as fallback...")
+            d.click(75, 148)
+
+        # Allow full drawer render on slow runtimes (was TIMEOUT_FAST=4s; too tight
+        # under GKE memory pressure — we now wait TIMEOUT_NORMAL=8s).
+        if explore_btn.wait(timeout=TIMEOUT_NORMAL):
+            drawer_opened = True
+            break
+
+        log(f"Drawer did not reveal Explore within {TIMEOUT_NORMAL}s")
+        # `back` closes the drawer if it was stuck open; otherwise it's a no-op
+        # on the main screen. Either way, we reset state before the next attempt
+        # so we don't accidentally re-toggle an already-open drawer.
+        d.press("back")
 
     # Step 2: Click "Explore" in the navigation drawer
-    # IMPORTANT: Do NOT use click_then_expect here. After clicking "Explore",
+    # NOTE: Do NOT use click_then_expect here. After clicking "Explore",
     # the drawer closes and the page title becomes "Explore" too. If click_then_expect
     # retries, it clicks the page TITLE instead of the nav item, causing infinite loops.
-    log("Looking for Explore option...")
-    explore_btn = d(text="Explore")
-
-    if explore_btn.exists(timeout=2):
+    if drawer_opened and explore_btn.exists(timeout=2):
         log("Found Explore option, clicking it...")
         explore_btn.click()
         time.sleep(2)
