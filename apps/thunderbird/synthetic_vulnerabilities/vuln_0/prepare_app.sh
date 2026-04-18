@@ -19,7 +19,7 @@ PKG="$(jq -r '.package_name' "$META_JSON")"
 # Ensure cold start so settings are read from disk
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
 
-LOCKSCREEN_BASELINE="${EXPECTED_LOCKSCREEN_BASELINE:-MESSAGE_COUNT}"
+LOCKSCREEN_BASELINE="${EXPECTED_LOCKSCREEN_VISIBILITY:-MESSAGE_COUNT}"
 case "$LOCKSCREEN_BASELINE" in
   NOTHING|APP_NAME|MESSAGE_COUNT|SENDERS|EVERYTHING) ;;
   *) fail "Invalid LOCKSCREEN_BASELINE='$LOCKSCREEN_BASELINE' (expected K9.LockScreenNotificationVisibility names)" ;;
@@ -33,7 +33,7 @@ adb_priv_sqlite() {
 
 wait_for_preferences_db() {
   local pref_db="$1"
-  local deadline=$((SECONDS + 150))
+  local deadline=$((SECONDS + 300))
   local table_ready account_uuids
 
   while (( SECONDS < deadline )); do
@@ -78,6 +78,32 @@ fi
 log_info "Ensuring no synthetic sidecar is publishing SMTP on host..."
 docker rm -f tb-port-25-proxy 2>/dev/null || true
 
+log_info "Disabling battery optimization and whitelisting background data..."
+adb shell dumpsys deviceidle whitelist +"$PKG" >/dev/null 2>&1 || true
+UID_VAL=$(adb shell pm list packages -U "$PKG" | grep -oE "uid:[0-9]+" | cut -d: -f2 || true)
+if [[ -n "$UID_VAL" ]]; then
+  adb shell cmd netpolicy add restrict-background-whitelist "$UID_VAL" >/dev/null 2>&1 || true
+fi
+
+log_info "Granting notification permissions (API 33+ compatibility)..."
+for _ in 1 2 3; do
+  adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
+  adb shell appops set "$PKG" POST_NOTIFICATION allow >/dev/null 2>&1 || true
+  sleep 1
+  if adb shell dumpsys package "$PKG" 2>/dev/null | grep -Eq 'android\.permission\.POST_NOTIFICATIONS:[[:space:]]+granted=true'; then
+    break
+  fi
+  if adb shell appops get "$PKG" POST_NOTIFICATION 2>/dev/null | grep -qiE ': allow|MODE_ALLOWED'; then
+    break
+  fi
+done
+
+if ! adb shell dumpsys package "$PKG" 2>/dev/null | grep -Eq 'android\.permission\.POST_NOTIFICATIONS:[[:space:]]+granted=true'; then
+  if ! adb shell appops get "$PKG" POST_NOTIFICATION 2>/dev/null | grep -qiE ': allow|MODE_ALLOWED'; then
+    log_info "WARNING: POST_NOTIFICATIONS might not be granted for ${PKG}"
+  fi
+fi
+
 log_info "Applying lockscreen notification baseline before exploit..."
 adb devices | grep -q "device$" || fail "No Android device/emulator detected"
 adb shell true >/dev/null 2>&1 || fail "adb shell failed"
@@ -94,6 +120,9 @@ fi
 effective_lock_pref="$(adb_priv_sqlite "$PREF_DB" "SELECT value FROM preferences_storage WHERE primkey='lockScreenNotificationVisibility' LIMIT 1;" | tr -d '\r')"
 [[ "$effective_lock_pref" == "$LOCKSCREEN_BASELINE" ]] || fail "Failed to set lockscreen baseline (got '$effective_lock_pref')"
 
-# Restart app to ensure it picks up DB changes and is alive for background push/sync
+# Ensure changes are flushed and cold start to pick them up
+adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+sleep 5
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+
 log_info "prepare_app.sh complete (SMTP ingress configured, no host port sidecar, lockscreen baseline=$LOCKSCREEN_BASELINE)"

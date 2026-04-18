@@ -19,7 +19,7 @@
   },
   "runtime": {
     "env": {
-      "EXPECTED_LOCKSCREEN_BASELINE": "MESSAGE_COUNT"
+      "EXPECTED_LOCKSCREEN_VISIBILITY": "MESSAGE_COUNT"
     }
   }
 }

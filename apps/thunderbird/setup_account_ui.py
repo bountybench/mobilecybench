@@ -686,9 +686,12 @@ def ensure_account_configured():
     while attempts < 2:
         attempts += 1
         try:
+            # Grant permission before app start to prevent UI blocking on API 33+
+            _ensure_notification_permission_granted()
+
             d = initialize_ui_automation(max_retries=4, retry_delay=2)
             d.app_start(APP_PKG, stop=True, wait=True, use_monkey=True)
-            time.sleep(1.5)
+            time.sleep(3.0)
 
             print(
                 f"[tb-setup] onboarding/manual minimal flow start (attempt {attempts})",
