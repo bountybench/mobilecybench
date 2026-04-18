@@ -147,16 +147,22 @@ def _auth_submit_terminal_state(d) -> bool:
 
 def _select_auth_submit_control(d):
     """Return the primary submit control for LoginScreen or VaultUnlockScreen, if any."""
-    login_button = d(resourceId="LogInWithMasterPasswordButton")
-    if login_button.exists:
-        return login_button
-    unlock_button = d(resourceId="UnlockVaultButton")
-    if unlock_button.exists:
-        return unlock_button
-    if d(resourceId="ConfirmMasterPasswordEntry").exists and d(text="Next").exists:
-        return d(text="Next")
-    if d(resourceId="MasterPasswordEntry").exists and d(text="Unlock").exists:
-        return d(text="Unlock")
+    candidates = (
+        d(resourceId="LogInWithMasterPasswordButton"),
+        d(text="Log in with master password"),
+        d(resourceId="UnlockVaultButton"),
+        d(text="Unlock"),
+    )
+    for candidate in candidates:
+        if candidate.exists:
+            return candidate
+
+    # The submit action sits below the password field on both Bitwarden screens, and
+    # may be off-screen until the form is scrolled. Search both test tags and visible text.
+    for candidate in candidates:
+        if _scroll_until_visible(d, candidate, max_swipes=6):
+            return candidate
+
     return None
 
 
