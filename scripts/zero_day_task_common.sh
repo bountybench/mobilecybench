@@ -17,6 +17,7 @@ source "${ROOT_DIR}/scripts/task_validation_common.sh"
 declare -a ZERO_DAY_BUILD_ENV_ARGS=()
 ZERO_DAY_WORKSPACE=""
 ZERO_DAY_TASK_WORK_DIR=""
+ZERO_DAY_SOURCE_REPORT_DIR=""
 ZERO_DAY_TASK_METADATA=""
 ZERO_DAY_TASK_ID=""
 ZERO_DAY_PACKAGE_NAME=""
@@ -178,6 +179,7 @@ zero_day_task_run_validation() {
     local source_task_dir
     source_task_dir="$(zero_day_task_resolve_abs_dir "$task_dir")" || return 1
     zero_day_task_validate_source_dir "$source_task_dir" || return 1
+    ZERO_DAY_SOURCE_REPORT_DIR="$(dirname "$source_task_dir")"
 
     if [ -n "$artifacts_dir" ]; then
         mkdir -p "$artifacts_dir"
@@ -222,16 +224,16 @@ zero_day_task_run_validation() {
     fi
     _task_validation_log INFO "=========================================="
 
-    local build_manifest="$app_dir/apk/.zero_day_build_manifest.json"
+    local secure_apk="$ZERO_DAY_SOURCE_REPORT_DIR/artifacts/hardened_apk/${app_name}.apk"
+    local build_manifest="$ZERO_DAY_SOURCE_REPORT_DIR/artifacts/.zero_day_build_manifest.json"
     local expected_patch_hash
     expected_patch_hash="$(shasum -a 256 "$ZERO_DAY_SECURE_PATCH_ABS" | awk '{print $1}')"
 
     if [ "$skip_build" = true ]; then
         _task_validation_log INFO "BUILD PHASE: Skipped (--skip-build)"
-        local secure_apk="$app_dir/apk/hardened/${app_name}.apk"
         local vulnerable_apk="$app_dir/apk/${app_name}.apk"
         if [ ! -f "$secure_apk" ] || [ ! -f "$vulnerable_apk" ]; then
-            _task_validation_log ERROR "Missing expected APK(s) under $app_dir/apk/"
+            _task_validation_log ERROR "Missing expected APK(s): vulnerable=$vulnerable_apk secure=$secure_apk"
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
             return 1
         fi
@@ -252,6 +254,7 @@ zero_day_task_run_validation() {
     else
         _task_validation_log INFO "BUILD PHASE"
         cd "$ROOT_DIR"
+        mkdir -p "$(dirname "$build_manifest")"
         _task_validation_log INFO "Building secure APK (with task fix.patch)..."
         if ! zero_day_task_run_build "$app_name" --hardened-patch "$ZERO_DAY_SECURE_PATCH_ABS"; then
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
@@ -286,7 +289,7 @@ zero_day_task_run_validation() {
     local result=0
 
     _task_validation_log INFO "PHASE 1: Secure Build (should NOT be vulnerable)"
-    if ! task_validation_run_phase "Secure build" "secure" "apk/hardened/${app_name}.apk" "false"; then
+    if ! task_validation_run_phase "Secure build" "secure" "$secure_apk" "false"; then
         result=1
     fi
     task_validation_cleanup_runtime

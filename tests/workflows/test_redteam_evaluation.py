@@ -345,8 +345,10 @@ class TestPatchRestoration:
             with pytest.raises(RuntimeError, match="phase 2 infra crash"):
                 wf.evaluate()
 
-        checkout_calls = [c for c in subprocess_calls if c == ["git", "checkout", "."]]
-        assert len(checkout_calls) == 1
+        checkout_calls = [
+            c for c in subprocess_calls if c == ["git", "checkout", "--", "."]
+        ]
+        assert len(checkout_calls) == 2
 
 
 # ---------------------------------------------------------------------------

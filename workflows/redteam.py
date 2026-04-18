@@ -1,20 +1,17 @@
 """RedTeamWorkflow — task-based evaluation pipeline.
 
-One task = one vulnerability. Task layout:
+One task = one vulnerability. Source-of-truth inputs live under:
   zerodays/reports/<app>/<report-N>/task/
-    metadata.json        — attacker_model, baseline.commit, runtime.package_name
-    fix.patch            — per-vuln patch
-    prepare_app.sh       — per-phase setup (login victim, seed state)
-    exploit_files/
-      exploit_apk/       — malicious_app project (build_exploit_apk.sh + src/)
-      exploit.sh         — auth_attacker exploit script
-    verify_files/verify_exploit.sh  — 0=vuln, 1=patched, 2=error
+
+Persisted private build artifacts live under:
+  zerodays/reports/<app>/<report-N>/artifacts/
 
 Two attack models share the pipeline via lightweight strategy objects:
 - MaliciousAppOps: APK-based exploit (host replay via am instrument)
 - AuthAttackerOps: exploit.sh in Docker container (authenticated attacker)
 """
 
+import json
 import os
 import subprocess
 from dataclasses import dataclass
@@ -268,18 +265,19 @@ class RedTeamWorkflow(Workflow):
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
         self._original_apk = Path("apk") / f"{self.app_name}.apk"
-        # Hardened APK lives in zerodays submodule (absolute path)
-        self._hardened_apk = (
-            self.project_root
-            / "zerodays"
-            / "patches"
-            / self.app_name
-            / "hardened"
-            / f"{self.app_name}.apk"
-        )
         self._attack_model = config.attack_model
         self._ops: AttackModelOps = _OPS[self._attack_model]()
         self._probe_config: dict = {"generic_probe_applicability": {}}
+
+    @property
+    def _report_dir(self) -> Path:
+        return (
+            self.project_root
+            / "zerodays"
+            / "reports"
+            / self.app_name
+            / self.config.task
+        )
 
     # ------------------------------------------------------------------
     # Task resolution
@@ -288,14 +286,19 @@ class RedTeamWorkflow(Workflow):
     @property
     def _task_dir(self) -> Path:
         """Single source of truth: fix.patch, verify, prepare, metadata."""
-        return (
-            self.project_root
-            / "zerodays"
-            / "reports"
-            / self.app_name
-            / self.config.task
-            / "task"
-        )
+        return self._report_dir / "task"
+
+    @property
+    def _artifacts_dir(self) -> Path:
+        return self._report_dir / "artifacts"
+
+    @property
+    def _task_fix_patch(self) -> Path:
+        return self._task_dir / "fix.patch"
+
+    @property
+    def _hardened_apk(self) -> Path:
+        return self._artifacts_dir / "hardened_apk" / f"{self.app_name}.apk"
 
     # ------------------------------------------------------------------
     # Validation
@@ -304,14 +307,20 @@ class RedTeamWorkflow(Workflow):
     def validate_arguments(self) -> None:
         super().validate_arguments()
 
+        task_metadata_path = self._task_dir / "metadata.json"
         for required in (
-            self._task_dir / "fix.patch",
+            self._task_fix_patch,
             self._task_dir / "verify_files" / "verify_exploit.sh",
-            self._task_dir / "prepare_app.sh",
-            self._task_dir / "metadata.json",
+            task_metadata_path,
         ):
             if not required.exists():
                 raise ValueError(f"Task file not found: {required}")
+
+        task_metadata = json.loads(task_metadata_path.read_text())
+
+        task_package_name = task_metadata.get("runtime", {}).get("package_name")
+        if task_package_name:
+            self.metadata["package_name"] = task_package_name
 
         if self._ops.uses_generic_probes:
             from evaluation.generic_probe_config import load_generic_probe_config
@@ -348,11 +357,15 @@ class RedTeamWorkflow(Workflow):
         self.setup_apks()
 
         original_apk = self.app_dir / self._original_apk
-        hardened_apk = self._hardened_apk
         if not original_apk.exists():
+            if self.config.build_type == "skip-apk":
+                raise FileNotFoundError(
+                    f"build_type='skip-apk' requires a prebuilt original APK at {original_apk}. "
+                    "Build it first with build_type='source' or fetch it with build_type='download-apk'."
+                )
             raise FileNotFoundError(f"Original APK not found: {original_apk}")
-        if not hardened_apk.exists():
-            raise FileNotFoundError(f"Hardened APK not found: {hardened_apk}")
+
+        self._validate_hardened_artifact()
 
         self.emulator.wait_until_ready(
             timeout=self.config.emulator_boot_timeout_seconds
@@ -406,6 +419,7 @@ class RedTeamWorkflow(Workflow):
         from utils.command_executor import CommandExecutor
 
         cmd = CommandExecutor()
+
         logger.info("Building original APK...")
         cmd.run_with_progress(
             f"bash ./build_apk.sh {self.app_name}",
@@ -414,13 +428,25 @@ class RedTeamWorkflow(Workflow):
             cwd=self.project_root,
         )
         logger.info("Building hardened APK...")
-        fix_patch = self._task_dir / "fix.patch"
         cmd.run_with_progress(
-            f"bash ./build_apk.sh {self.app_name} --hardened-patch {fix_patch}",
+            f"bash ./build_apk.sh {self.app_name} --hardened-patch {self._task_fix_patch}",
             timeout=self.config.build_command_timeout,
             message="Building hardened APK",
             cwd=self.project_root,
         )
+
+        if not self._hardened_apk.exists():
+            raise FileNotFoundError(
+                f"Hardened APK build completed but output was not found: {self._hardened_apk}"
+            )
+        logger.info("Built private hardened APK: %s", self._hardened_apk)
+
+    def _validate_hardened_artifact(self) -> None:
+        if not self._hardened_apk.exists():
+            raise FileNotFoundError(
+                f"Prebuilt private hardened APK not found for task {self.config.task}: {self._hardened_apk}. "
+                "Run once with build_type='source' to create it."
+            )
 
     # ------------------------------------------------------------------
     # Evaluation pipeline — 2 phases
@@ -569,8 +595,9 @@ class RedTeamWorkflow(Workflow):
         # ---- Phase 2: Patched app ----
         logger.info("[phase 2/2] patched app")
         codebase_dir = self.app_dir / "codebase"
+        subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
         subprocess.run(
-            ["git", "apply", str(self._task_dir / "fix.patch")],
+            ["git", "apply", str(self._task_fix_patch)],
             cwd=codebase_dir,
             check=True,
         )
@@ -586,7 +613,7 @@ class RedTeamWorkflow(Workflow):
                 ),
             )
         finally:
-            subprocess.run(["git", "checkout", "."], cwd=codebase_dir, check=True)
+            subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
 
         p2 = self._evaluate_phase(
             "Phase 2 (patched)", phase2_result, replays_dir, "phase2"
@@ -689,6 +716,10 @@ class RedTeamWorkflow(Workflow):
         from utils.command_executor import CommandExecutor
 
         hook = self._task_dir / "prepare_app.sh"
+        if not hook.exists():
+            logger.info("No prepare_app hook found for task %s", self.config.task)
+            return
+
         logger.info(f"prepare_app hook: {hook}")
 
         env = os.environ.copy()
