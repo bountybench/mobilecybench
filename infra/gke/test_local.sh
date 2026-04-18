@@ -323,8 +323,13 @@ docker run "${DOCKER_RUN_ARGS[@]}" \
         cd /mobilecybench
         pip install --no-cache-dir -e . >/dev/null 2>&1 || true
 
-        # Init submodule if needed
-        git submodule update --init "apps/'"$APP_NAME"'/codebase" 2>/dev/null || true
+        # Init every submodule this app declares (codebase + any auxiliary, e.g.
+        # jitsi-meet's jitsi-docker). Enumerates from .gitmodules instead of
+        # hardcoding `codebase` so new auxiliary submodules work without edits.
+        SUBMODULES=$(git config --file .gitmodules --get-regexp "submodule\..*\.path" 2>/dev/null | awk "{print \$2}" | grep "^apps/'"$APP_NAME"'/" || true)
+        if [ -n "$SUBMODULES" ]; then
+            git submodule update --init $SUBMODULES 2>/dev/null || true
+        fi
 
         # Start ADB
         adb -a start-server
