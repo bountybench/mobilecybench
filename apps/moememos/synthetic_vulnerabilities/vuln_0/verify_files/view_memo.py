@@ -118,12 +118,14 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
         log("Error: Could not find token input field")
         return False
 
-    # Hide keyboard to make button visible/clickable
-    try:
-        d.press("back")
-    except Exception:
-        pass
-    time.sleep(0.5)
+    # NOTE: do NOT press back here. LoginPage is the app's root activity when
+    # the user is not logged in, so a back press closes the app and lands on
+    # the launcher — confirmed in the gold-run hierarchy dump. The fast IME
+    # (set_input_ime(True) above) does not pop a soft keyboard, so there is
+    # no keyboard to dismiss anyway. If the FAB turns out to be covered on
+    # some build, prefer ESC (`adb shell input keyevent 111`) which dismisses
+    # the IME without navigating back.
+    wait_for_ui_stable(d, min_consecutive=2, timeout=TIMEOUT_FAST)
 
     # If login completed implicitly after input, stop here
     if main_screen_loaded(d):
