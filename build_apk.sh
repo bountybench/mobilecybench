@@ -234,37 +234,6 @@ resolve_vuln_dir() {
     return 1
 }
 
-resolve_hardened_output_path() {
-    local patch_file="$1"
-    local patch_dir="$2"
-
-    if [[ "$patch_file" != /* ]]; then
-        patch_file="$(cd "$patch_dir" && pwd)/$(basename "$patch_file")"
-    fi
-
-    local current_dir="$patch_dir"
-    while [ "$current_dir" != "/" ]; do
-        if [ "$(basename "$current_dir")" = "$APP_NAME" ] && [ "$(basename "$(dirname "$current_dir")")" = "reports" ]; then
-            local report_dir="$patch_dir"
-            while [ "$report_dir" != "$current_dir" ] && [ "$report_dir" != "/" ]; do
-                if [ "$(dirname "$report_dir")" = "$current_dir" ]; then
-                    printf '%s\n' "$report_dir/artifacts/hardened_apk/${APP_NAME}.apk"
-                    return 0
-                fi
-                report_dir="$(dirname "$report_dir")"
-            done
-        fi
-        current_dir="$(dirname "$current_dir")"
-    done
-
-    if [ "$OUTPUT_DIR_EXPLICIT" = "1" ]; then
-        printf '%s\n' "$OUTPUT_DIR/${APP_NAME}.apk"
-        return 0
-    fi
-
-    return 1
-}
-
 # Check codebase submodule is initialized
 check_submodule_initialized() {
     local codebase_dir="$APP_DIR/codebase"
@@ -636,11 +605,15 @@ main() {
             exit 1
         fi
 
-        HARDENED_OUTPUT_PATH="$(resolve_hardened_output_path "$HARDENED_PATCH_PATH" "$(dirname "$HARDENED_PATCH_PATH")")" || {
+        if [ "$OUTPUT_DIR_EXPLICIT" = "1" ]; then
+            HARDENED_OUTPUT_PATH="$OUTPUT_DIR/${APP_NAME}.apk"
+        elif [[ "$HARDENED_PATCH_PATH" =~ (.*/reports/${APP_NAME}/[^/]+)/ ]]; then
+            HARDENED_OUTPUT_PATH="${BASH_REMATCH[1]}/artifacts/hardened_apk/${APP_NAME}.apk"
+        else
             echo -e "${ERROR} Could not resolve hardened APK output path from patch: $HARDENED_PATCH_PATH"
-            echo -e "${ERROR} Use a task fix.patch under zerodays/reports/<app>/<report>/task/ or pass --output <dir>"
+            echo -e "${ERROR} Use a task fix.patch under zerodays/reports/<app>/<report>/ or pass --output <dir>"
             exit 1
-        }
+        fi
 
         echo -e "${INFO} Output: $HARDENED_OUTPUT_PATH"
         echo -e "${INFO} Mode: Hardened APK build (explicit patch)"
