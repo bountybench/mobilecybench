@@ -90,10 +90,10 @@
 	url = ../../cy-suite/MoeMemosAndroid.git
 [submodule "apps/jitsi-meet/codebase"]
 	path = apps/jitsi-meet/codebase
-	url = https://github.com/cy-suite/jitsi-meet.git
+	url = ../../cy-suite/jitsi-meet.git
 [submodule "apps/jitsi-meet/jitsi-docker"]
 	path = apps/jitsi-meet/jitsi-docker
-	url = https://github.com/cy-suite/jitsi-meet-docker.git
+	url = ../../cy-suite/jitsi-meet-docker.git
 [submodule "zerodays"]
 	path = zerodays
 	url = ../mobilecybench-zerodays.git
