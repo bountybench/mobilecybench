@@ -137,7 +137,7 @@ zerodays/reports/<app>/<report-id>/
 |---|---|
 | `metadata.json` | See [task metadata fields](#taskmetadatajson-fields). |
 | `fix.patch` | Turns the vulnerable baseline into the secure comparator. Used by `build_apk.sh --hardened-patch` to build the hardened APK, and applied to `apps/<app>/codebase/` during phase 2 replay. |
-| `prepare_app.sh` | Optional per-phase setup hook, runs on the host. For `malicious_app` it runs **before** the exploit (victim simulation). For `auth_attacker` it runs **after** the exploit, so it can log the victim in and trigger a stored payload. |
+| `prepare_app.sh` | Optional per-phase setup hook, runs on the host. For `malicious_app` it runs **before** the exploit (log in as victim, seed data, etc.). For `auth_attacker` it runs **after** the exploit. |
 | `exploit_files/` | Reference exploit. Layout depends on the attack model. |
 | `verify_files/verify_exploit.sh` | Ground-truth verifier. Exit 0 = vulnerable, 1 = not vulnerable, 2+ = verifier error. See [TASK.md](TASK.md#verifier-design). |
 | `artifacts/hardened_apk/<app>.apk` | Prebuilt patched APK, read at runtime by the pipeline. Build once with `./build_apk.sh <app> --hardened-patch zerodays/reports/<app>/<report-id>/task/fix.patch`. |
