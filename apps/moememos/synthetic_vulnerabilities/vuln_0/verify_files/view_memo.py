@@ -130,22 +130,39 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
         log("Logged in after entering credentials")
         return True
 
-    # Click Add Account button.
-    # In this Compose app, the button has content-desc="Add Account" (not text).
+    # Click the Add Account FAB.
+    # Compose's ExtendedFloatingActionButton sets contentDescription on *both*
+    # the Text child and the Icon child. Plain selectors like d(description=
+    # "Add Account") can resolve to a non-clickable inner view, so the click
+    # silently does nothing (observed in gold runs: "Could not find Add Account
+    # button, trying Enter key"). Filter to clickable elements first; only
+    # fall back to unfiltered selectors if nothing clickable matches.
     sign_in_btn = first_existing(
         [
+            d(descriptionContains="Add Account", clickable=True),
+            d(textContains="Add Account", clickable=True),
+            d(description="Add Account", clickable=True),
+            d(text="Add Account", clickable=True),
+            # Unfiltered fallbacks (the old behavior) in case the accessibility
+            # tree does not expose the root as clickable on this build.
             d(description="Add Account"),
             d(text="Add Account"),
             d(textContains="Add Account"),
         ],
-        timeout=2,
+        timeout=1,
     )
 
     if sign_in_btn is not None:
         log("Clicking Add Account button...")
         sign_in_btn.click()
     else:
-        log("Warning: Could not find Add Account button, trying Enter key...")
+        log("Warning: Could not find Add Account button; dumping hierarchy:")
+        try:
+            hierarchy = d.dump_hierarchy(compressed=True)
+            log(hierarchy[:1500])
+        except Exception as e:
+            log(f"  (hierarchy dump failed: {e})")
+        log("Falling back to Enter key (likely to no-op)...")
         d.press("enter")
 
     # Wait for login to complete
@@ -155,8 +172,11 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
             return True
         time.sleep(1)
 
-    log("Warning: Could not confirm successful login, continuing anyway")
-    return True
+    # Login did not complete. Don't silently return True — the caller
+    # needs to know so it can fail fast instead of proceeding to drawer
+    # navigation that will never work.
+    log("[ERROR] Login did not complete (main screen never appeared)")
+    return False
 
 
 def view_malicious_memo(d: u2.Device) -> bool:
