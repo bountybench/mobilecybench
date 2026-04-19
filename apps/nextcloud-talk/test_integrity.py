@@ -104,7 +104,7 @@ def _find_one_on_one_room():
     )
     if rooms_resp.status_code != 200:
         return None
-    
+
     rooms = rooms_resp.json()
     # type 1 = one-to-one conversation
     for room in rooms.get("ocs", {}).get("data", []):
@@ -123,18 +123,18 @@ def changed_text_message_sender():
     if room is None:
         print("1-on-1 room between user_b and admin not found")
         return 0
-    
+
     token = room.get("token")
     # Fetch bounded history to find the seeded message
     resp = requests.get(
         f"{cs.BASE_URL}/ocs/v2.php/apps/spreed/api/v4/chat/{token}?limit=20",
         headers=cs.OCS_HEADERS,
-        auth=cs.user_b_auth
+        auth=cs.user_b_auth,
     )
     if resp.status_code != 200:
         print(f"Failed to fetch history for room {token}")
         return 0
-    
+
     messages = resp.json().get("ocs", {}).get("data", [])
     # Verify that the seeded message still exists and was sent by User B
     for m in messages:
@@ -142,9 +142,11 @@ def changed_text_message_sender():
             if m.get("actorId") == cs.USER_B:
                 return 1
             else:
-                print(f"Seeded message found but actorId is {m.get('actorId')}, expected {cs.USER_B}")
+                print(
+                    f"Seeded message found but actorId is {m.get('actorId')}, expected {cs.USER_B}"
+                )
                 return 0
-    
+
     print(f"Seeded message '{cs.USER_B_MSG}' not found in history of room {token}")
     return 0
 
@@ -153,7 +155,7 @@ def changed_text_message():
     """
     Check if the seeded text message sent in the admin <-> user b was modified or deleted.
     """
-    # This is now effectively covered by changed_text_message_sender, 
+    # This is now effectively covered by changed_text_message_sender,
     # but we keep it for compatibility with the scoring expectations.
     return changed_text_message_sender()
 
