@@ -22,6 +22,7 @@
 #   bash infra/gke/test_local.sh moememos --container   # emulator in separate container
 #   bash infra/gke/test_local.sh moememos --skip-build   # never build, only use existing/pull
 #   bash infra/gke/test_local.sh moememos --gold-run     # run reference exploits
+#   bash infra/gke/test_local.sh moememos --gold-run --gke-mode  # replicate GKE conditions
 #   bash infra/gke/test_local.sh ntfy-android --gold-run --vuln vuln_1  # specific vuln
 
 set -euo pipefail
@@ -32,6 +33,7 @@ SKIP_BUILD=false
 DRY_RUN=true
 GOLD_RUN=false
 VULN_ID="vuln_0"
+GKE_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -42,6 +44,7 @@ while [[ $# -gt 0 ]]; do
         --gold-run) GOLD_RUN=true; DRY_RUN=false; shift ;;
         --no-dry-run) DRY_RUN=false; shift ;;
         --vuln) VULN_ID="$2"; shift 2 ;;
+        --gke-mode) GKE_MODE=true; EMULATOR_BACKEND="container"; shift ;;
         --*) echo "Unknown arg: $1"; exit 1 ;;
         *) APP_NAME="$1"; shift ;;
     esac
@@ -52,8 +55,6 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Docker Hub image names
 DOCKERHUB_ORCHESTRATOR="cybench/mobilecybench-orchestrator:latest"
-# orchestrator image is the slim version (no emulator) — works for both modes
-# In container mode, emulator runs in a separate container (Dockerfile.emulator)
 DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
@@ -62,6 +63,7 @@ echo "Vuln ID:        $VULN_ID"
 echo "Emulator backend: $EMULATOR_BACKEND"
 echo "Dry run:        $DRY_RUN"
 echo "Gold run:       $GOLD_RUN"
+echo "GKE mode:       $GKE_MODE"
 echo "Project root:   $PROJECT_ROOT"
 echo ""
 
@@ -168,6 +170,7 @@ fi
 echo ""
 
 # ─── Step 3: Create dry-run config ─────────────────────────────────────────
+# Default cleanup trap (may be overridden by --gke-mode)
 trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"' EXIT
 
 echo "--- Step 3: Creating test config ---"
@@ -210,7 +213,7 @@ echo ""
 # If the image is on Docker Hub, inner DinD pulls directly.
 # If local-only, save as tar and mount into the container.
 EMULATOR_IMAGE_TAR=""
-if [ "$EMULATOR_BACKEND" = "container" ]; then
+if [ "$EMULATOR_BACKEND" = "container" ] && [ "$GKE_MODE" = false ]; then
     if [[ "$EMULATOR_IMAGE_NAME" == cybench/* ]]; then
         # Docker Hub image — inner DinD will pull it directly
         echo "Emulator image on Docker Hub — DinD will pull inside container"
@@ -221,29 +224,60 @@ if [ "$EMULATOR_BACKEND" = "container" ]; then
         docker save "$EMULATOR_IMAGE_NAME" -o "$EMULATOR_IMAGE_TAR"
         echo "Image saved ($(du -h "$EMULATOR_IMAGE_TAR" | cut -f1))"
     fi
+elif [ "$GKE_MODE" = true ]; then
+    echo "GKE mode — DinD will pull emulator from Docker Hub (no local tar)"
+    EMULATOR_IMAGE_NAME="$DOCKERHUB_EMULATOR"
 fi
 
-docker run --rm \
-    --privileged \
-    --device /dev/kvm \
-    --entrypoint bash \
-    -v "$PROJECT_ROOT:/mobilecybench" \
-    -v mobilecybench-docker-data:/var/lib/docker \
-    -v mobilecybench-gradle-cache:/root/.gradle \
-    ${EMULATOR_IMAGE_TAR:+-v "$EMULATOR_IMAGE_TAR:/tmp/emulator-image.tar"} \
-    -e APP_NAME="$APP_NAME" \
-    -e EMULATOR_IMAGE="${EMULATOR_IMAGE_NAME}" \
-    -e DOCKER_TLS_CERTDIR= \
-    -e DOCKERHUB_USERNAME="${DOCKERHUB_USERNAME:-}" \
-    -e DOCKERHUB_TOKEN="${DOCKERHUB_TOKEN:-}" \
+# ─── Build docker run arguments ──────────────────────────────────────────
+DOCKER_RUN_ARGS=(
+    --rm
+    --privileged
+    --device /dev/kvm
+    --entrypoint bash
+    -v "$PROJECT_ROOT:/mobilecybench"
+    -e APP_NAME="$APP_NAME"
+    -e "EMULATOR_IMAGE=${EMULATOR_IMAGE_NAME}"
+    -e DOCKER_TLS_CERTDIR=
+    -e "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-}"
+    -e "DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN:-}"
+)
+
+if [ "$GKE_MODE" = true ]; then
+    # GKE mode: fresh volumes, CPU/memory constraints — replicates GKE pod conditions
+    GKE_DOCKER_VOL="mobilecybench-gke-test-$$"
+    HOST_CPUS=$(nproc 2>/dev/null || echo 8)
+    GKE_CPU_LIMIT=$(( HOST_CPUS < 6 ? HOST_CPUS : 6 ))
+    echo "GKE mode: using ephemeral Docker volume ($GKE_DOCKER_VOL), no Gradle cache"
+    echo "GKE mode: CPU limit=$GKE_CPU_LIMIT (host has $HOST_CPUS), memory limit=24g"
+    DOCKER_RUN_ARGS+=(
+        -v "$GKE_DOCKER_VOL:/var/lib/docker"
+        --cpus="$GKE_CPU_LIMIT"
+        --memory=24g
+    )
+    # Clean up ephemeral volume on exit
+    trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"; docker volume rm "$GKE_DOCKER_VOL" 2>/dev/null || true' EXIT
+else
+    # Normal mode: persistent volumes for fast iteration
+    DOCKER_RUN_ARGS+=(
+        -v mobilecybench-docker-data:/var/lib/docker
+        -v mobilecybench-gradle-cache:/root/.gradle
+    )
+fi
+
+if [ -n "$EMULATOR_IMAGE_TAR" ]; then
+    DOCKER_RUN_ARGS+=(-v "$EMULATOR_IMAGE_TAR:/tmp/emulator-image.tar")
+fi
+
+docker run "${DOCKER_RUN_ARGS[@]}" \
     "$IMAGE_NAME" \
     -c '
         set -e
 
-        # Start DinD
-        rm -f /var/run/docker.pid
-        # Use explicit DNS to avoid emulator's 10.0.2.3 polluting DinD resolver
-        dockerd --host=unix:///var/run/docker.sock --dns 8.8.8.8 --dns 8.8.4.4 &
+        # Start DinD with separate socket to avoid conflict with host dockerd
+        rm -f /var/run/docker.pid /var/run/dind.sock
+        dockerd --host=unix:///var/run/dind.sock --pidfile=/dev/null --dns 8.8.8.8 --dns 8.8.4.4 &
+        export DOCKER_HOST=unix:///var/run/dind.sock
         timeout=30
         while [ $timeout -gt 0 ]; do
             docker info >/dev/null 2>&1 && break
@@ -289,8 +323,16 @@ docker run --rm \
         cd /mobilecybench
         pip install --no-cache-dir -e . >/dev/null 2>&1 || true
 
-        # Init submodule if needed
-        git submodule update --init "apps/'"$APP_NAME"'/codebase" 2>/dev/null || true
+        # Init every submodule this app declares (codebase + any auxiliary, e.g.
+        # the jitsi-docker submodule for jitsi-meet). Enumerates from .gitmodules
+        # instead of hardcoding codebase so new auxiliary submodules work without
+        # further script edits.
+        # Note: the whole docker -c block is single-quoted at the host, so do NOT
+        # use apostrophes in comments or code here — they would close the quote.
+        SUBMODULES=$(git config --file .gitmodules --get-regexp "submodule\..*\.path" 2>/dev/null | awk "{print \$2}" | grep "^apps/'"$APP_NAME"'/" || true)
+        if [ -n "$SUBMODULES" ]; then
+            git submodule update --init $SUBMODULES 2>/dev/null || true
+        fi
 
         # Start ADB
         adb -a start-server
