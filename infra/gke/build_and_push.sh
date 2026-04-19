@@ -62,11 +62,20 @@ for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
 done
 
 echo "=== Step 1: Initialize git submodules ==="
+# Discover every submodule declared under apps/<app_with_vulns>/ in .gitmodules.
+# Apps can declare auxiliary submodules beyond `codebase` (e.g. jitsi-meet needs
+# apps/jitsi-meet/jitsi-docker for its runtime), so we enumerate from .gitmodules
+# rather than hardcoding `codebase` — any submodule an app ships will be initialized.
 SUBMODULE_PATHS=""
+ALL_SUBMODULE_PATHS=$(git config --file .gitmodules --get-regexp 'submodule\..*\.path' | awk '{print $2}')
 for app in "${!APP_VULNS[@]}"; do
-    SUBMODULE_PATHS="$SUBMODULE_PATHS apps/$app/codebase"
+    for path in $ALL_SUBMODULE_PATHS; do
+        case "$path" in
+            apps/$app/*) SUBMODULE_PATHS="$SUBMODULE_PATHS $path" ;;
+        esac
+    done
 done
-echo "Initializing submodules: $SUBMODULE_PATHS"
+echo "Initializing submodules:$SUBMODULE_PATHS"
 git submodule update --init $SUBMODULE_PATHS
 
 echo ""
@@ -116,6 +125,7 @@ if [ -n "$BUILD_CMDS" ]; then
     docker run --rm \
         --entrypoint bash \
         -v "$ROOT_DIR:/mobilecybench" \
+        -v mobilecybench-gradle-cache:/root/.gradle \
         -w /mobilecybench \
         "$BASE_IMAGE" \
         -c "git config --global --add safe.directory /mobilecybench && $BUILD_CMDS"
