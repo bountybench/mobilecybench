@@ -134,11 +134,16 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     if not container:
         raise RuntimeError("Kali container not running — cannot copy exploit files")
 
-    # Validate exploit layout per attack model.
-    if attack_model == "malicious_app":
-        if not (gold_dir / "exploit_apk").exists():
-            raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
-    elif attack_model == "auth_attacker":
+    # Validate exploit layout. attack_model is only meaningful for the redteam
+    # workflow; synthetic-vuln exploit runs always use exploit.sh.
+    if workflow.config.workflow == "redteam":
+        if attack_model == "malicious_app":
+            if not (gold_dir / "exploit_apk").exists():
+                raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
+        elif attack_model == "auth_attacker":
+            if not (gold_dir / "exploit.sh").exists():
+                raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
+    else:
         if not (gold_dir / "exploit.sh").exists():
             raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
 
@@ -148,7 +153,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
         # Flatten task/exploit_files/ → agent_exploit/ in the container
         tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
         # Inject build script from template (single source of truth).
-        if attack_model == "malicious_app":
+        if workflow.config.workflow == "redteam" and attack_model == "malicious_app":
             build_script = (
                 Path(__file__).resolve().parent
                 / "templates"
