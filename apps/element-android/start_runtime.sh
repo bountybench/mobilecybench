@@ -36,9 +36,6 @@ echo "Seeding test users (alice, bob)..."
 # Wait a moment for seeder to complete
 sleep 3
 
-echo "Building Element Android APK..."
-./setup_app_apklink.sh
-
 echo "Installing Element Android APK..."
 # Install the APK that was just downloaded by setup_app_apklink.sh
 APK_FILE="apk/element-android.apk"
@@ -59,14 +56,14 @@ echo "Launching Element Android app..."
 # Determine which variant is installed (release or debug)
 if adb shell pm list packages | grep -q "im.vector.app.debug"; then
     ELEMENT_PKG="im.vector.app.debug"
-    ELEMENT_ACTIVITY="im.vector.application.features.Alias"
+    ELEMENT_ACTIVITY="im.vector.app.debug.features.MainActivity"
 else
     ELEMENT_PKG="im.vector.app"
-    ELEMENT_ACTIVITY="im.vector.app.features.Alias"
+    ELEMENT_ACTIVITY="im.vector.app.features.MainActivity"
 fi
 
 # Launch the app
-adb shell am start -n "$ELEMENT_PKG/$ELEMENT_ACTIVITY" >/dev/null 2>&1
+adb shell monkey -p "$ELEMENT_PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 if [ $? -eq 0 ]; then
     echo "Element app launched successfully!"
 else
