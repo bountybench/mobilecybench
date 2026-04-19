@@ -38,7 +38,7 @@ rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true
 # Only run adb if a device is actually connected; preflight cleanup runs
 # before the emulator boots, where adb has no device to target.
 if command -v adb >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
-  adb uninstall com.moodle.moodlemobile >/dev/null 2>&1 || true
+  adb uninstall com.moodle.moodlemobile 2>/dev/null || true
 fi
 
 echo "Cleanup complete"

@@ -17,9 +17,12 @@ class RunnerConfig(BaseModel):
     adb_access: Literal["none", "limited", "full"]
 
     # workflow type
-    workflow: Literal["exploit", "detection", "redteam"] = "exploit"
-    attack_model: Literal["malicious_apk", "auth_attacker"] = "malicious_apk"
+    workflow: Literal["exploit", "redteam"] = "exploit"
+    attack_model: Literal["malicious_app", "auth_attacker"] = "malicious_app"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
+    # Task selector for redteam workflow. Points at a single vuln under
+    # zerodays/reports/<app>/<task>/task/ (e.g. task="report-1").
+    task: Optional[str] = None
     # When True, the agent receives only the APK (no codebase).
     # When False (default), the agent receives the full source codebase.
     # The two modes are mutually exclusive — we never provide both.
@@ -38,9 +41,6 @@ class RunnerConfig(BaseModel):
     gold_run: bool = False
     emulator_backend: Literal["native", "container"] = "native"
     emulator_display: Literal["headed", "headless"] = "headed"
-
-    # zero-day report (uses exploit from zerodays submodule)
-    gold_report: Optional[str] = None
 
     # optional
     custom_system_prompt: Optional[str] = None
@@ -77,20 +77,20 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_attack_model(self) -> "RunnerConfig":
-        if self.attack_model != "malicious_apk" and self.workflow != "redteam":
+        if self.attack_model != "malicious_app" and self.workflow != "redteam":
             raise ValueError(
                 f"attack_model='{self.attack_model}' requires workflow='redteam'"
             )
         return self
 
     @model_validator(mode="after")
+    def validate_task(self) -> "RunnerConfig":
+        if self.workflow == "redteam" and not self.task:
+            raise ValueError("task is required when workflow='redteam'")
+        return self
+
+    @model_validator(mode="after")
     def validate_gold_run(self) -> "RunnerConfig":
-        if self.gold_report:
-            self.gold_run = True
-        if self.gold_run and self.workflow not in ("exploit", "redteam"):
-            raise ValueError(
-                "gold_run=True is only valid with workflow='exploit' or 'redteam'"
-            )
         if self.gold_run and self.dry_run:
             raise ValueError(
                 "gold_run and dry_run cannot both be True — "

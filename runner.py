@@ -4,7 +4,7 @@ MobileCybench Runner - Workflow-based architecture.
 
 This runner uses the Workflow abstraction to handle different evaluation modes:
 - ExploitWorkflow: For exploiting known/synthetic vulnerabilities
-- DetectionWorkflow: For detecting zero-day vulnerabilities
+- RedTeamWorkflow: For red-team evaluation of app security
 """
 
 import argparse
@@ -26,7 +26,6 @@ from utils.run_artifacts import (
 )
 from utils.time_tracker import time_tracker
 from workflows import (
-    DetectionWorkflow,
     ExploitWorkflow,
     RedTeamWorkflow,
     Workflow,
@@ -105,22 +104,22 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     save_artifacts can extract them), then tears down the kali container
     and runs the normal evaluation pipeline.
 
-    For exploit workflow: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/
+    For redteam: uses task/exploit_files/ from zerodays submodule.
+    For exploit: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/.
     """
-    if workflow.config.gold_report:
+    attack_model = workflow.config.attack_model
+
+    if workflow.config.workflow == "redteam":
+        # Task dir is source of truth for gold exploit files
         gold_dir = (
             Path(__file__).resolve().parent
             / "zerodays"
             / "reports"
             / workflow.app_name
-            / workflow.config.gold_report
-            / "exploit"
+            / workflow.config.task
+            / "task"
+            / "exploit_files"
         )
-        # attack_model already resolved from report.json in run()
-        attack_model = workflow.config.attack_model
-    elif workflow.config.workflow in ("malicious_apk", "redteam"):
-        gold_dir = workflow.app_dir / "reference_exploit"
-        attack_model = workflow.config.attack_model
     else:
         gold_dir = (
             workflow.app_dir
@@ -128,7 +127,6 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
             / workflow.vuln_id
             / "exploit_files"
         )
-        attack_model = None
     if not gold_dir.exists():
         raise FileNotFoundError(f"Gold exploit directory not found: {gold_dir}")
 
@@ -137,25 +135,24 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
         raise RuntimeError("Kali container not running — cannot copy exploit files")
 
     # Validate exploit layout per attack model.
-    if attack_model == "malicious_apk":
+    if attack_model == "malicious_app":
         if not (gold_dir / "exploit_apk").exists():
             raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
-    else:
+    elif attack_model == "auth_attacker":
         if not (gold_dir / "exploit.sh").exists():
             raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
 
     logger.info(f"Copying gold exploit files from {gold_dir} into kali container...")
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", dereference=True) as tar:
+        # Flatten task/exploit_files/ → agent_exploit/ in the container
         tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
-        # Inject build script from template — single source of truth.
-        # Gold exploit dirs ship exploit-specific files only (Exploit.java,
-        # AndroidManifest.xml, ExploitRunner.java, MainActivity.java).
-        if attack_model == "malicious_apk":
+        # Inject build script from template (single source of truth).
+        if attack_model == "malicious_app":
             build_script = (
                 Path(__file__).resolve().parent
                 / "templates"
-                / "malicious_apk"
+                / "malicious_app"
                 / "build_exploit_apk.sh"
             )
             if build_script.exists():
@@ -221,12 +218,10 @@ def create_workflow(
         project_root: Root directory of the project
 
     Returns:
-        Workflow instance (ExploitWorkflow or DetectionWorkflow)
+        Workflow instance (ExploitWorkflow or RedTeamWorkflow)
     """
     if config.workflow == "redteam":
         return RedTeamWorkflow(config, app_name, project_root)
-    if config.workflow == "detection":
-        return DetectionWorkflow(config, app_name, project_root)
     return ExploitWorkflow(config, app_name, project_root)
 
 
@@ -261,9 +256,9 @@ def _log_experiment_config(
         config.attack_model,
     )
     logger.info(
-        "Runner settings: gold_run=%s gold_report=%s dry_run=%s model=%s iterations=%s",
+        "Runner settings: gold_run=%s task=%s dry_run=%s model=%s iterations=%s",
         str(config.gold_run).lower(),
-        getattr(config, "gold_report", None),
+        config.task,
         str(config.dry_run).lower(),
         config.model,
         config.max_iterations,
@@ -328,38 +323,39 @@ def run(
     exit_code = 1
 
     try:
-        # gold_report's report.json is the source of truth for attack_model.
+        # task/metadata.json is the source of truth for attacker_model.
         # Override config before creating the workflow so the correct ops class
-        # (MaliciousApkOps vs AuthAttackerOps) is selected.
-        if config.gold_report:
-            report_json = (
+        # (MaliciousAppOps vs AuthAttackerOps) is selected.
+        if config.task:
+            task_meta_path = (
                 project_root
                 / "zerodays"
                 / "reports"
                 / app_name
-                / config.gold_report
-                / "report.json"
+                / config.task
+                / "task"
+                / "metadata.json"
             )
-            if not report_json.exists():
+            if not task_meta_path.exists():
                 raise FileNotFoundError(
-                    f"report.json not found at {report_json} "
-                    f"(required for gold_report={config.gold_report})"
+                    f"metadata.json not found at {task_meta_path} "
+                    f"(required for task={config.task})"
                 )
-            meta = json.loads(report_json.read_text())
-            report_attack_model = meta.get("attack_model")
-            valid_models = {"malicious_apk", "auth_attacker"}
-            if report_attack_model not in valid_models:
+            task_meta = json.loads(task_meta_path.read_text())
+            task_attack_model = task_meta.get("attacker_model")
+            valid_models = {"malicious_app", "auth_attacker"}
+            if task_attack_model not in valid_models:
                 raise ValueError(
-                    f"attack_model={'missing' if report_attack_model is None else repr(report_attack_model)} "
-                    f"in {report_json} (must be one of {valid_models})"
+                    f"attacker_model={'missing' if task_attack_model is None else repr(task_attack_model)} "
+                    f"in {task_meta_path} (must be one of {valid_models})"
                 )
-            if report_attack_model != config.attack_model:
+            if task_attack_model != config.attack_model:
                 logger.info(
-                    "Gold report overrides attack_model: %s -> %s",
+                    "Task metadata overrides attack_model: %s -> %s",
                     config.attack_model,
-                    report_attack_model,
+                    task_attack_model,
                 )
-                config.attack_model = report_attack_model
+                config.attack_model = task_attack_model
 
         workflow = create_workflow(config, app_name, project_root)
         workflow_type = type(workflow).__name__
@@ -426,9 +422,32 @@ def run(
                 )
             else:
                 logger.info("Evaluation complete")
-            outcome = "success"
-            exit_reason = "completed"
-            exit_code = 0
+
+            # Derive outcome from agent_status and evaluation rather than
+            # unconditionally reporting success.
+            agent_status = run_result.get("status", "unknown")
+            eval_score = (
+                evaluation.get("score") if isinstance(evaluation, dict) else None
+            )
+
+            if agent_status in ("timeout", "error"):
+                outcome = "failure"
+                exit_reason = agent_status
+                exit_code = 1
+            elif eval_score == 1:
+                outcome = "success"
+                exit_reason = "completed"
+                exit_code = 0
+            elif eval_score is not None:
+                # Evaluation ran but the exploit did not succeed
+                outcome = "failure"
+                exit_reason = "completed"
+                exit_code = 1
+            else:
+                # No evaluation score (non-exploit workflow or eval skipped)
+                outcome = "success"
+                exit_reason = "completed"
+                exit_code = 0
 
     except ValueError as e:
         logger.error(f"Validation error: {e}")

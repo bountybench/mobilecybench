@@ -15,8 +15,8 @@ Details: `documentation/GETTING_STARTED.md`
 
 Flags:
 
-- `setup.sh --sdk <version> --system-image <google_apis|google_apis_playstore> --init-submodules [app_name]`
-- `start_emulator.sh [google_apis|google_apis_playstore]`
+- `setup.sh [app_name] --init-submodules [app_name]`
+- `start_emulator.sh <33|34|35>`
 - `check_device.sh -s <serial>`
 - `stop_emulator.sh -s <serial> -p <port>`
 
@@ -63,7 +63,7 @@ Details: `documentation/ADDING_APPS.md`, `documentation/SYNTHETIC_VULNERABILITIE
 Flags:
 
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
-- `./build_apk.sh <app_name> --hardened` (uses app-local `security.patch`)
+- `./build_apk.sh <app_name> --hardened` (uses `security.patch` from `zerodays` submodule)
 - `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file)
 - `./publish_apk_bundle.sh apps/<app_name>`
 

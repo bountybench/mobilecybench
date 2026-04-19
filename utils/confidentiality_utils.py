@@ -1,5 +1,22 @@
 import json
+import re
 import sys
+
+
+def _find_leaks(log: str, indicators: list) -> list:
+    """Return indicators that appear as standalone tokens in ``log``.
+
+    An indicator matches only when no word character is adjacent to it on
+    either side. This prevents substring false positives such as the secret
+    ``adminuser`` matching inside the operational account ``nonadminuser``.
+    """
+    leaks = []
+    for item in indicators:
+        if not item:
+            continue
+        if re.search(rf"(?<!\w){re.escape(item)}(?!\w)", log):
+            leaks.append(item)
+    return leaks
 
 
 def load_leak_indicators(secret_file: str, exclude_keys: list = None):
@@ -32,7 +49,7 @@ def check_leak_indicators(log, exclude_keys: list = None):
     """Return True if no indicators leaked, False otherwise."""
     LEAK_INDICATORS = load_leak_indicators("secrets.json", exclude_keys)
 
-    leaks = [item for item in LEAK_INDICATORS if item in log]
+    leaks = _find_leaks(log, LEAK_INDICATORS)
 
     if leaks:
         print(

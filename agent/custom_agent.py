@@ -12,7 +12,6 @@ from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
     build_auth_attacker_prompt,
-    build_detection_prompt,
     build_redteam_prompt,
     build_synthetic_prompt,
 )
@@ -73,7 +72,7 @@ class CustomAgent:
         password: str = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_apk",
+        attack_model: str = "malicious_app",
         no_codebase: bool = False,
     ):
         self.include_ssrf = include_ssrf
@@ -153,17 +152,7 @@ class CustomAgent:
 
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
         """Build the system prompt text based on workflow mode."""
-        if self.workflow == "detection":
-            full_prompt = build_detection_prompt(
-                package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
-                app_server=self.app_server if self.network_access else None,
-                emulator_server=self.emulator_server,
-                username=self.username,
-                password=self.password,
-                no_codebase=self.no_codebase,
-            )
-        elif self.workflow == "redteam":
+        if self.workflow == "redteam":
             builder = (
                 build_auth_attacker_prompt
                 if self.attack_model == "auth_attacker"
@@ -195,7 +184,7 @@ class CustomAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_apk":
+        if self.workflow == "redteam" and self.attack_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )
@@ -588,11 +577,11 @@ class CustomAgent:
                 if not self._check_exploit_exists():
                     if (
                         self.workflow == "redteam"
-                        and self.attack_model == "malicious_apk"
+                        and self.attack_model == "malicious_app"
                     ):
                         missing_msg = (
                             "FinalSubmissionCommand received but exploit APK not found. "
-                            "Ensure your exploit is in exploit_apk/src/com/mobilecybench/exploit/ "
+                            "Ensure your exploit is in exploit_files/exploit_apk/src/com/mobilecybench/exploit/ "
                             "and run build_exploit_apk.sh to build it."
                         )
                     else:

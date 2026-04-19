@@ -173,9 +173,8 @@ def _existing_path(path_value: Optional[str]) -> Optional[str]:
 
 # Maps artifact key → filename, and which workflows produce each file.
 _SCORE_FILES: dict[str, tuple[str, set[str]]] = {
-    "scores_json": ("scores.json", {"exploit", "detection"}),
+    "scores_json": ("scores.json", {"exploit"}),
     "synthetic_scores_json": ("synthetic_scores.json", {"exploit"}),
-    "detection_scores_json": ("detection_scores.json", {"detection"}),
     "redteam_scores_json": ("redteam_scores.json", {"redteam"}),
 }
 
@@ -207,6 +206,28 @@ def _score_artifact_paths(
         key: _find(filename) if workflow_name in workflows else None
         for key, (filename, workflows) in _SCORE_FILES.items()
     }
+
+
+def _detect_inconsistencies(
+    outcome: str,
+    exit_reason: str,
+    run_result: dict,
+    evaluation: dict,
+) -> list:
+    """Return a list of human-readable strings when sub-statuses disagree."""
+    issues: list[str] = []
+    agent_status = str(run_result.get("status", "unknown"))
+    eval_score = evaluation.get("score") if isinstance(evaluation, dict) else None
+
+    if agent_status in ("timeout", "error") and outcome == "success":
+        issues.append(f"agent_status is '{agent_status}' but outcome is 'success'")
+    if agent_status == "timeout" and exit_reason == "completed":
+        issues.append("agent timed out but exit_reason is 'completed'")
+    if agent_status in ("timeout", "error") and eval_score == 1:
+        issues.append(f"agent_status is '{agent_status}' but evaluation scored 1")
+    if outcome == "success" and eval_score is not None and eval_score != 1:
+        issues.append(f"outcome is 'success' but evaluation score is {eval_score}")
+    return issues
 
 
 def write_run_summary(
@@ -261,6 +282,22 @@ def write_run_summary(
     token_totals = run_result.get("token_totals") or {}
     if not isinstance(token_totals, dict):
         token_totals = {}
+
+    # Timing summary: prefer time_tracker data when the agent used the
+    # custom provider (one llm_timing call per model request), otherwise
+    # fall back to any timing dict the agent provided.  CLI-based agents
+    # (codex, claude-code) bypass time_tracker entirely, so without this
+    # fallback their timing metrics would always be zero.
+    time_tracker_timing = _timing_summary_from_calls(llm_calls_this_run)
+    agent_timing = run_result.get("timing") or {}
+    if not isinstance(agent_timing, dict):
+        agent_timing = {}
+    if llm_calls_this_run:
+        timing_summary = time_tracker_timing
+        if agent_timing:
+            timing_summary = {**agent_timing, **time_tracker_timing}
+    else:
+        timing_summary = agent_timing or time_tracker_timing
 
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
 
@@ -323,7 +360,7 @@ def write_run_summary(
             "error_count": max(0, logger_manager.get_error_count() - start_error_count),
             "token_totals": token_totals,
             "cost_usd": run_result.get("cost_usd"),
-            "timing": _timing_summary_from_calls(llm_calls_this_run),
+            "timing": timing_summary,
         },
         "results": {
             "agent_status": str(run_result.get("status", "unknown")),
@@ -332,6 +369,9 @@ def write_run_summary(
                 evaluation.get("status") if isinstance(evaluation, dict) else None
             ),
             "scores": scores,
+            "inconsistencies": _detect_inconsistencies(
+                outcome, exit_reason, run_result, evaluation
+            ),
         },
         "artifacts": {
             "log_file": logger_manager.get_log_file_name(),

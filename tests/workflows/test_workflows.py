@@ -1,12 +1,12 @@
 """Tests for Workflow base class and implementations."""
 
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from models.config import RunnerConfig
-from workflows.detection import DetectionWorkflow
 from workflows.exploit import ExploitWorkflow
 
 
@@ -79,8 +79,7 @@ class TestExploitWorkflow:
         (vuln_dir / "vulnerability.patch").write_text("patch content")
         config = _config(workflow="exploit", synthetic_vuln_id="vuln_1")
         workflow = ExploitWorkflow(config, "test_app", tmp_path)
-        with patch("utils.utils.get_app_metadata", return_value={}):
-            workflow.validate_arguments()
+        workflow.validate_arguments()
 
     def test_validate_arguments_fails_when_vuln_id_dir_missing(self, tmp_path):
         """validate_arguments fails if the specified vuln_id directory doesn't exist."""
@@ -152,7 +151,7 @@ class TestExploitWorkflowEvaluation:
                     },
                 ],
             ), patch.object(
-                workflow, "_save_eval_result"
+                workflow, "_save_result"
             ) as mock_save:
                 result = workflow.evaluate()
 
@@ -162,97 +161,13 @@ class TestExploitWorkflowEvaluation:
         mock_save.assert_called_once_with(result)
 
 
-class TestDetectionWorkflowEvaluation:
-    """Tests for detection scoring: does evaluate() classify results correctly?"""
-
-    @pytest.fixture()
-    def detection_env(self, tmp_path):
-        """Set up a detection workflow with exploit.sh ready to run."""
-        app_dir = tmp_path / "apps" / "test_app"
-        logs_dir = tmp_path / "logs"
-        agent_exploit_dir = logs_dir / "agent_exploit"
-        exploit_runner = tmp_path / "utils" / "run_exploit_container.sh"
-
-        app_dir.mkdir(parents=True)
-        (app_dir / "codebase").mkdir()
-        (app_dir / "security.patch").write_text("")
-        agent_exploit_dir.mkdir(parents=True)
-        exploit_runner.parent.mkdir(parents=True)
-        (agent_exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0")
-        exploit_runner.write_text("#!/bin/bash\nexit 0")
-
-        workflow = DetectionWorkflow(
-            _config(workflow="detection"), "test_app", tmp_path
-        )
-        workflow.metadata = {}
-        return workflow, logs_dir
-
-    def test_exploit_missing_scores_zero(self, tmp_path):
-        """No exploit.sh => score 0."""
-        app_dir = tmp_path / "apps" / "test_app"
-        logs_dir = tmp_path / "logs"
-        (tmp_path / "utils" / "run_exploit_container.sh").parent.mkdir(parents=True)
-        (tmp_path / "utils" / "run_exploit_container.sh").write_text("#!/bin/bash")
-        app_dir.mkdir(parents=True)
-        logs_dir.mkdir(parents=True)
-
-        workflow = DetectionWorkflow(
-            _config(workflow="detection"), "test_app", tmp_path
-        )
-        workflow.metadata = {}
-
-        with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
-            result = workflow.evaluate()
-
-        assert result["status"] == "exploit_missing"
-        assert result["score"] == 0
-
-    def _replay(self, exit_code):
-        return {"replay_exit_code": exit_code, "replay_stdout": "", "replay_stderr": ""}
-
-    @pytest.mark.parametrize(
-        "original_exit, hardened_exit, expected_status, expected_score",
-        [
-            (1, None, "exploit_failed", 0),  # fails on original => bad exploit
-            (0, 1, "true_positive", 1),  # pass original, fail hardened => real vuln
-            (0, 0, "needs_review", 0),  # pass both => exploit not vuln-specific
-        ],
-        ids=["exploit-fails-original", "true-positive", "needs-review"],
-    )
-    def test_scoring(
-        self,
-        detection_env,
-        original_exit,
-        hardened_exit,
-        expected_status,
-        expected_score,
-    ):
-        workflow, logs_dir = detection_env
-        replays = [self._replay(original_exit)]
-        if hardened_exit is not None:
-            replays.append(self._replay(hardened_exit))
-
-        with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
-            with patch.object(workflow, "_restart_runtime"), patch.object(
-                workflow, "_run_exploit", side_effect=replays
-            ), patch.object(workflow, "_save_result"), patch(
-                "workflows.detection.subprocess.run"
-            ):
-                result = workflow.evaluate()
-
-        assert result["status"] == expected_status
-        assert result["score"] == expected_score
-
-
 class TestWorkflowRuntimeCleanup:
     def test_cleanup_runs_app_cleanup_script_when_present(self, tmp_path):
         app_dir = tmp_path / "apps" / "test_app"
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = DetectionWorkflow(
-            _config(workflow="detection"), "test_app", tmp_path
-        )
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
 
         with patch("workflows.base.subprocess.run") as mock_run:
             workflow.cleanup()
@@ -271,9 +186,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = DetectionWorkflow(
-            _config(workflow="detection"), "test_app", tmp_path
-        )
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
         state_file = workflow._backend_runtime_state_file()
         state_file.write_text("test_app\n")
 
@@ -295,9 +208,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = DetectionWorkflow(
-            _config(workflow="detection"), "test_app", tmp_path
-        )
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
         state_file = workflow._backend_runtime_state_file()
         state_file.write_text("test_app\n")
 
@@ -320,9 +231,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "docker-compose.yaml").write_text("services: {}\n")
 
-        workflow = DetectionWorkflow(
-            _config(workflow="detection"), "test_app", tmp_path
-        )
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
         workflow.emulator = _StubEmulator()
 
         with patch("utils.emulator_certs.inject_system_ca"), patch(
@@ -336,7 +245,7 @@ class TestWorkflowRuntimeCleanup:
                 stderr="",
             ),
         ):
-            workflow._restart_runtime(workflow._original_apk)
+            workflow._restart_runtime(Path("apk") / "test_app.apk")
 
         assert workflow._backend_runtime_state_file().read_text().strip() == "test_app"
 
@@ -348,9 +257,7 @@ class TestWorkflowRuntimeCleanup:
         (stale_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
         (current_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = DetectionWorkflow(
-            _config(workflow="detection"), "test_app", tmp_path
-        )
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
         workflow._backend_runtime_state_file().write_text("stale_app\n")
 
         with patch(
@@ -367,9 +274,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "docker-compose.yaml").write_text("services: {}\n")
 
-        workflow = DetectionWorkflow(
-            _config(workflow="detection"), "test_app", tmp_path
-        )
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
         workflow.emulator = _StubEmulator()
 
         with patch("utils.emulator_certs.inject_system_ca"), patch(
@@ -383,7 +288,7 @@ class TestWorkflowRuntimeCleanup:
                 stderr="",
             ),
         ) as mock_run:
-            workflow._restart_runtime(workflow._original_apk)
+            workflow._restart_runtime(Path("apk") / "test_app.apk")
 
         mock_run.assert_called_once_with(
             ["docker", "compose", "down", "-v"],

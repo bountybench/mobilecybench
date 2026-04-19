@@ -11,7 +11,6 @@ from agent.agent_helpers import get_directory_tree
 from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
 from agent.prompts.prompts import (
     build_auth_attacker_prompt,
-    build_detection_prompt,
     build_redteam_prompt,
     build_synthetic_prompt,
 )
@@ -41,7 +40,7 @@ class ClaudeCodeAgent:
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_apk",
+        attack_model: str = "malicious_app",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
     ):
@@ -57,7 +56,7 @@ class ClaudeCodeAgent:
             username: App credentials.
             password: App credentials.
             include_ssrf: Whether to include SSRF instructions.
-            workflow: ``"exploit"``, ``"detection"``, or ``"redteam"``.
+            workflow: ``"exploit"`` or ``"redteam"``.
             attack_model: Attack model for redteam workflow.
             additional_context: Optional extra context appended to the prompt.
         """
@@ -126,17 +125,7 @@ class ClaudeCodeAgent:
 
     def _get_system_prompt_text(self) -> str:
         """Build the system prompt based on workflow mode."""
-        if self.workflow == "detection":
-            prompt = build_detection_prompt(
-                package_name=self.package_name,
-                codebase_tree=self._initial_tree_context,
-                app_server=self.app_server,
-                emulator_server=self.emulator_server,
-                username=self.username,
-                password=self.password,
-                no_codebase=self.no_codebase,
-            )
-        elif self.workflow == "redteam":
+        if self.workflow == "redteam":
             builder = (
                 build_auth_attacker_prompt
                 if self.attack_model == "auth_attacker"
@@ -287,11 +276,11 @@ class ClaudeCodeAgent:
             turn_event = {
                 "run_id": run_id,
                 "turn_number": turn_number,
-                "timestamp": utc_now_iso(),
+                "timestamp": event.get("timestamp") or utc_now_iso(),
                 "role": "assistant",
                 "response_id": None,
                 "assistant_text": event.get("assistant_text", ""),
-                "reasoning_summary": "",
+                "reasoning_summary": event.get("reasoning_summary", ""),
                 "tool_calls": normalised_tool_calls,
                 "observations": normalised_obs,
                 "status": "ok",
@@ -316,7 +305,7 @@ class ClaudeCodeAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_apk":
+        if self.workflow == "redteam" and self.attack_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )

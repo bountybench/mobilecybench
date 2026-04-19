@@ -896,7 +896,7 @@ def setup_agent_environment(
         app_dir: Application directory
         agent_image: Docker image to use for agent
         metadata: App metadata dict
-        workflow: Evaluation workflow type ("exploit" or "detection")
+        workflow: Evaluation workflow type ("exploit" or "redteam")
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
         no_codebase: Whether to copy the built APK into the agent environment
@@ -920,6 +920,13 @@ def setup_agent_environment(
         "ADB_SERVER_SOCKET": f"tcp:{ADB_PROXY_CONTAINER}:{ADB_PROXY_PORT}",
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
     }
+
+    # Ensure agent/.env is loaded so mode-specific keys are available.
+    from dotenv import load_dotenv
+
+    agent_env_file = Path(__file__).parent / ".env"
+    if agent_env_file.exists():
+        load_dotenv(agent_env_file, override=True)
 
     # Inject mode-specific environment variables
     if agent_mode == "codex":
