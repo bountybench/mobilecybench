@@ -322,7 +322,7 @@ def _is_complete_registration_screen(d) -> bool:
     return (
         d(resourceId="MasterPasswordEntry").exists
         and d(resourceId="ConfirmMasterPasswordEntry").exists
-        and not d(resourceId="EmailAddressEntry").exists
+        and d(text="Next").exists
     )
 
 
@@ -1247,6 +1247,41 @@ def bw_attempt_login(d, email, password):
     logger.info("Entering master password...")
     wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
     wait_for_ui_stable(d, min_consecutive=2, timeout=10)
+
+    if _is_complete_registration_screen(d):
+        logger.info(
+            "Complete registration screen detected after password entry; finishing setup."
+        )
+        wait_and_set_text(d, d(resourceId="ConfirmMasterPasswordEntry"), password)
+
+        next_button = d(text="Next")
+        if not _scroll_until_visible(d, next_button):
+            raise RuntimeError(
+                "Complete registration screen was visible, but the Next button could not be found."
+            )
+
+        if not click_then_expect(
+            d,
+            next_button,
+            lambda: d(resourceId="SetUpLaterButton").exists
+            or d(text="Turn on later").exists
+            or d(text="Continue").exists
+            or d(resourceId="AddItemButton").exists
+            or d(resourceId="AlertPopup").exists,
+            timeout=20,
+        ):
+            raise RuntimeError(
+                "Complete registration did not advance after pressing Next."
+            )
+
+        _complete_post_registration_setup(d)
+        if _wait_for_unlocked_vault(d, timeout=35.0):
+            logger.info("Account setup completed and vault is unlocked.")
+            return True
+
+        logger.info(
+            "Complete registration screen advanced after password entry, but the vault did not unlock yet."
+        )
 
     if _vault_unlocked_visible(d):
         logger.info("Vault already visible after password entry; skipping submit tap.")
