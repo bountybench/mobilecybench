@@ -23,9 +23,6 @@
 #     # Build a vulnerable APK from an explicit zero-day vulnerability bundle
 #   ./build_apk.sh conversations --commit 60a32b1
 #     # Build from an explicit commit instead of metadata.json commit_version
-#   ./build_apk.sh conversations --hardened
-#     # Build a hardened APK by applying apps/conversations/security.patch in the mobilecybench-zerodays repository
-#     # Places the sensitive hardened APK into the zerodays submodule
 #   ./build_apk.sh conversations --hardened-patch /path/to/fix.patch
 #     # Build a hardened APK from an explicit patch file (for example a task/report fix.patch)
 #
@@ -50,10 +47,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Variables
 APP_NAME=""
 VULN_ID=""
-HARDENED=""
 HARDENED_PATCH_PATH=""
 OUTPUT_DIR=""
+OUTPUT_DIR_EXPLICIT="0"
 BUILD_COMMIT_OVERRIDE=""
+HARDENED_OUTPUT_PATH=""
 
 show_usage() {
     echo "Usage: $0 <app_name> [options]"
@@ -71,15 +69,13 @@ show_usage() {
     echo "                      zero_day_vulnerabilities/<bundle_name>"
     echo "  --commit <ref>      Override metadata.json commit_version for this build"
     echo "                      (useful for pinned historical/task baseline builds)"
-    echo "  --hardened          Build a hardened APK by applying security.patch"
-    echo "                      (from zerodays/patches/<app>/)"
     echo "  --hardened-patch <path>"
     echo "                      Build a hardened APK by applying an explicit patch file"
     echo "                      (useful when the remediation patch lives outside the app dir,"
     echo "                       e.g. a task/report fix.patch)"
     echo "  -h, --help          Show this help message"
     echo ""
-    echo "Note: --vuln, --hardened, and --hardened-patch are mutually exclusive."
+    echo "Note: --vuln and --hardened-patch are mutually exclusive."
     echo ""
     echo "Examples:"
     echo "  $0 conversations"
@@ -94,15 +90,14 @@ show_usage() {
     echo "    Build a vulnerable APK from an explicit zero-day vulnerability bundle"
     echo "  $0 conversations --commit 60a32b1"
     echo "    Build from an explicit commit"
-    echo "  $0 simplelogin --hardened"
-    echo "    Build a hardened APK from apps/simplelogin/security.patch"
     echo "  $0 conversations --hardened-patch /path/to/fix.patch"
     echo "    Build a hardened APK from an explicit patch file"
     echo ""
     echo "Output naming:"
     echo "  Regular build:    apk/<app_name>.apk"
     echo "  Vuln build:       apk/<basename(vuln_ref)>/<app_name>.apk"
-    echo "  Hardened build:   apk/hardened/<app_name>.apk"
+    echo "  Hardened build:   zerodays/reports/<app>/<report>/artifacts/hardened_apk/<app_name>.apk"
+    echo "                    (for task fix.patch paths)"
 }
 
 # Parse arguments
@@ -116,10 +111,6 @@ while [[ $# -gt 0 ]]; do
             fi
             VULN_ID="$2"
             shift 2
-            ;;
-        --hardened)
-            HARDENED="1"
-            shift
             ;;
         --hardened-patch)
             if [ -z "$2" ] || [[ "$2" == -* ]]; then
@@ -137,6 +128,7 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             OUTPUT_DIR="$2"
+            OUTPUT_DIR_EXPLICIT="1"
             shift 2
             ;;
         --commit)
@@ -187,12 +179,6 @@ fi
 # Set default output directory
 if [ -z "$OUTPUT_DIR" ]; then
     OUTPUT_DIR="$APP_DIR/apk"
-fi
-
-# Set default pure hardened output directory
-ZERODAY_HARDENED_DIR=""
-if [ -n "$HARDENED" ]; then
-    ZERODAY_HARDENED_DIR="$ROOT_DIR/zerodays/patches/$APP_NAME"
 fi
 
 VULN_OUTPUT_NAME=""
@@ -266,27 +252,6 @@ check_submodule_initialized() {
     fi
 
     echo -e "${INFO} Codebase submodule is initialized"
-    return 0
-}
-
-# Check zerodays submodule is initialized (only for hardened APK build mode)
-check_zerodays_submodule_initialized() {
-    if [ -n "$HARDENED" ]; then
-        local zerodays_dir="$ROOT_DIR/zerodays"
-        
-        if [ ! -d "$zerodays_dir" ] || [ -z "$(ls -A "$zerodays_dir" 2>/dev/null)" ]; then
-            echo -e "${INFO} Initializing zerodays submodule..."
-            git submodule update --init zerodays 2>/dev/null || true
-        fi
-
-        if [ -z "$(ls -A "$zerodays_dir" 2>/dev/null)" ]; then
-            echo -e "${ERROR} zerodays submodule is not initialized (directory is empty)"
-            echo -e "${ERROR} Please initialize the submodule: git submodule update --init zerodays"
-            return 1
-        fi
-        
-        echo -e "${INFO} zerodays submodule is initialized"
-    fi
     return 0
 }
 
@@ -483,29 +448,6 @@ apply_patch() {
     return 0
 }
 
-# Resolve security.patch from zerodays submodule (single source of truth)
-resolve_security_patch() {
-    local patch="$ROOT_DIR/zerodays/patches/$APP_NAME/security.patch"
-    if [ -f "$patch" ]; then
-        echo "$patch"
-    fi
-}
-
-# Apply security.patch if it exists (only for clean builds, not vuln builds)
-apply_security_patch() {
-    local patch_file
-    patch_file="$(resolve_security_patch)"
-
-    if [ -n "$patch_file" ] && [ -f "$patch_file" ]; then
-        echo -e "${INFO} Found security.patch - applying: $patch_file"
-        apply_patch "$patch_file" "security.patch" || return 1
-    else
-        echo -e "${ERROR} No security.patch found for $APP_NAME"
-        return 1
-    fi
-    return 0
-}
-
 # Apply vulnerability patch for synthetic vuln builds
 apply_vulnerability_patch() {
     local vuln_id="$1"
@@ -557,7 +499,7 @@ build_and_package() {
 
     # Disable Gradle build cache for patched builds to prevent stale cached
     # compilation outputs from a prior clean build being reused.
-    if [[ -n "$VULN_ID" || -n "$HARDENED" || -n "$HARDENED_PATCH_PATH" ]]; then
+    if [[ -n "$VULN_ID" || -n "$HARDENED_PATCH_PATH" ]]; then
         export GRADLE_EXTRA_ARGS="--no-build-cache"
     else
         export GRADLE_EXTRA_ARGS=""
@@ -593,17 +535,13 @@ build_and_package() {
     echo -e "${INFO} Found unsigned APK: $UNSIGNED_APK"
 
     # Determine output path (vuln/hardened builds go in subdirectory)
-    # Hardened builds from security patches will directly go to the zerodays submodule
     local output_path
     if [[ -n "$VULN_ID" ]]; then
         mkdir -p "$OUTPUT_DIR/$VULN_OUTPUT_NAME"
         output_path="$OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
-    elif [[ -n "$HARDENED" ]]; then
-        mkdir -p "$ZERODAY_HARDENED_DIR/hardened"
-        output_path="$ZERODAY_HARDENED_DIR/hardened/${APP_NAME}.apk"
     elif [[ -n "$HARDENED_PATCH_PATH" ]]; then
-        mkdir -p "$OUTPUT_DIR/hardened"
-        output_path="$OUTPUT_DIR/hardened/${APP_NAME}.apk"
+        mkdir -p "$(dirname "$HARDENED_OUTPUT_PATH")"
+        output_path="$HARDENED_OUTPUT_PATH"
     else
         mkdir -p "$OUTPUT_DIR"
         output_path="$OUTPUT_DIR/${APP_NAME}.apk"
@@ -635,10 +573,9 @@ main() {
     # Validate mutually exclusive flags
     local mode_count=0
     [[ -n "$VULN_ID" ]] && mode_count=$((mode_count + 1))
-    [[ -n "$HARDENED" ]] && mode_count=$((mode_count + 1))
     [[ -n "$HARDENED_PATCH_PATH" ]] && mode_count=$((mode_count + 1))
     if [ "$mode_count" -gt 1 ]; then
-        echo -e "${ERROR} --vuln, --hardened, and --hardened-patch are mutually exclusive"
+        echo -e "${ERROR} --vuln and --hardened-patch are mutually exclusive"
         exit 1
     fi
 
@@ -658,10 +595,6 @@ main() {
             exit 1
         fi
     elif [ -n "$HARDENED_PATCH_PATH" ]; then
-        echo -e "${INFO} Output: $OUTPUT_DIR/hardened/${APP_NAME}.apk"
-        echo -e "${INFO} Mode: Hardened APK build (explicit patch)"
-        echo -e "${INFO} Patch: $HARDENED_PATCH_PATH"
-
         # Resolve to absolute path
         if [[ "$HARDENED_PATCH_PATH" != /* ]]; then
             HARDENED_PATCH_PATH="$(cd "$(dirname "$HARDENED_PATCH_PATH")" && pwd)/$(basename "$HARDENED_PATCH_PATH")"
@@ -671,20 +604,20 @@ main() {
             echo -e "${ERROR} Patch file not found: $HARDENED_PATCH_PATH"
             exit 1
         fi
-    elif [ -n "$HARDENED" ]; then
-        echo -e "${INFO} Output: $ZERODAY_HARDENED_DIR/hardened/${APP_NAME}.apk"
-        echo -e "${INFO} Mode: Hardened APK build (using zerodays' security.patch)"
 
-        check_zerodays_submodule_initialized || exit 1
-
-        # Validate security.patch exists
-        local resolved_patch
-        resolved_patch="$(resolve_security_patch)"
-        if [ -z "$resolved_patch" ] || [ ! -f "$resolved_patch" ]; then
-            echo -e "${ERROR} security.patch not found at zerodays/patches/$APP_NAME/"
+        if [ "$OUTPUT_DIR_EXPLICIT" = "1" ]; then
+            HARDENED_OUTPUT_PATH="$OUTPUT_DIR/${APP_NAME}.apk"
+        elif [[ "$HARDENED_PATCH_PATH" =~ (.*/reports/${APP_NAME}/[^/]+)/ ]]; then
+            HARDENED_OUTPUT_PATH="${BASH_REMATCH[1]}/artifacts/hardened_apk/${APP_NAME}.apk"
+        else
+            echo -e "${ERROR} Could not resolve hardened APK output path from patch: $HARDENED_PATCH_PATH"
+            echo -e "${ERROR} Use a task fix.patch under zerodays/reports/<app>/<report>/ or pass --output <dir>"
             exit 1
         fi
-        echo -e "${INFO} Using patch: $resolved_patch"
+
+        echo -e "${INFO} Output: $HARDENED_OUTPUT_PATH"
+        echo -e "${INFO} Mode: Hardened APK build (explicit patch)"
+        echo -e "${INFO} Patch: $HARDENED_PATCH_PATH"
     else
         echo -e "${INFO} Output: $OUTPUT_DIR/${APP_NAME}.apk"
         echo -e "${INFO} Mode: Regular APK build"
@@ -699,8 +632,7 @@ main() {
     checkout_commit || exit 1
 
     if [ -n "$VULN_ID" ]; then
-        # Building vulnerable APK
-        # NOTE: Do NOT apply security.patch for vuln builds - we want the vulnerability
+        # Building vulnerable APK from the declared vulnerable baseline.
 
         # Step 3: Apply vulnerability patch
         if ! apply_vulnerability_patch "$VULN_ID"; then
@@ -747,32 +679,7 @@ main() {
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Hardened APK build completed!"
-        echo -e "${SUCCESS} Output: $OUTPUT_DIR/hardened/${APP_NAME}.apk"
-        echo -e "${SUCCESS} =================================="
-    elif [ -n "$HARDENED" ]; then
-        # Hardened build — apply security.patch
-
-        # Step 3: Apply security.patch
-        if ! apply_security_patch; then
-            echo -e "${ERROR} Failed to apply security.patch"
-            checkout_commit || true
-            exit 1
-        fi
-
-        # Step 4: Build, sign, and package
-        if ! build_and_package; then
-            echo -e "${ERROR} Build failed"
-            checkout_commit || true
-            exit 1
-        fi
-
-        # Step 5: Restore clean codebase state
-        echo -e "${INFO} Restoring clean codebase state..."
-        checkout_commit || true
-
-        echo -e "${SUCCESS} =================================="
-        echo -e "${SUCCESS} Hardened APK build completed!"
-        echo -e "${SUCCESS} Output: $ZERODAY_HARDENED_DIR/hardened/${APP_NAME}.apk"
+        echo -e "${SUCCESS} Output: $HARDENED_OUTPUT_PATH"
         echo -e "${SUCCESS} =================================="
     else
         # Regular (original) build — NO patches applied

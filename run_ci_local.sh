@@ -362,7 +362,6 @@ load_vuln_test_settings() {
         return 1
     fi
 
-    VULN_CLEAN_APK_MODE=$(jq -r '.clean_apk_mode // "default"' "$VULN_METADATA_FILE")
     VULN_BASELINE_COMMIT=$(jq -r '.baseline.commit // empty' "$VULN_METADATA_FILE")
     VULN_TASK_ID=$(jq -r '.task_id // .task_slug // empty' "$VULN_METADATA_FILE")
     VULN_PACKAGE_NAME=$(jq -r '.runtime.package_name // .app_metadata_overrides.package_name // empty' "$VULN_METADATA_FILE")
@@ -935,8 +934,6 @@ run_vuln_test() {
     local exploit_script="$ROOT_DIR/$app_dir/$vuln_dir/exploit_files/exploit.sh"
     local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_files/verify_exploit.sh"
     local metadata_file="$ROOT_DIR/$app_dir/$vuln_dir/metadata.json"
-    local clean_apk_mode="default"
-
     if [ ! -f "$patch_file" ]; then
         echo -e "${ERROR} Patch file not found: $patch_file"
         exit 1
@@ -959,7 +956,6 @@ run_vuln_test() {
     if ! load_vuln_test_settings "$vuln_dir" "$app_dir"; then
         exit 1
     fi
-    clean_apk_mode="$VULN_CLEAN_APK_MODE"
 
     echo -e "${INFO} Validating metadata.json schema..."
     if ! (cd "$ROOT_DIR" && python3 -m pytest --no-header -q         tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata         --dirs "$(dirname "$metadata_file")"); then
@@ -987,13 +983,7 @@ run_vuln_test() {
     local APK_DIR="$ROOT_DIR/$app_dir/apk"
     local VULN_APK_DIR="$APK_DIR/$vuln_id"
     local CLEAN_APK_DIR="$APK_DIR"
-    local clean_apk="apk/${app_name}.apk"
     local skip_build=false
-
-    if [ "$clean_apk_mode" = "security_patch" ]; then
-        CLEAN_APK_DIR="$ROOT_DIR/zerodays/patches/$app_name/hardened"
-        clean_apk="$ROOT_DIR/zerodays/patches/$app_name/hardened/${app_name}.apk"
-    fi
 
     if [ "$SKIP_APK" = true ]; then
         echo -e "${INFO} --skip-apk: checking for existing APKs..."
@@ -1023,13 +1013,8 @@ run_vuln_test() {
             echo -e "${ERROR} Base APK: $CLEAN_APK_DIR/*.apk ($base_apk_count found)"
             echo -e "${ERROR} Vuln APK: $VULN_APK_DIR/*.apk ($vuln_apk_count found)"
             echo -e "${ERROR} To fix: build APKs and publish:"
-            if [ "$clean_apk_mode" = "security_patch" ]; then
-                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --hardened"
-                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
-            else
-                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name"
-                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
-            fi
+            echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name"
+            echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
             echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
             exit 1
         fi
@@ -1040,18 +1025,10 @@ run_vuln_test() {
 
         cd "$ROOT_DIR"
 
-        if [ "$clean_apk_mode" = "security_patch" ]; then
-            echo -e "${INFO} Building clean hardened APK using build_apk.sh --hardened..."
-            if ! run_build_apk_with_vuln_env "$app_name" --hardened; then
-                echo -e "${ERROR} Failed to build hardened clean APK"
-                exit 1
-            fi
-        else
-            echo -e "${INFO} Building clean APK using build_apk.sh..."
-            if ! run_build_apk_with_vuln_env "$app_name"; then
-                echo -e "${ERROR} Failed to build clean APK"
-                exit 1
-            fi
+        echo -e "${INFO} Building clean APK using build_apk.sh..."
+        if ! run_build_apk_with_vuln_env "$app_name"; then
+            echo -e "${ERROR} Failed to build clean APK"
+            exit 1
         fi
 
         echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_dir..."
@@ -1096,11 +1073,7 @@ run_vuln_test() {
         "true"
 
     print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
-    local phase1_apk_arg=""
-    if [ "$clean_apk_mode" = "security_patch" ]; then
-        phase1_apk_arg="$clean_apk"
-    fi
-    if ! task_validation_run_phase "Clean build" "secure" "$phase1_apk_arg" "false"; then
+    if ! task_validation_run_phase "Clean build" "secure" "" "false"; then
         echo -e "${ERROR} Phase 1 failed: Clean build verification failed"
         task_validation_cleanup_runtime
         exit 1
