@@ -428,12 +428,8 @@ class TestMain:
         )
         monkeypatch.chdir(tmp_path)
 
-        replay_spec = type(
-            "ReplaySpec",
-            (),
-            {
-                "metadata": type("Metadata", (), {"app_name": "openhab"})(),
-            },
+        fake_source = type(
+            "ReplaySource", (), {"app_name": "openhab"}
         )()
 
         with patch(
@@ -445,7 +441,7 @@ class TestMain:
                 "--replay-run",
                 "logs/experiment_123",
             ],
-        ), patch("runner.resolve_replay_run", return_value=replay_spec), patch(
+        ), patch("runner.load_replay_source", return_value=fake_source), patch(
             "runner.run", return_value=0
         ) as mock_run:
             result = main()

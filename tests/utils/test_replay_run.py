@@ -1,200 +1,233 @@
+"""Behavior tests for replay-run resolution and staging.
+
+Assertions are on observable outcomes (returned fields, files on disk,
+error messages) — not on internal helpers or exception subclasses.
+"""
+
 import json
 from pathlib import Path
 
 import pytest
 
 from utils.replay_run import (
-    ReplayArtifactError,
-    ReplayCompatibilityError,
-    ReplayMetadataError,
-    resolve_replay_run,
-    stage_replay_artifact,
+    ReplayRunError,
+    load_replay_source,
+    stage_replay_exploit,
 )
 
 
 def _write_run_summary(
     path: Path,
     *,
-    app_name: str = "openhab",
-    workflow: str = "redteam",
+    app_name: str | None = "openhab",
+    workflow: str | None = "redteam",
     task: str | None = "report-1",
     attack_model: str | None = "malicious_app",
-    outcome: str = "success",
 ) -> None:
     payload = {
-        "run_id": "source-run-123",
-        "outcome": outcome,
         "context": {"app_name": app_name, "workflow": workflow},
-        "config": {
-            "full_snapshot": {
-                "task": task,
-                "attack_model": attack_model,
-            }
-        },
-        "results": {},
+        "config": {"full_snapshot": {"task": task, "attack_model": attack_model}},
     }
     path.write_text(json.dumps(payload))
 
 
-def _make_malicious_app_source(source_dir: Path) -> Path:
-    agent_exploit = source_dir / "agent_exploit"
-    src_dir = agent_exploit / "exploit_apk" / "src" / "com" / "mobilecybench"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    (agent_exploit / "exploit_apk" / "AndroidManifest.xml").write_text(
-        "<manifest package='com.mobilecybench.exploit' />"
+def _write_malicious_exploit(source_dir: Path) -> None:
+    apk = source_dir / "agent_exploit" / "exploit_apk"
+    (apk / "src" / "com" / "exploit").mkdir(parents=True)
+    (apk / "AndroidManifest.xml").write_text("<manifest/>")
+    (apk / "src" / "com" / "exploit" / "E.java").write_text("class E{}")
+
+
+def _write_auth_exploit(source_dir: Path) -> None:
+    d = source_dir / "agent_exploit"
+    d.mkdir(parents=True)
+    (d / "exploit.sh").write_text("#!/bin/bash\nexit 0\n")
+
+
+# ---------------------------------------------------------------------------
+# load_replay_source
+# ---------------------------------------------------------------------------
+
+
+class TestLoadReplaySource:
+    def test_returns_fields_from_run_summary(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json")
+        _write_malicious_exploit(src)
+
+        spec = load_replay_source(str(src), tmp_path)
+
+        assert spec.app_name == "openhab"
+        assert spec.task == "report-1"
+        assert spec.attack_model == "malicious_app"
+        assert spec.source_dir == src.resolve()
+
+    def test_resolves_path_relative_to_project_root(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json")
+        _write_malicious_exploit(src)
+
+        spec = load_replay_source("logs/experiment_1", tmp_path)
+        assert spec.source_dir == src.resolve()
+
+    def test_missing_source_dir(self, tmp_path):
+        with pytest.raises(ReplayRunError, match="not found"):
+            load_replay_source("nope", tmp_path)
+
+    def test_source_is_file_not_dir(self, tmp_path):
+        f = tmp_path / "x"
+        f.write_text("")
+        with pytest.raises(ReplayRunError, match="not a directory"):
+            load_replay_source(str(f), tmp_path)
+
+    def test_missing_run_summary(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        with pytest.raises(ReplayRunError, match="run_summary.json"):
+            load_replay_source(str(src), tmp_path)
+
+    def test_malformed_run_summary(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        (src / "run_summary.json").write_text("{not json")
+        with pytest.raises(ReplayRunError, match="malformed"):
+            load_replay_source(str(src), tmp_path)
+
+    def test_rejects_non_redteam_workflow(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json", workflow="exploit")
+        with pytest.raises(ReplayRunError, match="only 'redteam'"):
+            load_replay_source(str(src), tmp_path)
+
+    @pytest.mark.parametrize(
+        "missing_kwarg,expected",
+        [
+            ({"app_name": None}, "app_name"),
+            ({"task": None}, "task"),
+            ({"attack_model": None}, "attack_model"),
+        ],
     )
-    (src_dir / "Exploit.java").write_text("class Exploit {}")
-    return agent_exploit
+    def test_missing_required_field(self, tmp_path, missing_kwarg, expected):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json", **missing_kwarg)
+        _write_malicious_exploit(src)
+        with pytest.raises(ReplayRunError, match=expected):
+            load_replay_source(str(src), tmp_path)
+
+    def test_missing_agent_exploit_dir(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json")
+        with pytest.raises(ReplayRunError, match="No agent_exploit"):
+            load_replay_source(str(src), tmp_path)
+
+    def test_malicious_app_missing_manifest(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json")
+        (src / "agent_exploit" / "exploit_apk").mkdir(parents=True)
+        with pytest.raises(ReplayRunError, match="AndroidManifest"):
+            load_replay_source(str(src), tmp_path)
+
+    def test_malicious_app_missing_java_sources(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json")
+        apk = src / "agent_exploit" / "exploit_apk"
+        apk.mkdir(parents=True)
+        (apk / "AndroidManifest.xml").write_text("<manifest/>")
+        with pytest.raises(ReplayRunError, match="Java sources"):
+            load_replay_source(str(src), tmp_path)
+
+    def test_auth_attacker_missing_exploit_sh(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json", attack_model="auth_attacker")
+        (src / "agent_exploit").mkdir()
+        with pytest.raises(ReplayRunError, match="exploit.sh"):
+            load_replay_source(str(src), tmp_path)
+
+    def test_auth_attacker_happy_path(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json", attack_model="auth_attacker")
+        _write_auth_exploit(src)
+
+        spec = load_replay_source(str(src), tmp_path)
+        assert spec.attack_model == "auth_attacker"
 
 
-def _make_auth_attacker_source(source_dir: Path) -> Path:
-    agent_exploit = source_dir / "agent_exploit"
-    agent_exploit.mkdir(parents=True, exist_ok=True)
-    (agent_exploit / "exploit.sh").write_text("#!/bin/bash\nexit 0\n")
-    return agent_exploit
+# ---------------------------------------------------------------------------
+# stage_replay_exploit
+# ---------------------------------------------------------------------------
 
 
-class TestResolveReplayRun:
-    def test_infers_metadata_and_artifact_from_source_run(self, tmp_path):
-        source_dir = tmp_path / "logs" / "experiment_123"
-        source_dir.mkdir(parents=True)
-        _write_run_summary(source_dir / "run_summary.json", outcome="failure")
-        _make_malicious_app_source(source_dir)
+class TestStageReplayExploit:
+    def test_malicious_app_injects_canonical_build_script(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json")
+        _write_malicious_exploit(src)
 
-        spec = resolve_replay_run(
-            source_dir,
-            project_root=tmp_path,
-            explicit_app_name=None,
-            explicit_task=None,
-            explicit_workflow="redteam",
-            explicit_attack_model="malicious_app",
+        project = tmp_path / "proj"
+        script = project / "templates" / "malicious_app" / "build_exploit_apk.sh"
+        script.parent.mkdir(parents=True)
+        script.write_text("#!/bin/bash\necho canonical\n")
+
+        spec = load_replay_source(str(src), tmp_path)
+        logs = tmp_path / "current"
+        logs.mkdir()
+        target = stage_replay_exploit(spec, logs_dir=logs, project_root=project)
+
+        injected = target / "exploit_apk" / "build_exploit_apk.sh"
+        assert injected.read_text() == script.read_text()
+        assert injected.stat().st_mode & 0o111  # executable
+
+    def test_auth_attacker_marks_exploit_executable(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json", attack_model="auth_attacker")
+        _write_auth_exploit(src)
+
+        spec = load_replay_source(str(src), tmp_path)
+        logs = tmp_path / "current"
+        logs.mkdir()
+        target = stage_replay_exploit(
+            spec, logs_dir=logs, project_root=tmp_path / "proj"
         )
+        assert (target / "exploit.sh").stat().st_mode & 0o111
 
-        assert spec.metadata.app_name == "openhab"
-        assert spec.metadata.task == "report-1"
-        assert spec.metadata.workflow == "redteam"
-        assert spec.metadata.attack_model == "malicious_app"
-        assert spec.artifact.artifact_kind == "exploit_apk_project"
-        assert any("Proceeding with replay" in warning for warning in spec.warnings)
+    def test_replaces_existing_target(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json", attack_model="auth_attacker")
+        _write_auth_exploit(src)
 
-    def test_rejects_conflicting_explicit_app(self, tmp_path):
-        source_dir = tmp_path / "logs" / "experiment_123"
-        source_dir.mkdir(parents=True)
-        _write_run_summary(source_dir / "run_summary.json", app_name="openhab")
-        _make_auth_attacker_source(source_dir)
+        logs = tmp_path / "current"
+        logs.mkdir()
+        stale = logs / "agent_exploit"
+        stale.mkdir()
+        (stale / "stale.txt").write_text("old")
 
-        with pytest.raises(ReplayCompatibilityError, match="source run app"):
-            resolve_replay_run(
-                source_dir,
-                project_root=tmp_path,
-                explicit_app_name="wallabag",
-                explicit_task="report-1",
-                explicit_workflow="redteam",
-                explicit_attack_model="auth_attacker",
-            )
-
-    def test_requires_agent_exploit_directory(self, tmp_path):
-        source_dir = tmp_path / "logs" / "experiment_123"
-        source_dir.mkdir(parents=True)
-        _write_run_summary(source_dir / "run_summary.json")
-
-        with pytest.raises(ReplayArtifactError, match="agent submitted an exploit"):
-            resolve_replay_run(
-                source_dir,
-                project_root=tmp_path,
-                explicit_app_name="openhab",
-                explicit_task="report-1",
-                explicit_workflow="redteam",
-                explicit_attack_model="malicious_app",
-            )
-
-    def test_requires_task_when_metadata_missing(self, tmp_path):
-        source_dir = tmp_path / "logs" / "experiment_123"
-        source_dir.mkdir(parents=True)
-        _write_run_summary(
-            source_dir / "run_summary.json",
-            task=None,
-            attack_model="auth_attacker",
+        spec = load_replay_source(str(src), tmp_path)
+        target = stage_replay_exploit(
+            spec, logs_dir=logs, project_root=tmp_path / "proj"
         )
-        _make_auth_attacker_source(source_dir)
+        assert not (target / "stale.txt").exists()
+        assert (target / "exploit.sh").exists()
 
-        with pytest.raises(ReplayMetadataError, match="could not determine redteam task"):
-            resolve_replay_run(
-                source_dir,
-                project_root=tmp_path,
-                explicit_app_name="openhab",
-                explicit_task=None,
-                explicit_workflow="redteam",
-                explicit_attack_model="auth_attacker",
-            )
+    def test_missing_canonical_build_script(self, tmp_path):
+        src = tmp_path / "logs" / "experiment_1"
+        src.mkdir(parents=True)
+        _write_run_summary(src / "run_summary.json")
+        _write_malicious_exploit(src)
 
-
-class TestStageReplayArtifact:
-    def test_injects_canonical_build_script_for_malicious_app(self, tmp_path):
-        source_dir = tmp_path / "logs" / "experiment_123"
-        source_dir.mkdir(parents=True)
-        _write_run_summary(source_dir / "run_summary.json")
-        _make_malicious_app_source(source_dir)
-
-        project_root = tmp_path / "project"
-        build_script = (
-            project_root / "templates" / "malicious_app" / "build_exploit_apk.sh"
-        )
-        build_script.parent.mkdir(parents=True, exist_ok=True)
-        build_script.write_text("#!/bin/bash\necho canonical\n")
-
-        spec = resolve_replay_run(
-            source_dir,
-            project_root=tmp_path,
-            explicit_app_name="openhab",
-            explicit_task="report-1",
-            explicit_workflow="redteam",
-            explicit_attack_model="malicious_app",
-        )
-
-        logs_dir = tmp_path / "current_logs"
-        logs_dir.mkdir()
-        target_dir, replay_source_path = stage_replay_artifact(
-            spec,
-            logs_dir=logs_dir,
-            project_root=project_root,
-        )
-
-        injected_script = target_dir / "exploit_apk" / "build_exploit_apk.sh"
-        assert injected_script.exists()
-        assert injected_script.read_text() == build_script.read_text()
-        assert replay_source_path.exists()
-        record = json.loads(replay_source_path.read_text())
-        assert record["mode"] == "replay_run"
-        assert record["source_app"] == "openhab"
-
-    def test_preserves_auth_attacker_exploit(self, tmp_path):
-        source_dir = tmp_path / "logs" / "experiment_123"
-        source_dir.mkdir(parents=True)
-        _write_run_summary(
-            source_dir / "run_summary.json",
-            attack_model="auth_attacker",
-        )
-        _make_auth_attacker_source(source_dir)
-
-        project_root = tmp_path / "project"
-        (project_root / "templates" / "malicious_app").mkdir(parents=True, exist_ok=True)
-
-        spec = resolve_replay_run(
-            source_dir,
-            project_root=tmp_path,
-            explicit_app_name="openhab",
-            explicit_task="report-1",
-            explicit_workflow="redteam",
-            explicit_attack_model="auth_attacker",
-        )
-
-        logs_dir = tmp_path / "current_logs"
-        logs_dir.mkdir()
-        target_dir, _ = stage_replay_artifact(
-            spec,
-            logs_dir=logs_dir,
-            project_root=project_root,
-        )
-
-        assert (target_dir / "exploit.sh").exists()
+        spec = load_replay_source(str(src), tmp_path)
+        logs = tmp_path / "current"
+        logs.mkdir()
+        with pytest.raises(ReplayRunError, match="build script"):
+            stage_replay_exploit(spec, logs_dir=logs, project_root=tmp_path / "proj")
