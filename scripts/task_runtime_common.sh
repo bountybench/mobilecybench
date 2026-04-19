@@ -16,9 +16,35 @@ TASK_RUNTIME_ATTACK_MODEL=""
 TASK_RUNTIME_PHASE=""
 TASK_RUNTIME_FIX_PATCH=""
 TASK_RUNTIME_WORKSPACE_DIR=""
-TASK_RUNTIME_VERIFY_EXIT=0
+TASK_RUNTIME_VERIFY_EXIT=255
+
+task_runtime_clear_context() {
+    TASK_RUNTIME_ENV=()
+    TASK_RUNTIME_TASK_DIR=""
+    TASK_RUNTIME_OUTPUT_DIR=""
+    TASK_RUNTIME_APP_DIR=""
+    TASK_RUNTIME_TASK_METADATA_JSON=""
+    TASK_RUNTIME_APP_METADATA_JSON=""
+    TASK_RUNTIME_PACKAGE_NAME=""
+    TASK_RUNTIME_TASK_ID=""
+    TASK_RUNTIME_BASELINE_COMMIT=""
+    TASK_RUNTIME_ATTACK_MODEL=""
+    TASK_RUNTIME_PHASE=""
+    TASK_RUNTIME_FIX_PATCH=""
+    TASK_RUNTIME_WORKSPACE_DIR=""
+    TASK_RUNTIME_VERIFY_EXIT=255
+}
 
 task_runtime_set_context() {
+    # 8 required positional slots + up to 4 optional. Keep this strict so
+    # positional-shift regressions fail loudly before exporting a bad runtime
+    # context.
+    if [ "$#" -lt 8 ] || [ "$#" -gt 12 ]; then
+        task_runtime_clear_context
+        echo -e "${ERROR} task_runtime_set_context: expected 8-12 args, got $#"
+        return 1
+    fi
+
     local task_dir="$1"
     local output_dir="$2"
     local app_dir="$3"
@@ -31,6 +57,16 @@ task_runtime_set_context() {
     local phase="${10:-}"
     local fix_patch="${11:-}"
     local workspace_dir="${12:-}"
+    local -a task_runtime_env=()
+
+    case "$attack_model" in
+        ""|malicious_apk|auth_attacker) ;;
+        *)
+            task_runtime_clear_context
+            echo -e "${ERROR} task_runtime_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_apk, auth_attacker)"
+            return 1
+            ;;
+    esac
 
     TASK_RUNTIME_TASK_DIR="$task_dir"
     TASK_RUNTIME_OUTPUT_DIR="$output_dir"
@@ -45,11 +81,11 @@ task_runtime_set_context() {
     TASK_RUNTIME_FIX_PATCH="$fix_patch"
     TASK_RUNTIME_WORKSPACE_DIR="$workspace_dir"
 
-    TASK_RUNTIME_ENV=()
+    task_runtime_env=()
     if [ -n "${ANDROID_SERIAL:-}" ]; then
-        TASK_RUNTIME_ENV+=("ANDROID_SERIAL=$ANDROID_SERIAL")
+        task_runtime_env+=("ANDROID_SERIAL=$ANDROID_SERIAL")
     fi
-    TASK_RUNTIME_ENV+=(
+    task_runtime_env+=(
         "MCB_TASK_DIR=$TASK_RUNTIME_TASK_DIR"
         "MCB_OUTPUT_DIR=$TASK_RUNTIME_OUTPUT_DIR"
         "MCB_APP_DIR=$TASK_RUNTIME_APP_DIR"
@@ -62,11 +98,13 @@ task_runtime_set_context() {
         "MCB_PHASE=$TASK_RUNTIME_PHASE"
     )
     if [ -n "$TASK_RUNTIME_FIX_PATCH" ]; then
-        TASK_RUNTIME_ENV+=("MCB_FIX_PATCH=$TASK_RUNTIME_FIX_PATCH")
+        task_runtime_env+=("MCB_FIX_PATCH=$TASK_RUNTIME_FIX_PATCH")
     fi
     if [ -n "$TASK_RUNTIME_WORKSPACE_DIR" ]; then
-        TASK_RUNTIME_ENV+=("MCB_WORKSPACE_DIR=$TASK_RUNTIME_WORKSPACE_DIR")
+        task_runtime_env+=("MCB_WORKSPACE_DIR=$TASK_RUNTIME_WORKSPACE_DIR")
     fi
+
+    TASK_RUNTIME_ENV=("${task_runtime_env[@]}")
 }
 
 task_runtime_run_prepare_hook() {
@@ -135,14 +173,10 @@ task_runtime_run_exploit_container() {
 task_runtime_run_exploit_apk() {
     local root_dir="$1"
     local log_file="${2:-}"
-    local apk_project_dir=""
+    local apk_project_dir="$TASK_RUNTIME_TASK_DIR/exploit_files/exploit_apk"
 
-    if [ -d "$TASK_RUNTIME_TASK_DIR/exploit_files/exploit_apk" ]; then
-        apk_project_dir="$TASK_RUNTIME_TASK_DIR/exploit_files/exploit_apk"
-    elif [ -d "$TASK_RUNTIME_TASK_DIR/exploit_files/attacker_app" ]; then
-        apk_project_dir="$TASK_RUNTIME_TASK_DIR/exploit_files/attacker_app"
-    else
-        echo -e "${ERROR} No exploit APK directory found under $TASK_RUNTIME_TASK_DIR/exploit_files/"
+    if [ ! -d "$apk_project_dir" ]; then
+        echo -e "${ERROR} Required exploit APK directory not found: $apk_project_dir"
         return 1
     fi
 

@@ -70,7 +70,7 @@ zero_day_task_validate_metadata_schema_if_present() {
     schema_version="$(jq -r '.schema_version // empty' "$metadata_file")"
 
     if [ -z "$schema_version" ]; then
-        _task_validation_log WARNING "metadata.json has no schema_version; using compatibility mode"
+        _task_validation_log WARNING "metadata.json has no schema_version; skipping schema validation and relying on runtime field checks"
         return 0
     fi
 
@@ -117,6 +117,10 @@ zero_day_task_validate_source_dir() {
     fi
     if [ -d "$task_dir/exploit_files/exploit_apk" ]; then
         has_exploit_apk=true
+    fi
+    if [ -d "$task_dir/exploit_files/attacker_app" ]; then
+        _task_validation_log ERROR "Legacy exploit APK directory is not supported: rename exploit_files/attacker_app to exploit_files/exploit_apk"
+        return 1
     fi
 
     if [ "$has_exploit_sh" = true ] && [ "$has_exploit_apk" = true ]; then
@@ -338,7 +342,7 @@ zero_day_task_run_validation() {
             > "$build_manifest"
     fi
 
-    task_validation_set_context \
+    if ! task_validation_set_context \
         "$ROOT_DIR" \
         "$app_dir" \
         "$ZERO_DAY_TASK_WORK_DIR" \
@@ -352,7 +356,11 @@ zero_day_task_run_validation() {
         "$ZERO_DAY_SECURE_PATCH_ABS" \
         "$ZERO_DAY_WORKSPACE" \
         "per_phase" \
-        "false"
+        "false"; then
+        [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
+        ZERO_DAY_WORKSPACE=""
+        return 1
+    fi
 
     local result=0
 

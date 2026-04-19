@@ -1057,7 +1057,7 @@ run_vuln_test() {
         fix_patch_path="$task_abs_path/fix.patch"
     fi
 
-    task_validation_set_context \
+    if ! task_validation_set_context \
         "$ROOT_DIR" \
         "$ROOT_DIR/$app_dir" \
         "$task_abs_path" \
@@ -1071,7 +1071,10 @@ run_vuln_test() {
         "$fix_patch_path" \
         "" \
         "flat" \
-        "true"
+        "true"; then
+        echo -e "${ERROR} Failed to initialize task validation context"
+        exit 1
+    fi
 
     print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
     if ! task_validation_run_phase "Clean build" "secure" "" "false"; then

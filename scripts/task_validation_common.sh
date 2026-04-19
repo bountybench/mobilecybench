@@ -32,6 +32,26 @@ TASK_VALIDATION_TASK_METADATA_JSON=""
 TASK_VALIDATION_APP_METADATA_JSON=""
 TASK_VALIDATION_CODEBASE_DIR=""
 
+task_validation_clear_context() {
+    TASK_VALIDATION_ROOT_DIR=""
+    TASK_VALIDATION_APP_DIR=""
+    TASK_VALIDATION_TASK_DIR=""
+    TASK_VALIDATION_OUTPUT_ROOT=""
+    TASK_VALIDATION_LOG_ROOT=""
+    TASK_VALIDATION_ARTIFACTS_DIR=""
+    TASK_VALIDATION_PACKAGE_NAME=""
+    TASK_VALIDATION_TASK_ID=""
+    TASK_VALIDATION_BASELINE_COMMIT=""
+    TASK_VALIDATION_ATTACK_MODEL=""
+    TASK_VALIDATION_FIX_PATCH=""
+    TASK_VALIDATION_WORKSPACE_DIR=""
+    TASK_VALIDATION_OUTPUT_MODE="per_phase"
+    TASK_VALIDATION_RESET_FLAT_OUTPUT=false
+    TASK_VALIDATION_TASK_METADATA_JSON=""
+    TASK_VALIDATION_APP_METADATA_JSON=""
+    TASK_VALIDATION_CODEBASE_DIR=""
+}
+
 _task_validation_log() {
     local level="$1"
     shift
@@ -49,48 +69,66 @@ task_validation_set_context() {
     # 9 required positional args + up to 5 optional. Caller must pass all 9 so a
     # future positional-shift regression fails loudly instead of silently
     # misassigning downstream fields (see run_ci_local.sh synthetic caller).
-    if [ "$#" -lt 9 ]; then
-        _task_validation_log ERROR "task_validation_set_context: expected at least 9 args, got $#"
+    if [ "$#" -lt 9 ] || [ "$#" -gt 14 ]; then
+        task_validation_clear_context
+        _task_validation_log ERROR "task_validation_set_context: expected 9-14 args, got $#"
         return 1
     fi
 
-    TASK_VALIDATION_ROOT_DIR="$1"
-    TASK_VALIDATION_APP_DIR="$2"
-    TASK_VALIDATION_TASK_DIR="$3"
-    TASK_VALIDATION_OUTPUT_ROOT="$4"
-    TASK_VALIDATION_LOG_ROOT="$5"
-    TASK_VALIDATION_ARTIFACTS_DIR="$6"
-    TASK_VALIDATION_PACKAGE_NAME="$7"
-    TASK_VALIDATION_TASK_ID="$8"
-    TASK_VALIDATION_BASELINE_COMMIT="$9"
-    TASK_VALIDATION_ATTACK_MODEL="${10:-}"
-    TASK_VALIDATION_FIX_PATCH="${11:-}"
-    TASK_VALIDATION_WORKSPACE_DIR="${12:-}"
-    TASK_VALIDATION_OUTPUT_MODE="${13:-per_phase}"
-    TASK_VALIDATION_RESET_FLAT_OUTPUT="${14:-false}"
+    local root_dir="$1"
+    local app_dir="$2"
+    local task_dir="$3"
+    local output_root="$4"
+    local log_root="$5"
+    local artifacts_dir="$6"
+    local package_name="$7"
+    local task_id="$8"
+    local baseline_commit="$9"
+    local attack_model="${10:-}"
+    local fix_patch="${11:-}"
+    local workspace_dir="${12:-}"
+    local output_mode="${13:-per_phase}"
+    local reset_flat_output="${14:-false}"
 
-    case "$TASK_VALIDATION_ATTACK_MODEL" in
+    case "$attack_model" in
         ""|malicious_apk|auth_attacker) ;;
         *)
-            _task_validation_log ERROR "task_validation_set_context: invalid attack_model '$TASK_VALIDATION_ATTACK_MODEL' (expected: empty, malicious_apk, auth_attacker)"
+            task_validation_clear_context
+            _task_validation_log ERROR "task_validation_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_apk, auth_attacker)"
             return 1
             ;;
     esac
-    case "$TASK_VALIDATION_OUTPUT_MODE" in
+    case "$output_mode" in
         per_phase|flat) ;;
         *)
-            _task_validation_log ERROR "task_validation_set_context: invalid output_mode '$TASK_VALIDATION_OUTPUT_MODE' (expected: per_phase, flat)"
+            task_validation_clear_context
+            _task_validation_log ERROR "task_validation_set_context: invalid output_mode '$output_mode' (expected: per_phase, flat)"
             return 1
             ;;
     esac
-    case "$TASK_VALIDATION_RESET_FLAT_OUTPUT" in
+    case "$reset_flat_output" in
         true|false) ;;
         *)
-            _task_validation_log ERROR "task_validation_set_context: invalid reset_flat_output '$TASK_VALIDATION_RESET_FLAT_OUTPUT' (expected: true, false)"
+            task_validation_clear_context
+            _task_validation_log ERROR "task_validation_set_context: invalid reset_flat_output '$reset_flat_output' (expected: true, false)"
             return 1
             ;;
     esac
 
+    TASK_VALIDATION_ROOT_DIR="$root_dir"
+    TASK_VALIDATION_APP_DIR="$app_dir"
+    TASK_VALIDATION_TASK_DIR="$task_dir"
+    TASK_VALIDATION_OUTPUT_ROOT="$output_root"
+    TASK_VALIDATION_LOG_ROOT="$log_root"
+    TASK_VALIDATION_ARTIFACTS_DIR="$artifacts_dir"
+    TASK_VALIDATION_PACKAGE_NAME="$package_name"
+    TASK_VALIDATION_TASK_ID="$task_id"
+    TASK_VALIDATION_BASELINE_COMMIT="$baseline_commit"
+    TASK_VALIDATION_ATTACK_MODEL="$attack_model"
+    TASK_VALIDATION_FIX_PATCH="$fix_patch"
+    TASK_VALIDATION_WORKSPACE_DIR="$workspace_dir"
+    TASK_VALIDATION_OUTPUT_MODE="$output_mode"
+    TASK_VALIDATION_RESET_FLAT_OUTPUT="$reset_flat_output"
     TASK_VALIDATION_TASK_METADATA_JSON="$TASK_VALIDATION_TASK_DIR/metadata.json"
     TASK_VALIDATION_APP_METADATA_JSON="$TASK_VALIDATION_APP_DIR/metadata.json"
     TASK_VALIDATION_CODEBASE_DIR="$TASK_VALIDATION_APP_DIR/codebase"
@@ -412,7 +450,7 @@ task_validation_run_phase() {
         fi
     fi
 
-    task_runtime_set_context \
+    if ! task_runtime_set_context \
         "$TASK_VALIDATION_TASK_DIR" \
         "$phase_output" \
         "$TASK_VALIDATION_APP_DIR" \
@@ -424,7 +462,10 @@ task_validation_run_phase() {
         "$TASK_VALIDATION_ATTACK_MODEL" \
         "$phase_slug" \
         "$TASK_VALIDATION_FIX_PATCH" \
-        "$TASK_VALIDATION_WORKSPACE_DIR"
+        "$TASK_VALIDATION_WORKSPACE_DIR"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
+    fi
 
     if ! task_runtime_run_prepare_hook "$prepare_log"; then
         task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"

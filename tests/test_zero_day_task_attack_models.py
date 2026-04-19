@@ -160,6 +160,28 @@ def test_source_validation_rejects_apk_task_without_java_sources(
     )
 
 
+def test_source_validation_rejects_legacy_attacker_app_dir(tmp_path: Path) -> None:
+    task_dir = tmp_path / "task"
+    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_apk"))
+    _write(
+        task_dir / "exploit_files" / "attacker_app" / "AndroidManifest.xml",
+        "<manifest/>\n",
+    )
+    _write(
+        task_dir / "exploit_files" / "attacker_app" / "src" / "Exploit.java",
+        "class Exploit {}\n",
+    )
+
+    result = _run_bash(
+        f'source "$ROOT_DIR/scripts/zero_day_task_common.sh"\nzero_day_task_validate_source_dir "{task_dir}"'
+    )
+
+    assert result.returncode != 0
+    assert "Legacy exploit APK directory is not supported" in (
+        result.stderr + result.stdout
+    )
+
+
 def test_resolve_metadata_rejects_missing_attack_model(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
     app_dir = tmp_path / "app"
@@ -198,6 +220,59 @@ def test_resolve_metadata_rejects_missing_attack_model(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "must declare attack_model" in (result.stderr + result.stdout)
+
+
+def test_task_validation_set_context_clears_state_on_invalid_args() -> None:
+    result = _run_bash(
+        "\n".join(
+            [
+                'source "$ROOT_DIR/scripts/task_validation_common.sh"',
+                'TASK_VALIDATION_ATTACK_MODEL="sentinel"',
+                'TASK_VALIDATION_FIX_PATCH="/tmp/original.patch"',
+                'TASK_VALIDATION_WORKSPACE_DIR="/tmp/original-workspace"',
+                'TASK_VALIDATION_OUTPUT_MODE="flat"',
+                'TASK_VALIDATION_RESET_FLAT_OUTPUT="true"',
+                (
+                    'task_validation_set_context "$ROOT_DIR" "/tmp/app" "/tmp/task" '
+                    '"/tmp/output" "/tmp/logs" "/tmp/artifacts" "com.example.target" '
+                    '"demo_task" "deadbeef" "/tmp/bad-shift.patch" "" "flat" "true"'
+                ),
+                'status=$?',
+                'printf "status=%s\\nattack_model=%s\\nfix_patch=%s\\nworkspace=%s\\noutput_mode=%s\\nreset=%s\\n" '
+                '"$status" "$TASK_VALIDATION_ATTACK_MODEL" "$TASK_VALIDATION_FIX_PATCH" '
+                '"$TASK_VALIDATION_WORKSPACE_DIR" "$TASK_VALIDATION_OUTPUT_MODE" "$TASK_VALIDATION_RESET_FLAT_OUTPUT"',
+            ]
+        )
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "status=1" in result.stdout
+    assert "attack_model=" in result.stdout
+    assert "fix_patch=" in result.stdout
+    assert "workspace=" in result.stdout
+    assert "output_mode=per_phase" in result.stdout
+    assert "reset=false" in result.stdout
+    assert "sentinel" not in result.stdout
+    assert "/tmp/original.patch" not in result.stdout
+    assert "/tmp/original-workspace" not in result.stdout
+
+
+def test_task_validation_set_context_rejects_too_many_args() -> None:
+    result = _run_bash(
+        "\n".join(
+            [
+                'source "$ROOT_DIR/scripts/task_validation_common.sh"',
+                (
+                    'task_validation_set_context "$ROOT_DIR" "/tmp/app" "/tmp/task" '
+                    '"/tmp/output" "/tmp/logs" "/tmp/artifacts" "com.example.target" '
+                    '"demo_task" "deadbeef" "" "" "" "flat" "false" "extra"'
+                ),
+            ]
+        )
+    )
+
+    assert result.returncode != 0
+    assert "expected 9-14 args" in (result.stderr + result.stdout)
 
 
 def _make_phase_fixture(
