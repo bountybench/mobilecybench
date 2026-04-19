@@ -42,6 +42,11 @@ services:
   # SSRF Listener for synthetic vulnerability testing (vuln_0)
   # This service captures HTTP requests to verify exploitation of the deep link bypass.
   # The listener logs all requests to /app/logs/ssrf_requests.json for verification.
+  #
+  # Port binding MUST be 0.0.0.0 (not 127.0.0.1). The Android emulator's 10.0.2.2
+  # magic address routes to the DinD host's external interface; a loopback-only
+  # binding makes the listener unreachable from the app. All other apps in this
+  # repo use the same pattern (e.g. gotify `8080:80`).
   ha-ssrf-listener:
     build:
       context: ../../evaluation/ssrf_listener
@@ -50,7 +55,7 @@ services:
     networks:
       - ssrf_net
     ports:
-      - "127.0.0.1:14378:14378"
+      - "0.0.0.0:14378:14378"
     volumes:
       - ha-ssrf-logs:/app/logs
     environment:
