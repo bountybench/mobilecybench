@@ -104,7 +104,9 @@ def stage_replay_exploit(
     shutil.copytree(source.agent_exploit_dir, target)
 
     if source.attacker_model == "malicious_app":
-        canonical = project_root / "templates" / "malicious_app" / "build_exploit_apk.sh"
+        canonical = (
+            project_root / "templates" / "malicious_app" / "build_exploit_apk.sh"
+        )
         if not canonical.is_file():
             raise ReplayRunError(f"Canonical build script missing: {canonical}")
         dst = target / "exploit_apk" / "build_exploit_apk.sh"
@@ -123,9 +125,7 @@ def _resolve_source_dir(replay_run: str, project_root: Path) -> Path:
     for candidate in (p, project_root / p):
         if candidate.exists():
             if not candidate.is_dir():
-                raise ReplayRunError(
-                    f"Replay source is not a directory: {candidate}"
-                )
+                raise ReplayRunError(f"Replay source is not a directory: {candidate}")
             return candidate.resolve()
     raise ReplayRunError(
         f"Replay source not found: {replay_run}. "

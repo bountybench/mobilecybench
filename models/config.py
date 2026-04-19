@@ -92,7 +92,9 @@ class RunnerConfig(BaseModel):
     @model_validator(mode="after")
     def validate_task(self) -> "RunnerConfig":
         if self.workflow == "redteam" and not self.task and not self.replay_run:
-            raise ValueError("task is required when workflow='redteam' unless replay_run is set")
+            raise ValueError(
+                "task is required when workflow='redteam' unless replay_run is set"
+            )
         return self
 
     @model_validator(mode="after")
@@ -100,9 +102,7 @@ class RunnerConfig(BaseModel):
         replay_enabled = bool(self.replay_run)
         enabled_modes = [self.dry_run, self.gold_run, replay_enabled]
         if sum(bool(flag) for flag in enabled_modes) > 1:
-            raise ValueError(
-                "dry_run, gold_run, and replay_run are mutually exclusive"
-            )
+            raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
         if replay_enabled and self.workflow != "redteam":
             raise ValueError("replay_run currently requires workflow='redteam'")
         return self
