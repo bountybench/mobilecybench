@@ -181,7 +181,7 @@ task_runtime_run_exploit_apk() {
     fi
 
     if [ ! -f "$apk_project_dir/build_exploit_apk.sh" ]; then
-        cp "$root_dir/templates/malicious_apk/build_exploit_apk.sh" "$apk_project_dir/build_exploit_apk.sh"
+        cp "$root_dir/templates/malicious_app/build_exploit_apk.sh" "$apk_project_dir/build_exploit_apk.sh"
         chmod +x "$apk_project_dir/build_exploit_apk.sh"
     fi
 

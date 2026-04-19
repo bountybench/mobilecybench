@@ -93,6 +93,46 @@ def test_source_validation_accepts_remote_attacker_task(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_task_runtime_run_exploit_apk_injects_default_build_script(
+    tmp_path: Path,
+) -> None:
+    task_dir = tmp_path / "task"
+    apk_dir = task_dir / "exploit_files" / "exploit_apk"
+    output_dir = tmp_path / "output"
+    bin_dir = tmp_path / "bin"
+
+    _write(apk_dir / "AndroidManifest.xml", "<manifest/>\n")
+    _write(apk_dir / "src" / "Exploit.java", "class Exploit {}\n")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    _write_executable(
+        bin_dir / "python3",
+        """#!/usr/bin/env bash
+set -euo pipefail
+test -f "$3/build_exploit_apk.sh"
+test -x "$3/build_exploit_apk.sh"
+cmp "$2/templates/malicious_app/build_exploit_apk.sh" "$3/build_exploit_apk.sh" >/dev/null
+exit 0
+""",
+    )
+
+    result = _run_bash(
+        "\n".join(
+            [
+                'source "$ROOT_DIR/scripts/task_runtime_common.sh"',
+                f'export PATH="{bin_dir}:{os.environ["PATH"]}"',
+                f'TASK_RUNTIME_TASK_DIR="{task_dir}"',
+                f'TASK_RUNTIME_OUTPUT_DIR="{output_dir}"',
+                "TASK_RUNTIME_ENV=()",
+                'task_runtime_run_exploit_apk "$ROOT_DIR"',
+            ]
+        )
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert (apk_dir / "build_exploit_apk.sh").exists()
+
+
 def test_source_validation_rejects_mixed_exploit_artifacts(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
     _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
