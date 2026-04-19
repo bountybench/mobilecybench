@@ -86,7 +86,7 @@ Zero-day tasks support two replay models:
 | `attacker_model` | Exploit artifact | What it represents |
 |---|---|---|
 | `malicious_app` | `exploit_files/exploit_apk/` | Unprivileged app on the victim device |
-| `auth_attacker` | `exploit_files/exploit.sh` | Authenticated low-privilege user acting from a separate device/session |
+| `remote_attacker` | `exploit_files/exploit.sh` | Authenticated low-privilege user acting from a separate device/session |
 
 The validator uses the same high-level attacker split as the red-team
 workflow:
@@ -94,7 +94,7 @@ workflow:
 - **`malicious_app`**: install target APK → run `prepare_app.sh` if present →
   run app-level `prepare_victim.sh` if present → replay the exploit APK on the
   same emulator → run `verify_exploit.sh`
-- **`auth_attacker`**: install target APK → run `prepare_app.sh` if present →
+- **`remote_attacker`**: install target APK → run `prepare_app.sh` if present →
   replay `exploit.sh` in the exploit container → `adb shell pm clear
   <package>` to wipe app-local state → run app-level `prepare_victim.sh` if
   present → run `verify_exploit.sh`

@@ -114,9 +114,9 @@ zero_day_task_validate_source_dir() {
         local legacy_attack_model=""
         legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$task_dir/metadata.json")"
         if [ -n "$legacy_attack_model" ]; then
-            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or auth_attacker)"
+            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or remote_attacker)"
         else
-            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or auth_attacker)"
+            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or remote_attacker)"
         fi
         return 1
     fi
@@ -143,7 +143,7 @@ zero_day_task_validate_source_dir() {
         malicious_app)
             zero_day_task_validate_apk_project "$task_dir" || return 1
             ;;
-        auth_attacker)
+        remote_attacker)
             if [ ! -f "$task_dir/exploit_files/exploit.sh" ]; then
                 _task_validation_log ERROR "Required task file not found: $task_dir/exploit_files/exploit.sh"
                 return 1
@@ -175,9 +175,9 @@ zero_day_task_resolve_metadata() {
         local legacy_attack_model=""
         legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$ZERO_DAY_TASK_METADATA")"
         if [ -n "$legacy_attack_model" ]; then
-            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or auth_attacker)"
+            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or remote_attacker)"
         else
-            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or auth_attacker)"
+            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or remote_attacker)"
         fi
         return 1
     fi

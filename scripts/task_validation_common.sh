@@ -91,10 +91,10 @@ task_validation_set_context() {
     local reset_flat_output="${14:-false}"
 
     case "$attack_model" in
-        ""|malicious_app|auth_attacker) ;;
+        ""|malicious_app|remote_attacker) ;;
         *)
             task_validation_clear_context
-            _task_validation_log ERROR "task_validation_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_app, auth_attacker)"
+            _task_validation_log ERROR "task_validation_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_app, remote_attacker)"
             return 1
             ;;
     esac
@@ -375,7 +375,7 @@ task_validation_run_attack_model_setup_after_exploit() {
     local victim_log="${2:-}"
 
     case "$TASK_VALIDATION_ATTACK_MODEL" in
-        auth_attacker)
+        remote_attacker)
             task_validation_clear_package_data "$TASK_VALIDATION_PACKAGE_NAME" "$clear_log" || return 1
             task_validation_run_prepare_victim_hook "$victim_log"
             ;;

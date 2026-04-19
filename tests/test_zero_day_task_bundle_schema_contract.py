@@ -18,7 +18,7 @@ BASE_METADATA = {
 }
 
 
-@pytest.mark.parametrize("value", ["malicious_app", "auth_attacker"])
+@pytest.mark.parametrize("value", ["malicious_app", "remote_attacker"])
 def test_accepts_canonical_attacker_model(value):
     metadata = {**BASE_METADATA, "attacker_model": value}
     validate(instance=metadata, schema=SCHEMA)

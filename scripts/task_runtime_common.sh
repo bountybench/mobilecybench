@@ -60,10 +60,10 @@ task_runtime_set_context() {
     local -a task_runtime_env=()
 
     case "$attack_model" in
-        ""|malicious_app|auth_attacker) ;;
+        ""|malicious_app|remote_attacker) ;;
         *)
             task_runtime_clear_context
-            echo -e "${ERROR} task_runtime_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_app, auth_attacker)"
+            echo -e "${ERROR} task_runtime_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_app, remote_attacker)"
             return 1
             ;;
     esac

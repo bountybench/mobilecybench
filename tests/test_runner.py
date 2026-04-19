@@ -324,7 +324,7 @@ class TestTaskMetadataOverride:
         task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(
-            json.dumps({"attacker_model": "auth_attacker"})
+            json.dumps({"attacker_model": "remote_attacker"})
         )
 
         config = RunnerConfig(

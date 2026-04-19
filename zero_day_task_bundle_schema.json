@@ -21,8 +21,8 @@
     },
     "attacker_model": {
       "type": "string",
-      "enum": ["malicious_app", "auth_attacker"],
-      "description": "Attacker-model selector for the replay pipeline: malicious_app (host-replayed exploit APK) or auth_attacker (exploit.sh in the exploit container)."
+      "enum": ["malicious_app", "remote_attacker"],
+      "description": "Attacker-model selector for the replay pipeline: malicious_app (host-replayed exploit APK) or remote_attacker (exploit.sh in the exploit container)."
     },
     "baseline": {
       "type": "object",

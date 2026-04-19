@@ -78,9 +78,9 @@ def test_source_validation_accepts_malicious_app_task(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-def test_source_validation_accepts_auth_attacker_task(tmp_path: Path) -> None:
+def test_source_validation_accepts_remote_attacker_task(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="auth_attacker"))
+    _write_task_metadata(task_dir, _base_metadata(attack_model="remote_attacker"))
     _write_executable(
         task_dir / "exploit_files" / "exploit.sh",
         "#!/usr/bin/env bash\nexit 0\n",
@@ -404,7 +404,7 @@ def _make_phase_fixture(
         "#!/usr/bin/env bash\n" 'echo "verify" >> "$ORDER_LOG"\n' "exit 0\n",
     )
 
-    if attack_model == "auth_attacker":
+    if attack_model == "remote_attacker":
         _write_executable(
             task_dir / "exploit_files" / "exploit.sh", "#!/usr/bin/env bash\nexit 0\n"
         )
@@ -512,7 +512,7 @@ def test_malicious_app_phase_runs_victim_setup_before_exploit(tmp_path: Path) ->
     )
 
 
-def test_auth_attacker_phase_clears_app_before_victim_setup(tmp_path: Path) -> None:
+def test_remote_attacker_phase_clears_app_before_victim_setup(tmp_path: Path) -> None:
     (
         app_dir,
         task_dir,
@@ -522,7 +522,7 @@ def test_auth_attacker_phase_clears_app_before_victim_setup(tmp_path: Path) -> N
         workspace_dir,
         order_log,
         env,
-    ) = _make_phase_fixture(tmp_path, "auth_attacker")
+    ) = _make_phase_fixture(tmp_path, "remote_attacker")
 
     result = _run_bash(
         _phase_script(
@@ -532,7 +532,7 @@ def test_auth_attacker_phase_clears_app_before_victim_setup(tmp_path: Path) -> N
             logs_dir,
             artifacts_dir,
             workspace_dir,
-            "auth_attacker",
+            "remote_attacker",
         ),
         env=env,
     )
