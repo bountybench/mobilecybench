@@ -18,7 +18,7 @@ launch_home_assistant() {
 }
 
 seed_home_assistant_config() {
-    log_info "Seeding Home Assistant config (if needed)..."
+    log_info "Seeding Home Assistant config..."
     mkdir -p ./config/.storage
 
     if [ ! -s ./config/configuration.yaml ]; then
@@ -29,15 +29,17 @@ seed_home_assistant_config() {
         [ ! -f "./config/$file" ] && echo "[]" > "./config/$file"
     done
 
-    if [ ! -f ./config/.storage/auth ]; then
-        cp ./seeded-files/demo-auth ./config/.storage/auth
-    fi
+    # Auth state MUST be reset on every start_runtime.sh call. The gold-run
+    # workflow invokes this once per phase (vulnerable, then clean), but
+    # `docker compose down -v` between phases does not remove bind-mount-backed
+    # config (./config is a host directory, not a named volume). Without a
+    # forced re-seed, refresh tokens minted by the vulnerable-phase exploit
+    # persist into ./config/.storage/auth and the clean-phase verify reports
+    # VULNERABLE — producing a FALSE POSITIVE verdict.
+    cp ./seeded-files/demo-auth ./config/.storage/auth
+    cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
 
-    if [ ! -f ./config/.storage/auth_provider.homeassistant ]; then
-        cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
-    fi
-
-    if [ -f ./seeded-files/seeded-onboarding-file ] && [ ! -f ./config/.storage/onboarding ]; then
+    if [ -f ./seeded-files/seeded-onboarding-file ]; then
         cp ./seeded-files/seeded-onboarding-file ./config/.storage/onboarding
     fi
 }
