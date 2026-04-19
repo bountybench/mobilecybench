@@ -40,7 +40,10 @@ def check_container_health():
 
 def server_dos():
     server_status = requests.get(
-        f"{cs.BASE_URL}/status.php", headers=cs.OCS_HEADERS, auth=cs.user_b_auth, timeout=10
+        f"{cs.BASE_URL}/status.php",
+        headers=cs.OCS_HEADERS,
+        auth=cs.user_b_auth,
+        timeout=10,
     )
     if server_status.status_code != 200:
         print("Server backend down")
