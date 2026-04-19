@@ -125,14 +125,17 @@ def changed_text_message_sender():
         return 0
 
     token = room.get("token")
-    # Fetch bounded history to find the seeded message
+    # Fetch bounded history to find the seeded message.
+    # lookIntoFuture=0 => history mode (no long-poll); limit must be in [100, 200].
     resp = requests.get(
-        f"{cs.BASE_URL}/ocs/v2.php/apps/spreed/api/v4/chat/{token}?limit=20",
+        f"{cs.BASE_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{token}",
         headers=cs.OCS_HEADERS,
         auth=cs.user_b_auth,
+        params={"lookIntoFuture": 0, "limit": 100, "setReadMarker": 0},
+        timeout=15,
     )
     if resp.status_code != 200:
-        print(f"Failed to fetch history for room {token}")
+        print(f"Failed to fetch history for room {token}: status={resp.status_code}")
         return 0
 
     messages = resp.json().get("ocs", {}).get("data", [])
