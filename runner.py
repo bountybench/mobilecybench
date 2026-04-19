@@ -215,16 +215,13 @@ def _load_task_attacker_model(project_root: Path, app_name: str, task: str) -> s
 
 
 def _log_evaluation_result(evaluation: dict) -> None:
-    """Log a normalized evaluation summary when present."""
-    if isinstance(evaluation, dict):
-        logger.info(
-            "Evaluation complete: status=%s score=%s reason=%s",
-            evaluation.get("status"),
-            evaluation.get("score"),
-            evaluation.get("reason"),
-        )
-    else:
-        logger.info("Evaluation complete")
+    """Log a normalized evaluation summary."""
+    logger.info(
+        "Evaluation complete: status=%s score=%s reason=%s",
+        evaluation.get("status"),
+        evaluation.get("score"),
+        evaluation.get("reason"),
+    )
 
 
 def run(
@@ -267,8 +264,9 @@ def run(
         # Replay carries metadata from the source run_summary.json.
         # task/metadata.json remains the single source of truth for
         # attacker_model; we reconcile against the saved artifact to
-        # catch stale replays.
-        replay = exploit_source if exploit_source and exploit_source.kind == "replay" else None
+        # catch stale replays. (Gold is resolved later, after this.)
+        replay = exploit_source
+        updates: dict = {}
         if replay:
             logger.info(
                 "Replay source: %s (app=%s, task=%s, attacker_model=%s)",
@@ -277,20 +275,15 @@ def run(
                 replay.task,
                 replay.attacker_model,
             )
+            updates["task"] = replay.task
 
-        task_slug = replay.task if replay else config.task
-        config_updates: dict = {}
-        if replay:
-            config_updates["task"] = replay.task
-
-        if task_slug:
-            task_attacker_model = _load_task_attacker_model(
-                project_root, app_name, task_slug
-            )
+        task = updates.get("task") or config.task
+        if task:
+            task_attacker_model = _load_task_attacker_model(project_root, app_name, task)
             if replay and task_attacker_model != replay.attacker_model:
                 raise ValueError(
                     f"Replay artifact was built for attacker_model="
-                    f"{replay.attacker_model!r}, but task {task_slug!r} now "
+                    f"{replay.attacker_model!r}, but task {task!r} now "
                     f"declares attacker_model={task_attacker_model!r}."
                 )
             if task_attacker_model != config.attacker_model:
@@ -299,10 +292,10 @@ def run(
                     config.attacker_model,
                     task_attacker_model,
                 )
-                config_updates["attacker_model"] = task_attacker_model
+                updates["attacker_model"] = task_attacker_model
 
-        if config_updates:
-            config = config.model_copy(update=config_updates)
+        if updates:
+            config = config.model_copy(update=updates)
 
         # Gold source is resolved after attacker_model reconciliation so
         # shape validation uses the authoritative model.
@@ -339,9 +332,7 @@ def run(
                 project_root=project_root,
                 is_apk_exploit=is_apk_exploit,
             )
-            logger.info(
-                "Staged %s exploit into %s", exploit_source.kind, staged
-            )
+            logger.info("Staged %s exploit into %s", exploit_source.kind, staged)
 
         logger.info("Setting up runtime environment...")
         workflow.setup_runtime_environment()
@@ -364,9 +355,7 @@ def run(
             _log_evaluation_result(evaluation)
             exit_reason = f"{exploit_source.kind}_run_completed"
             run_result = normalize_agent_result({"status": exit_reason})
-            score = (
-                evaluation.get("score") if isinstance(evaluation, dict) else None
-            )
+            score = evaluation.get("score")
             outcome = "success" if score == 1 else "failure"
             exit_code = 0 if score == 1 else 1
         else:
@@ -397,9 +386,7 @@ def run(
             # Derive outcome from agent_status and evaluation rather than
             # unconditionally reporting success.
             agent_status = run_result.get("status", "unknown")
-            eval_score = (
-                evaluation.get("score") if isinstance(evaluation, dict) else None
-            )
+            eval_score = evaluation.get("score")
 
             if agent_status in ("timeout", "error"):
                 outcome = "failure"
