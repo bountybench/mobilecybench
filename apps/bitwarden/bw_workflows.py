@@ -199,7 +199,6 @@ def _select_auth_submit_control(d):
         d(text="UNLOCK"),
         d(descriptionContains="Log in with master password"),
         d(descriptionContains="Unlock"),
-        d(text="Next"),
     )
     for candidate in candidates:
         if candidate.exists:
@@ -302,7 +301,6 @@ def _is_create_account_screen(d) -> bool:
         d(resourceId="EmailAddressEntry").exists
         and d(resourceId="MasterPasswordEntry").exists
         and d(resourceId="ConfirmMasterPasswordEntry").exists
-        and d(text="Next").exists
     )
 
 
@@ -324,6 +322,7 @@ def _is_complete_registration_screen(d) -> bool:
     return (
         d(resourceId="MasterPasswordEntry").exists
         and d(resourceId="ConfirmMasterPasswordEntry").exists
+        and not d(resourceId="EmailAddressEntry").exists
     )
 
 
@@ -1140,10 +1139,7 @@ def bw_attempt_login(d, email, password):
                 raise RuntimeError("Failed to navigate to email entry via 'Not You?'.")
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
 
-    if (
-        d(resourceId="EmailAddressEntry").exists
-        and not d(resourceId="NameEntry").exists
-    ):
+    if _is_landing_screen(d):
         logger.info("Entering email: %s...", email)
         wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
 
@@ -1165,6 +1161,51 @@ def bw_attempt_login(d, email, password):
         )
 
     _dismiss_common_popups(d)
+
+    if _is_create_account_screen(d):
+        logger.info(
+            "Create account screen detected during normalization; finishing account creation."
+        )
+        wait_and_set_text(d, d(resourceId="EmailAddressEntry"), email)
+        wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
+        wait_and_set_text(d, d(resourceId="ConfirmMasterPasswordEntry"), password)
+
+        accept_policies = d(description="AcceptPoliciesToggle")
+        if accept_policies.exists:
+            try:
+                info = accept_policies.info
+                if not info.get("checked", False):
+                    wait_and_click(d, accept_policies)
+                    wait_for_ui_stable(d, timeout=SHORT_WAIT)
+            except Exception:
+                wait_and_click(d, accept_policies)
+                wait_for_ui_stable(d, timeout=SHORT_WAIT)
+
+        submit_button = d(resourceId="SubmitButton")
+        if not _scroll_until_visible(d, submit_button):
+            raise RuntimeError("CreateAccountScreen SubmitButton could not be found.")
+
+        if not click_then_expect(
+            d,
+            submit_button,
+            lambda: d(resourceId="SetUpLaterButton").exists
+            or d(text="Turn on later").exists
+            or d(text="Continue").exists
+            or d(resourceId="AddItemButton").exists
+            or d(resourceId="AlertPopup").exists,
+            timeout=20,
+        ):
+            raise RuntimeError("CreateAccountScreen did not submit successfully.")
+
+        _dismiss_common_popups(d)
+        wait_for_ui_stable(d, timeout=SHORT_WAIT)
+        if _vault_unlocked_visible(d):
+            logger.info("Create account flow completed and vault is unlocked.")
+            return True
+
+        logger.info(
+            "Create account screen submitted; continuing with the next auth state."
+        )
 
     if _is_complete_registration_screen(d):
         logger.info(
