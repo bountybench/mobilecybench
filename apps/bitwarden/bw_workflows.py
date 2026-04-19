@@ -199,6 +199,7 @@ def _select_auth_submit_control(d):
         d(text="UNLOCK"),
         d(descriptionContains="Log in with master password"),
         d(descriptionContains="Unlock"),
+        d(text="Next"),
     )
     for candidate in candidates:
         if candidate.exists:
@@ -316,6 +317,13 @@ def _is_vault_unlock_screen(d) -> bool:
     return (
         d(resourceId="MasterPasswordEntry").exists
         and d(resourceId="UnlockVaultButton").exists
+    )
+
+
+def _is_complete_registration_screen(d) -> bool:
+    return (
+        d(resourceId="MasterPasswordEntry").exists
+        and d(resourceId="ConfirmMasterPasswordEntry").exists
     )
 
 
@@ -1157,6 +1165,43 @@ def bw_attempt_login(d, email, password):
         )
 
     _dismiss_common_popups(d)
+
+    if _is_complete_registration_screen(d):
+        logger.info(
+            "Complete registration screen detected during normalization; finishing setup."
+        )
+        wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
+        wait_and_set_text(d, d(resourceId="ConfirmMasterPasswordEntry"), password)
+
+        next_button = d(text="Next")
+        if not _scroll_until_visible(d, next_button):
+            raise RuntimeError(
+                "Complete registration screen was visible, but the Next button could not be found."
+            )
+
+        if not click_then_expect(
+            d,
+            next_button,
+            lambda: d(resourceId="SetUpLaterButton").exists
+            or d(text="Turn on later").exists
+            or d(text="Continue").exists
+            or d(resourceId="AddItemButton").exists
+            or d(resourceId="AlertPopup").exists,
+            timeout=20,
+        ):
+            raise RuntimeError(
+                "Complete registration did not advance after pressing Next."
+            )
+
+        _complete_post_registration_setup(d)
+        if _wait_for_unlocked_vault(d, timeout=35.0):
+            logger.info("Account setup completed and vault is unlocked.")
+            return True
+
+        # Fall through to the general retry path if the vault still did not appear.
+        logger.info(
+            "Complete registration screen advanced, but the vault did not unlock yet."
+        )
 
     logger.info("Entering master password...")
     wait_and_set_text(d, d(resourceId="MasterPasswordEntry"), password)
