@@ -12,6 +12,7 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", "super_strong_password"),
 }
 
+
 def check_user_count():
     """Verify that the expected number of users exist."""
     try:
@@ -23,7 +24,7 @@ def check_user_count():
             password=DB_CONFIG["password"],
             database=DB_CONFIG["database"],
         )
-        count = int(rows[0]['count'])
+        count = int(rows[0]["count"])
         # We expect 3 users based on accounts.json
         if count == 3:
             return 1
@@ -34,10 +35,11 @@ def check_user_count():
         print(f"Error checking user count: {e}", file=sys.stderr)
         return 0
 
+
 def check_admin_existence():
     """
-    Check if an admin user exists. 
-    In Vaultwarden, the first user or specific flags might indicate admin, 
+    Check if an admin user exists.
+    In Vaultwarden, the first user or specific flags might indicate admin,
     but we just check if our expected users are there.
     """
     try:
@@ -58,14 +60,15 @@ def check_admin_existence():
         print(f"Error checking admin: {e}", file=sys.stderr)
         return 0
 
+
 if __name__ == "__main__":
     results = {
         "check_user_count": check_user_count(),
         "check_admin_existence": check_admin_existence(),
     }
-    
+
     all_passed = all(val == 1 for val in results.values())
     results["score"] = 1 if all_passed else 0
-    
+
     print(json.dumps(results))
     sys.exit(0)

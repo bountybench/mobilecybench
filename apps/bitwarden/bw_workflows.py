@@ -109,7 +109,7 @@ def _dismiss_alert_popup(d, timeout: float = 1.0) -> bool:
     alert = d(resourceId="AlertPopup")
     accept = d(resourceId="AcceptAlertButton")
     cancel = d(resourceId="CancelAlertButton")
-    
+
     if alert.exists(timeout=timeout):
         if accept.exists(timeout=timeout):
             logger.info("Dismissing Bitwarden alert popup (Accept).")
@@ -135,7 +135,7 @@ def _dismiss_common_popups(d, max_rounds: int = 5) -> None:
         if _dismiss_alert_popup(d):
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
             continue
-        
+
         # 2. "Use biometrics" or similar optional prompts that might use standard buttons
         if d(text="No, thanks").exists:
             logger.info("Dismissing 'No, thanks' prompt.")
@@ -148,7 +148,7 @@ def _dismiss_common_popups(d, max_rounds: int = 5) -> None:
             d(text="Maybe later").click()
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
             continue
-            
+
         break
 
 
@@ -409,10 +409,19 @@ def _retry_operation(operation, max_retries: int = 3, delay: float = 2.0):
             result = operation()
             if result is not False:
                 return result
-            logger.warning("Operation returned False, retrying (attempt %s/%s)...", attempt + 1, max_retries)
+            logger.warning(
+                "Operation returned False, retrying (attempt %s/%s)...",
+                attempt + 1,
+                max_retries,
+            )
         except Exception as e:
             last_exc = e
-            logger.warning("Operation raised exception, retrying (attempt %s/%s): %s", attempt + 1, max_retries, e)
+            logger.warning(
+                "Operation raised exception, retrying (attempt %s/%s): %s",
+                attempt + 1,
+                max_retries,
+                e,
+            )
         time.sleep(delay)
     if last_exc:
         raise last_exc
@@ -439,7 +448,7 @@ def _navigate_to_start_registration(d) -> None:
         create_btn = d(resourceId="CreateAccountLabel")
         if not create_btn.exists:
             _scroll_to(d, resource_id="CreateAccountLabel")
-        
+
         if create_btn.exists:
             logger.info("Clicking CreateAccountLabel...")
             if click_then_expect(
@@ -460,7 +469,9 @@ def _navigate_to_start_registration(d) -> None:
         logger.warning("Navigation attempt %s failed, retrying...", attempt + 1)
         wait_for_ui_stable(d, timeout=SHORT_WAIT)
 
-    raise RuntimeError("Could not find a supported path to StartRegistrationScreen after multiple attempts.")
+    raise RuntimeError(
+        "Could not find a supported path to StartRegistrationScreen after multiple attempts."
+    )
 
 
 def _navigate_to_auth_entry(d) -> None:
@@ -501,10 +512,14 @@ def _navigate_to_auth_entry(d) -> None:
             wait_for_ui_stable(d, timeout=SHORT_WAIT)
             continue
 
-        logger.warning("Auth entry navigation attempt %s failed, retrying...", attempt + 1)
+        logger.warning(
+            "Auth entry navigation attempt %s failed, retrying...", attempt + 1
+        )
         wait_for_ui_stable(d, timeout=SHORT_WAIT)
 
-    raise RuntimeError("Could not reach a supported authentication entry screen after multiple attempts.")
+    raise RuntimeError(
+        "Could not reach a supported authentication entry screen after multiple attempts."
+    )
 
 
 def _configure_self_hosted_environment(d) -> None:
@@ -513,7 +528,9 @@ def _configure_self_hosted_environment(d) -> None:
     server_url_entry = d(resourceId="ServerUrlEntry")
 
     if _is_login_screen(d):
-        logger.info("Currently on login screen, clicking 'Not you?' to change environment.")
+        logger.info(
+            "Currently on login screen, clicking 'Not you?' to change environment."
+        )
         if not click_then_expect(
             d,
             d(resourceId="NotYouLabel"),
@@ -541,7 +558,9 @@ def _configure_self_hosted_environment(d) -> None:
         return
 
     # Check if the region selector is already set to Self-hosted
-    region_visible = region_selector.exists or _scroll_to(d, resource_id="RegionSelectorDropdown")
+    region_visible = region_selector.exists or _scroll_to(
+        d, resource_id="RegionSelectorDropdown"
+    )
     if not region_visible:
         raise RuntimeError("RegionSelectorDropdown not found on landing screen.")
 
@@ -558,11 +577,15 @@ def _configure_self_hosted_environment(d) -> None:
         region_selector.click()
         time.sleep(1)
         if not server_url_entry.exists(timeout=SHORT_WAIT):
-            logger.info("ServerUrlEntry not visible after click, re-selecting from list.")
+            logger.info(
+                "ServerUrlEntry not visible after click, re-selecting from list."
+            )
             if not click_then_expect(
                 d, d(text="Self-hosted"), server_url_entry, timeout=SHORT_WAIT
             ):
-                raise RuntimeError("Failed to select 'Self-hosted' from the list after it failed to open URL entry.")
+                raise RuntimeError(
+                    "Failed to select 'Self-hosted' from the list after it failed to open URL entry."
+                )
     else:
         logger.info("Opening region selector to select 'Self-hosted'...")
         if not click_then_expect(
@@ -570,10 +593,14 @@ def _configure_self_hosted_environment(d) -> None:
         ):
             # Try searching by text if resource ID click failed or didn't show the option
             if d(text="Region").exists:
-                click_then_expect(d, d(text="Region"), d(text="Self-hosted"), timeout=SHORT_WAIT)
-            
+                click_then_expect(
+                    d, d(text="Region"), d(text="Self-hosted"), timeout=SHORT_WAIT
+                )
+
             if not d(text="Self-hosted").exists:
-                raise RuntimeError("Failed to open the environment selector or find 'Self-hosted' option.")
+                raise RuntimeError(
+                    "Failed to open the environment selector or find 'Self-hosted' option."
+                )
 
         if not click_then_expect(
             d,
@@ -595,7 +622,9 @@ def _configure_self_hosted_environment(d) -> None:
         or _is_create_account_screen(d),
         timeout=NETWORK_WAIT,
     ):
-        raise RuntimeError("Failed to save the self-hosted environment URL after entry.")
+        raise RuntimeError(
+            "Failed to save the self-hosted environment URL after entry."
+        )
     logger.info("Self-hosted environment configured successfully.")
 
 
@@ -765,7 +794,7 @@ def bw_initialize_local_host(d):
     Ensures a clean state by clearing app data first.
     """
     # --- Step 1: App Initialization and Server Configuration ---
-    
+
     # 1.1: Normalize App State
     bw_clear_app_data(d)
 
@@ -1111,10 +1140,14 @@ def bw_attempt_login(d, email, password):
             or d(resourceId="AlertPopup").exists,
             timeout=15,
         ):
-            raise RuntimeError("Landing screen (Email entry) did not advance to the Login screen.")
+            raise RuntimeError(
+                "Landing screen (Email entry) did not advance to the Login screen."
+            )
 
     if not d(resourceId="MasterPasswordEntry").exists:
-        raise RuntimeError(f"Master password field is not visible for {email} after Email entry.")
+        raise RuntimeError(
+            f"Master password field is not visible for {email} after Email entry."
+        )
 
     _dismiss_common_popups(d)
 
@@ -1123,9 +1156,7 @@ def bw_attempt_login(d, email, password):
     wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
     if _vault_unlocked_visible(d):
-        logger.info(
-            "Vault already visible after password entry; skipping submit tap."
-        )
+        logger.info("Vault already visible after password entry; skipping submit tap.")
         return True
 
     on_vault_unlock = _is_vault_unlock_screen(d)
@@ -1145,7 +1176,9 @@ def bw_attempt_login(d, email, password):
     submit_button = _select_auth_submit_control(d)
 
     if submit_button is None:
-        raise RuntimeError("Master password field is visible, but no login/unlock submit button was found.")
+        raise RuntimeError(
+            "Master password field is visible, but no login/unlock submit button was found."
+        )
 
     logger.info("Submitting authentication on the current Bitwarden screen...")
     if not click_then_expect(
@@ -1154,7 +1187,9 @@ def bw_attempt_login(d, email, password):
         _auth_submit_terminal_state,
         timeout=NETWORK_WAIT + 15,
     ):
-        raise RuntimeError("Login submission did not reach a terminal state (Vault or Alert).")
+        raise RuntimeError(
+            "Login submission did not reach a terminal state (Vault or Alert)."
+        )
 
     # Check success first
     if _vault_unlocked_visible(d):
@@ -1185,4 +1220,6 @@ def bw_attempt_login(d, email, password):
             missing.append("VaultTab")
         if not d(resourceId="AddItemButton").exists:
             missing.append("AddItemButton")
-        raise RuntimeError(f"Main vault not visible after login submission. Missing UI: {', '.join(missing)}")
+        raise RuntimeError(
+            f"Main vault not visible after login submission. Missing UI: {', '.join(missing)}"
+        )

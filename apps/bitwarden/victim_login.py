@@ -19,9 +19,7 @@ def setup_logging():
     logger.setLevel(logging.INFO)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stderr)
-        formatter = (
-            "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
-        )
+        formatter = "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
         handler.setFormatter(logging.Formatter(formatter))
         logger.addHandler(handler)
     return logger
