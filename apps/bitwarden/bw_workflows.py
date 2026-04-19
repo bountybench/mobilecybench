@@ -189,9 +189,16 @@ def _select_auth_submit_control(d):
     """Return the primary submit control for LoginScreen or VaultUnlockScreen, if any."""
     candidates = (
         d(resourceId="LogInWithMasterPasswordButton"),
-        d(text="Log in with master password"),
         d(resourceId="UnlockVaultButton"),
+        d(text="Log in with master password"),
         d(text="Unlock"),
+        d(text="Log In"),
+        d(text="Log in"),
+        d(text="LOG IN"),
+        d(text="Unlock Vault"),
+        d(text="UNLOCK"),
+        d(descriptionContains="Log in with master password"),
+        d(descriptionContains="Unlock"),
     )
     for candidate in candidates:
         if candidate.exists:
@@ -200,7 +207,7 @@ def _select_auth_submit_control(d):
     # The submit action sits below the password field on both Bitwarden screens, and
     # may be off-screen until the form is scrolled. Search both test tags and visible text.
     for candidate in candidates:
-        if _scroll_until_visible(d, candidate, max_swipes=6):
+        if _scroll_until_visible(d, candidate, max_swipes=4):
             return candidate
 
     return None
@@ -1159,16 +1166,28 @@ def bw_attempt_login(d, email, password):
         logger.info("Vault already visible after password entry; skipping submit tap.")
         return True
 
-    on_vault_unlock = _is_vault_unlock_screen(d)
-    if on_vault_unlock:
+    # Try IME/enter first on both login and unlock screens — Bitwarden submits on
+    # keyboard action, and this avoids scroll-hunting for a button that may be below
+    # the fold or rendered with an atypical selector on the installed build.
+    try:
+        d.press("enter")
+    except Exception:
+        pass
+    time.sleep(2.0)
+    if _vault_unlocked_visible(d):
+        logger.info("Vault unlocked via IME action after password entry.")
+        return True
+    if (
+        d(resourceId="AlertPopup").exists
+        and not d(resourceId="AlertProgressIndicator").exists
+    ):
+        msg = "Unknown login error"
         try:
-            d.press("enter")
+            msg = d(resourceId="AlertMessage").get_text()
         except Exception:
             pass
-        time.sleep(1.5)
-        if _vault_unlocked_visible(d):
-            logger.info("Vault unlocked via IME action on vault-unlock screen.")
-            return True
+        _dismiss_common_popups(d)
+        raise RuntimeError(f"Login failed due to error dialog: {msg}")
 
     _dismiss_common_popups(d)
 
@@ -1176,6 +1195,19 @@ def bw_attempt_login(d, email, password):
     submit_button = _select_auth_submit_control(d)
 
     if submit_button is None:
+        # Last-resort: some builds expose only an IME submit with no tappable button
+        # surfaced via uiautomator. Treat a subsequent vault as success.
+        logger.warning(
+            "No explicit login/unlock submit button found; falling back to IME submit."
+        )
+        try:
+            d.press("enter")
+        except Exception:
+            pass
+        if d(resourceId="VaultTab").wait(
+            timeout=NETWORK_WAIT
+        ) or _vault_unlocked_visible(d):
+            return True
         raise RuntimeError(
             "Master password field is visible, but no login/unlock submit button was found."
         )
