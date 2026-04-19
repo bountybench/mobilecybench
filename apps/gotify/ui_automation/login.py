@@ -268,48 +268,48 @@ def _fill_credentials_and_login(d, username, password):
     )
     login_btn = d(resourceId="com.github.gotify:id/login")
 
-    # Fast path: if the button is already visible, click it directly.
-    # This skips the back-press dance below which, on emulators where the
-    # fast-input IME suppresses the soft keyboard, sometimes navigates away
-    # from LoginActivity instead of just defocusing. That regression was
-    # observed on GKE under the bumped memory limits (the back press took
-    # effect reliably instead of being absorbed by keyboard dismissal).
-    if not login_btn.exists:
-        # Defocus text fields first so scrolling works
-        d.press("back")
-        time.sleep(0.5)
-
-        # Dismiss NotificationShade or other system overlays if they appeared
-        current_focus = d.info.get("currentPackageName", "")
-        if current_focus and current_focus != "com.github.gotify":
-            log(
-                f"Left gotify activity ({current_focus}); re-launching",
-                SCRIPT_NAME,
-            )
-            subprocess.run(
-                [
-                    "adb",
-                    "shell",
-                    "monkey",
-                    "-p",
-                    PACKAGE,
-                    "-c",
-                    "android.intent.category.LAUNCHER",
-                    "1",
-                ],
-                capture_output=True,
-                timeout=10,
-            )
-            time.sleep(1)
-
-        if not login_btn.wait(timeout=TIMEOUT_NORMAL):
-            # Button may be off-screen, try scrolling
-            log("Login button not visible, scrolling...", SCRIPT_NAME)
-            try:
-                d(scrollable=True).scroll.to(resourceId="com.github.gotify:id/login")
-            except Exception:
-                pass
-            if not login_btn.wait(timeout=TIMEOUT_FAST):
+    # Previously this step did `d.press("back")` unconditionally to defocus
+    # fields before scrolling. On emulators where the fast-input IME
+    # (set_input_ime(True) above) suppresses the soft keyboard, the back
+    # press is absorbed by the activity instead of the IME and navigates
+    # out of LoginActivity, which is the symptom that the GKE retest
+    # reported as "Login button not found even after scrolling".
+    #
+    # Don't press back: the fast IME does not pop a keyboard, so there is
+    # nothing to dismiss. If the button is off-screen, scroll directly.
+    if not login_btn.wait(timeout=TIMEOUT_NORMAL):
+        log("Login button not visible, scrolling...", SCRIPT_NAME)
+        try:
+            d(scrollable=True).scroll.to(resourceId="com.github.gotify:id/login")
+        except Exception as e:
+            log(f"Scroll attempt failed: {e}", SCRIPT_NAME)
+        if not login_btn.wait(timeout=TIMEOUT_FAST):
+            # Last resort: if we actually left the gotify activity somehow,
+            # relaunch via monkey so subsequent checks land on the right screen.
+            current_focus = d.info.get("currentPackageName", "")
+            if current_focus and current_focus != "com.github.gotify":
+                log(
+                    f"Not on gotify ({current_focus}); re-launching",
+                    SCRIPT_NAME,
+                )
+                subprocess.run(
+                    [
+                        "adb",
+                        "shell",
+                        "monkey",
+                        "-p",
+                        PACKAGE,
+                        "-c",
+                        "android.intent.category.LAUNCHER",
+                        "1",
+                    ],
+                    capture_output=True,
+                    timeout=10,
+                )
+                if not login_btn.wait(timeout=TIMEOUT_NORMAL):
+                    log("[ERROR] Login button not found after re-launch", SCRIPT_NAME)
+                    return False
+            else:
                 log("[ERROR] Login button not found even after scrolling", SCRIPT_NAME)
                 return False
 
