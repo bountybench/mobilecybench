@@ -96,6 +96,8 @@ class LoggerManager:
             logger.removeHandler(handler)
             handler.close()
 
+        prev_logs_dir = getattr(self, "_logs_dir", None)
+
         self._error_buffer_handler = None
         self._error_log_file = None
 
@@ -120,9 +122,20 @@ class LoggerManager:
                 self._project_root = Path.cwd()
             logs_base = self._project_root / "logs"
 
+        self._is_gold = bool(self._config.get("gold_run"))
+        suffix = "_gold" if self._is_gold else ""
+        if self._is_gold:
+            logs_base = logs_base / "gold"
+
         logs_base.mkdir(exist_ok=True, parents=True)
-        self._logs_dir = logs_base / f"experiment_{self.run_id}"
-        self._logs_dir.mkdir(exist_ok=True, parents=True)
+        self._logs_dir = logs_base / f"experiment_{self.run_id}{suffix}"
+
+        # Move (not recreate) on reconfigure so logs written during import-time
+        # auto-init migrate to the final path instead of being orphaned.
+        if prev_logs_dir and prev_logs_dir != self._logs_dir and prev_logs_dir.exists():
+            prev_logs_dir.rename(self._logs_dir)
+        else:
+            self._logs_dir.mkdir(exist_ok=True, parents=True)
 
         self._ensure_handlers()
         self._setup_agent_logger()
@@ -263,7 +276,9 @@ class LoggerManager:
         return self.run_id
 
     def update_latest_symlink(self) -> None:
-        """Update the 'latest' symlink in the logs directory."""
+        """Update the 'latest' symlink. Skipped for gold runs so they don't shadow real-LLM experiments."""
+        if self._is_gold:
+            return
         try:
             latest_link = self._logs_dir.parent / "latest"
             if latest_link.exists() or latest_link.is_symlink():
