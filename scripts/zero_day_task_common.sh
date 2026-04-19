@@ -296,6 +296,8 @@ zero_day_task_run_validation() {
     _task_validation_log INFO "=========================================="
 
     local secure_apk="$ZERO_DAY_SOURCE_REPORT_DIR/artifacts/hardened_apk/${app_name}.apk"
+    local secure_apk_dir
+    secure_apk_dir="$(dirname "$secure_apk")"
     local build_manifest="$ZERO_DAY_SOURCE_REPORT_DIR/artifacts/.zero_day_build_manifest.json"
     local expected_patch_hash
     expected_patch_hash="$(shasum -a 256 "$ZERO_DAY_SECURE_PATCH_ABS" | awk '{print $1}')"
@@ -326,8 +328,9 @@ zero_day_task_run_validation() {
         _task_validation_log INFO "BUILD PHASE"
         cd "$ROOT_DIR"
         mkdir -p "$(dirname "$build_manifest")"
+        mkdir -p "$secure_apk_dir"
         _task_validation_log INFO "Building secure APK (with task fix.patch)..."
-        if ! zero_day_task_run_build "$app_name" --hardened-patch "$ZERO_DAY_SECURE_PATCH_ABS"; then
+        if ! zero_day_task_run_build "$app_name" --output "$secure_apk_dir" --hardened-patch "$ZERO_DAY_SECURE_PATCH_ABS"; then
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
             return 1
         fi

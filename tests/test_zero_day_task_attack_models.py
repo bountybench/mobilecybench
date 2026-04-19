@@ -275,6 +275,62 @@ def test_task_validation_set_context_rejects_too_many_args() -> None:
     assert "expected 9-14 args" in (result.stderr + result.stdout)
 
 
+def test_zero_day_validation_passes_explicit_hardened_output_for_local_task(
+    tmp_path: Path,
+) -> None:
+    root_dir = tmp_path / "root"
+    app_name = "demoapp"
+    app_dir = root_dir / "apps" / app_name
+    task_dir = app_dir / "zero_day_vulnerabilities" / "demo_task"
+    trace_file = tmp_path / "trace.log"
+
+    root_dir.mkdir(parents=True, exist_ok=True)
+    (root_dir / "scripts").symlink_to(REPO_ROOT / "scripts")
+    (root_dir / "templates").symlink_to(REPO_ROOT / "templates")
+    _write(
+        root_dir / "zero_day_task_bundle_schema.json",
+        (REPO_ROOT / "zero_day_task_bundle_schema.json").read_text(),
+    )
+
+    app_dir.mkdir(parents=True, exist_ok=True)
+    _write(app_dir / "metadata.json", json.dumps({"package_name": "com.example.target"}) + "\n")
+    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_apk"))
+    _write(
+        task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
+        "<manifest/>\n",
+    )
+    _write(
+        task_dir / "exploit_files" / "exploit_apk" / "src" / "Exploit.java",
+        "class Exploit {}\n",
+    )
+
+    script = "\n".join(
+        [
+            f'REAL_ROOT="{REPO_ROOT}"',
+            f'ROOT_DIR="{root_dir}"',
+            'source "$ROOT_DIR/scripts/zero_day_task_common.sh"',
+            'task_validation_resolve_android_serial() { return 0; }',
+            'task_validation_set_context() { echo "set_context:$*" >> "$TRACE_FILE"; return 0; }',
+            'task_validation_run_phase() { echo "run_phase:$*" >> "$TRACE_FILE"; return 0; }',
+            'task_validation_cleanup_runtime() { echo "cleanup" >> "$TRACE_FILE"; return 0; }',
+            'zero_day_task_run_build() { echo "build:$*" >> "$TRACE_FILE"; return 0; }',
+            f'zero_day_task_run_validation "{app_name}" "{task_dir}" false "" false',
+        ]
+    )
+
+    result = _run_bash(
+        script,
+        env={"TRACE_FILE": str(trace_file)},
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    lines = [line.strip() for line in trace_file.read_text().splitlines() if line.strip()]
+    secure_build = next(line for line in lines if line.startswith("build:"))
+    assert "--output" in secure_build
+    assert str(task_dir.parent / "artifacts" / "hardened_apk") in secure_build
+    assert "--hardened-patch" in secure_build
+
+
 def _make_phase_fixture(
     tmp_path: Path, attack_model: str
 ) -> tuple[Path, Path, Path, Path, Path]:
