@@ -118,34 +118,53 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
         log("Error: Could not find token input field")
         return False
 
-    # Hide keyboard to make button visible/clickable
-    try:
-        d.press("back")
-    except Exception:
-        pass
-    time.sleep(0.5)
+    # NOTE: do NOT press back here. LoginPage is the app's root activity when
+    # the user is not logged in, so a back press closes the app and lands on
+    # the launcher — confirmed in the gold-run hierarchy dump. The fast IME
+    # (set_input_ime(True) above) does not pop a soft keyboard, so there is
+    # no keyboard to dismiss anyway. If the FAB turns out to be covered on
+    # some build, prefer ESC (`adb shell input keyevent 111`) which dismisses
+    # the IME without navigating back.
+    wait_for_ui_stable(d, min_consecutive=2, timeout=TIMEOUT_FAST)
 
     # If login completed implicitly after input, stop here
     if main_screen_loaded(d):
         log("Logged in after entering credentials")
         return True
 
-    # Click Add Account button.
-    # In this Compose app, the button has content-desc="Add Account" (not text).
+    # Click the Add Account FAB.
+    # Compose's ExtendedFloatingActionButton sets contentDescription on *both*
+    # the Text child and the Icon child. Plain selectors like d(description=
+    # "Add Account") can resolve to a non-clickable inner view, so the click
+    # silently does nothing (observed in gold runs: "Could not find Add Account
+    # button, trying Enter key"). Filter to clickable elements first; only
+    # fall back to unfiltered selectors if nothing clickable matches.
     sign_in_btn = first_existing(
         [
+            d(descriptionContains="Add Account", clickable=True),
+            d(textContains="Add Account", clickable=True),
+            d(description="Add Account", clickable=True),
+            d(text="Add Account", clickable=True),
+            # Unfiltered fallbacks (the old behavior) in case the accessibility
+            # tree does not expose the root as clickable on this build.
             d(description="Add Account"),
             d(text="Add Account"),
             d(textContains="Add Account"),
         ],
-        timeout=2,
+        timeout=1,
     )
 
     if sign_in_btn is not None:
         log("Clicking Add Account button...")
         sign_in_btn.click()
     else:
-        log("Warning: Could not find Add Account button, trying Enter key...")
+        log("Warning: Could not find Add Account button; dumping hierarchy:")
+        try:
+            hierarchy = d.dump_hierarchy(compressed=True)
+            log(hierarchy[:1500])
+        except Exception as e:
+            log(f"  (hierarchy dump failed: {e})")
+        log("Falling back to Enter key (likely to no-op)...")
         d.press("enter")
 
     # Wait for login to complete
@@ -155,8 +174,11 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
             return True
         time.sleep(1)
 
-    log("Warning: Could not confirm successful login, continuing anyway")
-    return True
+    # Login did not complete. Don't silently return True — the caller
+    # needs to know so it can fail fast instead of proceeding to drawer
+    # navigation that will never work.
+    log("[ERROR] Login did not complete (main screen never appeared)")
+    return False
 
 
 def view_malicious_memo(d: u2.Device) -> bool:
