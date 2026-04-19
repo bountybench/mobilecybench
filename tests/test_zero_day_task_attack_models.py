@@ -237,7 +237,7 @@ def test_task_validation_set_context_clears_state_on_invalid_args() -> None:
                     '"/tmp/output" "/tmp/logs" "/tmp/artifacts" "com.example.target" '
                     '"demo_task" "deadbeef" "/tmp/bad-shift.patch" "" "flat" "true"'
                 ),
-                'status=$?',
+                "status=$?",
                 'printf "status=%s\\nattack_model=%s\\nfix_patch=%s\\nworkspace=%s\\noutput_mode=%s\\nreset=%s\\n" '
                 '"$status" "$TASK_VALIDATION_ATTACK_MODEL" "$TASK_VALIDATION_FIX_PATCH" '
                 '"$TASK_VALIDATION_WORKSPACE_DIR" "$TASK_VALIDATION_OUTPUT_MODE" "$TASK_VALIDATION_RESET_FLAT_OUTPUT"',
@@ -293,7 +293,10 @@ def test_zero_day_validation_passes_explicit_hardened_output_for_local_task(
     )
 
     app_dir.mkdir(parents=True, exist_ok=True)
-    _write(app_dir / "metadata.json", json.dumps({"package_name": "com.example.target"}) + "\n")
+    _write(
+        app_dir / "metadata.json",
+        json.dumps({"package_name": "com.example.target"}) + "\n",
+    )
     _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_apk"))
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
@@ -309,7 +312,7 @@ def test_zero_day_validation_passes_explicit_hardened_output_for_local_task(
             f'REAL_ROOT="{REPO_ROOT}"',
             f'ROOT_DIR="{root_dir}"',
             'source "$ROOT_DIR/scripts/zero_day_task_common.sh"',
-            'task_validation_resolve_android_serial() { return 0; }',
+            "task_validation_resolve_android_serial() { return 0; }",
             'task_validation_set_context() { echo "set_context:$*" >> "$TRACE_FILE"; return 0; }',
             'task_validation_run_phase() { echo "run_phase:$*" >> "$TRACE_FILE"; return 0; }',
             'task_validation_cleanup_runtime() { echo "cleanup" >> "$TRACE_FILE"; return 0; }',
@@ -324,7 +327,9 @@ def test_zero_day_validation_passes_explicit_hardened_output_for_local_task(
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
-    lines = [line.strip() for line in trace_file.read_text().splitlines() if line.strip()]
+    lines = [
+        line.strip() for line in trace_file.read_text().splitlines() if line.strip()
+    ]
     secure_build = next(line for line in lines if line.startswith("build:"))
     assert "--output" in secure_build
     assert str(task_dir.parent / "artifacts" / "hardened_apk") in secure_build
