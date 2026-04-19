@@ -60,10 +60,10 @@ task_runtime_set_context() {
     local -a task_runtime_env=()
 
     case "$attack_model" in
-        ""|malicious_apk|auth_attacker) ;;
+        ""|malicious_app|auth_attacker) ;;
         *)
             task_runtime_clear_context
-            echo -e "${ERROR} task_runtime_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_apk, auth_attacker)"
+            echo -e "${ERROR} task_runtime_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_app, auth_attacker)"
             return 1
             ;;
     esac
@@ -216,7 +216,7 @@ task_runtime_run_exploit() {
     local log_file="${3:-}"
 
     case "$TASK_RUNTIME_ATTACK_MODEL" in
-        malicious_apk)
+        malicious_app)
             task_runtime_run_exploit_apk "$root_dir" "$log_file"
             ;;
         *)

@@ -46,15 +46,15 @@ def _base_metadata(*, attack_model: str) -> dict:
         "schema_version": 1,
         "task_id": "demo_task",
         "title": "Demo task",
-        "attack_model": attack_model,
+        "attacker_model": attack_model,
         "baseline": {"commit": "deadbeef"},
         "runtime": {"package_name": "com.example.target"},
     }
 
 
-def test_source_validation_accepts_malicious_apk_task(tmp_path: Path) -> None:
+def test_source_validation_accepts_malicious_app_task(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_apk"))
+    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
         "<manifest/>\n",
@@ -95,7 +95,7 @@ def test_source_validation_accepts_auth_attacker_task(tmp_path: Path) -> None:
 
 def test_source_validation_rejects_mixed_exploit_artifacts(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_apk"))
+    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
     _write_executable(
         task_dir / "exploit_files" / "exploit.sh", "#!/usr/bin/env bash\nexit 0\n"
     )
@@ -116,12 +116,12 @@ def test_source_validation_rejects_mixed_exploit_artifacts(tmp_path: Path) -> No
     assert "must not mix exploit_files/exploit.sh" in (result.stderr + result.stdout)
 
 
-def test_source_validation_rejects_missing_attack_model(
+def test_source_validation_rejects_legacy_attack_model_field(
     tmp_path: Path,
 ) -> None:
     task_dir = tmp_path / "task"
-    metadata = _base_metadata(attack_model="malicious_apk")
-    del metadata["attack_model"]
+    metadata = _base_metadata(attack_model="malicious_app")
+    metadata["attack_model"] = metadata.pop("attacker_model")
     _write_task_metadata(task_dir, metadata)
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
@@ -137,14 +137,38 @@ def test_source_validation_rejects_missing_attack_model(
     )
 
     assert result.returncode != 0
-    assert "must declare attack_model" in (result.stderr + result.stdout)
+    assert "uses legacy attack_model" in (result.stderr + result.stdout)
+
+
+def test_source_validation_rejects_missing_attacker_model(
+    tmp_path: Path,
+) -> None:
+    task_dir = tmp_path / "task"
+    metadata = _base_metadata(attack_model="malicious_app")
+    del metadata["attacker_model"]
+    _write_task_metadata(task_dir, metadata)
+    _write(
+        task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
+        "<manifest/>\n",
+    )
+    _write(
+        task_dir / "exploit_files" / "exploit_apk" / "src" / "Exploit.java",
+        "class Exploit {}\n",
+    )
+
+    result = _run_bash(
+        f'source "$ROOT_DIR/scripts/zero_day_task_common.sh"\nzero_day_task_validate_source_dir "{task_dir}"'
+    )
+
+    assert result.returncode != 0
+    assert "must declare attacker_model" in (result.stderr + result.stdout)
 
 
 def test_source_validation_rejects_apk_task_without_java_sources(
     tmp_path: Path,
 ) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_apk"))
+    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
         "<manifest/>\n",
@@ -162,7 +186,7 @@ def test_source_validation_rejects_apk_task_without_java_sources(
 
 def test_source_validation_rejects_legacy_attacker_app_dir(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_apk"))
+    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
     _write(
         task_dir / "exploit_files" / "attacker_app" / "AndroidManifest.xml",
         "<manifest/>\n",
@@ -182,7 +206,7 @@ def test_source_validation_rejects_legacy_attacker_app_dir(tmp_path: Path) -> No
     )
 
 
-def test_resolve_metadata_rejects_missing_attack_model(tmp_path: Path) -> None:
+def test_resolve_metadata_rejects_missing_attacker_model(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
     app_dir = tmp_path / "app"
     app_dir.mkdir(parents=True)
@@ -219,7 +243,7 @@ def test_resolve_metadata_rejects_missing_attack_model(tmp_path: Path) -> None:
     )
 
     assert result.returncode != 0
-    assert "must declare attack_model" in (result.stderr + result.stdout)
+    assert "must declare attacker_model" in (result.stderr + result.stdout)
 
 
 def test_task_validation_set_context_clears_state_on_invalid_args() -> None:
@@ -297,7 +321,7 @@ def test_zero_day_validation_passes_explicit_hardened_output_for_local_task(
         app_dir / "metadata.json",
         json.dumps({"package_name": "com.example.target"}) + "\n",
     )
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_apk"))
+    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
         "<manifest/>\n",
@@ -451,7 +475,7 @@ def _phase_script(
     )
 
 
-def test_malicious_apk_phase_runs_victim_setup_before_exploit(tmp_path: Path) -> None:
+def test_malicious_app_phase_runs_victim_setup_before_exploit(tmp_path: Path) -> None:
     (
         app_dir,
         task_dir,
@@ -461,7 +485,7 @@ def test_malicious_apk_phase_runs_victim_setup_before_exploit(tmp_path: Path) ->
         workspace_dir,
         order_log,
         env,
-    ) = _make_phase_fixture(tmp_path, "malicious_apk")
+    ) = _make_phase_fixture(tmp_path, "malicious_app")
 
     result = _run_bash(
         _phase_script(
@@ -471,7 +495,7 @@ def test_malicious_apk_phase_runs_victim_setup_before_exploit(tmp_path: Path) ->
             logs_dir,
             artifacts_dir,
             workspace_dir,
-            "malicious_apk",
+            "malicious_app",
         ),
         env=env,
     )

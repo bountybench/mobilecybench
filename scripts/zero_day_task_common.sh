@@ -25,7 +25,12 @@ ZERO_DAY_BASELINE_COMMIT=""
 ZERO_DAY_SECURE_PATCH_ABS=""
 ZERO_DAY_ATTACK_MODEL=""
 
-zero_day_task_read_attack_model() {
+zero_day_task_read_attacker_model() {
+    local metadata_file="$1"
+    jq -r '.attacker_model // empty' "$metadata_file"
+}
+
+zero_day_task_read_legacy_attack_model() {
     local metadata_file="$1"
     jq -r '.attack_model // empty' "$metadata_file"
 }
@@ -104,9 +109,15 @@ zero_day_task_validate_source_dir() {
     done
 
     local attack_model=""
-    attack_model="$(zero_day_task_read_attack_model "$task_dir/metadata.json")"
+    attack_model="$(zero_day_task_read_attacker_model "$task_dir/metadata.json")"
     if [ -z "$attack_model" ]; then
-        _task_validation_log ERROR "metadata.json must declare attack_model (malicious_apk or auth_attacker)"
+        local legacy_attack_model=""
+        legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$task_dir/metadata.json")"
+        if [ -n "$legacy_attack_model" ]; then
+            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or auth_attacker)"
+        else
+            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or auth_attacker)"
+        fi
         return 1
     fi
 
@@ -129,7 +140,7 @@ zero_day_task_validate_source_dir() {
     fi
 
     case "$attack_model" in
-        malicious_apk)
+        malicious_app)
             zero_day_task_validate_apk_project "$task_dir" || return 1
             ;;
         auth_attacker)
@@ -139,7 +150,7 @@ zero_day_task_validate_source_dir() {
             fi
             ;;
         *)
-            _task_validation_log ERROR "Unknown attack_model in metadata.json: $attack_model"
+            _task_validation_log ERROR "Unknown attacker_model in metadata.json: $attack_model"
             return 1
         ;;
     esac
@@ -159,9 +170,15 @@ zero_day_task_resolve_metadata() {
 
     ZERO_DAY_TASK_METADATA="$task_dir/metadata.json"
     zero_day_task_validate_metadata_schema_if_present "$ZERO_DAY_TASK_METADATA" || return 1
-    ZERO_DAY_ATTACK_MODEL="$(zero_day_task_read_attack_model "$ZERO_DAY_TASK_METADATA")"
+    ZERO_DAY_ATTACK_MODEL="$(zero_day_task_read_attacker_model "$ZERO_DAY_TASK_METADATA")"
     if [ -z "$ZERO_DAY_ATTACK_MODEL" ]; then
-        _task_validation_log ERROR "metadata.json must declare attack_model (malicious_apk or auth_attacker)"
+        local legacy_attack_model=""
+        legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$ZERO_DAY_TASK_METADATA")"
+        if [ -n "$legacy_attack_model" ]; then
+            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or auth_attacker)"
+        else
+            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or auth_attacker)"
+        fi
         return 1
     fi
 

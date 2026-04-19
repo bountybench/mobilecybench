@@ -40,14 +40,14 @@ depends on the task type. Task-type-specific contents are documented in:
 
 #### Zero-day attack models
 
-Zero-day tasks declare an `attack_model` in `metadata.json`:
+Zero-day tasks declare an `attacker_model` in `metadata.json`:
 
-| `attack_model` | Required exploit artifact | Runtime |
+| `attacker_model` | Required exploit artifact | Runtime |
 |---|---|---|
-| `malicious_apk` | `exploit_files/exploit_apk/` | Built from source on the host and replayed via `am instrument` |
+| `malicious_app` | `exploit_files/exploit_apk/` | Built from source on the host and replayed via `am instrument` |
 | `auth_attacker` | `exploit_files/exploit.sh` | Runs inside the exploit container with ADB + backend access |
 
-For `malicious_apk` tasks:
+For `malicious_app` tasks:
 - keep only source files in `exploit_apk/`
 - do not commit a prebuilt APK
 - if `build_exploit_apk.sh` is omitted, the zero-day validator injects the

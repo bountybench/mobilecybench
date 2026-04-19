@@ -19,10 +19,10 @@
       "minLength": 1,
       "description": "Short task title"
     },
-    "attack_model": {
+    "attacker_model": {
       "type": "string",
-      "enum": ["malicious_apk", "auth_attacker"],
-      "description": "Attack-model selector for the replay pipeline: malicious_apk (host-replayed exploit APK) or auth_attacker (exploit.sh in the exploit container)."
+      "enum": ["malicious_app", "auth_attacker"],
+      "description": "Attacker-model selector for the replay pipeline: malicious_app (host-replayed exploit APK) or auth_attacker (exploit.sh in the exploit container)."
     },
     "baseline": {
       "type": "object",
@@ -65,7 +65,14 @@
     "schema_version",
     "task_id",
     "title",
-    "attack_model",
+    "attacker_model",
     "baseline"
+  ],
+  "allOf": [
+    {
+      "not": {
+        "required": ["attack_model"]
+      }
+    }
   ]
 }
