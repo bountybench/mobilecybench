@@ -6,6 +6,9 @@
   "java": "17",
   "emulator_server": "https://10.0.2.2:8123",
   "app_server": "home-assistant_tls_proxy:443",
+  "extra_forwards": [
+    "14378:ha-ssrf-listener:14378"
+  ],
   "username": "testuser",
   "password": "536b824b-5251-4ed8-9f6e-d6640b02c83c",
   "package_name": "io.homeassistant.companion.android",

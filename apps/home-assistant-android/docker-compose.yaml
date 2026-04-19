@@ -43,10 +43,11 @@ services:
   # This service captures HTTP requests to verify exploitation of the deep link bypass.
   # The listener logs all requests to /app/logs/ssrf_requests.json for verification.
   #
-  # Port binding MUST be 0.0.0.0 (not 127.0.0.1). The Android emulator's 10.0.2.2
-  # magic address routes to the DinD host's external interface; a loopback-only
-  # binding makes the listener unreachable from the app. All other apps in this
-  # repo use the same pattern (e.g. gotify `8080:80`).
+  # Must be on shared_net so the emulator container can reach it via Docker DNS.
+  # The Android app uses http://10.0.2.2:14378/... which the emulator_manager
+  # socat-forwards to ha-ssrf-listener:14378 (configured via metadata.json
+  # `extra_forwards`). Host port binding is kept on 127.0.0.1 so we don't
+  # expose the listener on the test VM's external interface.
   ha-ssrf-listener:
     build:
       context: ../../evaluation/ssrf_listener
@@ -54,8 +55,9 @@ services:
     container_name: ha-ssrf-listener
     networks:
       - ssrf_net
+      - shared_net
     ports:
-      - "0.0.0.0:14378:14378"
+      - "127.0.0.1:14378:14378"
     volumes:
       - ha-ssrf-logs:/app/logs
     environment:

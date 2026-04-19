@@ -49,6 +49,30 @@ def _parse_host_port(app_server: str) -> tuple[Optional[str], Optional[int]]:
     return None, None
 
 
+def _parse_extra_forward(entry) -> Optional[tuple[int, str, int]]:
+    """Parse a metadata.json `extra_forwards` entry into (listen_port, host, port).
+
+    Accepted shapes:
+      "14378:ha-ssrf-listener:14378"                       — shorthand
+      {"listen_port": 14378, "target": "ha-ssrf-listener:14378"}
+    """
+    if isinstance(entry, str):
+        parts = entry.split(":")
+        if len(parts) != 3:
+            return None
+        try:
+            return int(parts[0]), parts[1], int(parts[2])
+        except ValueError:
+            return None
+    if isinstance(entry, dict):
+        listen_port = entry.get("listen_port")
+        target = entry.get("target", "")
+        host, port = _parse_host_port(target)
+        if isinstance(listen_port, int) and host and port:
+            return listen_port, host, port
+    return None
+
+
 class EmulatorState(Enum):
     NOT_STARTED = "not_started"
     STARTING = "starting"
@@ -786,6 +810,12 @@ class EmulatorManager:
         (from emulator_server) to the backend container (from app_server)
         via Docker DNS on shared_net.
 
+        An optional `extra_forwards` list in metadata.json lets an app
+        expose additional backends via 10.0.2.2:<port> — useful for SSRF
+        listeners and other auxiliary containers referenced by exploits.
+        Each entry is either ``"<port>:<host>:<port>"`` or a dict with
+        ``listen_port`` + ``target`` keys.
+
         No-op in native mode (10.0.2.2 already routes to host localhost).
         """
         if self.emulator_backend != "container":
@@ -796,58 +826,74 @@ class EmulatorManager:
             return
 
         metadata = json.loads(metadata_path.read_text())
+
+        forwards: list[tuple[int, str, int]] = []
+
         emulator_server = metadata.get("emulator_server", "")
         app_server = metadata.get("app_server", "")
-        if not emulator_server or not app_server:
-            logger.debug("No emulator_server/app_server — skipping port forwards")
-            return
-
-        listen_port = _parse_port(emulator_server)
-        if listen_port is None:
-            logger.warning(f"Cannot parse port from emulator_server: {emulator_server}")
-            return
-
-        target_host, target_port = _parse_host_port(app_server)
-        if target_host is None or target_port is None:
-            logger.warning(f"Cannot parse app_server: {app_server}")
-            return
-
-        # Kill any existing socat on this port (idempotent for restarts)
-        subprocess.run(
-            [
-                "docker",
-                "exec",
-                EMULATOR_CONTAINER_NAME,
-                "pkill",
-                "-f",
-                f"socat.*{listen_port}",
-            ],
-            capture_output=True,
-            timeout=10,
-        )
-
-        # socat: listen on emulator_server port, forward to app_server host:port
-        result = subprocess.run(
-            [
-                "docker",
-                "exec",
-                "-d",
-                EMULATOR_CONTAINER_NAME,
-                "socat",
-                f"TCP-LISTEN:{listen_port},fork,reuseaddr",
-                f"TCP:{target_host}:{target_port}",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        if result.returncode == 0:
-            logger.info(
-                f"Port forward: emulator:{listen_port} -> {target_host}:{target_port}"
-            )
+        if emulator_server and app_server:
+            listen_port = _parse_port(emulator_server)
+            target_host, target_port = _parse_host_port(app_server)
+            if listen_port is None:
+                logger.warning(
+                    f"Cannot parse port from emulator_server: {emulator_server}"
+                )
+            elif target_host is None or target_port is None:
+                logger.warning(f"Cannot parse app_server: {app_server}")
+            else:
+                forwards.append((listen_port, target_host, target_port))
         else:
-            logger.warning(f"Failed socat port forward: {result.stderr}")
+            logger.debug("No emulator_server/app_server — skipping primary forward")
+
+        for extra in metadata.get("extra_forwards", []) or []:
+            parsed = _parse_extra_forward(extra)
+            if parsed is None:
+                logger.warning(f"Cannot parse extra_forward entry: {extra}")
+                continue
+            forwards.append(parsed)
+
+        if not forwards:
+            return
+
+        for listen_port, target_host, target_port in forwards:
+            # Kill any existing socat on this port (idempotent for restarts)
+            subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    EMULATOR_CONTAINER_NAME,
+                    "pkill",
+                    "-f",
+                    f"socat.*{listen_port}",
+                ],
+                capture_output=True,
+                timeout=10,
+            )
+
+            result = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    "-d",
+                    EMULATOR_CONTAINER_NAME,
+                    "socat",
+                    f"TCP-LISTEN:{listen_port},fork,reuseaddr",
+                    f"TCP:{target_host}:{target_port}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            if result.returncode == 0:
+                logger.info(
+                    f"Port forward: emulator:{listen_port} -> {target_host}:{target_port}"
+                )
+            else:
+                logger.warning(
+                    f"Failed socat port forward {listen_port} -> "
+                    f"{target_host}:{target_port}: {result.stderr}"
+                )
 
     def __enter__(self):
         return self
