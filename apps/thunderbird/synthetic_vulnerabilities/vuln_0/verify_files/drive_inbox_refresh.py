@@ -24,6 +24,7 @@ This is intentionally aligned to the vendored Thunderbird code in this repo:
   drawer and pull-to-refresh on that layout so CI hits the same code path as
   an in-inbox manual refresh (belt-and-suspenders with drawer "Sync all").
 """
+import argparse
 import json
 import os
 import re
@@ -102,7 +103,7 @@ def _ensure_app_foreground(d) -> None:
     # `monkey` can leave the fake launcher visible on some emulator boots even
     # when Thunderbird is already installed, so force the app task into the
     # foreground before waiting for the message list.
-    d.app_start(APP_PKG, stop=True, wait=True, use_monkey=True)
+    d.app_start(APP_PKG, stop=False, wait=True, use_monkey=True)
 
 
 def _wait_for_inbox_ready(d, timeout: float = 90.0) -> None:
@@ -490,9 +491,20 @@ def _trigger_message_list_pull_refresh(d, rounds: int = 2) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--no-stop", action="store_true", help="Skip force-stopping the app initially"
+    )
+    parser.add_argument(
+        "--home", action="store_true", help="Go to home screen after sync"
+    )
+    args = parser.parse_args()
+
     try:
-        _adb("shell", "am", "force-stop", APP_PKG, check=False)
-        time.sleep(1)
+        if not args.no_stop:
+            _adb("shell", "am", "force-stop", APP_PKG, check=False)
+            time.sleep(1)
+
         _launch_inbox()
         d = initialize_ui_automation(max_retries=4, retry_delay=2)
         _ensure_app_foreground(d)
@@ -515,7 +527,13 @@ def main() -> int:
         _close_drawer_if_open(d)
         _wait_for_inbox_ready(d, timeout=45.0)
         _trigger_message_list_pull_refresh(d, rounds=2)
-        time.sleep(12)
+        time.sleep(5)
+
+        if args.home:
+            print("[drive_inbox_refresh] returning to home screen", flush=True)
+            _adb("shell", "input", "keyevent", "3", check=False)
+            time.sleep(2)
+
         print(
             f"[drive_inbox_refresh] attempt={ATTEMPT} inbox_pull_refresh_done screen={_current_screen(d)}",
             flush=True,
@@ -534,4 +552,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
