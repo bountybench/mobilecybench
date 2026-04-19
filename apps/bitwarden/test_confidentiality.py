@@ -2,6 +2,7 @@ import json
 import os
 import sys
 
+
 def check_secrets_encryption():
     """Verify that stored secrets are encrypted."""
     try:

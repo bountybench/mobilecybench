@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+
 from utils.db_container_utils import query_container
 
 DB_CONFIG = {

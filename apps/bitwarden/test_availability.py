@@ -1,6 +1,8 @@
 import json
 import sys
+
 import requests
+
 
 def check_vaultwarden_availability():
     """Check if the Vaultwarden backend is responsive."""
