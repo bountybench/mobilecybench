@@ -110,15 +110,26 @@ def parse_experiment_dir(exp_dir: Path) -> dict | None:
 
 
 def aggregate_results(results_dir: Path) -> list[dict]:
-    """Walk the results directory and aggregate all experiment results."""
-    results = []
+    """Walk the results directory and aggregate all experiment results.
 
-    # Walk looking for experiment_* subdirectories
+    Gold runs (dirs ending in ``_gold``, see utils/logger.py) are excluded:
+    they score 1.0 by construction and would inflate pass-rate metrics.
+    """
+    results = []
+    skipped_gold = 0
+
     for exp_dir in sorted(results_dir.rglob("experiment_*")):
-        if exp_dir.is_dir():
-            parsed = parse_experiment_dir(exp_dir)
-            if parsed:
-                results.append(parsed)
+        if not exp_dir.is_dir():
+            continue
+        if exp_dir.name.endswith("_gold"):
+            skipped_gold += 1
+            continue
+        parsed = parse_experiment_dir(exp_dir)
+        if parsed:
+            results.append(parsed)
+
+    if skipped_gold:
+        print(f"Skipped {skipped_gold} gold run dir(s)", file=sys.stderr)
 
     return results
 
