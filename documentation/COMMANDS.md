@@ -24,6 +24,7 @@ Flags:
 
 ```bash
 python runner.py <app_name>
+python runner.py --replay-run logs/experiment_<uuid>
 ```
 
 Details: `documentation/EXPERIMENTS.md`

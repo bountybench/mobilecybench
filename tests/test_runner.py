@@ -87,7 +87,40 @@ class TestCreateWorkflow:
         )
         assert config.gold_run is True
 
-    def test_redteam_requires_task(self, base_config):
+    def test_replay_run_allows_missing_task_with_redteam(self, base_config):
+        """replay_run can provide task context later, so task may be omitted."""
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "replay_run": "logs/experiment_123",
+            }
+        )
+        assert config.replay_run == "logs/experiment_123"
+
+    def test_replay_run_requires_redteam(self, base_config):
+        with pytest.raises(ValueError, match="requires workflow='redteam'"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "exploit",
+                    "replay_run": "logs/experiment_123",
+                }
+            )
+
+    def test_replay_run_is_mutually_exclusive_with_other_modes(self, base_config):
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "redteam",
+                    "replay_run": "logs/experiment_123",
+                    "task": "report-0",
+                    "gold_run": True,
+                }
+            )
+
+    def test_redteam_requires_task_without_replay(self, base_config):
         """workflow='redteam' without task raises ValueError."""
         with pytest.raises(ValueError, match="task is required"):
             RunnerConfig(**{**base_config.model_dump(), "workflow": "redteam"})
@@ -372,3 +405,50 @@ class TestMain:
         ):
             result = main()
             assert result == 1
+
+    def test_replay_run_can_infer_app_name_from_source(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "runner_config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "server_access": True,
+                    "build_type": "skip-apk",
+                    "adb_access": "full",
+                    "max_iterations": 10,
+                    "max_model_response_tokens": 1000,
+                    "model": "gpt-4",
+                    "screenshot_mode": False,
+                    "dry_run": False,
+                    "agent_image": "test-image:latest",
+                    "emulator_display": "headed",
+                    "emulator_backend": "native",
+                    "workflow": "redteam"
+                }
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        replay_spec = type(
+            "ReplaySpec",
+            (),
+            {
+                "metadata": type("Metadata", (), {"app_name": "openhab"})(),
+            },
+        )()
+
+        with patch(
+            "sys.argv",
+            [
+                "runner.py",
+                "--config",
+                str(config_path),
+                "--replay-run",
+                "logs/experiment_123",
+            ],
+        ), patch("runner.resolve_replay_run", return_value=replay_spec), patch(
+            "runner.run", return_value=0
+        ) as mock_run:
+            result = main()
+            assert result == 0
+
+        assert mock_run.call_args.args[1] == "openhab"

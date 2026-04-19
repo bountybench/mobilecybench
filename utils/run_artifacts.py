@@ -273,6 +273,7 @@ def write_run_summary(
         conversation_path = str(fallback_path) if fallback_path else None
 
     token_usage_path = logs_dir / "token_usage.jsonl"
+    replay_source_path = logs_dir / "replay_source.json"
     llm_calls_this_run = time_tracker.llm_calls[timing_start_idx:]
 
     unique_tools = run_result.get("unique_tools") or []
@@ -381,6 +382,9 @@ def write_run_summary(
             ),
             "conversation_jsonl": conversation_path,
             "system_prompt_file": system_prompt_path,
+            "replay_source_json": (
+                str(replay_source_path) if replay_source_path.exists() else None
+            ),
             **_score_artifact_paths(config.workflow, logs_dir, workflow),
             "logs_dir": str(logs_dir),
         },

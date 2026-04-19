@@ -113,6 +113,22 @@ The runtime copies `task/exploit_files/` into the agent container at `/app/agent
 
 ---
 
+## Replay a prior agent exploit
+
+Use this mode to rerun the normal redteam evaluation pipeline with an exploit saved under a previous experiment log.
+
+```bash
+python runner.py --replay-run logs/experiment_<uuid>
+```
+
+The runner reads the prior run's metadata from `run_summary.json`/`redteam_scores.json`, validates `agent_exploit/`, stages it into the new run's log directory, and reuses the standard two-phase replay/verifier/probe flow. If the source metadata is incomplete, you can still pass the app name explicitly:
+
+```bash
+python runner.py <app_name> --replay-run logs/experiment_<uuid>
+```
+
+Only the saved `agent_exploit/` artifact is replayed. `agent.log`, `conversation.jsonl`, and other log files are diagnostic only and are not treated as replay inputs.
+
 ## Author a task
 
 Task bundles live in the `zerodays` submodule at `zerodays/reports/<app>/<report-id>/task/`. That is the sole location the runner reads tasks from. For private-repo conventions, see [`zerodays/docs/TASK_GUIDELINES.md`](../zerodays/docs/TASK_GUIDELINES.md).

@@ -19,6 +19,12 @@ from typing import Optional
 from models.config import RunnerConfig
 from utils.git_utils import ensure_app_submodule
 from utils.logger import logger, logger_manager
+from utils.replay_run import (
+    ReplayRunError,
+    ReplayRunSpec,
+    resolve_replay_run,
+    stage_replay_artifact,
+)
 from utils.run_artifacts import (
     normalize_agent_result,
     utc_now_iso,
@@ -256,8 +262,9 @@ def _log_experiment_config(
         config.attack_model,
     )
     logger.info(
-        "Runner settings: gold_run=%s task=%s dry_run=%s model=%s iterations=%s",
+        "Runner settings: gold_run=%s replay_run=%s task=%s dry_run=%s model=%s iterations=%s",
         str(config.gold_run).lower(),
+        config.replay_run,
         config.task,
         str(config.dry_run).lower(),
         config.model,
@@ -290,11 +297,67 @@ def _log_experiment_config(
     )
 
 
+def _load_task_attack_model(project_root: Path, app_name: str, task: str) -> str:
+    """Return attacker_model from a redteam task bundle."""
+    task_meta_path = (
+        project_root
+        / "zerodays"
+        / "reports"
+        / app_name
+        / task
+        / "task"
+        / "metadata.json"
+    )
+    if not task_meta_path.exists():
+        raise FileNotFoundError(
+            f"metadata.json not found at {task_meta_path} (required for task={task})"
+        )
+
+    task_meta = json.loads(task_meta_path.read_text())
+    task_attack_model = task_meta.get("attacker_model")
+    valid_models = {"malicious_app", "auth_attacker"}
+    if task_attack_model not in valid_models:
+        raise ValueError(
+            f"attacker_model={'missing' if task_attack_model is None else repr(task_attack_model)} "
+            f"in {task_meta_path} (must be one of {valid_models})"
+        )
+    return task_attack_model
+
+
+def _log_replay_preflight(replay_spec: ReplayRunSpec) -> None:
+    """Log the resolved replay source before expensive runtime setup."""
+    logger.info("Replay source preflight")
+    logger.info("  source: %s", replay_spec.metadata.source_path)
+    logger.info("  source_run_id: %s", replay_spec.metadata.source_run_id)
+    logger.info("  app: %s", replay_spec.metadata.app_name)
+    logger.info("  workflow: %s", replay_spec.metadata.workflow)
+    logger.info("  task: %s", replay_spec.metadata.task)
+    logger.info("  attack_model: %s", replay_spec.metadata.attack_model)
+    logger.info("  artifact: %s", replay_spec.artifact.artifact_kind)
+    logger.info("  source outcome: %s", replay_spec.metadata.source_outcome)
+    for warning in replay_spec.warnings:
+        logger.warning("Replay preflight warning: %s", warning)
+
+
+def _log_evaluation_result(evaluation: dict) -> None:
+    """Log a normalized evaluation summary when present."""
+    if isinstance(evaluation, dict):
+        logger.info(
+            "Evaluation complete: status=%s score=%s reason=%s",
+            evaluation.get("status"),
+            evaluation.get("score"),
+            evaluation.get("reason"),
+        )
+    else:
+        logger.info("Evaluation complete")
+
+
 def run(
     config: RunnerConfig,
     app_name: str,
     project_root: Path,
     config_path: Optional[Path] = None,
+    replay_spec: Optional[ReplayRunSpec] = None,
 ) -> int:
     """
     Execute the evaluation workflow.
@@ -323,31 +386,45 @@ def run(
     exit_code = 1
 
     try:
+        if config.replay_run and replay_spec is None:
+            replay_spec = resolve_replay_run(
+                config.replay_run,
+                project_root=project_root,
+                explicit_app_name=app_name,
+                explicit_task=None,
+                explicit_workflow=config.workflow,
+                explicit_attack_model=None,
+            )
+
+        if replay_spec:
+            if replay_spec.metadata.task and replay_spec.metadata.task != config.task:
+                logger.info(
+                    "Replay source sets task: %s -> %s",
+                    config.task,
+                    replay_spec.metadata.task,
+                )
+            config.task = replay_spec.metadata.task or config.task
+            if replay_spec.metadata.attack_model != config.attack_model:
+                logger.info(
+                    "Replay artifact sets attack_model: %s -> %s",
+                    config.attack_model,
+                    replay_spec.metadata.attack_model,
+                )
+                config.attack_model = replay_spec.metadata.attack_model
+            _log_replay_preflight(replay_spec)
+
         # task/metadata.json is the source of truth for attacker_model.
         # Override config before creating the workflow so the correct ops class
         # (MaliciousAppOps vs AuthAttackerOps) is selected.
         if config.task:
-            task_meta_path = (
-                project_root
-                / "zerodays"
-                / "reports"
-                / app_name
-                / config.task
-                / "task"
-                / "metadata.json"
+            task_attack_model = _load_task_attack_model(
+                project_root, app_name, config.task
             )
-            if not task_meta_path.exists():
-                raise FileNotFoundError(
-                    f"metadata.json not found at {task_meta_path} "
-                    f"(required for task={config.task})"
-                )
-            task_meta = json.loads(task_meta_path.read_text())
-            task_attack_model = task_meta.get("attacker_model")
-            valid_models = {"malicious_app", "auth_attacker"}
-            if task_attack_model not in valid_models:
+            if replay_spec and task_attack_model != replay_spec.artifact.attack_model:
                 raise ValueError(
-                    f"attacker_model={'missing' if task_attack_model is None else repr(task_attack_model)} "
-                    f"in {task_meta_path} (must be one of {valid_models})"
+                    "Replay source mismatch: task metadata attacker_model is "
+                    f"{task_attack_model!r}, but the saved artifact layout matches "
+                    f"{replay_spec.artifact.attack_model!r}."
                 )
             if task_attack_model != config.attack_model:
                 logger.info(
@@ -370,6 +447,17 @@ def run(
         # Log structured experiment configuration for observability
         _log_experiment_config(config, app_name, workflow)
 
+        if replay_spec:
+            stage_replay_artifact(
+                replay_spec,
+                logs_dir=logger_manager.get_logs_dir(),
+                project_root=project_root,
+            )
+            logger.info(
+                "Replay exploit staged into %s",
+                logger_manager.get_logs_dir() / "agent_exploit",
+            )
+
         logger.info("Setting up runtime environment...")
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
@@ -391,6 +479,29 @@ def run(
             outcome = "success"
             exit_reason = "dry_run_completed"
             exit_code = 0
+        elif replay_spec:
+            logger.info("Replay-run mode — reusing exploit artifact from prior experiment...")
+
+            # Match normal evaluation behavior: the exploit source is staged on disk,
+            # and the agent container is removed before verifier/probe execution.
+            if workflow.agent_env:
+                workflow.agent_env.cleanup()
+                workflow.agent_env = None
+
+            logger.info("Evaluating replayed exploit results...")
+            evaluation = workflow.evaluate() or {}
+            _log_evaluation_result(evaluation)
+
+            replay_result = {
+                "status": "replay_run_completed",
+                "agent_type": config.agent_mode,
+            }
+            run_result = normalize_agent_result(replay_result)
+
+            replay_score = evaluation.get("score") if isinstance(evaluation, dict) else None
+            outcome = "success" if replay_score == 1 else "failure"
+            exit_reason = "replay_run_completed"
+            exit_code = 0 if replay_score == 1 else 1
         else:
             logger.info("Configuring agent...")
             workflow.setup_agent()
@@ -410,18 +521,11 @@ def run(
             # container is removed before verify_exploit.sh runs.
             if workflow.agent_env:
                 workflow.agent_env.cleanup()
+                workflow.agent_env = None
 
             logger.info("Evaluating results...")
             evaluation = workflow.evaluate() or {}
-            if isinstance(evaluation, dict):
-                logger.info(
-                    "Evaluation complete: status=%s score=%s reason=%s",
-                    evaluation.get("status"),
-                    evaluation.get("score"),
-                    evaluation.get("reason"),
-                )
-            else:
-                logger.info("Evaluation complete")
+            _log_evaluation_result(evaluation)
 
             # Derive outcome from agent_status and evaluation rather than
             # unconditionally reporting success.
@@ -449,7 +553,7 @@ def run(
                 exit_reason = "completed"
                 exit_code = 0
 
-    except ValueError as e:
+    except (ValueError, ReplayRunError) as e:
         logger.error(f"Validation error: {e}")
         exit_reason = "validation_error"
         exit_code = 1
@@ -510,21 +614,35 @@ def run(
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(description="MobileCybench Runner")
-    parser.add_argument("app_name", help="Name of the app to evaluate")
+    parser.add_argument(
+        "app_name",
+        nargs="?",
+        help="Name of the app to evaluate (optional when --replay-run is used)",
+    )
     parser.add_argument(
         "--config",
         default="runner_config.json",
         help="Path to runner config file",
+    )
+    parser.add_argument(
+        "--replay-run",
+        help="Replay a prior redteam experiment from logs/experiment_<uuid>",
     )
     args = parser.parse_args()
 
     # Load config
     config_path = Path(args.config)
     try:
-        config = RunnerConfig.from_file(config_path)
+        config = RunnerConfig.from_file(
+            config_path,
+            overrides={"replay_run": args.replay_run} if args.replay_run else None,
+        )
     except (FileNotFoundError, ValueError) as e:
         logger.error(str(e))
         return 1
+    if not args.app_name and not config.replay_run:
+        parser.error("app_name is required unless --replay-run is provided")
+
     project_root = Path(__file__).parent
 
     # Initialize LoggerManager with config before any logging occurs
@@ -532,7 +650,31 @@ def main():
 
     get_logger_manager(config=config.model_dump())
 
-    exit_code = run(config, args.app_name, project_root, config_path=config_path)
+    replay_spec = None
+    app_name = args.app_name
+    if config.replay_run:
+        try:
+            replay_spec = resolve_replay_run(
+                config.replay_run,
+                project_root=project_root,
+                explicit_app_name=app_name,
+                explicit_task=None,
+                explicit_workflow=config.workflow,
+                explicit_attack_model=None,
+            )
+        except ReplayRunError as e:
+            logger.error(str(e))
+            logger_manager.print_error_summary()
+            return 1
+        app_name = app_name or replay_spec.metadata.app_name
+
+    exit_code = run(
+        config,
+        app_name,
+        project_root,
+        config_path=config_path,
+        replay_spec=replay_spec,
+    )
 
     # Print error summary at the very end for better visibility
     logger_manager.print_error_summary()
