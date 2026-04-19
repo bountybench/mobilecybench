@@ -324,11 +324,8 @@ docker run "${DOCKER_RUN_ARGS[@]}" \
         pip install --no-cache-dir -e . >/dev/null 2>&1 || true
 
         # Init every submodule this app declares (codebase + any auxiliary, e.g.
-        # the jitsi-docker submodule for jitsi-meet). Enumerates from .gitmodules
-        # instead of hardcoding codebase so new auxiliary submodules work without
-        # further script edits.
-        # Note: the whole docker -c block is single-quoted at the host, so do NOT
-        # use apostrophes in comments or code here — they would close the quote.
+        # jitsi-meet's jitsi-docker). Enumerates from .gitmodules instead of
+        # hardcoding `codebase` so new auxiliary submodules work without edits.
         SUBMODULES=$(git config --file .gitmodules --get-regexp "submodule\..*\.path" 2>/dev/null | awk "{print \$2}" | grep "^apps/'"$APP_NAME"'/" || true)
         if [ -n "$SUBMODULES" ]; then
             git submodule update --init $SUBMODULES 2>/dev/null || true
