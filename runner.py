@@ -8,23 +8,22 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
-import io
 import json
 import subprocess
 import sys
-import tarfile
 from pathlib import Path
 from typing import Optional
 
 from models.config import RunnerConfig
+from utils.exploit_source import (
+    ExploitSource,
+    ExploitSourceError,
+    resolve_gold_source,
+    resolve_replay_source,
+    stage_exploit_source,
+)
 from utils.git_utils import ensure_app_submodule
 from utils.logger import logger, logger_manager
-from utils.replay_run import (
-    ReplayRunError,
-    ReplaySource,
-    load_replay_source,
-    stage_replay_exploit,
-)
 from utils.run_artifacts import (
     normalize_agent_result,
     utc_now_iso,
@@ -101,115 +100,6 @@ def run_interactive_shell(app_name: str) -> dict:
 
     logger.info(f"Interactive shell completed. Commands executed: {command_count}")
     return {"status": "completed", "commands_executed": command_count}
-
-
-def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
-    """Run the gold (reference) exploit instead of the LLM agent.
-
-    Copies the known-good exploit files into the kali container (so
-    save_artifacts can extract them), then tears down the kali container
-    and runs the normal evaluation pipeline.
-
-    For redteam: uses task/exploit_files/ from zerodays submodule.
-    For exploit: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/.
-    """
-    attacker_model = workflow.config.attacker_model
-
-    if workflow.config.workflow == "redteam":
-        # Task dir is source of truth for gold exploit files
-        gold_dir = (
-            Path(__file__).resolve().parent
-            / "zerodays"
-            / "reports"
-            / workflow.app_name
-            / workflow.config.task
-            / "task"
-            / "exploit_files"
-        )
-    else:
-        gold_dir = (
-            workflow.app_dir
-            / "synthetic_vulnerabilities"
-            / workflow.vuln_id
-            / "exploit_files"
-        )
-    if not gold_dir.exists():
-        raise FileNotFoundError(f"Gold exploit directory not found: {gold_dir}")
-
-    container = workflow.agent_env.container
-    if not container:
-        raise RuntimeError("Kali container not running — cannot copy exploit files")
-
-    # Validate exploit layout per attack model.
-    if attacker_model == "malicious_app":
-        if not (gold_dir / "exploit_apk").exists():
-            raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
-    elif attacker_model == "remote_attacker":
-        if not (gold_dir / "exploit.sh").exists():
-            raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
-
-    logger.info(f"Copying gold exploit files from {gold_dir} into kali container...")
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w", dereference=True) as tar:
-        # Flatten task/exploit_files/ → agent_exploit/ in the container
-        tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
-        # Inject build script from template (single source of truth).
-        if attacker_model == "malicious_app":
-            build_script = (
-                Path(__file__).resolve().parent
-                / "templates"
-                / "malicious_app"
-                / "build_exploit_apk.sh"
-            )
-            if build_script.exists():
-                tar.add(
-                    str(build_script),
-                    arcname="agent_exploit/exploit_apk/build_exploit_apk.sh",
-                )
-    buf.seek(0)
-    container.put_archive("/app", buf)
-    logger.info("Gold exploit files copied into container at /app/agent_exploit/")
-
-    # Save artifacts (agent_exploit, agent_output) from the container,
-    # then remove kali container before evaluation (matches normal flow).
-    try:
-        workflow.save_artifacts(logs_dir)
-    finally:
-        if workflow.agent_env:
-            workflow.agent_env.cleanup()
-            workflow.agent_env = None  # prevent double-cleanup in finally
-
-    # Run evaluation — replays exploit.sh in a fresh container via
-    # run_exploit_container.sh, then verifies on both vuln and clean APKs.
-    logger.info("Evaluating gold exploit results...")
-    scores = workflow.evaluate()
-
-    # Write gold run result file
-    gold_result = {
-        "mode": "gold_run",
-        "app": workflow.app_name,
-        "vuln_id": getattr(workflow, "vuln_id", None),
-        "evaluation": scores,
-        "score": scores.get("score") if isinstance(scores, dict) else None,
-    }
-    gold_result_path = logs_dir / "gold_run_result.json"
-    gold_result_path.write_text(json.dumps(gold_result, indent=2))
-
-    score = gold_result["score"]
-    if isinstance(scores, dict):
-        logger.info(
-            "Gold run evaluation: status=%s score=%s reason=%s",
-            scores.get("status"),
-            scores.get("score"),
-            scores.get("reason"),
-        )
-    if score == 1:
-        logger.info("Gold run passed: exploit verified successfully")
-    else:
-        logger.info(f"Gold run failed: score={score}")
-    logger.info(f"Gold run result saved to: {gold_result_path}")
-
-    return scores
 
 
 def create_workflow(
@@ -309,7 +199,7 @@ def _load_task_attacker_model(project_root: Path, app_name: str, task: str) -> s
         / "metadata.json"
     )
     if not task_meta_path.exists():
-        raise FileNotFoundError(
+        raise ValueError(
             f"metadata.json not found at {task_meta_path} (required for task={task})"
         )
 
@@ -342,7 +232,7 @@ def run(
     app_name: str,
     project_root: Path,
     config_path: Optional[Path] = None,
-    replay_source: Optional[ReplaySource] = None,
+    exploit_source: Optional[ExploitSource] = None,
 ) -> int:
     """
     Execute the evaluation workflow.
@@ -351,6 +241,9 @@ def run(
         config: Runner configuration
         app_name: Name of the app to evaluate
         project_root: Root directory of the project
+        exploit_source: Prebuilt exploit to evaluate (replay_run or gold_run).
+            When set, the agent loop is skipped and the pipeline evaluates
+            this artifact directly.
 
     Returns:
         Exit code (0 for success, non-zero for failure)
@@ -371,27 +264,33 @@ def run(
     exit_code = 1
 
     try:
-        # Replay-run only supplies the task slug. task/metadata.json remains the
-        # single source of truth for attacker_model; we reconcile against the
-        # saved artifact's attacker_model to catch stale replays.
-        if replay_source:
+        # Replay carries metadata from the source run_summary.json.
+        # task/metadata.json remains the single source of truth for
+        # attacker_model; we reconcile against the saved artifact to
+        # catch stale replays.
+        replay = exploit_source if exploit_source and exploit_source.kind == "replay" else None
+        if replay:
             logger.info(
                 "Replay source: %s (app=%s, task=%s, attacker_model=%s)",
-                replay_source.source_dir,
-                replay_source.app_name,
-                replay_source.task,
-                replay_source.attacker_model,
+                replay.source_dir,
+                replay.app_name,
+                replay.task,
+                replay.attacker_model,
             )
-            config.task = replay_source.task
 
-        if config.task:
+        task_slug = replay.task if replay else config.task
+        config_updates: dict = {}
+        if replay:
+            config_updates["task"] = replay.task
+
+        if task_slug:
             task_attacker_model = _load_task_attacker_model(
-                project_root, app_name, config.task
+                project_root, app_name, task_slug
             )
-            if replay_source and task_attacker_model != replay_source.attacker_model:
+            if replay and task_attacker_model != replay.attacker_model:
                 raise ValueError(
                     f"Replay artifact was built for attacker_model="
-                    f"{replay_source.attacker_model!r}, but task {config.task!r} now "
+                    f"{replay.attacker_model!r}, but task {task_slug!r} now "
                     f"declares attacker_model={task_attacker_model!r}."
                 )
             if task_attacker_model != config.attacker_model:
@@ -400,7 +299,25 @@ def run(
                     config.attacker_model,
                     task_attacker_model,
                 )
-                config.attacker_model = task_attacker_model
+                config_updates["attacker_model"] = task_attacker_model
+
+        if config_updates:
+            config = config.model_copy(update=config_updates)
+
+        # Gold source is resolved after attacker_model reconciliation so
+        # shape validation uses the authoritative model.
+        is_apk_exploit = (
+            config.workflow == "redteam" and config.attacker_model == "malicious_app"
+        )
+        if config.gold_run:
+            exploit_source = resolve_gold_source(
+                workflow=config.workflow,
+                app_name=app_name,
+                task=config.task,
+                vuln_id=config.synthetic_vuln_id,
+                project_root=project_root,
+                is_apk_exploit=is_apk_exploit,
+            )
 
         workflow = create_workflow(config, app_name, project_root)
         workflow_type = type(workflow).__name__
@@ -415,28 +332,22 @@ def run(
         # Log structured experiment configuration for observability
         _log_experiment_config(config, app_name, workflow)
 
-        if replay_source:
-            staged = stage_replay_exploit(
-                replay_source,
+        if exploit_source:
+            staged = stage_exploit_source(
+                exploit_source,
                 logs_dir=logger_manager.get_logs_dir(),
                 project_root=project_root,
+                is_apk_exploit=is_apk_exploit,
             )
-            logger.info("Replay exploit staged into %s", staged)
+            logger.info(
+                "Staged %s exploit into %s", exploit_source.kind, staged
+            )
 
         logger.info("Setting up runtime environment...")
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
 
-        if config.gold_run:
-            logger.info("Gold run mode — using reference exploit files...")
-            scores = _run_gold_exploit(workflow, logger_manager.get_logs_dir())
-            evaluation = scores or {}
-            run_result = normalize_agent_result({"status": "gold_run_completed"})
-            gold_score = scores.get("score") if isinstance(scores, dict) else None
-            outcome = "success" if gold_score == 1 else "failure"
-            exit_reason = "gold_run_completed"
-            exit_code = 0 if gold_score == 1 else 1
-        elif config.dry_run:
+        if config.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
             run_result = normalize_agent_result(run_interactive_shell(app_name))
             run_result["status"] = "dry_run_completed"
@@ -444,17 +355,20 @@ def run(
             outcome = "success"
             exit_reason = "dry_run_completed"
             exit_code = 0
-        elif replay_source:
-            logger.info("Replay-run mode — evaluating reused exploit artifact...")
+        elif exploit_source:
+            logger.info(
+                "%s-run mode — evaluating prestaged exploit artifact...",
+                exploit_source.kind,
+            )
             evaluation = workflow.evaluate() or {}
             _log_evaluation_result(evaluation)
-            run_result = normalize_agent_result({"status": "replay_run_completed"})
-            replay_score = (
+            exit_reason = f"{exploit_source.kind}_run_completed"
+            run_result = normalize_agent_result({"status": exit_reason})
+            score = (
                 evaluation.get("score") if isinstance(evaluation, dict) else None
             )
-            outcome = "success" if replay_score == 1 else "failure"
-            exit_reason = "replay_run_completed"
-            exit_code = 0 if replay_score == 1 else 1
+            outcome = "success" if score == 1 else "failure"
+            exit_code = 0 if score == 1 else 1
         else:
             logger.info("Configuring agent...")
             workflow.setup_agent()
@@ -506,7 +420,7 @@ def run(
                 exit_reason = "completed"
                 exit_code = 0
 
-    except (ValueError, ReplayRunError) as e:
+    except (ValueError, ExploitSourceError) as e:
         logger.error(f"Validation error: {e}")
         exit_reason = "validation_error"
         exit_code = 1
@@ -570,7 +484,8 @@ def main():
     parser.add_argument(
         "app_name",
         nargs="?",
-        help="Name of the app to evaluate (optional when --replay-run is used)",
+        help="Name of the app to evaluate (omit when --replay-run is used; "
+        "the app is derived from the replay source)",
     )
     parser.add_argument(
         "--config",
@@ -583,18 +498,24 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.replay_run and args.app_name:
+        parser.error(
+            "app_name is derived from the replay source; omit it when "
+            "--replay-run is set"
+        )
+    if not args.replay_run and not args.app_name:
+        parser.error("app_name is required unless --replay-run is provided")
+
     # Load config
     config_path = Path(args.config)
     try:
         config = RunnerConfig.from_file(
             config_path,
-            overrides={"replay_run": args.replay_run} if args.replay_run else None,
+            overrides={"replay_run": args.replay_run},
         )
     except (FileNotFoundError, ValueError) as e:
         logger.error(str(e))
         return 1
-    if not args.app_name and not config.replay_run:
-        parser.error("app_name is required unless --replay-run is provided")
 
     project_root = Path(__file__).parent
 
@@ -603,23 +524,23 @@ def main():
 
     get_logger_manager(config=config.model_dump())
 
-    replay_source = None
+    exploit_source: Optional[ExploitSource] = None
     app_name = args.app_name
     if config.replay_run:
         try:
-            replay_source = load_replay_source(config.replay_run, project_root)
-        except ReplayRunError as e:
+            exploit_source = resolve_replay_source(config.replay_run, project_root)
+            app_name = exploit_source.app_name
+        except ExploitSourceError as e:
             logger.error(str(e))
             logger_manager.print_error_summary()
             return 1
-        app_name = app_name or replay_source.app_name
 
     exit_code = run(
         config,
         app_name,
         project_root,
         config_path=config_path,
-        replay_source=replay_source,
+        exploit_source=exploit_source,
     )
 
     # Print error summary at the very end for better visibility

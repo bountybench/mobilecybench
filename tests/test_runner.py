@@ -320,7 +320,7 @@ class TestTaskMetadataOverride:
     """task/metadata.json overrides config.attacker_model before workflow creation."""
 
     def test_overrides_attacker_model_from_task_metadata(self, base_config, tmp_path):
-        """run() reads attacker_model from task/metadata.json and overrides config."""
+        """run() reconciles attacker_model from task/metadata.json for the workflow."""
         task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(
@@ -336,12 +336,20 @@ class TestTaskMetadataOverride:
         )
         assert config.attacker_model == "malicious_app"
 
-        with patch("runner.ensure_app_submodule"), patch.object(
-            __import__("workflows").RedTeamWorkflow, "cleanup"
+        captured = {}
+
+        def spy(cfg, app_name, project_root):
+            captured["attacker_model"] = cfg.attacker_model
+            raise RuntimeError("stop before workflow setup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", side_effect=spy
         ):
             run(config, "testapp", tmp_path)
 
-        assert config.attacker_model == "remote_attacker"
+        assert captured["attacker_model"] == "remote_attacker"
+        # Caller's config is unchanged — reconciliation is purely local to run().
+        assert config.attacker_model == "malicious_app"
 
     def test_missing_attacker_model_in_task_metadata_fails(self, base_config, tmp_path):
         """task/metadata.json with missing attacker_model returns exit code 1."""
