@@ -1067,6 +1067,7 @@ run_vuln_test() {
         "$package_name" \
         "${VULN_TASK_ID:-$vuln_id}" \
         "${VULN_BASELINE_COMMIT:-}" \
+        "" \
         "$fix_patch_path" \
         "" \
         "flat" \

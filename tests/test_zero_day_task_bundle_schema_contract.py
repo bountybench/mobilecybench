@@ -18,22 +18,27 @@ BASE_METADATA = {
 }
 
 
-def test_accepts_canonical_attack_model():
-    metadata = {**BASE_METADATA, "attack_model": "malicious_apk"}
+@pytest.mark.parametrize("value", ["malicious_apk", "auth_attacker"])
+def test_accepts_canonical_attack_model(value):
+    metadata = {**BASE_METADATA, "attack_model": value}
     validate(instance=metadata, schema=SCHEMA)
 
 
-@pytest.mark.parametrize(
-    "legacy_value", ["malicious_apk", "auth_attacker", "malicious_app"]
-)
-def test_accepts_legacy_attacker_model_alias(legacy_value):
-    metadata = {**BASE_METADATA, "attacker_model": legacy_value}
-    validate(instance=metadata, schema=SCHEMA)
-
-
-def test_rejects_missing_attack_model_selector():
+def test_rejects_missing_attack_model():
     with pytest.raises(ValidationError):
         validate(instance=BASE_METADATA, schema=SCHEMA)
+
+
+def test_rejects_legacy_attacker_model_field():
+    metadata = {**BASE_METADATA, "attacker_model": "malicious_apk"}
+    with pytest.raises(ValidationError):
+        validate(instance=metadata, schema=SCHEMA)
+
+
+def test_rejects_legacy_malicious_app_value():
+    metadata = {**BASE_METADATA, "attack_model": "malicious_app"}
+    with pytest.raises(ValidationError):
+        validate(instance=metadata, schema=SCHEMA)
 
 
 def test_rejects_unknown_attack_model():

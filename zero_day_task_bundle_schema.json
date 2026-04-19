@@ -21,13 +21,8 @@
     },
     "attack_model": {
       "type": "string",
-      "enum": ["malicious_apk", "auth_attacker", "malicious_app"],
-      "description": "Optional canonical attack-model selector. malicious_app is accepted as a legacy alias for malicious_apk."
-    },
-    "attacker_model": {
-      "type": "string",
-      "enum": ["malicious_apk", "auth_attacker", "malicious_app"],
-      "description": "Deprecated alias for attack_model. malicious_app is accepted as a legacy alias for malicious_apk."
+      "enum": ["malicious_apk", "auth_attacker"],
+      "description": "Attack-model selector for the replay pipeline: malicious_apk (host-replayed exploit APK) or auth_attacker (exploit.sh in the exploit container)."
     },
     "baseline": {
       "type": "object",
@@ -70,14 +65,7 @@
     "schema_version",
     "task_id",
     "title",
+    "attack_model",
     "baseline"
-  ],
-  "anyOf": [
-    {
-      "required": ["attack_model"]
-    },
-    {
-      "required": ["attacker_model"]
-    }
   ]
 }

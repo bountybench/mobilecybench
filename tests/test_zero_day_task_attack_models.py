@@ -41,14 +41,12 @@ def _write_task_metadata(task_dir: Path, metadata: dict) -> None:
     )
 
 
-def _base_metadata(
-    *, attack_model_key: str = "attack_model", attack_model: str
-) -> dict:
+def _base_metadata(*, attack_model: str) -> dict:
     return {
         "schema_version": 1,
         "task_id": "demo_task",
         "title": "Demo task",
-        attack_model_key: attack_model,
+        "attack_model": attack_model,
         "baseline": {"commit": "deadbeef"},
         "runtime": {"package_name": "com.example.target"},
     }
@@ -118,12 +116,12 @@ def test_source_validation_rejects_mixed_exploit_artifacts(tmp_path: Path) -> No
     assert "must not mix exploit_files/exploit.sh" in (result.stderr + result.stdout)
 
 
-def test_source_validation_rejects_conflicting_attack_model_fields(
+def test_source_validation_rejects_missing_attack_model(
     tmp_path: Path,
 ) -> None:
     task_dir = tmp_path / "task"
     metadata = _base_metadata(attack_model="malicious_apk")
-    metadata["attacker_model"] = "auth_attacker"
+    del metadata["attack_model"]
     _write_task_metadata(task_dir, metadata)
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
@@ -139,7 +137,7 @@ def test_source_validation_rejects_conflicting_attack_model_fields(
     )
 
     assert result.returncode != 0
-    assert "conflicting attack_model" in (result.stderr + result.stdout)
+    assert "must declare attack_model" in (result.stderr + result.stdout)
 
 
 def test_source_validation_rejects_apk_task_without_java_sources(
@@ -162,7 +160,7 @@ def test_source_validation_rejects_apk_task_without_java_sources(
     )
 
 
-def test_resolve_metadata_infers_attack_model_for_compat_task(tmp_path: Path) -> None:
+def test_resolve_metadata_rejects_missing_attack_model(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
     app_dir = tmp_path / "app"
     app_dir.mkdir(parents=True)
@@ -194,13 +192,12 @@ def test_resolve_metadata_infers_attack_model_for_compat_task(tmp_path: Path) ->
             [
                 'source "$ROOT_DIR/scripts/zero_day_task_common.sh"',
                 f'zero_day_task_resolve_metadata "{task_dir}" "{app_dir}" "{task_dir}"',
-                'printf "%s\\n" "$ZERO_DAY_ATTACK_MODEL"',
             ]
         )
     )
 
-    assert result.returncode == 0, result.stderr or result.stdout
-    assert result.stdout.strip().endswith("malicious_apk")
+    assert result.returncode != 0
+    assert "must declare attack_model" in (result.stderr + result.stdout)
 
 
 def _make_phase_fixture(

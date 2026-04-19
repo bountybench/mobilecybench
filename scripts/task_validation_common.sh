@@ -46,6 +46,14 @@ _task_validation_log() {
 }
 
 task_validation_set_context() {
+    # 9 required positional args + up to 5 optional. Caller must pass all 9 so a
+    # future positional-shift regression fails loudly instead of silently
+    # misassigning downstream fields (see run_ci_local.sh synthetic caller).
+    if [ "$#" -lt 9 ]; then
+        _task_validation_log ERROR "task_validation_set_context: expected at least 9 args, got $#"
+        return 1
+    fi
+
     TASK_VALIDATION_ROOT_DIR="$1"
     TASK_VALIDATION_APP_DIR="$2"
     TASK_VALIDATION_TASK_DIR="$3"
@@ -60,6 +68,28 @@ task_validation_set_context() {
     TASK_VALIDATION_WORKSPACE_DIR="${12:-}"
     TASK_VALIDATION_OUTPUT_MODE="${13:-per_phase}"
     TASK_VALIDATION_RESET_FLAT_OUTPUT="${14:-false}"
+
+    case "$TASK_VALIDATION_ATTACK_MODEL" in
+        ""|malicious_apk|auth_attacker) ;;
+        *)
+            _task_validation_log ERROR "task_validation_set_context: invalid attack_model '$TASK_VALIDATION_ATTACK_MODEL' (expected: empty, malicious_apk, auth_attacker)"
+            return 1
+            ;;
+    esac
+    case "$TASK_VALIDATION_OUTPUT_MODE" in
+        per_phase|flat) ;;
+        *)
+            _task_validation_log ERROR "task_validation_set_context: invalid output_mode '$TASK_VALIDATION_OUTPUT_MODE' (expected: per_phase, flat)"
+            return 1
+            ;;
+    esac
+    case "$TASK_VALIDATION_RESET_FLAT_OUTPUT" in
+        true|false) ;;
+        *)
+            _task_validation_log ERROR "task_validation_set_context: invalid reset_flat_output '$TASK_VALIDATION_RESET_FLAT_OUTPUT' (expected: true, false)"
+            return 1
+            ;;
+    esac
 
     TASK_VALIDATION_TASK_METADATA_JSON="$TASK_VALIDATION_TASK_DIR/metadata.json"
     TASK_VALIDATION_APP_METADATA_JSON="$TASK_VALIDATION_APP_DIR/metadata.json"
@@ -293,7 +323,7 @@ task_validation_run_attack_model_setup_before_exploit() {
     local victim_log="${1:-}"
 
     case "$TASK_VALIDATION_ATTACK_MODEL" in
-        malicious_apk|malicious_app)
+        malicious_apk)
             task_validation_run_prepare_victim_hook "$victim_log"
             ;;
         *)

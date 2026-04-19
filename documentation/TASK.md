@@ -33,23 +33,12 @@ belongs in `apps/<app>/metadata.json`.
 
 ### Exploit artifact under `exploit_files/`
 
-The authoritative exploit lives under `exploit_files/`, but the exact format
-depends on the task type and, for zero-day tasks, the configured attack model.
+The authoritative exploit lives under `exploit_files/`. The exact format
+depends on the task type. Task-type-specific contents are documented in:
+- `documentation/SYNTHETIC_VULNERABILITIES.md`
+- `documentation/ZERODAY_TASKS.md`
 
-#### Synthetic tasks
-
-Synthetic tasks always use:
-
-- `exploit_files/exploit.sh`
-
-Shared expectations for `exploit.sh`:
-- it runs inside the exploit container, not on the host
-- it exits `0` on success and non-zero on failure
-- it must not rely on privileged commands such as `adb root`, `su`, or
-  `docker exec`
-- every helper file it needs should live under `exploit_files/`
-
-#### Zero-day tasks
+#### Zero-day attack models
 
 Zero-day tasks declare an `attack_model` in `metadata.json`:
 
@@ -63,6 +52,13 @@ For `malicious_apk` tasks:
 - do not commit a prebuilt APK
 - if `build_exploit_apk.sh` is omitted, the zero-day validator injects the
   canonical template at replay time
+
+For `auth_attacker` tasks, `exploit.sh`:
+- runs inside the exploit container, not on the host
+- exits `0` on success and non-zero on failure
+- must not rely on privileged commands such as `adb root`, `su`, or
+  `docker exec`
+- helpers it needs should live under `exploit_files/`
 
 ### `prepare_app.sh` (Optional)
 

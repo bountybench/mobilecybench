@@ -182,7 +182,7 @@ task_runtime_run_exploit() {
     local log_file="${3:-}"
 
     case "$TASK_RUNTIME_ATTACK_MODEL" in
-        malicious_apk|malicious_app)
+        malicious_apk)
             task_runtime_run_exploit_apk "$root_dir" "$log_file"
             ;;
         *)

@@ -79,10 +79,6 @@ classification or disclosure fields if a task owner wants them.
 }
 ```
 
-Legacy compatibility:
-- `attacker_model` is accepted as a deprecated alias for `attack_model`
-- `malicious_app` is accepted as a deprecated alias for `malicious_apk`
-
 ## Attack models
 
 Zero-day tasks support two replay models:
