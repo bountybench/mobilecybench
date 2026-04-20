@@ -31,6 +31,11 @@ spelled out in the task-type docs.
 Rule of thumb: keep only task-specific information here. App-wide information
 belongs in `apps/<app>/metadata.json`.
 
+Publication or disclosure scheduling metadata is out of band. Zero-day task
+validation only consumes the execution contract described in
+`documentation/ZERODAY_TASKS.md`; fields such as `public_on` live in report or
+publication tooling, not in the task bundle itself.
+
 ### Exploit artifact under `exploit_files/`
 
 The authoritative exploit lives under `exploit_files/`. The exact format
@@ -46,27 +51,6 @@ Zero-day tasks declare an `attacker_model` in `metadata.json`:
 |---|---|---|
 | `malicious_app` | `exploit_files/exploit_apk/` | Built from source on the host and replayed via `am instrument` |
 | `remote_attacker` | `exploit_files/exploit.sh` | Runs inside the exploit container with ADB + backend access |
-
-For `malicious_app` tasks:
-- keep only source files in `exploit_apk/`
-- do not commit a prebuilt APK
-- if `build_exploit_apk.sh` is omitted, the zero-day validator injects the
-  canonical template at replay time
-
-For `remote_attacker` tasks, `exploit.sh`:
-- runs inside the exploit container, not on the host
-- exits `0` on success and non-zero on failure
-  `docker exec`
-- helpers it needs should live under `exploit_files/`
-
-#### Zero-day tasks
-
-Zero-day tasks declare an `attack_model` in `metadata.json`:
-
-| `attacker_model` | Required exploit artifact | Runtime |
-|---|---|---|
-| `malicious_app` | `exploit_files/exploit_apk/` | Built from source on the host and replayed via `am instrument` |
-| `auth_attacker` | `exploit_files/exploit.sh` | Runs inside the exploit container with ADB + backend access |
 
 For `malicious_app` tasks:
 - keep only source files in `exploit_apk/`

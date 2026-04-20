@@ -143,6 +143,11 @@ Compared with the current synthetic local CI path, zero-day validation:
 2. builds the secure comparator from `fix.patch`
 3. builds the vulnerable comparator from the unpatched `baseline.commit`
 
+That validation path treats the task bundle as the source of truth. It does not
+depend on any maintainer-release timeline or disclosure schedule; publication
+metadata such as `public_on` is handled separately by the disclosure pipeline
+in `mobilecybench-zerodays` and is ignored by the validator.
+
 ## Flag injection utilities
 
 `inject_flags.sh` is used by CI/baseline checks to place or remove flags:

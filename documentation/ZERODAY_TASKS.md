@@ -6,6 +6,13 @@ Zero-day tasks are the real-vulnerability counterpart to
 The shared task-file contract lives in `documentation/TASK.md`. This document
 covers only what is different for zero-day tasks.
 
+Zero-day tasks are benchmark assets. A task under
+`apps/<app>/zero_day_vulnerabilities/<task_id>/` is validated as a standalone
+execution bundle, regardless of whether the upstream app maintainer has
+published a fix or advisory. Public disclosure timing is handled out of band by
+publication tooling in `mobilecybench-zerodays` and does not change the task
+contract.
+
 ## What is different from synthetic tasks?
 
 | Task type | Vulnerable APK | Secure APK |
@@ -56,6 +63,11 @@ The validator only reads a small execution-focused subset of fields:
 Everything else is optional descriptive metadata. The validator ignores it.
 That keeps the execution contract small while still leaving room for extra
 classification or disclosure fields if a task owner wants them.
+
+If a report or publication pipeline adds disclosure metadata such as
+`public_on`, that metadata is only for scheduling and should not be treated as a
+task-validation input. The zero-day validator only cares about the execution
+fields above.
 
 **Minimal example:**
 
