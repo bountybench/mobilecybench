@@ -153,8 +153,74 @@ data.
 | `cvss_historic` | CVSS from the historic CVE (`base_score`, `severity`, `vector`) |
 | `cvss_synthetic` | CVSS assessed for the synthetic vulnerability itself. May differ from historic if the synthetic has a different attack profile (e.g. different privileges required) |
 
+**Optional fields:**
+
+| Field | Description |
+|-------|-------------|
+| `attacker_model` | `malicious_app` or `remote_attacker` — see [Attacker model](#attacker-model) below. Optional during the per-vuln migration; will be promoted to required once every existing synth has been tagged. |
+
+### Attacker model
+
+`attacker_model` declares which of two mutually exclusive threat profiles
+a synthetic vulnerability targets:
+
+- **`remote_attacker`** — the agent represents a remote attacker with full
+  system access (root, UI automation, ADB) but no preseeded user on device.
+  The exploit is a host-side `exploit.sh` that targets the backend server
+  and/or other preseeded app users via UI automation and network requests.
+- **`malicious_app`** — the agent builds a malicious APK with a
+  `MainActivity` that sends IPC commands. The APK is installed and run on
+  a "victim" device where a user is already logged in for the target app.
+  The Android OS enforces the security boundary between the malicious app
+  and the target app's user data.
+
+CI reads `attacker_model` from `metadata.json` and dispatches the correct
+replay flow: for `malicious_app`, the victim setup runs *before* the
+exploit; for `remote_attacker`, the target app's data is cleared and the
+victim is set up *after* the exploit runs, so verification inspects a
+clean post-exploit state.
+
+#### On-disk contract per attacker model
+
+The exploit file layout is enforced at validation time (both by
+`run_ci_local.sh::validate_vuln_exploit_format` and by
+`tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_exploit_structure`):
+
+| `attacker_model` | Required | Rejected |
+|---|---|---|
+| `remote_attacker` | `exploit_files/exploit.sh` | `exploit_files/exploit_apk/`, legacy `exploit_files/attacker_app/` |
+| `malicious_app` | `exploit_files/exploit_apk/` with `AndroidManifest.xml` and ≥1 `*.java` source | `exploit_files/exploit.sh`, legacy `exploit_files/attacker_app/` |
+
+The two shapes are mutually exclusive — a synth vuln cannot ship both.
+
+#### Migration status
+
+The canonical `attacker_model` field is **not yet set on any existing
+synthetic vulnerability**. This PR lands the infrastructure only — the
+schema property, CI dispatch, structural validator, and docs — so that
+each existing synth can be tagged (and, where necessary, have its
+`exploit.sh` rewritten as a `MainActivity`-based `exploit_apk/`) in its
+own follow-up PR. While migration is in progress:
+
+- `metadata.json` may omit `attacker_model`; CI will default to
+  `remote_attacker` and emit a warning pointing at the un-tagged file.
+- When present, `attacker_model` must be one of the canonical values
+  (`malicious_app`, `remote_attacker`) — any other value is rejected.
+
+Once every synth has been tagged, promote `attacker_model` back into the
+schema `required` array and delete the default-with-warning fallback in
+`run_ci_local.sh`.
+
 For the shared task files (`exploit.sh`, `prepare_app.sh`, `verify_exploit.sh`)
 and verifier design rules, see `documentation/TASK.md`.
+
+### scenario.json
+
+Some synthetic vulnerabilities also ship a `scenario.json` describing the
+scenario environment (goal, seeded identities, environment variables).
+If that file uses a `threat_actor` field, it is purely informational — a
+human-readable scenario descriptor — and is **not** the canonical runtime
+dispatch key. The runtime reads `attacker_model` only from `metadata.json`.
 
 ## Building APKs
 
