@@ -12,10 +12,10 @@ import pytest
 
 from models.config import RunnerConfig
 from workflows.redteam import (
-    AuthAttackerOps,
     MaliciousAppOps,
     PhaseResult,
     RedTeamWorkflow,
+    RemoteAttackerOps,
 )
 
 # ---------------------------------------------------------------------------
@@ -45,8 +45,8 @@ def redteam_config():
 
 
 @pytest.fixture
-def auth_attacker_config():
-    return RunnerConfig(**_BASE_CONFIG, attack_model="auth_attacker")
+def remote_attacker_config():
+    return RunnerConfig(**_BASE_CONFIG, attacker_model="remote_attacker")
 
 
 # ---------------------------------------------------------------------------
@@ -144,8 +144,8 @@ def _setup_malicious_app_workflow(config, tmp_path, *, create_apk=True):
     return wf
 
 
-def _setup_auth_attacker_workflow(config, tmp_path, *, create_exploit=True):
-    """Set up a RedTeamWorkflow for auth_attacker with mocked infrastructure."""
+def _setup_remote_attacker_workflow(config, tmp_path, *, create_exploit=True):
+    """Set up a RedTeamWorkflow for remote_attacker with mocked infrastructure."""
     app_dir = tmp_path / "apps" / "testapp"
     app_dir.mkdir(parents=True)
 
@@ -161,7 +161,7 @@ def _setup_auth_attacker_workflow(config, tmp_path, *, create_exploit=True):
         )
     )
     _setup_task_dir(tmp_path)
-    (app_dir / "auth_attacker").mkdir()
+    (app_dir / "remote_attacker").mkdir()
     (app_dir / "codebase").mkdir()
 
     wf = RedTeamWorkflow(config, "testapp", tmp_path)
@@ -256,13 +256,13 @@ class TestArtifactCheck:
         assert ok is False
         assert "Java sources" in msg
 
-    def test_auth_ops_finds_exploit_sh(self, tmp_path):
+    def test_remote_ops_finds_exploit_sh(self, tmp_path):
         (tmp_path / "exploit.sh").write_text("#!/bin/bash\nexit 0")
-        ok, _ = AuthAttackerOps().check_artifact(tmp_path)
+        ok, _ = RemoteAttackerOps().check_artifact(tmp_path)
         assert ok is True
 
-    def test_auth_ops_missing_exploit_sh(self, tmp_path):
-        ok, msg = AuthAttackerOps().check_artifact(tmp_path)
+    def test_remote_ops_missing_exploit_sh(self, tmp_path):
+        ok, msg = RemoteAttackerOps().check_artifact(tmp_path)
         assert ok is False
         assert "exploit.sh" in msg
 
@@ -352,12 +352,12 @@ class TestPatchRestoration:
 
 
 # ---------------------------------------------------------------------------
-# Auth attacker — pipeline behavior
+# Remote attacker — pipeline behavior
 # ---------------------------------------------------------------------------
 
 
-class TestAuthAttackerValidation:
-    def test_missing_probe_dir_rejected(self, auth_attacker_config, tmp_path):
+class TestRemoteAttackerValidation:
+    def test_missing_probe_dir_rejected(self, remote_attacker_config, tmp_path):
         app_dir = tmp_path / "apps" / "testapp"
         app_dir.mkdir(parents=True)
         (app_dir / "metadata.json").write_text(
@@ -371,16 +371,16 @@ class TestAuthAttackerValidation:
             )
         )
         _setup_task_dir(tmp_path)
-        wf = RedTeamWorkflow(auth_attacker_config, "testapp", tmp_path)
-        with pytest.raises(ValueError, match="auth_attacker probe directory not found"):
+        wf = RedTeamWorkflow(remote_attacker_config, "testapp", tmp_path)
+        with pytest.raises(ValueError, match="remote_attacker probe directory not found"):
             wf.validate_arguments()
 
 
-class TestAuthAttackerPhaseSequence:
-    """Verify auth_attacker phase ordering: exploit → pm clear → prepare_app."""
+class TestRemoteAttackerPhaseSequence:
+    """Verify remote_attacker phase ordering: exploit → pm clear → prepare_app."""
 
-    def test_exploit_then_clear_then_prepare(self, auth_attacker_config, tmp_path):
-        wf = _setup_auth_attacker_workflow(auth_attacker_config, tmp_path)
+    def test_exploit_then_clear_then_prepare(self, remote_attacker_config, tmp_path):
+        wf = _setup_remote_attacker_workflow(remote_attacker_config, tmp_path)
         call_order = []
 
         def track_run_exploit(*args, **kwargs):
@@ -425,10 +425,10 @@ class TestAuthAttackerPhaseSequence:
         assert call_order == ["exploit", "pm_clear", "prepare_app"]
 
     def test_prepare_app_failure_returns_failed_phase(
-        self, auth_attacker_config, tmp_path
+        self, remote_attacker_config, tmp_path
     ):
         """If prepare_app crashes, run_phase returns exit_code=2."""
-        wf = _setup_auth_attacker_workflow(auth_attacker_config, tmp_path)
+        wf = _setup_remote_attacker_workflow(remote_attacker_config, tmp_path)
 
         def fake_run_exploit(*args, **kwargs):
             phase_dir = args[1]
@@ -452,7 +452,7 @@ class TestAuthAttackerPhaseSequence:
                 side_effect=RuntimeError("prepare_app timed out"),
             ),
         ):
-            result = AuthAttackerOps().run_phase(
+            result = RemoteAttackerOps().run_phase(
                 wf,
                 tmp_path / "phase_test",
                 exploit_dir=tmp_path,

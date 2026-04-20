@@ -1,4 +1,4 @@
-"""Audiobookshelf auth_attacker confidentiality probe.
+"""Audiobookshelf remote_attacker confidentiality probe.
 
 Scans exploit evidence log for leaked secrets: password hashes, plaintext
 passwords, victim emails, JWT tokens, and other sensitive data. Catches

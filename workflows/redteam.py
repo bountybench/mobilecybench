@@ -6,9 +6,9 @@ One task = one vulnerability. Source-of-truth inputs live under:
 Persisted private build artifacts live under:
   zerodays/reports/<app>/<report-N>/artifacts/
 
-Two attack models share the pipeline via lightweight strategy objects:
+Two attacker models share the pipeline via lightweight strategy objects:
 - MaliciousAppOps: APK-based exploit (host replay via am instrument)
-- AuthAttackerOps: exploit.sh in Docker container (authenticated attacker)
+- RemoteAttackerOps: exploit.sh in Docker container (authenticated attacker)
 """
 
 import json
@@ -32,12 +32,12 @@ class PhaseResult:
 
 
 # =============================================================================
-# Attack model ops — strategy objects
+# Attacker model ops — strategy objects
 # =============================================================================
 
 
-class AttackModelOps(Protocol):
-    """Contract for attack model strategy objects."""
+class AttackerModelOps(Protocol):
+    """Contract for attacker-model strategy objects."""
 
     uses_generic_probes: bool
 
@@ -55,7 +55,7 @@ class AttackModelOps(Protocol):
 
 
 class MaliciousAppOps:
-    """Model-specific operations for the malicious_app attack model."""
+    """Model-specific operations for the malicious_app attacker model."""
 
     def check_artifact(self, exploit_dir: Path) -> tuple[bool, str]:
         """Check that exploit_apk/ holds a buildable project."""
@@ -156,8 +156,8 @@ class MaliciousAppOps:
         }
 
 
-class AuthAttackerOps:
-    """Model-specific operations for the auth_attacker (rogue user) attack model."""
+class RemoteAttackerOps:
+    """Model-specific operations for the remote_attacker attacker model."""
 
     def check_artifact(self, exploit_dir: Path) -> tuple[bool, str]:
         """Check that exploit.sh was produced."""
@@ -209,14 +209,14 @@ class AuthAttackerOps:
         )
 
     def setup_agent_extras(self, workflow: "RedTeamWorkflow") -> None:
-        """No template injection needed for auth_attacker."""
+        """No template injection needed for remote_attacker."""
         pass
 
     def validate(self, workflow: "RedTeamWorkflow") -> None:
-        """Check that auth_attacker probe directory and scripts exist."""
+        """Check that remote_attacker probe directory and scripts exist."""
         probe_dir = self.probe_dir(workflow.app_dir)
         if not probe_dir.exists():
-            raise ValueError(f"auth_attacker probe directory not found: {probe_dir}")
+            raise ValueError(f"remote_attacker probe directory not found: {probe_dir}")
         for probe_file in (
             "test_access_control.py",
             "test_availability.py",
@@ -226,18 +226,18 @@ class AuthAttackerOps:
             if not (probe_dir / probe_file).exists():
                 raise ValueError(
                     f"{probe_file} not found in {probe_dir} "
-                    "(required for auth_attacker)"
+                    "(required for remote_attacker)"
                 )
 
     uses_generic_probes = False
 
     def probe_needs(self, applicability: dict) -> tuple[bool, bool]:
-        """Auth attacker does not use generic probes."""
+        """Remote attacker does not use generic probes."""
         return False, False
 
     def probe_dir(self, app_dir: Path) -> Path:
-        """Auth attacker probes live in apps/<app>/auth_attacker/."""
-        return app_dir / "auth_attacker"
+        """Remote-attacker probes live in apps/<app>/remote_attacker/."""
+        return app_dir / "remote_attacker"
 
     def get_phase_kwargs(self, exploit_dir: Path, target_apk: Path, **extra) -> dict:
         """Build kwargs for run_phase."""
@@ -250,7 +250,7 @@ class AuthAttackerOps:
 
 _OPS = {
     "malicious_app": MaliciousAppOps,
-    "auth_attacker": AuthAttackerOps,
+    "remote_attacker": RemoteAttackerOps,
 }
 
 
@@ -265,8 +265,8 @@ class RedTeamWorkflow(Workflow):
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
         self._original_apk = Path("apk") / f"{self.app_name}.apk"
-        self._attack_model = config.attack_model
-        self._ops: AttackModelOps = _OPS[self._attack_model]()
+        self._attacker_model = config.attacker_model
+        self._ops: AttackerModelOps = _OPS[self._attacker_model]()
         self._probe_config: dict = {"generic_probe_applicability": {}}
 
     @property
@@ -530,7 +530,7 @@ class RedTeamWorkflow(Workflow):
             return {"scores": {}}
 
         logger.info(
-            f"Evaluation started: workflow=redteam attack_model={self._attack_model} "
+            f"Evaluation started: workflow=redteam attacker_model={self._attacker_model} "
             f"task={self.config.task}"
         )
 
@@ -679,7 +679,7 @@ class RedTeamWorkflow(Workflow):
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
         return {
             "workflow": "redteam",
-            "attack_model": self._attack_model,
+            "attacker_model": self._attacker_model,
             "task": self.config.task,
             "status": status,
             "score": score,

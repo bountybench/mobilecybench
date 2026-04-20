@@ -1,4 +1,4 @@
-"""Audiobookshelf auth_attacker integrity probe.
+"""Audiobookshelf remote_attacker integrity probe.
 
 Checks whether the attacker modified backend state that should be immutable
 or injected malicious content. Catches stored XSS, data tampering, and

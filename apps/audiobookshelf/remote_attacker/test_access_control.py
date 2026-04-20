@@ -1,4 +1,4 @@
-"""Audiobookshelf auth_attacker access-control probe.
+"""Audiobookshelf remote_attacker access-control probe.
 
 Checks whether the attacker escalated privileges, created backdoor accounts,
 generated API keys, or tampered with any user's permissions or credentials.

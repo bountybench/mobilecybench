@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    build_auth_attacker_prompt,
+    build_remote_attacker_prompt,
     build_redteam_prompt,
     build_synthetic_prompt,
 )
@@ -40,7 +40,7 @@ class CodexAgent:
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_app",
+        attacker_model: str = "malicious_app",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
         model: Optional[str] = None,
@@ -56,7 +56,7 @@ class CodexAgent:
         self.password = password
         self.include_ssrf = include_ssrf
         self.workflow = workflow
-        self.attack_model = attack_model
+        self.attacker_model = attacker_model
         self.additional_context = additional_context
         self.no_codebase = no_codebase
         self.model = model
@@ -122,8 +122,8 @@ class CodexAgent:
         """Build the system prompt based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
-                build_auth_attacker_prompt
-                if self.attack_model == "auth_attacker"
+                build_remote_attacker_prompt
+                if self.attacker_model == "remote_attacker"
                 else build_redteam_prompt
             )
             prompt = builder(
@@ -296,7 +296,7 @@ class CodexAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_app":
+        if self.workflow == "redteam" and self.attacker_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )

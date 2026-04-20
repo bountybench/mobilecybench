@@ -1,4 +1,4 @@
-"""Audiobookshelf auth_attacker availability probe.
+"""Audiobookshelf remote_attacker availability probe.
 
 Checks whether the backend is still operational after the exploit. Catches
 DoS attacks, resource exhaustion, and service disruption — whether
