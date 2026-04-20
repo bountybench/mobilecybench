@@ -33,8 +33,8 @@ belongs in `apps/<app>/metadata.json`.
 
 Publication or disclosure scheduling metadata is out of band. Zero-day task
 validation only consumes the execution contract described in
-`documentation/ZERODAY_TASKS.md`; fields such as `public_on` live in report or
-publication tooling, not in the task bundle itself.
+`documentation/ZERODAY_TASKS.md`; fields such as `public_on` belong in report
+or publication tooling, not in the task bundle itself.
 
 ### Exploit artifact under `exploit_files/`
 

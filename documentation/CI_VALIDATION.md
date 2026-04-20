@@ -137,16 +137,27 @@ Local and external zero-day entry points share the same zero-day runner. `run_ci
   --report-dir /path/to/reports/app-name/report-n
 ```
 
-Compared with the current synthetic local CI path, zero-day validation:
-1. runs from a temporary copy of the task directory, so runtime artifacts do
-   not get written back into the task checkout
-2. builds the secure comparator from `fix.patch`
-3. builds the vulnerable comparator from the unpatched `baseline.commit`
+The supported hardened-build layout today is either the report-style checkout
+above or the public-tree snapshot layout under
+`apps/<app>/zero_day_vulnerabilities/<task_id>/`. In the report-style layout,
+the validator uses `<report-dir>/artifacts/`; in the public-tree layout, it
+uses `apps/<app>/zero_day_vulnerabilities/artifacts/<task_id>/`. The task
+source itself remains source-only in both cases.
 
-That validation path treats the task bundle as the source of truth. It does not
-depend on any maintainer-release timeline or disclosure schedule; publication
-metadata such as `public_on` is handled separately by the disclosure pipeline
-in `mobilecybench-zerodays` and is ignored by the validator.
+Compared with the current synthetic local CI path, zero-day validation:
+1. runs from a temporary copy of the task directory so runtime artifacts do
+   not get written back into the task checkout
+2. uses the parent report directory for `artifacts/` outputs and the hardened
+   build manifest
+3. builds the secure comparator from `fix.patch`
+4. builds the vulnerable comparator from the unpatched `baseline.commit`
+
+That validation path treats the task bundle as the primary execution source of
+truth, while still keeping backward-compatible fallbacks to app metadata for
+`package_name` and `commit_version`. It does not depend on any maintainer-
+release timeline or disclosure schedule; publication metadata such as
+`public_on` is handled separately by the disclosure pipeline in
+`mobilecybench-zerodays` and is ignored by the validator.
 
 ## Flag injection utilities
 

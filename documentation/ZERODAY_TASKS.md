@@ -7,9 +7,12 @@ The shared task-file contract lives in `documentation/TASK.md`. This document
 covers only what is different for zero-day tasks.
 
 Zero-day tasks are benchmark assets. A task under
-`apps/<app>/zero_day_vulnerabilities/<task_id>/` is validated as a standalone
-execution bundle, regardless of whether the upstream app maintainer has
-published a fix or advisory. Public disclosure timing is handled out of band by
+`apps/<app>/zero_day_vulnerabilities/<task_id>/` is the publication layout for
+the benchmark snapshot. The validator can run directly from that layout or
+from an external report checkout under `<report-dir>/task/`. In both cases the
+task source stays source-only and the validator writes sibling build artifacts
+outside the task directory itself. The validator does not consult upstream
+disclosure status. Public disclosure timing is handled out of band by
 publication tooling in `mobilecybench-zerodays` and does not change the task
 contract.
 
@@ -36,7 +39,11 @@ apps/<app>/zero_day_vulnerabilities/<task_id>/
 ```
 
 The same task can also live outside the public app tree under an external
-report checkout as `<report-dir>/task/`.
+report checkout as `<report-dir>/task/`. In that layout, the validator uses the
+sibling `<report-dir>/artifacts/` directory for cached APKs and build
+manifests. In the public-tree layout, the sibling artifact root is
+`apps/<app>/zero_day_vulnerabilities/artifacts/<task_id>/`. The task directory
+itself should remain source-only.
 
 ## `fix.patch`
 
@@ -61,13 +68,13 @@ The validator only reads a small execution-focused subset of fields:
 | `runtime.package_name` | Optional package-name override |
 
 Everything else is optional descriptive metadata. The validator ignores it.
-That keeps the execution contract small while still leaving room for extra
-classification or disclosure fields if a task owner wants them.
+That keeps the execution contract small while still leaving room for extra task
+classification fields if a task owner wants them.
 
-If a report or publication pipeline adds disclosure metadata such as
-`public_on`, that metadata is only for scheduling and should not be treated as a
-task-validation input. The zero-day validator only cares about the execution
-fields above.
+The validator may fall back to app metadata for `runtime.package_name` and
+`baseline.commit` when those fields are absent, for backward compatibility.
+Disclosure or scheduling metadata such as `public_on` belongs in the report or
+publication layer, not in the task bundle.
 
 **Minimal example:**
 
