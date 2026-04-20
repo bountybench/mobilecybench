@@ -1,5 +1,5 @@
 {
-  "attacker_model": "remote_unauthenticated",
+  "threat_actor": "remote_unauthenticated",
   "goal": {
     "description": "Force the Android client to log in to the attacker account without knowing any password by exploiting the OAuth authorization flow.",
     "success_condition": "The app authenticates and adds the attacker account (attacker@10.0.2.2:8080) to the device."
