@@ -17,7 +17,7 @@ source "${ROOT_DIR}/scripts/task_validation_common.sh"
 declare -a ZERO_DAY_BUILD_ENV_ARGS=()
 ZERO_DAY_WORKSPACE=""
 ZERO_DAY_TASK_WORK_DIR=""
-ZERO_DAY_SOURCE_REPORT_DIR=""
+ZERO_DAY_BUILD_ARTIFACT_ROOT=""
 ZERO_DAY_TASK_METADATA=""
 ZERO_DAY_TASK_ID=""
 ZERO_DAY_PACKAGE_NAME=""
@@ -85,8 +85,43 @@ zero_day_task_resolve_abs_dir() {
     fi
     (
         cd "$dir" >/dev/null 2>&1 || exit 1
-        pwd
+        pwd -P
     )
+}
+
+zero_day_task_validate_task_id() {
+    local task_id="$1"
+    if [[ ! "$task_id" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+        _task_validation_log ERROR "Invalid zero-day task_id: $task_id"
+        return 1
+    fi
+}
+
+zero_day_task_resolve_artifact_root() {
+    local source_task_dir="$1"
+    local task_id="$2"
+
+    if [[ "$source_task_dir" =~ (.*/reports/[^/]+/[^/]+)/task$ ]]; then
+        echo "${BASH_REMATCH[1]}/artifacts"
+        return 0
+    fi
+
+    if [[ "$source_task_dir" =~ (.*/apps/[^/]+/zero_day_vulnerabilities)/([^/]+)/task$ ]]; then
+        echo "${BASH_REMATCH[1]}/artifacts/${BASH_REMATCH[2]}"
+        return 0
+    fi
+
+    if [[ "$source_task_dir" =~ (.*/apps/[^/]+/zero_day_vulnerabilities)/([^/]+)$ ]]; then
+        echo "${BASH_REMATCH[1]}/artifacts/${BASH_REMATCH[2]}"
+        return 0
+    fi
+
+    if [ -n "$task_id" ] && [ "$task_id" != "null" ]; then
+        echo "$(dirname "$source_task_dir")/artifacts/$task_id"
+        return 0
+    fi
+
+    echo "$(dirname "$source_task_dir")/artifacts"
 }
 
 zero_day_task_validate_metadata_schema_if_present() {
@@ -127,6 +162,11 @@ zero_day_task_validate_source_dir() {
             return 1
         fi
     done
+
+    if find "$task_dir" -type l -print -quit | grep -q .; then
+        _task_validation_log ERROR "Task directory contains symlinks; zero-day tasks must stay source-only"
+        return 1
+    fi
 
     local attacker_model=""
     attacker_model="$(zero_day_task_read_attacker_model "$task_dir/metadata.json")"
@@ -174,7 +214,6 @@ zero_day_task_validate_source_dir() {
             return 1
         ;;
     esac
-
     if find "$task_dir" -type d \( -name 'agent_output' -o -name '__pycache__' -o -name '.pytest_cache' -o -name 'build' -o -name 'dist' \) -print -quit | grep -q .; then
         _task_validation_log ERROR "Task directory contains generated runtime artifacts; zero-day tasks must stay source-only"
         return 1
@@ -202,21 +241,14 @@ zero_day_task_resolve_metadata() {
         return 1
     fi
 
-    if [ -z "$ZERO_DAY_ATTACK_MODEL" ]; then
-        local legacy_attack_model=""
-        legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$ZERO_DAY_TASK_METADATA")"
-        if [ -n "$legacy_attack_model" ]; then
-            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or auth_attacker)"
-        else
-            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or remote_attacker)"
-        fi
-        return 1
-    fi
-
     ZERO_DAY_TASK_ID="$(jq -r '.task_id // .task_slug // empty' "$ZERO_DAY_TASK_METADATA")"
     if [ -z "$ZERO_DAY_TASK_ID" ] || [ "$ZERO_DAY_TASK_ID" = "null" ]; then
         ZERO_DAY_TASK_ID="$(basename "$source_task_dir")"
+        if [ "$ZERO_DAY_TASK_ID" = "task" ]; then
+            ZERO_DAY_TASK_ID="$(basename "$(dirname "$source_task_dir")")"
+        fi
     fi
+    zero_day_task_validate_task_id "$ZERO_DAY_TASK_ID" || return 1
 
     ZERO_DAY_PACKAGE_NAME="$(jq -r '.runtime.package_name // .app_metadata_overrides.package_name // empty' "$ZERO_DAY_TASK_METADATA")"
     if [ -z "$ZERO_DAY_PACKAGE_NAME" ] || [ "$ZERO_DAY_PACKAGE_NAME" = "null" ]; then
@@ -297,7 +329,6 @@ zero_day_task_run_validation() {
     local source_task_dir
     source_task_dir="$(zero_day_task_resolve_abs_dir "$task_dir")" || return 1
     zero_day_task_validate_source_dir "$source_task_dir" || return 1
-    ZERO_DAY_SOURCE_REPORT_DIR="$(dirname "$source_task_dir")"
 
     if [ -n "$artifacts_dir" ]; then
         mkdir -p "$artifacts_dir"
@@ -315,6 +346,10 @@ zero_day_task_run_validation() {
         ZERO_DAY_WORKSPACE=""
         return 1
     fi
+
+    ZERO_DAY_BUILD_ARTIFACT_ROOT="$(
+        zero_day_task_resolve_artifact_root "$source_task_dir" "$ZERO_DAY_TASK_ID"
+    )"
 
     if ! task_validation_resolve_android_serial; then
         rm -rf "$ZERO_DAY_WORKSPACE"
@@ -343,10 +378,11 @@ zero_day_task_run_validation() {
     fi
     _task_validation_log INFO "=========================================="
 
-    local secure_apk="$ZERO_DAY_SOURCE_REPORT_DIR/artifacts/hardened_apk/${app_name}.apk"
-    local secure_apk_dir
-    secure_apk_dir="$(dirname "$secure_apk")"
-    local build_manifest="$ZERO_DAY_SOURCE_REPORT_DIR/artifacts/.zero_day_build_manifest.json"
+    ZERO_DAY_BUILD_ARTIFACT_ROOT="$(
+        zero_day_task_resolve_artifact_root "$source_task_dir" "$ZERO_DAY_TASK_ID"
+    )"
+    local secure_apk="$ZERO_DAY_BUILD_ARTIFACT_ROOT/hardened_apk/${app_name}.apk"
+    local build_manifest="$ZERO_DAY_BUILD_ARTIFACT_ROOT/.zero_day_build_manifest.json"
     local expected_patch_hash
     expected_patch_hash="$(shasum -a 256 "$ZERO_DAY_SECURE_PATCH_ABS" | awk '{print $1}')"
 
@@ -363,22 +399,27 @@ zero_day_task_run_validation() {
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
             return 1
         fi
-        local manifest_commit manifest_patch_hash
+        local vulnerable_apk_hash secure_apk_hash manifest_commit manifest_patch_hash manifest_vulnerable_apk_hash manifest_secure_apk_hash
+        vulnerable_apk_hash="$(shasum -a 256 "$app_dir/apk/${app_name}.apk" | awk '{print $1}')"
+        secure_apk_hash="$(shasum -a 256 "$secure_apk" | awk '{print $1}')"
         manifest_commit="$(jq -r '.baseline_commit' "$build_manifest")"
         manifest_patch_hash="$(jq -r '.fix_patch_sha256' "$build_manifest")"
-        if [ "$manifest_commit" != "$ZERO_DAY_BASELINE_COMMIT" ] || [ "$manifest_patch_hash" != "$expected_patch_hash" ]; then
-            _task_validation_log ERROR "--skip-build: existing APKs were built for a different baseline/patch (manifest commit=$manifest_commit, patch=$manifest_patch_hash). Re-run without --skip-build."
+        manifest_vulnerable_apk_hash="$(jq -r '.vulnerable_apk_sha256' "$build_manifest")"
+        manifest_secure_apk_hash="$(jq -r '.secure_apk_sha256' "$build_manifest")"
+        if [ "$manifest_commit" != "$ZERO_DAY_BASELINE_COMMIT" ] || [ "$manifest_patch_hash" != "$expected_patch_hash" ] || [ "$manifest_vulnerable_apk_hash" != "$vulnerable_apk_hash" ] || [ "$manifest_secure_apk_hash" != "$secure_apk_hash" ]; then
+            _task_validation_log ERROR "--skip-build: existing APKs were built for a different baseline/patch or do not match the recorded build outputs. Re-run without --skip-build."
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
             return 1
         fi
-        _task_validation_log INFO "Build manifest verified: APKs match this task's baseline and fix.patch"
+        _task_validation_log INFO "Build manifest verified: APKs match this task's baseline, fix.patch, and recorded build outputs"
     else
         _task_validation_log INFO "BUILD PHASE"
         cd "$ROOT_DIR"
         mkdir -p "$(dirname "$build_manifest")"
-        mkdir -p "$secure_apk_dir"
         _task_validation_log INFO "Building secure APK (with task fix.patch)..."
-        if ! zero_day_task_run_build "$app_name" --output "$secure_apk_dir" --hardened-patch "$ZERO_DAY_SECURE_PATCH_ABS"; then
+        if ! zero_day_task_run_build "$app_name" \
+            --output "$ZERO_DAY_BUILD_ARTIFACT_ROOT/hardened_apk" \
+            --hardened-patch "$ZERO_DAY_SECURE_PATCH_ABS"; then
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
             return 1
         fi
@@ -388,8 +429,11 @@ zero_day_task_run_validation() {
             return 1
         fi
         _task_validation_log SUCCESS "Both APKs built successfully"
-        printf '{"baseline_commit":"%s","fix_patch_sha256":"%s","task_id":"%s"}\n' \
-            "$ZERO_DAY_BASELINE_COMMIT" "$expected_patch_hash" "$ZERO_DAY_TASK_ID" \
+        local secure_apk_hash vulnerable_apk_hash
+        secure_apk_hash="$(shasum -a 256 "$secure_apk" | awk '{print $1}')"
+        vulnerable_apk_hash="$(shasum -a 256 "$app_dir/apk/${app_name}.apk" | awk '{print $1}')"
+        printf '{"baseline_commit":"%s","fix_patch_sha256":"%s","secure_apk_sha256":"%s","task_id":"%s","vulnerable_apk_sha256":"%s"}\n' \
+            "$ZERO_DAY_BASELINE_COMMIT" "$expected_patch_hash" "$secure_apk_hash" "$ZERO_DAY_TASK_ID" "$vulnerable_apk_hash" \
             > "$build_manifest"
     fi
 

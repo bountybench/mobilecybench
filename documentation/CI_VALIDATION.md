@@ -141,14 +141,14 @@ The supported hardened-build layout today is either the report-style checkout
 above or the public-tree snapshot layout under
 `apps/<app>/zero_day_vulnerabilities/<task_id>/`. In the report-style layout,
 the validator uses `<report-dir>/artifacts/`; in the public-tree layout, it
-uses `apps/<app>/zero_day_vulnerabilities/artifacts/<task_id>/`. The task
-source itself remains source-only in both cases.
+uses `apps/<app>/zero_day_vulnerabilities/artifacts/<task_id>/`.
+The task source itself remains source-only in both cases.
 
 Compared with the current synthetic local CI path, zero-day validation:
 1. runs from a temporary copy of the task directory so runtime artifacts do
    not get written back into the task checkout
-2. uses the parent report directory for `artifacts/` outputs and the hardened
-   build manifest
+2. uses the report or public-tree artifact root for `artifacts/` outputs and
+   the hardened build manifest
 3. builds the secure comparator from `fix.patch`
 4. builds the vulnerable comparator from the unpatched `baseline.commit`
 

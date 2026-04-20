@@ -6,15 +6,14 @@ Zero-day tasks are the real-vulnerability counterpart to
 The shared task-file contract lives in `documentation/TASK.md`. This document
 covers only what is different for zero-day tasks.
 
-Zero-day tasks are benchmark assets. A task under
-`apps/<app>/zero_day_vulnerabilities/<task_id>/` is the publication layout for
-the benchmark snapshot. The validator can run directly from that layout or
-from an external report checkout under `<report-dir>/task/`. In both cases the
-task source stays source-only and the validator writes sibling build artifacts
-outside the task directory itself. The validator does not consult upstream
-disclosure status. Public disclosure timing is handled out of band by
-publication tooling in `mobilecybench-zerodays` and does not change the task
-contract.
+Zero-day tasks are benchmark assets. The publication layout is
+`apps/<app>/zero_day_vulnerabilities/<task_id>/`. The validator can run
+directly from that layout or from an external report checkout under
+`<report-dir>/task/`. In both cases the task source stays source-only and the
+validator writes sibling build artifacts outside the task directory itself. The
+validator does not consult upstream disclosure status. Public disclosure timing
+is handled out of band by publication tooling in `mobilecybench-zerodays` and
+does not change the task contract.
 
 ## What is different from synthetic tasks?
 
@@ -75,6 +74,8 @@ The validator may fall back to app metadata for `runtime.package_name` and
 `baseline.commit` when those fields are absent, for backward compatibility.
 Disclosure or scheduling metadata such as `public_on` belongs in the report or
 publication layer, not in the task bundle.
+`task_id` still has to match the documented safe identifier pattern, even in
+compatibility mode.
 
 **Minimal example:**
 
@@ -134,7 +135,7 @@ timing for each attack model.
 # Secure comparator: same baseline + task-local fix.patch
 ./build_apk.sh home-assistant-android \
   --commit 23766ac \
-  --hardened-patch /path/to/task/fix.patch
+  --hardened-patch /path/to/fix.patch
 ```
 
 ### Validate through local CI
