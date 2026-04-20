@@ -12,7 +12,7 @@ TASK_RUNTIME_APP_METADATA_JSON=""
 TASK_RUNTIME_PACKAGE_NAME=""
 TASK_RUNTIME_TASK_ID=""
 TASK_RUNTIME_BASELINE_COMMIT=""
-TASK_RUNTIME_ATTACK_MODEL=""
+TASK_RUNTIME_ATTACKER_MODEL=""
 TASK_RUNTIME_PHASE=""
 TASK_RUNTIME_FIX_PATCH=""
 TASK_RUNTIME_WORKSPACE_DIR=""
@@ -28,7 +28,7 @@ task_runtime_clear_context() {
     TASK_RUNTIME_PACKAGE_NAME=""
     TASK_RUNTIME_TASK_ID=""
     TASK_RUNTIME_BASELINE_COMMIT=""
-    TASK_RUNTIME_ATTACK_MODEL=""
+    TASK_RUNTIME_ATTACKER_MODEL=""
     TASK_RUNTIME_PHASE=""
     TASK_RUNTIME_FIX_PATCH=""
     TASK_RUNTIME_WORKSPACE_DIR=""
@@ -53,17 +53,17 @@ task_runtime_set_context() {
     local package_name="$6"
     local task_id="$7"
     local baseline_commit="$8"
-    local attack_model="${9:-}"
+    local attacker_model="${9:-}"
     local phase="${10:-}"
     local fix_patch="${11:-}"
     local workspace_dir="${12:-}"
     local -a task_runtime_env=()
 
-    case "$attack_model" in
+    case "$attacker_model" in
         ""|malicious_app|remote_attacker) ;;
         *)
             task_runtime_clear_context
-            echo -e "${ERROR} task_runtime_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_app, remote_attacker)"
+            echo -e "${ERROR} task_runtime_set_context: invalid attacker_model '$attacker_model' (expected: empty, malicious_app, remote_attacker)"
             return 1
             ;;
     esac
@@ -76,7 +76,7 @@ task_runtime_set_context() {
     TASK_RUNTIME_PACKAGE_NAME="$package_name"
     TASK_RUNTIME_TASK_ID="$task_id"
     TASK_RUNTIME_BASELINE_COMMIT="$baseline_commit"
-    TASK_RUNTIME_ATTACK_MODEL="$attack_model"
+    TASK_RUNTIME_ATTACKER_MODEL="$attacker_model"
     TASK_RUNTIME_PHASE="$phase"
     TASK_RUNTIME_FIX_PATCH="$fix_patch"
     TASK_RUNTIME_WORKSPACE_DIR="$workspace_dir"
@@ -94,7 +94,7 @@ task_runtime_set_context() {
         "MCB_PACKAGE_NAME=$TASK_RUNTIME_PACKAGE_NAME"
         "MCB_TASK_ID=$TASK_RUNTIME_TASK_ID"
         "MCB_BASELINE_COMMIT=$TASK_RUNTIME_BASELINE_COMMIT"
-        "MCB_ATTACK_MODEL=$TASK_RUNTIME_ATTACK_MODEL"
+        "MCB_ATTACKER_MODEL=$TASK_RUNTIME_ATTACKER_MODEL"
         "MCB_PHASE=$TASK_RUNTIME_PHASE"
     )
     if [ -n "$TASK_RUNTIME_FIX_PATCH" ]; then
@@ -215,7 +215,7 @@ task_runtime_run_exploit() {
     local codebase_dir="$2"
     local log_file="${3:-}"
 
-    case "$TASK_RUNTIME_ATTACK_MODEL" in
+    case "$TASK_RUNTIME_ATTACKER_MODEL" in
         malicious_app)
             task_runtime_run_exploit_apk "$root_dir" "$log_file"
             ;;

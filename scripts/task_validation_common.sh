@@ -23,7 +23,7 @@ TASK_VALIDATION_ARTIFACTS_DIR=""
 TASK_VALIDATION_PACKAGE_NAME=""
 TASK_VALIDATION_TASK_ID=""
 TASK_VALIDATION_BASELINE_COMMIT=""
-TASK_VALIDATION_ATTACK_MODEL=""
+TASK_VALIDATION_ATTACKER_MODEL=""
 TASK_VALIDATION_FIX_PATCH=""
 TASK_VALIDATION_WORKSPACE_DIR=""
 TASK_VALIDATION_OUTPUT_MODE="per_phase"
@@ -42,7 +42,7 @@ task_validation_clear_context() {
     TASK_VALIDATION_PACKAGE_NAME=""
     TASK_VALIDATION_TASK_ID=""
     TASK_VALIDATION_BASELINE_COMMIT=""
-    TASK_VALIDATION_ATTACK_MODEL=""
+    TASK_VALIDATION_ATTACKER_MODEL=""
     TASK_VALIDATION_FIX_PATCH=""
     TASK_VALIDATION_WORKSPACE_DIR=""
     TASK_VALIDATION_OUTPUT_MODE="per_phase"
@@ -84,17 +84,17 @@ task_validation_set_context() {
     local package_name="$7"
     local task_id="$8"
     local baseline_commit="$9"
-    local attack_model="${10:-}"
+    local attacker_model="${10:-}"
     local fix_patch="${11:-}"
     local workspace_dir="${12:-}"
     local output_mode="${13:-per_phase}"
     local reset_flat_output="${14:-false}"
 
-    case "$attack_model" in
+    case "$attacker_model" in
         ""|malicious_app|remote_attacker) ;;
         *)
             task_validation_clear_context
-            _task_validation_log ERROR "task_validation_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_app, remote_attacker)"
+            _task_validation_log ERROR "task_validation_set_context: invalid attacker_model '$attacker_model' (expected: empty, malicious_app, remote_attacker)"
             return 1
             ;;
     esac
@@ -124,7 +124,7 @@ task_validation_set_context() {
     TASK_VALIDATION_PACKAGE_NAME="$package_name"
     TASK_VALIDATION_TASK_ID="$task_id"
     TASK_VALIDATION_BASELINE_COMMIT="$baseline_commit"
-    TASK_VALIDATION_ATTACK_MODEL="$attack_model"
+    TASK_VALIDATION_ATTACKER_MODEL="$attacker_model"
     TASK_VALIDATION_FIX_PATCH="$fix_patch"
     TASK_VALIDATION_WORKSPACE_DIR="$workspace_dir"
     TASK_VALIDATION_OUTPUT_MODE="$output_mode"
@@ -357,10 +357,10 @@ task_validation_clear_package_data() {
     fi
 }
 
-task_validation_run_attack_model_setup_before_exploit() {
+task_validation_run_attacker_model_setup_before_exploit() {
     local victim_log="${1:-}"
 
-    case "$TASK_VALIDATION_ATTACK_MODEL" in
+    case "$TASK_VALIDATION_ATTACKER_MODEL" in
         malicious_app)
             task_validation_run_prepare_victim_hook "$victim_log"
             ;;
@@ -370,11 +370,11 @@ task_validation_run_attack_model_setup_before_exploit() {
     esac
 }
 
-task_validation_run_attack_model_setup_after_exploit() {
+task_validation_run_attacker_model_setup_after_exploit() {
     local clear_log="${1:-}"
     local victim_log="${2:-}"
 
-    case "$TASK_VALIDATION_ATTACK_MODEL" in
+    case "$TASK_VALIDATION_ATTACKER_MODEL" in
         remote_attacker)
             task_validation_clear_package_data "$TASK_VALIDATION_PACKAGE_NAME" "$clear_log" || return 1
             task_validation_run_prepare_victim_hook "$victim_log"
@@ -459,7 +459,7 @@ task_validation_run_phase() {
         "$TASK_VALIDATION_PACKAGE_NAME" \
         "$TASK_VALIDATION_TASK_ID" \
         "$TASK_VALIDATION_BASELINE_COMMIT" \
-        "$TASK_VALIDATION_ATTACK_MODEL" \
+        "$TASK_VALIDATION_ATTACKER_MODEL" \
         "$phase_slug" \
         "$TASK_VALIDATION_FIX_PATCH" \
         "$TASK_VALIDATION_WORKSPACE_DIR"; then
@@ -472,7 +472,7 @@ task_validation_run_phase() {
         return 1
     fi
 
-    if ! task_validation_run_attack_model_setup_before_exploit "$victim_log"; then
+    if ! task_validation_run_attacker_model_setup_before_exploit "$victim_log"; then
         task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
         return 1
     fi
@@ -484,7 +484,7 @@ task_validation_run_phase() {
         _task_validation_log WARNING "Exploit returned non-zero (may be expected)"
     fi
 
-    if ! task_validation_run_attack_model_setup_after_exploit "$clear_log" "$victim_log"; then
+    if ! task_validation_run_attacker_model_setup_after_exploit "$clear_log" "$victim_log"; then
         task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
         return 1
     fi
