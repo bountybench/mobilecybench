@@ -11,8 +11,8 @@ from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
-    build_remote_attacker_prompt,
     build_redteam_prompt,
+    build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
 from agent.tools.runtime import ToolRuntime

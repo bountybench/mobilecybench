@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    build_remote_attacker_prompt,
     build_redteam_prompt,
+    build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
 from utils.logger import agent_logger, logger, logger_manager

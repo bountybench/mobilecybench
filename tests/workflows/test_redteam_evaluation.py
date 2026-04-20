@@ -372,7 +372,9 @@ class TestRemoteAttackerValidation:
         )
         _setup_task_dir(tmp_path)
         wf = RedTeamWorkflow(remote_attacker_config, "testapp", tmp_path)
-        with pytest.raises(ValueError, match="remote_attacker probe directory not found"):
+        with pytest.raises(
+            ValueError, match="remote_attacker probe directory not found"
+        ):
             wf.validate_arguments()
 
 
