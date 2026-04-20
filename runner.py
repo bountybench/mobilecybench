@@ -485,15 +485,7 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.replay_run and args.app_name:
-        parser.error(
-            "app_name is derived from the replay source; omit it when "
-            "--replay-run is set"
-        )
-    if not args.replay_run and not args.app_name:
-        parser.error("app_name is required unless --replay-run is provided")
-
-    # Load config
+    # Load config first so replay_run from JSON is visible to validation.
     config_path = Path(args.config)
     try:
         config = RunnerConfig.from_file(
@@ -503,6 +495,14 @@ def main():
     except (FileNotFoundError, ValueError) as e:
         logger.error(str(e))
         return 1
+
+    if config.replay_run and args.app_name:
+        parser.error(
+            "app_name is derived from the replay source; omit it when "
+            "replay_run is set"
+        )
+    if not config.replay_run and not args.app_name:
+        parser.error("app_name is required unless replay_run is set")
 
     project_root = Path(__file__).parent
 
