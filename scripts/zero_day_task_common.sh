@@ -23,6 +23,39 @@ ZERO_DAY_TASK_ID=""
 ZERO_DAY_PACKAGE_NAME=""
 ZERO_DAY_BASELINE_COMMIT=""
 ZERO_DAY_SECURE_PATCH_ABS=""
+ZERO_DAY_ATTACK_MODEL=""
+
+zero_day_task_read_attacker_model() {
+    local metadata_file="$1"
+    jq -r '.attacker_model // empty' "$metadata_file"
+}
+
+zero_day_task_read_legacy_attack_model() {
+    local metadata_file="$1"
+    jq -r '.attack_model // empty' "$metadata_file"
+}
+
+zero_day_task_validate_apk_project() {
+    local task_dir="$1"
+    local apk_dir="$task_dir/exploit_files/exploit_apk"
+
+    if [ ! -d "$apk_dir" ]; then
+        _task_validation_log ERROR "Required exploit APK directory not found: $apk_dir"
+        return 1
+    fi
+
+    if ! find "$apk_dir" -name 'AndroidManifest.xml' -type f -print -quit | grep -q .; then
+        _task_validation_log ERROR "Exploit APK directory missing AndroidManifest.xml: $apk_dir"
+        return 1
+    fi
+
+    if ! find "$apk_dir" -name '*.java' -type f -print -quit | grep -q .; then
+        _task_validation_log ERROR "Exploit APK directory must contain at least one .java source file: $apk_dir"
+        return 1
+    fi
+
+    return 0
+}
 
 zero_day_task_resolve_abs_dir() {
     local dir="$1"
@@ -42,7 +75,7 @@ zero_day_task_validate_metadata_schema_if_present() {
     schema_version="$(jq -r '.schema_version // empty' "$metadata_file")"
 
     if [ -z "$schema_version" ]; then
-        _task_validation_log WARNING "metadata.json has no schema_version; using compatibility mode"
+        _task_validation_log WARNING "metadata.json has no schema_version; skipping schema validation and relying on runtime field checks"
         return 0
     fi
 
@@ -68,12 +101,59 @@ PY
 zero_day_task_validate_source_dir() {
     local task_dir="$1"
     local req_file
-    for req_file in "metadata.json" "fix.patch" "exploit_files/exploit.sh" "verify_files/verify_exploit.sh"; do
+    for req_file in "metadata.json" "fix.patch" "verify_files/verify_exploit.sh"; do
         if [ ! -f "$task_dir/$req_file" ]; then
             _task_validation_log ERROR "Required task file not found: $task_dir/$req_file"
             return 1
         fi
     done
+
+    local attack_model=""
+    attack_model="$(zero_day_task_read_attacker_model "$task_dir/metadata.json")"
+    if [ -z "$attack_model" ]; then
+        local legacy_attack_model=""
+        legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$task_dir/metadata.json")"
+        if [ -n "$legacy_attack_model" ]; then
+            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or remote_attacker)"
+        else
+            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or remote_attacker)"
+        fi
+        return 1
+    fi
+
+    local has_exploit_sh=false
+    local has_exploit_apk=false
+    if [ -f "$task_dir/exploit_files/exploit.sh" ]; then
+        has_exploit_sh=true
+    fi
+    if [ -d "$task_dir/exploit_files/exploit_apk" ]; then
+        has_exploit_apk=true
+    fi
+    if [ -d "$task_dir/exploit_files/attacker_app" ]; then
+        _task_validation_log ERROR "Legacy exploit APK directory is not supported: rename exploit_files/attacker_app to exploit_files/exploit_apk"
+        return 1
+    fi
+
+    if [ "$has_exploit_sh" = true ] && [ "$has_exploit_apk" = true ]; then
+        _task_validation_log ERROR "Task must not mix exploit_files/exploit.sh with an APK exploit directory; choose exactly one exploit format"
+        return 1
+    fi
+
+    case "$attack_model" in
+        malicious_app)
+            zero_day_task_validate_apk_project "$task_dir" || return 1
+            ;;
+        remote_attacker)
+            if [ ! -f "$task_dir/exploit_files/exploit.sh" ]; then
+                _task_validation_log ERROR "Required task file not found: $task_dir/exploit_files/exploit.sh"
+                return 1
+            fi
+            ;;
+        *)
+            _task_validation_log ERROR "Unknown attacker_model in metadata.json: $attack_model"
+            return 1
+        ;;
+    esac
 
     if find "$task_dir" -type d \( -name 'agent_output' -o -name '__pycache__' -o -name '.pytest_cache' -o -name 'build' -o -name 'dist' \) -print -quit | grep -q .; then
         _task_validation_log ERROR "Task directory contains generated runtime artifacts; zero-day tasks must stay source-only"
@@ -90,9 +170,16 @@ zero_day_task_resolve_metadata() {
 
     ZERO_DAY_TASK_METADATA="$task_dir/metadata.json"
     zero_day_task_validate_metadata_schema_if_present "$ZERO_DAY_TASK_METADATA" || return 1
-
-    if ! jq -e '.schema_version' "$ZERO_DAY_TASK_METADATA" >/dev/null 2>&1; then
-        _task_validation_log WARNING "Task metadata has no schema_version; using older-field compatibility"
+    ZERO_DAY_ATTACK_MODEL="$(zero_day_task_read_attacker_model "$ZERO_DAY_TASK_METADATA")"
+    if [ -z "$ZERO_DAY_ATTACK_MODEL" ]; then
+        local legacy_attack_model=""
+        legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$ZERO_DAY_TASK_METADATA")"
+        if [ -n "$legacy_attack_model" ]; then
+            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or remote_attacker)"
+        else
+            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or remote_attacker)"
+        fi
+        return 1
     fi
 
     ZERO_DAY_TASK_ID="$(jq -r '.task_id // .task_slug // empty' "$ZERO_DAY_TASK_METADATA")"
@@ -212,6 +299,7 @@ zero_day_task_run_validation() {
     _task_validation_log INFO "Task id:         $ZERO_DAY_TASK_ID"
     _task_validation_log INFO "Package:         $ZERO_DAY_PACKAGE_NAME"
     _task_validation_log INFO "Baseline commit: $ZERO_DAY_BASELINE_COMMIT"
+    _task_validation_log INFO "Attack model:    $ZERO_DAY_ATTACK_MODEL"
     _task_validation_log INFO "Android serial:  ${ANDROID_SERIAL}"
     if [ ${#ZERO_DAY_BUILD_ENV_ARGS[@]} -gt 0 ]; then
         _task_validation_log INFO "Build env:       ${ZERO_DAY_BUILD_ENV_ARGS[*]}"
@@ -225,6 +313,8 @@ zero_day_task_run_validation() {
     _task_validation_log INFO "=========================================="
 
     local secure_apk="$ZERO_DAY_SOURCE_REPORT_DIR/artifacts/hardened_apk/${app_name}.apk"
+    local secure_apk_dir
+    secure_apk_dir="$(dirname "$secure_apk")"
     local build_manifest="$ZERO_DAY_SOURCE_REPORT_DIR/artifacts/.zero_day_build_manifest.json"
     local expected_patch_hash
     expected_patch_hash="$(shasum -a 256 "$ZERO_DAY_SECURE_PATCH_ABS" | awk '{print $1}')"
@@ -255,8 +345,9 @@ zero_day_task_run_validation() {
         _task_validation_log INFO "BUILD PHASE"
         cd "$ROOT_DIR"
         mkdir -p "$(dirname "$build_manifest")"
+        mkdir -p "$secure_apk_dir"
         _task_validation_log INFO "Building secure APK (with task fix.patch)..."
-        if ! zero_day_task_run_build "$app_name" --hardened-patch "$ZERO_DAY_SECURE_PATCH_ABS"; then
+        if ! zero_day_task_run_build "$app_name" --output "$secure_apk_dir" --hardened-patch "$ZERO_DAY_SECURE_PATCH_ABS"; then
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
             return 1
         fi
@@ -271,7 +362,7 @@ zero_day_task_run_validation() {
             > "$build_manifest"
     fi
 
-    task_validation_set_context \
+    if ! task_validation_set_context \
         "$ROOT_DIR" \
         "$app_dir" \
         "$ZERO_DAY_TASK_WORK_DIR" \
@@ -281,10 +372,15 @@ zero_day_task_run_validation() {
         "$ZERO_DAY_PACKAGE_NAME" \
         "$ZERO_DAY_TASK_ID" \
         "$ZERO_DAY_BASELINE_COMMIT" \
+        "$ZERO_DAY_ATTACK_MODEL" \
         "$ZERO_DAY_SECURE_PATCH_ABS" \
         "$ZERO_DAY_WORKSPACE" \
         "per_phase" \
-        "false"
+        "false"; then
+        [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
+        ZERO_DAY_WORKSPACE=""
+        return 1
+    fi
 
     local result=0
 

@@ -342,18 +342,24 @@ def run(
                     f"(required for task={config.task})"
                 )
             task_meta = json.loads(task_meta_path.read_text())
-            task_attack_model = task_meta.get("attacker_model")
-            valid_models = {"malicious_app", "auth_attacker"}
-            if task_attack_model not in valid_models:
+            task_attacker_model = task_meta.get("attacker_model")
+            valid_models = {"malicious_app", "remote_attacker"}
+            if task_attacker_model not in valid_models:
                 raise ValueError(
-                    f"attacker_model={'missing' if task_attack_model is None else repr(task_attack_model)} "
+                    f"attacker_model={'missing' if task_attacker_model is None else repr(task_attacker_model)} "
                     f"in {task_meta_path} (must be one of {valid_models})"
                 )
+            task_attack_model = (
+                "auth_attacker"
+                if task_attacker_model == "remote_attacker"
+                else task_attacker_model
+            )
             if task_attack_model != config.attack_model:
                 logger.info(
-                    "Task metadata overrides attack_model: %s -> %s",
+                    "Task metadata overrides attack_model: %s -> %s (attacker_model=%s)",
                     config.attack_model,
                     task_attack_model,
+                    task_attacker_model,
                 )
                 config.attack_model = task_attack_model
 

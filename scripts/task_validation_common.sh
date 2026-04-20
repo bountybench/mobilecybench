@@ -23,6 +23,7 @@ TASK_VALIDATION_ARTIFACTS_DIR=""
 TASK_VALIDATION_PACKAGE_NAME=""
 TASK_VALIDATION_TASK_ID=""
 TASK_VALIDATION_BASELINE_COMMIT=""
+TASK_VALIDATION_ATTACK_MODEL=""
 TASK_VALIDATION_FIX_PATCH=""
 TASK_VALIDATION_WORKSPACE_DIR=""
 TASK_VALIDATION_OUTPUT_MODE="per_phase"
@@ -30,6 +31,26 @@ TASK_VALIDATION_RESET_FLAT_OUTPUT=false
 TASK_VALIDATION_TASK_METADATA_JSON=""
 TASK_VALIDATION_APP_METADATA_JSON=""
 TASK_VALIDATION_CODEBASE_DIR=""
+
+task_validation_clear_context() {
+    TASK_VALIDATION_ROOT_DIR=""
+    TASK_VALIDATION_APP_DIR=""
+    TASK_VALIDATION_TASK_DIR=""
+    TASK_VALIDATION_OUTPUT_ROOT=""
+    TASK_VALIDATION_LOG_ROOT=""
+    TASK_VALIDATION_ARTIFACTS_DIR=""
+    TASK_VALIDATION_PACKAGE_NAME=""
+    TASK_VALIDATION_TASK_ID=""
+    TASK_VALIDATION_BASELINE_COMMIT=""
+    TASK_VALIDATION_ATTACK_MODEL=""
+    TASK_VALIDATION_FIX_PATCH=""
+    TASK_VALIDATION_WORKSPACE_DIR=""
+    TASK_VALIDATION_OUTPUT_MODE="per_phase"
+    TASK_VALIDATION_RESET_FLAT_OUTPUT=false
+    TASK_VALIDATION_TASK_METADATA_JSON=""
+    TASK_VALIDATION_APP_METADATA_JSON=""
+    TASK_VALIDATION_CODEBASE_DIR=""
+}
 
 _task_validation_log() {
     local level="$1"
@@ -45,20 +66,69 @@ _task_validation_log() {
 }
 
 task_validation_set_context() {
-    TASK_VALIDATION_ROOT_DIR="$1"
-    TASK_VALIDATION_APP_DIR="$2"
-    TASK_VALIDATION_TASK_DIR="$3"
-    TASK_VALIDATION_OUTPUT_ROOT="$4"
-    TASK_VALIDATION_LOG_ROOT="$5"
-    TASK_VALIDATION_ARTIFACTS_DIR="$6"
-    TASK_VALIDATION_PACKAGE_NAME="$7"
-    TASK_VALIDATION_TASK_ID="$8"
-    TASK_VALIDATION_BASELINE_COMMIT="$9"
-    TASK_VALIDATION_FIX_PATCH="${10:-}"
-    TASK_VALIDATION_WORKSPACE_DIR="${11:-}"
-    TASK_VALIDATION_OUTPUT_MODE="${12:-per_phase}"
-    TASK_VALIDATION_RESET_FLAT_OUTPUT="${13:-false}"
+    # 9 required positional args + up to 5 optional. Caller must pass all 9 so a
+    # future positional-shift regression fails loudly instead of silently
+    # misassigning downstream fields (see run_ci_local.sh synthetic caller).
+    if [ "$#" -lt 9 ] || [ "$#" -gt 14 ]; then
+        task_validation_clear_context
+        _task_validation_log ERROR "task_validation_set_context: expected 9-14 args, got $#"
+        return 1
+    fi
 
+    local root_dir="$1"
+    local app_dir="$2"
+    local task_dir="$3"
+    local output_root="$4"
+    local log_root="$5"
+    local artifacts_dir="$6"
+    local package_name="$7"
+    local task_id="$8"
+    local baseline_commit="$9"
+    local attack_model="${10:-}"
+    local fix_patch="${11:-}"
+    local workspace_dir="${12:-}"
+    local output_mode="${13:-per_phase}"
+    local reset_flat_output="${14:-false}"
+
+    case "$attack_model" in
+        ""|malicious_app|remote_attacker) ;;
+        *)
+            task_validation_clear_context
+            _task_validation_log ERROR "task_validation_set_context: invalid attack_model '$attack_model' (expected: empty, malicious_app, remote_attacker)"
+            return 1
+            ;;
+    esac
+    case "$output_mode" in
+        per_phase|flat) ;;
+        *)
+            task_validation_clear_context
+            _task_validation_log ERROR "task_validation_set_context: invalid output_mode '$output_mode' (expected: per_phase, flat)"
+            return 1
+            ;;
+    esac
+    case "$reset_flat_output" in
+        true|false) ;;
+        *)
+            task_validation_clear_context
+            _task_validation_log ERROR "task_validation_set_context: invalid reset_flat_output '$reset_flat_output' (expected: true, false)"
+            return 1
+            ;;
+    esac
+
+    TASK_VALIDATION_ROOT_DIR="$root_dir"
+    TASK_VALIDATION_APP_DIR="$app_dir"
+    TASK_VALIDATION_TASK_DIR="$task_dir"
+    TASK_VALIDATION_OUTPUT_ROOT="$output_root"
+    TASK_VALIDATION_LOG_ROOT="$log_root"
+    TASK_VALIDATION_ARTIFACTS_DIR="$artifacts_dir"
+    TASK_VALIDATION_PACKAGE_NAME="$package_name"
+    TASK_VALIDATION_TASK_ID="$task_id"
+    TASK_VALIDATION_BASELINE_COMMIT="$baseline_commit"
+    TASK_VALIDATION_ATTACK_MODEL="$attack_model"
+    TASK_VALIDATION_FIX_PATCH="$fix_patch"
+    TASK_VALIDATION_WORKSPACE_DIR="$workspace_dir"
+    TASK_VALIDATION_OUTPUT_MODE="$output_mode"
+    TASK_VALIDATION_RESET_FLAT_OUTPUT="$reset_flat_output"
     TASK_VALIDATION_TASK_METADATA_JSON="$TASK_VALIDATION_TASK_DIR/metadata.json"
     TASK_VALIDATION_APP_METADATA_JSON="$TASK_VALIDATION_APP_DIR/metadata.json"
     TASK_VALIDATION_CODEBASE_DIR="$TASK_VALIDATION_APP_DIR/codebase"
@@ -231,6 +301,90 @@ task_validation_copy_phase_artifacts() {
     fi
 }
 
+task_validation_run_prepare_victim_hook() {
+    local log_file="${1:-}"
+    local prepare_victim_hook="$TASK_VALIDATION_APP_DIR/prepare_victim.sh"
+
+    if [ ! -f "$prepare_victim_hook" ]; then
+        _task_validation_log INFO "No prepare_victim.sh found — skipping victim setup"
+        return 0
+    fi
+
+    echo -e "${INFO} Running prepare_victim.sh..."
+    if [ -n "$log_file" ]; then
+        if ! (
+            cd "$TASK_VALIDATION_APP_DIR" && \
+            env "${TASK_RUNTIME_ENV[@]}" timeout 300 bash "$prepare_victim_hook" >"$log_file" 2>&1
+        ); then
+            cat "$log_file" >&2 || true
+            echo -e "${ERROR} prepare_victim.sh failed or timed out"
+            return 1
+        fi
+        cat "$log_file" || true
+    else
+        if ! (
+            cd "$TASK_VALIDATION_APP_DIR" && \
+            env "${TASK_RUNTIME_ENV[@]}" timeout 300 bash "$prepare_victim_hook"
+        ); then
+            echo -e "${ERROR} prepare_victim.sh failed or timed out"
+            return 1
+        fi
+    fi
+
+    echo -e "${SUCCESS} prepare_victim.sh completed"
+}
+
+task_validation_clear_package_data() {
+    local package_name="$1"
+    local log_file="${2:-}"
+
+    [ -n "$package_name" ] || return 0
+
+    _task_validation_log INFO "Clearing app data (pm clear $package_name)"
+    if [ -n "$log_file" ]; then
+        if ! adb shell pm clear "$package_name" >"$log_file" 2>&1; then
+            cat "$log_file" >&2 || true
+            _task_validation_log ERROR "pm clear failed for $package_name"
+            return 1
+        fi
+        cat "$log_file" || true
+        return 0
+    fi
+
+    if ! adb shell pm clear "$package_name"; then
+        _task_validation_log ERROR "pm clear failed for $package_name"
+        return 1
+    fi
+}
+
+task_validation_run_attack_model_setup_before_exploit() {
+    local victim_log="${1:-}"
+
+    case "$TASK_VALIDATION_ATTACK_MODEL" in
+        malicious_app)
+            task_validation_run_prepare_victim_hook "$victim_log"
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+task_validation_run_attack_model_setup_after_exploit() {
+    local clear_log="${1:-}"
+    local victim_log="${2:-}"
+
+    case "$TASK_VALIDATION_ATTACK_MODEL" in
+        remote_attacker)
+            task_validation_clear_package_data "$TASK_VALIDATION_PACKAGE_NAME" "$clear_log" || return 1
+            task_validation_run_prepare_victim_hook "$victim_log"
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
 task_validation_run_phase() {
     local phase_name="$1"
     local phase_slug="$2"
@@ -248,14 +402,18 @@ task_validation_run_phase() {
 
     local phase_logs=""
     local prepare_log=""
+    local victim_log=""
     local exploit_log=""
+    local clear_log=""
     local verify_log=""
     if [ -n "$TASK_VALIDATION_LOG_ROOT" ]; then
         phase_logs="$TASK_VALIDATION_LOG_ROOT/$phase_slug"
         rm -rf "$phase_logs"
         mkdir -p "$phase_logs"
         prepare_log="$phase_logs/prepare.log"
+        victim_log="$phase_logs/prepare_victim.log"
         exploit_log="$phase_logs/exploit.log"
+        clear_log="$phase_logs/pm_clear.log"
         verify_log="$phase_logs/verify.log"
     fi
 
@@ -292,7 +450,7 @@ task_validation_run_phase() {
         fi
     fi
 
-    task_runtime_set_context \
+    if ! task_runtime_set_context \
         "$TASK_VALIDATION_TASK_DIR" \
         "$phase_output" \
         "$TASK_VALIDATION_APP_DIR" \
@@ -301,20 +459,34 @@ task_validation_run_phase() {
         "$TASK_VALIDATION_PACKAGE_NAME" \
         "$TASK_VALIDATION_TASK_ID" \
         "$TASK_VALIDATION_BASELINE_COMMIT" \
+        "$TASK_VALIDATION_ATTACK_MODEL" \
         "$phase_slug" \
         "$TASK_VALIDATION_FIX_PATCH" \
-        "$TASK_VALIDATION_WORKSPACE_DIR"
+        "$TASK_VALIDATION_WORKSPACE_DIR"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
+    fi
 
     if ! task_runtime_run_prepare_hook "$prepare_log"; then
         task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
         return 1
     fi
 
-    if ! task_runtime_run_exploit_container \
+    if ! task_validation_run_attack_model_setup_before_exploit "$victim_log"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
+    fi
+
+    if ! task_runtime_run_exploit \
         "$TASK_VALIDATION_ROOT_DIR" \
         "$TASK_VALIDATION_CODEBASE_DIR" \
         "$exploit_log"; then
         _task_validation_log WARNING "Exploit returned non-zero (may be expected)"
+    fi
+
+    if ! task_validation_run_attack_model_setup_after_exploit "$clear_log" "$victim_log"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
     fi
 
     task_runtime_run_verifier "$verify_log"
