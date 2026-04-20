@@ -5,7 +5,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
@@ -89,10 +88,14 @@ def test_source_dir_rejects_symlinks():
         task_dir = tmp / "task"
         (task_dir / "exploit_files").mkdir(parents=True)
         (task_dir / "verify_files").mkdir()
-        (task_dir / "metadata.json").write_text('{"schema_version":1,"task_id":"task-1","title":"t","baseline":{"commit":"abc"}}')
+        (task_dir / "metadata.json").write_text(
+            '{"schema_version":1,"task_id":"task-1","title":"t","baseline":{"commit":"abc"}}'
+        )
         (task_dir / "fix.patch").write_text("diff --git a b\n")
         (task_dir / "exploit_files" / "exploit.sh").write_text("#!/bin/sh\nexit 0\n")
-        (task_dir / "verify_files" / "verify_exploit.sh").write_text("#!/bin/sh\nexit 0\n")
+        (task_dir / "verify_files" / "verify_exploit.sh").write_text(
+            "#!/bin/sh\nexit 0\n"
+        )
         (task_dir / "exploit_files" / "symlink").symlink_to(task_dir / "fix.patch")
 
         result = _validate_source_dir(task_dir)
