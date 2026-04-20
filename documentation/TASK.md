@@ -56,7 +56,27 @@ For `malicious_app` tasks:
 For `remote_attacker` tasks, `exploit.sh`:
 - runs inside the exploit container, not on the host
 - exits `0` on success and non-zero on failure
-- must not rely on privileged commands such as `adb root`, `su`, or
+  `docker exec`
+- helpers it needs should live under `exploit_files/`
+
+#### Zero-day tasks
+
+Zero-day tasks declare an `attack_model` in `metadata.json`:
+
+| `attacker_model` | Required exploit artifact | Runtime |
+|---|---|---|
+| `malicious_app` | `exploit_files/exploit_apk/` | Built from source on the host and replayed via `am instrument` |
+| `auth_attacker` | `exploit_files/exploit.sh` | Runs inside the exploit container with ADB + backend access |
+
+For `malicious_app` tasks:
+- keep only source files in `exploit_apk/`
+- do not commit a prebuilt APK
+- if `build_exploit_apk.sh` is omitted, the zero-day validator injects the
+  canonical template at replay time
+
+For `remote_attacker` tasks, `exploit.sh`:
+- runs inside the exploit container, not on the host
+- exits `0` on success and non-zero on failure
   `docker exec`
 - helpers it needs should live under `exploit_files/`
 
@@ -106,7 +126,7 @@ verifiers:
 | `MCB_PACKAGE_NAME` | Android package name for the task |
 | `MCB_TASK_ID` | Task identifier |
 | `MCB_BASELINE_COMMIT` | Baseline commit, when the task type uses one |
-| `MCB_ATTACK_MODEL` | Task attack model, when the task type uses one |
+| `MCB_ATTACKER_MODEL` | Task attacker model, when the task type uses one |
 | `MCB_PHASE` | Which comparator is currently being tested |
 
 Some paths also provide task-type-specific variables such as `MCB_FIX_PATCH` or
