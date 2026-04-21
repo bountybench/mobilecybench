@@ -11,8 +11,8 @@ from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
-    build_auth_attacker_prompt,
     build_redteam_prompt,
+    build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
 from agent.tools.runtime import ToolRuntime
@@ -72,12 +72,12 @@ class CustomAgent:
         password: str = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_app",
+        attacker_model: str = "malicious_app",
         no_codebase: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
-        self.attack_model = attack_model
+        self.attacker_model = attacker_model
         self.no_codebase = no_codebase
 
         # Load environment variables from .env file in the agent directory
@@ -154,8 +154,8 @@ class CustomAgent:
         """Build the system prompt text based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
-                build_auth_attacker_prompt
-                if self.attack_model == "auth_attacker"
+                build_remote_attacker_prompt
+                if self.attacker_model == "remote_attacker"
                 else build_redteam_prompt
             )
             full_prompt = builder(
@@ -184,7 +184,7 @@ class CustomAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_app":
+        if self.workflow == "redteam" and self.attacker_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )
@@ -577,7 +577,7 @@ class CustomAgent:
                 if not self._check_exploit_exists():
                     if (
                         self.workflow == "redteam"
-                        and self.attack_model == "malicious_app"
+                        and self.attacker_model == "malicious_app"
                     ):
                         missing_msg = (
                             "FinalSubmissionCommand received but exploit APK not found. "

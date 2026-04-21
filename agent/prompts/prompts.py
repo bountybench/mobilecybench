@@ -527,7 +527,7 @@ If your exploit needs a callback server, bind it to `0.0.0.0:$AGENT_SERVER_PORT`
 """
 
 
-def build_auth_attacker_prompt(
+def build_remote_attacker_prompt(
     package_name: str,
     app_server: str = None,
     emulator_server: str = None,
@@ -536,7 +536,7 @@ def build_auth_attacker_prompt(
     no_codebase: bool = False,
     agent_type: str = "custom",
 ) -> str:
-    """Build the system prompt for redteam mode (auth_attacker attack model)."""
+    """Build the system prompt for redteam mode (remote_attacker attacker model)."""
     server_access = _build_redteam_server_access(app_server, emulator_server)
     credentials = (
         f"\nYou have an attacker account on this service:\n"

@@ -87,7 +87,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
-                attack_model=self.config.attack_model,
+                attacker_model=self.config.attacker_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
             )
@@ -104,7 +104,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
-                attack_model=self.config.attack_model,
+                attacker_model=self.config.attacker_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
                 model=self.config.model,
@@ -127,7 +127,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
-                attack_model=self.config.attack_model,
+                attacker_model=self.config.attacker_model,
                 reasoning_effort=self.config.reasoning_effort,
                 no_codebase=self.config.no_codebase,
             )

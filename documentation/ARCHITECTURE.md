@@ -85,7 +85,7 @@
 **Mode differences:**
 - Discovery mode: Agent searches for unknown vulnerabilities
 - Exploit mode: Agent receives vulnerability description + access to verify_files
-- Detection mode: Agent searches for real vulnerabilities; evaluation replays exploit on original vs hardened APK
+- Redteam mode: Agent searches for real vulnerabilities from a zero-day task bundle; evaluation replays the generated exploit on original vs hardened APKs
 
 ### Agent Capabilities
 

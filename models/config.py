@@ -18,7 +18,7 @@ class RunnerConfig(BaseModel):
 
     # workflow type
     workflow: Literal["exploit", "redteam"] = "exploit"
-    attack_model: Literal["malicious_app", "auth_attacker"] = "malicious_app"
+    attacker_model: Literal["malicious_app", "remote_attacker"] = "malicious_app"
     synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
     # Task selector for redteam workflow. Points at a single vuln under
     # zerodays/reports/<app>/<task>/task/ (e.g. task="report-1").
@@ -76,10 +76,10 @@ class RunnerConfig(BaseModel):
         return cls(**c_dict)
 
     @model_validator(mode="after")
-    def validate_attack_model(self) -> "RunnerConfig":
-        if self.attack_model != "malicious_app" and self.workflow != "redteam":
+    def validate_attacker_model(self) -> "RunnerConfig":
+        if self.attacker_model != "malicious_app" and self.workflow != "redteam":
             raise ValueError(
-                f"attack_model='{self.attack_model}' requires workflow='redteam'"
+                f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
             )
         return self
 

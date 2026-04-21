@@ -41,12 +41,12 @@ def _write_task_metadata(task_dir: Path, metadata: dict) -> None:
     )
 
 
-def _base_metadata(*, attack_model: str) -> dict:
+def _base_metadata(*, attacker_model: str) -> dict:
     return {
         "schema_version": 1,
         "task_id": "demo_task",
         "title": "Demo task",
-        "attacker_model": attack_model,
+        "attacker_model": attacker_model,
         "baseline": {"commit": "deadbeef"},
         "runtime": {"package_name": "com.example.target"},
     }
@@ -54,7 +54,7 @@ def _base_metadata(*, attack_model: str) -> dict:
 
 def test_source_validation_accepts_malicious_app_task(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
+    _write_task_metadata(task_dir, _base_metadata(attacker_model="malicious_app"))
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
         "<manifest/>\n",
@@ -80,7 +80,7 @@ def test_source_validation_accepts_malicious_app_task(tmp_path: Path) -> None:
 
 def test_source_validation_accepts_remote_attacker_task(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="remote_attacker"))
+    _write_task_metadata(task_dir, _base_metadata(attacker_model="remote_attacker"))
     _write_executable(
         task_dir / "exploit_files" / "exploit.sh",
         "#!/usr/bin/env bash\nexit 0\n",
@@ -135,7 +135,7 @@ exit 0
 
 def test_source_validation_rejects_mixed_exploit_artifacts(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
+    _write_task_metadata(task_dir, _base_metadata(attacker_model="malicious_app"))
     _write_executable(
         task_dir / "exploit_files" / "exploit.sh", "#!/usr/bin/env bash\nexit 0\n"
     )
@@ -160,7 +160,7 @@ def test_source_validation_rejects_legacy_attack_model_field(
     tmp_path: Path,
 ) -> None:
     task_dir = tmp_path / "task"
-    metadata = _base_metadata(attack_model="malicious_app")
+    metadata = _base_metadata(attacker_model="malicious_app")
     metadata["attack_model"] = metadata.pop("attacker_model")
     _write_task_metadata(task_dir, metadata)
     _write(
@@ -184,7 +184,7 @@ def test_source_validation_rejects_missing_attacker_model(
     tmp_path: Path,
 ) -> None:
     task_dir = tmp_path / "task"
-    metadata = _base_metadata(attack_model="malicious_app")
+    metadata = _base_metadata(attacker_model="malicious_app")
     del metadata["attacker_model"]
     _write_task_metadata(task_dir, metadata)
     _write(
@@ -208,7 +208,7 @@ def test_source_validation_rejects_apk_task_without_java_sources(
     tmp_path: Path,
 ) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
+    _write_task_metadata(task_dir, _base_metadata(attacker_model="malicious_app"))
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
         "<manifest/>\n",
@@ -226,7 +226,7 @@ def test_source_validation_rejects_apk_task_without_java_sources(
 
 def test_source_validation_rejects_legacy_attacker_app_dir(tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
+    _write_task_metadata(task_dir, _base_metadata(attacker_model="malicious_app"))
     _write(
         task_dir / "exploit_files" / "attacker_app" / "AndroidManifest.xml",
         "<manifest/>\n",
@@ -291,7 +291,7 @@ def test_task_validation_set_context_clears_state_on_invalid_args() -> None:
         "\n".join(
             [
                 'source "$ROOT_DIR/scripts/task_validation_common.sh"',
-                'TASK_VALIDATION_ATTACK_MODEL="sentinel"',
+                'TASK_VALIDATION_ATTACKER_MODEL="sentinel"',
                 'TASK_VALIDATION_FIX_PATCH="/tmp/original.patch"',
                 'TASK_VALIDATION_WORKSPACE_DIR="/tmp/original-workspace"',
                 'TASK_VALIDATION_OUTPUT_MODE="flat"',
@@ -302,8 +302,8 @@ def test_task_validation_set_context_clears_state_on_invalid_args() -> None:
                     '"demo_task" "deadbeef" "/tmp/bad-shift.patch" "" "flat" "true"'
                 ),
                 "status=$?",
-                'printf "status=%s\\nattack_model=%s\\nfix_patch=%s\\nworkspace=%s\\noutput_mode=%s\\nreset=%s\\n" '
-                '"$status" "$TASK_VALIDATION_ATTACK_MODEL" "$TASK_VALIDATION_FIX_PATCH" '
+                'printf "status=%s\\nattacker_model=%s\\nfix_patch=%s\\nworkspace=%s\\noutput_mode=%s\\nreset=%s\\n" '
+                '"$status" "$TASK_VALIDATION_ATTACKER_MODEL" "$TASK_VALIDATION_FIX_PATCH" '
                 '"$TASK_VALIDATION_WORKSPACE_DIR" "$TASK_VALIDATION_OUTPUT_MODE" "$TASK_VALIDATION_RESET_FLAT_OUTPUT"',
             ]
         )
@@ -311,7 +311,7 @@ def test_task_validation_set_context_clears_state_on_invalid_args() -> None:
 
     assert result.returncode == 0, result.stderr or result.stdout
     assert "status=1" in result.stdout
-    assert "attack_model=" in result.stdout
+    assert "attacker_model=" in result.stdout
     assert "fix_patch=" in result.stdout
     assert "workspace=" in result.stdout
     assert "output_mode=per_phase" in result.stdout
@@ -361,7 +361,7 @@ def test_zero_day_validation_passes_explicit_hardened_output_for_local_task(
         app_dir / "metadata.json",
         json.dumps({"package_name": "com.example.target"}) + "\n",
     )
-    _write_task_metadata(task_dir, _base_metadata(attack_model="malicious_app"))
+    _write_task_metadata(task_dir, _base_metadata(attacker_model="malicious_app"))
     _write(
         task_dir / "exploit_files" / "exploit_apk" / "AndroidManifest.xml",
         "<manifest/>\n",
@@ -401,7 +401,7 @@ def test_zero_day_validation_passes_explicit_hardened_output_for_local_task(
 
 
 def _make_phase_fixture(
-    tmp_path: Path, attack_model: str
+    tmp_path: Path, attacker_model: str
 ) -> tuple[Path, Path, Path, Path, Path]:
     app_dir = tmp_path / "app"
     task_dir = tmp_path / "task"
@@ -432,7 +432,7 @@ def _make_phase_fixture(
 
     _write(
         task_dir / "metadata.json",
-        json.dumps(_base_metadata(attack_model=attack_model)) + "\n",
+        json.dumps(_base_metadata(attacker_model=attacker_model)) + "\n",
     )
     _write(task_dir / "fix.patch", "diff --git a/TODO b/TODO\n")
     _write_executable(
@@ -444,7 +444,7 @@ def _make_phase_fixture(
         "#!/usr/bin/env bash\n" 'echo "verify" >> "$ORDER_LOG"\n' "exit 0\n",
     )
 
-    if attack_model == "remote_attacker":
+    if attacker_model == "remote_attacker":
         _write_executable(
             task_dir / "exploit_files" / "exploit.sh", "#!/usr/bin/env bash\nexit 0\n"
         )
@@ -496,7 +496,7 @@ def _phase_script(
     logs_dir: Path,
     artifacts_dir: Path,
     workspace_dir: Path,
-    attack_model: str,
+    attacker_model: str,
 ) -> str:
     return "\n".join(
         [
@@ -507,7 +507,7 @@ def _phase_script(
                 "task_validation_set_context "
                 f'"$ROOT_DIR" "{app_dir}" "{task_dir}" "{output_dir}" '
                 f'"{logs_dir}" "{artifacts_dir}" "com.example.target" '
-                f'"demo_task" "deadbeef" "{attack_model}" "{task_dir / "fix.patch"}" '
+                f'"demo_task" "deadbeef" "{attacker_model}" "{task_dir / "fix.patch"}" '
                 f'"{workspace_dir}" "per_phase" "false"'
             ),
             'task_validation_run_phase "Vulnerable build" "vulnerable" "" "true"',

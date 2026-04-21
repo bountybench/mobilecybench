@@ -107,7 +107,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
     For redteam: uses task/exploit_files/ from zerodays submodule.
     For exploit: uses synthetic_vulnerabilities/{vuln_id}/exploit_files/.
     """
-    attack_model = workflow.config.attack_model
+    attacker_model = workflow.config.attacker_model
 
     if workflow.config.workflow == "redteam":
         # Task dir is source of truth for gold exploit files
@@ -135,10 +135,10 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
         raise RuntimeError("Kali container not running — cannot copy exploit files")
 
     # Validate exploit layout per attack model.
-    if attack_model == "malicious_app":
+    if attacker_model == "malicious_app":
         if not (gold_dir / "exploit_apk").exists():
             raise FileNotFoundError(f"exploit_apk/ not found in {gold_dir}")
-    elif attack_model == "auth_attacker":
+    elif attacker_model == "remote_attacker":
         if not (gold_dir / "exploit.sh").exists():
             raise FileNotFoundError(f"exploit.sh not found in {gold_dir}")
 
@@ -148,7 +148,7 @@ def _run_gold_exploit(workflow: Workflow, logs_dir: Path) -> dict:
         # Flatten task/exploit_files/ → agent_exploit/ in the container
         tar.add(str(gold_dir), arcname="agent_exploit", recursive=True)
         # Inject build script from template (single source of truth).
-        if attack_model == "malicious_app":
+        if attacker_model == "malicious_app":
             build_script = (
                 Path(__file__).resolve().parent
                 / "templates"
@@ -250,10 +250,10 @@ def _log_experiment_config(
         }
 
     logger.info(
-        "Run config: app=%s workflow=%s attack_model=%s",
+        "Run config: app=%s workflow=%s attacker_model=%s",
         app_name,
         config.workflow,
-        config.attack_model,
+        config.attacker_model,
     )
     logger.info(
         "Runner settings: gold_run=%s task=%s dry_run=%s model=%s iterations=%s",
@@ -325,7 +325,7 @@ def run(
     try:
         # task/metadata.json is the source of truth for attacker_model.
         # Override config before creating the workflow so the correct ops class
-        # (MaliciousAppOps vs AuthAttackerOps) is selected.
+        # (MaliciousAppOps vs RemoteAttackerOps) is selected.
         if config.task:
             task_meta_path = (
                 project_root
@@ -349,19 +349,13 @@ def run(
                     f"attacker_model={'missing' if task_attacker_model is None else repr(task_attacker_model)} "
                     f"in {task_meta_path} (must be one of {valid_models})"
                 )
-            task_attack_model = (
-                "auth_attacker"
-                if task_attacker_model == "remote_attacker"
-                else task_attacker_model
-            )
-            if task_attack_model != config.attack_model:
+            if task_attacker_model != config.attacker_model:
                 logger.info(
-                    "Task metadata overrides attack_model: %s -> %s (attacker_model=%s)",
-                    config.attack_model,
-                    task_attack_model,
+                    "Task metadata overrides attacker_model: %s -> %s",
+                    config.attacker_model,
                     task_attacker_model,
                 )
-                config.attack_model = task_attack_model
+                config.attacker_model = task_attacker_model
 
         workflow = create_workflow(config, app_name, project_root)
         workflow_type = type(workflow).__name__

@@ -35,6 +35,26 @@ zero_day_task_read_legacy_attack_model() {
     jq -r '.attack_model // empty' "$metadata_file"
 }
 
+zero_day_task_validate_attack_model_fields() {
+    local metadata_file="$1"
+    local canonical_raw=""
+    local legacy_raw=""
+
+    canonical_raw="$(jq -r '.attack_model // empty' "$metadata_file")"
+    legacy_raw="$(jq -r '.attacker_model // empty' "$metadata_file")"
+
+    if [ -n "$canonical_raw" ] && [ -n "$legacy_raw" ]; then
+        local canonical_norm=""
+        local legacy_norm=""
+        canonical_norm="$(zero_day_task_normalize_attack_model "$canonical_raw")"
+        legacy_norm="$(zero_day_task_normalize_attack_model "$legacy_raw")"
+        if [ "$canonical_norm" != "$legacy_norm" ]; then
+            _task_validation_log ERROR "metadata.json sets conflicting attack_model ($canonical_raw) and attacker_model ($legacy_raw)"
+            return 1
+        fi
+    fi
+}
+
 zero_day_task_validate_apk_project() {
     local task_dir="$1"
     local apk_dir="$task_dir/exploit_files/exploit_apk"
@@ -108,9 +128,9 @@ zero_day_task_validate_source_dir() {
         fi
     done
 
-    local attack_model=""
-    attack_model="$(zero_day_task_read_attacker_model "$task_dir/metadata.json")"
-    if [ -z "$attack_model" ]; then
+    local attacker_model=""
+    attacker_model="$(zero_day_task_read_attacker_model "$task_dir/metadata.json")"
+    if [ -z "$attacker_model" ]; then
         local legacy_attack_model=""
         legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$task_dir/metadata.json")"
         if [ -n "$legacy_attack_model" ]; then
@@ -139,7 +159,7 @@ zero_day_task_validate_source_dir() {
         return 1
     fi
 
-    case "$attack_model" in
+    case "$attacker_model" in
         malicious_app)
             zero_day_task_validate_apk_project "$task_dir" || return 1
             ;;
@@ -150,7 +170,7 @@ zero_day_task_validate_source_dir() {
             fi
             ;;
         *)
-            _task_validation_log ERROR "Unknown attacker_model in metadata.json: $attack_model"
+            _task_validation_log ERROR "Unknown attacker_model in metadata.json: $attacker_model"
             return 1
         ;;
     esac
@@ -176,6 +196,17 @@ zero_day_task_resolve_metadata() {
         legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$ZERO_DAY_TASK_METADATA")"
         if [ -n "$legacy_attack_model" ]; then
             _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or remote_attacker)"
+        else
+            _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or remote_attacker)"
+        fi
+        return 1
+    fi
+
+    if [ -z "$ZERO_DAY_ATTACK_MODEL" ]; then
+        local legacy_attack_model=""
+        legacy_attack_model="$(zero_day_task_read_legacy_attack_model "$ZERO_DAY_TASK_METADATA")"
+        if [ -n "$legacy_attack_model" ]; then
+            _task_validation_log ERROR "metadata.json uses legacy attack_model; use attacker_model (malicious_app or auth_attacker)"
         else
             _task_validation_log ERROR "metadata.json must declare attacker_model (malicious_app or remote_attacker)"
         fi

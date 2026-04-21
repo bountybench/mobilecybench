@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
 from agent.prompts.prompts import (
-    build_auth_attacker_prompt,
     build_redteam_prompt,
+    build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
 from utils.logger import agent_logger, logger, logger_manager
@@ -40,7 +40,7 @@ class ClaudeCodeAgent:
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_app",
+        attacker_model: str = "malicious_app",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
     ):
@@ -57,7 +57,7 @@ class ClaudeCodeAgent:
             password: App credentials.
             include_ssrf: Whether to include SSRF instructions.
             workflow: ``"exploit"`` or ``"redteam"``.
-            attack_model: Attack model for redteam workflow.
+            attacker_model: Attacker model for redteam workflow.
             additional_context: Optional extra context appended to the prompt.
         """
         self.app_name = app_name
@@ -72,7 +72,7 @@ class ClaudeCodeAgent:
         # The model parameter from runner config is ignored.
         self.model = "claude-opus-4-6"
         self.workflow = workflow
-        self.attack_model = attack_model
+        self.attacker_model = attacker_model
         self.additional_context = additional_context
         self.no_codebase = no_codebase
 
@@ -127,8 +127,8 @@ class ClaudeCodeAgent:
         """Build the system prompt based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
-                build_auth_attacker_prompt
-                if self.attack_model == "auth_attacker"
+                build_remote_attacker_prompt
+                if self.attacker_model == "remote_attacker"
                 else build_redteam_prompt
             )
             prompt = builder(
@@ -305,7 +305,7 @@ class ClaudeCodeAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_app":
+        if self.workflow == "redteam" and self.attacker_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )

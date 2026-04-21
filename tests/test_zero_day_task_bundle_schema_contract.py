@@ -35,7 +35,7 @@ def test_rejects_legacy_attack_model_field():
         validate(instance=metadata, schema=SCHEMA)
 
 
-def test_rejects_legacy_malicious_apk_value():
+def test_rejects_malicious_apk_value():
     metadata = {**BASE_METADATA, "attacker_model": "malicious_apk"}
     with pytest.raises(ValidationError):
         validate(instance=metadata, schema=SCHEMA)
