@@ -262,27 +262,36 @@ def run(
 
     try:
         # Replay carries metadata from the source run_summary.json.
-        # task/metadata.json remains the single source of truth for
-        # attacker_model; we reconcile against the saved artifact to
-        # catch stale replays. (Gold is resolved later, after this.)
+        # For redteam, task/metadata.json remains the single source of truth
+        # for attacker_model and we reconcile against the saved artifact to
+        # catch stale replays. For exploit, synthetic_vuln_id flows through.
+        # (Gold is resolved later, after this.)
         replay = exploit_source
         updates: dict = {}
         if replay:
             logger.info(
-                "Replay source: %s (app=%s, task=%s, attacker_model=%s)",
+                "Replay source: %s (app=%s, workflow=%s, task=%s, vuln_id=%s, attacker_model=%s)",
                 replay.source_dir,
                 replay.app_name,
+                replay.workflow,
                 replay.task,
+                replay.synthetic_vuln_id,
                 replay.attacker_model,
             )
-            updates["task"] = replay.task
+            if replay.workflow and replay.workflow != config.workflow:
+                updates["workflow"] = replay.workflow
+            if replay.task:
+                updates["task"] = replay.task
+            if replay.synthetic_vuln_id:
+                updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
 
+        effective_workflow = updates.get("workflow") or config.workflow
         task = updates.get("task") or config.task
-        if task:
+        if effective_workflow == "redteam" and task:
             task_attacker_model = _load_task_attacker_model(
                 project_root, app_name, task
             )
-            if replay and task_attacker_model != replay.attacker_model:
+            if replay and replay.attacker_model and task_attacker_model != replay.attacker_model:
                 raise ValueError(
                     f"Replay artifact was built for attacker_model="
                     f"{replay.attacker_model!r}, but task {task!r} now "
@@ -327,18 +336,19 @@ def run(
         # Log structured experiment configuration for observability
         _log_experiment_config(config, app_name, workflow)
 
+        logger.info("Setting up runtime environment...")
+        workflow.setup_runtime_environment()
+        logger.info("Runtime environment ready")
+
         if exploit_source:
             staged = stage_exploit_source(
                 exploit_source,
+                workflow,
                 logs_dir=logger_manager.get_logs_dir(),
                 project_root=project_root,
                 is_apk_exploit=is_apk_exploit,
             )
             logger.info("Staged %s exploit into %s", exploit_source.kind, staged)
-
-        logger.info("Setting up runtime environment...")
-        workflow.setup_runtime_environment()
-        logger.info("Runtime environment ready")
 
         if config.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
@@ -514,7 +524,7 @@ def main():
     get_logger_manager(config=config.model_dump())
 
     exploit_source: Optional[ExploitSource] = None
-    app_name = args.app_name
+    app_name: Optional[str] = args.app_name
     if config.replay_run:
         try:
             exploit_source = resolve_replay_source(config.replay_run, project_root)
@@ -524,6 +534,7 @@ def main():
             logger_manager.print_error_summary()
             return 1
 
+    assert app_name is not None
     exit_code = run(
         config,
         app_name,

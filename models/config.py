@@ -103,8 +103,6 @@ class RunnerConfig(BaseModel):
         enabled_modes = [self.dry_run, self.gold_run, replay_enabled]
         if sum(bool(flag) for flag in enabled_modes) > 1:
             raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
-        if replay_enabled and self.workflow != "redteam":
-            raise ValueError("replay_run currently requires workflow='redteam'")
         return self
 
     @field_validator("allowed_tools", mode="after")

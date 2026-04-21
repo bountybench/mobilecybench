@@ -381,12 +381,6 @@ class RedTeamWorkflow(Workflow):
             build_command_timeout=self.config.build_command_timeout,
         )
 
-        # Gold/replay reuse a prestaged exploit; no agent runs, so skip the
-        # kali/agent container. Phase replays use a fresh container via
-        # run_exploit_container.sh and do not touch self.agent_env.
-        if self.config.gold_run or self.config.replay_run:
-            return
-
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
