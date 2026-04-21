@@ -261,14 +261,12 @@ def run(
     exit_code = 1
 
     try:
-        # Replay carries metadata from the source run_summary.json.
-        # For redteam, task/metadata.json remains the single source of truth
-        # for attacker_model and we reconcile against the saved artifact to
-        # catch stale replays. For exploit, synthetic_vuln_id flows through.
+        # Replay trusts the saved artifact's run_summary.json.
+        # Non-replay redteam trusts task/metadata.json.
         # (Gold is resolved later, after this.)
-        replay = exploit_source
         updates: dict = {}
-        if replay:
+        if exploit_source:
+            replay = exploit_source
             logger.info(
                 "Replay source: %s (app=%s, workflow=%s, task=%s, vuln_id=%s, attacker_model=%s)",
                 replay.source_dir,
@@ -284,19 +282,12 @@ def run(
                 updates["task"] = replay.task
             if replay.synthetic_vuln_id:
                 updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
-
-        effective_workflow = updates.get("workflow") or config.workflow
-        task = updates.get("task") or config.task
-        if effective_workflow == "redteam" and task:
+            if replay.attacker_model:
+                updates["attacker_model"] = replay.attacker_model
+        elif config.workflow == "redteam" and config.task:
             task_attacker_model = _load_task_attacker_model(
-                project_root, app_name, task
+                project_root, app_name, config.task
             )
-            if replay and replay.attacker_model and task_attacker_model != replay.attacker_model:
-                raise ValueError(
-                    f"Replay artifact was built for attacker_model="
-                    f"{replay.attacker_model!r}, but task {task!r} now "
-                    f"declares attacker_model={task_attacker_model!r}."
-                )
             if task_attacker_model != config.attacker_model:
                 logger.info(
                     "Task metadata overrides attacker_model: %s -> %s",
