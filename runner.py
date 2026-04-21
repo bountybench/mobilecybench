@@ -279,7 +279,9 @@ def run(
 
         task = updates.get("task") or config.task
         if task:
-            task_attacker_model = _load_task_attacker_model(project_root, app_name, task)
+            task_attacker_model = _load_task_attacker_model(
+                project_root, app_name, task
+            )
             if replay and task_attacker_model != replay.attacker_model:
                 raise ValueError(
                     f"Replay artifact was built for attacker_model="
