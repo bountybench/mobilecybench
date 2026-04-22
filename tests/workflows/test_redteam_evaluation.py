@@ -465,3 +465,80 @@ class TestRemoteAttackerPhaseSequence:
             )
             assert result.exit_code == 2
             assert result.evidence_log_path is None
+
+
+# ---------------------------------------------------------------------------
+# setup_runtime_environment wires bundle phase-1 state for live-agent runs
+# ---------------------------------------------------------------------------
+
+
+class TestSetupRuntimeEnvironmentLiveAgentWiring:
+    """The agent must see Phase 1 state, not the clean baseline.
+
+    Regression guard for the synthetic-redteam case: without this, the agent
+    analyzes the clean codebase and an APK that doesn't match what Phase 1
+    installs, producing exploits against the wrong target state.
+    """
+
+    def test_installs_bundle_phase1_apk(self, redteam_config, tmp_path):
+        """install_app_and_setup_backend gets bundle.phase1_apk()."""
+        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
+        phase1 = wf._bundle.phase1_apk()
+
+        captured = {}
+
+        def fake_install(app_dir, emulator, project_root, **kwargs):
+            captured["apk_path"] = kwargs.get("apk_path")
+
+        with (
+            patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
+            patch.object(RedTeamWorkflow, "setup_apks"),
+            patch.object(type(wf._bundle), "validate_build_artifacts"),
+            patch("utils.emulator_certs.inject_system_ca"),
+            patch(
+                "utils.setup_utils.install_app_and_setup_backend",
+                side_effect=fake_install,
+            ),
+            patch(
+                "agent.agent_container.setup_agent_environment",
+                return_value=MagicMock(),
+            ),
+            patch("utils.setup_utils.check_connectivity"),
+            patch.object(MaliciousAppOps, "setup_agent_extras"),
+        ):
+            wf.setup_runtime_environment()
+
+        assert captured["apk_path"] == phase1
+
+    def test_forwards_bundle_prepare_phase1_as_post_checkout_hook(
+        self, redteam_config, tmp_path
+    ):
+        """setup_agent_environment receives bundle.prepare_phase1_codebase."""
+        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
+
+        captured = {}
+
+        def fake_setup_agent(**kwargs):
+            captured["post_checkout_hook"] = kwargs.get("post_checkout_hook")
+            return MagicMock()
+
+        with (
+            patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
+            patch.object(RedTeamWorkflow, "setup_apks"),
+            patch.object(type(wf._bundle), "validate_build_artifacts"),
+            patch("utils.emulator_certs.inject_system_ca"),
+            patch("utils.setup_utils.install_app_and_setup_backend"),
+            patch(
+                "agent.agent_container.setup_agent_environment",
+                side_effect=fake_setup_agent,
+            ),
+            patch("utils.setup_utils.check_connectivity"),
+            patch.object(MaliciousAppOps, "setup_agent_extras"),
+        ):
+            wf.setup_runtime_environment()
+
+        # For zeroday (test's redteam_config uses task="report-0"),
+        # prepare_phase1_codebase is a no-op git-restore. Assertion checks
+        # that the hook is the bundle's bound method, not None or something
+        # else.
+        assert captured["post_checkout_hook"] == wf._bundle.prepare_phase1_codebase

@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import tarfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import docker
 import docker.errors
@@ -44,6 +44,7 @@ class AgentEnvironment:
         vuln_id: Optional[str] = None,
         include_git_history: bool = True,
         no_codebase: bool = False,
+        post_checkout_hook: Optional[Callable[[Path], None]] = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -57,6 +58,11 @@ class AgentEnvironment:
         self.vuln_id = vuln_id
         self.include_git_history = include_git_history
         self.no_codebase = no_codebase
+        # Optional callback invoked inside _setup_agent_codebase AFTER the
+        # git_checkout(commit_id) and BEFORE the copy to agent_codebase/.
+        # Redteam+synthetic uses this to apply vulnerability.patch so the
+        # agent sees the Phase 1 target source instead of the clean baseline.
+        self.post_checkout_hook = post_checkout_hook
 
         import traceback
 
@@ -393,6 +399,13 @@ class AgentEnvironment:
             # Checkout to commit_id in original_codebase
             logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
             git_checkout(original_codebase, self.commit_id, force=True)
+
+            # Let the workflow layer apply any phase-1 mods (e.g. synthetic's
+            # vulnerability.patch) BEFORE the snapshot so the agent sees the
+            # same source as the Phase 1 target APK.
+            if self.post_checkout_hook is not None:
+                logger.info("Running post_checkout_hook on %s", original_codebase)
+                self.post_checkout_hook(original_codebase)
 
             # Copy original_codebase to staging directory with git history
             logger.info(f"Copying {original_codebase} to {staging_dir}")
@@ -888,6 +901,7 @@ def setup_agent_environment(
     vuln_id: Optional[str] = None,
     agent_mode: str = "custom",
     no_codebase: bool = False,
+    post_checkout_hook: Optional[Callable[[Path], None]] = None,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -958,6 +972,7 @@ def setup_agent_environment(
         vuln_id=vuln_id if workflow == "exploit" else None,
         include_git_history=(workflow != "exploit"),
         no_codebase=no_codebase,
+        post_checkout_hook=post_checkout_hook,
     )
 
     agent_env.setup()

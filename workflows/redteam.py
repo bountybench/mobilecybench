@@ -352,14 +352,22 @@ class RedTeamWorkflow(Workflow):
 
         inject_system_ca(self.project_root)
 
+        # Install the Phase 1 APK (vulnerable build) so the agent's runtime
+        # observations match the source tree it analyzes.
         install_app_and_setup_backend(
             self.app_dir,
             self.emulator,
             self.project_root,
+            apk_path=self._bundle.phase1_apk(),
             inject_flags=False,
             build_command_timeout=self.config.build_command_timeout,
         )
 
+        # For synthetic bundles the patch is applied on top of the checked-out
+        # baseline commit INSIDE _setup_agent_codebase so the snapshot the
+        # agent gets matches the Phase 1 target. For zeroday the hook is a
+        # no-op (baseline is already vulnerable). evaluate() will re-apply
+        # this later against apps/<app>/codebase for the replay codebase-dir.
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
@@ -367,6 +375,7 @@ class RedTeamWorkflow(Workflow):
             workflow=self.config.workflow,
             agent_mode=self.config.agent_mode,
             no_codebase=self.config.no_codebase,
+            post_checkout_hook=self._bundle.prepare_phase1_codebase,
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
