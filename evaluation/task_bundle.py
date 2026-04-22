@@ -32,6 +32,14 @@ class TaskBundle(Protocol):
     def task_dir(self) -> Path: ...
     @property
     def exploit_dir(self) -> Path: ...
+    @property
+    def patch(self) -> Path:
+        """Bundle-specific patch file.
+
+        Synthetic: vulnerability.patch (turns clean → vulnerable).
+        Zeroday:   fix.patch (turns vulnerable → patched).
+        """
+        ...
 
     def phase1_apk(self) -> Path: ...
     def phase2_apk(self) -> Path: ...
@@ -81,7 +89,7 @@ class SyntheticBundle:
         return self.task_dir / "exploit_files"
 
     @property
-    def _patch(self) -> Path:
+    def patch(self) -> Path:
         return self.task_dir / "vulnerability.patch"
 
     def phase1_apk(self) -> Path:
@@ -95,7 +103,7 @@ class SyntheticBundle:
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
         """Clean → vulnerable: apply the synthetic patch."""
         _git_restore(codebase_dir)
-        _git_apply(codebase_dir, self._patch)
+        _git_apply(codebase_dir, self.patch)
 
     def prepare_phase2_codebase(self, codebase_dir: Path) -> None:
         """Vulnerable → clean: revert to HEAD."""
@@ -136,7 +144,7 @@ class ZerodayBundle:
         return self.task_dir / "exploit_files"
 
     @property
-    def _patch(self) -> Path:
+    def patch(self) -> Path:
         return self.task_dir / "fix.patch"
 
     @property
@@ -158,13 +166,13 @@ class ZerodayBundle:
     def prepare_phase2_codebase(self, codebase_dir: Path) -> None:
         """Vulnerable → patched: apply fix.patch."""
         _git_restore(codebase_dir)
-        _git_apply(codebase_dir, self._patch)
+        _git_apply(codebase_dir, self.patch)
 
     def build_apks(self, app_name: str, project_root: Path, *, timeout: int) -> None:
         _run_build(project_root, [app_name], timeout)
         _run_build(
             project_root,
-            [app_name, "--hardened-patch", str(self._patch)],
+            [app_name, "--hardened-patch", str(self.patch)],
             timeout,
         )
 

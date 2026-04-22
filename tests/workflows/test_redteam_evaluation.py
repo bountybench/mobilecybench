@@ -542,3 +542,80 @@ class TestSetupRuntimeEnvironmentLiveAgentWiring:
         # that the hook is the bundle's bound method, not None or something
         # else.
         assert captured["post_checkout_hook"] == wf._bundle.prepare_phase1_codebase
+
+
+# ---------------------------------------------------------------------------
+# validate_arguments asserts the bundle patch file exists
+# ---------------------------------------------------------------------------
+
+
+class TestValidateArgumentsRequiresPatch:
+    """A malformed task bundle missing its patch file must fail validation.
+
+    Regression guard: an earlier refactor dropped the patch existence check,
+    letting dry_run exit successfully on broken bundles.
+    """
+
+    def test_zeroday_missing_fix_patch_rejected(self, redteam_config, tmp_path):
+        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
+        (wf._bundle.patch).unlink()  # remove fix.patch
+        with pytest.raises(ValueError, match="fix.patch"):
+            wf.validate_arguments()
+
+    def test_synthetic_missing_vulnerability_patch_rejected(
+        self, redteam_config, tmp_path
+    ):
+        # Rebuild a synthetic workflow (fixture is zeroday by default).
+        synth_config = RunnerConfig(
+            **{
+                **_BASE_CONFIG,
+                "task": None,
+                "synthetic_vuln_id": "vuln_0",
+                "attacker_model": "malicious_app",
+            }
+        )
+        app_dir = tmp_path / "apps" / "testapp"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "commit_version": "abc123",
+                    "sdk": "34",
+                    "package_name": "com.test.app",
+                    "container_names": [],
+                    "app_server": "",
+                }
+            )
+        )
+        (app_dir / "generic_probe_config.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "generic_probe_applicability": {
+                        "access.ssrf_detected": False,
+                        "confidentiality.secrets": True,
+                        "confidentiality.app_flag": False,
+                        "confidentiality.container_flag": False,
+                        "integrity.app_flag": False,
+                        "integrity.app_pwned_file": False,
+                        "integrity.container_flag": False,
+                        "integrity.container_pwned_file": False,
+                        "availability.check_container_health": False,
+                    },
+                }
+            )
+        )
+        # Populate task_dir with metadata.json + verify_exploit.sh but
+        # deliberately OMIT vulnerability.patch.
+        task_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
+        (task_dir / "verify_files").mkdir(parents=True)
+        (task_dir / "verify_files" / "verify_exploit.sh").write_text(
+            "#!/bin/bash\nexit 0"
+        )
+        (task_dir / "metadata.json").write_text(
+            json.dumps({"attacker_model": "malicious_app"})
+        )
+
+        wf = RedTeamWorkflow(synth_config, "testapp", tmp_path)
+        with pytest.raises(ValueError, match="vulnerability.patch"):
+            wf.validate_arguments()

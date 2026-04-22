@@ -285,13 +285,10 @@ class RedTeamWorkflow(Workflow):
 
         task_metadata_path = self._bundle.task_dir / "metadata.json"
         required_files = [
+            self._bundle.patch,
             self._bundle.task_dir / "verify_files" / "verify_exploit.sh",
             task_metadata_path,
         ]
-        # Synthetic: vulnerability.patch. Zeroday: fix.patch. Both live at
-        # task_dir-level but under different names — check the bundle-specific
-        # patch via validate_build_artifacts would be overkill here, so we
-        # exercise the existence check in build/phase-prep code paths.
         for required in required_files:
             if not required.exists():
                 raise ValueError(f"Task file not found: {required}")

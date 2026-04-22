@@ -134,10 +134,10 @@ def tmp_git_repo(tmp_path):
 def test_synthetic_phase1_applies_patch(tmp_git_repo, monkeypatch):
     repo, patch = tmp_git_repo
     # SyntheticBundle looks for vulnerability.patch inside task_dir.
-    # Redirect _patch to our fixture patch.
+    # Redirect patch to our fixture patch.
     bundle = SyntheticBundle(app_dir=repo, vuln_id="v")
     monkeypatch.setattr(
-        SyntheticBundle, "_patch", property(lambda _: patch), raising=True
+        SyntheticBundle, "patch", property(lambda _: patch), raising=True
     )
 
     bundle.prepare_phase1_codebase(repo)
@@ -148,7 +148,7 @@ def test_synthetic_phase2_reverts_patch(tmp_git_repo, monkeypatch):
     repo, patch = tmp_git_repo
     bundle = SyntheticBundle(app_dir=repo, vuln_id="v")
     monkeypatch.setattr(
-        SyntheticBundle, "_patch", property(lambda _: patch), raising=True
+        SyntheticBundle, "patch", property(lambda _: patch), raising=True
     )
     bundle.prepare_phase1_codebase(repo)
     assert (repo / "hello.txt").read_text() == "vulnerable\n"
@@ -161,7 +161,7 @@ def test_zeroday_phase1_leaves_codebase_clean(tmp_git_repo, monkeypatch):
     repo, patch = tmp_git_repo
     bundle = ZerodayBundle(project_root=repo, app_name="x", task="t")
     monkeypatch.setattr(
-        ZerodayBundle, "_patch", property(lambda _: patch), raising=True
+        ZerodayBundle, "patch", property(lambda _: patch), raising=True
     )
     # Dirty the tree; prepare_phase1 should restore it.
     (repo / "hello.txt").write_text("dirty\n")
@@ -173,7 +173,7 @@ def test_zeroday_phase2_applies_patch(tmp_git_repo, monkeypatch):
     repo, patch = tmp_git_repo
     bundle = ZerodayBundle(project_root=repo, app_name="x", task="t")
     monkeypatch.setattr(
-        ZerodayBundle, "_patch", property(lambda _: patch), raising=True
+        ZerodayBundle, "patch", property(lambda _: patch), raising=True
     )
     bundle.prepare_phase2_codebase(repo)
     assert (repo / "hello.txt").read_text() == "vulnerable\n"
