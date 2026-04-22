@@ -39,6 +39,7 @@ class RunnerConfig(BaseModel):
     screenshot_mode: bool
     dry_run: bool
     gold_run: bool = False
+    replay_run: Optional[str] = None
     emulator_backend: Literal["native", "container"] = "native"
     emulator_display: Literal["headed", "headless"] = "headed"
 
@@ -60,7 +61,9 @@ class RunnerConfig(BaseModel):
     agent_timeout: int = Field(default=1800, gt=0)
 
     @classmethod
-    def from_file(cls, config_path: Path) -> "RunnerConfig":
+    def from_file(
+        cls, config_path: Path, overrides: Optional[dict] = None
+    ) -> "RunnerConfig":
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Runner configuration file not found: {config_path}"
@@ -72,6 +75,9 @@ class RunnerConfig(BaseModel):
             raise ValueError(f"Invalid JSON in config file: {e}")
         except Exception as e:
             raise ValueError(f"Unexpected error reading config file: {e}")
+
+        if overrides:
+            c_dict.update({k: v for k, v in overrides.items() if v is not None})
 
         return cls(**c_dict)
 
@@ -85,17 +91,18 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_task(self) -> "RunnerConfig":
-        if self.workflow == "redteam" and not self.task:
-            raise ValueError("task is required when workflow='redteam'")
+        if self.workflow == "redteam" and not self.task and not self.replay_run:
+            raise ValueError(
+                "task is required when workflow='redteam' unless replay_run is set"
+            )
         return self
 
     @model_validator(mode="after")
-    def validate_gold_run(self) -> "RunnerConfig":
-        if self.gold_run and self.dry_run:
-            raise ValueError(
-                "gold_run and dry_run cannot both be True — "
-                "gold_run executes exploit files and requires real evaluation"
-            )
+    def validate_mode_flags(self) -> "RunnerConfig":
+        replay_enabled = bool(self.replay_run)
+        enabled_modes = [self.dry_run, self.gold_run, replay_enabled]
+        if sum(bool(flag) for flag in enabled_modes) > 1:
+            raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
         return self
 
     @field_validator("allowed_tools", mode="after")
