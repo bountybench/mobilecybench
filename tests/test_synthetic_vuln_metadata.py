@@ -13,6 +13,7 @@ SCHEMA_PATH = os.path.join(
 
 REQUIRED_FIELDS = {
     "title": "Short name for the vulnerability (e.g. XMPP Carbon Copy Impersonation)",
+    "attacker_model": "Attacker-model selector: 'malicious_app' or 'remote_attacker'",
     "cwe_id": "CWE identifier matching the historic CVE (e.g. CWE-290)",
     "cwe_name": "Human-readable CWE name (e.g. Authentication Bypass by Spoofing)",
     "historic_cve": "Real CVE the synthetic is modeled after (e.g. CVE-2025-27916)",
