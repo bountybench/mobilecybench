@@ -350,7 +350,8 @@ class TestPatchRestoration:
         checkout_calls = [
             c for c in subprocess_calls if c == ["git", "checkout", "--", "."]
         ]
-        assert len(checkout_calls) == 2
+        # TaskBundle hooks: prepare_phase1 (1), prepare_phase2 (2), finally (3).
+        assert len(checkout_calls) == 3
 
 
 # ---------------------------------------------------------------------------
