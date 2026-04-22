@@ -396,7 +396,7 @@ def test_zero_day_validation_passes_explicit_hardened_output_for_local_task(
     ]
     secure_build = next(line for line in lines if line.startswith("build:"))
     assert "--output" in secure_build
-    assert str(task_dir.parent / "artifacts" / "hardened_apk") in secure_build
+    assert str(task_dir.parent / "artifacts" / "demo_task" / "hardened_apk") in secure_build
     assert "--hardened-patch" in secure_build
 
 
