@@ -36,6 +36,8 @@ _BASE_CONFIG = dict(
     emulator_display="headed",
     workflow="redteam",
     task="report-0",
+    synthetic_vuln_id=None,
+    attacker_model="malicious_app",
 )
 
 
@@ -46,7 +48,7 @@ def redteam_config():
 
 @pytest.fixture
 def remote_attacker_config():
-    return RunnerConfig(**_BASE_CONFIG, attacker_model="remote_attacker")
+    return RunnerConfig(**{**_BASE_CONFIG, "attacker_model": "remote_attacker"})
 
 
 # ---------------------------------------------------------------------------

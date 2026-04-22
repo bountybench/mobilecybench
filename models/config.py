@@ -18,9 +18,15 @@ class RunnerConfig(BaseModel):
 
     # workflow type
     workflow: Literal["exploit", "redteam"] = "exploit"
-    attacker_model: Literal["malicious_app", "remote_attacker"] = "malicious_app"
-    synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
-    # Task selector for redteam workflow. Points at a single vuln under
+    # attacker_model is authoritative in task metadata. At runtime, runner.py
+    # reads it from the task bundle and overrides this field. A config-level
+    # value is only a dev/debug hint; runtime always defers to metadata.
+    attacker_model: Optional[Literal["malicious_app", "remote_attacker"]] = None
+    # Synthetic-vuln selector (for exploit mode, or for redteam+synthetic).
+    # Points at apps/<app>/synthetic_vulnerabilities/<vuln_id>/.
+    # No default — configs must declare intent explicitly.
+    synthetic_vuln_id: Optional[str] = None
+    # Zero-day task selector for redteam mode. Points at
     # zerodays/reports/<app>/<task>/task/ (e.g. task="report-1").
     task: Optional[str] = None
     # When True, the agent receives only the APK (no codebase).
@@ -83,7 +89,11 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_attacker_model(self) -> "RunnerConfig":
-        if self.attacker_model != "malicious_app" and self.workflow != "redteam":
+        if (
+            self.attacker_model is not None
+            and self.attacker_model != "malicious_app"
+            and self.workflow != "redteam"
+        ):
             raise ValueError(
                 f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
             )
@@ -91,10 +101,28 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_task(self) -> "RunnerConfig":
-        if self.workflow == "redteam" and not self.task and not self.replay_run:
-            raise ValueError(
-                "task is required when workflow='redteam' unless replay_run is set"
-            )
+        """Workflow-specific task selector validation.
+
+        - exploit: requires synthetic_vuln_id.
+        - redteam: requires exactly one of task (zeroday) or synthetic_vuln_id
+          (synthetic). replay_run bypasses validation.
+        """
+        if self.replay_run:
+            return self
+        if self.workflow == "exploit":
+            if not self.synthetic_vuln_id:
+                raise ValueError(
+                    "workflow='exploit' requires synthetic_vuln_id"
+                )
+            return self
+        if self.workflow == "redteam":
+            if bool(self.task) == bool(self.synthetic_vuln_id):
+                raise ValueError(
+                    "workflow='redteam' requires exactly one of task "
+                    "(zeroday) or synthetic_vuln_id (synthetic); "
+                    f"got task={self.task!r}, "
+                    f"synthetic_vuln_id={self.synthetic_vuln_id!r}"
+                )
         return self
 
     @model_validator(mode="after")
