@@ -119,7 +119,7 @@ The runtime copies `task/exploit_files/` into the agent container at `/app/agent
 
 ## Author a task
 
-Task bundles live in the `zerodays` submodule at `zerodays/reports/<app>/<report-id>/task/`. That is the sole location the runner reads tasks from. For private-repo conventions, see [`zerodays/docs/TASK_GUIDELINES.md`](../zerodays/docs/TASK_GUIDELINES.md).
+For the `runner.py` red-team flow, task bundles live in the `zerodays` submodule at `zerodays/reports/<app>/<report-id>/task/`. That is the sole location the runner reads tasks from. In this checkout, the same submodule is available at `zerodays/`. For private-repo conventions, see [`zerodays/docs/TASK_GUIDELINES.md`](../zerodays/docs/TASK_GUIDELINES.md). For zero-day validator and publication behavior, see [`documentation/ZERODAY_TASKS.md`](ZERODAY_TASKS.md).
 
 ### Layout
 

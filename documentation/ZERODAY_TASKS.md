@@ -6,6 +6,15 @@ Zero-day tasks are the real-vulnerability counterpart to
 The shared task-file contract lives in `documentation/TASK.md`. This document
 covers only what is different for zero-day tasks.
 
+Zero-day tasks are benchmark assets. The publication layout is
+`apps/<app>/zero_day_vulnerabilities/<task_id>/`. The validator can run
+directly from that layout or from an external report checkout under
+`<report-dir>/task/`. In both cases the task source stays source-only and the
+validator writes sibling build artifacts outside the task directory itself. The
+validator does not consult upstream disclosure status. Public disclosure timing
+is handled out of band by publication tooling in `mobilecybench-zerodays` and
+does not change the task contract.
+
 ## What is different from synthetic tasks?
 
 | Task type | Vulnerable APK | Secure APK |
@@ -29,7 +38,11 @@ apps/<app>/zero_day_vulnerabilities/<task_id>/
 ```
 
 The same task can also live outside the public app tree under an external
-report checkout as `<report-dir>/task/`.
+report checkout as `<report-dir>/task/`. In that layout, the validator uses the
+sibling `<report-dir>/artifacts/` directory for cached APKs and build
+manifests. In the public-tree layout, the sibling artifact root is
+`apps/<app>/zero_day_vulnerabilities/artifacts/<task_id>/`. The task directory
+itself should remain source-only.
 
 ## `fix.patch`
 
@@ -54,8 +67,15 @@ The validator only reads a small execution-focused subset of fields:
 | `runtime.package_name` | Optional package-name override |
 
 Everything else is optional descriptive metadata. The validator ignores it.
-That keeps the execution contract small while still leaving room for extra
-classification or disclosure fields if a task owner wants them.
+That keeps the execution contract small while still leaving room for extra task
+classification fields if a task owner wants them.
+
+The validator may fall back to app metadata for `runtime.package_name` and
+`baseline.commit` when those fields are absent, for backward compatibility.
+Disclosure or scheduling metadata such as `public_on` belongs in the report or
+publication layer, not in the task bundle.
+`task_id` still has to match the documented safe identifier pattern, even in
+compatibility mode.
 
 **Minimal example:**
 
@@ -115,7 +135,7 @@ timing for each attack model.
 # Secure comparator: same baseline + task-local fix.patch
 ./build_apk.sh home-assistant-android \
   --commit 23766ac \
-  --hardened-patch /path/to/task/fix.patch
+  --hardened-patch /path/to/fix.patch
 ```
 
 ### Validate through local CI

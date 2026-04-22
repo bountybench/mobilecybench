@@ -96,8 +96,8 @@ show_usage() {
     echo "Output naming:"
     echo "  Regular build:    apk/<app_name>.apk"
     echo "  Vuln build:       apk/<basename(vuln_ref)>/<app_name>.apk"
-    echo "  Hardened build:   zerodays/reports/<app>/<report>/artifacts/hardened_apk/<app_name>.apk"
-    echo "                    (for task fix.patch paths)"
+    echo "  Hardened build:   <report-or-snapshot>/artifacts/.../hardened_apk/<app_name>.apk"
+    echo "                    (for task fix.patch paths, or pass --output <dir>)"
 }
 
 # Parse arguments
@@ -607,11 +607,15 @@ main() {
 
         if [ "$OUTPUT_DIR_EXPLICIT" = "1" ]; then
             HARDENED_OUTPUT_PATH="$OUTPUT_DIR/${APP_NAME}.apk"
-        elif [[ "$HARDENED_PATCH_PATH" =~ (.*/reports/${APP_NAME}/[^/]+)/ ]]; then
+        elif [[ "$HARDENED_PATCH_PATH" =~ (.*/reports/${APP_NAME}/[^/]+)/task/ ]]; then
             HARDENED_OUTPUT_PATH="${BASH_REMATCH[1]}/artifacts/hardened_apk/${APP_NAME}.apk"
+        elif [[ "$HARDENED_PATCH_PATH" =~ (.*/apps/${APP_NAME}/zero_day_vulnerabilities)/([^/]+)/task/ ]]; then
+            HARDENED_OUTPUT_PATH="${BASH_REMATCH[1]}/artifacts/${BASH_REMATCH[2]}/hardened_apk/${APP_NAME}.apk"
+        elif [[ "$HARDENED_PATCH_PATH" =~ (.*/apps/${APP_NAME}/zero_day_vulnerabilities)/([^/]+)/ ]]; then
+            HARDENED_OUTPUT_PATH="${BASH_REMATCH[1]}/artifacts/${BASH_REMATCH[2]}/hardened_apk/${APP_NAME}.apk"
         else
             echo -e "${ERROR} Could not resolve hardened APK output path from patch: $HARDENED_PATCH_PATH"
-            echo -e "${ERROR} Use a task fix.patch under zerodays/reports/<app>/<report>/ or pass --output <dir>"
+            echo -e "${ERROR} Use a task fix.patch under zerodays/reports/<app>/<report>/task/ or apps/<app>/zero_day_vulnerabilities/<task_id>/, or pass --output <dir>"
             exit 1
         fi
 
