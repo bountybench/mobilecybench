@@ -199,14 +199,16 @@ jobs:
                   exit 1
                 fi
 
-                # Use apklink if available, but force source if vulnerability.patch, build.sh, or metadata.json changed
+                # Use apklink if available, but force source if vulnerability.patch,
+                # the per-vuln metadata.json, build.sh, or app-level metadata.json changed.
                 synth_mode="source"
                 if [ "$has_apklink" = true ]; then
                   patch_changed=$(echo "$synth_changes" | grep -q "${vuln_id}/vulnerability.patch" && echo "true" || echo "false")
-                  if [ "$patch_changed" = "false" ] && [ "$source_modified" = "false" ] && [ "$apklink_modified" = "false" ]; then
+                  vuln_metadata_changed=$(echo "$synth_changes" | grep -q "${vuln_id}/metadata.json" && echo "true" || echo "false")
+                  if [ "$patch_changed" = "false" ] && [ "$vuln_metadata_changed" = "false" ] && [ "$source_modified" = "false" ] && [ "$apklink_modified" = "false" ]; then
                     synth_mode="apklink"
                   else
-                    echo "  vulnerability.patch, build.sh, or metadata.json changed — forcing source build for $vuln_id"
+                    echo "  vulnerability.patch, per-vuln metadata.json, build.sh, or app metadata.json changed — forcing source build for $vuln_id"
                   fi
                 fi
 
