@@ -369,12 +369,8 @@ load_vuln_test_settings() {
     case "$VULN_ATTACKER_MODEL" in
         malicious_app|remote_attacker) ;;
         "")
-            # attacker_model is not yet required in metadata.json while existing
-            # synthetic vulnerabilities are migrated one PR at a time. Default
-            # to the currently runnable shape (remote_attacker + exploit.sh) so
-            # un-tagged vulns keep running, and warn so the gap is visible.
-            echo -e "${WARNING} metadata.json missing attacker_model; defaulting to remote_attacker: $VULN_METADATA_FILE"
-            VULN_ATTACKER_MODEL="remote_attacker"
+            echo -e "${ERROR} metadata.json missing attacker_model (expected: malicious_app, remote_attacker): $VULN_METADATA_FILE"
+            return 1
             ;;
         *)
             echo -e "${ERROR} metadata.json attacker_model=\"$VULN_ATTACKER_MODEL\" is invalid (expected: malicious_app, remote_attacker): $VULN_METADATA_FILE"

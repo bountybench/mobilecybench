@@ -92,10 +92,7 @@ def _validate_metadata(metadata_file, schema):
 
         pytest.fail(f"{metadata_file} does not match schema: {ve.message}")
 
-    # attacker_model is optional during the per-vuln migration. When present,
-    # it must be one of the canonical values; when absent, the runtime
-    # defaults to remote_attacker (see run_ci_local.sh::load_vuln_test_settings).
-    if "attacker_model" in data and data["attacker_model"] not in VALID_ATTACKER_MODELS:
+    if data["attacker_model"] not in VALID_ATTACKER_MODELS:
         pytest.fail(
             f"{metadata_file}: attacker_model={data['attacker_model']!r} is not one of "
             f"{sorted(VALID_ATTACKER_MODELS)}"
@@ -129,17 +126,12 @@ def _sample_metadata(**overrides):
     return data
 
 
-def test_synthetic_vuln_schema_allows_omitting_attacker_model():
-    """attacker_model is optional during per-vuln migration.
-
-    Once all existing synthetic vulnerabilities have been tagged (tracked as
-    follow-up PRs), the field should be promoted to required in the schema
-    and this test replaced with one that asserts omission is rejected.
-    """
+def test_synthetic_vuln_schema_rejects_missing_attacker_model():
     schema = _load_schema()
     data = _sample_metadata()
     del data["attacker_model"]
-    validate(instance=data, schema=schema)
+    with pytest.raises(ValidationError):
+        validate(instance=data, schema=schema)
 
 
 def test_synthetic_vuln_schema_rejects_invalid_attacker_model():
@@ -227,9 +219,7 @@ def test_synthetic_vuln_exploit_structure(dirs: list[str]):
     for metadata_file in metadata_files:
         with open(metadata_file, "r") as f:
             data = json.load(f)
-        # Mirror run_ci_local.sh::load_vuln_test_settings: un-tagged vulns
-        # default to remote_attacker during per-vuln migration.
-        attacker_model = data.get("attacker_model") or "remote_attacker"
+        attacker_model = data["attacker_model"]
         vuln_dir = os.path.dirname(metadata_file)
         _validate_exploit_structure(vuln_dir, attacker_model)
 

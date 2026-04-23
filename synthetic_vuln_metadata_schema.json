@@ -71,6 +71,7 @@
   },
   "required": [
     "title",
+    "attacker_model",
     "cwe_id",
     "cwe_name",
     "historic_cve",

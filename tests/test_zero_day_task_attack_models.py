@@ -552,7 +552,7 @@ def test_malicious_app_phase_runs_victim_setup_before_exploit(tmp_path: Path) ->
     )
 
 
-def test_remote_attacker_phase_clears_app_before_victim_setup(tmp_path: Path) -> None:
+def test_remote_attacker_phase_seeds_victim_before_exploit(tmp_path: Path) -> None:
     (
         app_dir,
         task_dir,
@@ -581,11 +581,13 @@ def test_remote_attacker_phase_clears_app_before_victim_setup(tmp_path: Path) ->
     lines = [
         line.strip() for line in order_log.read_text().splitlines() if line.strip()
     ]
-    clear_line = "adb:shell pm clear com.example.target"
+    # Server-side effects are out of scope; the victim is seeded before the
+    # exploit so the verifier observes victim-side effects, and there is no
+    # pm clear between them.
     assert (
         lines.index("prepare_app")
-        < lines.index("exploit_container")
-        < lines.index(clear_line)
         < lines.index("prepare_victim")
+        < lines.index("exploit_container")
         < lines.index("verify")
     )
+    assert "adb:shell pm clear com.example.target" not in lines

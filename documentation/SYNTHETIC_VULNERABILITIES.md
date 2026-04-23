@@ -147,27 +147,24 @@ data.
 | Field | Description |
 |-------|-------------|
 | `title` | Short name for the vulnerability |
+| `attacker_model` | Harness replay model: `malicious_app` or `remote_attacker` — see [Attacker model](#attacker-model) below |
 | `cwe_id` | CWE identifier (must match the historic CVE) |
 | `cwe_name` | Human-readable CWE name |
 | `historic_cve` | The real CVE this synthetic is modeled after. Use `experimental/cve_query.py` to find a match (see [Associating a Real CVE](#associating-a-real-cve)) |
 | `cvss_historic` | CVSS from the historic CVE (`base_score`, `severity`, `vector`) |
 | `cvss_synthetic` | CVSS assessed for the synthetic vulnerability itself. May differ from historic if the synthetic has a different attack profile (e.g. different privileges required) |
 
-**Optional fields:**
-
-| Field | Description |
-|-------|-------------|
-| `attacker_model` | `malicious_app` or `remote_attacker` — see [Attacker model](#attacker-model) below. Optional during the per-vuln migration; will be promoted to required once every existing synth has been tagged. |
-
 ### Attacker model
 
-`attacker_model` declares which of two mutually exclusive threat profiles
-a synthetic vulnerability targets:
+`attacker_model` declares which harness replay model the synthetic
+vulnerability uses. This is the execution contract for local/GitHub CI,
+not the authoritative real-world attacker taxonomy for the scenario.
+The scenario's real-world attacker, when needed, belongs in
+`scenario.json` under `threat_actor`.
 
 - **`remote_attacker`** — the agent represents a remote attacker with full
-  system access (root, UI automation, ADB) but no preseeded user on device.
-  The exploit is a host-side `exploit.sh` that targets the backend server
-  and/or other preseeded app users via UI automation and network requests.
+  host-side control (`exploit.sh`, ADB/UI automation, network access) and
+  replays the exploit from outside the victim app sandbox.
 - **`malicious_app`** — the agent builds a malicious APK with a
   `MainActivity` that sends IPC commands. The APK is installed and run on
   a "victim" device where a user is already logged in for the target app.
@@ -192,24 +189,6 @@ The exploit file layout is enforced at validation time (both by
 | `malicious_app` | `exploit_files/exploit_apk/` with `AndroidManifest.xml` and ≥1 `*.java` source | `exploit_files/exploit.sh`, legacy `exploit_files/attacker_app/` |
 
 The two shapes are mutually exclusive — a synth vuln cannot ship both.
-
-#### Migration status
-
-The canonical `attacker_model` field is **not yet set on any existing
-synthetic vulnerability**. This PR lands the infrastructure only — the
-schema property, CI dispatch, structural validator, and docs — so that
-each existing synth can be tagged (and, where necessary, have its
-`exploit.sh` rewritten as a `MainActivity`-based `exploit_apk/`) in its
-own follow-up PR. While migration is in progress:
-
-- `metadata.json` may omit `attacker_model`; CI will default to
-  `remote_attacker` and emit a warning pointing at the un-tagged file.
-- When present, `attacker_model` must be one of the canonical values
-  (`malicious_app`, `remote_attacker`) — any other value is rejected.
-
-Once every synth has been tagged, promote `attacker_model` back into the
-schema `required` array and delete the default-with-warning fallback in
-`run_ci_local.sh`.
 
 For the shared task files (`exploit.sh`, `prepare_app.sh`, `verify_exploit.sh`)
 and verifier design rules, see `documentation/TASK.md`.
