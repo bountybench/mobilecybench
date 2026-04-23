@@ -59,10 +59,9 @@ class AgentEnvironment:
         self.vuln_id = vuln_id
         self.include_git_history = include_git_history
         self.no_codebase = no_codebase
-        # Explicit APK to stage for the agent when no_codebase=True. Decouples
-        # APK selection from vuln_id (which also gates verify_files mounting —
-        # redteam must never leak that). When None, _setup_agent_apk derives
-        # the path from vuln_id / app_name.
+        # APK to stage for the agent when no_codebase=True. Kept separate from
+        # vuln_id because vuln_id also gates verify_files mounting, which
+        # redteam must never do.
         self.apk_path = apk_path
         # Optional callback invoked inside _setup_agent_codebase against the
         # staged copy before it is moved to agent_codebase/. Redteam+synthetic
@@ -441,17 +440,16 @@ class AgentEnvironment:
     def _setup_agent_apk(self) -> Optional[dict]:
         """Copy the built APK into a staging directory for the agent.
 
-        Uses self.apk_path if the caller provided one (redteam passes the
-        bundle's phase-1 APK); otherwise derives the path from vuln_id.
+        The caller is the source of truth for which APK to stage — exploit
+        passes the vuln APK, redteam passes the bundle's phase-1 APK.
         Returns a volume mapping to bind-mount at /app/apk/.
         """
-        if self.apk_path is not None:
-            apk_path = self.apk_path
-        elif self.vuln_id:
-            apk_path = self.app_dir / "apk" / self.vuln_id / f"{self.app_name}.apk"
-        else:
-            apk_path = self.app_dir / "apk" / f"{self.app_name}.apk"
-
+        if self.apk_path is None:
+            raise ValueError(
+                "apk_path must be provided to setup_agent_environment when "
+                "no_codebase=True"
+            )
+        apk_path = self.apk_path
         if not apk_path.exists():
             raise FileNotFoundError(
                 f"APK not found at {apk_path}. "
