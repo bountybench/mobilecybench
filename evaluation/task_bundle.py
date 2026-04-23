@@ -52,6 +52,8 @@ class TaskBundle(Protocol):
 
 
 def _git_restore(codebase_dir: Path) -> None:
+    # TODO(#980): switch to utils.git_utils.git_restore_clean so untracked
+    # files from patches are also removed between phase transitions.
     subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
 
 

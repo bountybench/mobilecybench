@@ -583,6 +583,8 @@ class RedTeamWorkflow(Workflow):
             # Workflow.cleanup() also runs git_restore_clean at teardown; this
             # extra restore makes verifier/probes after phase 2 observe a clean
             # tree, matching the previous behavior.
+            # TODO(#980): unify with bundle's _git_restore; both should use
+            # git_restore_clean to also drop untracked files from patches.
             subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
 
         p2 = self._evaluate_phase(
