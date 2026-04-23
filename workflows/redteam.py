@@ -365,6 +365,16 @@ class RedTeamWorkflow(Workflow):
         # agent gets matches the Phase 1 target. For zeroday the hook is a
         # no-op (baseline is already vulnerable). evaluate() will re-apply
         # this later against apps/<app>/codebase for the replay codebase-dir.
+        # When no_codebase=True the agent container only sees the APK. The
+        # bundle's phase-1 APK is authoritative (vulnerable for synthetic,
+        # original for zeroday) — pass it explicitly so redteam runs don't
+        # fall back to the agent_container derivation, which would stage the
+        # clean APK for a synthetic bundle.
+        phase1_apk = (
+            self.app_dir / self._bundle.phase1_apk()
+            if self.config.no_codebase
+            else None
+        )
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
@@ -373,6 +383,7 @@ class RedTeamWorkflow(Workflow):
             agent_mode=self.config.agent_mode,
             no_codebase=self.config.no_codebase,
             post_checkout_hook=self._bundle.prepare_phase1_codebase,
+            apk_path=phase1_apk,
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))

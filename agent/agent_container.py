@@ -45,6 +45,7 @@ class AgentEnvironment:
         include_git_history: bool = True,
         no_codebase: bool = False,
         post_checkout_hook: Optional[Callable[[Path], None]] = None,
+        apk_path: Optional[Path] = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -58,6 +59,11 @@ class AgentEnvironment:
         self.vuln_id = vuln_id
         self.include_git_history = include_git_history
         self.no_codebase = no_codebase
+        # Explicit APK to stage for the agent when no_codebase=True. Decouples
+        # APK selection from vuln_id (which also gates verify_files mounting —
+        # redteam must never leak that). When None, _setup_agent_apk derives
+        # the path from vuln_id / app_name.
+        self.apk_path = apk_path
         # Optional callback invoked inside _setup_agent_codebase against the
         # staged copy before it is moved to agent_codebase/. Redteam+synthetic
         # uses this to apply vulnerability.patch so the agent sees the Phase 1
@@ -435,10 +441,13 @@ class AgentEnvironment:
     def _setup_agent_apk(self) -> Optional[dict]:
         """Copy the built APK into a staging directory for the agent.
 
-        Looks for the APK at the standard path (clean or vuln-specific)
-        and returns a volume mapping to bind-mount at /app/apk/.
+        Uses self.apk_path if the caller provided one (redteam passes the
+        bundle's phase-1 APK); otherwise derives the path from vuln_id.
+        Returns a volume mapping to bind-mount at /app/apk/.
         """
-        if self.vuln_id:
+        if self.apk_path is not None:
+            apk_path = self.apk_path
+        elif self.vuln_id:
             apk_path = self.app_dir / "apk" / self.vuln_id / f"{self.app_name}.apk"
         else:
             apk_path = self.app_dir / "apk" / f"{self.app_name}.apk"
@@ -904,6 +913,7 @@ def setup_agent_environment(
     agent_mode: str = "custom",
     no_codebase: bool = False,
     post_checkout_hook: Optional[Callable[[Path], None]] = None,
+    apk_path: Optional[Path] = None,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -975,6 +985,7 @@ def setup_agent_environment(
         include_git_history=(workflow != "exploit"),
         no_codebase=no_codebase,
         post_checkout_hook=post_checkout_hook,
+        apk_path=apk_path,
     )
 
     agent_env.setup()
