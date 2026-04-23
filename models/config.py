@@ -21,6 +21,7 @@ class RunnerConfig(BaseModel):
     # attacker_model is authoritative in task metadata. At runtime, runner.py
     # reads it from the task bundle and overrides this field. A config-level
     # value is only a dev/debug hint; runtime always defers to metadata.
+    # TODO(#979): drop this field — TaskBundle should own attacker_model.
     attacker_model: Optional[Literal["malicious_app", "remote_attacker"]] = None
     # Synthetic-vuln selector (for exploit mode, or for redteam+synthetic).
     # Points at apps/<app>/synthetic_vulnerabilities/<vuln_id>/.
