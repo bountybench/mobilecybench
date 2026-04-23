@@ -111,9 +111,7 @@ class RunnerConfig(BaseModel):
             return self
         if self.workflow == "exploit":
             if not self.synthetic_vuln_id:
-                raise ValueError(
-                    "workflow='exploit' requires synthetic_vuln_id"
-                )
+                raise ValueError("workflow='exploit' requires synthetic_vuln_id")
             return self
         if self.workflow == "redteam":
             if bool(self.task) == bool(self.synthetic_vuln_id):

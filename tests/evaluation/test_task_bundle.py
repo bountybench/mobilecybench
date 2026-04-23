@@ -13,7 +13,6 @@ from evaluation.task_bundle import (
     resolve_bundle,
 )
 
-
 # ---------------------------------------------------------------------------
 # Path resolution — no filesystem, no git.
 # ---------------------------------------------------------------------------
@@ -22,9 +21,7 @@ from evaluation.task_bundle import (
 def test_synthetic_paths():
     bundle = SyntheticBundle(app_dir=Path("/root/apps/myapp"), vuln_id="vuln_0")
     assert bundle.kind == "synthetic"
-    assert bundle.task_dir == Path(
-        "/root/apps/myapp/synthetic_vulnerabilities/vuln_0"
-    )
+    assert bundle.task_dir == Path("/root/apps/myapp/synthetic_vulnerabilities/vuln_0")
     assert bundle.exploit_dir == bundle.task_dir / "exploit_files"
     assert bundle.phase1_apk() == Path("apk/vuln_0/myapp.apk")
     assert bundle.phase2_apk() == Path("apk/myapp.apk")
@@ -76,9 +73,7 @@ def test_resolve_zeroday():
 
 def test_resolve_rejects_both_set():
     with pytest.raises(ValueError, match="exactly one"):
-        resolve_bundle(
-            _config(task="r1", synthetic_vuln_id="v0"), Path("/p"), "app"
-        )
+        resolve_bundle(_config(task="r1", synthetic_vuln_id="v0"), Path("/p"), "app")
 
 
 def test_resolve_rejects_neither_set():
@@ -89,9 +84,7 @@ def test_resolve_rejects_neither_set():
 def test_resolve_rejects_empty_string():
     # '' is falsy so XOR(bool("") == bool(None)) fires — should reject.
     with pytest.raises(ValueError, match="exactly one"):
-        resolve_bundle(
-            _config(task="", synthetic_vuln_id=""), Path("/p"), "app"
-        )
+        resolve_bundle(_config(task="", synthetic_vuln_id=""), Path("/p"), "app")
 
 
 # ---------------------------------------------------------------------------
@@ -106,16 +99,37 @@ def tmp_git_repo(tmp_path):
     repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit",
-         "--allow-empty", "-m", "init", "-q"],
-        cwd=repo, check=True,
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "init",
+            "-q",
+        ],
+        cwd=repo,
+        check=True,
     )
     (repo / "hello.txt").write_text("clean\n")
     subprocess.run(["git", "add", "hello.txt"], cwd=repo, check=True)
     subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit",
-         "-m", "add hello", "-q"],
-        cwd=repo, check=True,
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-m",
+            "add hello",
+            "-q",
+        ],
+        cwd=repo,
+        check=True,
     )
 
     # Patch: "clean\n" → "vulnerable\n"
@@ -160,9 +174,7 @@ def test_synthetic_phase2_reverts_patch(tmp_git_repo, monkeypatch):
 def test_zeroday_phase1_leaves_codebase_clean(tmp_git_repo, monkeypatch):
     repo, patch = tmp_git_repo
     bundle = ZerodayBundle(project_root=repo, app_name="x", task="t")
-    monkeypatch.setattr(
-        ZerodayBundle, "patch", property(lambda _: patch), raising=True
-    )
+    monkeypatch.setattr(ZerodayBundle, "patch", property(lambda _: patch), raising=True)
     # Dirty the tree; prepare_phase1 should restore it.
     (repo / "hello.txt").write_text("dirty\n")
     bundle.prepare_phase1_codebase(repo)
@@ -172,9 +184,7 @@ def test_zeroday_phase1_leaves_codebase_clean(tmp_git_repo, monkeypatch):
 def test_zeroday_phase2_applies_patch(tmp_git_repo, monkeypatch):
     repo, patch = tmp_git_repo
     bundle = ZerodayBundle(project_root=repo, app_name="x", task="t")
-    monkeypatch.setattr(
-        ZerodayBundle, "patch", property(lambda _: patch), raising=True
-    )
+    monkeypatch.setattr(ZerodayBundle, "patch", property(lambda _: patch), raising=True)
     bundle.prepare_phase2_codebase(repo)
     assert (repo / "hello.txt").read_text() == "vulnerable\n"
 

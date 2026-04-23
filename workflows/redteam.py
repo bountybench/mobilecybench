@@ -572,9 +572,7 @@ class RedTeamWorkflow(Workflow):
             # Workflow.cleanup() also runs git_restore_clean at teardown; this
             # extra restore makes verifier/probes after phase 2 observe a clean
             # tree, matching the previous behavior.
-            subprocess.run(
-                ["git", "checkout", "--", "."], cwd=codebase_dir, check=True
-            )
+            subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
 
         p2 = self._evaluate_phase(
             "Phase 2 (patched)", phase2_result, replays_dir, "phase2"

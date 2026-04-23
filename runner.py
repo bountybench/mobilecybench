@@ -196,9 +196,7 @@ def _load_task_attacker_model(
     bundle = resolve_bundle(config, project_root, app_name)
     task_meta_path = bundle.task_dir / "metadata.json"
     if not task_meta_path.exists():
-        raise ValueError(
-            f"metadata.json not found at {task_meta_path}"
-        )
+        raise ValueError(f"metadata.json not found at {task_meta_path}")
 
     task_meta = json.loads(task_meta_path.read_text())
     task_attacker_model = task_meta.get("attacker_model")
@@ -285,9 +283,7 @@ def run(
                 updates["task"] = None
                 updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
                 updates["attacker_model"] = None
-        elif config.workflow == "redteam" and (
-            config.task or config.synthetic_vuln_id
-        ):
+        elif config.workflow == "redteam" and (config.task or config.synthetic_vuln_id):
             task_attacker_model = _load_task_attacker_model(
                 project_root, app_name, config
             )

@@ -396,9 +396,7 @@ class TestTaskMetadataOverride:
 class TestReplayMetadataOverride:
     """Replay metadata must normalize selectors for TaskBundle XOR."""
 
-    def test_zeroday_replay_clears_stale_synthetic_vuln_id(
-        self, base_config, tmp_path
-    ):
+    def test_zeroday_replay_clears_stale_synthetic_vuln_id(self, base_config, tmp_path):
         config = RunnerConfig(
             **{**base_config.model_dump(), "replay_run": "logs/exp-1"}
         )

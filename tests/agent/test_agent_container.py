@@ -11,7 +11,6 @@ import docker.errors
 from agent.agent_container import AgentEnvironment
 from evaluation.task_bundle import SyntheticBundle, ZerodayBundle
 
-
 _GIT_ENV = {
     "GIT_AUTHOR_NAME": "Test",
     "GIT_AUTHOR_EMAIL": "test@test.com",
@@ -318,8 +317,7 @@ class TestAgentEnvironmentPostCheckoutHook:
 
         server_file = codebase_dir / "server.py"
         server_file.write_text(
-            "def handle_request(user):\n"
-            "    return process(user)\n"
+            "def handle_request(user):\n" "    return process(user)\n"
         )
         self._git(codebase_dir, "init", "-q")
         self._git(codebase_dir, "add", "-A")
@@ -360,8 +358,14 @@ class TestAgentEnvironmentPostCheckoutHook:
         agent_env._setup_agent_codebase()
 
         agent_server = app_dir / "agent_codebase" / "server.py"
-        assert agent_server.read_text() == "def handle_request(user):\n    return process(user)\n"
-        assert server_file.read_text() == "def handle_request(user):\n    return process(user)\n"
+        assert (
+            agent_server.read_text()
+            == "def handle_request(user):\n    return process(user)\n"
+        )
+        assert (
+            server_file.read_text()
+            == "def handle_request(user):\n    return process(user)\n"
+        )
 
 
 def _make_tar(files: dict[str, str]) -> bytes:

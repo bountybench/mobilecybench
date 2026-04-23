@@ -52,15 +52,11 @@ class TaskBundle(Protocol):
 
 
 def _git_restore(codebase_dir: Path) -> None:
-    subprocess.run(
-        ["git", "checkout", "--", "."], cwd=codebase_dir, check=True
-    )
+    subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
 
 
 def _git_apply(codebase_dir: Path, patch: Path) -> None:
-    subprocess.run(
-        ["git", "apply", str(patch)], cwd=codebase_dir, check=True
-    )
+    subprocess.run(["git", "apply", str(patch)], cwd=codebase_dir, check=True)
 
 
 def _run_build(project_root: Path, args: list[str], timeout: int) -> None:
