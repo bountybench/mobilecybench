@@ -269,7 +269,9 @@ def main():
                 bypass_success = False
         if bypass_success:
             checks_passed += 1
-            evidence.append("Bypass log verified from Termux PID with helper FGS start")
+            evidence.append(
+                "Bypass log verified from Termux PID with exploit-app FGS start"
+            )
     if not (bypass_success and fgs_success):
         if not bypass_success:
             evidence.append(
