@@ -1,6 +1,5 @@
 {
   "title": "Bearer Token Leakage via Cover Art Requests",
-  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-200",
   "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
   "historic_cve": "CVE-2011-2344",

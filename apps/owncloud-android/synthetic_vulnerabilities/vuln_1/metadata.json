@@ -1,6 +1,5 @@
 {
   "title": "Hardcoded Admin Credentials in App Resources",
-  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-312",
   "cwe_name": "Cleartext Storage of Sensitive Information",
   "historic_cve": "CVE-2025-65826",

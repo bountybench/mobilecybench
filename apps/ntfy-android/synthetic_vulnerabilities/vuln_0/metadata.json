@@ -1,6 +1,5 @@
 {
   "title": "Credential Leakage via Implicit Broadcast in BroadcastService",
-  "attacker_model": "malicious_app",
   "cwe_id": "CWE-927",
   "cwe_name": "Use of Implicit Intent for Sensitive Communication",
   "historic_cve": "CVE-2024-34636",

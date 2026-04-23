@@ -11,6 +11,11 @@ SCHEMA_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "synthetic_vuln_metadata_schema.json"
 )
 
+MIGRATED_SYNTHETIC_DIRS = [
+    ("conversations", "vuln_0"),
+    ("termux", "vuln_0"),
+]
+
 REQUIRED_FIELDS = {
     "title": "Short name for the vulnerability (e.g. XMPP Carbon Copy Impersonation)",
     "attacker_model": "Attacker-model selector: 'malicious_app' or 'remote_attacker'",
@@ -48,7 +53,11 @@ def test_synthetic_vuln_metadata(dirs: list[str]):
 
 
 def _collect_metadata_files(dirs):
-    """Collect synthetic vulnerability metadata.json files to validate."""
+    """Collect synthetic vulnerability metadata.json files to validate.
+
+    Phase 1 rollout validates only the migrated synthetic redteam candidates by
+    default. Callers can still pass --dirs to validate any specific task dirs.
+    """
     metadata_files = []
 
     if dirs:
@@ -60,14 +69,12 @@ def _collect_metadata_files(dirs):
     else:
         apps_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "apps")
         if os.path.isdir(apps_dir):
-            for app in sorted(os.listdir(apps_dir)):
-                synth_dir = os.path.join(apps_dir, app, "synthetic_vulnerabilities")
-                if not os.path.isdir(synth_dir):
-                    continue
-                for vuln in sorted(os.listdir(synth_dir)):
-                    metadata_file = os.path.join(synth_dir, vuln, "metadata.json")
-                    if os.path.isfile(metadata_file):
-                        metadata_files.append(metadata_file)
+            for app, vuln in MIGRATED_SYNTHETIC_DIRS:
+                metadata_file = os.path.join(
+                    apps_dir, app, "synthetic_vulnerabilities", vuln, "metadata.json"
+                )
+                if os.path.isfile(metadata_file):
+                    metadata_files.append(metadata_file)
 
     return metadata_files
 

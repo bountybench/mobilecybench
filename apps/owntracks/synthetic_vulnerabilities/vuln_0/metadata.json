@@ -1,6 +1,5 @@
 {
   "title": "MQTT Command Origin Verification Bypass",
-  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-345",
   "cwe_name": "Insufficient Verification of Data Authenticity",
   "historic_cve": "CVE-2025-12080",

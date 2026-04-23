@@ -1,6 +1,5 @@
 {
   "title": "Exported BroadcastReceiver Leaks User Credentials via Arbitrary POST",
-  "attacker_model": "malicious_app",
   "cwe_id": "CWE-200",
   "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
   "historic_cve": "CVE-2025-43201",

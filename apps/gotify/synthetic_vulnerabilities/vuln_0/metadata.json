@@ -1,6 +1,5 @@
 {
   "title": "Intent URL Confirmation Bypass via parseUri",
-  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-94",
   "cwe_name": "Improper Control of Generation of Code",
   "historic_cve": "CVE-2024-34405",

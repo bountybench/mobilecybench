@@ -1,6 +1,5 @@
 {
   "title": "Bearer Token Leakage to External Servers",
-  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-201",
   "cwe_name": "Insertion of Sensitive Information Into Sent Data",
   "historic_cve": "CVE-2025-44017",

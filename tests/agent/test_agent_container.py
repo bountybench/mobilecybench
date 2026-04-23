@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import docker.errors
 
 from agent.agent_container import AgentEnvironment
+from evaluation.task_bundle import SyntheticBundle, ZerodayBundle
 
 
 _GIT_ENV = {
@@ -241,6 +242,126 @@ class TestAgentEnvironmentPostCheckoutHook:
         agent_server = app_dir / "agent_codebase" / "server.py"
         assert "is_authenticated" not in agent_server.read_text()
         assert "is_authenticated" in server_file.read_text()
+
+    @patch("agent.agent_container.docker.from_env")
+    def test_synthetic_bundle_phase1_snapshot_is_vulnerable(
+        self, mock_from_env, tmp_path
+    ):
+        mock_from_env.return_value = MagicMock()
+
+        app_dir = tmp_path / "apps" / "app"
+        codebase_dir = app_dir / "codebase"
+        codebase_dir.mkdir(parents=True)
+
+        server_file = codebase_dir / "server.py"
+        server_file.write_text(
+            "def handle_request(user):\n"
+            "    if not user.is_authenticated:\n"
+            "        raise PermissionError('Not authenticated')\n"
+            "    return process(user)\n"
+        )
+        self._git(codebase_dir, "init", "-q")
+        self._git(codebase_dir, "add", "-A")
+        self._git(codebase_dir, "commit", "-m", "initial", "-q")
+
+        patch_path = (
+            app_dir / "synthetic_vulnerabilities" / "vuln_0" / "vulnerability.patch"
+        )
+        patch_path.parent.mkdir(parents=True)
+        patch_path.write_text(
+            "diff --git a/server.py b/server.py\n"
+            "--- a/server.py\n"
+            "+++ b/server.py\n"
+            "@@ -1,4 +1,2 @@\n"
+            " def handle_request(user):\n"
+            "-    if not user.is_authenticated:\n"
+            "-        raise PermissionError('Not authenticated')\n"
+            "     return process(user)\n"
+        )
+
+        commit_id = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=codebase_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        bundle = SyntheticBundle(app_dir=app_dir, vuln_id="vuln_0")
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id=commit_id,
+            workflow="redteam",
+            include_git_history=True,
+            post_checkout_hook=bundle.prepare_phase1_codebase,
+        )
+
+        agent_env._setup_agent_codebase()
+
+        agent_server = app_dir / "agent_codebase" / "server.py"
+        assert "is_authenticated" not in agent_server.read_text()
+        assert "is_authenticated" in server_file.read_text()
+
+    @patch("agent.agent_container.docker.from_env")
+    def test_zeroday_bundle_phase1_snapshot_stays_baseline(
+        self, mock_from_env, tmp_path
+    ):
+        mock_from_env.return_value = MagicMock()
+
+        project_root = tmp_path
+        app_dir = project_root / "apps" / "app"
+        codebase_dir = app_dir / "codebase"
+        codebase_dir.mkdir(parents=True)
+
+        server_file = codebase_dir / "server.py"
+        server_file.write_text(
+            "def handle_request(user):\n"
+            "    return process(user)\n"
+        )
+        self._git(codebase_dir, "init", "-q")
+        self._git(codebase_dir, "add", "-A")
+        self._git(codebase_dir, "commit", "-m", "initial", "-q")
+
+        task_dir = project_root / "zerodays" / "reports" / "app" / "report-1" / "task"
+        task_dir.mkdir(parents=True)
+        (task_dir / "fix.patch").write_text("diff --git a/server.py b/server.py\n")
+
+        # Dirty host tree. git_checkout inside _setup_agent_codebase should
+        # restore the baseline before the snapshot is taken.
+        server_file.write_text("CORRUPTED\n")
+
+        commit_id = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=codebase_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        bundle = ZerodayBundle(
+            project_root=project_root,
+            app_name="app",
+            task="report-1",
+        )
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id=commit_id,
+            workflow="redteam",
+            include_git_history=True,
+            post_checkout_hook=bundle.prepare_phase1_codebase,
+        )
+
+        agent_env._setup_agent_codebase()
+
+        agent_server = app_dir / "agent_codebase" / "server.py"
+        assert agent_server.read_text() == "def handle_request(user):\n    return process(user)\n"
+        assert server_file.read_text() == "def handle_request(user):\n    return process(user)\n"
 
 
 def _make_tar(files: dict[str, str]) -> bytes:
