@@ -1,6 +1,5 @@
 {
   "title": "XMPP Carbon Copy Impersonation",
-  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-290",
   "cwe_name": "Authentication Bypass by Spoofing",
   "historic_cve": "CVE-2025-27916",
