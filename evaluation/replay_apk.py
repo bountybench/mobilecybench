@@ -78,20 +78,22 @@ def uninstall(package: str = PACKAGE) -> None:
 
 
 def install_apk(apk_path: Path, package: str = PACKAGE) -> None:
-    """Install APK on emulator. Uninstalls first for clean state."""
+    """Install APK on emulator. Uninstalls first for clean state.
+
+    Uses `-g` to auto-grant all runtime (dangerous) permissions declared in
+    the APK manifest, mirroring a realistic threat model where a user would
+    have clicked Allow on the install-time prompt. Signature-protected
+    permissions remain ungranted (Android enforces that regardless of -g).
+    """
     uninstall(package)
     logger.info(f"Installing {apk_path}...")
     proc = subprocess.run(
-        ["adb", "install", "-r", str(apk_path)],
+        ["adb", "install", "-r", "-g", str(apk_path)],
         capture_output=True,
         text=True,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"adb install failed: {proc.stderr or proc.stdout}")
-
-    # TODO: grant runtime permissions via `adb shell pm grant`
-    # For now, install-time permissions are auto-granted by Android.
-    # Runtime (dangerous) permissions will be added in a future step.
 
 
 def run_instrument(
