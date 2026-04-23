@@ -62,12 +62,11 @@ HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded",
 }
 USER_B_AUTH = (os.environ["USER_B_USERNAME"], os.environ["USER_B_PASSWORD"])
-ADMIN_AUTH = (os.environ["ADMIN_USERNAME"], os.environ["ADMIN_PASSWORD"])
 STATE_PATH = os.environ["SYNTH_STATE_PATH"]
 RUNTIME_STATE_PATH = os.environ["RUNTIME_STATE_PATH"]
 
 synth_room_name = "synth-" + secrets.token_hex(6)
-hidden_message = "synth-" + secrets.token_hex(24)
+queued_message = "synth-" + secrets.token_hex(24)
 
 create_room = requests.post(
     f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
@@ -92,7 +91,7 @@ add_participant.raise_for_status()
 with open(STATE_PATH, "w", encoding="utf-8") as f:
     json.dump(
         {
-            "expected_message": hidden_message,
+            "expected_message": queued_message,
             "expected_actor": os.environ["ADMIN_USERNAME"],
             "room_token": room_token,
             "conversation_label": synth_room_name,
@@ -103,7 +102,16 @@ with open(STATE_PATH, "w", encoding="utf-8") as f:
     f.write("\n")
 
 with open(RUNTIME_STATE_PATH, "w", encoding="utf-8") as f:
-    json.dump({"room_token": room_token, "conversation_label": synth_room_name}, f, indent=2)
+    json.dump(
+        {
+            "room_token": room_token,
+            "conversation_label": synth_room_name,
+            "expected_message": queued_message,
+            "expected_actor": os.environ["ADMIN_USERNAME"],
+        },
+        f,
+        indent=2,
+    )
     f.write("\n")
 PY
 

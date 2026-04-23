@@ -1,7 +1,7 @@
 {
-  "title": "Exported MainActivity Opens Internal Chat with Active User Privileges",
-  "cwe_id": "CWE-926",
-  "cwe_name": "Improper Export of Android Application Components",
+  "title": "Unauthorized MainActivity Intent Reveals Private Chat History",
+  "cwe_id": "CWE-862",
+  "cwe_name": "Missing Authorization",
   "historic_cve": "CVE-2025-20923",
   "cvss_historic": {
     "base_score": 4.0,
@@ -9,8 +9,8 @@
     "vector": "CVSS:3.1/AV:L/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:L"
   },
   "cvss_synthetic": {
-    "base_score": 4.0,
+    "base_score": 5.5,
     "severity": "MEDIUM",
-    "vector": "CVSS:3.1/AV:L/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:L"
+    "vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
   }
 }
