@@ -13,127 +13,29 @@ from evaluation.task_bundle import (
     resolve_bundle,
 )
 
-# ---------------------------------------------------------------------------
-# Path resolution — no filesystem, no git.
-# ---------------------------------------------------------------------------
+
+def _config(**kwargs):
+    values = {"task": None, "synthetic_vuln_id": None}
+    values.update(kwargs)
+    return SimpleNamespace(**values)
 
 
-def test_synthetic_paths():
-    bundle = SyntheticBundle(app_dir=Path("/root/apps/myapp"), vuln_id="vuln_0")
-    assert bundle.kind == "synthetic"
-    assert bundle.task_dir == Path("/root/apps/myapp/synthetic_vulnerabilities/vuln_0")
-    assert bundle.exploit_dir == bundle.task_dir / "exploit_files"
-    assert bundle.phase1_apk() == Path("apk/vuln_0/myapp.apk")
-    assert bundle.phase2_apk() == Path("apk/myapp.apk")
-
-
-def test_zeroday_paths():
-    bundle = ZerodayBundle(
-        project_root=Path("/root"), app_name="myapp", task="report-1"
-    )
-    assert bundle.kind == "zeroday"
-    assert bundle.task_dir == Path("/root/zerodays/reports/myapp/report-1/task")
-    assert bundle.exploit_dir == bundle.task_dir / "exploit_files"
-    assert bundle.phase1_apk() == Path("apk/myapp.apk")
-    # Phase 2 APK is absolute — lives outside app_dir/apk/.
-    assert bundle.phase2_apk() == Path(
-        "/root/zerodays/reports/myapp/report-1/artifacts/hardened_apk/myapp.apk"
-    )
-
-
-def test_both_implement_protocol():
-    synth = SyntheticBundle(app_dir=Path("/a"), vuln_id="v")
-    zero = ZerodayBundle(project_root=Path("/a"), app_name="x", task="t")
-    assert isinstance(synth, TaskBundle)
-    assert isinstance(zero, TaskBundle)
-
-
-# ---------------------------------------------------------------------------
-# resolve_bundle — XOR between synthetic_vuln_id and task.
-# ---------------------------------------------------------------------------
-
-
-def _config(task=None, synthetic_vuln_id=None):
-    return SimpleNamespace(task=task, synthetic_vuln_id=synthetic_vuln_id)
-
-
-def test_resolve_synthetic():
-    bundle = resolve_bundle(_config(synthetic_vuln_id="vuln_0"), Path("/p"), "app")
-    assert isinstance(bundle, SyntheticBundle)
-    assert bundle.vuln_id == "vuln_0"
-    assert bundle.app_dir == Path("/p/apps/app")
-
-
-def test_resolve_zeroday():
-    bundle = resolve_bundle(_config(task="report-1"), Path("/p"), "app")
-    assert isinstance(bundle, ZerodayBundle)
-    assert bundle.task == "report-1"
-    assert bundle.project_root == Path("/p")
-
-
-def test_resolve_rejects_both_set():
-    with pytest.raises(ValueError, match="exactly one"):
-        resolve_bundle(_config(task="r1", synthetic_vuln_id="v0"), Path("/p"), "app")
-
-
-def test_resolve_rejects_neither_set():
-    with pytest.raises(ValueError, match="exactly one"):
-        resolve_bundle(_config(), Path("/p"), "app")
-
-
-def test_resolve_rejects_empty_string():
-    # '' is falsy so XOR(bool("") == bool(None)) fires — should reject.
-    with pytest.raises(ValueError, match="exactly one"):
-        resolve_bundle(_config(task="", synthetic_vuln_id=""), Path("/p"), "app")
-
-
-# ---------------------------------------------------------------------------
-# Codebase phase prep — hits git for real, in a tmp repo.
-# ---------------------------------------------------------------------------
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True)
 
 
 @pytest.fixture
-def tmp_git_repo(tmp_path):
-    """A tiny git repo with a committed hello.txt and a patch that rewrites it."""
+def git_repo(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.email=t@t",
-            "-c",
-            "user.name=t",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "init",
-            "-q",
-        ],
-        cwd=repo,
-        check=True,
-    )
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
     (repo / "hello.txt").write_text("clean\n")
-    subprocess.run(["git", "add", "hello.txt"], cwd=repo, check=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.email=t@t",
-            "-c",
-            "user.name=t",
-            "commit",
-            "-m",
-            "add hello",
-            "-q",
-        ],
-        cwd=repo,
-        check=True,
-    )
+    _git(repo, "add", "hello.txt")
+    _git(repo, "commit", "-m", "init", "-q")
 
-    # Patch: "clean\n" → "vulnerable\n"
-    patch = tmp_path / "vuln.patch"
+    patch = tmp_path / "change.patch"
     patch.write_text(
         "diff --git a/hello.txt b/hello.txt\n"
         "--- a/hello.txt\n"
@@ -145,70 +47,108 @@ def tmp_git_repo(tmp_path):
     return repo, patch
 
 
-def test_synthetic_phase1_applies_patch(tmp_git_repo, monkeypatch):
-    repo, patch = tmp_git_repo
-    # SyntheticBundle looks for vulnerability.patch inside task_dir.
-    # Redirect patch to our fixture patch.
-    bundle = SyntheticBundle(app_dir=repo, vuln_id="v")
-    monkeypatch.setattr(
-        SyntheticBundle, "patch", property(lambda _: patch), raising=True
-    )
+@pytest.mark.parametrize(
+    ("bundle", "task_dir", "phase1_apk", "phase2_apk"),
+    [
+        (
+            SyntheticBundle(app_dir=Path("/root/apps/myapp"), vuln_id="vuln_0"),
+            Path("/root/apps/myapp/synthetic_vulnerabilities/vuln_0"),
+            Path("apk/vuln_0/myapp.apk"),
+            Path("apk/myapp.apk"),
+        ),
+        (
+            ZerodayBundle(
+                project_root=Path("/root"), app_name="myapp", task="report-1"
+            ),
+            Path("/root/zerodays/reports/myapp/report-1/task"),
+            Path("apk/myapp.apk"),
+            Path(
+                "/root/zerodays/reports/myapp/report-1/artifacts/hardened_apk/myapp.apk"
+            ),
+        ),
+    ],
+)
+def test_bundle_paths(bundle, task_dir, phase1_apk, phase2_apk):
+    assert isinstance(bundle, TaskBundle)
+    assert bundle.task_dir == task_dir
+    assert bundle.exploit_dir == task_dir / "exploit_files"
+    assert bundle.phase1_apk() == phase1_apk
+    assert bundle.phase2_apk() == phase2_apk
 
-    bundle.prepare_phase1_codebase(repo)
-    assert (repo / "hello.txt").read_text() == "vulnerable\n"
+
+@pytest.mark.parametrize(
+    ("cfg", "expected_type"),
+    [
+        (_config(synthetic_vuln_id="vuln_0"), SyntheticBundle),
+        (_config(task="report-1"), ZerodayBundle),
+    ],
+)
+def test_resolve_bundle_selects_expected_kind(cfg, expected_type):
+    bundle = resolve_bundle(cfg, Path("/p"), "app")
+    assert isinstance(bundle, expected_type)
 
 
-def test_synthetic_phase2_reverts_patch(tmp_git_repo, monkeypatch):
-    repo, patch = tmp_git_repo
-    bundle = SyntheticBundle(app_dir=repo, vuln_id="v")
-    monkeypatch.setattr(
-        SyntheticBundle, "patch", property(lambda _: patch), raising=True
-    )
-    bundle.prepare_phase1_codebase(repo)
-    assert (repo / "hello.txt").read_text() == "vulnerable\n"
+@pytest.mark.parametrize(
+    "cfg",
+    [
+        _config(),
+        _config(task="r1", synthetic_vuln_id="v0"),
+        _config(task="", synthetic_vuln_id=""),
+    ],
+)
+def test_resolve_bundle_rejects_invalid_selector(cfg):
+    with pytest.raises(ValueError, match="exactly one"):
+        resolve_bundle(cfg, Path("/p"), "app")
 
-    bundle.prepare_phase2_codebase(repo)
-    assert (repo / "hello.txt").read_text() == "clean\n"
 
-
-def test_zeroday_phase1_leaves_codebase_clean(tmp_git_repo, monkeypatch):
-    repo, patch = tmp_git_repo
-    bundle = ZerodayBundle(project_root=repo, app_name="x", task="t")
-    monkeypatch.setattr(ZerodayBundle, "patch", property(lambda _: patch), raising=True)
-    # Dirty the tree; prepare_phase1 should restore it.
+@pytest.mark.parametrize(
+    ("bundle_factory", "prepare", "expected"),
+    [
+        (
+            lambda repo: SyntheticBundle(app_dir=repo, vuln_id="v"),
+            "prepare_phase1_codebase",
+            "vulnerable\n",
+        ),
+        (
+            lambda repo: SyntheticBundle(app_dir=repo, vuln_id="v"),
+            "prepare_phase2_codebase",
+            "clean\n",
+        ),
+        (
+            lambda repo: ZerodayBundle(project_root=repo, app_name="x", task="t"),
+            "prepare_phase1_codebase",
+            "clean\n",
+        ),
+        (
+            lambda repo: ZerodayBundle(project_root=repo, app_name="x", task="t"),
+            "prepare_phase2_codebase",
+            "vulnerable\n",
+        ),
+    ],
+)
+def test_phase_prep_transitions(
+    git_repo, monkeypatch, bundle_factory, prepare, expected
+):
+    repo, patch = git_repo
+    bundle = bundle_factory(repo)
+    monkeypatch.setattr(type(bundle), "patch", property(lambda _: patch), raising=True)
     (repo / "hello.txt").write_text("dirty\n")
-    bundle.prepare_phase1_codebase(repo)
-    assert (repo / "hello.txt").read_text() == "clean\n"
+    getattr(bundle, prepare)(repo)
+    assert (repo / "hello.txt").read_text() == expected
 
 
-def test_zeroday_phase2_applies_patch(tmp_git_repo, monkeypatch):
-    repo, patch = tmp_git_repo
-    bundle = ZerodayBundle(project_root=repo, app_name="x", task="t")
-    monkeypatch.setattr(ZerodayBundle, "patch", property(lambda _: patch), raising=True)
-    bundle.prepare_phase2_codebase(repo)
-    assert (repo / "hello.txt").read_text() == "vulnerable\n"
-
-
-# ---------------------------------------------------------------------------
-# Artifact validation.
-# ---------------------------------------------------------------------------
-
-
-def test_synthetic_validate_missing_apk(tmp_path):
+def test_synthetic_validate_build_artifacts_requires_both_apks(tmp_path):
     bundle = SyntheticBundle(app_dir=tmp_path, vuln_id="vuln_0")
     with pytest.raises(FileNotFoundError):
         bundle.validate_build_artifacts(tmp_path)
 
-
-def test_synthetic_validate_accepts_both_apks(tmp_path):
-    bundle = SyntheticBundle(app_dir=tmp_path, vuln_id="vuln_0")
     (tmp_path / "apk" / "vuln_0").mkdir(parents=True)
     (tmp_path / "apk" / "vuln_0" / f"{tmp_path.name}.apk").touch()
     (tmp_path / "apk" / f"{tmp_path.name}.apk").touch()
-    bundle.validate_build_artifacts(tmp_path)  # does not raise
+    bundle.validate_build_artifacts(tmp_path)
 
 
-def test_zeroday_validate_missing_hardened(tmp_path):
+def test_zeroday_validate_build_artifacts_requires_hardened_apk(tmp_path):
     bundle = ZerodayBundle(project_root=tmp_path, app_name="x", task="t")
     (tmp_path / "apps" / "x" / "apk").mkdir(parents=True)
     (tmp_path / "apps" / "x" / "apk" / "x.apk").touch()
