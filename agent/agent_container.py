@@ -58,10 +58,11 @@ class AgentEnvironment:
         self.vuln_id = vuln_id
         self.include_git_history = include_git_history
         self.no_codebase = no_codebase
-        # Optional callback invoked inside _setup_agent_codebase AFTER the
-        # git_checkout(commit_id) and BEFORE the copy to agent_codebase/.
-        # Redteam+synthetic uses this to apply vulnerability.patch so the
-        # agent sees the Phase 1 target source instead of the clean baseline.
+        # Optional callback invoked inside _setup_agent_codebase against the
+        # staged copy before it is moved to agent_codebase/. Redteam+synthetic
+        # uses this to apply vulnerability.patch so the agent sees the Phase 1
+        # target source instead of the clean baseline without dirtying the
+        # host app's working tree.
         self.post_checkout_hook = post_checkout_hook
 
         import traceback
@@ -350,6 +351,10 @@ class AgentEnvironment:
             logger.info("Copying codebase without git history")
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
+            if self.post_checkout_hook is not None:
+                logger.info("Running post_checkout_hook on %s", staging_dir)
+                self.post_checkout_hook(staging_dir)
+
             # Initialize fresh git repo so agent can still use git commands
             logger.info("Initializing fresh git repository in staging directory")
             initialize_git_repository(staging_dir)
@@ -400,13 +405,6 @@ class AgentEnvironment:
             logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
             git_checkout(original_codebase, self.commit_id, force=True)
 
-            # Let the workflow layer apply any phase-1 mods (e.g. synthetic's
-            # vulnerability.patch) BEFORE the snapshot so the agent sees the
-            # same source as the Phase 1 target APK.
-            if self.post_checkout_hook is not None:
-                logger.info("Running post_checkout_hook on %s", original_codebase)
-                self.post_checkout_hook(original_codebase)
-
             # Copy original_codebase to staging directory with git history
             logger.info(f"Copying {original_codebase} to {staging_dir}")
             self.copy_files(original_codebase, staging_dir, ignore_git=False)
@@ -414,6 +412,10 @@ class AgentEnvironment:
             # Run git_setup_dev_branch in staging directory
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
+
+            if self.post_checkout_hook is not None:
+                logger.info("Running post_checkout_hook on %s", staging_dir)
+                self.post_checkout_hook(staging_dir)
 
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():

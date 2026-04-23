@@ -1,5 +1,6 @@
 {
   "title": "Vulnerable GIF Request",
+  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-79",
   "cwe_name": "Improper Neutralization of Input During Web Page Generation",
   "historic_cve": "CVE-2024-44080",

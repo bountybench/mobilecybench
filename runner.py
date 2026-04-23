@@ -273,14 +273,18 @@ def run(
                 replay.synthetic_vuln_id,
                 replay.attacker_model,
             )
-            if replay.workflow and replay.workflow != config.workflow:
+            if replay.workflow:
                 updates["workflow"] = replay.workflow
-            if replay.task:
+            if replay.workflow == "redteam":
+                # Clear the opposite selector so legacy config defaults do not
+                # violate the TaskBundle XOR contract during replay.
                 updates["task"] = replay.task
-            if replay.synthetic_vuln_id:
                 updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
-            if replay.attacker_model:
                 updates["attacker_model"] = replay.attacker_model
+            elif replay.workflow == "exploit":
+                updates["task"] = None
+                updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
+                updates["attacker_model"] = None
         elif config.workflow == "redteam" and (
             config.task or config.synthetic_vuln_id
         ):

@@ -1,5 +1,6 @@
 {
   "title": "Insecure Communication via Disabled SSL Certificate Validation",
+  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-295",
   "cwe_name": "Improper Certificate Validation",
   "historic_cve": "CVE-2025-50944",

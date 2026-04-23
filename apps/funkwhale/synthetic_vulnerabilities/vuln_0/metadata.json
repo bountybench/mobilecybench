@@ -1,5 +1,6 @@
 {
   "title": "Cleartext Transmission of Sensitive Information via HTTP Downgrade",
+  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-319",
   "cwe_name": "Cleartext Transmission of Sensitive Information",
   "historic_cve": "CVE-2025-24849",

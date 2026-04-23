@@ -9,6 +9,7 @@ from jsonschema import validate
 
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
+from utils.exploit_source import ExploitSource
 from utils.logger import logger_manager
 from workflows import ExploitWorkflow
 
@@ -390,6 +391,84 @@ class TestTaskMetadataOverride:
         )
         exit_code = run(config, "testapp", tmp_path)
         assert exit_code == 1
+
+
+class TestReplayMetadataOverride:
+    """Replay metadata must normalize selectors for TaskBundle XOR."""
+
+    def test_zeroday_replay_clears_stale_synthetic_vuln_id(
+        self, base_config, tmp_path
+    ):
+        config = RunnerConfig(
+            **{**base_config.model_dump(), "replay_run": "logs/exp-1"}
+        )
+        replay = ExploitSource(
+            kind="replay",
+            source_dir=tmp_path / "logs" / "exp-1" / "agent_exploit",
+            app_name="testapp",
+            workflow="redteam",
+            task="report-9",
+            synthetic_vuln_id=None,
+            attacker_model="remote_attacker",
+        )
+        captured = {}
+
+        def spy(cfg, app_name, project_root):
+            captured["workflow"] = cfg.workflow
+            captured["task"] = cfg.task
+            captured["synthetic_vuln_id"] = cfg.synthetic_vuln_id
+            captured["attacker_model"] = cfg.attacker_model
+            raise RuntimeError("stop before workflow setup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", side_effect=spy
+        ):
+            run(config, "testapp", tmp_path, exploit_source=replay)
+
+        assert captured == {
+            "workflow": "redteam",
+            "task": "report-9",
+            "synthetic_vuln_id": None,
+            "attacker_model": "remote_attacker",
+        }
+
+    def test_synthetic_redteam_replay_clears_stale_task(self, base_config, tmp_path):
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "task": "stale-report",
+                "replay_run": "logs/exp-2",
+            }
+        )
+        replay = ExploitSource(
+            kind="replay",
+            source_dir=tmp_path / "logs" / "exp-2" / "agent_exploit",
+            app_name="testapp",
+            workflow="redteam",
+            task=None,
+            synthetic_vuln_id="vuln_7",
+            attacker_model="malicious_app",
+        )
+        captured = {}
+
+        def spy(cfg, app_name, project_root):
+            captured["workflow"] = cfg.workflow
+            captured["task"] = cfg.task
+            captured["synthetic_vuln_id"] = cfg.synthetic_vuln_id
+            captured["attacker_model"] = cfg.attacker_model
+            raise RuntimeError("stop before workflow setup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", side_effect=spy
+        ):
+            run(config, "testapp", tmp_path, exploit_source=replay)
+
+        assert captured == {
+            "workflow": "redteam",
+            "task": None,
+            "synthetic_vuln_id": "vuln_7",
+            "attacker_model": "malicious_app",
+        }
 
 
 class TestMain:

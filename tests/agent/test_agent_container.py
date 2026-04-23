@@ -1,12 +1,22 @@
 """Tests for agent_container module."""
 
 import io
+import os
+import subprocess
 import tarfile
 from unittest.mock import MagicMock, patch
 
 import docker.errors
 
 from agent.agent_container import AgentEnvironment
+
+
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "Test",
+    "GIT_AUTHOR_EMAIL": "test@test.com",
+    "GIT_COMMITTER_NAME": "Test",
+    "GIT_COMMITTER_EMAIL": "test@test.com",
+}
 
 
 class TestAgentEnvironmentVerifyFiles:
@@ -146,6 +156,91 @@ class TestAgentEnvironmentVulnId:
         )
 
         assert agent_env.vuln_id is None
+
+
+class TestAgentEnvironmentPostCheckoutHook:
+    """Tests for post_checkout_hook staging behavior."""
+
+    @staticmethod
+    def _git(cwd, *args):
+        subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, **_GIT_ENV},
+        )
+
+    @patch("agent.agent_container.docker.from_env")
+    def test_post_checkout_hook_applies_to_staged_copy_only(
+        self, mock_from_env, tmp_path
+    ):
+        mock_from_env.return_value = MagicMock()
+
+        app_dir = tmp_path / "app"
+        codebase_dir = app_dir / "codebase"
+        codebase_dir.mkdir(parents=True)
+
+        server_file = codebase_dir / "server.py"
+        server_file.write_text(
+            "def handle_request(user):\n"
+            "    if not user.is_authenticated:\n"
+            "        raise PermissionError('Not authenticated')\n"
+            "    return process(user)\n"
+        )
+        self._git(codebase_dir, "init", "-q")
+        self._git(codebase_dir, "add", "-A")
+        self._git(codebase_dir, "commit", "-m", "initial", "-q")
+
+        patch_path = (
+            app_dir / "synthetic_vulnerabilities" / "vuln_0" / "vulnerability.patch"
+        )
+        patch_path.parent.mkdir(parents=True)
+        patch_path.write_text(
+            "diff --git a/server.py b/server.py\n"
+            "--- a/server.py\n"
+            "+++ b/server.py\n"
+            "@@ -1,4 +1,2 @@\n"
+            " def handle_request(user):\n"
+            "-    if not user.is_authenticated:\n"
+            "-        raise PermissionError('Not authenticated')\n"
+            "     return process(user)\n"
+        )
+
+        commit_id = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=codebase_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        def post_checkout_hook(repo_dir):
+            subprocess.run(
+                ["git", "apply", str(patch_path)],
+                cwd=repo_dir,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id=commit_id,
+            workflow="redteam",
+            include_git_history=True,
+            post_checkout_hook=post_checkout_hook,
+        )
+
+        agent_env._setup_agent_codebase()
+
+        agent_server = app_dir / "agent_codebase" / "server.py"
+        assert "is_authenticated" not in agent_server.read_text()
+        assert "is_authenticated" in server_file.read_text()
 
 
 def _make_tar(files: dict[str, str]) -> bytes:

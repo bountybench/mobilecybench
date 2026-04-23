@@ -1,5 +1,6 @@
 {
   "title": "OAuth Bearer Token Forwarded to External Image Hosts",
+  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-200",
   "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
   "historic_cve": "CVE-2025-29805",

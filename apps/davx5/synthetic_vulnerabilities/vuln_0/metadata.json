@@ -1,5 +1,6 @@
 {
   "title": "CalDAV Collection Name SQL Injection",
+  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-89",
   "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
   "historic_cve": "CVE-2025-1843",
