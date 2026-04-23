@@ -156,9 +156,15 @@ jobs:
             fi
             echo "  Setup modes: ${setup_modes[*]}"
 
-            # Check if PR touches synthetic_vulnerabilities/ for this app
+            # Check if PR touches CI-relevant synth vuln files for this app.
+            # scenario.json, fix.patch, and docs under synthetic_vulnerabilities/
+            # do not feed into CI's synth vuln validation flow (scenario.json is
+            # redteam-scope descriptive metadata). Only metadata.json,
+            # vulnerability.patch, exploit_files/, and verify_files/ change how
+            # CI runs, so restrict detection to those.
             synth_changes=$(git diff --name-only origin/main...HEAD \
-              | grep "^${dir}/synthetic_vulnerabilities/" || true)
+              | grep -E "^${dir}/synthetic_vulnerabilities/[^/]+/(metadata\.json|vulnerability\.patch)$|^${dir}/synthetic_vulnerabilities/[^/]+/(exploit_files|verify_files)/" \
+              || true)
 
             # If PR touches synthetic_vulnerabilities/ or core files, add synthetic vuln jobs
             if [ -n "$synth_changes" ] || [ "$core_modified" = "true" ]; then
