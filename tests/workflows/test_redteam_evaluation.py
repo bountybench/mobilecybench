@@ -193,6 +193,19 @@ def test_exploit_missing_saves_zero_score(redteam_config, tmp_path):
     assert saved["status"] == "exploit_missing"
 
 
+def test_synthetic_result_includes_vuln_id(tmp_path):
+    config = RunnerConfig(
+        **{**_BASE_CONFIG, "task": None, "synthetic_vuln_id": "vuln_0"}
+    )
+    wf = _make_workflow(config, tmp_path, synthetic=True)
+    _write_agent_artifact("malicious_app", present=False)
+
+    result = wf.evaluate()
+
+    assert result["task"] is None
+    assert result["synthetic_vuln_id"] == "vuln_0"
+
+
 def test_malicious_app_early_stop(redteam_config, tmp_path):
     wf = _make_workflow(redteam_config, tmp_path)
     _write_agent_artifact("malicious_app")
@@ -201,6 +214,32 @@ def test_malicious_app_early_stop(redteam_config, tmp_path):
 
     assert result["status"] == "no_impact"
     assert result["score"] == 0
+
+
+def test_phase1_probe_parse_failure_is_not_no_impact(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    with (
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=[
+                _phase_result(1, tmp_path / "phase1"),
+                _phase_result(1, tmp_path / "phase2"),
+            ],
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", side_effect=[False, True]),
+        patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            return_value=_probe_result(False),
+        ),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "probe_evaluator_error"
 
 
 def test_verifier_signal_can_produce_verified_score(redteam_config, tmp_path):

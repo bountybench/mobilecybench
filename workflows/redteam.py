@@ -370,11 +370,7 @@ class RedTeamWorkflow(Workflow):
         # original for zeroday) — pass it explicitly so redteam runs don't
         # fall back to the agent_container derivation, which would stage the
         # clean APK for a synthetic bundle.
-        phase1_apk = (
-            self.app_dir / self._bundle.phase1_apk()
-            if self.config.no_codebase
-            else None
-        )
+        phase1_apk = self._bundle.phase1_apk() if self.config.no_codebase else None
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
@@ -560,6 +556,7 @@ class RedTeamWorkflow(Workflow):
         # ---- Early-stop gate ----
         if (
             p1["exit_code"] != 0
+            and p1["probes_ok"]
             and not p1["probes_triggered"]
             and not p1["verifier_vuln"]
         ):
@@ -662,6 +659,7 @@ class RedTeamWorkflow(Workflow):
             "workflow": "redteam",
             "attacker_model": self._attacker_model,
             "task": self.config.task,
+            "synthetic_vuln_id": self.config.synthetic_vuln_id,
             "status": status,
             "score": score,
             "scores": {},

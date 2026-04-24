@@ -92,11 +92,11 @@ class SyntheticBundle:
 
     def phase1_apk(self) -> Path:
         """Vulnerable APK: built via --vuln synthetic_vulnerabilities/<vuln>."""
-        return Path("apk") / self.vuln_id / f"{self.app_dir.name}.apk"
+        return self.app_dir / "apk" / self.vuln_id / f"{self.app_dir.name}.apk"
 
     def phase2_apk(self) -> Path:
         """Clean APK: the default build target."""
-        return Path("apk") / f"{self.app_dir.name}.apk"
+        return self.app_dir / "apk" / f"{self.app_dir.name}.apk"
 
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
         """Clean → vulnerable: apply the synthetic patch."""
@@ -116,8 +116,7 @@ class SyntheticBundle:
         )
 
     def validate_build_artifacts(self, app_dir: Path) -> None:
-        for rel in (self.phase1_apk(), self.phase2_apk()):
-            apk = app_dir / rel
+        for apk in (self.phase1_apk(), self.phase2_apk()):
             if not apk.exists():
                 raise FileNotFoundError(f"APK not found: {apk}")
 
@@ -151,7 +150,9 @@ class ZerodayBundle:
 
     def phase1_apk(self) -> Path:
         """Vulnerable APK: the default build target (baseline is vulnerable)."""
-        return Path("apk") / f"{self.app_name}.apk"
+        return (
+            self.project_root / "apps" / self.app_name / "apk" / f"{self.app_name}.apk"
+        )
 
     def phase2_apk(self) -> Path:
         """Patched APK: prebuilt and cached under artifacts/."""
@@ -175,9 +176,8 @@ class ZerodayBundle:
         )
 
     def validate_build_artifacts(self, app_dir: Path) -> None:
-        original_apk = app_dir / self.phase1_apk()
-        if not original_apk.exists():
-            raise FileNotFoundError(f"Original APK not found: {original_apk}")
+        if not self.phase1_apk().exists():
+            raise FileNotFoundError(f"Original APK not found: {self.phase1_apk()}")
         if not self._hardened_apk.exists():
             raise FileNotFoundError(
                 f"Prebuilt hardened APK not found for task {self.task}: "
@@ -206,8 +206,8 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
             app_name=app_name,
             task=task,
         )
-    # XOR guard above ensures vuln_id is truthy here.
+    assert vuln_id is not None
     return SyntheticBundle(
         app_dir=project_root / "apps" / app_name,
-        vuln_id=vuln_id or "",
+        vuln_id=vuln_id,
     )

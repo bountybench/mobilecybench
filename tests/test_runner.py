@@ -314,6 +314,16 @@ class TestAttackerModelConfig:
                 }
             )
 
+    def test_malicious_app_rejected_with_exploit(self, base_config):
+        with pytest.raises(ValueError, match="requires workflow='redteam'"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "exploit",
+                    "attacker_model": "malicious_app",
+                }
+            )
+
     def test_attacker_model_default_is_none(self, base_config):
         """attacker_model has no silent default; task metadata is authoritative."""
         config = RunnerConfig(

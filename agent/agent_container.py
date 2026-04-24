@@ -924,6 +924,8 @@ def setup_agent_environment(
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
         no_codebase: Whether to copy the built APK into the agent environment
+        post_checkout_hook: Optional callback run on the staged codebase
+        apk_path: APK to copy into the agent environment when no_codebase=True
 
     Returns:
         AgentEnvironment instance

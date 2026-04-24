@@ -90,11 +90,7 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_attacker_model(self) -> "RunnerConfig":
-        if (
-            self.attacker_model is not None
-            and self.attacker_model != "malicious_app"
-            and self.workflow != "redteam"
-        ):
+        if self.attacker_model is not None and self.workflow != "redteam":
             raise ValueError(
                 f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
             )

@@ -335,7 +335,7 @@ class Workflow(ABC):
         """Restart emulator and app servers with the given APK.
 
         Args:
-            apk_path: Relative path to the APK within app_dir.
+            apk_path: Path to the APK to install.
             prepare_app_hook: Optional shell script to run after install.
             inject_flags: Whether to inject hidden flags for probe evaluation.
             start_ssrf: Whether to start the SSRF listener.

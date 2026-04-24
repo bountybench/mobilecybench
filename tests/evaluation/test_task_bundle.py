@@ -53,15 +53,15 @@ def git_repo(tmp_path):
         (
             SyntheticBundle(app_dir=Path("/root/apps/myapp"), vuln_id="vuln_0"),
             Path("/root/apps/myapp/synthetic_vulnerabilities/vuln_0"),
-            Path("apk/vuln_0/myapp.apk"),
-            Path("apk/myapp.apk"),
+            Path("/root/apps/myapp/apk/vuln_0/myapp.apk"),
+            Path("/root/apps/myapp/apk/myapp.apk"),
         ),
         (
             ZerodayBundle(
                 project_root=Path("/root"), app_name="myapp", task="report-1"
             ),
             Path("/root/zerodays/reports/myapp/report-1/task"),
-            Path("apk/myapp.apk"),
+            Path("/root/apps/myapp/apk/myapp.apk"),
             Path(
                 "/root/zerodays/reports/myapp/report-1/artifacts/hardened_apk/myapp.apk"
             ),
@@ -86,6 +86,12 @@ def test_bundle_paths(bundle, task_dir, phase1_apk, phase2_apk):
 def test_resolve_bundle_selects_expected_kind(cfg, expected_type):
     bundle = resolve_bundle(cfg, Path("/p"), "app")
     assert isinstance(bundle, expected_type)
+
+
+def test_resolve_bundle_preserves_synthetic_vuln_id():
+    bundle = resolve_bundle(_config(synthetic_vuln_id="vuln_0"), Path("/p"), "app")
+    assert isinstance(bundle, SyntheticBundle)
+    assert bundle.vuln_id == "vuln_0"
 
 
 @pytest.mark.parametrize(
