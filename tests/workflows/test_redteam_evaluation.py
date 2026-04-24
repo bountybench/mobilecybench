@@ -168,7 +168,7 @@ def _run_evaluate(wf, ops_cls, exits, probes, *, verifier=(1, 1)):
         patch.object(
             RedTeamWorkflow,
             "_run_verifier",
-            side_effect=lambda *_args: next(verifier_i),
+            side_effect=lambda *_args, **_kwargs: next(verifier_i),
         ),
         patch(
             "evaluation.unified_metrics.normalize_probe_results",

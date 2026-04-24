@@ -17,7 +17,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Optional, Protocol
 
 from evaluation.scoring import compute_redteam_score
 from evaluation.task_bundle import TaskBundle, resolve_bundle
@@ -423,7 +423,7 @@ class RedTeamWorkflow(Workflow):
     # Evaluation pipeline — 2 phases
     # ------------------------------------------------------------------
 
-    def _run_verifier(self, phase_dir: Path) -> int:
+    def _run_verifier(self, phase_dir: Path, replay_dir: Optional[Path] = None) -> int:
         """Run task/verify_files/verify_exploit.sh for this phase.
 
         Exit 0 = exploit succeeded (build IS vulnerable),
@@ -435,6 +435,8 @@ class RedTeamWorkflow(Workflow):
 
         env = os.environ.copy()
         env["MCB_APP_DIR"] = str(self.app_dir)
+        if replay_dir is not None:
+            env["MCB_OUTPUT_DIR"] = str(replay_dir)
 
         log_path = phase_dir / "verify_exploit.log"
         logger.info(f"Running verifier: {verifier}")
@@ -455,7 +457,14 @@ class RedTeamWorkflow(Workflow):
         """Run verifier then probes for a completed phase replay."""
         from evaluation.unified_metrics import normalize_probe_results
 
-        verifier_exit = self._run_verifier(replays_dir / f"verify_{tag}")
+        verifier_exit = self._run_verifier(
+            replays_dir / f"verify_{tag}",
+            replay_dir=(
+                phase_result.evidence_log_path.parent
+                if phase_result.evidence_log_path is not None
+                else None
+            ),
+        )
 
         probe_dir = self._ops.probe_dir(self.app_dir)
         probe_app = replays_dir / f"probe_app_{tag}.json"
