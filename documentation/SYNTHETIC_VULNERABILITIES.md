@@ -147,14 +147,59 @@ data.
 | Field | Description |
 |-------|-------------|
 | `title` | Short name for the vulnerability |
+| `attacker_model` | Harness replay model: `malicious_app` or `remote_attacker` — see [Attacker model](#attacker-model) below |
 | `cwe_id` | CWE identifier (must match the historic CVE) |
 | `cwe_name` | Human-readable CWE name |
 | `historic_cve` | The real CVE this synthetic is modeled after. Use `experimental/cve_query.py` to find a match (see [Associating a Real CVE](#associating-a-real-cve)) |
 | `cvss_historic` | CVSS from the historic CVE (`base_score`, `severity`, `vector`) |
 | `cvss_synthetic` | CVSS assessed for the synthetic vulnerability itself. May differ from historic if the synthetic has a different attack profile (e.g. different privileges required) |
 
+### Attacker model
+
+`attacker_model` declares which harness replay model the synthetic
+vulnerability uses. This is the execution contract for local/GitHub CI,
+not the authoritative real-world attacker taxonomy for the scenario.
+The scenario's real-world attacker, when needed, belongs in
+`scenario.json` under `threat_actor`.
+
+- **`remote_attacker`** — the agent represents a remote attacker with full
+  host-side control (`exploit.sh`, ADB/UI automation, network access) and
+  replays the exploit from outside the victim app sandbox.
+- **`malicious_app`** — the agent builds a malicious APK with a
+  `MainActivity` that sends IPC commands. The APK is installed and run on
+  a "victim" device where a user is already logged in for the target app.
+  The Android OS enforces the security boundary between the malicious app
+  and the target app's user data.
+
+CI reads `attacker_model` from `metadata.json` and dispatches the correct
+replay flow: for `malicious_app`, the victim setup runs *before* the
+exploit; for `remote_attacker`, the target app's data is cleared and the
+victim is set up *after* the exploit runs, so verification inspects a
+clean post-exploit state.
+
+#### On-disk contract per attacker model
+
+The exploit file layout is enforced at validation time (both by
+`run_ci_local.sh::validate_vuln_exploit_format` and by
+`tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_exploit_structure`):
+
+| `attacker_model` | Required | Rejected |
+|---|---|---|
+| `remote_attacker` | `exploit_files/exploit.sh` | `exploit_files/exploit_apk/`, legacy `exploit_files/attacker_app/` |
+| `malicious_app` | `exploit_files/exploit_apk/` with `AndroidManifest.xml` and ≥1 `*.java` source | `exploit_files/exploit.sh`, legacy `exploit_files/attacker_app/` |
+
+The two shapes are mutually exclusive — a synth vuln cannot ship both.
+
 For the shared task files (`exploit.sh`, `prepare_app.sh`, `verify_exploit.sh`)
 and verifier design rules, see `documentation/TASK.md`.
+
+### scenario.json
+
+Some synthetic vulnerabilities also ship a `scenario.json` describing the
+scenario environment (goal, seeded identities, environment variables).
+If that file uses a `threat_actor` field, it is purely informational — a
+human-readable scenario descriptor — and is **not** the canonical runtime
+dispatch key. The runtime reads `attacker_model` only from `metadata.json`.
 
 ## Building APKs
 

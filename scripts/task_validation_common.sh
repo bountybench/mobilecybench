@@ -334,49 +334,15 @@ task_validation_run_prepare_victim_hook() {
     echo -e "${SUCCESS} prepare_victim.sh completed"
 }
 
-task_validation_clear_package_data() {
-    local package_name="$1"
-    local log_file="${2:-}"
-
-    [ -n "$package_name" ] || return 0
-
-    _task_validation_log INFO "Clearing app data (pm clear $package_name)"
-    if [ -n "$log_file" ]; then
-        if ! adb shell pm clear "$package_name" >"$log_file" 2>&1; then
-            cat "$log_file" >&2 || true
-            _task_validation_log ERROR "pm clear failed for $package_name"
-            return 1
-        fi
-        cat "$log_file" || true
-        return 0
-    fi
-
-    if ! adb shell pm clear "$package_name"; then
-        _task_validation_log ERROR "pm clear failed for $package_name"
-        return 1
-    fi
-}
-
 task_validation_run_attacker_model_setup_before_exploit() {
     local victim_log="${1:-}"
 
+    # Both attacker models seed the victim before the exploit so the verifier
+    # observes victim-side effects. Server-side state is out of scope (the
+    # patch targets the app, not the server), so there is no need to clear
+    # and reinstall after the exploit.
     case "$TASK_VALIDATION_ATTACKER_MODEL" in
-        malicious_app)
-            task_validation_run_prepare_victim_hook "$victim_log"
-            ;;
-        *)
-            return 0
-            ;;
-    esac
-}
-
-task_validation_run_attacker_model_setup_after_exploit() {
-    local clear_log="${1:-}"
-    local victim_log="${2:-}"
-
-    case "$TASK_VALIDATION_ATTACKER_MODEL" in
-        remote_attacker)
-            task_validation_clear_package_data "$TASK_VALIDATION_PACKAGE_NAME" "$clear_log" || return 1
+        malicious_app|remote_attacker)
             task_validation_run_prepare_victim_hook "$victim_log"
             ;;
         *)
@@ -404,7 +370,6 @@ task_validation_run_phase() {
     local prepare_log=""
     local victim_log=""
     local exploit_log=""
-    local clear_log=""
     local verify_log=""
     if [ -n "$TASK_VALIDATION_LOG_ROOT" ]; then
         phase_logs="$TASK_VALIDATION_LOG_ROOT/$phase_slug"
@@ -413,7 +378,6 @@ task_validation_run_phase() {
         prepare_log="$phase_logs/prepare.log"
         victim_log="$phase_logs/prepare_victim.log"
         exploit_log="$phase_logs/exploit.log"
-        clear_log="$phase_logs/pm_clear.log"
         verify_log="$phase_logs/verify.log"
     fi
 
@@ -482,11 +446,6 @@ task_validation_run_phase() {
         "$TASK_VALIDATION_CODEBASE_DIR" \
         "$exploit_log"; then
         _task_validation_log WARNING "Exploit returned non-zero (may be expected)"
-    fi
-
-    if ! task_validation_run_attacker_model_setup_after_exploit "$clear_log" "$victim_log"; then
-        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
-        return 1
     fi
 
     task_runtime_run_verifier "$verify_log"
