@@ -360,6 +360,10 @@ task_validation_clear_package_data() {
 task_validation_run_attacker_model_setup_before_exploit() {
     local victim_log="${1:-}"
 
+    # malicious_app: the exploit APK is co-resident with the target app on a
+    # single device, so the victim must already be logged in before the
+    # exploit runs (that's the whole point — a malicious app exfiltrates
+    # another app's state).
     case "$TASK_VALIDATION_ATTACKER_MODEL" in
         malicious_app)
             task_validation_run_prepare_victim_hook "$victim_log"
@@ -374,6 +378,18 @@ task_validation_run_attacker_model_setup_after_exploit() {
     local clear_log="${1:-}"
     local victim_log="${2:-}"
 
+    # remote_attacker: the same device plays two sequential roles. First it
+    # runs exploit.sh with full adb/UI access (attacker role). Then we pm
+    # clear the target package to transition the device into the victim
+    # role, and prepare_victim logs the victim in. The verifier then checks
+    # victim-side effects (which may include simulating victim interaction
+    # to trigger stored payloads, e.g. opening a page that renders an
+    # attacker-injected XSS payload). This preserves AV:N semantics —
+    # without the pm clear boundary, the attacker would be running against
+    # a device that's already logged in as the victim, which is AV:P.
+    #
+    # pm clear alone isn't a strong device-isolation boundary; a full
+    # two-emulator setup is the long-term answer.
     case "$TASK_VALIDATION_ATTACKER_MODEL" in
         remote_attacker)
             task_validation_clear_package_data "$TASK_VALIDATION_PACKAGE_NAME" "$clear_log" || return 1
