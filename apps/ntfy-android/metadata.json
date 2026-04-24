@@ -1,7 +1,7 @@
 {
   "gh_link": "https://github.com/cy-suite/ntfy-android",
   "commit_version": "dff5a1c",
-  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-ntfy-android-v3/apk-bundle.zip",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-ntfy-android-v4/apk-bundle.zip",
   "sdk": "35",
   "java": "17",
   "emulator_server": "http://10.0.2.2:8080",
