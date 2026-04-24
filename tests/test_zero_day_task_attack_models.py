@@ -555,7 +555,9 @@ def test_malicious_app_phase_runs_victim_setup_before_exploit(tmp_path: Path) ->
     )
 
 
-def test_remote_attacker_phase_seeds_victim_before_exploit(tmp_path: Path) -> None:
+def test_remote_attacker_phase_clears_and_seeds_victim_after_exploit(
+    tmp_path: Path,
+) -> None:
     (
         app_dir,
         task_dir,
@@ -584,13 +586,16 @@ def test_remote_attacker_phase_seeds_victim_before_exploit(tmp_path: Path) -> No
     lines = [
         line.strip() for line in order_log.read_text().splitlines() if line.strip()
     ]
-    # Server-side effects are out of scope; the victim is seeded before the
-    # exploit so the verifier observes victim-side effects, and there is no
-    # pm clear between them.
+    # remote_attacker plays two sequential roles on one device: attacker
+    # first (exploit.sh with full adb/UI access), then victim (pm clear
+    # resets state, prepare_victim logs the victim in). Verifier then
+    # observes victim-side effects. Without the pm clear boundary, the
+    # attacker would be running against a device already logged in as the
+    # victim (AV:P, not AV:N).
     assert (
         lines.index("prepare_app")
-        < lines.index("prepare_victim")
         < lines.index("exploit_container")
+        < lines.index("adb:shell pm clear com.example.target")
+        < lines.index("prepare_victim")
         < lines.index("verify")
     )
-    assert "adb:shell pm clear com.example.target" not in lines

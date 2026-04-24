@@ -334,15 +334,65 @@ task_validation_run_prepare_victim_hook() {
     echo -e "${SUCCESS} prepare_victim.sh completed"
 }
 
+task_validation_clear_package_data() {
+    local package_name="$1"
+    local log_file="${2:-}"
+
+    [ -n "$package_name" ] || return 0
+
+    _task_validation_log INFO "Clearing app data (pm clear $package_name)"
+    if [ -n "$log_file" ]; then
+        if ! adb shell pm clear "$package_name" >"$log_file" 2>&1; then
+            cat "$log_file" >&2 || true
+            _task_validation_log ERROR "pm clear failed for $package_name"
+            return 1
+        fi
+        cat "$log_file" || true
+        return 0
+    fi
+
+    if ! adb shell pm clear "$package_name"; then
+        _task_validation_log ERROR "pm clear failed for $package_name"
+        return 1
+    fi
+}
+
 task_validation_run_attacker_model_setup_before_exploit() {
     local victim_log="${1:-}"
 
-    # Both attacker models seed the victim before the exploit so the verifier
-    # observes victim-side effects. Server-side state is out of scope (the
-    # patch targets the app, not the server), so there is no need to clear
-    # and reinstall after the exploit.
+    # malicious_app: the exploit APK is co-resident with the target app on a
+    # single device, so the victim must already be logged in before the
+    # exploit runs (that's the whole point — a malicious app exfiltrates
+    # another app's state).
     case "$TASK_VALIDATION_ATTACKER_MODEL" in
-        malicious_app|remote_attacker)
+        malicious_app)
+            task_validation_run_prepare_victim_hook "$victim_log"
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+task_validation_run_attacker_model_setup_after_exploit() {
+    local clear_log="${1:-}"
+    local victim_log="${2:-}"
+
+    # remote_attacker: the same device plays two sequential roles. First it
+    # runs exploit.sh with full adb/UI access (attacker role). Then we pm
+    # clear the target package to transition the device into the victim
+    # role, and prepare_victim logs the victim in. The verifier then checks
+    # victim-side effects (which may include simulating victim interaction
+    # to trigger stored payloads, e.g. opening a page that renders an
+    # attacker-injected XSS payload). This preserves AV:N semantics —
+    # without the pm clear boundary, the attacker would be running against
+    # a device that's already logged in as the victim, which is AV:P.
+    #
+    # pm clear alone isn't a strong device-isolation boundary; a full
+    # two-emulator setup is the long-term answer.
+    case "$TASK_VALIDATION_ATTACKER_MODEL" in
+        remote_attacker)
+            task_validation_clear_package_data "$TASK_VALIDATION_PACKAGE_NAME" "$clear_log" || return 1
             task_validation_run_prepare_victim_hook "$victim_log"
             ;;
         *)
@@ -370,6 +420,7 @@ task_validation_run_phase() {
     local prepare_log=""
     local victim_log=""
     local exploit_log=""
+    local clear_log=""
     local verify_log=""
     if [ -n "$TASK_VALIDATION_LOG_ROOT" ]; then
         phase_logs="$TASK_VALIDATION_LOG_ROOT/$phase_slug"
@@ -378,6 +429,7 @@ task_validation_run_phase() {
         prepare_log="$phase_logs/prepare.log"
         victim_log="$phase_logs/prepare_victim.log"
         exploit_log="$phase_logs/exploit.log"
+        clear_log="$phase_logs/pm_clear.log"
         verify_log="$phase_logs/verify.log"
     fi
 
@@ -446,6 +498,11 @@ task_validation_run_phase() {
         "$TASK_VALIDATION_CODEBASE_DIR" \
         "$exploit_log"; then
         _task_validation_log WARNING "Exploit returned non-zero (may be expected)"
+    fi
+
+    if ! task_validation_run_attacker_model_setup_after_exploit "$clear_log" "$victim_log"; then
+        task_validation_copy_phase_artifacts "$phase_slug" "$phase_output" "$phase_logs"
+        return 1
     fi
 
     task_runtime_run_verifier "$verify_log"
