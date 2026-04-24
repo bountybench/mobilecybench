@@ -187,21 +187,16 @@ def _log_experiment_config(
     )
 
 
-def _load_task_attacker_model(project_root: Path, app_name: str, task: str) -> str:
-    """Return attacker_model from a redteam task bundle."""
-    task_meta_path = (
-        project_root
-        / "zerodays"
-        / "reports"
-        / app_name
-        / task
-        / "task"
-        / "metadata.json"
-    )
+def _load_task_attacker_model(
+    project_root: Path, app_name: str, config: RunnerConfig
+) -> str:
+    """Return attacker_model from the redteam task bundle (synthetic or zeroday)."""
+    from evaluation.task_bundle import resolve_bundle
+
+    bundle = resolve_bundle(config, project_root, app_name)
+    task_meta_path = bundle.task_dir / "metadata.json"
     if not task_meta_path.exists():
-        raise ValueError(
-            f"metadata.json not found at {task_meta_path} (required for task={task})"
-        )
+        raise ValueError(f"metadata.json not found at {task_meta_path}")
 
     task_meta = json.loads(task_meta_path.read_text())
     task_attacker_model = task_meta.get("attacker_model")
@@ -276,17 +271,21 @@ def run(
                 replay.synthetic_vuln_id,
                 replay.attacker_model,
             )
-            if replay.workflow and replay.workflow != config.workflow:
+            if replay.workflow:
                 updates["workflow"] = replay.workflow
-            if replay.task:
+            if replay.workflow == "redteam":
+                # Clear the opposite selector so legacy config defaults do not
+                # violate the TaskBundle XOR contract during replay.
                 updates["task"] = replay.task
-            if replay.synthetic_vuln_id:
                 updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
-            if replay.attacker_model:
                 updates["attacker_model"] = replay.attacker_model
-        elif config.workflow == "redteam" and config.task:
+            elif replay.workflow == "exploit":
+                updates["task"] = None
+                updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
+                updates["attacker_model"] = None
+        elif config.workflow == "redteam" and (config.task or config.synthetic_vuln_id):
             task_attacker_model = _load_task_attacker_model(
-                project_root, app_name, config.task
+                project_root, app_name, config
             )
             if task_attacker_model != config.attacker_model:
                 logger.info(

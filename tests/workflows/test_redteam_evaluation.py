@@ -1,16 +1,12 @@
-"""Tests for RedTeamWorkflow.evaluate() — task-based 2-phase pipeline.
-
-Black-box: mocks the ops layer (run_phase, check_artifact), verifier,
-and probes. Tests pipeline behavior: early stop, scoring, result structure.
-"""
-
 import json
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from models.config import RunnerConfig
+from utils.logger import logger_manager
 from workflows.redteam import (
     MaliciousAppOps,
     PhaseResult,
@@ -18,25 +14,29 @@ from workflows.redteam import (
     RemoteAttackerOps,
 )
 
-# ---------------------------------------------------------------------------
-# Shared config fixtures
-# ---------------------------------------------------------------------------
-
-_BASE_CONFIG = dict(
-    build_type="skip-apk",
-    model="test",
-    agent_image="test:latest",
-    server_access=True,
-    adb_access="full",
-    max_iterations=10,
-    max_model_response_tokens=1000,
-    screenshot_mode=False,
-    dry_run=False,
-    emulator_backend="native",
-    emulator_display="headed",
-    workflow="redteam",
-    task="report-0",
-)
+_BASE_CONFIG = {
+    "build_type": "skip-apk",
+    "model": "test",
+    "agent_image": "test:latest",
+    "server_access": True,
+    "adb_access": "full",
+    "max_iterations": 10,
+    "max_model_response_tokens": 1000,
+    "screenshot_mode": False,
+    "dry_run": False,
+    "emulator_backend": "native",
+    "emulator_display": "headed",
+    "workflow": "redteam",
+    "task": "report-0",
+    "synthetic_vuln_id": None,
+    "attacker_model": "malicious_app",
+}
+_PROBES = [
+    "test_access_control.py",
+    "test_availability.py",
+    "test_confidentiality.py",
+    "test_integrity.py",
+]
 
 
 @pytest.fixture
@@ -46,24 +46,10 @@ def redteam_config():
 
 @pytest.fixture
 def remote_attacker_config():
-    return RunnerConfig(**_BASE_CONFIG, attacker_model="remote_attacker")
+    return RunnerConfig(**{**_BASE_CONFIG, "attacker_model": "remote_attacker"})
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_phase_result(exit_code: int, phase_dir: Path) -> PhaseResult:
-    """Create a PhaseResult with evidence log at the expected path."""
-    phase_dir.mkdir(parents=True, exist_ok=True)
-    evidence_log = phase_dir / "replay_evidence.log"
-    evidence_log.write_text(f"exit_code={exit_code}")
-    return PhaseResult(exit_code=exit_code, evidence_log_path=evidence_log)
-
-
-def _make_probe_result(triggered: bool) -> dict:
-    """Minimal normalized probe result."""
+def _probe_result(triggered: bool) -> dict:
     return {
         "combined": {"triggered": triggered},
         "app_specific_triggered": triggered,
@@ -71,394 +57,322 @@ def _make_probe_result(triggered: bool) -> dict:
     }
 
 
-def _setup_task_dir(tmp_path, app_name="testapp"):
-    """Create the task directory with required files."""
-    task_dir = tmp_path / "zerodays" / "reports" / app_name / "report-0" / "task"
-    task_dir.mkdir(parents=True, exist_ok=True)
-    (task_dir / "fix.patch").write_text("")
-    verify_dir = task_dir / "verify_files"
-    verify_dir.mkdir(parents=True, exist_ok=True)
-    (verify_dir / "verify_exploit.sh").write_text("#!/bin/bash\nexit 0")
-    (task_dir / "prepare_app.sh").write_text("#!/bin/bash\nexit 0")
-    (task_dir / "metadata.json").write_text(
-        json.dumps({"attacker_model": "malicious_app", "task_id": "test-task"})
-    )
-    return task_dir
+def _phase_result(exit_code: int, phase_dir: Path) -> PhaseResult:
+    phase_dir.mkdir(parents=True, exist_ok=True)
+    evidence = phase_dir / "replay_evidence.log"
+    evidence.write_text(str(exit_code))
+    return PhaseResult(exit_code=exit_code, evidence_log_path=evidence)
 
 
-def _setup_malicious_app_workflow(config, tmp_path, *, create_apk=True):
-    """Set up a RedTeamWorkflow for malicious_app with mocked infrastructure."""
-    app_dir = tmp_path / "apps" / "testapp"
-    app_dir.mkdir(parents=True)
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data))
 
-    (app_dir / "metadata.json").write_text(
-        json.dumps(
-            {
-                "commit_version": "abc123",
-                "sdk": "34",
-                "package_name": "com.test.app",
-                "container_names": [],
-                "app_server": "",
-            }
+
+def _write_probes(probe_dir: Path) -> None:
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    for name in _PROBES:
+        (probe_dir / name).write_text("pass\n")
+
+
+def _task_dir(project_root: Path, *, synthetic: bool) -> Path:
+    if synthetic:
+        return (
+            project_root / "apps" / "testapp" / "synthetic_vulnerabilities" / "vuln_0"
         )
+    return project_root / "zerodays" / "reports" / "testapp" / "report-0" / "task"
+
+
+def _make_workflow(
+    config: RunnerConfig, project_root: Path, *, synthetic: bool = False
+):
+    app_dir = project_root / "apps" / "testapp"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        app_dir / "metadata.json",
+        {
+            "commit_version": "abc123",
+            "sdk": "34",
+            "package_name": "com.test.app",
+            "container_names": [],
+            "app_server": (
+                "http://server:8080"
+                if config.attacker_model == "remote_attacker"
+                else ""
+            ),
+        },
     )
-    _setup_task_dir(tmp_path)
-    (app_dir / "generic_probe_config.json").write_text(
-        json.dumps(
+    (app_dir / "codebase").mkdir(exist_ok=True)
+
+    if config.attacker_model == "malicious_app":
+        _write_json(
+            app_dir / "generic_probe_config.json",
             {
                 "version": 1,
                 "generic_probe_applicability": {
                     "access.ssrf_detected": False,
                     "confidentiality.secrets": True,
-                    "confidentiality.app_flag": False,
-                    "confidentiality.container_flag": False,
-                    "integrity.app_flag": False,
-                    "integrity.app_pwned_file": False,
-                    "integrity.container_flag": False,
-                    "integrity.container_pwned_file": False,
-                    "availability.check_container_health": False,
                 },
-            }
+            },
         )
-    )
-    (app_dir / "codebase").mkdir()
+        _write_probes(app_dir)
+    else:
+        _write_probes(app_dir / "remote_attacker")
 
-    wf = RedTeamWorkflow(config, "testapp", tmp_path)
+    task_dir = _task_dir(project_root, synthetic=synthetic)
+    verify_dir = task_dir / "verify_files"
+    verify_dir.mkdir(parents=True, exist_ok=True)
+    (verify_dir / "verify_exploit.sh").write_text("#!/bin/bash\nexit 0\n")
+    (task_dir / "prepare_app.sh").write_text("#!/bin/bash\nexit 0\n")
+    (task_dir / ("vulnerability.patch" if synthetic else "fix.patch")).write_text("")
+    _write_json(task_dir / "metadata.json", {"attacker_model": config.attacker_model})
+
+    wf = RedTeamWorkflow(config, "testapp", project_root)
     wf.metadata = json.loads((app_dir / "metadata.json").read_text())
     wf.emulator = MagicMock()
-
-    from utils.logger import logger_manager
-
-    exploit_dir = logger_manager.get_logs_dir() / "agent_exploit" / "exploit_apk"
-    exploit_dir.mkdir(parents=True, exist_ok=True)
-    if create_apk:
-        (exploit_dir / "build_exploit_apk.sh").write_text("#!/bin/bash\nexit 0")
-        src = exploit_dir / "src" / "com" / "mobilecybench" / "exploit"
-        src.mkdir(parents=True, exist_ok=True)
-        (src / "Exploit.java").write_text("class Exploit {}")
-    else:
-        build_script = exploit_dir / "build_exploit_apk.sh"
-        if build_script.exists():
-            build_script.unlink()
-
     return wf
 
 
-def _setup_remote_attacker_workflow(config, tmp_path, *, create_exploit=True):
-    """Set up a RedTeamWorkflow for remote_attacker with mocked infrastructure."""
-    app_dir = tmp_path / "apps" / "testapp"
-    app_dir.mkdir(parents=True)
-
-    (app_dir / "metadata.json").write_text(
-        json.dumps(
-            {
-                "commit_version": "abc123",
-                "sdk": "34",
-                "package_name": "com.test.app",
-                "container_names": [],
-                "app_server": "http://server:8080",
-            }
-        )
-    )
-    _setup_task_dir(tmp_path)
-    (app_dir / "remote_attacker").mkdir()
-    (app_dir / "codebase").mkdir()
-
-    wf = RedTeamWorkflow(config, "testapp", tmp_path)
-    wf.metadata = json.loads((app_dir / "metadata.json").read_text())
-    wf.emulator = MagicMock()
-
-    from utils.logger import logger_manager
-
+def _write_agent_artifact(attacker_model: str, *, present: bool = True) -> Path:
     exploit_dir = logger_manager.get_logs_dir() / "agent_exploit"
+    shutil.rmtree(exploit_dir, ignore_errors=True)
     exploit_dir.mkdir(parents=True, exist_ok=True)
-    if create_exploit:
-        (exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0")
-    else:
-        exploit_sh = exploit_dir / "exploit.sh"
-        if exploit_sh.exists():
-            exploit_sh.unlink()
+    if attacker_model == "malicious_app" and present:
+        apk_dir = exploit_dir / "exploit_apk"
+        (apk_dir / "src" / "com" / "mobilecybench" / "exploit").mkdir(
+            parents=True, exist_ok=True
+        )
+        (apk_dir / "build_exploit_apk.sh").write_text("#!/bin/bash\nexit 0\n")
+        (
+            apk_dir / "src" / "com" / "mobilecybench" / "exploit" / "Exploit.java"
+        ).write_text("class Exploit {}")
+    if attacker_model == "remote_attacker" and present:
+        (exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0\n")
+    return exploit_dir
 
-    return wf
 
-
-def _run_evaluate(wf, ops_cls, phase_results, probe_results, verifier_exits=None):
-    """Run evaluate() with mocked ops, verifier, and probes.
-
-    verifier_exits: list of exit codes for each _run_verifier call.
-                   Defaults to [1, 1] (verifier says not vulnerable).
-    """
-    if verifier_exits is None:
-        verifier_exits = [1] * (len(phase_results) * 2)
-
-    phase_idx = [0]
-
-    def fake_run_phase(workflow, phase_dir, **kwargs):
-        i = phase_idx[0]
-        phase_idx[0] += 1
-        return _make_phase_result(phase_results[i], phase_dir)
-
-    probe_idx = [0]
-
-    def fake_normalize(*args):
-        i = probe_idx[0]
-        probe_idx[0] += 1
-        return _make_probe_result(probe_results[i])
-
-    verifier_idx = [0]
-
-    def fake_verifier(phase_dir):
-        i = verifier_idx[0]
-        verifier_idx[0] += 1
-        return verifier_exits[i]
+def _run_evaluate(wf, ops_cls, exits, probes, *, verifier=(1, 1)):
+    phase_i = iter(exits)
+    probe_i = iter(probes)
+    verifier_i = iter(verifier)
 
     with (
-        patch.object(ops_cls, "run_phase", side_effect=fake_run_phase),
+        patch.object(
+            ops_cls,
+            "run_phase",
+            side_effect=lambda *_args, **_kwargs: _phase_result(
+                next(phase_i), _args[1]
+            ),
+        ),
         patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
-        patch.object(RedTeamWorkflow, "_run_verifier", side_effect=fake_verifier),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_verifier",
+            side_effect=lambda *_args, **_kwargs: next(verifier_i),
+        ),
         patch(
             "evaluation.unified_metrics.normalize_probe_results",
-            side_effect=fake_normalize,
+            side_effect=lambda *_args: _probe_result(next(probe_i)),
         ),
         patch("subprocess.run"),
     ):
         return wf.evaluate()
 
 
-# ---------------------------------------------------------------------------
-# Artifact checks
-# ---------------------------------------------------------------------------
+def test_exploit_missing_saves_zero_score(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app", present=False)
+
+    result = wf.evaluate()
+
+    assert result["status"] == "exploit_missing"
+    assert result["score"] == 0
+    saved = json.loads(
+        (tmp_path / "apps" / "testapp" / "redteam_scores.json").read_text()
+    )
+    assert saved["status"] == "exploit_missing"
 
 
-class TestArtifactCheck:
-    """Ops.check_artifact validates exploit layout in agent_exploit/."""
+def test_synthetic_result_includes_vuln_id(tmp_path):
+    config = RunnerConfig(
+        **{**_BASE_CONFIG, "task": None, "synthetic_vuln_id": "vuln_0"}
+    )
+    wf = _make_workflow(config, tmp_path, synthetic=True)
+    _write_agent_artifact("malicious_app", present=False)
 
-    def test_app_ops_finds_buildable_project(self, tmp_path):
-        apk_dir = tmp_path / "exploit_apk"
-        apk_dir.mkdir()
-        (apk_dir / "build_exploit_apk.sh").write_text("#!/bin/bash\nexit 0")
-        src = apk_dir / "src" / "com" / "mobilecybench" / "exploit"
-        src.mkdir(parents=True)
-        (src / "Exploit.java").write_text("class Exploit {}")
-        ok, _ = MaliciousAppOps().check_artifact(tmp_path)
-        assert ok is True
+    result = wf.evaluate()
 
-    def test_app_ops_missing_build_script(self, tmp_path):
-        ok, msg = MaliciousAppOps().check_artifact(tmp_path)
-        assert ok is False
-        assert "build_exploit_apk.sh" in msg
-
-    def test_app_ops_missing_java_sources(self, tmp_path):
-        apk_dir = tmp_path / "exploit_apk"
-        apk_dir.mkdir()
-        (apk_dir / "build_exploit_apk.sh").write_text("#!/bin/bash\nexit 0")
-        ok, msg = MaliciousAppOps().check_artifact(tmp_path)
-        assert ok is False
-        assert "Java sources" in msg
-
-    def test_remote_ops_finds_exploit_sh(self, tmp_path):
-        (tmp_path / "exploit.sh").write_text("#!/bin/bash\nexit 0")
-        ok, _ = RemoteAttackerOps().check_artifact(tmp_path)
-        assert ok is True
-
-    def test_remote_ops_missing_exploit_sh(self, tmp_path):
-        ok, msg = RemoteAttackerOps().check_artifact(tmp_path)
-        assert ok is False
-        assert "exploit.sh" in msg
+    assert result["task"] is None
+    assert result["synthetic_vuln_id"] == "vuln_0"
 
 
-# ---------------------------------------------------------------------------
-# Malicious app — pipeline behavior
-# ---------------------------------------------------------------------------
+def test_malicious_app_early_stop(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    result = _run_evaluate(wf, MaliciousAppOps, [1], [False], verifier=(1,))
+
+    assert result["status"] == "no_impact"
+    assert result["score"] == 0
 
 
-class TestExploitMissing:
-    def test_no_apk_scores_zero(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path, create_apk=False)
+def test_phase1_probe_parse_failure_is_not_no_impact(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    with (
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=[
+                _phase_result(1, tmp_path / "phase1"),
+                _phase_result(1, tmp_path / "phase2"),
+            ],
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", side_effect=[False, True]),
+        patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            return_value=_probe_result(False),
+        ),
+        patch("subprocess.run"),
+    ):
         result = wf.evaluate()
-        assert result["status"] == "exploit_missing"
-        assert result["score"] == 0
+
+    assert result["status"] == "probe_evaluator_error"
 
 
-class TestEarlyStop:
-    """Phase 1 fails AND no probes/verifier triggered → skip Phase 2."""
+def test_verifier_signal_can_produce_verified_score(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app")
 
-    def test_early_stop_skips_phase2(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        result = _run_evaluate(wf, MaliciousAppOps, [1], [False])
-        assert result["status"] == "no_impact"
-        assert result["score"] == 0
+    result = _run_evaluate(wf, MaliciousAppOps, [1, 1], [False, False], verifier=(0, 1))
 
-    def test_verifier_bypasses_early_stop(self, redteam_config, tmp_path):
-        """Phase 1 fails and probes don't trigger, but verifier fires → phase 2 runs."""
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        # Verifier: phase1=0 (vuln confirmed), phase2=1 (patched)
-        result = _run_evaluate(
-            wf, MaliciousAppOps, [1, 1], [False, False], verifier_exits=[0, 1]
-        )
-        assert result["status"] == "verified"
-        assert result["score"] == 1
-        assert result["signals"]["verifier_diff"] == 1
+    assert result["status"] == "verified"
+    assert result["signals"] == {
+        "verifier_diff": 1,
+        "patch_diff": 0,
+        "probe_vuln": 0,
+        "probe_patched": 0,
+    }
 
 
-class TestResultStructure:
-    """Result JSON has expected fields and is persisted."""
+def test_phase2_restore_runs_even_on_exception(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app")
+    calls = []
 
-    def test_result_saved_to_file(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path, create_apk=False)
-        wf.evaluate()
-        scores_file = tmp_path / "apps" / "testapp" / "redteam_scores.json"
-        assert scores_file.exists()
-        data = json.loads(scores_file.read_text())
-        assert data["status"] == "exploit_missing"
-        assert data["task"] == "report-0"
+    def fail_on_second_run(*args, **kwargs):
+        if len(calls) == 0:
+            calls.append("phase1")
+            return _phase_result(0, args[1])
+        raise RuntimeError("phase 2 infra crash")
 
-
-class TestPatchRestoration:
-    """fix.patch is always restored even if phase 2 crashes."""
-
-    def test_git_checkout_called_on_phase2_exception(self, redteam_config, tmp_path):
-        wf = _setup_malicious_app_workflow(redteam_config, tmp_path)
-        call_count = [0]
-
-        def fake_run_phase(workflow, phase_dir, **kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return _make_phase_result(0, phase_dir)
-            raise RuntimeError("phase 2 infra crash")
-
-        subprocess_calls = []
-
-        def tracking_run(cmd, **kwargs):
-            subprocess_calls.append(cmd)
-
-        with (
-            patch.object(MaliciousAppOps, "run_phase", side_effect=fake_run_phase),
-            patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
-            patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
-            patch(
-                "evaluation.unified_metrics.normalize_probe_results",
-                return_value=_make_probe_result(True),
-            ),
-            patch("subprocess.run", side_effect=tracking_run),
-        ):
-            with pytest.raises(RuntimeError, match="phase 2 infra crash"):
-                wf.evaluate()
-
-        checkout_calls = [
-            c for c in subprocess_calls if c == ["git", "checkout", "--", "."]
-        ]
-        assert len(checkout_calls) == 2
-
-
-# ---------------------------------------------------------------------------
-# Remote attacker — pipeline behavior
-# ---------------------------------------------------------------------------
-
-
-class TestRemoteAttackerValidation:
-    def test_missing_probe_dir_rejected(self, remote_attacker_config, tmp_path):
-        app_dir = tmp_path / "apps" / "testapp"
-        app_dir.mkdir(parents=True)
-        (app_dir / "metadata.json").write_text(
-            json.dumps(
-                {
-                    "commit_version": "abc123",
-                    "sdk": "34",
-                    "package_name": "com.test.app",
-                    "container_names": [],
-                }
-            )
-        )
-        _setup_task_dir(tmp_path)
-        wf = RedTeamWorkflow(remote_attacker_config, "testapp", tmp_path)
-        with pytest.raises(
-            ValueError, match="remote_attacker probe directory not found"
-        ):
-            wf.validate_arguments()
-
-
-class TestRemoteAttackerPhaseSequence:
-    """Verify remote_attacker phase ordering: exploit → pm clear → prepare_app."""
-
-    def test_exploit_then_clear_then_prepare(self, remote_attacker_config, tmp_path):
-        wf = _setup_remote_attacker_workflow(remote_attacker_config, tmp_path)
-        call_order = []
-
-        def track_run_exploit(*args, **kwargs):
-            call_order.append("exploit")
-            phase_dir = args[1]
-            phase_dir.mkdir(parents=True, exist_ok=True)
-            evidence = phase_dir / "replay_evidence.log"
-            evidence.write_text("test")
-            return {
-                "replay_exit_code": 1,
-                "replay_stdout": "",
-                "replay_stderr": "",
-                "replay_evidence_path": str(evidence),
-            }
-
-        def track_subprocess_run(cmd, **kwargs):
-            if isinstance(cmd, list) and "pm" in cmd and "clear" in cmd:
-                call_order.append("pm_clear")
-            return MagicMock(returncode=0)
-
-        def track_prepare_app():
-            call_order.append("prepare_app")
-
-        with (
-            patch.object(RedTeamWorkflow, "_restart_runtime"),
-            patch.object(
-                RedTeamWorkflow, "_run_exploit", side_effect=track_run_exploit
-            ),
-            patch("workflows.redteam.subprocess.run", side_effect=track_subprocess_run),
-            patch.object(
-                RedTeamWorkflow, "_run_prepare_app", side_effect=track_prepare_app
-            ),
-            patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
-            patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
-            patch(
-                "evaluation.unified_metrics.normalize_probe_results",
-                return_value=_make_probe_result(False),
-            ),
-        ):
+    with (
+        patch.object(MaliciousAppOps, "run_phase", side_effect=fail_on_second_run),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            return_value=_probe_result(True),
+        ),
+        patch("subprocess.run") as mock_run,
+    ):
+        with pytest.raises(RuntimeError, match="phase 2 infra crash"):
             wf.evaluate()
 
-        assert call_order == ["exploit", "pm_clear", "prepare_app"]
+    restore_calls = [call.args[0] for call in mock_run.call_args_list if call.args]
+    assert restore_calls.count(["git", "checkout", "--", "."]) == 3
 
-    def test_prepare_app_failure_returns_failed_phase(
-        self, remote_attacker_config, tmp_path
+
+def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    order = []
+
+    def fake_exploit(*args, **kwargs):
+        order.append("exploit")
+        phase_dir = args[1]
+        phase_dir.mkdir(parents=True, exist_ok=True)
+        evidence = phase_dir / "replay_evidence.log"
+        evidence.write_text("ok")
+        return {"replay_exit_code": 1, "replay_evidence_path": str(evidence)}
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_prepare_app",
+            side_effect=lambda: order.append("prepare_app"),
+        ),
+        patch(
+            "workflows.redteam.subprocess.run",
+            side_effect=lambda cmd, **_kwargs: order.append("pm_clear")
+            or MagicMock(returncode=0),
+        ),
     ):
-        """If prepare_app crashes, run_phase returns exit_code=2."""
-        wf = _setup_remote_attacker_workflow(remote_attacker_config, tmp_path)
+        result = RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=Path("apk/test.apk"),
+        )
 
-        def fake_run_exploit(*args, **kwargs):
-            phase_dir = args[1]
-            phase_dir.mkdir(parents=True, exist_ok=True)
-            return {
-                "replay_exit_code": 0,
-                "replay_stdout": "",
-                "replay_stderr": "",
-                "replay_evidence_path": None,
-            }
+    assert result.exit_code == 1
+    assert order == ["exploit", "pm_clear", "prepare_app"]
 
-        with (
-            patch.object(RedTeamWorkflow, "_restart_runtime"),
-            patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_run_exploit),
-            patch(
-                "workflows.redteam.subprocess.run", return_value=MagicMock(returncode=0)
+
+def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    captured = {}
+
+    def fake_install(_app_dir, _emulator, _project_root, **kwargs):
+        captured["apk_path"] = kwargs["apk_path"]
+
+    def fake_setup_agent(**kwargs):
+        captured["post_checkout_hook"] = kwargs["post_checkout_hook"]
+        return MagicMock(container=MagicMock())
+
+    with (
+        patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
+        patch.object(RedTeamWorkflow, "setup_apks"),
+        patch.object(type(wf._bundle), "validate_build_artifacts"),
+        patch("utils.emulator_certs.inject_system_ca"),
+        patch(
+            "utils.setup_utils.install_app_and_setup_backend", side_effect=fake_install
+        ),
+        patch(
+            "agent.agent_container.setup_agent_environment",
+            side_effect=fake_setup_agent,
+        ),
+        patch("utils.setup_utils.check_connectivity"),
+        patch.object(MaliciousAppOps, "setup_agent_extras"),
+    ):
+        wf.setup_runtime_environment()
+
+    assert captured == {
+        "apk_path": wf._bundle.phase1_apk(),
+        "post_checkout_hook": wf._bundle.prepare_phase1_codebase,
+    }
+
+
+@pytest.mark.parametrize(
+    ("config", "synthetic", "missing_name"),
+    [
+        (RunnerConfig(**_BASE_CONFIG), False, "fix.patch"),
+        (
+            RunnerConfig(
+                **{**_BASE_CONFIG, "task": None, "synthetic_vuln_id": "vuln_0"}
             ),
-            patch.object(
-                RedTeamWorkflow,
-                "_run_prepare_app",
-                side_effect=RuntimeError("prepare_app timed out"),
-            ),
-        ):
-            result = RemoteAttackerOps().run_phase(
-                wf,
-                tmp_path / "phase_test",
-                exploit_dir=tmp_path,
-                target_apk=Path("apk/test.apk"),
-            )
-            assert result.exit_code == 2
-            assert result.evidence_log_path is None
+            True,
+            "vulnerability.patch",
+        ),
+    ],
+)
+def test_validate_arguments_requires_bundle_patch(
+    config, synthetic, missing_name, tmp_path
+):
+    wf = _make_workflow(config, tmp_path, synthetic=synthetic)
+    wf._bundle.patch.unlink()
+    with pytest.raises(ValueError, match=missing_name):
+        wf.validate_arguments()
