@@ -1,6 +1,5 @@
 {
   "title": "Path Traversal via Unsanitized Attachment Filename in DownloadAttachmentWorker",
-  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-22",
   "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
   "historic_cve": "CVE-2025-20949",
