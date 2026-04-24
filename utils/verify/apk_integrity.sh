@@ -37,12 +37,19 @@ verify_apk_integrity() {
         verifier_error "Malformed APK hash baseline (expected 64 hex chars): '$expected'"
     fi
 
-    # Resolve device-side APK path.
-    local apk_device_path
-    apk_device_path="$(adb shell pm path "$pkg" 2>/dev/null | tr -d '\r' | sed 's/^package://' | grep '/base.apk$' | head -n 1)"
-    if [ -z "$apk_device_path" ]; then
-        apk_device_path="$(adb shell pm path "$pkg" 2>/dev/null | tr -d '\r' | sed 's/^package://' | head -n 1)"
-    fi
+    # Resolve device-side APK path. Retry briefly in case ADB is transiently
+    # unavailable (e.g. just after exploit-container teardown restarts adbd).
+    local apk_device_path=""
+    local _i
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+        adb wait-for-device >/dev/null 2>&1 || true
+        apk_device_path="$(adb shell pm path "$pkg" 2>/dev/null | tr -d '\r' | sed 's/^package://' | grep '/base.apk$' | head -n 1)"
+        if [ -z "$apk_device_path" ]; then
+            apk_device_path="$(adb shell pm path "$pkg" 2>/dev/null | tr -d '\r' | sed 's/^package://' | head -n 1)"
+        fi
+        [ -n "$apk_device_path" ] && break
+        sleep 1
+    done
     if [ -z "$apk_device_path" ]; then
         verifier_error "App $pkg is not installed (cannot verify APK integrity)"
     fi

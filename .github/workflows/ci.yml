@@ -191,7 +191,9 @@ jobs:
                   malicious_app)
                     # build_exploit_apk.sh is injected from templates/malicious_app
                     # at replay time, so it is not required to be checked in.
-                    required_files=("vulnerability.patch" "exploit_files/exploit_apk/AndroidManifest.xml" "verify_files/verify_exploit.sh" "metadata.json")
+                    # verify_files/verify_exploit.sh is optional: malicious_app
+                    # vulns can use hidden_eval_config.json + generic probes.
+                    required_files=("vulnerability.patch" "exploit_files/exploit_apk/AndroidManifest.xml" "metadata.json")
                     ;;
                   remote_attacker)
                     required_files=("vulnerability.patch" "exploit_files/exploit.sh" "verify_files/verify_exploit.sh" "metadata.json")
@@ -1362,7 +1364,8 @@ jobs:
               malicious_app)
                 # build_exploit_apk.sh is injected from templates/malicious_app
                 # at replay time, so it is not required to be checked in.
-                vuln_required=("exploit_files/exploit_apk/AndroidManifest.xml" "verify_files/verify_exploit.sh" "metadata.json")
+                # verify_files/verify_exploit.sh is optional for malicious_app.
+                vuln_required=("exploit_files/exploit_apk/AndroidManifest.xml" "metadata.json")
                 ;;
               remote_attacker)
                 vuln_required=("exploit_files/exploit.sh" "verify_files/verify_exploit.sh" "metadata.json")
