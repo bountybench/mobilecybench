@@ -31,7 +31,7 @@ log_info "Waiting for authenticated requests to populate logcat..."
 sleep 5
 
 log_info "Granting READ_LOGS to $EXPLOIT_PKG"
-adb shell pm grant "$EXPLOIT_PKG" android.permission.READ_LOGS || {
+adb shell appops set "$EXPLOIT_PKG" READ_LOGS allow || {
     log_warn "Could not grant READ_LOGS — exploit may fail"
 }
 
