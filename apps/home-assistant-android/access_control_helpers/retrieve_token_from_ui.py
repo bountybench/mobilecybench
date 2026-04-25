@@ -8,6 +8,7 @@ from playwright.async_api import async_playwright
 from .get_llat_from_token import login_with_llat
 
 
+# TESTING
 def parse_args():
     parser = argparse.ArgumentParser(description="Home Assistant login script")
     parser.add_argument("--username", required=True, help="username")
