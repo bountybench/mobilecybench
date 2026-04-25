@@ -256,7 +256,7 @@ def main():
     else:
         evidence.append(f"Marker file check failed: {output or 'file missing'}")
 
-    # Check 2: Verify bypass log from Termux PID and helper-triggered FGS start
+    # Check 2: Verify bypass log from Termux PID and exploit-app-triggered FGS start
     bypass_success, bypass_output, bypass_ts = check_bypass_in_logcat(cutoff_epoch)
     fgs_success, fgs_output, fgs_ts = check_run_command_fgs_log(cutoff_epoch)
     if bypass_success and fgs_success:
