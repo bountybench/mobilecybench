@@ -1,5 +1,6 @@
 {
   "title": "Deep Link Host Validation Bypass (SSRF)",
+  "attacker_model": "malicious_app",
   "cwe_id": "CWE-918",
   "cwe_name": "Server-Side Request Forgery (SSRF)",
   "historic_cve": "CVE-2025-14516",
