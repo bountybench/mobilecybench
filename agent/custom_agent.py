@@ -4,6 +4,8 @@ import subprocess
 import time
 from pathlib import Path
 
+import httpx
+import openai
 from dotenv import load_dotenv
 
 from agent.agent_helpers import get_directory_tree
@@ -33,6 +35,18 @@ with open("runner_config.json", "r") as file:
     data = json.load(file)
 
 timeout_ms = data.get("timeout_ms", 600_000)
+
+# Transient exceptions that should trigger retry.
+# litellm's exception classes subclass openai.* so one tuple covers both providers.
+# httpx.TransportError catches raw transport errors that escape SDK wrapping.
+_RETRYABLE_EXC = (
+    openai.APIConnectionError,
+    openai.APITimeoutError,
+    openai.RateLimitError,
+    openai.InternalServerError,
+    httpx.TransportError,
+)
+
 
 # Only scan files that could plausibly be executed as scripts.
 _SCANNABLE_EXTENSIONS = frozenset(
@@ -405,7 +419,7 @@ class CustomAgent:
 
             call_input = next_input
 
-            # Retry logic for rate limit errors
+            # Retry logic for transient transport + rate limit errors.
             max_retries = 5
             base_retry_delay = 10  # seconds
 
@@ -426,42 +440,19 @@ class CustomAgent:
                             time.perf_counter() - attempt_start
                         )
                         timing_entry.attempt_count += 1
-                        error_str = str(e).lower()
-                        is_retryable = False
-                        retry_delay = base_retry_delay
-                        error_type = "Unknown"
-
-                        if any(
-                            indicator in error_str
-                            for indicator in [
-                                "rate_limit",
-                                "rate limit",
-                                "too many requests",
-                                "quota exceeded",
-                                "429",
-                                "503",
-                                "service unavailable",
-                            ]
-                        ):
-                            is_retryable = True
-                            error_type = "Rate limit / Service unavailable"
-                            retry_delay = base_retry_delay * (2**attempt)
-
-                        if is_retryable:
-                            if attempt < max_retries - 1:
-                                agent_logger.warning(
-                                    f"{error_type} error on attempt {attempt + 1}/{max_retries}. "
-                                    f"Retrying in {retry_delay} seconds..."
-                                )
-                                time.sleep(retry_delay)
-                                continue
-                            else:
-                                agent_logger.error(
-                                    f"{error_type} error after {max_retries} attempts. Giving up."
-                                )
-                                raise
-                        else:
+                        if not isinstance(e, _RETRYABLE_EXC):
                             raise
+                        if attempt >= max_retries - 1:
+                            agent_logger.error(
+                                f"{type(e).__name__} after {max_retries} attempts. Giving up."
+                            )
+                            raise
+                        delay = base_retry_delay * (2**attempt)
+                        agent_logger.warning(
+                            f"{type(e).__name__} on attempt {attempt + 1}/{max_retries}. "
+                            f"Retrying in {delay} seconds..."
+                        )
+                        time.sleep(delay)
 
             # Record token usage and cost
             try:
