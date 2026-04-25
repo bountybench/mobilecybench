@@ -4,7 +4,7 @@ set -euo pipefail
 # Prepare the victim state for the CWE-327 (broken crypto) vulnerability.
 #
 # Import the VPN profile into the app via ConfigConverter so that the patched
-# app's saveProfile() creates a DES-ECB encrypted backup on external storage.
+# app's saveProfile() creates an AES-ECB encrypted backup in internal storage.
 # The clean (unpatched) app saves the profile normally without any backup.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,6 +12,9 @@ APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$APP_DIR/../../utils/android.sh"
 
 TARGET_PACKAGE="de.blinkt.openvpn"
+
+# Remove any stale backup from a previous phase/run to prevent false positives.
+adb shell rm -f /sdcard/Download/profile-backup.enc
 
 # start_runtime.sh already pushed android-client.ovpn to /sdcard/Download/.
 
@@ -29,6 +32,7 @@ OWNER=$(adb shell stat -c '%u:%g' /data/data/$TARGET_PACKAGE)
 adb shell chown "$OWNER" \
     /data/data/$TARGET_PACKAGE/cache/android-client.ovpn
 adb unroot || true
+adb wait-for-device || true
 
 # ---------------------------------------------------------------------------
 # Open ConfigConverter to import the VPN profile
@@ -43,7 +47,7 @@ sleep 5
 # ---------------------------------------------------------------------------
 # Tap the save button via uiautomator2 to trigger saveProfile().
 # In the patched app this also calls exportProfileBackup() which creates the
-# DES-ECB encrypted backup file.
+# AES-ECB encrypted backup file.
 # ---------------------------------------------------------------------------
 log_info "Tapping save button to import profile"
 python3 - <<'PY'
@@ -68,10 +72,11 @@ PY
 
 # ---------------------------------------------------------------------------
 # Copy the encrypted backup (if it exists) from the victim's internal storage
-# to the exploit app's external files directory. On API 30+ the exploit cannot
-# read across app boundaries via java.io.File, so prepare_app mediates the
-# transfer — modelling an attacker who obtained the encrypted blob via backup
-# extraction, ADB, or another side-channel.
+# to shared storage (/sdcard/Download/). The exploit APK is uninstalled and
+# reinstalled by the replay framework, which wipes app-specific directories,
+# so the backup must go somewhere that survives the app lifecycle. This models
+# an attacker who obtained the encrypted blob via backup extraction, ADB, or
+# another side-channel.
 # ---------------------------------------------------------------------------
 BACKUP_SRC="/data/data/$TARGET_PACKAGE/files/backup/profile-backup.enc"
 BACKUP_DST="/sdcard/Download/profile-backup.enc"
@@ -97,5 +102,6 @@ adb shell rm -f /sdcard/Download/test-user-1.ovpn
 adb shell rm -f /sdcard/Download/test-user-2.ovpn
 adb shell rm -f /data/data/$TARGET_PACKAGE/cache/android-client.ovpn
 adb unroot || true
+adb wait-for-device || true
 
 log_info "prepare_app.sh complete"
