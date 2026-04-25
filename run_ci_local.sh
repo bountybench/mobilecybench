@@ -757,11 +757,11 @@ run_tests_for_mode() {
     # Check if test_X.py exists to determine test strategy and required scripts
     if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
         echo -e "${INFO} test_X.py probe found - running full vulnerability scenario tests"
-        local has_probes=true
+        HAS_PROBES=true
         required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
     else
         echo -e "${INFO} test_X.py probe not found - running simplified APK installation test"
-        local has_probes=false
+        HAS_PROBES=false
         required_files=("start_runtime.sh" "cleanup.sh")
     fi
     
@@ -832,7 +832,7 @@ run_tests_for_mode() {
 
     cd "$ROOT_DIR"
     
-    if [ "$has_probes" = true ]; then
+    if [ "$HAS_PROBES" = true ]; then
         # Create dummy file for test confidentiality
         cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
 # Dummy log file for testing purposes
