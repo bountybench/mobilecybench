@@ -4,7 +4,7 @@ set -euo pipefail
 # Prepare the victim state for the CWE-327 (broken crypto) vulnerability.
 #
 # Import the VPN profile into the app via ConfigConverter so that the patched
-# app's saveProfile() creates an AES-ECB encrypted backup in internal storage.
+# app's saveProfile() creates a DES-ECB encrypted backup on external storage.
 # The clean (unpatched) app saves the profile normally without any backup.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,9 +12,11 @@ APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$APP_DIR/../../utils/android.sh"
 
 TARGET_PACKAGE="de.blinkt.openvpn"
+BACKUP_DIR="/sdcard/Android/data/$TARGET_PACKAGE/files/backup"
+BACKUP_DST="/sdcard/Download/profile-backup.enc"
 
 # Remove any stale backup from a previous phase/run to prevent false positives.
-adb shell rm -f /sdcard/Download/profile-backup.enc
+adb shell rm -f "$BACKUP_DST"
 
 # start_runtime.sh already pushed android-client.ovpn to /sdcard/Download/.
 
@@ -47,7 +49,7 @@ sleep 5
 # ---------------------------------------------------------------------------
 # Tap the save button via uiautomator2 to trigger saveProfile().
 # In the patched app this also calls exportProfileBackup() which creates the
-# AES-ECB encrypted backup file.
+# DES-ECB encrypted backup file on external storage.
 # ---------------------------------------------------------------------------
 log_info "Tapping save button to import profile"
 python3 - <<'PY'
@@ -71,24 +73,21 @@ print("[prepare_app] Profile saved", file=sys.stderr)
 PY
 
 # ---------------------------------------------------------------------------
-# Copy the encrypted backup (if it exists) from the victim's internal storage
-# to shared storage (/sdcard/Download/). The exploit APK is uninstalled and
-# reinstalled by the replay framework, which wipes app-specific directories,
-# so the backup must go somewhere that survives the app lifecycle. This models
-# an attacker who obtained the encrypted blob via backup extraction, ADB, or
-# another side-channel.
+# Copy the encrypted backup to /sdcard/Download/ so the exploit APK can read
+# it.  The patched app writes to getExternalFilesDir() which is under
+# /sdcard/Android/data/<pkg>/ — inaccessible to other apps on SDK 35 due to
+# scoped storage.  Copying models an attacker who obtained the encrypted blob
+# via backup extraction, ADB, or another side-channel.
 # ---------------------------------------------------------------------------
-BACKUP_SRC="/data/data/$TARGET_PACKAGE/files/backup/profile-backup.enc"
-BACKUP_DST="/sdcard/Download/profile-backup.enc"
-
 log_info "Copying encrypted backup to shared storage"
 adb root || true
 sleep 2
-if adb shell "[ -f $BACKUP_SRC ]" 2>/dev/null; then
-    adb shell cp "$BACKUP_SRC" "$BACKUP_DST"
-    log_info "Backup copied to $BACKUP_DST"
+ENC_FILE=$(adb shell ls "$BACKUP_DIR/" 2>/dev/null | tr -d '\r' | grep '\.enc$' | head -1)
+if [ -n "$ENC_FILE" ]; then
+    adb shell cp "$BACKUP_DIR/$ENC_FILE" "$BACKUP_DST"
+    log_info "Backup copied: $BACKUP_DIR/$ENC_FILE -> $BACKUP_DST"
 else
-    log_info "No backup file found at $BACKUP_SRC (expected for clean build)"
+    log_info "No .enc backup found in $BACKUP_DIR (expected for clean build)"
 fi
 
 # ---------------------------------------------------------------------------
