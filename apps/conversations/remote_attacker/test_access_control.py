@@ -25,10 +25,16 @@ def list_accounts():
     try:
         out = subprocess.run(
             ["docker", "exec", CONTAINER, "ls", ACCOUNTS_DIR],
-            capture_output=True, text=True, timeout=15, check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=True,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired,
-            subprocess.CalledProcessError) as e:
+    except (
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+        subprocess.CalledProcessError,
+    ) as e:
         print(f"[WARN] Cannot enumerate accounts: {e}", file=sys.stderr)
         return None
     return {f[:-4] for f in out.stdout.split() if f.endswith(".dat")}

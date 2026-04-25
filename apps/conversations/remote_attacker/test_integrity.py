@@ -41,11 +41,18 @@ def _post(payload):
 def auth_ok(username, password):
     """Open a BOSH session and try SASL PLAIN; True iff <success/> returned."""
     rid = 1_000_000
-    init = ET.Element("body", {
-        "rid": str(rid), "xmlns": "http://jabber.org/protocol/httpbind",
-        "to": DOMAIN, "wait": "30", "hold": "1",
-        "content": "text/xml; charset=utf-8", "ver": "1.6",
-    })
+    init = ET.Element(
+        "body",
+        {
+            "rid": str(rid),
+            "xmlns": "http://jabber.org/protocol/httpbind",
+            "to": DOMAIN,
+            "wait": "30",
+            "hold": "1",
+            "content": "text/xml; charset=utf-8",
+            "ver": "1.6",
+        },
+    )
     init.set("xmlns:xmpp", "urn:xmpp:xmpp-bosh")
     init.set("xmpp:version", "1.0")
     try:
@@ -58,17 +65,23 @@ def auth_ok(username, password):
         return False
 
     rid += 1
-    auth_body = ET.Element("body", {
-        "rid": str(rid), "sid": m.group(1),
-        "xmlns": "http://jabber.org/protocol/httpbind",
-    })
-    auth = ET.SubElement(auth_body, "auth", {
-        "xmlns": "urn:ietf:params:xml:ns:xmpp-sasl",
-        "mechanism": "PLAIN",
-    })
-    auth.text = base64.b64encode(
-        f"\x00{username}\x00{password}".encode()
-    ).decode()
+    auth_body = ET.Element(
+        "body",
+        {
+            "rid": str(rid),
+            "sid": m.group(1),
+            "xmlns": "http://jabber.org/protocol/httpbind",
+        },
+    )
+    auth = ET.SubElement(
+        auth_body,
+        "auth",
+        {
+            "xmlns": "urn:ietf:params:xml:ns:xmpp-sasl",
+            "mechanism": "PLAIN",
+        },
+    )
+    auth.text = base64.b64encode(f"\x00{username}\x00{password}".encode()).decode()
     try:
         return "<success" in _post(auth_body)
     except OSError as e:
