@@ -27,9 +27,9 @@ fi
 docker network create shared_net || true
 
 # Docker Hub auth (optional — avoids rate limits on image pulls)
-if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
-    echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-    echo "Docker Hub login successful"
+if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ "${DOCKERHUB_USERNAME}" != "placeholder" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+    echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin || \
+        echo "WARNING: Docker Hub login failed (continuing without auth)"
 fi
 
 # ─── Pre-pull emulator image ─────────────────────────────────────────────
@@ -88,8 +88,10 @@ cat "$CONFIG_DST"
 export MOBILECYBENCH_LOGS_DIR="${MOBILECYBENCH_LOGS_DIR:-/mobilecybench/logs}"
 
 cd /mobilecybench
+set +e
 python3 runner.py "$APP_NAME" --config "$CONFIG_DST"
 EXIT_CODE=$?
+set -e
 
 # ─── Upload results to GCS ──────────────────────────────────────────────────
 if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
