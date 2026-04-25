@@ -1,14 +1,15 @@
 """RedTeamWorkflow — task-based evaluation pipeline.
 
-One task = one vulnerability. Source-of-truth inputs live under:
-  zerodays/reports/<app>/<report-N>/task/
+One task = one vulnerability. Two bundle types share the pipeline:
+- ZerodayBundle: zerodays/reports/<app>/<task>/task/ (fix.patch direction).
+- SyntheticBundle: apps/<app>/synthetic_vulnerabilities/<vuln>/ (vulnerability.patch direction).
 
-Persisted private build artifacts live under:
-  zerodays/reports/<app>/<report-N>/artifacts/
+Bundle selection and patch direction live behind evaluation.task_bundle.TaskBundle.
+The workflow never branches on bundle kind.
 
-Two attack models share the pipeline via lightweight strategy objects:
+Two attacker models share the pipeline via lightweight strategy objects:
 - MaliciousAppOps: APK-based exploit (host replay via am instrument)
-- AuthAttackerOps: exploit.sh in Docker container (authenticated attacker)
+- RemoteAttackerOps: exploit.sh in Docker container (authenticated attacker)
 """
 
 import json
@@ -16,9 +17,10 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Optional, Protocol
 
 from evaluation.scoring import compute_redteam_score
+from evaluation.task_bundle import TaskBundle, resolve_bundle
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
 
@@ -32,12 +34,12 @@ class PhaseResult:
 
 
 # =============================================================================
-# Attack model ops — strategy objects
+# Attacker model ops — strategy objects
 # =============================================================================
 
 
-class AttackModelOps(Protocol):
-    """Contract for attack model strategy objects."""
+class AttackerModelOps(Protocol):
+    """Contract for attacker-model strategy objects."""
 
     uses_generic_probes: bool
 
@@ -55,7 +57,7 @@ class AttackModelOps(Protocol):
 
 
 class MaliciousAppOps:
-    """Model-specific operations for the malicious_app attack model."""
+    """Model-specific operations for the malicious_app attacker model."""
 
     def check_artifact(self, exploit_dir: Path) -> tuple[bool, str]:
         """Check that exploit_apk/ holds a buildable project."""
@@ -156,8 +158,8 @@ class MaliciousAppOps:
         }
 
 
-class AuthAttackerOps:
-    """Model-specific operations for the auth_attacker (rogue user) attack model."""
+class RemoteAttackerOps:
+    """Model-specific operations for the remote_attacker attacker model."""
 
     def check_artifact(self, exploit_dir: Path) -> tuple[bool, str]:
         """Check that exploit.sh was produced."""
@@ -209,14 +211,14 @@ class AuthAttackerOps:
         )
 
     def setup_agent_extras(self, workflow: "RedTeamWorkflow") -> None:
-        """No template injection needed for auth_attacker."""
+        """No template injection needed for remote_attacker."""
         pass
 
     def validate(self, workflow: "RedTeamWorkflow") -> None:
-        """Check that auth_attacker probe directory and scripts exist."""
+        """Check that remote_attacker probe directory and scripts exist."""
         probe_dir = self.probe_dir(workflow.app_dir)
         if not probe_dir.exists():
-            raise ValueError(f"auth_attacker probe directory not found: {probe_dir}")
+            raise ValueError(f"remote_attacker probe directory not found: {probe_dir}")
         for probe_file in (
             "test_access_control.py",
             "test_availability.py",
@@ -226,18 +228,18 @@ class AuthAttackerOps:
             if not (probe_dir / probe_file).exists():
                 raise ValueError(
                     f"{probe_file} not found in {probe_dir} "
-                    "(required for auth_attacker)"
+                    "(required for remote_attacker)"
                 )
 
     uses_generic_probes = False
 
     def probe_needs(self, applicability: dict) -> tuple[bool, bool]:
-        """Auth attacker does not use generic probes."""
+        """Remote attacker does not use generic probes."""
         return False, False
 
     def probe_dir(self, app_dir: Path) -> Path:
-        """Auth attacker probes live in apps/<app>/auth_attacker/."""
-        return app_dir / "auth_attacker"
+        """Remote-attacker probes live in apps/<app>/remote_attacker/."""
+        return app_dir / "remote_attacker"
 
     def get_phase_kwargs(self, exploit_dir: Path, target_apk: Path, **extra) -> dict:
         """Build kwargs for run_phase."""
@@ -250,7 +252,7 @@ class AuthAttackerOps:
 
 _OPS = {
     "malicious_app": MaliciousAppOps,
-    "auth_attacker": AuthAttackerOps,
+    "remote_attacker": RemoteAttackerOps,
 }
 
 
@@ -264,41 +266,15 @@ class RedTeamWorkflow(Workflow):
 
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
-        self._original_apk = Path("apk") / f"{self.app_name}.apk"
-        self._attack_model = config.attack_model
-        self._ops: AttackModelOps = _OPS[self._attack_model]()
+        self._bundle: TaskBundle = resolve_bundle(config, project_root, app_name)
+        self._attacker_model = config.attacker_model
+        if self._attacker_model not in _OPS:
+            raise ValueError(
+                f"attacker_model must be set before workflow construction; "
+                f"runner.py resolves it from task metadata. Got: {self._attacker_model!r}"
+            )
+        self._ops: AttackerModelOps = _OPS[self._attacker_model]()
         self._probe_config: dict = {"generic_probe_applicability": {}}
-
-    @property
-    def _report_dir(self) -> Path:
-        return (
-            self.project_root
-            / "zerodays"
-            / "reports"
-            / self.app_name
-            / self.config.task
-        )
-
-    # ------------------------------------------------------------------
-    # Task resolution
-    # ------------------------------------------------------------------
-
-    @property
-    def _task_dir(self) -> Path:
-        """Single source of truth: fix.patch, verify, prepare, metadata."""
-        return self._report_dir / "task"
-
-    @property
-    def _artifacts_dir(self) -> Path:
-        return self._report_dir / "artifacts"
-
-    @property
-    def _task_fix_patch(self) -> Path:
-        return self._task_dir / "fix.patch"
-
-    @property
-    def _hardened_apk(self) -> Path:
-        return self._artifacts_dir / "hardened_apk" / f"{self.app_name}.apk"
 
     # ------------------------------------------------------------------
     # Validation
@@ -307,12 +283,13 @@ class RedTeamWorkflow(Workflow):
     def validate_arguments(self) -> None:
         super().validate_arguments()
 
-        task_metadata_path = self._task_dir / "metadata.json"
-        for required in (
-            self._task_fix_patch,
-            self._task_dir / "verify_files" / "verify_exploit.sh",
+        task_metadata_path = self._bundle.task_dir / "metadata.json"
+        required_files = [
+            self._bundle.patch,
+            self._bundle.task_dir / "verify_files" / "verify_exploit.sh",
             task_metadata_path,
-        ):
+        ]
+        for required in required_files:
             if not required.exists():
                 raise ValueError(f"Task file not found: {required}")
 
@@ -356,16 +333,15 @@ class RedTeamWorkflow(Workflow):
 
         self.setup_apks()
 
-        original_apk = self.app_dir / self._original_apk
-        if not original_apk.exists():
+        try:
+            self._bundle.validate_build_artifacts(self.app_dir)
+        except FileNotFoundError as e:
             if self.config.build_type == "skip-apk":
                 raise FileNotFoundError(
-                    f"build_type='skip-apk' requires a prebuilt original APK at {original_apk}. "
-                    "Build it first with build_type='source' or fetch it with build_type='download-apk'."
+                    f"build_type='skip-apk' requires prebuilt APKs. {e}. "
+                    "Build them first with build_type='source' or fetch with build_type='download-apk'."
                 )
-            raise FileNotFoundError(f"Original APK not found: {original_apk}")
-
-        self._validate_hardened_artifact()
+            raise
 
         self.emulator.wait_until_ready(
             timeout=self.config.emulator_boot_timeout_seconds
@@ -373,14 +349,28 @@ class RedTeamWorkflow(Workflow):
 
         inject_system_ca(self.project_root)
 
+        # Install the Phase 1 APK (vulnerable build) so the agent's runtime
+        # observations match the source tree it analyzes.
         install_app_and_setup_backend(
             self.app_dir,
             self.emulator,
             self.project_root,
+            apk_path=self._bundle.phase1_apk(),
             inject_flags=False,
             build_command_timeout=self.config.build_command_timeout,
         )
 
+        # For synthetic bundles the patch is applied on top of the checked-out
+        # baseline commit INSIDE _setup_agent_codebase so the snapshot the
+        # agent gets matches the Phase 1 target. For zeroday the hook is a
+        # no-op (baseline is already vulnerable). evaluate() will re-apply
+        # this later against apps/<app>/codebase for the replay codebase-dir.
+        # When no_codebase=True the agent container only sees the APK. The
+        # bundle's phase-1 APK is authoritative (vulnerable for synthetic,
+        # original for zeroday) — pass it explicitly so redteam runs don't
+        # fall back to the agent_container derivation, which would stage the
+        # clean APK for a synthetic bundle.
+        phase1_apk = self._bundle.phase1_apk() if self.config.no_codebase else None
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
@@ -388,6 +378,8 @@ class RedTeamWorkflow(Workflow):
             workflow=self.config.workflow,
             agent_mode=self.config.agent_mode,
             no_codebase=self.config.no_codebase,
+            post_checkout_hook=self._bundle.prepare_phase1_codebase,
+            apk_path=phase1_apk,
         )
 
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
@@ -416,54 +408,31 @@ class RedTeamWorkflow(Workflow):
         )
 
     def _build_apks_from_source(self) -> None:
-        from utils.command_executor import CommandExecutor
-
-        cmd = CommandExecutor()
-
-        logger.info("Building original APK...")
-        cmd.run_with_progress(
-            f"bash ./build_apk.sh {self.app_name}",
+        self._bundle.build_apks(
+            self.app_name,
+            self.project_root,
             timeout=self.config.build_command_timeout,
-            message="Building original APK",
-            cwd=self.project_root,
         )
-        logger.info("Building hardened APK...")
-        cmd.run_with_progress(
-            f"bash ./build_apk.sh {self.app_name} --hardened-patch {self._task_fix_patch}",
-            timeout=self.config.build_command_timeout,
-            message="Building hardened APK",
-            cwd=self.project_root,
-        )
-
-        if not self._hardened_apk.exists():
-            raise FileNotFoundError(
-                f"Hardened APK build completed but output was not found: {self._hardened_apk}"
-            )
-        logger.info("Built private hardened APK: %s", self._hardened_apk)
-
-    def _validate_hardened_artifact(self) -> None:
-        if not self._hardened_apk.exists():
-            raise FileNotFoundError(
-                f"Prebuilt private hardened APK not found for task {self.config.task}: {self._hardened_apk}. "
-                "Run once with build_type='source' to create it."
-            )
+        self._bundle.validate_build_artifacts(self.app_dir)
 
     # ------------------------------------------------------------------
     # Evaluation pipeline — 2 phases
     # ------------------------------------------------------------------
 
-    def _run_verifier(self, phase_dir: Path) -> int:
+    def _run_verifier(self, phase_dir: Path, replay_dir: Optional[Path] = None) -> int:
         """Run task/verify_files/verify_exploit.sh for this phase.
 
         Exit 0 = exploit succeeded (build IS vulnerable),
              1 = exploit did not succeed (build NOT vulnerable),
              2 = verifier error.
         """
-        verifier = self._task_dir / "verify_files" / "verify_exploit.sh"
+        verifier = self._bundle.task_dir / "verify_files" / "verify_exploit.sh"
         phase_dir.mkdir(parents=True, exist_ok=True)
 
         env = os.environ.copy()
         env["MCB_APP_DIR"] = str(self.app_dir)
+        if replay_dir is not None:
+            env["MCB_OUTPUT_DIR"] = str(replay_dir)
 
         log_path = phase_dir / "verify_exploit.log"
         logger.info(f"Running verifier: {verifier}")
@@ -484,7 +453,14 @@ class RedTeamWorkflow(Workflow):
         """Run verifier then probes for a completed phase replay."""
         from evaluation.unified_metrics import normalize_probe_results
 
-        verifier_exit = self._run_verifier(replays_dir / f"verify_{tag}")
+        verifier_exit = self._run_verifier(
+            replays_dir / f"verify_{tag}",
+            replay_dir=(
+                phase_result.evidence_log_path.parent
+                if phase_result.evidence_log_path is not None
+                else None
+            ),
+        )
 
         probe_dir = self._ops.probe_dir(self.app_dir)
         probe_app = replays_dir / f"probe_app_{tag}.json"
@@ -530,7 +506,7 @@ class RedTeamWorkflow(Workflow):
             return {"scores": {}}
 
         logger.info(
-            f"Evaluation started: workflow=redteam attack_model={self._attack_model} "
+            f"Evaluation started: workflow=redteam attacker_model={self._attacker_model} "
             f"task={self.config.task}"
         )
 
@@ -561,12 +537,14 @@ class RedTeamWorkflow(Workflow):
 
         # ---- Phase 1: Original (vulnerable) app ----
         logger.info("[phase 1/2] original app (vulnerable)")
+        codebase_dir = self.app_dir / "codebase"
+        self._bundle.prepare_phase1_codebase(codebase_dir)
         phase1_result = self._ops.run_phase(
             self,
             replays_dir / "phase1_original",
             **self._ops.get_phase_kwargs(
                 agent_exploit_dir,
-                self._original_apk,
+                self._bundle.phase1_apk(),
                 needs_flags=needs_flags,
                 needs_ssrf=needs_ssrf,
             ),
@@ -578,6 +556,7 @@ class RedTeamWorkflow(Workflow):
         # ---- Early-stop gate ----
         if (
             p1["exit_code"] != 0
+            and p1["probes_ok"]
             and not p1["probes_triggered"]
             and not p1["verifier_vuln"]
         ):
@@ -594,25 +573,24 @@ class RedTeamWorkflow(Workflow):
 
         # ---- Phase 2: Patched app ----
         logger.info("[phase 2/2] patched app")
-        codebase_dir = self.app_dir / "codebase"
-        subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
-        subprocess.run(
-            ["git", "apply", str(self._task_fix_patch)],
-            cwd=codebase_dir,
-            check=True,
-        )
+        self._bundle.prepare_phase2_codebase(codebase_dir)
         try:
             phase2_result = self._ops.run_phase(
                 self,
                 replays_dir / "phase2_patched",
                 **self._ops.get_phase_kwargs(
                     agent_exploit_dir,
-                    self._hardened_apk,
+                    self._bundle.phase2_apk(),
                     needs_flags=needs_flags,
                     needs_ssrf=needs_ssrf,
                 ),
             )
         finally:
+            # Workflow.cleanup() also runs git_restore_clean at teardown; this
+            # extra restore makes verifier/probes after phase 2 observe a clean
+            # tree, matching the previous behavior.
+            # TODO(#980): unify with bundle's _git_restore; both should use
+            # git_restore_clean to also drop untracked files from patches.
             subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
 
         p2 = self._evaluate_phase(
@@ -679,8 +657,9 @@ class RedTeamWorkflow(Workflow):
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
         return {
             "workflow": "redteam",
-            "attack_model": self._attack_model,
+            "attacker_model": self._attacker_model,
             "task": self.config.task,
+            "synthetic_vuln_id": self.config.synthetic_vuln_id,
             "status": status,
             "score": score,
             "scores": {},
@@ -715,9 +694,9 @@ class RedTeamWorkflow(Workflow):
         """Run task/prepare_app.sh (per-phase setup: login victim, seed state)."""
         from utils.command_executor import CommandExecutor
 
-        hook = self._task_dir / "prepare_app.sh"
+        hook = self._bundle.task_dir / "prepare_app.sh"
         if not hook.exists():
-            logger.info("No prepare_app hook found for task %s", self.config.task)
+            logger.info("No prepare_app hook found at %s", hook)
             return
 
         logger.info(f"prepare_app hook: {hook}")

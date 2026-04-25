@@ -14,7 +14,6 @@ sys.path.insert(0, str(REPO_ROOT / "utils"))
 
 import uiautomator2 as u2  # noqa: E402
 from ui_utils import (  # noqa: E402
-    click_then_expect,
     initialize_ui_automation,
     wait_and_set_text,
     wait_for_ui_stable,
@@ -119,34 +118,53 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
         log("Error: Could not find token input field")
         return False
 
-    # Hide keyboard to make button visible/clickable
-    try:
-        d.press("back")
-    except Exception:
-        pass
-    time.sleep(0.5)
+    # NOTE: do NOT press back here. LoginPage is the app's root activity when
+    # the user is not logged in, so a back press closes the app and lands on
+    # the launcher — confirmed in the gold-run hierarchy dump. The fast IME
+    # (set_input_ime(True) above) does not pop a soft keyboard, so there is
+    # no keyboard to dismiss anyway. If the FAB turns out to be covered on
+    # some build, prefer ESC (`adb shell input keyevent 111`) which dismisses
+    # the IME without navigating back.
+    wait_for_ui_stable(d, min_consecutive=2, timeout=TIMEOUT_FAST)
 
     # If login completed implicitly after input, stop here
     if main_screen_loaded(d):
         log("Logged in after entering credentials")
         return True
 
-    # Click Add Account button.
-    # In this Compose app, the button has content-desc="Add Account" (not text).
+    # Click the Add Account FAB.
+    # Compose's ExtendedFloatingActionButton sets contentDescription on *both*
+    # the Text child and the Icon child. Plain selectors like d(description=
+    # "Add Account") can resolve to a non-clickable inner view, so the click
+    # silently does nothing (observed in gold runs: "Could not find Add Account
+    # button, trying Enter key"). Filter to clickable elements first; only
+    # fall back to unfiltered selectors if nothing clickable matches.
     sign_in_btn = first_existing(
         [
+            d(descriptionContains="Add Account", clickable=True),
+            d(textContains="Add Account", clickable=True),
+            d(description="Add Account", clickable=True),
+            d(text="Add Account", clickable=True),
+            # Unfiltered fallbacks (the old behavior) in case the accessibility
+            # tree does not expose the root as clickable on this build.
             d(description="Add Account"),
             d(text="Add Account"),
             d(textContains="Add Account"),
         ],
-        timeout=2,
+        timeout=1,
     )
 
     if sign_in_btn is not None:
         log("Clicking Add Account button...")
         sign_in_btn.click()
     else:
-        log("Warning: Could not find Add Account button, trying Enter key...")
+        log("Warning: Could not find Add Account button; dumping hierarchy:")
+        try:
+            hierarchy = d.dump_hierarchy(compressed=True)
+            log(hierarchy[:1500])
+        except Exception as e:
+            log(f"  (hierarchy dump failed: {e})")
+        log("Falling back to Enter key (likely to no-op)...")
         d.press("enter")
 
     # Wait for login to complete
@@ -156,8 +174,11 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
             return True
         time.sleep(1)
 
-    log("Warning: Could not confirm successful login, continuing anyway")
-    return True
+    # Login did not complete. Don't silently return True — the caller
+    # needs to know so it can fail fast instead of proceeding to drawer
+    # navigation that will never work.
+    log("[ERROR] Login did not complete (main screen never appeared)")
+    return False
 
 
 def view_malicious_memo(d: u2.Device) -> bool:
@@ -176,30 +197,53 @@ def view_malicious_memo(d: u2.Device) -> bool:
     ensure_app_foreground(d, "me.mudkip.moememos")
     wait_for_ui_stable(d, min_consecutive=2, timeout=TIMEOUT_NORMAL)
 
-    # Step 1: Open the navigation drawer via the Menu button
-    log("Looking for menu button...")
-    menu_btn = first_existing(
-        [d(description="Menu"), d(description="Open navigation drawer")],
-        timeout=2,
-    )
+    # Step 1: Open the navigation drawer so Explore becomes visible.
+    #
+    # Why not click_then_expect: the Menu button is a drawer TOGGLE. If the first
+    # click opens the drawer but Explore is slow to render, click_then_expect's
+    # retry clicks Menu again — which closes the drawer. On the next retry it
+    # re-opens, etc. On slower runtimes (GKE with memory pressure) this oscillated
+    # until timeout, and Explore was never caught.
+    #
+    # The fix: probe for Explore first (drawer may already be open), click Menu
+    # only when Explore is absent, and recover with `back` between attempts so we
+    # never re-toggle an already-open drawer.
+    explore_btn = d(text="Explore")
+    drawer_opened = False
+    for attempt in range(1, 4):
+        if explore_btn.exists(timeout=0.5):
+            log(f"Explore visible (attempt {attempt})")
+            drawer_opened = True
+            break
 
-    if menu_btn is not None:
-        log("Found menu button, clicking it...")
-        # Use click_then_expect to wait for drawer to open (Explore item appears)
-        click_then_expect(d, menu_btn, d(text="Explore"), timeout=TIMEOUT_FAST)
-    else:
-        log("Warning: Could not find menu button, clicking top-left corner...")
-        d.click(75, 148)
-        time.sleep(2)
+        menu_btn = first_existing(
+            [d(description="Menu"), d(description="Open navigation drawer")],
+            timeout=2,
+        )
+        if menu_btn is not None:
+            log(f"Clicking Menu button to open drawer (attempt {attempt})")
+            menu_btn.click()
+        else:
+            log("Menu button not found, clicking top-left corner as fallback...")
+            d.click(75, 148)
+
+        # Allow full drawer render on slow runtimes (was TIMEOUT_FAST=4s; too tight
+        # under GKE memory pressure — we now wait TIMEOUT_NORMAL=8s).
+        if explore_btn.wait(timeout=TIMEOUT_NORMAL):
+            drawer_opened = True
+            break
+
+        log(f"Drawer did not reveal Explore within {TIMEOUT_NORMAL}s")
+        # `back` closes the drawer if it was stuck open; otherwise it's a no-op
+        # on the main screen. Either way, we reset state before the next attempt
+        # so we don't accidentally re-toggle an already-open drawer.
+        d.press("back")
 
     # Step 2: Click "Explore" in the navigation drawer
-    # IMPORTANT: Do NOT use click_then_expect here. After clicking "Explore",
+    # NOTE: Do NOT use click_then_expect here. After clicking "Explore",
     # the drawer closes and the page title becomes "Explore" too. If click_then_expect
     # retries, it clicks the page TITLE instead of the nav item, causing infinite loops.
-    log("Looking for Explore option...")
-    explore_btn = d(text="Explore")
-
-    if explore_btn.exists(timeout=2):
+    if drawer_opened and explore_btn.exists(timeout=2):
         log("Found Explore option, clicking it...")
         explore_btn.click()
         time.sleep(2)

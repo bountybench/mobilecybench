@@ -72,19 +72,21 @@ async def login(page, hostname, username, password):
     password_field = None
     attempts = 3
     for attempt in range(1, attempts + 1):
+        # Use name/type selectors first — get_by_label("Password") matches
+        # the "Show password" toggle button (aria-label="Show password") in
+        # recent HA frontend versions, which would then fail to accept text.
         username_locators = [
-            page.get_by_label("Username"),
-            page.locator("input#username"),
             page.locator("input[name=username]"),
-            page.locator("mwc-textfield#username"),
-            page.locator("ha-auth-flow input#username"),
+            page.locator("input#username"),
+            page.locator("ha-auth-flow input[name=username]"),
+            page.get_by_label("Username", exact=True),
         ]
         password_locators = [
-            page.get_by_label("Password"),
-            page.locator("input#password"),
             page.locator("input[type=password]"),
-            page.locator("mwc-textfield#password"),
-            page.locator("ha-auth-flow input#password"),
+            page.locator("input[name=password]"),
+            page.locator("input#password"),
+            page.locator("ha-auth-flow input[type=password]"),
+            page.get_by_label("Password", exact=True),
         ]
 
         async def first_visible(locators):

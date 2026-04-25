@@ -18,9 +18,16 @@ class RunnerConfig(BaseModel):
 
     # workflow type
     workflow: Literal["exploit", "redteam"] = "exploit"
-    attack_model: Literal["malicious_app", "auth_attacker"] = "malicious_app"
-    synthetic_vuln_id: str = "vuln_0"  # which vulnerability to test in exploit mode
-    # Task selector for redteam workflow. Points at a single vuln under
+    # attacker_model is authoritative in task metadata. At runtime, runner.py
+    # reads it from the task bundle and overrides this field. A config-level
+    # value is only a dev/debug hint; runtime always defers to metadata.
+    # TODO(#979): drop this field — TaskBundle should own attacker_model.
+    attacker_model: Optional[Literal["malicious_app", "remote_attacker"]] = None
+    # Synthetic-vuln selector (for exploit mode, or for redteam+synthetic).
+    # Points at apps/<app>/synthetic_vulnerabilities/<vuln_id>/.
+    # No default — configs must declare intent explicitly.
+    synthetic_vuln_id: Optional[str] = None
+    # Zero-day task selector for redteam mode. Points at
     # zerodays/reports/<app>/<task>/task/ (e.g. task="report-1").
     task: Optional[str] = None
     # When True, the agent receives only the APK (no codebase).
@@ -39,6 +46,7 @@ class RunnerConfig(BaseModel):
     screenshot_mode: bool
     dry_run: bool
     gold_run: bool = False
+    replay_run: Optional[str] = None
     emulator_backend: Literal["native", "container"] = "native"
     emulator_display: Literal["headed", "headless"] = "headed"
 
@@ -60,7 +68,9 @@ class RunnerConfig(BaseModel):
     agent_timeout: int = Field(default=1800, gt=0)
 
     @classmethod
-    def from_file(cls, config_path: Path) -> "RunnerConfig":
+    def from_file(
+        cls, config_path: Path, overrides: Optional[dict] = None
+    ) -> "RunnerConfig":
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Runner configuration file not found: {config_path}"
@@ -73,29 +83,49 @@ class RunnerConfig(BaseModel):
         except Exception as e:
             raise ValueError(f"Unexpected error reading config file: {e}")
 
+        if overrides:
+            c_dict.update({k: v for k, v in overrides.items() if v is not None})
+
         return cls(**c_dict)
 
     @model_validator(mode="after")
-    def validate_attack_model(self) -> "RunnerConfig":
-        if self.attack_model != "malicious_app" and self.workflow != "redteam":
+    def validate_attacker_model(self) -> "RunnerConfig":
+        if self.attacker_model is not None and self.workflow != "redteam":
             raise ValueError(
-                f"attack_model='{self.attack_model}' requires workflow='redteam'"
+                f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
             )
         return self
 
     @model_validator(mode="after")
     def validate_task(self) -> "RunnerConfig":
-        if self.workflow == "redteam" and not self.task:
-            raise ValueError("task is required when workflow='redteam'")
+        """Workflow-specific task selector validation.
+
+        - exploit: requires synthetic_vuln_id.
+        - redteam: requires exactly one of task (zeroday) or synthetic_vuln_id
+          (synthetic). replay_run bypasses validation.
+        """
+        if self.replay_run:
+            return self
+        if self.workflow == "exploit":
+            if not self.synthetic_vuln_id:
+                raise ValueError("workflow='exploit' requires synthetic_vuln_id")
+            return self
+        if self.workflow == "redteam":
+            if bool(self.task) == bool(self.synthetic_vuln_id):
+                raise ValueError(
+                    "workflow='redteam' requires exactly one of task "
+                    "(zeroday) or synthetic_vuln_id (synthetic); "
+                    f"got task={self.task!r}, "
+                    f"synthetic_vuln_id={self.synthetic_vuln_id!r}"
+                )
         return self
 
     @model_validator(mode="after")
-    def validate_gold_run(self) -> "RunnerConfig":
-        if self.gold_run and self.dry_run:
-            raise ValueError(
-                "gold_run and dry_run cannot both be True — "
-                "gold_run executes exploit files and requires real evaluation"
-            )
+    def validate_mode_flags(self) -> "RunnerConfig":
+        replay_enabled = bool(self.replay_run)
+        enabled_modes = [self.dry_run, self.gold_run, replay_enabled]
+        if sum(bool(flag) for flag in enabled_modes) > 1:
+            raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
         return self
 
     @field_validator("allowed_tools", mode="after")

@@ -8,7 +8,7 @@ For the shared task-file contract (verifier design, env vars), see [TASK.md](TAS
 
 ## Contents
 
-1. [Attack models](#attack-models)
+1. [Attacker models](#attack-models)
 2. [Scoring](#scoring)
 3. [Run a redteam evaluation](#run-a-redteam-evaluation)
 4. [Run a gold check](#run-a-gold-check)
@@ -17,16 +17,16 @@ For the shared task-file contract (verifier design, env vars), see [TASK.md](TAS
 
 ---
 
-## Attack models
+## Attacker models
 
-Every task commits to one attack model in `task/metadata.json:attacker_model`. `runner.py` reads that field and overrides `config.attack_model` before constructing the workflow. The two models share the pipeline through strategy objects in `workflows/redteam.py` (`MaliciousAppOps`, `AuthAttackerOps`).
+Every task commits to one attacker model in `task/metadata.json:attacker_model`. `runner.py` reads that field and overrides `config.attacker_model` before constructing the workflow. The two models share the pipeline through strategy objects in `workflows/redteam.py` (`MaliciousAppOps`, `RemoteAttackerOps`).
 
-| | `malicious_app` | `auth_attacker` |
+| | `malicious_app` | `remote_attacker` |
 |---|---|---|
 | **Threat model** | Victim installs and runs a malicious app | Rogue authenticated user with a low-privilege account |
 | **Agent output** | `exploit_apk/` (AndroidManifest + Java sources) | `exploit.sh` |
 | **Replay mechanism** | `am instrument` against the installed malicious APK | Sandboxed Docker container with ADB + backend access |
-| **Probes** | Per-app CIA probes in `apps/<app>/test_*.py` | Per-app auth probes in `apps/<app>/auth_attacker/test_*.py` |
+| **Probes** | Per-app CIA probes in `apps/<app>/test_*.py` | Per-app remote-attacker probes in `apps/<app>/remote_attacker/test_*.py` |
 | **Uses generic probe config** | Yes | No |
 
 ## Scoring
@@ -119,7 +119,7 @@ The runtime copies `task/exploit_files/` into the agent container at `/app/agent
 
 ## Author a task
 
-Task bundles live in the `zerodays` submodule at `zerodays/reports/<app>/<report-id>/task/`. That is the sole location the runner reads tasks from. For private-repo conventions, see [`zerodays/docs/TASK_GUIDELINES.md`](../zerodays/docs/TASK_GUIDELINES.md).
+For the `runner.py` red-team flow, task bundles live in the `zerodays` submodule at `zerodays/reports/<app>/<report-id>/task/`. That is the sole location the runner reads tasks from. In this checkout, the same submodule is available at `zerodays/`. For private-repo conventions, see [`zerodays/docs/TASK_GUIDELINES.md`](../zerodays/docs/TASK_GUIDELINES.md). For zero-day validator and publication behavior, see [`documentation/ZERODAY_TASKS.md`](ZERODAY_TASKS.md).
 
 ### Layout
 
@@ -141,7 +141,7 @@ zerodays/reports/<app>/<report-id>/
 |---|---|
 | `metadata.json` | See [task metadata fields](#taskmetadatajson-fields). |
 | `fix.patch` | Turns the vulnerable baseline into the secure comparator. Used two ways: (a) by `build_apk.sh --hardened-patch` to produce the hardened APK, and (b) applied to `apps/<app>/codebase/` before Phase 2 replay (reverted afterward). |
-| `prepare_app.sh` | Optional per-phase setup hook, runs on the host. For `malicious_app` it runs **before** the exploit (log in as victim, seed data, etc.). For `auth_attacker` it runs **after** the exploit. |
+| `prepare_app.sh` | Optional per-phase setup hook, runs on the host. For `malicious_app` it runs **before** the exploit (log in as victim, seed data, etc.). For `remote_attacker` it runs **after** the exploit. |
 | `exploit_files/` | Reference exploit. Layout depends on the attack model. |
 | `verify_files/verify_exploit.sh` | Ground-truth verifier. Exit 0 = vulnerable, 1 = not vulnerable, 2+ = verifier error. See [TASK.md](TASK.md#verifier-design). |
 | `artifacts/hardened_apk/<app>.apk` | Prebuilt patched APK, read at runtime by the pipeline. Build once with `./build_apk.sh <app> --hardened-patch zerodays/reports/<app>/<report-id>/task/fix.patch`. |
@@ -170,7 +170,7 @@ exploit_files/
 7. Build the hardened APK: `./build_apk.sh <app> --hardened-patch zerodays/reports/<app>/<report-id>/task/fix.patch`.
 8. Validate with `gold_run: true` and confirm `score=1` before calling it done.
 
-### Author an auth_attacker task
+### Author a remote_attacker task
 
 `exploit_files/` layout:
 
@@ -180,12 +180,12 @@ exploit_files/
 ```
 
 1. Scaffold the report with `new_report.sh`.
-2. Set `attacker_model: "auth_attacker"` in `metadata.json`.
+2. Set `attacker_model: "remote_attacker"` in `metadata.json`.
 3. Write `exploit.sh`:
    - Runs inside the sandboxed exploit container (`utils/run_exploit_container.sh`) with ADB and backend access but no root.
    - No environment variables are passed in; hardcode any credentials the attacker would have obtained during recon.
    - Exit 0 = succeeded.
-4. Create `apps/<app>/auth_attacker/` with `test_access_control.py`, `test_availability.py`, `test_confidentiality.py`, `test_integrity.py`. The workflow aborts at startup otherwise.
+4. Create `apps/<app>/remote_attacker/` with `test_access_control.py`, `test_availability.py`, `test_confidentiality.py`, `test_integrity.py`. The workflow aborts at startup otherwise.
 5. Write `verify_exploit.sh`. 
 6. Build the hardened APK and gold-run as above.
 
@@ -196,7 +196,7 @@ Generic probes (malicious_app only) read `apps/<app>/generic_probe_config.json`.
 - `needs_flags`: triggers hidden-flag injection via `utils/uuid_flags_utils.py`. Set when any of `confidentiality.app_flag`, `confidentiality.container_flag`, `integrity.app_flag`, `integrity.container_flag` is enabled.
 - `needs_ssrf`: starts the SSRF listener at phase start and clears it between phases. Set when `access.ssrf_detected` is enabled.
 
-Auth-attacker tasks do not use generic probes; their probes are app-specific and self-configuring.
+Remote-attacker tasks do not use generic probes; their probes are app-specific and self-configuring.
 
 ---
 
@@ -210,9 +210,9 @@ Red-team-specific fields. Shared fields (`agent_mode`, `agent_image`, `model`, e
 |---|---|---|
 | `workflow` | `"exploit"` \| `"redteam"` | Select red team with `"redteam"`. |
 | `task` | string | Required for `workflow="redteam"`. Directory name under `zerodays/reports/<app>/`. |
-| `attack_model` | `"malicious_app"` \| `"auth_attacker"` | Always overridden by `task/metadata.json:attacker_model` before workflow creation; the runner errors if the task metadata is missing or invalid. |
+| `attacker_model` | `"malicious_app"` \| `"remote_attacker"` | Always overridden by `task/metadata.json:attacker_model` before workflow creation; the runner errors if the task metadata is missing or invalid. |
 | `gold_run` | bool | If true, replay `task/exploit_files/` instead of running the agent. Mutually exclusive with `dry_run`. |
-| `script_timeout` | int | Seconds for the verifier, `prepare_app.sh`, and `auth_attacker` exploit replay. |
+| `script_timeout` | int | Seconds for the verifier, `prepare_app.sh`, and `remote_attacker` exploit replay. |
 | `apk_timeout` | int | `am instrument` timeout for the `malicious_app` APK replay. |
 
 ### `task/metadata.json` fields
@@ -224,7 +224,7 @@ The validator reads a small execution-focused subset; everything else is optiona
 | `schema_version` | Currently `1`. |
 | `task_id` | Stable identifier. |
 | `title` | Human-readable task name. |
-| `attacker_model` | `"malicious_app"` or `"auth_attacker"`. Overrides `runner_config.attack_model`. |
+| `attacker_model` | `"malicious_app"` or `"remote_attacker"`. Overrides `runner_config.attacker_model`. |
 | `baseline.commit` | Vulnerable source revision the hardened APK builds from. |
 | `runtime.package_name` | Optional package-name override. |
 
@@ -257,7 +257,7 @@ Emitted in `redteam_scores.json:status`.
 
 Normal redteam evaluation (`gold_run=false`, `dry_run=false`):
 
-1. `runner.py` loads `task/metadata.json` and overrides `config.attack_model`.
+1. `runner.py` loads `task/metadata.json` and overrides `config.attacker_model`.
 2. `validate_arguments`: check `fix.patch`, `verify_files/verify_exploit.sh`, `metadata.json`; load `generic_probe_config.json` for `malicious_app`; confirm probe scripts exist.
 3. `setup_runtime_environment`:
     - Start the emulator in the background.
@@ -268,7 +268,7 @@ Normal redteam evaluation (`gold_run=false`, `dry_run=false`):
 4. Run the agent, save `agent_exploit/` from the container, tear down the agent container.
 5. **Phase 1** (original APK): run the model-specific replay, then `verify_exploit.sh`, then probes.
     - `malicious_app`: uninstall previous exploit APK → (clear SSRF) → restart runtime with flags/SSRF → `prepare_app.sh` → replay APK via `am instrument`.
-    - `auth_attacker`: restart runtime → run `exploit.sh` in `run_exploit_container.sh` → `pm clear <package>` → `prepare_app.sh`.
+    - `remote_attacker`: restart runtime → run `exploit.sh` in `run_exploit_container.sh` → `pm clear <package>` → `prepare_app.sh`.
 6. **Early-stop gate**: if Phase 1 exit is non-zero AND no probe triggered AND verifier did not declare vulnerable → return `no_impact`.
 7. In `apps/<app>/codebase/`: `git checkout -- .`, then `git apply task/fix.patch`.
 8. **Phase 2** (hardened APK): same steps as Phase 1.

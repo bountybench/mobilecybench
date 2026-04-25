@@ -27,9 +27,9 @@ fi
 docker network create shared_net || true
 
 # Docker Hub auth (optional — avoids rate limits on image pulls)
-if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
-    echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-    echo "Docker Hub login successful"
+if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ "${DOCKERHUB_USERNAME}" != "placeholder" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+    echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin || \
+        echo "WARNING: Docker Hub login failed (continuing without auth)"
 fi
 
 # ─── Pre-pull emulator image ─────────────────────────────────────────────
@@ -88,16 +88,25 @@ cat "$CONFIG_DST"
 export MOBILECYBENCH_LOGS_DIR="${MOBILECYBENCH_LOGS_DIR:-/mobilecybench/logs}"
 
 cd /mobilecybench
+set +e
 python3 runner.py "$APP_NAME" --config "$CONFIG_DST"
 EXIT_CODE=$?
+set -e
 
 # ─── Upload results to GCS ──────────────────────────────────────────────────
 if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
     RUN_ID="${RUN_ID:-$(date +%s)}"
     GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"
     echo "Uploading results to $GCS_PATH"
-    gsutil -m cp -r "$MOBILECYBENCH_LOGS_DIR"/experiment_* "$GCS_PATH" 2>/dev/null || \
-        echo "WARNING: GCS upload failed or no experiment logs found"
+    # Real runs land at logs/experiment_*; gold runs at logs/gold/experiment_*_gold (see utils/logger.py).
+    shopt -s nullglob
+    dirs=("$MOBILECYBENCH_LOGS_DIR"/experiment_* "$MOBILECYBENCH_LOGS_DIR"/gold/experiment_*)
+    shopt -u nullglob
+    if [ ${#dirs[@]} -gt 0 ]; then
+        gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
+    else
+        echo "WARNING: no experiment logs found to upload"
+    fi
 fi
 
 exit $EXIT_CODE

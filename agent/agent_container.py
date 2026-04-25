@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import tarfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import docker
 import docker.errors
@@ -44,6 +44,8 @@ class AgentEnvironment:
         vuln_id: Optional[str] = None,
         include_git_history: bool = True,
         no_codebase: bool = False,
+        post_checkout_hook: Optional[Callable[[Path], None]] = None,
+        apk_path: Optional[Path] = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -57,6 +59,16 @@ class AgentEnvironment:
         self.vuln_id = vuln_id
         self.include_git_history = include_git_history
         self.no_codebase = no_codebase
+        # APK to stage for the agent when no_codebase=True. Kept separate from
+        # vuln_id because vuln_id also gates verify_files mounting, which
+        # redteam must never do.
+        self.apk_path = apk_path
+        # Optional callback invoked inside _setup_agent_codebase against the
+        # staged copy before it is moved to agent_codebase/. Redteam+synthetic
+        # uses this to apply vulnerability.patch so the agent sees the Phase 1
+        # target source instead of the clean baseline without dirtying the
+        # host app's working tree.
+        self.post_checkout_hook = post_checkout_hook
 
         import traceback
 
@@ -344,6 +356,10 @@ class AgentEnvironment:
             logger.info("Copying codebase without git history")
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
+            if self.post_checkout_hook is not None:
+                logger.info("Running post_checkout_hook on %s", staging_dir)
+                self.post_checkout_hook(staging_dir)
+
             # Initialize fresh git repo so agent can still use git commands
             logger.info("Initializing fresh git repository in staging directory")
             initialize_git_repository(staging_dir)
@@ -402,6 +418,10 @@ class AgentEnvironment:
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
 
+            if self.post_checkout_hook is not None:
+                logger.info("Running post_checkout_hook on %s", staging_dir)
+                self.post_checkout_hook(staging_dir)
+
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
             logger.info(f"Removing existing agent_codebase at {agent_codebase}")
@@ -420,14 +440,16 @@ class AgentEnvironment:
     def _setup_agent_apk(self) -> Optional[dict]:
         """Copy the built APK into a staging directory for the agent.
 
-        Looks for the APK at the standard path (clean or vuln-specific)
-        and returns a volume mapping to bind-mount at /app/apk/.
+        The caller is the source of truth for which APK to stage — exploit
+        passes the vuln APK, redteam passes the bundle's phase-1 APK.
+        Returns a volume mapping to bind-mount at /app/apk/.
         """
-        if self.vuln_id:
-            apk_path = self.app_dir / "apk" / self.vuln_id / f"{self.app_name}.apk"
-        else:
-            apk_path = self.app_dir / "apk" / f"{self.app_name}.apk"
-
+        if self.apk_path is None:
+            raise ValueError(
+                "apk_path must be provided to setup_agent_environment when "
+                "no_codebase=True"
+            )
+        apk_path = self.apk_path
         if not apk_path.exists():
             raise FileNotFoundError(
                 f"APK not found at {apk_path}. "
@@ -888,6 +910,8 @@ def setup_agent_environment(
     vuln_id: Optional[str] = None,
     agent_mode: str = "custom",
     no_codebase: bool = False,
+    post_checkout_hook: Optional[Callable[[Path], None]] = None,
+    apk_path: Optional[Path] = None,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -900,6 +924,8 @@ def setup_agent_environment(
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
         no_codebase: Whether to copy the built APK into the agent environment
+        post_checkout_hook: Optional callback run on the staged codebase
+        apk_path: APK to copy into the agent environment when no_codebase=True
 
     Returns:
         AgentEnvironment instance
@@ -958,6 +984,8 @@ def setup_agent_environment(
         vuln_id=vuln_id if workflow == "exploit" else None,
         include_git_history=(workflow != "exploit"),
         no_codebase=no_codebase,
+        post_checkout_hook=post_checkout_hook,
+        apk_path=apk_path,
     )
 
     agent_env.setup()

@@ -4,6 +4,8 @@ import subprocess
 import time
 from pathlib import Path
 
+import httpx
+import openai
 from dotenv import load_dotenv
 
 from agent.agent_helpers import get_directory_tree
@@ -11,8 +13,8 @@ from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
-    build_auth_attacker_prompt,
     build_redteam_prompt,
+    build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
 from agent.tools.runtime import ToolRuntime
@@ -33,6 +35,18 @@ with open("runner_config.json", "r") as file:
     data = json.load(file)
 
 timeout_ms = data.get("timeout_ms", 600_000)
+
+# Transient exceptions that should trigger retry.
+# litellm's exception classes subclass openai.* so one tuple covers both providers.
+# httpx.TransportError catches raw transport errors that escape SDK wrapping.
+_RETRYABLE_EXC = (
+    openai.APIConnectionError,
+    openai.APITimeoutError,
+    openai.RateLimitError,
+    openai.InternalServerError,
+    httpx.TransportError,
+)
+
 
 # Only scan files that could plausibly be executed as scripts.
 _SCANNABLE_EXTENSIONS = frozenset(
@@ -72,12 +86,12 @@ class CustomAgent:
         password: str = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_app",
+        attacker_model: str = "malicious_app",
         no_codebase: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
-        self.attack_model = attack_model
+        self.attacker_model = attacker_model
         self.no_codebase = no_codebase
 
         # Load environment variables from .env file in the agent directory
@@ -154,8 +168,8 @@ class CustomAgent:
         """Build the system prompt text based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
-                build_auth_attacker_prompt
-                if self.attack_model == "auth_attacker"
+                build_remote_attacker_prompt
+                if self.attacker_model == "remote_attacker"
                 else build_redteam_prompt
             )
             full_prompt = builder(
@@ -184,7 +198,7 @@ class CustomAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_app":
+        if self.workflow == "redteam" and self.attacker_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )
@@ -405,7 +419,7 @@ class CustomAgent:
 
             call_input = next_input
 
-            # Retry logic for rate limit errors
+            # Retry logic for transient transport + rate limit errors.
             max_retries = 5
             base_retry_delay = 10  # seconds
 
@@ -426,42 +440,19 @@ class CustomAgent:
                             time.perf_counter() - attempt_start
                         )
                         timing_entry.attempt_count += 1
-                        error_str = str(e).lower()
-                        is_retryable = False
-                        retry_delay = base_retry_delay
-                        error_type = "Unknown"
-
-                        if any(
-                            indicator in error_str
-                            for indicator in [
-                                "rate_limit",
-                                "rate limit",
-                                "too many requests",
-                                "quota exceeded",
-                                "429",
-                                "503",
-                                "service unavailable",
-                            ]
-                        ):
-                            is_retryable = True
-                            error_type = "Rate limit / Service unavailable"
-                            retry_delay = base_retry_delay * (2**attempt)
-
-                        if is_retryable:
-                            if attempt < max_retries - 1:
-                                agent_logger.warning(
-                                    f"{error_type} error on attempt {attempt + 1}/{max_retries}. "
-                                    f"Retrying in {retry_delay} seconds..."
-                                )
-                                time.sleep(retry_delay)
-                                continue
-                            else:
-                                agent_logger.error(
-                                    f"{error_type} error after {max_retries} attempts. Giving up."
-                                )
-                                raise
-                        else:
+                        if not isinstance(e, _RETRYABLE_EXC):
                             raise
+                        if attempt >= max_retries - 1:
+                            agent_logger.error(
+                                f"{type(e).__name__} after {max_retries} attempts. Giving up."
+                            )
+                            raise
+                        delay = base_retry_delay * (2**attempt)
+                        agent_logger.warning(
+                            f"{type(e).__name__} on attempt {attempt + 1}/{max_retries}. "
+                            f"Retrying in {delay} seconds..."
+                        )
+                        time.sleep(delay)
 
             # Record token usage and cost
             try:
@@ -577,7 +568,7 @@ class CustomAgent:
                 if not self._check_exploit_exists():
                     if (
                         self.workflow == "redteam"
-                        and self.attack_model == "malicious_app"
+                        and self.attacker_model == "malicious_app"
                     ):
                         missing_msg = (
                             "FinalSubmissionCommand received but exploit APK not found. "

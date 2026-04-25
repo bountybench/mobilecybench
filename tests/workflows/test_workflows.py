@@ -26,6 +26,7 @@ def _config(**overrides) -> RunnerConfig:
         "emulator_display": "headed",
         "emulator_backend": "native",
         "script_timeout": 600,
+        "synthetic_vuln_id": "vuln_0",
     }
     return RunnerConfig(**{**defaults, **overrides})
 

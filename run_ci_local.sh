@@ -365,6 +365,18 @@ load_vuln_test_settings() {
     VULN_BASELINE_COMMIT=$(jq -r '.baseline.commit // empty' "$VULN_METADATA_FILE")
     VULN_TASK_ID=$(jq -r '.task_id // .task_slug // empty' "$VULN_METADATA_FILE")
     VULN_PACKAGE_NAME=$(jq -r '.runtime.package_name // .app_metadata_overrides.package_name // empty' "$VULN_METADATA_FILE")
+    VULN_ATTACKER_MODEL=$(jq -r '.attacker_model // empty' "$VULN_METADATA_FILE")
+    case "$VULN_ATTACKER_MODEL" in
+        malicious_app|remote_attacker) ;;
+        "")
+            echo -e "${ERROR} metadata.json missing attacker_model (expected: malicious_app, remote_attacker): $VULN_METADATA_FILE"
+            return 1
+            ;;
+        *)
+            echo -e "${ERROR} metadata.json attacker_model=\"$VULN_ATTACKER_MODEL\" is invalid (expected: malicious_app, remote_attacker): $VULN_METADATA_FILE"
+            return 1
+            ;;
+    esac
     if [ -z "$VULN_PACKAGE_NAME" ] || [ "$VULN_PACKAGE_NAME" = "null" ]; then
         VULN_PACKAGE_NAME=$(jq -r '.package_name // empty' "$ROOT_DIR/$app_dir/metadata.json")
     fi
@@ -455,6 +467,7 @@ VULN_CLEAN_APK_MODE="default"
 VULN_TASK_ID=""
 VULN_BASELINE_COMMIT=""
 VULN_PACKAGE_NAME=""
+VULN_ATTACKER_MODEL=""
 declare -a VULN_BUILD_ENV_ARGS=()
 
 show_usage() {
@@ -744,11 +757,11 @@ run_tests_for_mode() {
     # Check if test_X.py exists to determine test strategy and required scripts
     if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
         echo -e "${INFO} test_X.py probe found - running full vulnerability scenario tests"
-        local has_probes=true
+        HAS_PROBES=true
         required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
     else
         echo -e "${INFO} test_X.py probe not found - running simplified APK installation test"
-        local has_probes=false
+        HAS_PROBES=false
         required_files=("start_runtime.sh" "cleanup.sh")
     fi
     
@@ -819,7 +832,7 @@ run_tests_for_mode() {
 
     cd "$ROOT_DIR"
     
-    if [ "$has_probes" = true ]; then
+    if [ "$HAS_PROBES" = true ]; then
         # Create dummy file for test confidentiality
         cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
 # Dummy log file for testing purposes
@@ -916,6 +929,58 @@ EOF
     print_header "$GREEN" "SETUP MODE $setup_mode COMPLETED SUCCESSFULLY"
 }
 
+# Enforce the structural contract between a synth vuln's attacker_model and
+# the exploit files it ships. Keep in lockstep with zero_day_task_common.sh
+# so the two runtimes accept/reject the same shapes.
+validate_vuln_exploit_format() {
+    local vuln_abs_dir="$1"
+    local attacker_model="$2"
+    local exploit_script="$vuln_abs_dir/exploit_files/exploit.sh"
+    local exploit_apk_dir="$vuln_abs_dir/exploit_files/exploit_apk"
+
+    if [ -d "$vuln_abs_dir/exploit_files/attacker_app" ]; then
+        echo -e "${ERROR} Legacy exploit APK directory is not supported: rename exploit_files/attacker_app to exploit_files/exploit_apk"
+        return 1
+    fi
+
+    case "$attacker_model" in
+        malicious_app)
+            if [ -f "$exploit_script" ]; then
+                echo -e "${ERROR} attacker_model=malicious_app must not ship exploit_files/exploit.sh (use exploit_files/exploit_apk/)"
+                return 1
+            fi
+            if [ ! -d "$exploit_apk_dir" ]; then
+                echo -e "${ERROR} attacker_model=malicious_app requires exploit APK directory: $exploit_apk_dir"
+                return 1
+            fi
+            if ! find "$exploit_apk_dir" -name 'AndroidManifest.xml' -type f -print -quit | grep -q .; then
+                echo -e "${ERROR} Exploit APK directory missing AndroidManifest.xml: $exploit_apk_dir"
+                return 1
+            fi
+            if ! find "$exploit_apk_dir" -name '*.java' -type f -print -quit | grep -q .; then
+                echo -e "${ERROR} Exploit APK directory must contain at least one .java source file: $exploit_apk_dir"
+                return 1
+            fi
+            ;;
+        remote_attacker)
+            if [ -d "$exploit_apk_dir" ]; then
+                echo -e "${ERROR} attacker_model=remote_attacker must not ship exploit_files/exploit_apk/ (use exploit_files/exploit.sh)"
+                return 1
+            fi
+            if [ ! -f "$exploit_script" ]; then
+                echo -e "${ERROR} attacker_model=remote_attacker requires exploit script: $exploit_script"
+                return 1
+            fi
+            ;;
+        *)
+            echo -e "${ERROR} validate_vuln_exploit_format: unknown attacker_model '$attacker_model'"
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
 # Test a synthetic vulnerability task - both clean and vulnerable builds.
 run_vuln_test() {
     local vuln_dir="$1"
@@ -930,17 +995,14 @@ run_vuln_test() {
     # Validate synthetic vulnerability structure
     echo -e "${INFO} Validating synthetic vulnerability structure..."
 
-    local patch_file="$ROOT_DIR/$app_dir/$vuln_dir/vulnerability.patch"
-    local exploit_script="$ROOT_DIR/$app_dir/$vuln_dir/exploit_files/exploit.sh"
-    local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_files/verify_exploit.sh"
-    local metadata_file="$ROOT_DIR/$app_dir/$vuln_dir/metadata.json"
+    local vuln_abs_dir="$ROOT_DIR/$app_dir/$vuln_dir"
+    local patch_file="$vuln_abs_dir/vulnerability.patch"
+    local exploit_script="$vuln_abs_dir/exploit_files/exploit.sh"
+    local exploit_apk_dir="$vuln_abs_dir/exploit_files/exploit_apk"
+    local verify_script="$vuln_abs_dir/verify_files/verify_exploit.sh"
+    local metadata_file="$vuln_abs_dir/metadata.json"
     if [ ! -f "$patch_file" ]; then
         echo -e "${ERROR} Patch file not found: $patch_file"
-        exit 1
-    fi
-
-    if [ ! -f "$exploit_script" ]; then
-        echo -e "${ERROR} Exploit script not found: $exploit_script"
         exit 1
     fi
 
@@ -954,6 +1016,10 @@ run_vuln_test() {
         exit 1
     fi
     if ! load_vuln_test_settings "$vuln_dir" "$app_dir"; then
+        exit 1
+    fi
+
+    if ! validate_vuln_exploit_format "$vuln_abs_dir" "$VULN_ATTACKER_MODEL"; then
         exit 1
     fi
 
@@ -1057,7 +1123,7 @@ run_vuln_test() {
         fix_patch_path="$task_abs_path/fix.patch"
     fi
 
-    task_validation_set_context \
+    if ! task_validation_set_context \
         "$ROOT_DIR" \
         "$ROOT_DIR/$app_dir" \
         "$task_abs_path" \
@@ -1067,10 +1133,14 @@ run_vuln_test() {
         "$package_name" \
         "${VULN_TASK_ID:-$vuln_id}" \
         "${VULN_BASELINE_COMMIT:-}" \
+        "${VULN_ATTACKER_MODEL:-}" \
         "$fix_patch_path" \
         "" \
         "flat" \
-        "true"
+        "true"; then
+        echo -e "${ERROR} Failed to initialize task validation context"
+        exit 1
+    fi
 
     print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
     if ! task_validation_run_phase "Clean build" "secure" "" "false"; then

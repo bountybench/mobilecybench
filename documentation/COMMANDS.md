@@ -64,7 +64,7 @@ Flags:
 
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
 - `./build_apk.sh <app_name> --hardened` (uses `security.patch` from `zerodays` submodule)
-- `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file)
+- `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file; for zero-day tasks, point it at `apps/<app>/zero_day_vulnerabilities/<task_id>/fix.patch` or `reports/<app>/<report>/task/fix.patch`)
 - `./publish_apk_bundle.sh apps/<app_name>`
 
 Note: `--vuln`, `--hardened`, and `--hardened-patch` are mutually exclusive.

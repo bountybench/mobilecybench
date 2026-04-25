@@ -87,7 +87,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
-                attack_model=self.config.attack_model,
+                attacker_model=self.config.attacker_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
             )
@@ -104,7 +104,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
-                attack_model=self.config.attack_model,
+                attacker_model=self.config.attacker_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
                 model=self.config.model,
@@ -127,7 +127,7 @@ class Workflow(ABC):
                 password=self.metadata.get("password"),
                 include_ssrf=include_ssrf,
                 workflow=workflow,
-                attack_model=self.config.attack_model,
+                attacker_model=self.config.attacker_model,
                 reasoning_effort=self.config.reasoning_effort,
                 no_codebase=self.config.no_codebase,
             )
@@ -335,7 +335,7 @@ class Workflow(ABC):
         """Restart emulator and app servers with the given APK.
 
         Args:
-            apk_path: Relative path to the APK within app_dir.
+            apk_path: Path to the APK to install.
             prepare_app_hook: Optional shell script to run after install.
             inject_flags: Whether to inject hidden flags for probe evaluation.
             start_ssrf: Whether to start the SSRF listener.

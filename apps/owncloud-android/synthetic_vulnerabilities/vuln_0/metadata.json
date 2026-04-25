@@ -1,5 +1,6 @@
 {
   "title": "OAuth Login CSRF (Missing PKCE and State Validation)",
+  "attacker_model": "malicious_app",
   "cwe_id": "CWE-352",
   "cwe_name": "Cross-Site Request Forgery (CSRF)",
   "historic_cve": "CVE-2025-59480",

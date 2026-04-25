@@ -9,6 +9,7 @@ from jsonschema import validate
 
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
+from utils.exploit_source import ExploitSource
 from utils.logger import logger_manager
 from workflows import ExploitWorkflow
 
@@ -43,6 +44,7 @@ def base_config():
         emulator_display="headed",
         emulator_backend="native",
         workflow="exploit",
+        synthetic_vuln_id="vuln_0",
     )
 
 
@@ -70,7 +72,13 @@ class TestCreateWorkflow:
         from workflows import RedTeamWorkflow
 
         rt_config = RunnerConfig(
-            **{**base_config.model_dump(), "workflow": "redteam", "task": "report-0"}
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "task": "report-0",
+                "synthetic_vuln_id": None,
+                "attacker_model": "malicious_app",
+            }
         )
         workflow = create_workflow(rt_config, "test_app", tmp_path)
         assert isinstance(workflow, RedTeamWorkflow)
@@ -82,15 +90,22 @@ class TestCreateWorkflow:
                 **base_config.model_dump(),
                 "workflow": "redteam",
                 "task": "report-0",
+                "synthetic_vuln_id": None,
                 "gold_run": True,
             }
         )
         assert config.gold_run is True
 
     def test_redteam_requires_task(self, base_config):
-        """workflow='redteam' without task raises ValueError."""
-        with pytest.raises(ValueError, match="task is required"):
-            RunnerConfig(**{**base_config.model_dump(), "workflow": "redteam"})
+        """workflow='redteam' without task or synthetic_vuln_id raises ValueError."""
+        with pytest.raises(ValueError, match="exactly one"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "redteam",
+                    "synthetic_vuln_id": None,
+                }
+            )
 
 
 class TestRun:
@@ -274,57 +289,75 @@ class TestRun:
         validate(instance=turn_event, schema=_load_conversation_turn_schema())
 
 
-class TestAttackModelConfig:
-    """Tests for attack_model configuration."""
+class TestAttackerModelConfig:
+    """Tests for attacker_model configuration."""
 
-    def test_auth_attacker_valid_with_redteam(self, base_config):
+    def test_remote_attacker_valid_with_redteam(self, base_config):
         config = RunnerConfig(
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
                 "task": "report-0",
-                "attack_model": "auth_attacker",
+                "synthetic_vuln_id": None,
+                "attacker_model": "remote_attacker",
             }
         )
-        assert config.attack_model == "auth_attacker"
+        assert config.attacker_model == "remote_attacker"
 
-    def test_auth_attacker_rejected_with_exploit(self, base_config):
+    def test_remote_attacker_rejected_with_exploit(self, base_config):
         with pytest.raises(ValueError, match="requires workflow='redteam'"):
             RunnerConfig(
                 **{
                     **base_config.model_dump(),
                     "workflow": "exploit",
-                    "attack_model": "auth_attacker",
+                    "attacker_model": "remote_attacker",
                 }
             )
 
-    def test_malicious_app_default(self, base_config):
-        config = RunnerConfig(
-            **{**base_config.model_dump(), "workflow": "redteam", "task": "report-0"}
-        )
-        assert config.attack_model == "malicious_app"
+    def test_malicious_app_rejected_with_exploit(self, base_config):
+        with pytest.raises(ValueError, match="requires workflow='redteam'"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "exploit",
+                    "attacker_model": "malicious_app",
+                }
+            )
 
-    def test_invalid_attack_model_rejected(self, base_config):
+    def test_attacker_model_default_is_none(self, base_config):
+        """attacker_model has no silent default; task metadata is authoritative."""
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "task": "report-0",
+                "synthetic_vuln_id": None,
+            }
+        )
+        assert config.attacker_model is None
+
+    def test_invalid_attacker_model_rejected(self, base_config):
         with pytest.raises(ValueError):
             RunnerConfig(
                 **{
                     **base_config.model_dump(),
                     "workflow": "redteam",
                     "task": "report-0",
-                    "attack_model": "bogus",
+                    "synthetic_vuln_id": None,
+                    "attacker_model": "bogus",
                 }
             )
 
 
 class TestTaskMetadataOverride:
-    """task/metadata.json overrides config.attack_model before workflow creation."""
+    """task/metadata.json overrides config.attacker_model before workflow creation."""
 
-    def test_overrides_attack_model_from_task_metadata(self, base_config, tmp_path):
-        """run() reads attacker_model from task/metadata.json and overrides config."""
+    def test_overrides_attacker_model_from_task_metadata(self, base_config, tmp_path):
+        """run() reconciles attacker_model from task/metadata.json for the workflow."""
         task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(
-            json.dumps({"attacker_model": "auth_attacker"})
+            json.dumps({"attacker_model": "remote_attacker"})
         )
 
         config = RunnerConfig(
@@ -332,16 +365,25 @@ class TestTaskMetadataOverride:
                 **base_config.model_dump(),
                 "workflow": "redteam",
                 "task": "report-4",
+                "synthetic_vuln_id": None,
             }
         )
-        assert config.attack_model == "malicious_app"
+        assert config.attacker_model is None
 
-        with patch("runner.ensure_app_submodule"), patch.object(
-            __import__("workflows").RedTeamWorkflow, "cleanup"
+        captured = {}
+
+        def spy(cfg, app_name, project_root):
+            captured["attacker_model"] = cfg.attacker_model
+            raise RuntimeError("stop before workflow setup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", side_effect=spy
         ):
             run(config, "testapp", tmp_path)
 
-        assert config.attack_model == "auth_attacker"
+        assert captured["attacker_model"] == "remote_attacker"
+        # Caller's config is unchanged — reconciliation is purely local to run().
+        assert config.attacker_model is None
 
     def test_missing_attacker_model_in_task_metadata_fails(self, base_config, tmp_path):
         """task/metadata.json with missing attacker_model returns exit code 1."""
@@ -354,10 +396,87 @@ class TestTaskMetadataOverride:
                 **base_config.model_dump(),
                 "workflow": "redteam",
                 "task": "report-0",
+                "synthetic_vuln_id": None,
             }
         )
         exit_code = run(config, "testapp", tmp_path)
         assert exit_code == 1
+
+
+class TestReplayMetadataOverride:
+    """Replay metadata must normalize selectors for TaskBundle XOR."""
+
+    def test_zeroday_replay_clears_stale_synthetic_vuln_id(self, base_config, tmp_path):
+        config = RunnerConfig(
+            **{**base_config.model_dump(), "replay_run": "logs/exp-1"}
+        )
+        replay = ExploitSource(
+            kind="replay",
+            source_dir=tmp_path / "logs" / "exp-1" / "agent_exploit",
+            app_name="testapp",
+            workflow="redteam",
+            task="report-9",
+            synthetic_vuln_id=None,
+            attacker_model="remote_attacker",
+        )
+        captured = {}
+
+        def spy(cfg, app_name, project_root):
+            captured["workflow"] = cfg.workflow
+            captured["task"] = cfg.task
+            captured["synthetic_vuln_id"] = cfg.synthetic_vuln_id
+            captured["attacker_model"] = cfg.attacker_model
+            raise RuntimeError("stop before workflow setup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", side_effect=spy
+        ):
+            run(config, "testapp", tmp_path, exploit_source=replay)
+
+        assert captured == {
+            "workflow": "redteam",
+            "task": "report-9",
+            "synthetic_vuln_id": None,
+            "attacker_model": "remote_attacker",
+        }
+
+    def test_synthetic_redteam_replay_clears_stale_task(self, base_config, tmp_path):
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "task": "stale-report",
+                "replay_run": "logs/exp-2",
+            }
+        )
+        replay = ExploitSource(
+            kind="replay",
+            source_dir=tmp_path / "logs" / "exp-2" / "agent_exploit",
+            app_name="testapp",
+            workflow="redteam",
+            task=None,
+            synthetic_vuln_id="vuln_7",
+            attacker_model="malicious_app",
+        )
+        captured = {}
+
+        def spy(cfg, app_name, project_root):
+            captured["workflow"] = cfg.workflow
+            captured["task"] = cfg.task
+            captured["synthetic_vuln_id"] = cfg.synthetic_vuln_id
+            captured["attacker_model"] = cfg.attacker_model
+            raise RuntimeError("stop before workflow setup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", side_effect=spy
+        ):
+            run(config, "testapp", tmp_path, exploit_source=replay)
+
+        assert captured == {
+            "workflow": "redteam",
+            "task": None,
+            "synthetic_vuln_id": "vuln_7",
+            "attacker_model": "malicious_app",
+        }
 
 
 class TestMain:
