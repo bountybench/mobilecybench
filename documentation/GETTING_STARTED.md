@@ -37,9 +37,6 @@ exploration where cost telemetry doesn't matter, set
 `"allow_unregistered_models": true` in `runner_config.json` to bypass
 the registry.
 
-We recommend `gpt-5.5`, `claude-opus-4-7`, or `gemini-3.1-pro` as
-high-capability defaults.
-
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py conversations
