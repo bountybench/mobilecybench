@@ -41,3 +41,6 @@ apps/*/zero_day_vulnerabilities/artifacts/
 synthetic_scores.json
 .apk_backup_path
 .claude
+
+# openvpn vuln_0 — per-run nonce stash written by prepare_app.sh, read by verify_exploit.sh
+apps/openvpn/synthetic_vulnerabilities/*/.run_nonce
