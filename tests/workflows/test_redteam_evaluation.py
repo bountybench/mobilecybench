@@ -442,16 +442,21 @@ def test_malicious_app_replay_error_sets_failure_kind(redteam_config, tmp_path):
     assert result.failure_kind == "replay_runtime_error"
 
 
-def test_prepare_app_crash_with_successful_exploit_does_not_early_stop(
+def test_phase1_failure_kind_suppresses_no_impact_early_stop(
     remote_attacker_config, tmp_path
 ):
-    """When the exploit succeeds (exit_code=0) but prepare_app crashes,
-    the evaluation must proceed to Phase 2 rather than early-stopping."""
+    """When phase 1 hits an infrastructure failure (failure_kind set), the
+    early-stop gate must NOT short-circuit to no_impact — verifier and probe
+    signals are unreliable, so we cannot conclude the exploit had no effect.
+    The run should fall through to phase 2 / infrastructure_error."""
     wf = _make_workflow(remote_attacker_config, tmp_path)
     _write_agent_artifact("remote_attacker")
 
+    # exit_code=1 + verifier=1 + probes_triggered=False would trigger the
+    # no_impact early-stop in the absence of failure_kind; the gate must
+    # detect the failure_kind and proceed instead.
     phase_results = [
-        _phase_result(0, tmp_path / "p1", failure_kind="prepare_app_crash"),
+        _phase_result(1, tmp_path / "p1", failure_kind="prepare_app_crash"),
         _phase_result(1, tmp_path / "p2"),
     ]
     phase_i = iter(phase_results)
@@ -473,8 +478,8 @@ def test_prepare_app_crash_with_successful_exploit_does_not_early_stop(
         result = wf.evaluate()
 
     assert result["status"] != "no_impact"
+    assert result["status"] == "infrastructure_error"
     assert result["phases"]["phase1_original"]["failure_kind"] == "prepare_app_crash"
-    assert result["phases"]["phase2_patched"]["failure_kind"] is None
 
 
 def test_failure_kind_none_on_clean_run(redteam_config, tmp_path):
@@ -487,3 +492,72 @@ def test_failure_kind_none_on_clean_run(redteam_config, tmp_path):
     assert result["status"] == "verified"
     assert result["phases"]["phase1_original"]["failure_kind"] is None
     assert result["phases"]["phase2_patched"]["failure_kind"] is None
+
+
+def test_malicious_app_prepare_app_crash_does_not_propagate(redteam_config, tmp_path):
+    """A flaky prepare_app.sh in MaliciousAppOps must be caught and mapped to
+    a PhaseResult, mirroring RemoteAttackerOps's handling. Without this, the
+    whole workflow would crash on a setup-script failure."""
+    wf = _make_workflow(redteam_config, tmp_path)
+
+    with (
+        patch("evaluation.replay_apk.uninstall"),
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_prepare_app",
+            side_effect=RuntimeError("setup script crashed"),
+        ),
+        patch("evaluation.replay_apk.replay_malicious_apk") as mock_replay,
+    ):
+        result = MaliciousAppOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            apk_project_dir=tmp_path / "exploit_apk",
+            target_apk=Path("apk/test.apk"),
+        )
+
+    assert result.exit_code == 2
+    assert result.failure_kind == "prepare_app_crash"
+    assert result.evidence_log_path is None
+    # The replay must NOT run after a setup crash (no exploit state to attack).
+    mock_replay.assert_not_called()
+
+
+def test_phase2_replay_runtime_error_short_circuits_to_infrastructure_error(
+    redteam_config, tmp_path
+):
+    """If phase 2 hits replay_runtime_error (exit_code=2 sentinel), the naive
+    patch_diff = (p1==0 and p2!=0) would falsely fire and produce a 'verified'
+    verdict driven by infrastructure failure. The infrastructure_error
+    short-circuit must intercept before scoring."""
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    phases = [
+        _phase_result(0, tmp_path / "p1"),
+        _phase_result(2, tmp_path / "p2", failure_kind="replay_runtime_error"),
+    ]
+    phase_i = iter(phases)
+
+    with (
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=lambda *_a, **_kw: next(phase_i),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            return_value=_probe_result(False),
+        ),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "infrastructure_error"
+    assert result["score"] == 0
+    assert result["phases"]["phase2_patched"]["failure_kind"] == "replay_runtime_error"
+    # Crucially, signals must not be present — we never reached compute_redteam_score.
+    assert "signals" not in result

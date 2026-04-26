@@ -94,7 +94,12 @@ class MaliciousAppOps:
         )
 
         logger.info("[phase] Running prepare_app.sh...")
-        workflow._run_prepare_app()
+        try:
+            workflow._run_prepare_app()
+        except Exception as e:
+            logger.error(f"prepare_app failed: {e}")
+            phase_dir.mkdir(parents=True, exist_ok=True)
+            return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
 
         logger.info("[phase] Replaying malicious APK...")
         timeout = workflow.config.apk_timeout
@@ -558,8 +563,13 @@ class RedTeamWorkflow(Workflow):
         )
 
         # ---- Early-stop gate ----
+        # Skip only when we have clean signal that the exploit truly had no
+        # impact. If failure_kind is set, the verifier/probe state may be
+        # corrupt (prepare_app crashed) or the exploit never ran at all
+        # (replay_runtime_error) — neither case is "no_impact".
         if (
             p1["exit_code"] != 0
+            and p1["failure_kind"] is None
             and p1["probes_ok"]
             and not p1["probes_triggered"]
             and not p1["verifier_vuln"]
@@ -611,6 +621,38 @@ class RedTeamWorkflow(Workflow):
                 "probe_evaluator_error",
                 score=0,
                 reason="Probe evaluator failed to produce valid JSON",
+            )
+            self._save_result(result)
+            return result
+
+        # If either phase had an infrastructure failure, scoring inputs are
+        # polluted (replay_runtime_error => exit_code=2 sentinel produces a
+        # falsely-positive patch_diff; prepare_app_crash leaves verifier/probe
+        # state unreliable). Short-circuit before compute_redteam_score so we
+        # never feed it polluted signals — preserve the data in the JSON for
+        # triage rather than emitting a confidence-bearing verdict.
+        if p1["failure_kind"] is not None or p2["failure_kind"] is not None:
+            result = self._make_result(
+                "infrastructure_error",
+                score=0,
+                reason=(
+                    f"Infrastructure failure prevented scoring: "
+                    f"phase1={p1['failure_kind']} phase2={p2['failure_kind']}"
+                ),
+                phases={
+                    "phase1_original": {
+                        "exit_code": p1["exit_code"],
+                        "failure_kind": p1["failure_kind"],
+                        "evidence_log": str(p1["evidence_log_path"]),
+                        "verifier_exit": p1["verifier_exit"],
+                    },
+                    "phase2_patched": {
+                        "exit_code": p2["exit_code"],
+                        "failure_kind": p2["failure_kind"],
+                        "evidence_log": str(p2["evidence_log_path"]),
+                        "verifier_exit": p2["verifier_exit"],
+                    },
+                },
             )
             self._save_result(result)
             return result
