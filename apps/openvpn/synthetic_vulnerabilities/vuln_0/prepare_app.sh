@@ -40,9 +40,10 @@ sleep 2
 adb shell mkdir -p /data/data/$TARGET_PACKAGE/cache
 adb shell cp /sdcard/Download/android-client.ovpn \
     /data/data/$TARGET_PACKAGE/cache/android-client.ovpn
-# Write the nonce to the openvpn app's private cache so the patched
-# ProfileManager can read it during saveProfile().
-adb shell sh -c "printf '%s' '$RUN_NONCE' > $NONCE_DEVICE_PATH"
+# Push the nonce to the openvpn app's private cache so the patched
+# ProfileManager can read it during saveProfile().  adb push avoids the
+# adb-shell quoting hazards of an inline `printf > path` redirect.
+adb push "$NONCE_HOST_STASH" "$NONCE_DEVICE_PATH"
 OWNER=$(adb shell stat -c '%u:%g' /data/data/$TARGET_PACKAGE | tr -d '\r')
 adb shell chown "$OWNER" \
     /data/data/$TARGET_PACKAGE/cache/android-client.ovpn
