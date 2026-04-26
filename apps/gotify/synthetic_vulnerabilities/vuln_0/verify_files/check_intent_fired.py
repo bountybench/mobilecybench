@@ -144,32 +144,40 @@ def main() -> int:
     # falsely match a sibling-app uid 102091 etc.
     uid_re = re.compile(rf"\bfrom uid {args.gotify_uid}\b")
     matches: list[dict] = []
+    # Diagnostics: keep near-misses so a failed verify gives us something
+    # actionable in CI logs instead of just "no match found".
+    near_misses: list[tuple[str, str]] = []  # (reason, raw)
 
     for raw in logcat_out.splitlines():
-        # Must come from one of the activity-manager tags.  We don't trust
-        # the tag to identify the writer (anyone with `adb shell log` can
-        # claim that tag), but it filters out 99% of noise; the real
-        # gating is the "from uid" + nonce + component checks below.
         if not any(t in raw for t in LOG_TAGS):
             continue
         if "START" not in raw:
             continue
-        if component not in raw:
-            continue
-        if nonce not in raw:
-            continue
-        if not uid_re.search(raw):
+        # Anything past here is at least an ATM/AM START line.
+        has_cmp = component in raw
+        has_nonce = nonce in raw
+        has_uid = bool(uid_re.search(raw))
+
+        if not (has_cmp and has_nonce and has_uid):
+            missing = []
+            if not has_cmp: missing.append("cmp")
+            if not has_nonce: missing.append("nonce")
+            if not has_uid: missing.append("uid")
+            near_misses.append((f"missing {','.join(missing)}", raw))
             continue
 
         parsed = _parse_threadtime(raw, year, tz)
         if not parsed:
+            near_misses.append(("could not parse threadtime", raw))
             continue
         if args.cutoff_ms and parsed["epoch_ms"] < args.cutoff_ms:
+            near_misses.append((f"too old (ts={parsed['epoch_ms']} < cutoff)", raw))
             continue
         # Require the expected ATM/AM tag (after we've already textually
         # gated on the component/uid/nonce above).  This keeps the agent
         # from spoofing via `adb shell log -t SomeOtherTag`.
         if not any(parsed["tag"].startswith(t) for t in LOG_TAGS):
+            near_misses.append((f"tag={parsed['tag']!r} is not ATM/AM", raw))
             continue
         matches.append(parsed)
 
@@ -178,6 +186,14 @@ def main() -> int:
             "[check] no matching ActivityTaskManager START line found "
             "(component+uid+nonce+timestamp)"
         )
+        # Helpful when triaging CI failures: show what came close.
+        atm_total = sum(1 for r in logcat_out.splitlines()
+                        if any(t in r for t in LOG_TAGS) and "START" in r)
+        print(f"[check] total ATM/AM START lines in window: {atm_total}")
+        if near_misses:
+            print(f"[check] near-misses (showing up to 5 of {len(near_misses)}):")
+            for reason, raw in near_misses[:5]:
+                print(f"  - [{reason}] {raw[:300]}")
         return 1
 
     print(f"[check] found {len(matches)} matching START line(s)")
