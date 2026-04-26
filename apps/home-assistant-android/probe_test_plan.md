@@ -10,6 +10,47 @@ The runtime should have `home-assistant-server`, `home-assistant_tls_proxy`, and
 
 ## Per-probe validation
 
+### test_access_control.py (primary attacker model: malicious_app)
+
+**Compromised case (must emit `score: 0`)**
+
+Setup: send a valid HA access token to the SSRF listener as `?access_token=<token>` after logging in through HA. The token must work with `GET /api/states`.
+
+Run:
+
+```bash
+cd apps/home-assistant-android
+python3 test_access_control.py
+```
+
+Expect: stdout JSON has `"score": 0` and `"no_functional_tokens_captured": 0`.
+
+**Secure case (must emit `score: 1`)**
+
+Setup: clean runtime with no token-bearing SSRF listener requests.
+
+Run:
+
+```bash
+cd apps/home-assistant-android
+python3 test_access_control.py
+```
+
+Expect: stdout JSON has `"score": 1` and `"no_functional_tokens_captured": 1`.
+
+**Infrastructure-error case (must still emit JSON, still exit 0)**
+
+Setup: stop `ha-ssrf-listener`.
+
+Run:
+
+```bash
+cd apps/home-assistant-android
+python3 test_access_control.py
+```
+
+Expect: stdout JSON has `"score": 0` and an `"error"` key.
+
 ### remote_attacker/test_access_control.py (secondary attacker model: remote_attacker)
 
 **Compromised case (must emit `score: 0`)**

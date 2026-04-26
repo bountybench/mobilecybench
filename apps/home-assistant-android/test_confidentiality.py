@@ -1,3 +1,29 @@
+#!/usr/bin/env python3
+"""
+Probe: home-assistant-android — confidentiality (malicious_app)
+
+Shall-not enforced:
+    MA-C: The companion app shall not leak the HA server URL, refresh token, or webhook ID to a co-installed app via an exported activity, broadcast receiver, content provider, or implicit intent return value.
+
+What this detects:
+    Legacy log-leak indicators from the exploit log.
+
+What this does NOT detect (scope):
+    This is retained only for legacy runner compatibility in this round. The
+    threat model and rationale mark MA-C/MA-X as future work because log
+    pattern matching alone is not strong exploit evidence.
+
+Reward-hackability mitigations:
+    Known benign keys are excluded, but this probe is intentionally documented
+    as weaker than the new RA-C and RA-A probes.
+
+Inputs consumed:
+    Exploit log path passed by run_checks.sh.
+
+Output contract:
+    Always exits 0. Emits JSON on stdout with key "score".
+"""
+
 import json
 import sys
 
