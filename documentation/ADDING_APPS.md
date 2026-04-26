@@ -183,7 +183,7 @@ To download a pre-built APK manually:
 ```bash
 python download_apk.py <app_name>            # download APK (skips existing files)
 python download_apk.py --force <app_name>    # overwrite existing files
-python download_apk.py --check               # validate all apps' download_links
+python download_apk.py --check               # validate all apps' download_link assets
 ```
 
 Local CI can run both download and source-build modes:

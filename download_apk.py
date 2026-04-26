@@ -8,7 +8,7 @@ is used.
 Usage:
     python download_apk.py <app_name>           # download APK (skip existing)
     python download_apk.py --force <app_name>   # download and overwrite existing
-    python download_apk.py --check [app_name]   # validate download_links exist on GitHub
+    python download_apk.py --check [app_name]   # validate download_link assets exist on GitHub
 """
 
 import logging
@@ -26,12 +26,12 @@ Download pre-built APKs from GitHub releases.
 Usage:
   {prog} <app_name>           Download APK (skips existing files)
   {prog} --force <app_name>   Download and overwrite existing files
-  {prog} --check [app_name]   Validate download_links against GitHub releases
+  {prog} --check [app_name]   Validate download_link assets against GitHub releases
 
 Examples:
   {prog} conversations              Download conversations APK
   {prog} --force conversations      Re-download conversations APK
-  {prog} --check                    Check all apps' download_links
+  {prog} --check                    Check all apps' download_link assets
   {prog} --check conversations      Check just conversations' download_link
 """
 
@@ -58,7 +58,8 @@ def main():
         failures = {n: s for n, s in results.items() if s not in ("ok", "no_link")}
         if failures:
             print(
-                f"\n{len(failures)} app(s) have broken download_links.", file=sys.stderr
+                f"\n{len(failures)} app(s) have broken download_link assets.",
+                file=sys.stderr,
             )
         sys.exit(1 if failures else 0)
 

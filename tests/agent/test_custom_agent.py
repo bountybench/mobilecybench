@@ -11,6 +11,7 @@ from agent.custom_agent import CustomAgent
 from agent.model_providers.factory import SupportedModel, get_model_provider
 from agent.model_providers.litellm_provider import LiteLLMProvider
 from agent.model_providers.openai_provider import OpenAIProvider
+from agent.tools.runtime import ToolRuntime
 from tests.conftest import create_provider_response
 from utils.token_tracker import TokenTracker
 
@@ -208,6 +209,32 @@ class TestCustomAgentMaxIterations:
         contents = prompt_path.read_text(encoding="utf-8")
         assert contents.strip()
         assert "com.test.app" in contents
+
+    def test_appends_custom_system_prompt(self, mock_agent_dependencies):
+        """Optional custom system prompt text is appended to the prompt artifact."""
+        CustomAgent(
+            model="gpt-5.2",
+            max_iterations=1,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+            custom_system_prompt="Only use execute_command unless UI context is required.",
+        )
+
+        prompt_path = mock_agent_dependencies["logs_dir"] / "system_prompt.txt"
+        contents = prompt_path.read_text(encoding="utf-8")
+        assert "Only use execute_command unless UI context is required." in contents
+
+
+class TestToolRuntime:
+    def test_allowed_tools_filters_registry_and_definitions(self):
+        runtime = ToolRuntime(allowed_tools=["execute_command"])
+
+        assert list(runtime.registry) == ["execute_command"]
+        assert [tool["name"] for tool in runtime.get_tool_definitions()] == [
+            "execute_command"
+        ]
 
 
 class TestModelProviderRouting:

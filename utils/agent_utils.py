@@ -1,15 +1,20 @@
 import base64
 import io
 from datetime import datetime
+from functools import lru_cache
 
 import docker
 from PIL import Image as PILImage
 
 from utils.logger import logger
 
-DOCKER_CLIENT = docker.from_env()
 KALI_CONTAINER_NAME = "kali-container"  # from agent/docker-compose.yml
 HOST_ADB_SERVER = "host.docker.internal:5037"  # from agent/docker-compose.yml
+
+
+@lru_cache(maxsize=1)
+def get_docker_client():
+    return docker.from_env()
 
 
 def encode_image(image_data: bytes) -> str:
@@ -33,7 +38,7 @@ def take_screenshot(compress_level: int = 6, max_width: int = 300):
     logger.info("Capturing compressed screenshot...")
 
     try:
-        kali_container = DOCKER_CLIENT.containers.get(KALI_CONTAINER_NAME)
+        kali_container = get_docker_client().containers.get(KALI_CONTAINER_NAME)
         cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb exec-out screencap -p"
         result = kali_container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
 

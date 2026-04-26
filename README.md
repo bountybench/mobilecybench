@@ -21,9 +21,9 @@ Docker should be running before you start (most apps use containers).
 ```bash
 git clone https://github.com/bountybench/mobilecybench
 cd mobilecybench
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate   # Windows: .\.venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 bash setup.sh --init-submodules conversations
 echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py conversations
@@ -31,9 +31,13 @@ python runner.py conversations
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
+The bundled `runner_config.json` uses `build_type: "download-apk"` so a clean clone can fetch released APK bundles on the first run. If the app you choose does not publish a `download_link` in `apps/<app_name>/metadata.json`, switch to `build_type: "source"` or prebuild APKs and use `build_type: "skip-apk"`.
+
 The emulator helper scripts (`start_emulator.sh`, `check_device.sh`) are for manual debugging and dry-run mode only.
 
 Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
+
+To validate the setup without an API key, run `python runner.py conversations --config runner_config_dryrun.json`.
 
 ## Documentation
 

@@ -3,6 +3,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from typing import Optional
 
 import httpx
 import openai
@@ -30,11 +31,7 @@ try:
 except Exception:
     _jsonschema_validate = None
 
-# Grab data from runner_config
-with open("runner_config.json", "r") as file:
-    data = json.load(file)
-
-timeout_ms = data.get("timeout_ms", 600_000)
+DEFAULT_TIMEOUT_MS = 600_000
 
 # Transient exceptions that should trigger retry.
 # litellm's exception classes subclass openai.* so one tuple covers both providers.
@@ -76,7 +73,7 @@ class CustomAgent:
         screenshot_enabled: bool,
         app_name: str,
         additional_context: str = None,
-        timeout_ms: int = timeout_ms,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
         app_server: str = None,
         emulator_server: str = None,
         network_access: bool = True,
@@ -88,6 +85,8 @@ class CustomAgent:
         workflow: str = "exploit",
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
+        custom_system_prompt: Optional[str] = None,
+        allowed_tools: Optional[list[str]] = None,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
@@ -118,11 +117,14 @@ class CustomAgent:
         self.password = password
 
         # Initialize ToolRuntime
-        self.runtime = ToolRuntime()
+        self.runtime = ToolRuntime(allowed_tools=allowed_tools)
 
         # Build system prompt
         self._initial_tree_context = get_directory_tree()
-        self._instructions = self._get_system_prompt_text(additional_context)
+        self._instructions = self._get_system_prompt_text(
+            additional_context=additional_context,
+            custom_system_prompt=custom_system_prompt,
+        )
 
         agent_logger.info("Agent initialized with system prompt instructions.")
 
@@ -164,7 +166,11 @@ class CustomAgent:
         agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
         agent_logger.info("=" * 80)
 
-    def _get_system_prompt_text(self, additional_context: str = None) -> str:
+    def _get_system_prompt_text(
+        self,
+        additional_context: str = None,
+        custom_system_prompt: Optional[str] = None,
+    ) -> str:
         """Build the system prompt text based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
@@ -190,11 +196,13 @@ class CustomAgent:
                 no_codebase=self.no_codebase,
             )
 
-        # Append additional context if provided
+        prompt_sections = [full_prompt]
         if additional_context:
-            full_prompt = full_prompt + "\n\n" + additional_context
+            prompt_sections.append(additional_context)
+        if custom_system_prompt:
+            prompt_sections.append(custom_system_prompt)
 
-        return full_prompt
+        return "\n\n".join(prompt_sections)
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
