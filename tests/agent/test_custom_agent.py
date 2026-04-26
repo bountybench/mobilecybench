@@ -272,8 +272,7 @@ class TestModelProviderRouting:
         assert provider._rule.env_var == "OPENAI_API_KEY"
         warning_messages = [r.getMessage() for r in caplog.records]
         assert any(
-            "some-random-model" in m and "SupportedModel" in m
-            for m in warning_messages
+            "some-random-model" in m and "SupportedModel" in m for m in warning_messages
         ), warning_messages
         assert any("COST REPORTING" in m for m in warning_messages), warning_messages
 
@@ -290,9 +289,7 @@ class TestModelProviderRouting:
 
         assert isinstance(provider, LiteLLMProvider)
         assert provider._rule.env_var == "ANTHROPIC_API_KEY"
-        assert any(
-            "claude-future-model" in r.getMessage() for r in caplog.records
-        )
+        assert any("claude-future-model" in r.getMessage() for r in caplog.records)
 
 
 class TestLiteLLMProviderUsagePassthrough:
