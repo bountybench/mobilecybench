@@ -8,7 +8,7 @@
   "model": "gpt-5.2",
   "agent_mode": "custom",
   "screenshot_mode": false,
-  "dry_run": false,
+  "dry_run": true,
   "gold_run": false,
   "workflow": "exploit",
   "task": null,

@@ -9,15 +9,15 @@ Docker should be running before you start (most apps use containers).
 ```bash
 git clone https://github.com/bountybench/mobilecybench
 cd mobilecybench
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate   # Windows: .\\.venv\\Scripts\\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 bash setup.sh --init-submodules conversations
 ```
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
-To run the AI agent, provide an API key. We currently support Google and OpenAI models and recommend using either `gemini-3-pro-preview` or `gpt-5.2`
+To run the AI agent, provide an API key. We currently support OpenAI, Anthropic, and Google models listed in `agent/model_providers/factory.py`. For a first run, `gpt-5.2` and `gemini-3-pro-preview` are the most exercised paths.
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
@@ -26,9 +26,9 @@ python runner.py conversations
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
-The default mode is **discovery** (find unknown vulnerabilities). Other modes: **exploit** (exploit a known synthetic vulnerability) and **detection** (find vulnerabilities autonomously, evaluated via patch-differential replay). Set `"workflow"` in `runner_config.json`. See `documentation/EXPERIMENTS.md` for details.
+The bundled `runner_config.json` defaults to **exploit** mode with `build_type: "download-apk"` so a clean clone can fetch released APK bundles on the first run. To run patch-differential autonomous evaluation, set `"workflow": "redteam"`. See `documentation/EXPERIMENTS.md` for the workflow and build-mode details.
 
-If you do not want to use an API key, run in dry-run mode instead:
+If you do not want to use an API key, use the bundled dry-run config instead:
 
 ```bash
 python runner.py conversations --config runner_config_dryrun.json
@@ -45,9 +45,9 @@ python runner.py conversations --config runner_config_dryrun.json
 ```bash
 git clone https://github.com/bountybench/mobilecybench
 cd mobilecybench
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate   # Windows: .\\.venv\\Scripts\\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ## 2.1) Manual checks (recommended for first-time setup)
@@ -55,7 +55,7 @@ pip install -r requirements.txt
 Use these to confirm system-level dependencies before running `setup.sh`.
 
 ```bash
-python3 --version
+python --version
 java -version
 docker --version
 ```

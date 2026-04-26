@@ -31,7 +31,8 @@ Details: `documentation/EXPERIMENTS.md`
 Flags:
 
 - `python runner.py <app_name>`
-- `--agent-type <custom|codex>`
+- `--config <path/to/config.json>`
+- `--replay-run <logs/experiment_<uuid>>`
 
 ## Download pre-built APKs
 
@@ -47,7 +48,7 @@ Flags:
 
 - `python download_apk.py <app_name>` — download APK (skips existing files)
 - `--force` — overwrite existing files
-- `--check [app_name]` — validate `download_links` against GitHub releases
+- `--check [app_name]` — validate `download_link` release assets on GitHub
 
 ## Build and publish APKs
 

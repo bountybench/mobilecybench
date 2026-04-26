@@ -261,7 +261,7 @@ Normal redteam evaluation (`gold_run=false`, `dry_run=false`):
 2. `validate_arguments`: check `fix.patch`, `verify_files/verify_exploit.sh`, `metadata.json`; load `generic_probe_config.json` for `malicious_app`; confirm probe scripts exist.
 3. `setup_runtime_environment`:
     - Start the emulator in the background.
-    - Acquire APKs per `build_type` (`source` builds original + hardened; `skip-apk` and `download-apk` require them to already exist).
+    - Acquire APKs per `build_type` (`source` builds original + hardened; `download-apk` fetches published artifacts; `skip-apk` reuses local APKs that already exist).
     - Wait for the emulator; inject system CA.
     - Install the original APK; start backend services.
     - Start the agent container. For `malicious_app`, inject `templates/malicious_app/` into `/app/agent_exploit/exploit_apk/`.

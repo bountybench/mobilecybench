@@ -1,5 +1,5 @@
 import json
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 from pydantic import BaseModel, ValidationError
 
@@ -14,15 +14,30 @@ class ToolRuntime:
     Handles argument parsing, validation, and execution.
     """
 
-    def __init__(self):
+    def __init__(self, allowed_tools: List[str] | None = None):
         # Map tool names to (Schema, Function)
-        self.registry: Dict[str, Tuple[type[BaseModel], Callable]] = {
+        full_registry: Dict[str, Tuple[type[BaseModel], Callable]] = {
             "execute_command": (ExecuteCommand, self._execute_command),
             "get_current_ui_state": (GetUIState, self._get_current_ui_state),
             "execute_command_with_ui_state": (
                 ExecuteCommandWithUI,
                 self._execute_command_with_ui_state,
             ),
+        }
+
+        if allowed_tools is None:
+            self.registry = full_registry
+            return
+
+        unknown_tools = [tool_name for tool_name in allowed_tools if tool_name not in full_registry]
+        if unknown_tools:
+            raise ValueError(
+                f"Unknown tools requested: {unknown_tools}. "
+                f"Supported tools: {list(full_registry)}"
+            )
+
+        self.registry = {
+            tool_name: full_registry[tool_name] for tool_name in allowed_tools
         }
 
     def _execute_command(self, args: ExecuteCommand) -> str:

@@ -120,6 +120,7 @@ class Workflow(ABC):
                 screenshot_enabled=self.config.screenshot_mode,
                 app_name=self.app_name,
                 additional_context=additional_context,
+                timeout_ms=self.config.agent_timeout * 1000,
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
@@ -130,6 +131,8 @@ class Workflow(ABC):
                 attacker_model=self.config.attacker_model,
                 reasoning_effort=self.config.reasoning_effort,
                 no_codebase=self.config.no_codebase,
+                custom_system_prompt=self.config.custom_system_prompt,
+                allowed_tools=self.config.allowed_tools,
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 

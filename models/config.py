@@ -64,7 +64,8 @@ class RunnerConfig(BaseModel):
     )  # am instrument timeout for malicious APK replay
     emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
 
-    # Claude Code CLI timeout (seconds). Only used when agent_mode="claude-code".
+    # Per-agent timeout (seconds). Used for custom-agent model calls and the
+    # CLI-based codex / claude-code agents.
     agent_timeout: int = Field(default=1800, gt=0)
 
     @classmethod

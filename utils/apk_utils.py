@@ -151,7 +151,7 @@ def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> 
 
 
 def check_releases(app_names: list[str], project_root: Path) -> dict[str, str]:
-    """Validate download_links exist on GitHub for the given apps.
+    """Validate download_link assets exist on GitHub for the given apps.
 
     Returns a dict of {app_name: status} where status is 'ok', 'missing',
     'no_link', or 'error: <message>'.

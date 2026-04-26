@@ -97,6 +97,33 @@ class TestExploitWorkflow:
         ):
             workflow.validate_arguments()
 
+    def test_setup_agent_passes_custom_agent_config(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text("{}")
+
+        config = _config(
+            workflow="exploit",
+            agent_mode="custom",
+            agent_timeout=42,
+            allowed_tools=["execute_command"],
+            custom_system_prompt="Prefer command-line inspection first.",
+        )
+        workflow = ExploitWorkflow(config, "test_app", tmp_path)
+        workflow.metadata = {
+            "package_name": "com.test.app",
+            "username": "user",
+            "password": "pass",
+        }
+
+        with patch("agent.custom_agent.CustomAgent") as mock_custom_agent:
+            workflow.setup_agent()
+
+        kwargs = mock_custom_agent.call_args.kwargs
+        assert kwargs["timeout_ms"] == 42_000
+        assert kwargs["allowed_tools"] == ["execute_command"]
+        assert kwargs["custom_system_prompt"] == "Prefer command-line inspection first."
+
 
 class TestExploitWorkflowEvaluation:
     """Tests for exploit evaluation result classification."""
