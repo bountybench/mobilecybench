@@ -35,6 +35,13 @@ AGENT_PORT="${AGENT_SERVER_PORT:-9999}"
 REDIRECT_TARGET="https://10.0.2.2:${AGENT_PORT}/cover.png"
 VICTIM_TOKEN_FILE="/tmp/funkwhale_victim_token.txt"
 
+# ── 0. Wipe stale victim token from any previous phase ──────────────────────
+# CI runs Phase 1 (clean) and Phase 2 (vuln) sequentially with a docker volume
+# wipe in between; we must guarantee that if THIS phase's prepare_app.sh fails
+# before writing the new token, the verifier sees no file and exits 2 (error)
+# instead of comparing against a stale value left by a prior phase.
+rm -f "$VICTIM_TOKEN_FILE"
+
 # ── 1. Generate fresh OAuth credentials in the funkwhale DB ──────────────────
 CLIENT_ID="funkwhale-android-$(date +%s)-$$"
 CLIENT_SECRET="secret-$(openssl rand -hex 16)"
