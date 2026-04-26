@@ -52,31 +52,7 @@ sync_device_time_to_host() {
 install_app() {
   log_info "Installing ntfy-android"
   adb uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
-  # Retry install — INSTALL_FAILED_PACKAGE_CHANGED can flake when uninstall
-  # bookkeeping is still in flight after a rapid phase teardown.
-  local _attempt _install_log _install_rc
-  _install_log="$(mktemp)"
-  for _attempt in 1 2 3 4 5; do
-    _install_rc=0
-    adb_install_apk "$APK_PATH" >"$_install_log" 2>&1 || _install_rc=$?
-    cat "$_install_log"
-    if [[ "$_install_rc" -eq 0 ]]; then
-      rm -f "$_install_log"
-      break
-    fi
-    if grep -q "INSTALL_FAILED_PACKAGE_CHANGED\|INSTALL_FAILED_USER_RESTRICTED\|INSTALL_FAILED_INSUFFICIENT_STORAGE" "$_install_log"; then
-      log_warn "APK install attempt $_attempt failed transiently; retrying after pm uninstall..."
-      adb shell pm uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
-      sleep 3
-      continue
-    fi
-    rm -f "$_install_log"
-    fatal "adb install failed (rc=$_install_rc) — see log above"
-  done
-  if [[ "$_install_rc" -ne 0 ]]; then
-    rm -f "$_install_log"
-    fatal "adb install failed after retries"
-  fi
+  adb_install_apk "$APK_PATH"
   adb shell pm grant "$TARGET_PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || log_warn "POST_NOTIFICATIONS grant skipped"
 }
 
