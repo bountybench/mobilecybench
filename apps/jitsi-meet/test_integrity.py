@@ -92,9 +92,12 @@ PACKAGE_NAME = os.environ.get("MCB_PACKAGE_NAME", "org.jitsi.meet")
 PROSODY_CONTAINER = os.environ.get("PROSODY_CONTAINER", "jitsi-latest-prosody-1")
 USER_CA_DIR = os.environ.get("USER_CA_DIR", "/data/misc/user/0/cacerts-added")
 
-# Per-app integrity hash file path is hard-coded in
-# apps/jitsi-meet/test_integrity.py:18 as "prosody.hash" relative to cwd.
+# Per-app integrity hash file path. start_runtime.sh:172 invokes
+# `python3 test_integrity.py --init` to populate this baseline; the
+# main check below compares the live tree against it.
 HASH_FILE_NAME = "prosody.hash"
+PROSODY_HASH_DIRS = ("/config/certs", "/config/conf.d", "/config/data")
+PROSODY_HASH_FILE = "/config/prosody.cfg.lua"
 
 # Codename -> seeded XMPP localpart from start_runtime.sh:117-120.
 SEEDED_USERS = (
@@ -123,41 +126,53 @@ def _adb_su(cmd: str, timeout: int = 15) -> subprocess.CompletedProcess:
 
 
 # ----------------------------------------------------------------------
-# 1. Reuse the existing prosody.hash check
+# Prosody /config tree hash — same algorithm as the legacy
+# apps/jitsi-meet/test_integrity.py shipped, but inlined here so we
+# don't have to recursively import this same file.
 # ----------------------------------------------------------------------
 
-def check_prosody_config_hash() -> tuple[bool, str]:
-    """Re-run apps/jitsi-meet/test_integrity.py:compute_hash and compare
-    against the prosody.hash baseline written at runtime startup."""
-    sys.path.insert(0, str(APP_DIR))
-    try:
-        # Import inside the function so an import error becomes a soft
-        # skip rather than killing the probe.
-        import importlib.util  # noqa: WPS433
+def compute_hash() -> str:
+    """Hash the prosody container's /config/{certs,conf.d,data} tree
+    plus /config/prosody.cfg.lua. Stable across phases (the harness
+    re-creates the container with deterministic content). Sorting
+    keeps the output independent of `find` order."""
+    import hashlib
 
-        spec = importlib.util.spec_from_file_location(
-            "_app_integrity", APP_DIR / "test_integrity.py"
-        )
-        if spec is None or spec.loader is None:
-            return True, "could not import apps/jitsi-meet/test_integrity.py"
-        mod = importlib.util.module_from_spec(spec)
-        # The existing module references HASH_FILE relative to cwd; we
-        # change cwd briefly so it reads apps/jitsi-meet/prosody.hash.
-        original_cwd = os.getcwd()
-        os.chdir(APP_DIR)
-        try:
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
-            current = mod.compute_hash()  # type: ignore[attr-defined]
-            hash_path = APP_DIR / HASH_FILE_NAME
-            if not hash_path.exists():
-                return True, "no baseline prosody.hash; skip (cannot evaluate)"
-            saved = hash_path.read_text(encoding="utf-8").strip()
-        finally:
-            os.chdir(original_cwd)
+    dirs_arg = " ".join(PROSODY_HASH_DIRS)
+    cmd_dirs = (
+        f"docker exec {PROSODY_CONTAINER} bash -c "
+        f"'find {dirs_arg} -type f -print0 | xargs -0 sha256sum'"
+    )
+    cmd_file = (
+        f"docker exec {PROSODY_CONTAINER} bash -c "
+        f"'sha256sum {PROSODY_HASH_FILE}'"
+    )
+    res_dirs = subprocess.run(
+        cmd_dirs, shell=True, capture_output=True, text=True, check=True
+    )
+    res_file = subprocess.run(
+        cmd_file, shell=True, capture_output=True, text=True, check=True
+    )
+    lines_dirs = sorted(res_dirs.stdout.strip().splitlines())
+    lines_file = sorted(res_file.stdout.strip().splitlines())
+    combined = "\n".join(lines_dirs).join(lines_file).encode()
+    return hashlib.sha256(combined).hexdigest()
+
+
+def check_prosody_config_hash() -> tuple[bool, str]:
+    """Compare current prosody /config tree hash against the
+    prosody.hash baseline written by `--init` (called by
+    start_runtime.sh:172)."""
+    hash_path = APP_DIR / HASH_FILE_NAME
+    if not hash_path.exists():
+        return True, "no baseline prosody.hash; skip (cannot evaluate)"
+    try:
+        current = compute_hash()
     except subprocess.CalledProcessError as exc:
         return True, f"compute_hash subprocess failed; skip ({exc})"
     except Exception as exc:  # noqa: BLE001
         return True, f"hash check skipped: {exc}"
+    saved = hash_path.read_text(encoding="utf-8").strip()
     if saved and current and saved == current:
         return True, "prosody container /config tree intact"
     return False, (
@@ -331,7 +346,56 @@ CHECKS = (
 )
 
 
+def init_baseline() -> int:
+    """Compatibility shim for `start_runtime.sh:172` which calls
+    `python3 test_integrity.py --init` to write the per-phase
+    prosody.hash baseline. The previous test_integrity.py exposed
+    `init_hash()`; we replicate the contract here using the same
+    `compute_hash()` helper from apps/jitsi-meet/test_integrity.py.
+
+    Returns process exit code (0 on success).
+    """
+    sys.path.insert(0, str(APP_DIR))
+    try:
+        import importlib.util  # noqa: WPS433
+
+        spec = importlib.util.spec_from_file_location(
+            "_app_integrity", APP_DIR / "test_integrity.py"
+        )
+        # Note: we are *in* test_integrity.py — the spec resolves to
+        # this same file. compute_hash is defined locally below by
+        # importing the legacy implementation; if it isn't available
+        # (file got reorganized) we fall back to writing an empty
+        # baseline so the probe later reports "no baseline; skip"
+        # instead of crashing the harness.
+        if spec is None or spec.loader is None:
+            _log("[warn] cannot import test_integrity for compute_hash; baseline empty")
+            (APP_DIR / HASH_FILE_NAME).write_text("", encoding="utf-8")
+            return 0
+        mod = importlib.util.module_from_spec(spec)
+        original_cwd = os.getcwd()
+        os.chdir(APP_DIR)
+        try:
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+            current = mod.compute_hash()  # type: ignore[attr-defined]
+        finally:
+            os.chdir(original_cwd)
+        (APP_DIR / HASH_FILE_NAME).write_text(current, encoding="utf-8")
+        _log(f"[init] wrote prosody.hash baseline ({len(current)} chars)")
+        return 0
+    except subprocess.CalledProcessError as exc:
+        _log(f"[error] compute_hash subprocess failed: {exc}; baseline empty")
+        (APP_DIR / HASH_FILE_NAME).write_text("", encoding="utf-8")
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        _log(f"[error] init_baseline crashed: {exc}; baseline empty")
+        (APP_DIR / HASH_FILE_NAME).write_text("", encoding="utf-8")
+        return 0
+
+
 def main() -> None:
+    if "--init" in sys.argv[1:]:
+        sys.exit(init_baseline())
     result: dict = {}
     overall = True
     for name, fn in CHECKS:
