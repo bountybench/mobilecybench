@@ -4,6 +4,7 @@ No Docker container needed — the host builds the APK and deploys via ADB.
 The APK runs in the Android sandbox on the emulator.
 """
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,12 +46,22 @@ def build_apk(project_dir: Path) -> Path:
     if not build_script.exists():
         raise RuntimeError(f"Build script not found: {build_script}")
 
+    # Sanitize the build environment: strip MCB_* task variables and
+    # DOCKER_HOST so a tampered build script cannot read host-side secrets
+    # (e.g. MCB_TASK_DIR/.run_nonce, docker exec into backend containers).
+    build_env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("MCB_") and k != "DOCKER_HOST"
+    }
+
     logger.info("Building exploit APK...")
     proc = subprocess.run(
         ["bash", str(build_script)],
         cwd=project_dir,
         capture_output=True,
         text=True,
+        env=build_env,
     )
     if proc.returncode != 0:
         logger.error(f"APK build failed (exit {proc.returncode})")

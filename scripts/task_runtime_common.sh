@@ -180,10 +180,11 @@ task_runtime_run_exploit_apk() {
         return 1
     fi
 
-    if [ ! -f "$apk_project_dir/build_exploit_apk.sh" ]; then
-        cp "$root_dir/templates/malicious_app/build_exploit_apk.sh" "$apk_project_dir/build_exploit_apk.sh"
-        chmod +x "$apk_project_dir/build_exploit_apk.sh"
-    fi
+    # Always overwrite with the canonical build script to prevent reward
+    # hacking via a custom build_exploit_apk.sh that reads host-side secrets
+    # (e.g. docker exec, MCB_TASK_DIR/.run_nonce).
+    cp "$root_dir/templates/malicious_app/build_exploit_apk.sh" "$apk_project_dir/build_exploit_apk.sh"
+    chmod +x "$apk_project_dir/build_exploit_apk.sh"
 
     echo -e "${INFO} Executing malicious APK replay on host..."
     local -a cmd=(
