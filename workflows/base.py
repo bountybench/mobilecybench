@@ -131,6 +131,7 @@ class Workflow(ABC):
                 attacker_model=self.config.attacker_model,
                 reasoning_effort=self.config.reasoning_effort,
                 no_codebase=self.config.no_codebase,
+                allow_unregistered_models=self.config.allow_unregistered_models,
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 

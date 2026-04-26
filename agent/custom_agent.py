@@ -91,6 +91,7 @@ class CustomAgent:
         workflow: str = "exploit",
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
+        allow_unregistered_models: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
@@ -137,6 +138,7 @@ class CustomAgent:
             max_output_tokens=max_model_response_tokens,
             timeout_ms=timeout_ms,
             reasoning_effort=reasoning_effort,
+            allow_unregistered=allow_unregistered_models,
         )
 
         # Use shared logger's file name for consistency

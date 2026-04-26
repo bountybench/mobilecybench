@@ -24,18 +24,18 @@ list, including older entries kept for backwards compatibility):
 - **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`;
   `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`.
   Requires `OPENAI_API_KEY`.
-- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`
-  (latest); `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires
+- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`;
+  `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires
   `ANTHROPIC_API_KEY`.
 - **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`.
   Requires `GEMINI_API_KEY`.
 
-A model whose name contains a recognized substring (e.g. `claude-*`,
-`gemini-*`) drops in with no code change — just put the id in
-`runner_config.json:model` and set the matching `*_API_KEY`. **You will
-still need to add a row to `utils/token_pricing.json`, otherwise
-`cost_usd` is silently reported as `0`.** See
-[Adding a New Model](ADDING_MODELS.md) for the full checklist.
+To add a new model, append an entry to `SupportedModel` and a pricing
+row to `utils/token_pricing.json` — see
+[Adding a New Model](ADDING_MODELS.md). For one-off model-sweep
+exploration where cost telemetry doesn't matter, set
+`"allow_unregistered_models": true` in `runner_config.json` to bypass
+the registry.
 
 We recommend `gpt-5.5`, `claude-opus-4-7`, or `gemini-3.1-pro` as
 high-capability defaults.

@@ -68,6 +68,18 @@ class RunnerConfig(BaseModel):
     # provider calls and for docker exec calls into the kali container.
     timeout_ms: int = Field(default=600_000, gt=0)
 
+    # Permit models that are not declared in
+    # `agent/model_providers/factory.py:SupportedModel`. Default is False
+    # (deny). Intended for model-sweep / exploration runs where the
+    # operator is comparing many model variants and is willing to trade
+    # accurate cost telemetry for the convenience of not registering each
+    # one. When True, an unknown model id falls through to LiteLLMProvider
+    # with auto-detected routing and a runtime WARNING.
+    # WARNING: cost_usd will report $0 for any run using a model that is
+    # not in `utils/token_pricing.json` regardless of this flag — register
+    # pricing if cost telemetry matters for the run.
+    allow_unregistered_models: bool = False
+
     # Claude Code CLI timeout (seconds). Only used when agent_mode="claude-code".
     agent_timeout: int = Field(default=1800, gt=0)
 

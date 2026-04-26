@@ -67,22 +67,25 @@ def get_model_provider(
     max_output_tokens: Optional[int] = None,
     timeout_ms: Optional[int] = None,
     reasoning_effort: Optional[str] = None,
+    allow_unregistered: bool = False,
 ) -> ModelProvider:
     """Return a fully configured provider for *model*.
 
     Routing rules:
     1. If *model* is in :class:`SupportedModel`, use the declared provider
        (``"openai"`` → Responses API, ``"litellm"`` → LiteLLM).
-    2. Otherwise, route through LiteLLM and let
-       :func:`agent.model_providers.litellm_provider._lookup_rule` decide
-       which API key env var is required based on the model name. This
-       lets new models drop in without a code change as long as their
-       name's substring matches a registered provider rule (claude/anthropic,
-       gemini/gemma/learnlm/imagen, or anything added via
-       :func:`register_provider`).
-
-    The unknown-model path emits a warning so typos and missing pricing
-    entries are visible in the experiment log.
+    2. Otherwise (unknown model):
+       - If ``allow_unregistered=False`` (default), raise ``ValueError``.
+         This is the safe default: it forces the operator to register the
+         model in ``SupportedModel`` and ``utils/token_pricing.json`` so
+         cost telemetry stays accurate for sustained use.
+       - If ``allow_unregistered=True`` (set via
+         ``runner_config.json:allow_unregistered_models``), fall through
+         to :class:`LiteLLMProvider` with substring detection from
+         :func:`agent.model_providers.litellm_provider._lookup_rule` and
+         emit a loud WARNING. Intended for model-sweep / exploration runs
+         where the operator is comparing many model variants and accepts
+         that ``cost_usd`` will read $0 until pricing is registered.
     """
     kwargs: Dict[str, Any] = dict(
         model=model,
@@ -99,15 +102,27 @@ def get_model_provider(
             return OpenAIProvider(**kwargs)
         return LiteLLMProvider(**kwargs)
 
-    # Unknown model — fall back to LiteLLM with auto-detected provider.
+    if not allow_unregistered:
+        supported = [m.value.api_id for m in SupportedModel]
+        raise ValueError(
+            f"Unsupported model: '{model}'. Supported models: {supported}. "
+            "To register a new model permanently, add it to "
+            "agent/model_providers/factory.py:SupportedModel and add a "
+            "pricing row to utils/token_pricing.json. For model-sweep "
+            "exploration where you don't need accurate cost telemetry, "
+            "set 'allow_unregistered_models': true in runner_config.json. "
+            "See documentation/ADDING_MODELS.md."
+        )
+
+    # Opt-in permissive path (model sweep / exploration).
     rule = _lookup_rule(model)
     logger.warning(
-        "Model '%s' is not in SupportedModel. Routing through LiteLLM "
-        "as %s (env var %s). COST REPORTING WILL BE INCORRECT until you "
-        "add a row for '%s' to utils/token_pricing.json: "
-        "run_summary.json:metrics.cost_usd will read 0.0 for every call. "
-        "Also add an entry to agent/model_providers/factory.py:SupportedModel "
-        "to silence this warning. See documentation/ADDING_MODELS.md.",
+        "Model '%s' is not in SupportedModel but "
+        "allow_unregistered_models=true; routing through LiteLLM as %s "
+        "(env var %s). cost_usd will report $0 for this run because "
+        "'%s' has no row in utils/token_pricing.json. Register the "
+        "model permanently for sustained use. "
+        "See documentation/ADDING_MODELS.md.",
         model,
         rule.display_name,
         rule.env_var,
