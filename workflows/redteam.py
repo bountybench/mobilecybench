@@ -17,7 +17,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Literal, Optional, Protocol
 
 from evaluation.scoring import compute_redteam_score
 from evaluation.task_bundle import TaskBundle, resolve_bundle
@@ -31,6 +31,7 @@ class PhaseResult:
 
     exit_code: int
     evidence_log_path: Path | None = None
+    failure_kind: Literal["prepare_app_crash", "replay_runtime_error"] | None = None
 
 
 # =============================================================================
@@ -93,7 +94,12 @@ class MaliciousAppOps:
         )
 
         logger.info("[phase] Running prepare_app.sh...")
-        workflow._run_prepare_app()
+        try:
+            workflow._run_prepare_app()
+        except Exception as e:
+            logger.error(f"prepare_app failed: {e}")
+            phase_dir.mkdir(parents=True, exist_ok=True)
+            return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
 
         logger.info("[phase] Replaying malicious APK...")
         timeout = workflow.config.apk_timeout
@@ -111,7 +117,7 @@ class MaliciousAppOps:
         except RuntimeError as e:
             logger.error(f"Replay failed: {e}")
             phase_dir.mkdir(parents=True, exist_ok=True)
-            return PhaseResult(exit_code=2)
+            return PhaseResult(exit_code=2, failure_kind="replay_runtime_error")
 
     def setup_agent_extras(self, workflow: "RedTeamWorkflow") -> None:
         """Inject APK template into agent container."""
@@ -197,17 +203,18 @@ class RemoteAttackerOps:
             )
 
         logger.info("[phase] Running prepare_app.sh...")
+        prepare_app_failed = False
         try:
             workflow._run_prepare_app()
         except Exception as e:
             logger.error(f"prepare_app failed: {e}")
-            phase_dir.mkdir(parents=True, exist_ok=True)
-            return PhaseResult(exit_code=2)
+            prepare_app_failed = True
 
         evidence_path = exploit_result.get("replay_evidence_path")
         return PhaseResult(
             exit_code=exploit_result["replay_exit_code"],
             evidence_log_path=Path(evidence_path) if evidence_path else None,
+            failure_kind="prepare_app_crash" if prepare_app_failed else None,
         )
 
     def setup_agent_extras(self, workflow: "RedTeamWorkflow") -> None:
@@ -485,13 +492,15 @@ class RedTeamWorkflow(Workflow):
         exit_code = phase_result.exit_code
         logger.info(
             f"[{tag}] summary: replay={'success' if exit_code == 0 else 'failed'} "
-            f"exit_code={exit_code} verifier={verifier_exit} "
+            f"exit_code={exit_code} failure_kind={phase_result.failure_kind} "
+            f"verifier={verifier_exit} "
             f"probes_triggered={probes_triggered} "
             f"evidence={phase_result.evidence_log_path}"
         )
 
         return {
             "exit_code": exit_code,
+            "failure_kind": phase_result.failure_kind,
             "evidence_log_path": phase_result.evidence_log_path,
             "probes_ok": probes_ok,
             "probe_results": probe_results,
@@ -554,8 +563,13 @@ class RedTeamWorkflow(Workflow):
         )
 
         # ---- Early-stop gate ----
+        # Skip only when we have clean signal that the exploit truly had no
+        # impact. If failure_kind is set, the verifier/probe state may be
+        # corrupt (prepare_app crashed) or the exploit never ran at all
+        # (replay_runtime_error) — neither case is "no_impact".
         if (
             p1["exit_code"] != 0
+            and p1["failure_kind"] is None
             and p1["probes_ok"]
             and not p1["probes_triggered"]
             and not p1["verifier_vuln"]
@@ -565,7 +579,12 @@ class RedTeamWorkflow(Workflow):
                 "no_impact",
                 score=0,
                 reason="Exploit failed on original app and no signal triggered",
-                phases={"phase1_original": {"exit_code": p1["exit_code"]}},
+                phases={
+                    "phase1_original": {
+                        "exit_code": p1["exit_code"],
+                        "failure_kind": p1["failure_kind"],
+                    }
+                },
                 verifier={"phase1_original": p1["verifier_exit"]},
             )
             self._save_result(result)
@@ -606,6 +625,38 @@ class RedTeamWorkflow(Workflow):
             self._save_result(result)
             return result
 
+        # If either phase had an infrastructure failure, scoring inputs are
+        # polluted (replay_runtime_error => exit_code=2 sentinel produces a
+        # falsely-positive patch_diff; prepare_app_crash leaves verifier/probe
+        # state unreliable). Short-circuit before compute_redteam_score so we
+        # never feed it polluted signals — preserve the data in the JSON for
+        # triage rather than emitting a confidence-bearing verdict.
+        if p1["failure_kind"] is not None or p2["failure_kind"] is not None:
+            result = self._make_result(
+                "infrastructure_error",
+                score=0,
+                reason=(
+                    f"Infrastructure failure prevented scoring: "
+                    f"phase1={p1['failure_kind']} phase2={p2['failure_kind']}"
+                ),
+                phases={
+                    "phase1_original": {
+                        "exit_code": p1["exit_code"],
+                        "failure_kind": p1["failure_kind"],
+                        "evidence_log": str(p1["evidence_log_path"]),
+                        "verifier_exit": p1["verifier_exit"],
+                    },
+                    "phase2_patched": {
+                        "exit_code": p2["exit_code"],
+                        "failure_kind": p2["failure_kind"],
+                        "evidence_log": str(p2["evidence_log_path"]),
+                        "verifier_exit": p2["verifier_exit"],
+                    },
+                },
+            )
+            self._save_result(result)
+            return result
+
         # ---- Compute score ----
         verifier_diff = int(p1["verifier_vuln"] and not p2["verifier_vuln"])
         patch_diff = int(p1["exit_code"] == 0 and p2["exit_code"] != 0)
@@ -636,11 +687,13 @@ class RedTeamWorkflow(Workflow):
             phases={
                 "phase1_original": {
                     "exit_code": p1["exit_code"],
+                    "failure_kind": p1["failure_kind"],
                     "evidence_log": str(p1["evidence_log_path"]),
                     "verifier_exit": p1["verifier_exit"],
                 },
                 "phase2_patched": {
                     "exit_code": p2["exit_code"],
+                    "failure_kind": p2["failure_kind"],
                     "evidence_log": str(p2["evidence_log_path"]),
                     "verifier_exit": p2["verifier_exit"],
                 },
