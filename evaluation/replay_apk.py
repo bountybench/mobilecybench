@@ -5,8 +5,10 @@ The APK runs in the Android sandbox on the emulator.
 """
 
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from xml.etree import ElementTree
 
 from utils.logger import logger
 
@@ -14,6 +16,9 @@ PACKAGE = "com.mobilecybench.exploit"
 RUNNER = f"{PACKAGE}/.ExploitRunner"
 APK_FILENAME = f"{PACKAGE}.apk"
 EVIDENCE_DEVICE_DIR = f"/sdcard/Android/data/{PACKAGE}/files"
+READ_LOGS_PERMISSION = "android.permission.READ_LOGS"
+LOG_ACCESS_ALLOW_BUTTON = "com.android.systemui:id/log_access_dialog_allow_button"
+LOG_ACCESS_FALLBACK_TAP = (540, 1449)
 
 
 @dataclass
@@ -94,6 +99,88 @@ def install_apk(apk_path: Path, package: str = PACKAGE) -> None:
     )
     if proc.returncode != 0:
         raise RuntimeError(f"adb install failed: {proc.stderr or proc.stdout}")
+
+
+def manifest_declares_permission(project_dir: Path, permission: str) -> bool:
+    """Return whether the APK project manifest declares a permission."""
+    manifest = project_dir / "AndroidManifest.xml"
+    if not manifest.is_file():
+        return False
+
+    try:
+        root = ElementTree.fromstring(manifest.read_text())
+    except ElementTree.ParseError:
+        return permission in manifest.read_text(errors="replace")
+
+    name_attr = "{http://schemas.android.com/apk/res/android}name"
+    for elem in root.iter():
+        if elem.tag.endswith("uses-permission") and elem.attrib.get(name_attr) == permission:
+            return True
+    return False
+
+
+def _run_adb(args: list[str], timeout: int = 20) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["adb", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def _tap_bounds_center(bounds: str) -> bool:
+    import re
+
+    match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+    if not match:
+        return False
+    left, top, right, bottom = (int(group) for group in match.groups())
+    x = (left + right) // 2
+    y = (top + bottom) // 2
+    proc = _run_adb(["shell", "input", "tap", str(x), str(y)])
+    return proc.returncode == 0
+
+
+def _approve_log_access_dialog() -> bool:
+    """Approve Android 13+ one-time logcat access dialog if present."""
+    for _ in range(5):
+        _run_adb(["shell", "uiautomator", "dump", "/sdcard/window.xml"])
+        proc = _run_adb(["exec-out", "cat", "/sdcard/window.xml"])
+        if proc.returncode == 0 and proc.stdout.strip():
+            try:
+                root = ElementTree.fromstring(proc.stdout)
+                for node in root.iter("node"):
+                    if node.attrib.get("resource-id") == LOG_ACCESS_ALLOW_BUTTON:
+                        return _tap_bounds_center(node.attrib.get("bounds", ""))
+            except ElementTree.ParseError:
+                pass
+        time.sleep(1)
+
+    x, y = LOG_ACCESS_FALLBACK_TAP
+    proc = _run_adb(["shell", "input", "tap", str(x), str(y)])
+    return proc.returncode == 0
+
+
+def enable_read_logs_access(package: str = PACKAGE) -> None:
+    """Grant READ_LOGS and approve Android's one-time log access dialog.
+
+    On Android 13+, pm grant alone only makes the app eligible. logd still
+    filters cross-app logs until SystemUI's consent dialog is approved.
+    """
+    logger.info("Enabling READ_LOGS access for exploit APK...")
+    proc = _run_adb(["shell", "pm", "grant", package, READ_LOGS_PERMISSION])
+    if proc.returncode != 0:
+        raise RuntimeError(f"pm grant READ_LOGS failed: {proc.stderr or proc.stdout}")
+
+    proc = _run_adb(["shell", "am", "start", "-n", f"{package}/.MainActivity"])
+    if proc.returncode != 0:
+        raise RuntimeError(f"Failed to launch exploit APK for READ_LOGS consent: {proc.stderr or proc.stdout}")
+
+    time.sleep(3)
+    if not _approve_log_access_dialog():
+        raise RuntimeError("Failed to approve READ_LOGS consent dialog")
+    time.sleep(2)
+    _run_adb(["shell", "am", "force-stop", package])
 
 
 def run_instrument(
@@ -258,6 +345,8 @@ def replay_malicious_apk(
     # Step 2: Install (uninstalls first for clean state)
     logger.info("[replay] Step 2/4: Installing exploit APK...")
     install_apk(apk_path)
+    if manifest_declares_permission(apk_project_dir, READ_LOGS_PERMISSION):
+        enable_read_logs_access()
     logger.info("[replay] Step 2/4: Install OK")
 
     # Step 3: Run instrumentation

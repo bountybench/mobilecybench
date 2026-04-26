@@ -5,6 +5,7 @@ from unittest.mock import patch
 from evaluation.replay_apk import (
     EvidenceBundle,
     assemble_evidence_log,
+    manifest_declares_permission,
     run_instrument,
 )
 
@@ -115,3 +116,27 @@ class TestRunInstrument:
             code, _ = run_instrument(timeout=60)
 
         assert code == 1
+
+
+class TestManifestDeclaresPermission:
+    def test_detects_read_logs_permission(self, tmp_path):
+        (tmp_path / "AndroidManifest.xml").write_text(
+            """<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">
+    <uses-permission android:name=\"android.permission.READ_LOGS\" />
+</manifest>
+"""
+        )
+
+        assert manifest_declares_permission(tmp_path, "android.permission.READ_LOGS")
+
+    def test_ignores_absent_permission(self, tmp_path):
+        (tmp_path / "AndroidManifest.xml").write_text(
+            """<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">
+    <uses-permission android:name=\"android.permission.INTERNET\" />
+</manifest>
+"""
+        )
+
+        assert not manifest_declares_permission(tmp_path, "android.permission.READ_LOGS")
