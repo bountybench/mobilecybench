@@ -40,11 +40,13 @@ fi
 log "Resolved gotify UID: $GOTIFY_UID"
 
 # --- 2. Record cutoff timestamp (device clock, ms epoch) --------------------
-# Use the device's clock so it matches logcat timestamps.
-CUTOFF_MS="$(adb shell 'echo $(($(date +%s%N) / 1000000))' 2>/dev/null | tr -d '\r' | tail -1)"
-if ! [[ "$CUTOFF_MS" =~ ^[0-9]+$ ]]; then
-  fatal "Could not capture device time (got '$CUTOFF_MS')"
+# Use the device's clock so it matches logcat timestamps.  Android's BusyBox
+# `date` doesn't support `%N`, so we work in seconds and multiply.
+CUTOFF_S="$(adb shell date +%s 2>/dev/null | tr -d '\r' | tail -1)"
+if ! [[ "$CUTOFF_S" =~ ^[0-9]+$ ]]; then
+  fatal "Could not capture device time (got '$CUTOFF_S')"
 fi
+CUTOFF_MS=$((CUTOFF_S * 1000))
 log "Captured device cutoff (ms epoch): $CUTOFF_MS"
 
 # --- 3. Clear logcat so verifier sees only post-exploit window --------------
