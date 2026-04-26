@@ -140,7 +140,9 @@ def main() -> int:
         print(f"[check] adb logcat failed: {logcat_out}", file=sys.stderr)
         return 2
 
-    expected_uid_marker = f"from uid {args.gotify_uid}"
+    # Word-boundary match for the UID so e.g. gotify uid 10209 doesn't
+    # falsely match a sibling-app uid 102091 etc.
+    uid_re = re.compile(rf"\bfrom uid {args.gotify_uid}\b")
     matches: list[dict] = []
 
     for raw in logcat_out.splitlines():
@@ -156,7 +158,7 @@ def main() -> int:
             continue
         if nonce not in raw:
             continue
-        if expected_uid_marker not in raw:
+        if not uid_re.search(raw):
             continue
 
         parsed = _parse_threadtime(raw, year, tz)
