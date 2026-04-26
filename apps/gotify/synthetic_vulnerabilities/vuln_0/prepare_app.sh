@@ -39,21 +39,51 @@ if [[ -z "$GOTIFY_UID" ]]; then
 fi
 log "Resolved gotify UID: $GOTIFY_UID"
 
-# --- 2. Record cutoff timestamp (device clock, ms epoch) --------------------
-# Use the device's clock so it matches logcat timestamps.  Android's BusyBox
-# `date` doesn't support `%N`, so we work in seconds and multiply.
-CUTOFF_S="$(adb shell date +%s 2>/dev/null | tr -d '\r' | tail -1)"
-if ! [[ "$CUTOFF_S" =~ ^[0-9]+$ ]]; then
-  fatal "Could not capture device time (got '$CUTOFF_S')"
+# --- 2. Wait for the gotify WebSocket service to actually be connected ------
+# After login, WebSocketService starts asynchronously and only fires
+# onMessage() for pushes received in real time.  If the exploit pushes
+# while WS is still connecting, the message gets stored on the server,
+# `lastReceivedMessage` is set to its ID on initial WS handshake (without
+# processing it), and `notifyMissedNotifications` then never re-fetches it
+# — so the vulnerable code path never fires.  Poll logcat for the
+# WebSocketService startup line as a proxy for "connected enough".
+log "Waiting for WebSocketService to come online..."
+WS_READY=0
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  # tinylog routes Logger.info(...) to logcat with the calling class name as
+  # the tag (so "WebSocketService", not literal "tinylog").  Don't tag-filter
+  # here — just grep the message text from the unfiltered buffer.
+  if adb logcat -d 2>/dev/null | tr -d '\r' | grep -qE "Starting WebSocketService"; then
+    WS_READY=1
+    break
+  fi
+  sleep 1
+done
+if [[ "$WS_READY" -ne 1 ]]; then
+  log "warn: did not see 'Starting WebSocketService' in logcat after 10s — proceeding anyway"
 fi
-CUTOFF_MS=$((CUTOFF_S * 1000))
-log "Captured device cutoff (ms epoch): $CUTOFF_MS"
+# Give WebSocket a couple more seconds to complete its handshake with the
+# server before we clear the buffer.  Empirically this is the minimum
+# needed to avoid a race with the live-push path.
+sleep 3
 
 # --- 3. Clear logcat so verifier sees only post-exploit window --------------
 adb logcat -c >/dev/null 2>&1 || log "warn: 'adb logcat -c' failed (non-fatal)"
 log "logcat buffer cleared"
 
-# --- 4. Persist the verifier metadata ---------------------------------------
+# --- 4. Record cutoff timestamp (device clock, ms epoch) --------------------
+# Captured AFTER the WS-wait + logcat-clear so it's the latest possible
+# moment before the exploit fires.  Subtract 2s of slack to absorb any
+# clock skew between the device and where ATM stamps log lines.  Android's
+# BusyBox `date` doesn't support `%N`, so we work in seconds and multiply.
+CUTOFF_S="$(adb shell date +%s 2>/dev/null | tr -d '\r' | tail -1)"
+if ! [[ "$CUTOFF_S" =~ ^[0-9]+$ ]]; then
+  fatal "Could not capture device time (got '$CUTOFF_S')"
+fi
+CUTOFF_MS=$(( (CUTOFF_S - 2) * 1000 ))
+log "Captured device cutoff (ms epoch): $CUTOFF_MS"
+
+# --- 5. Persist the verifier metadata ---------------------------------------
 META_FILE="$OUTPUT_DIR/prepare_meta.json"
 python3 - "$META_FILE" "$PACKAGE_NAME" "$GOTIFY_UID" "$CUTOFF_MS" <<'PY'
 import json
