@@ -186,7 +186,9 @@ def main() -> int:
         return 1
 
     print(f"[check] nonce               = {nonce}")
-    print(f"[check] expected_component  = {EXPECTED_COMPONENT}  (verifier-side constant)")
+    print(
+        f"[check] expected_component  = {EXPECTED_COMPONENT}  (verifier-side constant)"
+    )
     print(f"[check] gotify_uid          = {args.gotify_uid}")
     print(f"[check] cutoff_ms           = {args.cutoff_ms}")
     print(f"[check] system_server_pid   = {args.system_server_pid}")
