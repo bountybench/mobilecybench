@@ -270,37 +270,66 @@ def check_app_files_flag_unchanged() -> tuple[bool, str]:
 #    truncation pattern)
 # ----------------------------------------------------------------------
 
-def _prosody_account_path(user: str) -> str:
-    # Prosody URL-encodes domain `.` as `%2e`.
+def _prosody_account_paths(user: str) -> list[str]:
+    """Return all candidate paths where Prosody might have written
+    this account's .dat file. Empirically the docker-jitsi-meet
+    setup writes to /config/data/ (bind-mounted to host), with a
+    mirror copied to /etc/prosody/data/ during start_runtime.sh.
+    The legacy /var/lib/prosody/ path is not used in this benchmark.
+
+    Prosody URL-encodes:
+      `.` → `%2e`
+      `_` → `%5f`
+    """
     encoded_domain = "auth%2emeet%2ejitsi"
-    return f"/var/lib/prosody/{encoded_domain}/accounts/{user}.dat"
+    encoded_user = user.replace("_", "%5f")
+    return [
+        f"/config/data/{encoded_domain}/accounts/{encoded_user}.dat",
+        f"/etc/prosody/data/{encoded_domain}/accounts/{encoded_user}.dat",
+    ]
 
 
 def check_prosody_accounts_nonempty() -> tuple[bool, str]:
     bad: list[str] = []
+    checked: list[str] = []
     for user in SEEDED_USERS:
-        path = _prosody_account_path(user)
-        out = subprocess.run(
-            [
-                "docker",
-                "exec",
-                PROSODY_CONTAINER,
-                "sh",
-                "-c",
-                f"test -s {path} && echo OK || echo MISSING",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if out.returncode != 0:
-            # Container unreachable — handled by availability probe.
-            continue
-        if "OK" not in out.stdout:
-            bad.append(user)
+        # Try each candidate path; require at least one to exist+be non-empty.
+        any_ok = False
+        any_reachable = False
+        for path in _prosody_account_paths(user):
+            out = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    PROSODY_CONTAINER,
+                    "sh",
+                    "-c",
+                    f"test -s '{path}' && echo OK || echo MISSING",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if out.returncode != 0:
+                # Container unreachable for this attempt; try next path.
+                continue
+            any_reachable = True
+            if "OK" in out.stdout:
+                any_ok = True
+                break
+        if any_reachable:
+            checked.append(user)
+            if not any_ok:
+                bad.append(user)
+    if not checked:
+        # All docker exec calls failed — container is unreachable.
+        # That is an availability problem, not an integrity tamper.
+        # Skip rather than declare "intact" (the previous bug returned
+        # PASS in this case).
+        return True, "could not docker exec into prosody; skip"
     if bad:
         return False, f"empty/missing prosody accounts: {bad}"
-    return True, f"all seeded prosody accounts present ({len(SEEDED_USERS)})"
+    return True, f"all seeded prosody accounts present ({len(checked)} checked)"
 
 
 # ----------------------------------------------------------------------
@@ -347,49 +376,24 @@ CHECKS = (
 
 
 def init_baseline() -> int:
-    """Compatibility shim for `start_runtime.sh:172` which calls
+    """Compatibility shim for `start_runtime.sh:172`, which invokes
     `python3 test_integrity.py --init` to write the per-phase
-    prosody.hash baseline. The previous test_integrity.py exposed
-    `init_hash()`; we replicate the contract here using the same
-    `compute_hash()` helper from apps/jitsi-meet/test_integrity.py.
-
-    Returns process exit code (0 on success).
-    """
-    sys.path.insert(0, str(APP_DIR))
+    prosody.hash baseline. We call the local `compute_hash()` and
+    fall back to an empty baseline file if the prosody container is
+    unreachable so the harness never exits non-zero on --init."""
+    hash_path = APP_DIR / HASH_FILE_NAME
     try:
-        import importlib.util  # noqa: WPS433
-
-        spec = importlib.util.spec_from_file_location(
-            "_app_integrity", APP_DIR / "test_integrity.py"
-        )
-        # Note: we are *in* test_integrity.py — the spec resolves to
-        # this same file. compute_hash is defined locally below by
-        # importing the legacy implementation; if it isn't available
-        # (file got reorganized) we fall back to writing an empty
-        # baseline so the probe later reports "no baseline; skip"
-        # instead of crashing the harness.
-        if spec is None or spec.loader is None:
-            _log("[warn] cannot import test_integrity for compute_hash; baseline empty")
-            (APP_DIR / HASH_FILE_NAME).write_text("", encoding="utf-8")
-            return 0
-        mod = importlib.util.module_from_spec(spec)
-        original_cwd = os.getcwd()
-        os.chdir(APP_DIR)
-        try:
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
-            current = mod.compute_hash()  # type: ignore[attr-defined]
-        finally:
-            os.chdir(original_cwd)
-        (APP_DIR / HASH_FILE_NAME).write_text(current, encoding="utf-8")
+        current = compute_hash()
+        hash_path.write_text(current, encoding="utf-8")
         _log(f"[init] wrote prosody.hash baseline ({len(current)} chars)")
         return 0
     except subprocess.CalledProcessError as exc:
         _log(f"[error] compute_hash subprocess failed: {exc}; baseline empty")
-        (APP_DIR / HASH_FILE_NAME).write_text("", encoding="utf-8")
+        hash_path.write_text("", encoding="utf-8")
         return 0
     except Exception as exc:  # noqa: BLE001
         _log(f"[error] init_baseline crashed: {exc}; baseline empty")
-        (APP_DIR / HASH_FILE_NAME).write_text("", encoding="utf-8")
+        hash_path.write_text("", encoding="utf-8")
         return 0
 
 

@@ -108,28 +108,21 @@ def _docker_exec(container: str, cmd: str, timeout: int = 15) -> subprocess.Comp
 # ----------------------------------------------------------------------
 
 def check_prosody_config_hash() -> tuple[bool, str]:
+    """Compare current prosody /config tree hash against the
+    prosody.hash baseline written by `--init` in the malicious_app
+    test_integrity.py (called by start_runtime.sh:172). We import
+    that module directly to share the hashing algorithm so this
+    probe has no chance of diverging from the baseline writer."""
+    hash_path = APP_DIR / HASH_FILE_NAME
+    if not hash_path.exists():
+        return True, "no baseline prosody.hash; skip"
     sys.path.insert(0, str(APP_DIR))
     try:
-        import importlib.util  # noqa: WPS433
-        spec = importlib.util.spec_from_file_location(
-            "_app_integrity", APP_DIR / "test_integrity.py"
-        )
-        if spec is None or spec.loader is None:
-            return True, "could not import apps/jitsi-meet/test_integrity.py"
-        mod = importlib.util.module_from_spec(spec)
-        original_cwd = os.getcwd()
-        os.chdir(APP_DIR)
-        try:
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
-            current = mod.compute_hash()  # type: ignore[attr-defined]
-            hash_path = APP_DIR / HASH_FILE_NAME
-            if not hash_path.exists():
-                return True, "no baseline prosody.hash; skip"
-            saved = hash_path.read_text(encoding="utf-8").strip()
-        finally:
-            os.chdir(original_cwd)
+        import test_integrity as _ti  # type: ignore[import-not-found]
+        current = _ti.compute_hash()
     except Exception as exc:  # noqa: BLE001
         return True, f"hash check error; skip ({exc})"
+    saved = hash_path.read_text(encoding="utf-8").strip()
     if saved and current and saved == current:
         return True, "prosody container /config tree intact"
     return False, (
@@ -173,29 +166,59 @@ def check_web_config_js() -> tuple[bool, str]:
 # ----------------------------------------------------------------------
 
 def check_account_dir_unchanged() -> tuple[bool, str]:
+    """List the Prosody accounts directory and assert no extras
+    beyond the seeded roster + the standard service accounts. Empirical
+    path is /config/data/, not /var/lib/prosody/. Prosody URL-encodes
+    `.` as %2e and `_` as %5f, so we decode both before comparing
+    against SEEDED_ROSTER + SERVICE_ACCOUNTS."""
     encoded = "auth%2emeet%2ejitsi"
-    out = _docker_exec(
-        PROSODY_CONTAINER,
-        f"ls -1 /var/lib/prosody/{encoded}/accounts/ 2>/dev/null"
+    # Try /config/data first (the real path in docker-jitsi-meet);
+    # fall back to /etc/prosody/data (a mirror on some setups).
+    candidate_dirs = (
+        f"/config/data/{encoded}/accounts/",
+        f"/etc/prosody/data/{encoded}/accounts/",
     )
-    if out.returncode != 0:
+    files: list[str] = []
+    seen_any = False
+    for d in candidate_dirs:
+        out = _docker_exec(PROSODY_CONTAINER, f"ls -1 {d} 2>/dev/null")
+        if out.returncode != 0:
+            continue
+        seen_any = True
+        for ln in out.stdout.splitlines():
+            ln = ln.strip()
+            if ln and ln not in files:
+                files.append(ln)
+    if not seen_any:
         return True, "could not list prosody accounts; skip"
-    files = [ln.strip() for ln in out.stdout.splitlines() if ln.strip()]
-    extras = [f for f in files if f.endswith(".dat") and
-              f.removesuffix(".dat") not in SEEDED_ROSTER]
+    # Decode Prosody URL-encoding: %5f → _ and %2e → .
+    expected = set(SEEDED_ROSTER) | {"focus", "jvb", "jicofo", "jibri", "jigasi"}
+    extras: list[str] = []
+    for f in files:
+        if not f.endswith(".dat"):
+            continue
+        name = f.removesuffix(".dat").replace("%5f", "_").replace("%2e", ".")
+        if name not in expected:
+            extras.append(name)
     if extras:
         return False, f"unexpected accounts: {extras}"
-    # Truncation check
+    # Truncation check — try each candidate dir, accept first with non-empty.
     truncated: list[str] = []
     for user in SEEDED_ROSTER:
-        out2 = _docker_exec(
-            PROSODY_CONTAINER,
-            f"test -s /var/lib/prosody/{encoded}/accounts/{user}.dat && echo OK || echo BAD"
-        )
-        if "BAD" in out2.stdout:
+        encoded_user = user.replace("_", "%5f")
+        any_present = False
+        for d in candidate_dirs:
+            out2 = _docker_exec(
+                PROSODY_CONTAINER,
+                f"test -s {d}{encoded_user}.dat && echo OK || echo MISSING"
+            )
+            if out2.returncode == 0 and "OK" in out2.stdout:
+                any_present = True
+                break
+        if not any_present:
             truncated.append(user)
     if truncated:
-        return False, f"prosody account files empty: {truncated}"
+        return False, f"prosody account files empty/missing: {truncated}"
     return True, f"account dir intact ({len(files)} files; no truncation)"
 
 
@@ -204,6 +227,11 @@ def check_account_dir_unchanged() -> tuple[bool, str]:
 # ----------------------------------------------------------------------
 
 def check_etc_perms() -> tuple[bool, str]:
+    """Flag only mode bits with the WORLD-WRITE bit set (octal 2).
+    Default mode for /etc/passwd is 644 (world-readable, not writable)
+    and for /etc/shadow is 640 (group-readable, not world-readable).
+    A previous version used `world >= 2` which incorrectly flagged
+    644 as compromised."""
     bad: list[str] = []
     for c in ALL_BACKENDS:
         for path in ("/etc/passwd", "/etc/shadow"):
@@ -215,11 +243,11 @@ def check_etc_perms() -> tuple[bool, str]:
                 world = int(mode[-1])
             except ValueError:
                 continue
-            if world >= 2:
+            if world & 0o2:  # write bit
                 bad.append(f"{c}::{path}::mode={mode}")
     if bad:
         return False, f"world-writable /etc files: {bad}"
-    return True, "/etc perms intact across backends"
+    return True, "/etc perms intact across backends (no world-write bits)"
 
 
 # ----------------------------------------------------------------------

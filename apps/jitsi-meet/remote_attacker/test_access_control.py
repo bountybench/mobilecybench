@@ -253,7 +253,7 @@ def check_admin_socket_inside_container() -> tuple[bool, str]:
     if len(parts) >= 1:
         try:
             world = int(parts[0][-1])
-            if world >= 2:
+            if world & 0o2:  # WRITE bit only — 755 is r-x (mode 5), not writable.
                 return False, f"prosody.sock is world-writable: {info}"
         except ValueError:
             pass
