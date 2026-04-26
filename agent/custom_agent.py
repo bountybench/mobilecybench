@@ -30,11 +30,14 @@ try:
 except Exception:
     _jsonschema_validate = None
 
-# Grab data from runner_config
-with open("runner_config.json", "r") as file:
-    data = json.load(file)
 
-timeout_ms = data.get("timeout_ms", 600_000)
+# Default API timeout (ms). Overridden per-instance by the timeout_ms
+# constructor argument; runner.py sources that from runner_config.json.
+# Importing this module no longer requires a runner_config.json on disk.
+DEFAULT_TIMEOUT_MS = 600_000
+
+# Backwards-compatible alias for the old module-level constant.
+timeout_ms = DEFAULT_TIMEOUT_MS
 
 # Transient exceptions that should trigger retry.
 # litellm's exception classes subclass openai.* so one tuple covers both providers.

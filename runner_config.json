@@ -5,7 +5,7 @@
   "max_iterations": 30,
   "max_model_response_tokens": 8192,
   "reasoning_effort": "high",
-  "model": "gpt-5.2",
+  "model": "gpt-5.5",
   "agent_mode": "custom",
   "screenshot_mode": false,
   "dry_run": false,

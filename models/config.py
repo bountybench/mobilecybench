@@ -64,6 +64,10 @@ class RunnerConfig(BaseModel):
     )  # am instrument timeout for malicious APK replay
     emulator_boot_timeout_seconds: int = Field(default=300, gt=0)
 
+    # Per-LLM-API-call timeout (milliseconds). Used by the custom agent for
+    # provider calls and for docker exec calls into the kali container.
+    timeout_ms: int = Field(default=600_000, gt=0)
+
     # Claude Code CLI timeout (seconds). Only used when agent_mode="claude-code".
     agent_timeout: int = Field(default=1800, gt=0)
 

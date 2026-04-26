@@ -4,13 +4,22 @@ Implements the stateful ModelProvider interface. Manages conversation
 state client-side via an accumulated messages array, translating between
 the Responses API input format used by custom_agent.py and LiteLLM's
 Chat Completions interface.
+
+LiteLLM routes by model name. Built-in detection rules live in
+``_PROVIDER_REGISTRY``; add an entry there to map your model's name
+substring to its API-key env var and (optional) LiteLLM dialect prefix.
+For runtime registration without editing this file, call
+:func:`register_provider`.
+
+See ``documentation/ADDING_MODELS.md`` for the end-to-end checklist.
 """
 
 from __future__ import annotations
 
 import os
 import uuid
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 import litellm
 
@@ -20,6 +29,95 @@ from .base import FunctionCall, ModelProvider, ProviderResponse
 
 # Suppress LiteLLM's verbose logging
 litellm.suppress_debug_info = True
+
+
+@dataclass(frozen=True)
+class ProviderRule:
+    """One row of the provider-detection registry.
+
+    Attributes:
+        patterns: Substrings to match against the lowercased model id.
+        provider: Canonical provider tag returned by `_detect_provider_from_model`.
+        env_var: Environment variable that must hold the API key.
+        display_name: Human-readable name surfaced in logs.
+        litellm_prefix: Optional prefix LiteLLM expects on the model id
+            (e.g. "gemini/"). When set, the prefix is added if missing.
+    """
+
+    patterns: Tuple[str, ...]
+    provider: str
+    env_var: str
+    display_name: str
+    litellm_prefix: str = ""
+
+
+# Detection registry. The first matching rule wins. To add a provider,
+# either append to this list at import time or call register_provider().
+_PROVIDER_REGISTRY: List[ProviderRule] = [
+    ProviderRule(
+        patterns=("gemini", "gemma", "learnlm", "imagen"),
+        provider="gemini",
+        env_var="GEMINI_API_KEY",
+        display_name="Google Gemini",
+        litellm_prefix="gemini/",
+    ),
+    ProviderRule(
+        patterns=("claude", "anthropic"),
+        provider="anthropic",
+        env_var="ANTHROPIC_API_KEY",
+        display_name="Anthropic",
+    ),
+]
+
+# Fallback when nothing matches.
+_DEFAULT_RULE = ProviderRule(
+    patterns=(),
+    provider="openai",
+    env_var="OPENAI_API_KEY",
+    display_name="OpenAI",
+)
+
+
+def register_provider(
+    patterns: Tuple[str, ...],
+    provider: str,
+    env_var: str,
+    display_name: str,
+    litellm_prefix: str = "",
+) -> None:
+    """Register a provider rule for LiteLLM model-name detection.
+
+    Newly registered rules are inserted at the front of the registry so
+    they take precedence over the built-in providers. This lets integrators
+    override defaults without editing this file.
+
+    Args:
+        patterns: Tuple of substrings; case-insensitive match against the
+            model id selects this rule.
+        provider: Canonical short tag (e.g. "myprovider").
+        env_var: Environment variable that must contain the API key.
+        display_name: Human-readable name for logs.
+        litellm_prefix: Optional prefix that LiteLLM expects on the model
+            id (e.g. "openai/"). The prefix is added if missing.
+    """
+    if not patterns:
+        raise ValueError("patterns must contain at least one substring")
+    rule = ProviderRule(
+        patterns=tuple(patterns),
+        provider=provider,
+        env_var=env_var,
+        display_name=display_name,
+        litellm_prefix=litellm_prefix,
+    )
+    _PROVIDER_REGISTRY.insert(0, rule)
+
+
+def _lookup_rule(model: str) -> ProviderRule:
+    model_lower = model.lower()
+    for rule in _PROVIDER_REGISTRY:
+        if any(p in model_lower for p in rule.patterns):
+            return rule
+    return _DEFAULT_RULE
 
 
 class LiteLLMProvider(ModelProvider):
@@ -41,18 +139,20 @@ class LiteLLMProvider(ModelProvider):
         super().__init__()
         litellm.set_verbose = False
 
+        rule = _lookup_rule(model)
+
         # Validate API key
-        env_var, provider_name = self._get_required_api_key_env(model)
-        api_key = os.getenv(env_var)
+        api_key = os.getenv(rule.env_var)
         if not api_key or not api_key.strip():
             raise ValueError(
-                f"{env_var} environment variable is required but not set. "
-                f"Please ensure your .env file contains {env_var}=your-actual-key-here "
+                f"{rule.env_var} environment variable is required but not set. "
+                f"Please ensure your .env file contains {rule.env_var}=your-actual-key-here "
                 "or set the environment variable directly."
             )
 
         self._model = model
-        self._litellm_model = self._get_litellm_model_name(model)
+        self._rule = rule
+        self._litellm_model = self._apply_litellm_prefix(model, rule)
         self._tools = self._convert_tools_to_litellm(tools)
         self._max_output_tokens = max_output_tokens
         self._timeout_ms = timeout_ms
@@ -63,31 +163,29 @@ class LiteLLMProvider(ModelProvider):
             {"role": "system", "content": instructions}
         ]
 
-        agent_logger.info(f"{provider_name} provider configured for model '{model}'")
+        agent_logger.info(
+            f"{rule.display_name} provider configured for model '{model}'"
+        )
+
+    # -- Detection helpers (kept for backwards compatibility) ---------------
 
     def _detect_provider_from_model(self, model: str) -> str:
-        model_lower = model.lower()
-        if any(p in model_lower for p in ["gemini", "gemma", "learnlm", "imagen"]):
-            return "gemini"
-        if any(p in model_lower for p in ["claude", "anthropic"]):
-            return "anthropic"
-        return "openai"
-
-    def _get_litellm_model_name(self, model: str) -> str:
-        """Gemini models require a gemini/ prefix for LiteLLM."""
-        model_lower = model.lower()
-        if any(p in model_lower for p in ["gemini", "gemma", "learnlm"]):
-            if not model.startswith("gemini/"):
-                return f"gemini/{model}"
-        return model
+        return _lookup_rule(model).provider
 
     def _get_required_api_key_env(self, model: str) -> tuple[str, str]:
-        provider = self._detect_provider_from_model(model)
-        if provider == "gemini":
-            return "GEMINI_API_KEY", "Google Gemini"
-        if provider == "anthropic":
-            return "ANTHROPIC_API_KEY", "Anthropic"
-        return "OPENAI_API_KEY", "OpenAI"
+        rule = _lookup_rule(model)
+        return rule.env_var, rule.display_name
+
+    @staticmethod
+    def _apply_litellm_prefix(model: str, rule: ProviderRule) -> str:
+        """Add the rule's LiteLLM prefix if not already present."""
+        if rule.litellm_prefix and not model.startswith(rule.litellm_prefix):
+            return f"{rule.litellm_prefix}{model}"
+        return model
+
+    def _get_litellm_model_name(self, model: str) -> str:
+        """Return the model id with its LiteLLM prefix applied."""
+        return self._apply_litellm_prefix(model, _lookup_rule(model))
 
     def _convert_tools_to_litellm(self, tools: Optional[List]) -> Optional[List]:
         """Convert tool definitions to LiteLLM/OpenAI Chat Completions format."""
@@ -178,7 +276,7 @@ class LiteLLMProvider(ModelProvider):
             completion_kwargs["tools"] = self._tools
             completion_kwargs["tool_choice"] = "auto"
             # parallel_tool_calls is only supported by OpenAI-compatible APIs
-            if self._detect_provider_from_model(self._model) == "openai":
+            if self._rule.provider == "openai":
                 completion_kwargs["parallel_tool_calls"] = False
 
         if self._max_output_tokens:

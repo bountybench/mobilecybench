@@ -120,6 +120,7 @@ class Workflow(ABC):
                 screenshot_enabled=self.config.screenshot_mode,
                 app_name=self.app_name,
                 additional_context=additional_context,
+                timeout_ms=self.config.timeout_ms,
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
