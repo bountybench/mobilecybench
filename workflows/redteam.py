@@ -31,9 +31,7 @@ class PhaseResult:
 
     exit_code: int
     evidence_log_path: Path | None = None
-    failure_kind: (
-        Literal["prepare_app_crash", "replay_runtime_error"] | None
-    ) = None
+    failure_kind: Literal["prepare_app_crash", "replay_runtime_error"] | None = None
 
 
 # =============================================================================

@@ -57,9 +57,7 @@ def _probe_result(triggered: bool) -> dict:
     }
 
 
-def _phase_result(
-    exit_code: int, phase_dir: Path, failure_kind=None
-) -> PhaseResult:
+def _phase_result(exit_code: int, phase_dir: Path, failure_kind=None) -> PhaseResult:
     phase_dir.mkdir(parents=True, exist_ok=True)
     evidence = phase_dir / "replay_evidence.log"
     evidence.write_text(str(exit_code))
@@ -484,9 +482,7 @@ def test_failure_kind_none_on_clean_run(redteam_config, tmp_path):
     wf = _make_workflow(redteam_config, tmp_path)
     _write_agent_artifact("malicious_app")
 
-    result = _run_evaluate(
-        wf, MaliciousAppOps, [0, 1], [True, False], verifier=(0, 1)
-    )
+    result = _run_evaluate(wf, MaliciousAppOps, [0, 1], [True, False], verifier=(0, 1))
 
     assert result["status"] == "verified"
     assert result["phases"]["phase1_original"]["failure_kind"] is None
