@@ -81,8 +81,9 @@ PY
 # ---------------------------------------------------------------------------
 log_info "Copying encrypted backup to shared storage"
 adb root || true
+adb wait-for-device || true
 sleep 2
-ENC_FILE=$(adb shell ls "$BACKUP_DIR/" 2>/dev/null | tr -d '\r' | grep '\.enc$' | head -1)
+ENC_FILE=$(adb shell ls "$BACKUP_DIR/" 2>/dev/null | tr -d '\r' | grep '\.enc$' | head -1 || true)
 if [ -n "$ENC_FILE" ]; then
     adb shell cp "$BACKUP_DIR/$ENC_FILE" "$BACKUP_DST"
     log_info "Backup copied: $BACKUP_DIR/$ENC_FILE -> $BACKUP_DST"
