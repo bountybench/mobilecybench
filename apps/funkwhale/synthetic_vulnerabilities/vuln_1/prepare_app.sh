@@ -193,13 +193,23 @@ docker exec front sh -c "
     nginx -s reload
 " >/dev/null || fatal "Failed to inject nginx redirect"
 
-# Sanity-check the redirect is in place
-HTTP_CODE="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 \
-    "https://localhost/media/probe.jpg" 2>/dev/null || echo 000)"
+# Sanity-check the redirect is in place.  `nginx -s reload` is graceful —
+# the old worker processes finish in-flight requests before exiting, so the
+# new config can take an extra second or two to be the only thing serving.
+# Retry briefly so we don't false-fail on the first probe.
+HTTP_CODE="000"
+for i in 1 2 3 4 5; do
+    HTTP_CODE="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 \
+        "https://localhost/media/probe.jpg" 2>/dev/null || echo 000)"
+    [ "$HTTP_CODE" = "302" ] && break
+    sleep 1
+done
 if [ "$HTTP_CODE" != "302" ]; then
-    fatal "Nginx redirect not active (expected 302, got $HTTP_CODE)"
+    info "Probe got HTTP $HTTP_CODE; dumping rendered nginx /media/ block:"
+    docker exec front sh -c "grep -A 3 'location /media/' /etc/nginx/conf.d/default.conf" 2>&1 | sed 's/^/  /' || true
+    fatal "Nginx redirect not active (expected 302, got $HTTP_CODE after 5 tries)"
 fi
-info "Nginx redirect verified (HTTP $HTTP_CODE)"
+info "Nginx redirect verified (HTTP $HTTP_CODE after retries)"
 
 # ── 5. Force-stop the app — the exploit script will start it ─────────────────
 adb shell am force-stop "$PACKAGE_NAME" >/dev/null 2>&1 || true
