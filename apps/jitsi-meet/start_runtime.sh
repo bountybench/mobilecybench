@@ -328,7 +328,11 @@ main() {
         sleep 5
     done
 
-    adb unroot
+    # adb unroot restarts adbd, which closes the connection and can return
+    # non-zero ("unable to connect for unroot: closed") even on success — the
+    # exact same caveat called out in utils/inject_system_ca.sh:283-286.
+    # Tolerate it so `set -e` doesn't kill the script on a benign restart.
+    adb unroot 2>/dev/null || true
 
     setup_hashes
 
