@@ -71,7 +71,17 @@ sleep 3
 adb logcat -c >/dev/null 2>&1 || log "warn: 'adb logcat -c' failed (non-fatal)"
 log "logcat buffer cleared"
 
-# --- 4. Record cutoff timestamp (device clock, ms epoch) --------------------
+# --- 4. Capture system_server PID -------------------------------------------
+# The verifier confirms the matching ATM START line was emitted by
+# system_server (not by `adb shell log -t ActivityTaskManager …`).  Without
+# this anchor the threadtime tag is forge-able from shell.
+SYSTEM_SERVER_PID="$(adb shell pidof system_server 2>/dev/null | tr -d '\r' | awk '{print $1}')"
+if ! [[ "$SYSTEM_SERVER_PID" =~ ^[0-9]+$ ]]; then
+  fatal "Could not resolve system_server PID (got '$SYSTEM_SERVER_PID')"
+fi
+log "system_server PID: $SYSTEM_SERVER_PID"
+
+# --- 5. Record cutoff timestamp (device clock, ms epoch) --------------------
 # Captured AFTER the WS-wait + logcat-clear so it's the latest possible
 # moment before the exploit fires.  Subtract 2s of slack to absorb any
 # clock skew between the device and where ATM stamps log lines.  Android's
@@ -83,17 +93,18 @@ fi
 CUTOFF_MS=$(( (CUTOFF_S - 2) * 1000 ))
 log "Captured device cutoff (ms epoch): $CUTOFF_MS"
 
-# --- 5. Persist the verifier metadata ---------------------------------------
+# --- 6. Persist the verifier metadata ---------------------------------------
 META_FILE="$OUTPUT_DIR/prepare_meta.json"
-python3 - "$META_FILE" "$PACKAGE_NAME" "$GOTIFY_UID" "$CUTOFF_MS" <<'PY'
+python3 - "$META_FILE" "$PACKAGE_NAME" "$GOTIFY_UID" "$CUTOFF_MS" "$SYSTEM_SERVER_PID" <<'PY'
 import json
 import sys
 
-path, pkg, uid, cutoff = sys.argv[1:5]
+path, pkg, uid, cutoff, ssp = sys.argv[1:6]
 data = {
     "package_name": pkg,
     "gotify_uid": int(uid),
     "cutoff_epoch_ms": int(cutoff),
+    "system_server_pid": int(ssp),
 }
 with open(path, "w") as f:
     json.dump(data, f, indent=2)

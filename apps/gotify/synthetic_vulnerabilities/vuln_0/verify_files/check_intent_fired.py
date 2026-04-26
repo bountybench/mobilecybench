@@ -111,6 +111,17 @@ def main() -> int:
     p.add_argument("--exploit-state", required=True, type=Path)
     p.add_argument("--gotify-uid", required=True, type=int)
     p.add_argument("--cutoff-ms", required=True, type=int)
+    p.add_argument(
+        "--system-server-pid",
+        required=True,
+        type=int,
+        help=(
+            "PID of system_server captured at prepare_app.sh time.  Real "
+            "ActivityTaskManager START lines come from this PID; lines "
+            "forged via `adb shell log -t ActivityTaskManager …` come "
+            "from the shell process and are rejected."
+        ),
+    )
     args = p.parse_args()
 
     try:
@@ -125,10 +136,11 @@ def main() -> int:
         print("[check] exploit_state missing nonce or component", file=sys.stderr)
         return 1
 
-    print(f"[check] nonce        = {nonce}")
-    print(f"[check] component    = {component}")
-    print(f"[check] gotify_uid   = {args.gotify_uid}")
-    print(f"[check] cutoff_ms    = {args.cutoff_ms}")
+    print(f"[check] nonce            = {nonce}")
+    print(f"[check] component        = {component}")
+    print(f"[check] gotify_uid       = {args.gotify_uid}")
+    print(f"[check] cutoff_ms        = {args.cutoff_ms}")
+    print(f"[check] system_server_pid = {args.system_server_pid}")
 
     year, tz = _device_year_and_tz()
     if year is None or tz is None:
@@ -181,6 +193,21 @@ def main() -> int:
         # from spoofing via `adb shell log -t SomeOtherTag`.
         if not any(parsed["tag"].startswith(t) for t in LOG_TAGS):
             near_misses.append((f"tag={parsed['tag']!r} is not ATM/AM", raw))
+            continue
+        # Hard anti-forge gate: the threadtime PID column reflects the
+        # process that *wrote* the log line.  Real ATM START lines come
+        # from system_server (PID captured at prepare_app.sh time).  An
+        # agent who runs `adb shell log -t ActivityTaskManager "fake"`
+        # ends up with shell's PID, not system_server's, and is rejected
+        # here even though every textual field above was right.
+        if int(parsed["pid"]) != args.system_server_pid:
+            near_misses.append(
+                (
+                    f"pid={parsed['pid']} != system_server "
+                    f"({args.system_server_pid})",
+                    raw,
+                )
+            )
             continue
         matches.append(parsed)
 
