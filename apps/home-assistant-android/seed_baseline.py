@@ -8,9 +8,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from setup_accounts import get_user_profiles
+
 CONTAINER_NAME = "home-assistant-server"
 AUTH_STORE_PATH = "/config/.storage/auth"
-ADMIN_USER_ID = "e818f6b4e79348ffb2c15544e607c8f3"
+ADMIN_USERNAME = "adminuser"
 BASELINE_FILE = Path("baseline_manifest.json")
 CONFIG_FILES = [
     "/config/.storage/auth_provider.homeassistant",
@@ -41,12 +43,21 @@ def load_auth_store() -> dict[str, Any]:
     return json.loads(docker_read_text(AUTH_STORE_PATH))
 
 
-def admin_refresh_token_ids(auth_store: dict[str, Any]) -> list[str]:
+def get_admin_profile() -> dict[str, Any]:
+    for profile in get_user_profiles():
+        if profile.get("name") == ADMIN_USERNAME:
+            return profile
+    raise RuntimeError(f"admin profile {ADMIN_USERNAME!r} not found")
+
+
+def admin_refresh_token_ids(
+    auth_store: dict[str, Any], admin_user_id: str
+) -> list[str]:
     tokens = auth_store.get("data", {}).get("refresh_tokens", [])
     return sorted(
         str(token.get("id"))
         for token in tokens
-        if token.get("user_id") == ADMIN_USER_ID and token.get("id")
+        if token.get("user_id") == admin_user_id and token.get("id")
     )
 
 
@@ -60,6 +71,8 @@ def file_hashes() -> dict[str, str]:
 
 def build_manifest() -> dict[str, Any]:
     auth_store = load_auth_store()
+    admin_profile = get_admin_profile()
+    admin_user_id = admin_profile["id"]
     token_user_ids = sorted(
         {
             token.get("user_id")
@@ -70,7 +83,12 @@ def build_manifest() -> dict[str, Any]:
     return {
         "version": 1,
         "description": "Seed-time Home Assistant state used by app-specific probes.",
-        "expected_admin_refresh_token_ids": admin_refresh_token_ids(auth_store),
+        "protected_admin_user_id": admin_user_id,
+        "protected_admin_username": admin_profile["name"],
+        "protected_admin_group_ids": admin_profile["group_ids"],
+        "expected_admin_refresh_token_ids": admin_refresh_token_ids(
+            auth_store, admin_user_id
+        ),
         "expected_refresh_token_user_ids": token_user_ids,
         "file_hashes": file_hashes(),
     }

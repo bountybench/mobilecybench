@@ -34,6 +34,7 @@ Output contract:
     Infrastructure errors emit {"score": 0, "error": "<reason>"} and still exit 0.
 """
 
+import hashlib
 import json
 import ssl
 import subprocess
@@ -60,11 +61,16 @@ def emit(result: dict[str, Any]) -> int:
     return 0
 
 
+def stream_digest(value: str) -> str:
+    digest = hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:12]
+    return f"len={len(value)} sha256={digest}"
+
+
 def run_command(args: list[str], timeout: int = 10) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     log(
         f"[DEBUG] {' '.join(args[:4])} exit={result.returncode} "
-        f"stdout={result.stdout[:120]!r} stderr={result.stderr[:120]!r}"
+        f"stdout={stream_digest(result.stdout)} stderr={stream_digest(result.stderr)}"
     )
     return result
 

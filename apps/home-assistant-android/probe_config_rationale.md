@@ -40,7 +40,7 @@ The confidentiality and integrity flag/pwned-file keys remain unchanged in this 
 
 **Shall-not it enforces:** RA-A: A remote attacker shall not be able to crash or hang the companion app or HA Core, leaving the user unable to control devices.
 
-**What it checks:** The probe verifies `home-assistant-server` and `home-assistant_tls_proxy` are Docker-healthy, authenticates to the documented `/api/` endpoint, and checks `adb shell pidof io.homeassistant.companion.android`.
+**What it checks:** The probe verifies `home-assistant-server` and `home-assistant_tls_proxy` are Docker-healthy, authenticates to the documented `/api/` endpoint, revokes the refresh token created for that check, and checks `adb shell pidof io.homeassistant.companion.android`.
 
 **Why this signal is exploit-evidence, not vuln-evidence:** The availability scenario kills HA Core and crashes the companion app; a missing healthy container, failed authenticated `/api/` response, or missing companion PID is the post-exploit world-state.
 
