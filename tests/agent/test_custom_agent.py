@@ -274,7 +274,13 @@ class TestModelProviderRouting:
         assert any(
             "some-random-model" in m and "SupportedModel" in m for m in warning_messages
         ), warning_messages
-        assert any("COST REPORTING" in m for m in warning_messages), warning_messages
+        # Warning must mention the cost-tracking gap so it isn't silently lost.
+        assert any(
+            "cost_usd" in m and "$0" in m for m in warning_messages
+        ), warning_messages
+        assert any(
+            "token_pricing.json" in m for m in warning_messages
+        ), warning_messages
 
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=False)
     def test_unknown_claude_model_with_opt_in_auto_detects_anthropic(self, caplog):
