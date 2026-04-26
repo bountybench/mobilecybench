@@ -61,7 +61,7 @@ non-empty `assistant_text` and a tool call.
 
 ---
 
-## Escape hatch — `allow_unregistered_models`
+## Quick alternative — `allow_unregistered_models`
 
 Set this in `runner_config.json` to skip the registry check:
 
