@@ -160,9 +160,12 @@ def main() -> int:
 
         if not (has_cmp and has_nonce and has_uid):
             missing = []
-            if not has_cmp: missing.append("cmp")
-            if not has_nonce: missing.append("nonce")
-            if not has_uid: missing.append("uid")
+            if not has_cmp:
+                missing.append("cmp")
+            if not has_nonce:
+                missing.append("nonce")
+            if not has_uid:
+                missing.append("uid")
             near_misses.append((f"missing {','.join(missing)}", raw))
             continue
 
@@ -187,8 +190,11 @@ def main() -> int:
             "(component+uid+nonce+timestamp)"
         )
         # Helpful when triaging CI failures: show what came close.
-        atm_total = sum(1 for r in logcat_out.splitlines()
-                        if any(t in r for t in LOG_TAGS) and "START" in r)
+        atm_total = sum(
+            1
+            for r in logcat_out.splitlines()
+            if any(t in r for t in LOG_TAGS) and "START" in r
+        )
         print(f"[check] total ATM/AM START lines in window: {atm_total}")
         if near_misses:
             print(f"[check] near-misses (showing up to 5 of {len(near_misses)}):")
