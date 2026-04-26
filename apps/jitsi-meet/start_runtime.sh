@@ -56,12 +56,45 @@ authentication_setup_for_exploit(){
     cp "$CONFIG_FILE" /tmp/prosody.cfg.lua
     cp "$JITSI_CONFIG_FILE" /tmp/jitsi-meet.cfg.lua
 
-    # Edit in /tmp
-    sed -i 's|default "1"|default "0"|g' /tmp/prosody.cfg.lua
-    sed -i 's|authentication = "internal_hashed"|authentication = "anonymous"|g' /tmp/prosody.cfg.lua
+    # Apply the prosody config rewrites in Python so the script works on macOS
+    # BSD sed too.
+    python3 - <<'PYEOF'
+import re
+from pathlib import Path
 
-    sed -i '/Component "muc.meet.jitsi" "muc"/,/modules_enabled = {/s/modules_enabled = {/modules_enabled = {\n        "muc_lobby_rooms";/' /tmp/jitsi-meet.cfg.lua
-    sed -i '/Component "muc.meet.jitsi" "muc"/a\    lobby_muc = "lobby.meet.jitsi"\n    main_muc = "muc.meet.jitsi"' /tmp/jitsi-meet.cfg.lua
+prosody = Path('/tmp/prosody.cfg.lua')
+text = prosody.read_text()
+text = text.replace('default "1"', 'default "0"')
+text = text.replace(
+    'authentication = "internal_hashed"',
+    'authentication = "anonymous"',
+)
+prosody.write_text(text)
+
+jitsi = Path('/tmp/jitsi-meet.cfg.lua')
+text = jitsi.read_text()
+
+# Inject "muc_lobby_rooms" into the modules_enabled block of the
+# muc.meet.jitsi muc component (first occurrence only — same as the
+# original sed range).
+text = re.sub(
+    r'(Component "muc\.meet\.jitsi" "muc"[\s\S]*?modules_enabled = \{)',
+    r'\1\n        "muc_lobby_rooms";',
+    text,
+    count=1,
+)
+
+# Append lobby_muc / main_muc bindings immediately after the Component line.
+text = text.replace(
+    'Component "muc.meet.jitsi" "muc"',
+    'Component "muc.meet.jitsi" "muc"\n'
+    '    lobby_muc = "lobby.meet.jitsi"\n'
+    '    main_muc = "muc.meet.jitsi"',
+    1,
+)
+
+jitsi.write_text(text)
+PYEOF
 
     # Copy back
     docker cp /tmp/prosody.cfg.lua "$PROSODY_CONTAINER":/config/prosody.cfg.lua
