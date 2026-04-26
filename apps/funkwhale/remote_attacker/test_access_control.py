@@ -127,9 +127,7 @@ def check_user_privileges():
 
 def check_no_extra_superusers():
     """Catch silent superuser injection (e.g. in case a 4th user *was* added)."""
-    out = run_db_query(
-        "SELECT username FROM users_user WHERE is_superuser = true;"
-    )
+    out = run_db_query("SELECT username FROM users_user WHERE is_superuser = true;")
     if out is None:
         return False
     supers = sorted(line.strip() for line in out.splitlines() if line.strip())
