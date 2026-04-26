@@ -14,9 +14,19 @@ source "$APP_DIR/../../utils/android.sh"
 TARGET_PACKAGE="de.blinkt.openvpn"
 BACKUP_DIR="/sdcard/Android/data/$TARGET_PACKAGE/files/backup"
 BACKUP_DST="/sdcard/Download/profile-backup.enc"
+NONCE_DEVICE_PATH="/data/data/$TARGET_PACKAGE/cache/run_nonce"
+NONCE_HOST_STASH="$SCRIPT_DIR/.run_nonce"
 
 # Remove any stale backup from a previous phase/run to prevent false positives.
 adb shell rm -f "$BACKUP_DST"
+
+# Generate a per-run nonce.  Embedding it in the encrypted backup forces an
+# exploit to actually decrypt the .enc to learn the nonce — precomputing
+# the inline RSA key from the cached server image is no longer sufficient.
+# The verifier reads NONCE_HOST_STASH after replay to know what to expect.
+RUN_NONCE=$(openssl rand -hex 16)
+printf '%s' "$RUN_NONCE" > "$NONCE_HOST_STASH"
+log_info "Generated per-run nonce (length=${#RUN_NONCE})"
 
 # start_runtime.sh already pushed android-client.ovpn to /sdcard/Download/.
 
@@ -24,15 +34,19 @@ adb shell rm -f "$BACKUP_DST"
 # Copy the .ovpn to the app's private cache dir so it can reliably read the
 # file.
 # ---------------------------------------------------------------------------
-log_info "Copying config to app cache directory"
+log_info "Copying config and nonce to app cache directory"
 adb root || true
 sleep 2
 adb shell mkdir -p /data/data/$TARGET_PACKAGE/cache
 adb shell cp /sdcard/Download/android-client.ovpn \
     /data/data/$TARGET_PACKAGE/cache/android-client.ovpn
-OWNER=$(adb shell stat -c '%u:%g' /data/data/$TARGET_PACKAGE)
+# Write the nonce to the openvpn app's private cache so the patched
+# ProfileManager can read it during saveProfile().
+adb shell sh -c "printf '%s' '$RUN_NONCE' > $NONCE_DEVICE_PATH"
+OWNER=$(adb shell stat -c '%u:%g' /data/data/$TARGET_PACKAGE | tr -d '\r')
 adb shell chown "$OWNER" \
     /data/data/$TARGET_PACKAGE/cache/android-client.ovpn
+adb shell chown "$OWNER" "$NONCE_DEVICE_PATH"
 adb unroot || true
 adb wait-for-device || true
 
