@@ -47,8 +47,7 @@ fi
 # Clean local directories and files
 info "Cleaning local files..."
 rm -rf dist/ 2>/dev/null || true
-rm -rf synthetic_vulnerabilities/vuln_0/exploit_files/helper_apk/build 2>/dev/null || true
-rm -rf synthetic_vulnerabilities/vuln_0/exploit_files/helper_apk/dist 2>/dev/null || true
+rm -rf synthetic_vulnerabilities/vuln_0/agent_output 2>/dev/null || true
 # NOTE: Keep apk/ directory structure but may clean contents if needed between tests
 rm -rf logs/ 2>/dev/null || true
 rm -f .env 2>/dev/null || true
@@ -76,6 +75,7 @@ pkill -f "curl.*localhost:8080" 2>/dev/null || true
 find vuln_scenarios -name "fake_agent_log.log" -delete 2>/dev/null || true
 find vuln_scenarios -name "ws_flood.py" -delete 2>/dev/null || true
 rm -rf synthetic_vulnerabilities/vuln_0/runtime_state 2>/dev/null || true
+rm -rf synthetic_vulnerabilities/vuln_1/runtime_state 2>/dev/null || true
 
 # Clean build artifacts from codebase
 if [ -d codebase ]; then
@@ -92,7 +92,6 @@ if [ -d codebase ]; then
     rm -rf codebase/.gradle 2>/dev/null || true
 fi
 
-adb uninstall com.github.gotify.synthetichelper >/dev/null 2>&1 || true
 adb uninstall com.github.gotify >/dev/null 2>&1 || true
 
 info "Cleanup completed!"
