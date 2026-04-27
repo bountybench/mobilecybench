@@ -159,10 +159,16 @@ def check_account_dir_roster() -> tuple[bool, str]:
     for d in candidate_dirs:
         out = subprocess.run(
             [
-                "docker", "exec", PROSODY_CONTAINER,
-                "sh", "-c", f"ls -1 {d} 2>/dev/null",
+                "docker",
+                "exec",
+                PROSODY_CONTAINER,
+                "sh",
+                "-c",
+                f"ls -1 {d} 2>/dev/null",
             ],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if out.returncode != 0:
             continue
@@ -214,7 +220,9 @@ def check_no_default_service_password() -> tuple[bool, str]:
     for container in backends:
         out = subprocess.run(
             ["docker", "inspect", "-f", "{{json .Config.Env}}", container],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if out.returncode != 0 or not out.stdout.strip():
             continue

@@ -237,7 +237,9 @@ def check_no_default_service_password() -> tuple[bool, str]:
     for container in backends:
         out = subprocess.run(
             ["docker", "inspect", "-f", "{{json .Config.Env}}", container],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if out.returncode != 0 or not out.stdout.strip():
             continue
@@ -330,9 +332,7 @@ CHECKS = (
 # in stderr and the result JSON for triage but do NOT include it in
 # the aggregate score — otherwise the access probe falsely fires on
 # any DoS event that test_availability already catches.
-INFORMATIONAL_CHECKS = (
-    ("rogue_login_baseline", check_rogue_login_baseline),
-)
+INFORMATIONAL_CHECKS = (("rogue_login_baseline", check_rogue_login_baseline),)
 
 
 def main() -> None:

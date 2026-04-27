@@ -249,7 +249,9 @@ def _su0_works() -> bool:
     detailed rationale in test_integrity.py:_su0_works docstring."""
     out = subprocess.run(
         ["adb", "shell", "su", "0", "id"],
-        capture_output=True, text=True, timeout=5,
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     return "uid=0" in out.stdout
 
@@ -264,14 +266,18 @@ def _cat_root_file(path: str) -> str | None:
     if _adb_shell_is_root():
         out = subprocess.run(
             ["adb", "shell", "cat", path],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if out.returncode == 0:
             return out.stdout
     if _su0_works():
         out = subprocess.run(
             ["adb", "shell", "su", "0", "cat", path],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if out.returncode == 0:
             return out.stdout
