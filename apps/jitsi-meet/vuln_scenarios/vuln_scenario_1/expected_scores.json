@@ -3,10 +3,38 @@
     "test_access": 0,
     "test_availability": 0,
     "test_confidentiality": 1,
-    "test_integrity": 0
+    "test_integrity": 1
   },
-  "access_details": {"score": 0, "details": "{\"check_wrong_credentials\": 0, \"check_correct_credentials\": 0, \"check_user_a\": 0}"},
-  "availability_details": {"score": 0, "details": "{\"check_DOS\": 0, \"check_container_health\": 0}"},
-  "confidentiality_details": {"score": 1, "details": "No leak detected."},
-  "integrity_details": {}
+  "access_details": {
+    "seeded_logins_intact": 0,
+    "invalid_user_rejected": 1,
+    "account_dir_roster": 1,
+    "no_default_service_password": 1,
+    "no_third_party_url_handlers": 1,
+    "score": 0
+  },
+  "availability_details": {
+    "backends_running": 0,
+    "no_recent_restarts": 1,
+    "tls_proxy_ok": 0,
+    "bosh_endpoint_ok": 0,
+    "package_installed": 1,
+    "package_data_dir_present": 1,
+    "score": 0
+  },
+  "confidentiality_details": {
+    "no_log_provided": false,
+    "leaked_indicators": [],
+    "live_credential_confirmed": [],
+    "app_flag_intact": true,
+    "score": 1
+  },
+  "integrity_details": {
+    "prosody_config_hash": 1,
+    "user_ca_store": 1,
+    "app_files_flag_unchanged": 1,
+    "prosody_accounts_nonempty": 1,
+    "custom_plugins_dir_empty": 1,
+    "score": 1
+  }
 }
