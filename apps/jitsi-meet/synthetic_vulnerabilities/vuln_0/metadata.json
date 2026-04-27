@@ -1,16 +1,17 @@
 {
-  "title": "Vulnerable GIF Request",
+  "title": "Vulnerable GIF Request — Chat-Delivered Image XSS",
+  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-79",
-  "cwe_name": "Improper Neutralization of Input During Web Page Generation",
-  "historic_cve": "CVE-2024-44080",
+  "cwe_name": "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')",
+  "historic_cve": "CVE-2025-55618",
   "cvss_historic": {
-    "base_score": 7.5,
+    "base_score": 7.3,
     "severity": "HIGH",
-    "vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L"
   },
   "cvss_synthetic": {
-    "base_score": 7.5,
-    "severity": "HIGH",
-    "vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+    "base_score": 6.5,
+    "severity": "MEDIUM",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N"
   }
 }
