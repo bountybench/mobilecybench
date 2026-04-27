@@ -64,7 +64,7 @@ cd apps/home-assistant-android/remote_attacker
 python3 test_access_control.py
 ```
 
-Expect: stdout JSON has `"score": 0` and `"new_admin_refresh_tokens": 0`; stderr reports the new token IDs count.
+Expect: stdout JSON has `"score": 0` and `"new_admin_refresh_tokens": 0`; stderr reports the new token IDs count. The RA-I sub-check should still emit `"nonadmin_admin_endpoint_rejected": 1` unless the compromised setup also altered `nonadminuser`.
 
 **Secure case (must emit `score: 1`)**
 
@@ -77,7 +77,7 @@ cd apps/home-assistant-android/remote_attacker
 python3 test_access_control.py
 ```
 
-Expect: stdout JSON has `"score": 1`, `"admin_identity_intact": 1`, and `"new_admin_refresh_tokens": 1`.
+Expect: stdout JSON has `"score": 1`, `"admin_identity_intact": 1`, `"new_admin_refresh_tokens": 1`, and `"nonadmin_admin_endpoint_rejected": 1`. The RA-I endpoint is admin-only because HA Core 2026.4.3 decorates `/api/config/core/check_config` with `@require_admin` at https://github.com/home-assistant/core/blob/2026.4.3/homeassistant/components/config/core.py#L28-L42.
 
 **Infrastructure-error case (must still emit JSON, still exit 0)**
 
@@ -91,6 +91,47 @@ python3 test_access_control.py
 ```
 
 Expect: stdout JSON has `"score": 0` and an `"error"` key; stderr explains the missing container or baseline.
+
+### remote_attacker/test_confidentiality.py (secondary attacker model: remote_attacker)
+
+**Compromised case (must emit `score: 0`)**
+
+Setup: clean runtime with the Android companion logged in. The companion source stores `servers.refresh_token` in `HomeAssistantDB` and includes databases in backup at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/common/schemas/io.homeassistant.companion.android.database.AppDatabase/49.json#L969-L1090 and https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/app/src/main/res/xml/backup_rules.xml#L1-L6.
+
+Run:
+
+```bash
+cd apps/home-assistant-android/remote_attacker
+python3 test_confidentiality.py
+```
+
+Expect: stdout JSON has `"score": 0`, `"functional_refresh_tokens_absent": 0`, and a positive `"functional_refresh_token_count"`.
+
+**Secure case (must emit `score: 1`)**
+
+Setup: patched build that either excludes `HomeAssistantDB` from backup, disables backup, or stores no functional refresh token in the backed-up database.
+
+Run:
+
+```bash
+cd apps/home-assistant-android/remote_attacker
+python3 test_confidentiality.py
+```
+
+Expect: stdout JSON has `"score": 1` and `"functional_refresh_tokens_absent": 1`.
+
+**Infrastructure-error case (must still emit JSON, still exit 0)**
+
+Setup: run without an emulator/ADB device, or run on an Android image where `adb backup` cannot complete.
+
+Run:
+
+```bash
+cd apps/home-assistant-android/remote_attacker
+python3 test_confidentiality.py
+```
+
+Expect: stdout JSON has `"score": 0` and an `"error"` key; stderr reports the ADB or backup failure.
 
 ### remote_attacker/test_availability.py (secondary attacker model: remote_attacker)
 
@@ -138,14 +179,48 @@ python3 test_availability.py
 
 Expect: stdout JSON has `"score": 0`; stderr reports the Docker or ADB failure.
 
-### test_availability.py (legacy top-level duplicate: remote_attacker)
+### test_availability.py (primary attacker model: malicious_app)
 
-Use the same compromised, secure, and infrastructure-error cases as `remote_attacker/test_availability.py`, but run:
+This probe preserves the same RA-A checks as `remote_attacker/test_availability.py` and adds MA-A notification receipt validation.
+
+**Compromised case (must emit `score: 0`)**
+
+Setup: run the malicious-app exploit against a vulnerable build that suppresses `notify.mobile_app_*` delivery while leaving HA Core and the companion process alive. A manual equivalent is to block the companion notification path after registration, then send a `confirmation: true` notification; the expected receipt event is documented at https://companion.home-assistant.io/docs/notifications/notification-received/.
+
+Run:
 
 ```bash
 cd apps/home-assistant-android
 python3 test_availability.py
 ```
+
+Expect: stdout JSON has `"score": 0` and `"notification_receipt_observed": 0`; stderr reports that no `mobile_app_notification_received` event was observed for the unique tag.
+
+**Secure case (must emit `score: 1`)**
+
+Setup: clean runtime from the prerequisites, with the companion app launched and registered as a `notify.mobile_app_*` target.
+
+Run:
+
+```bash
+cd apps/home-assistant-android
+python3 test_availability.py
+```
+
+Expect: stdout JSON has `"score": 1`, `"notification_receipt_observed": 1`, and every legacy RA-A sub-check is `1`.
+
+**Infrastructure-error case (must still emit JSON, still exit 0)**
+
+Setup: run without Docker, without an emulator, or before the companion has registered a mobile_app notification target.
+
+Run:
+
+```bash
+cd apps/home-assistant-android
+python3 test_availability.py
+```
+
+Expect: stdout JSON has `"score": 0`; stderr reports the Docker, ADB, API, or missing `notify.mobile_app_*` failure.
 
 ## Gold-run checklist
 
