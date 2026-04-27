@@ -37,7 +37,7 @@ class ProviderRule:
 
     Attributes:
         patterns: Substrings to match against the lowercased model id.
-        provider: Canonical provider tag returned by `_detect_provider_from_model`.
+        provider: Canonical provider tag (e.g. "anthropic", "gemini").
         env_var: Environment variable that must hold the API key.
         display_name: Human-readable name surfaced in logs.
         litellm_prefix: Optional prefix LiteLLM expects on the model id
@@ -112,7 +112,13 @@ def register_provider(
     _PROVIDER_REGISTRY.insert(0, rule)
 
 
-def _lookup_rule(model: str) -> ProviderRule:
+def lookup_rule(model: str) -> ProviderRule:
+    """Return the provider-detection rule that matches *model*.
+
+    Walks `_PROVIDER_REGISTRY` in order; the first rule whose substrings
+    appear in the lowercased model id wins. Falls back to `_DEFAULT_RULE`
+    (OpenAI) when nothing matches.
+    """
     model_lower = model.lower()
     for rule in _PROVIDER_REGISTRY:
         if any(p in model_lower for p in rule.patterns):
@@ -139,7 +145,7 @@ class LiteLLMProvider(ModelProvider):
         super().__init__()
         litellm.set_verbose = False
 
-        rule = _lookup_rule(model)
+        rule = lookup_rule(model)
 
         # Validate API key
         api_key = os.getenv(rule.env_var)
@@ -167,25 +173,12 @@ class LiteLLMProvider(ModelProvider):
             f"{rule.display_name} provider configured for model '{model}'"
         )
 
-    # -- Detection helpers (kept for backwards compatibility) ---------------
-
-    def _detect_provider_from_model(self, model: str) -> str:
-        return _lookup_rule(model).provider
-
-    def _get_required_api_key_env(self, model: str) -> tuple[str, str]:
-        rule = _lookup_rule(model)
-        return rule.env_var, rule.display_name
-
     @staticmethod
     def _apply_litellm_prefix(model: str, rule: ProviderRule) -> str:
         """Add the rule's LiteLLM prefix if not already present."""
         if rule.litellm_prefix and not model.startswith(rule.litellm_prefix):
             return f"{rule.litellm_prefix}{model}"
         return model
-
-    def _get_litellm_model_name(self, model: str) -> str:
-        """Return the model id with its LiteLLM prefix applied."""
-        return self._apply_litellm_prefix(model, _lookup_rule(model))
 
     def _convert_tools_to_litellm(self, tools: Optional[List]) -> Optional[List]:
         """Convert tool definitions to LiteLLM/OpenAI Chat Completions format."""

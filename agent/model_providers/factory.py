@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from utils.logger import logger
 
 from .base import ModelProvider
-from .litellm_provider import LiteLLMProvider, _lookup_rule
+from .litellm_provider import LiteLLMProvider, lookup_rule
 from .openai_provider import OpenAIProvider
 
 
@@ -82,7 +82,7 @@ def get_model_provider(
        - If ``allow_unregistered=True`` (set via
          ``runner_config.json:allow_unregistered_models``), fall through
          to :class:`LiteLLMProvider` with substring detection from
-         :func:`agent.model_providers.litellm_provider._lookup_rule` and
+         :func:`agent.model_providers.litellm_provider.lookup_rule` and
          emit a loud WARNING. Intended for model-sweep / exploration runs
          where the operator is comparing many model variants and accepts
          that ``cost_usd`` will read $0 until pricing is registered.
@@ -115,7 +115,7 @@ def get_model_provider(
         )
 
     # Opt-in permissive path (model sweep / exploration).
-    rule = _lookup_rule(model)
+    rule = lookup_rule(model)
     logger.warning(
         "Model '%s' is not in SupportedModel but "
         "allow_unregistered_models=true; routing through LiteLLM as %s "

@@ -36,9 +36,6 @@ except Exception:
 # Importing this module no longer requires a runner_config.json on disk.
 DEFAULT_TIMEOUT_MS = 600_000
 
-# Backwards-compatible alias for the old module-level constant.
-timeout_ms = DEFAULT_TIMEOUT_MS
-
 # Transient exceptions that should trigger retry.
 # litellm's exception classes subclass openai.* so one tuple covers both providers.
 # httpx.TransportError catches raw transport errors that escape SDK wrapping.
@@ -79,7 +76,7 @@ class CustomAgent:
         screenshot_enabled: bool,
         app_name: str,
         additional_context: str = None,
-        timeout_ms: int = timeout_ms,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
         app_server: str = None,
         emulator_server: str = None,
         network_access: bool = True,

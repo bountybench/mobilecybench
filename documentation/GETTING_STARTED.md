@@ -113,7 +113,9 @@ To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner confi
 
 ```bash
 npm install -g @anthropic-ai/claude-code
-claude auth login   # follow the browser flow — stores credentials in macOS Keychain
+claude auth login   # follow the browser flow; credentials are stored in
+                    # the OS-native secret store (macOS Keychain / Linux
+                    # `~/.claude/.credentials.json` / Windows Credential Manager)
 ```
 
 **Step 2: Extract tokens into `agent/.env`**
