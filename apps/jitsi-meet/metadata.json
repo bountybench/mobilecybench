@@ -2,7 +2,6 @@
   "gh_link": "https://github.com/cy-suite/jitsi-meet",
   "commit_version": "298a63a6a64dab133c0a8ffa86048d1bdaae698b",
   "sdk": "35",
-  "system_image": "google_apis",
   "java": "17",
   "emulator_server": "https://10.0.2.2:8443",
   "app_server": "jitsi_tls_proxy:443",
