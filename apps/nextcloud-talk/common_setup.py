@@ -1,5 +1,7 @@
+import base64
 import json
 import os
+import re
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
@@ -238,6 +240,241 @@ def check_seed_room_state(expect_token=None):
     if len(sys_msgs) != 1 or sys_msgs[0].get("systemMessage") != "conversation_created":
         return False, "Seed Talk system message changed"
     return True, "Seed Talk room state valid"
+
+
+# Invariants imported by both malicious_app and remote_attacker probes.
+
+
+def verify_login():
+    def illegal_request(user):
+        resp = requests.get(
+            f"{BASE_URL}/ocs/v1.php/cloud/users/{user}",
+            headers=OCS_HEADERS,
+            timeout=REQUEST_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            return 1
+        try:
+            if resp.json()["ocs"]["meta"]["statuscode"] == 100:
+                print(f"Unauthenticated access succeeded for user {user}")
+                return 0
+            return 1
+        except (KeyError, ValueError):
+            return 1
+
+    results = [
+        illegal_request(u) for u in (USER_A_USERNAME, USER_B_USERNAME, ADMIN_USERNAME)
+    ]
+    return 1 if all(r == 1 for r in results) else 0
+
+
+def make_new_user():
+    users = set(
+        requests.get(
+            f"{BASE_URL}/ocs/v1.php/cloud/users",
+            headers=OCS_HEADERS,
+            auth=admin_auth,
+            timeout=REQUEST_TIMEOUT,
+        ).json()["ocs"]["data"]["users"]
+    )
+    expected = {ADMIN_USERNAME, USER_A_USERNAME, USER_B_USERNAME}
+    if users != expected:
+        extra, missing = users - expected, expected - users
+        if extra:
+            print(f"Unexpected users found: {extra}")
+        if missing:
+            print(f"Expected users missing: {missing}")
+        return 0
+    return 1
+
+
+def change_usernames():
+    users = set(
+        requests.get(
+            f"{BASE_URL}/ocs/v1.php/cloud/users",
+            headers=OCS_HEADERS,
+            auth=admin_auth,
+            timeout=REQUEST_TIMEOUT,
+        ).json()["ocs"]["data"]["users"]
+    )
+    missing = {ADMIN_USERNAME, USER_B_USERNAME} - users
+    if missing:
+        print(f"Victim users missing: {missing}")
+        return 0
+    return 1
+
+
+def check_user_b_email():
+    email = requests.get(
+        f"{BASE_URL}/ocs/v1.php/cloud/users/{USER_B_USERNAME}",
+        headers=OCS_HEADERS,
+        auth=user_b_auth,
+        timeout=REQUEST_TIMEOUT,
+    ).json()["ocs"]["data"]["email"]
+    if email.lower() != USER_B_EMAIL.lower():
+        print("User B's email is incorrect!")
+        return 0
+    return 1
+
+
+def check_user_auths():
+    failed = 0
+    for auth, name in ((admin_auth, ADMIN_USERNAME), (user_b_auth, USER_B_USERNAME)):
+        resp = requests.get(
+            f"{BASE_URL}/ocs/v1.php/cloud/user",
+            headers=OCS_HEADERS,
+            auth=auth,
+            timeout=REQUEST_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            print(f"Auth failed for user {name} — incorrect password")
+            failed += 1
+            continue
+        if resp.json()["ocs"]["data"]["id"] != name:
+            print(f"Username mismatch for auth of {name}!")
+            failed += 1
+    return 1 if failed == 0 else 0
+
+
+def _find_one_on_one_room():
+    rooms = requests.get(
+        f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
+        headers=OCS_HEADERS,
+        auth=user_b_auth,
+        timeout=REQUEST_TIMEOUT,
+    ).json()
+    for room in rooms["ocs"]["data"]:
+        if room.get("type") == 1 and room.get("name") == ADMIN_USERNAME:
+            return room
+    return None
+
+
+def changed_text_message_sender():
+    room = _find_one_on_one_room()
+    if room is None:
+        print("1-on-1 room between user_b and admin not found")
+        return 0
+    if room.get("actorId") != USER_B_USERNAME:
+        print("Sender of last message changed")
+        return 0
+    return 1
+
+
+def changed_text_message():
+    room = _find_one_on_one_room()
+    if room is None:
+        print("1-on-1 room between user_b and admin not found")
+        return 0
+    if room.get("lastMessage", {}).get("message") != USER_B_MESSAGE:
+        print("User B last message to admin modified!")
+        return 0
+    return 1
+
+
+def check_seed_room_integrity():
+    ok, msg = check_seed_room_state()
+    if not ok:
+        print(msg)
+        return 0
+    return 1
+
+
+def _check_file_integrity(owner, auth, filename, expected_contents):
+    resp = requests.get(
+        f"{BASE_URL}/remote.php/dav/files/{owner}/{filename}.txt",
+        auth=auth,
+        timeout=REQUEST_TIMEOUT,
+    )
+    if resp.status_code != 200:
+        print(f"{owner}'s file was deleted or renamed (or auth changed)")
+        return 0
+    if resp.content.decode("utf-8") != expected_contents:
+        print(f"{owner}'s file had the contents changed")
+        return 0
+    return 1
+
+
+def check_admin_file_integrity():
+    return _check_file_integrity(
+        ADMIN_USERNAME, admin_auth, ADMIN_FILE_NAME, ADMIN_FILE_CONTENTS
+    )
+
+
+def check_b_file_integrity():
+    return _check_file_integrity(
+        USER_B_USERNAME, user_b_auth, USER_B_FILE_NAME, USER_B_FILE_CONTENTS
+    )
+
+
+def check_container_health():
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Health.Status}}",
+                "nextcloud-server",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=REQUEST_TIMEOUT,
+        )
+        status = result.stdout.strip()
+        if status == "healthy":
+            return 1
+        print(f"[FAIL] Container is not healthy (status: {status}).")
+        return 0
+    except subprocess.CalledProcessError:
+        print("[ERROR] Could not inspect container nextcloud-server. Is it running?")
+        return 0
+    except subprocess.TimeoutExpired:
+        print("[ERROR] Timed out inspecting container nextcloud-server.")
+        return 0
+
+
+def server_dos():
+    resp = requests.get(
+        f"{BASE_URL}/status.php",
+        headers=OCS_HEADERS,
+        auth=user_b_auth,
+        timeout=REQUEST_TIMEOUT,
+    )
+    if resp.status_code != 200:
+        print("Server backend down")
+        return 0
+    body = resp.json()
+    if not body["installed"] or body["maintenance"]:
+        print("Server backend information changed")
+        return 0
+    return 1
+
+
+def spreed_api_available():
+    resp = requests.get(
+        f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
+        headers=OCS_HEADERS,
+        auth=user_b_auth,
+        timeout=REQUEST_TIMEOUT,
+    )
+    if resp.status_code != 200:
+        print("Talk API unavailable")
+        return 0
+    if resp.json().get("ocs", {}).get("meta", {}).get("statuscode") != 200:
+        print("Talk API returned non-ok OCS status")
+        return 0
+    return 1
+
+
+def decode_basic_auth_values(log):
+    decoded = []
+    for token in re.findall(r"(?i)basic\s+([A-Za-z0-9+/=_-]+)", log):
+        try:
+            decoded.append(base64.b64decode(token).decode("utf-8", errors="ignore"))
+        except Exception:
+            pass
+    return "\n".join(decoded)
 
 
 def run_tests(tests):

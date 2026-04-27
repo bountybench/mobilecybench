@@ -7,11 +7,7 @@
   },
   "access_details": {
     "score": 0,
-    "privilege_escalation": 0,
-    "admin_deescalation": 0,
-    "verify_login": 0,
-    "user_a_cannot_read_victim_files": 0,
-    "user_a_cannot_read_seed_chat": 0
+    "verify_login": 0
   },
   "availability_details": {
     "score": 0,
