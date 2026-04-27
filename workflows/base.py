@@ -290,8 +290,7 @@ class Workflow(ABC):
             raise
 
     def _ensure_shared_docker_network(self) -> None:
-        """Ensure ``shared_net`` exists before any app's docker-compose runs.
-        """
+        """Ensure ``shared_net`` exists before any app's docker-compose runs."""
         # Lazy import to keep workflow construction free of docker side-effects.
         from agent.agent_container import create_docker_network
 

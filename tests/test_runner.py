@@ -264,8 +264,7 @@ class TestRun:
         validate(instance=summary, schema=_load_run_summary_schema())
 
     def test_run_summary_schema_declares_cost_usd(self):
-        """`metrics.cost_usd` is part of the run_summary contract.
-        """
+        """`metrics.cost_usd` is part of the run_summary contract."""
         schema = _load_run_summary_schema()
         metrics = schema["properties"]["metrics"]
         assert "cost_usd" in metrics["required"]
