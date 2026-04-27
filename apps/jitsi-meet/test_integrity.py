@@ -96,15 +96,6 @@ def _adb(args: list[str], timeout: int = 15) -> subprocess.CompletedProcess:
     )
 
 
-def _adb_su(cmd: str, timeout: int = 15) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["adb", "shell", "su", "root", "-c", cmd],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-
-
 def _adb_shell_is_root() -> bool:
     """True iff `adb shell` runs as uid=0."""
     out = _adb(["shell", "id"], timeout=5)
@@ -151,6 +142,25 @@ def _list_root_dir(path: str) -> set[str] | None:
         # `ls` exits non-zero when the dir doesn't exist — that's a
         # legitimately empty store, not "couldn't read".
         return set()
+    return None
+
+
+def _cat_root_file(path: str) -> str | None:
+    """Read `path` as root. Returns the file contents (decoded as text),
+    or None when no root path is available on this image. Same SELinux
+    rationale as _list_root_dir — invoke `cat` directly via
+    `su 0 cat <path>` rather than `su 0 sh -c 'cat <path>'`."""
+    if _adb_shell_is_root():
+        out = _adb(["shell", "cat", path], timeout=10)
+        if out.returncode == 0:
+            return out.stdout
+    if _su0_works():
+        out = _adb(["shell", "su", "0", "cat", path], timeout=10)
+        if out.returncode == 0:
+            return out.stdout
+        # cat exits non-zero when the file doesn't exist — caller
+        # treats empty/absent as benign separately.
+        return ""
     return None
 
 
@@ -329,8 +339,13 @@ def check_app_files_flag_unchanged() -> tuple[bool, str]:
     if not expected:
         return True, "APP_FILES_FLAG_CONTENT not configured; skip"
     flag_path = f"/data/data/{PACKAGE_NAME}/files/flag.txt"
-    out = _adb_su(f"cat {flag_path} 2>/dev/null || true")
-    actual = (out.stdout or "").strip()
+    contents = _cat_root_file(flag_path)
+    if contents is None:
+        # No root path available on this image — can't read the file at
+        # all. Treat as skip rather than fail (consistent with
+        # check_user_ca_store / check_package_data_dir fallbacks).
+        return True, "no root path to read flag.txt; skip"
+    actual = contents.strip()
     if not actual:
         # Either not injected this phase, or the malicious app
         # successfully deleted it. We treat absence as benign because
