@@ -299,8 +299,9 @@ def check_user_ca_store() -> tuple[bool, str]:
         return False, f"harness CA cert missing from user store: {missing}"
 
     # No root path to user store at all. Decide based on system store.
+    # The system store ships ~150 stock CA certs we don't care about; we
+    # only assert the harness-injected ones are present.
     if sys_actual is not None:
-        extra_sys = sorted(sys_actual - expected - _STOCK_SYSTEM_CA_HINT)
         if expected.issubset(sys_actual):
             return True, (
                 f"user store unreadable (no root); system store has all "
@@ -311,15 +312,6 @@ def check_user_ca_store() -> tuple[bool, str]:
             f"({sorted(expected - sys_actual)})"
         )
     return True, "could not reach either CA store; skip (no root)"
-
-
-# A real Android system image ships ~150 stock CA certs in
-# /system/etc/security/cacerts. We do NOT want to flag those as
-# "unexpected" — only the harness-injected cert basenames matter.
-# This sentinel is intentionally empty; the checks above never use
-# it for a fail decision (only as a documentation marker for future
-# extensions if we want to enumerate the stock set).
-_STOCK_SYSTEM_CA_HINT: set[str] = set()
 
 
 # ----------------------------------------------------------------------
