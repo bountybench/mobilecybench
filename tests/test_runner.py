@@ -265,14 +265,6 @@ class TestRun:
 
     def test_run_summary_schema_declares_cost_usd(self):
         """`metrics.cost_usd` is part of the run_summary contract.
-
-        Pre-existing run_summaries had `cost_usd` written but the schema
-        didn't declare it. The schema is permissive (no
-        `additionalProperties: false`), so the omission only manifested
-        as silent acceptance of any value, including malformed ones.
-        Pin the contract so a future writer that drops the field or
-        emits a wrong-typed value (e.g. a string) trips schema
-        validation.
         """
         schema = _load_run_summary_schema()
         metrics = schema["properties"]["metrics"]

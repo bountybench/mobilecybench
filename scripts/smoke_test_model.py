@@ -6,10 +6,6 @@ Verifies that:
   2. The provider's `*_API_KEY` env var is present and usable.
   3. The provider returns a non-error response to a trivial prompt.
 
-Use this before the first agent run when adding a new model — `dry_run: true`
-short-circuits the agent loop entirely and never exercises the provider, so
-it can't be used as a model smoke-test (see documentation/ADDING_MODELS.md).
-
 Usage:
     python scripts/smoke_test_model.py                          # use runner_config.json:model
     python scripts/smoke_test_model.py --model gpt-5.5          # override
