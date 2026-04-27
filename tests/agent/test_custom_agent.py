@@ -243,9 +243,59 @@ class TestModelProviderRouting:
                 provider, LiteLLMProvider
             ), f"{model.value.api_id} should use LiteLLMProvider"
 
-    def test_unsupported_model_raises_error(self):
+    def test_unknown_model_blocks_by_default(self):
+        """Unknown models are rejected unless allow_unregistered=True.
+
+        Default deny protects cost telemetry: until a model is added to
+        SupportedModel and utils/token_pricing.json, cost_usd would read
+        as zero. We force operators to opt in explicitly.
+        """
         with pytest.raises(ValueError, match="Unsupported model"):
             get_model_provider("some-random-model", instructions="test")
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    def test_unknown_model_with_opt_in_routes_to_litellm_with_warning(self, caplog):
+        """allow_unregistered=True falls through to LiteLLM with a WARNING.
+
+        Intended for short experiments only; cost telemetry is incorrect
+        until the model is registered in token_pricing.json.
+        """
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="MobileCyBench"):
+            provider = get_model_provider(
+                "some-random-model", instructions="test", allow_unregistered=True
+            )
+
+        assert isinstance(provider, LiteLLMProvider)
+        # The default detection rule (no substring match) routes to OPENAI_API_KEY.
+        assert provider._rule.env_var == "OPENAI_API_KEY"
+        warning_messages = [r.getMessage() for r in caplog.records]
+        assert any(
+            "some-random-model" in m and "SupportedModel" in m for m in warning_messages
+        ), warning_messages
+        # Warning must mention the cost-tracking gap so it isn't silently lost.
+        assert any(
+            "cost_usd" in m and "$0" in m for m in warning_messages
+        ), warning_messages
+        assert any(
+            "token_pricing.json" in m for m in warning_messages
+        ), warning_messages
+
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=False)
+    def test_unknown_claude_model_with_opt_in_auto_detects_anthropic(self, caplog):
+        """With opt-in, a substring-recognised model id (e.g. 'claude') routes
+        to the matching provider's env var via LiteLLM."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="MobileCyBench"):
+            provider = get_model_provider(
+                "claude-future-model", instructions="test", allow_unregistered=True
+            )
+
+        assert isinstance(provider, LiteLLMProvider)
+        assert provider._rule.env_var == "ANTHROPIC_API_KEY"
+        assert any("claude-future-model" in r.getMessage() for r in caplog.records)
 
 
 class TestLiteLLMProviderUsagePassthrough:

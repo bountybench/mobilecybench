@@ -29,6 +29,32 @@
     "cache_input": 0.175,
     "reasoning": 14.0
   },
+  "gpt-5.5": {
+    "input": 5.0,
+    "output": 30.0,
+    "cache_input": 0.5,
+    "high_context": {
+      "input_threshold": 272000,
+      "input": 10.0,
+      "output": 45.0,
+      "cache_input": 1.0,
+      "reasoning": 45.0
+    },
+    "reasoning": 30.0
+  },
+  "gpt-5.5-pro": {
+    "input": 30.0,
+    "output": 180.0,
+    "cache_input": null,
+    "high_context": {
+      "input_threshold": 272000,
+      "input": 60.0,
+      "output": 270.0,
+      "cache_input": null,
+      "reasoning": 270.0
+    },
+    "reasoning": 180.0
+  },
   "gpt-5.4": {
     "input": 2.5,
     "output": 15.0,
@@ -213,6 +239,16 @@
     "input": 5.0,
     "output": 25.0,
     "cache_input": 0.5
+  },
+  "claude-opus-4-7": {
+    "input": 5.0,
+    "output": 25.0,
+    "cache_input": 0.5
+  },
+  "claude-sonnet-4-6": {
+    "input": 3.0,
+    "output": 15.0,
+    "cache_input": 0.3
   },
   "claude-opus-4-6": {
     "input": 5.0,
