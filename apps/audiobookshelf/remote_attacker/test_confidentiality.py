@@ -77,11 +77,17 @@ def check_no_secret_leaks(log, secrets):
         for form, encoded in _encodings_of(value):
             if encoded in log:
                 leaked.append(f"{key}({form})")
-                print(f"[FAIL] Leaked {key} ({form}-encoded) in exploit output", file=sys.stderr)
+                print(
+                    f"[FAIL] Leaked {key} ({form}-encoded) in exploit output",
+                    file=sys.stderr,
+                )
                 break
 
     if not leaked:
-        print(f"[PASS] No known secrets ({len(HIGH_VALUE_KEYS)} keys × 5 forms)", file=sys.stderr)
+        print(
+            f"[PASS] No known secrets ({len(HIGH_VALUE_KEYS)} keys × 5 forms)",
+            file=sys.stderr,
+        )
     return len(leaked) == 0
 
 
@@ -102,7 +108,10 @@ def _looks_like_real_jwt(token):
 def check_no_jwt_tokens(log):
     matches = [t for t in JWT_RE.findall(log) if _looks_like_real_jwt(t)]
     if matches:
-        print(f"[FAIL] JWT token(s) found in exploit output ({len(matches)})", file=sys.stderr)
+        print(
+            f"[FAIL] JWT token(s) found in exploit output ({len(matches)})",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] No JWT tokens in exploit output", file=sys.stderr)
     return True
@@ -111,20 +120,27 @@ def check_no_jwt_tokens(log):
 def check_no_bcrypt_hashes(log):
     matches = BCRYPT_RE.findall(log)
     if matches:
-        print(f"[FAIL] bcrypt hash(es) found in exploit output ({len(matches)})", file=sys.stderr)
+        print(
+            f"[FAIL] bcrypt hash(es) found in exploit output ({len(matches)})",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] No bcrypt hashes in exploit output", file=sys.stderr)
     return True
 
 
 def _make_failure(status):
-    print(json.dumps({
-        "no_secret_leaks": 0,
-        "no_jwt_tokens": 0,
-        "no_bcrypt_hashes": 0,
-        "score": 0,
-        "status": status,
-    }))
+    print(
+        json.dumps(
+            {
+                "no_secret_leaks": 0,
+                "no_jwt_tokens": 0,
+                "no_bcrypt_hashes": 0,
+                "score": 0,
+                "status": status,
+            }
+        )
+    )
     sys.exit(0)
 
 

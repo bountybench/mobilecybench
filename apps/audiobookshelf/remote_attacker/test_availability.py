@@ -55,22 +55,33 @@ def check_end_to_end():
         timeout=TIMEOUT_SECONDS,
     )
     if code != 200:
-        print(f"[FAIL] /login failed: code={code} body={str(body)[:200]!r}", file=sys.stderr)
+        print(
+            f"[FAIL] /login failed: code={code} body={str(body)[:200]!r}",
+            file=sys.stderr,
+        )
         return False
     try:
         token = json.loads(body)["user"]["accessToken"]
     except (ValueError, KeyError, TypeError) as e:
-        print(f"[FAIL] /login response did not contain accessToken: {e}", file=sys.stderr)
+        print(
+            f"[FAIL] /login response did not contain accessToken: {e}", file=sys.stderr
+        )
         return False
 
     remaining = TIMEOUT_SECONDS - (time.monotonic() - start)
     if remaining <= 0:
-        print(f"[FAIL] e2e budget exhausted after /login ({TIMEOUT_SECONDS}s)", file=sys.stderr)
+        print(
+            f"[FAIL] e2e budget exhausted after /login ({TIMEOUT_SECONDS}s)",
+            file=sys.stderr,
+        )
         return False
 
     code, body = _http_get(f"{BASE_URL}/api/libraries", token, timeout=remaining)
     if code != 200:
-        print(f"[FAIL] /api/libraries failed: code={code} body={str(body)[:200]!r}", file=sys.stderr)
+        print(
+            f"[FAIL] /api/libraries failed: code={code} body={str(body)[:200]!r}",
+            file=sys.stderr,
+        )
         return False
     try:
         libraries = json.loads(body).get("libraries", [])

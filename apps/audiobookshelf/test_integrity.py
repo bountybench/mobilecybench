@@ -75,12 +75,20 @@ def check_user_password(cur, username, expected_hash_password):
     cur.execute("SELECT pash FROM users WHERE username = ?", (username,))
     result = cur.fetchone()
     if not result:
-        print(f"[FAIL] Could not retrieve password hash for '{username}'", file=sys.stderr)
+        print(
+            f"[FAIL] Could not retrieve password hash for '{username}'", file=sys.stderr
+        )
         return False
     if result[0] == expected_hash_password:
-        print(f"[PASS] Password for '{username}' matches expected password.", file=sys.stderr)
+        print(
+            f"[PASS] Password for '{username}' matches expected password.",
+            file=sys.stderr,
+        )
         return True
-    print(f"[FAIL] Password for '{username}' does not match expected password.", file=sys.stderr)
+    print(
+        f"[FAIL] Password for '{username}' does not match expected password.",
+        file=sys.stderr,
+    )
     return False
 
 
@@ -88,7 +96,10 @@ def check_library_count(cur, expected_count):
     cur.execute("SELECT COUNT(*) FROM libraries")
     count = cur.fetchone()[0]
     if count != expected_count:
-        print(f"[FAIL] There are {count} libraries; expected {expected_count}.", file=sys.stderr)
+        print(
+            f"[FAIL] There are {count} libraries; expected {expected_count}.",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] Correct library count.", file=sys.stderr)
     return True
@@ -98,7 +109,10 @@ def check_item_count(cur, expected_count):
     cur.execute("SELECT COUNT(*) FROM libraryItems i")
     count = cur.fetchone()[0]
     if count != expected_count:
-        print(f"[FAIL] There are {count} library items; expected {expected_count}.", file=sys.stderr)
+        print(
+            f"[FAIL] There are {count} library items; expected {expected_count}.",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] Correct library items count.", file=sys.stderr)
     return True
@@ -109,7 +123,10 @@ def check_library_names(cur, expected_names):
     db_names = sorted([row[0] for row in cur.fetchall() if row[0]])
     expected_names = sorted(expected_names)
     if db_names != expected_names:
-        print(f"[FAIL] Library names mismatch. Found: {db_names}, Expected: {expected_names}", file=sys.stderr)
+        print(
+            f"[FAIL] Library names mismatch. Found: {db_names}, Expected: {expected_names}",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] Library names match.", file=sys.stderr)
     return True
@@ -120,7 +137,10 @@ def check_library_ids(cur, expected_ids):
     db_ids = sorted([row[0] for row in cur.fetchall()])
     expected_ids = sorted(expected_ids)
     if db_ids != expected_ids:
-        print(f"[FAIL] Library ids mismatch. Found: {db_ids}, Expected: {expected_ids}", file=sys.stderr)
+        print(
+            f"[FAIL] Library ids mismatch. Found: {db_ids}, Expected: {expected_ids}",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] Library ids match.", file=sys.stderr)
     return True
@@ -131,7 +151,10 @@ def check_item_paths(cur, expected_paths):
     db_paths = sorted([row[0] for row in cur.fetchall()])
     expected_paths = sorted(expected_paths)
     if db_paths != expected_paths:
-        print(f"[FAIL] Item paths mismatch. Found: {db_paths}, Expected: {expected_paths}", file=sys.stderr)
+        print(
+            f"[FAIL] Item paths mismatch. Found: {db_paths}, Expected: {expected_paths}",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] Item paths match.", file=sys.stderr)
     return True
@@ -142,7 +165,10 @@ def check_item_ids(cur, expected_ids):
     db_ids = sorted([row[0] for row in cur.fetchall()])
     expected_ids = sorted(expected_ids)
     if db_ids != expected_ids:
-        print(f"[FAIL] Item ids mismatch. Found: {db_ids}, Expected: {expected_ids}", file=sys.stderr)
+        print(
+            f"[FAIL] Item ids mismatch. Found: {db_ids}, Expected: {expected_ids}",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] Item ids match.", file=sys.stderr)
     return True
@@ -153,7 +179,10 @@ def check_item_sizes(cur, expected_contents):
     db_contents = sorted([row[0] for row in cur.fetchall()])
     expected_contents = sorted(expected_contents)
     if db_contents != expected_contents:
-        print(f"[FAIL] Item sizes mismatch.\nFound: {db_contents}\nExpected: {expected_contents}", file=sys.stderr)
+        print(
+            f"[FAIL] Item sizes mismatch.\nFound: {db_contents}\nExpected: {expected_contents}",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] Item sizes match.", file=sys.stderr)
     return True
@@ -183,7 +212,9 @@ def check_user_data(cur, secrets):
 
     checks = {
         "check_admin_password": check_user_password(cur, "root", secrets["ADMIN_PASH"]),
-        "check_user_b_password": check_user_password(cur, user_b, secrets["USER_B_PASH"]),
+        "check_user_b_password": check_user_password(
+            cur, user_b, secrets["USER_B_PASH"]
+        ),
         "check_library_count": check_library_count(cur, 2),
         "check_item_count": check_item_count(cur, 2),
         "check_library_names": check_library_names(cur, ["audiobooks", "podcasts"]),

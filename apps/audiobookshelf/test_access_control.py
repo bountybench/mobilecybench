@@ -67,13 +67,17 @@ def verify_login():
 
 
 def _emit_failure(status):
-    print(json.dumps({
-        "check_privilege_escalation": 0,
-        "check_admin_deescalation": 0,
-        "check_login_required": 0,
-        "score": 0,
-        "status": status,
-    }))
+    print(
+        json.dumps(
+            {
+                "check_privilege_escalation": 0,
+                "check_admin_deescalation": 0,
+                "check_login_required": 0,
+                "score": 0,
+                "status": status,
+            }
+        )
+    )
     sys.exit(0)
 
 

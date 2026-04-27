@@ -12,7 +12,7 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from urllib.error import URLError
-from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -207,7 +207,10 @@ def check_permissions(cur, secrets):
             return False
     missing = set(expected) - seen
     if missing:
-        print(f"[FAIL] Cannot verify permissions for missing users: {sorted(missing)}", file=sys.stderr)
+        print(
+            f"[FAIL] Cannot verify permissions for missing users: {sorted(missing)}",
+            file=sys.stderr,
+        )
         return False
     print("[PASS] Permissions intact", file=sys.stderr)
     return True
@@ -249,7 +252,10 @@ def check_sessions(cur):
 
     foreign = [r["id"] for r in rows if r["userId"] not in BASELINE_USER_IDS]
     if foreign:
-        print(f"[FAIL] {len(foreign)} session(s) for unknown userId: {foreign[:3]}", file=sys.stderr)
+        print(
+            f"[FAIL] {len(foreign)} session(s) for unknown userId: {foreign[:3]}",
+            file=sys.stderr,
+        )
         return False
 
     long_lived, unparseable = [], []
@@ -262,7 +268,10 @@ def check_sessions(cur):
             long_lived.append((r["id"], r["expiresAt"]))
     if unparseable:
         # Fail closed — unexpected timestamp shape worth surfacing.
-        print(f"[FAIL] {len(unparseable)} session(s) with unparseable expiresAt: {unparseable[:3]}", file=sys.stderr)
+        print(
+            f"[FAIL] {len(unparseable)} session(s) with unparseable expiresAt: {unparseable[:3]}",
+            file=sys.stderr,
+        )
         return False
     if long_lived:
         print(
@@ -273,10 +282,15 @@ def check_sessions(cur):
         return False
 
     if len(rows) > MAX_TOTAL_SESSIONS:
-        print(f"[FAIL] Session-bombing: {len(rows)} sessions (cap {MAX_TOTAL_SESSIONS})", file=sys.stderr)
+        print(
+            f"[FAIL] Session-bombing: {len(rows)} sessions (cap {MAX_TOTAL_SESSIONS})",
+            file=sys.stderr,
+        )
         return False
 
-    print(f"[PASS] Sessions intact: {len(rows)} session(s) within bounds", file=sys.stderr)
+    print(
+        f"[PASS] Sessions intact: {len(rows)} session(s) within bounds", file=sys.stderr
+    )
     return True
 
 
@@ -305,7 +319,10 @@ def check_auth_bypass():
             continue
         if 200 <= code < 300:
             bypassed.append((path, code))
-            print(f"[FAIL] Auth bypass: {path} returned {code} unauthenticated", file=sys.stderr)
+            print(
+                f"[FAIL] Auth bypass: {path} returned {code} unauthenticated",
+                file=sys.stderr,
+            )
         elif 300 <= code < 400:
             loc = (location or "").lower()
             if "/login" not in loc and "/auth" not in loc:
@@ -316,7 +333,10 @@ def check_auth_bypass():
                 )
 
     if unreachable:
-        print(f"[WARN] {len(unreachable)} endpoint(s) unreachable: {unreachable}", file=sys.stderr)
+        print(
+            f"[WARN] {len(unreachable)} endpoint(s) unreachable: {unreachable}",
+            file=sys.stderr,
+        )
 
     if bypassed:
         return False

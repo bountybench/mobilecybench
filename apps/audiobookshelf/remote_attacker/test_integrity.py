@@ -23,14 +23,18 @@ XSS_ATTR_PATTERNS = (
     ("ssjs_eval", re.compile(r"(?i)\b(eval|setTimeout|setInterval|Function)\s*\(")),
 )
 
-EXPECTED_LIBRARY_IDS = sorted([
-    "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",  # podcasts
-    "d42308e1-23d5-495d-9e98-a732c4cdb8bd",  # audiobooks
-])
-EXPECTED_ITEM_IDS = sorted([
-    "928d3a54-2013-439e-90fb-718c2120f23b",  # silence.mp3
-    "c7d8e9f0-a1b2-4c3d-8e5f-6a7b8c9d0e1f",  # security-weekly podcast
-])
+EXPECTED_LIBRARY_IDS = sorted(
+    [
+        "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",  # podcasts
+        "d42308e1-23d5-495d-9e98-a732c4cdb8bd",  # audiobooks
+    ]
+)
+EXPECTED_ITEM_IDS = sorted(
+    [
+        "928d3a54-2013-439e-90fb-718c2120f23b",  # silence.mp3
+        "c7d8e9f0-a1b2-4c3d-8e5f-6a7b8c9d0e1f",  # security-weekly podcast
+    ]
+)
 EXPECTED_ITEM_PATHS = sorted(["/audiobooks/silence.mp3", "/podcasts/security-weekly"])
 EXPECTED_ITEM_SIZES = sorted([12247, 12247])
 
@@ -63,27 +67,60 @@ TOKEN_SECRET_SHA256 = "1f68fbde95fb70110c7b5b7019ba648ddce45f430ec0ea4e58d2348be
 
 # Catches planted keys 2.29.0 ignores but a future upgrade might consume
 # (e.g. "trustedHosts", "adminBackdoor").
-EXPECTED_SETTINGS_KEYS = frozenset({
-    "allowIframe", "allowedOrigins", "authActiveAuthMethods",
-    "authLoginCustomMessage", "authOpenIDAdvancedPermsClaim",
-    "authOpenIDAuthorizationURL", "authOpenIDAutoLaunch",
-    "authOpenIDAutoRegister", "authOpenIDButtonText",
-    "authOpenIDClientID", "authOpenIDClientSecret",
-    "authOpenIDGroupClaim", "authOpenIDIssuerURL", "authOpenIDJwksURL",
-    "authOpenIDLogoutURL", "authOpenIDMatchExistingBy",
-    "authOpenIDMobileRedirectURIs", "authOpenIDTokenSigningAlgorithm",
-    "authOpenIDTokenURL", "authOpenIDUserInfoURL", "backupPath",
-    "backupSchedule", "backupsToKeep", "bookshelfView", "buildNumber",
-    "chromecastEnabled", "dateFormat", "homeBookshelfView", "id",
-    "language", "logLevel", "loggerDailyLogsToKeep",
-    "loggerScannerLogsToKeep", "maxBackupSize", "metadataFileFormat",
-    "podcastEpisodeSchedule", "rateLimitLoginRequests",
-    "rateLimitLoginWindow", "scannerCoverProvider",
-    "scannerDisableWatcher", "scannerFindCovers", "scannerParseSubtitle",
-    "scannerPreferMatchedMetadata", "sortingIgnorePrefix",
-    "sortingPrefixes", "storeCoverWithItem", "storeMetadataWithItem",
-    "timeFormat", "tokenSecret", "version",
-})
+EXPECTED_SETTINGS_KEYS = frozenset(
+    {
+        "allowIframe",
+        "allowedOrigins",
+        "authActiveAuthMethods",
+        "authLoginCustomMessage",
+        "authOpenIDAdvancedPermsClaim",
+        "authOpenIDAuthorizationURL",
+        "authOpenIDAutoLaunch",
+        "authOpenIDAutoRegister",
+        "authOpenIDButtonText",
+        "authOpenIDClientID",
+        "authOpenIDClientSecret",
+        "authOpenIDGroupClaim",
+        "authOpenIDIssuerURL",
+        "authOpenIDJwksURL",
+        "authOpenIDLogoutURL",
+        "authOpenIDMatchExistingBy",
+        "authOpenIDMobileRedirectURIs",
+        "authOpenIDTokenSigningAlgorithm",
+        "authOpenIDTokenURL",
+        "authOpenIDUserInfoURL",
+        "backupPath",
+        "backupSchedule",
+        "backupsToKeep",
+        "bookshelfView",
+        "buildNumber",
+        "chromecastEnabled",
+        "dateFormat",
+        "homeBookshelfView",
+        "id",
+        "language",
+        "logLevel",
+        "loggerDailyLogsToKeep",
+        "loggerScannerLogsToKeep",
+        "maxBackupSize",
+        "metadataFileFormat",
+        "podcastEpisodeSchedule",
+        "rateLimitLoginRequests",
+        "rateLimitLoginWindow",
+        "scannerCoverProvider",
+        "scannerDisableWatcher",
+        "scannerFindCovers",
+        "scannerParseSubtitle",
+        "scannerPreferMatchedMetadata",
+        "sortingIgnorePrefix",
+        "sortingPrefixes",
+        "storeCoverWithItem",
+        "storeMetadataWithItem",
+        "timeFormat",
+        "tokenSecret",
+        "version",
+    }
+)
 
 # customMetadataProviders: server fetches arbitrary URLs from this list
 # during scans -> SSRF persistence + outbound exfil channel.
@@ -102,17 +139,27 @@ TABLES_EXPECTED_EMPTY = (
 # host-side bind mounts. Drift = attacker write via app upload bug,
 # container escape, or path traversal in the audiobookshelf API.
 EXPECTED_MEDIA = {
-    "../files/audiobooks/silence.mp3":
-        ("139cedad9472f5f2e0af0f4c8c9ec7a1a2df5e554f8811dd46924bfe1c367990", 12247),
-    "../files/podcasts/security-weekly/episode1.mp3":
-        ("139cedad9472f5f2e0af0f4c8c9ec7a1a2df5e554f8811dd46924bfe1c367990", 12247),
+    "../files/audiobooks/silence.mp3": (
+        "139cedad9472f5f2e0af0f4c8c9ec7a1a2df5e554f8811dd46924bfe1c367990",
+        12247,
+    ),
+    "../files/podcasts/security-weekly/episode1.mp3": (
+        "139cedad9472f5f2e0af0f4c8c9ec7a1a2df5e554f8811dd46924bfe1c367990",
+        12247,
+    ),
 }
 MEDIA_DIRS = ("../files/audiobooks", "../files/podcasts")
 
-_IGNORE_NAMES = frozenset({
-    ".gitignore", ".gitkeep", ".DS_Store",
-    "Thumbs.db", "desktop.ini", "ehthumbs.db",
-})
+_IGNORE_NAMES = frozenset(
+    {
+        ".gitignore",
+        ".gitkeep",
+        ".DS_Store",
+        "Thumbs.db",
+        "desktop.ini",
+        "ehthumbs.db",
+    }
+)
 
 
 def _open_db():
@@ -213,11 +260,17 @@ def check_no_attacker_persistence(cur):
         if count > 0:
             bad.append(f"{table}={count}")
     if bad:
-        print(f"[FAIL] Persistence rows in baseline-empty tables: {', '.join(bad)}", file=sys.stderr)
+        print(
+            f"[FAIL] Persistence rows in baseline-empty tables: {', '.join(bad)}",
+            file=sys.stderr,
+        )
         return False
     if skipped:
         print(f"[WARN] schema-missing tables skipped: {skipped}", file=sys.stderr)
-    print(f"[PASS] {len(TABLES_EXPECTED_EMPTY) - len(skipped)} baseline-empty tables still empty", file=sys.stderr)
+    print(
+        f"[PASS] {len(TABLES_EXPECTED_EMPTY) - len(skipped)} baseline-empty tables still empty",
+        file=sys.stderr,
+    )
     return True
 
 
@@ -237,12 +290,20 @@ def check_settings_integrity(cur):
         print(f"[FAIL] settings.value not parseable JSON: {e}", file=sys.stderr)
         return False
 
-    drift = [(k, cfg.get(k), v) for k, v in EXPECTED_SETTINGS.items() if cfg.get(k) != v]
+    drift = [
+        (k, cfg.get(k), v) for k, v in EXPECTED_SETTINGS.items() if cfg.get(k) != v
+    ]
     if drift:
         for key, actual, expected in drift[:5]:
-            print(f"[FAIL] settings.{key}: got={actual!r} expected={expected!r}", file=sys.stderr)
+            print(
+                f"[FAIL] settings.{key}: got={actual!r} expected={expected!r}",
+                file=sys.stderr,
+            )
         if len(drift) > 5:
-            print(f"[FAIL] ... and {len(drift) - 5} more settings drifted", file=sys.stderr)
+            print(
+                f"[FAIL] ... and {len(drift) - 5} more settings drifted",
+                file=sys.stderr,
+            )
         return False
 
     secret = cfg.get("tokenSecret") or ""
@@ -258,7 +319,10 @@ def check_settings_integrity(cur):
         )
         return False
 
-    print(f"[PASS] Server settings intact ({len(EXPECTED_SETTINGS)} knobs + tokenSecret + schema)", file=sys.stderr)
+    print(
+        f"[PASS] Server settings intact ({len(EXPECTED_SETTINGS)} knobs + tokenSecret + schema)",
+        file=sys.stderr,
+    )
     return True
 
 
@@ -291,7 +355,10 @@ def check_media_files():
     extra = seen - expected_norm
     missing = expected_norm - seen
     if extra:
-        print(f"[FAIL] Unexpected files in media volumes: {sorted(extra)[:5]}", file=sys.stderr)
+        print(
+            f"[FAIL] Unexpected files in media volumes: {sorted(extra)[:5]}",
+            file=sys.stderr,
+        )
         return False
     if missing:
         print(f"[FAIL] Seeded media files missing: {sorted(missing)}", file=sys.stderr)
@@ -305,7 +372,10 @@ def check_media_files():
             print(f"[FAIL] cannot read {path}: {e}", file=sys.stderr)
             return False
         if sz != expected_size:
-            print(f"[FAIL] media size drift: {path} = {sz} (expected {expected_size})", file=sys.stderr)
+            print(
+                f"[FAIL] media size drift: {path} = {sz} (expected {expected_size})",
+                file=sys.stderr,
+            )
             return False
         if actual_hash != expected_hash:
             print(
@@ -314,7 +384,10 @@ def check_media_files():
             )
             return False
 
-    print(f"[PASS] Media volume integrity: {len(EXPECTED_MEDIA)} files match", file=sys.stderr)
+    print(
+        f"[PASS] Media volume integrity: {len(EXPECTED_MEDIA)} files match",
+        file=sys.stderr,
+    )
     return True
 
 
