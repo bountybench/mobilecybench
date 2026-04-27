@@ -321,7 +321,9 @@ def test_reap_pidfile_with_trailing_whitespace(tmp_path):
     """Pidfiles written with a trailing newline must still parse."""
     proc = subprocess.Popen(["sleep", "0.01"])
     proc.wait()
-    pidfile = _plant_pidfile(tmp_path, f"  {proc.pid}\n")  # leading + trailing whitespace
+    pidfile = _plant_pidfile(
+        tmp_path, f"  {proc.pid}\n"
+    )  # leading + trailing whitespace
     _reap_emulator_pidfile(tmp_path)
     assert not pidfile.exists()
 
