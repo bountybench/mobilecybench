@@ -597,10 +597,19 @@ build_and_package() {
 #             build_apk.sh, utils/*.sh
 #   --vuln:   above + <resolved_vuln_dir>/vulnerability.patch
 #
-# Storage: a single sha256-hex line in `apps/<app>/apk/.fingerprint` (or
-# `apps/<app>/apk/<vuln_id>/.fingerprint` for vuln builds). The fingerprint
-# file is ~64 bytes; it lives next to the APK that the build already produces,
-# so this adds no new directories. Clear with `rm -rf apps/<app>/apk/`.
+# Storage: two key=value lines in `apps/<app>/apk/.fingerprint` (or
+# `apps/<app>/apk/<vuln_id>/.fingerprint` for vuln builds):
+#   inputs_hash=<sha256 over build inputs>
+#   apk_hash=<sha256 of the APK we just built>
+# The file is ~150 bytes; it lives next to the APK that the build already
+# produces, so this adds no new directories. Clear with `rm -rf apps/<app>/apk/`.
+#
+# Both hashes must match on a cache-hit attempt. The apk_hash check is what
+# catches external mutation: if download_apk.py, a manual `cp`, or any other
+# tool overwrites apk/<app>.apk after we cached it, the apk_hash on disk no
+# longer matches the stored value and we fall through to a rebuild. Without
+# this second check the cache would silently serve whatever APK happened to
+# be at that path the next time the build inputs were unchanged.
 #
 # Cache is intentionally disabled for --commit / --hardened-patch / --output
 # overrides because those break the fingerprint-determines-output assumption.
@@ -661,10 +670,26 @@ cache_apk_file() {
     fi
 }
 
+# Hash the on-disk APK file. Used to detect external mutation between save
+# and read (e.g. download_apk.py overwriting apk/<app>.apk; manual cp; etc.).
+# A ~150 MB sha256 is ~0.5-1s — cheap relative to the build it might save.
+hash_apk_file() {
+    local apk="$1"
+    [ -f "$apk" ] || { echo ""; return 1; }
+    shasum -a 256 "$apk" | cut -d' ' -f1
+}
+
 # Returns 0 (success) on cache hit, 1 on miss. On hit, the existing APK is
 # left in place and the caller should exit 0.
+#
+# A hit requires BOTH:
+#   1. inputs_hash matches (build inputs unchanged), AND
+#   2. apk_hash matches (the APK on disk is the one we built — not one
+#      overwritten by download_apk.py, manual cp, or any other tool that
+#      writes to apps/<app>/apk/).
+# A mismatch on either treats this as a miss and the build re-runs.
 try_cache_hit() {
-    local fp_file apk_file current_fp expected_fp
+    local fp_file apk_file
     fp_file="$(cache_fingerprint_file)"
     apk_file="$(cache_apk_file)"
 
@@ -677,34 +702,67 @@ try_cache_hit() {
         return 1
     fi
 
-    current_fp="$(compute_build_fingerprint)" || {
+    # Read stored values (key=value lines). Tolerant of older single-line
+    # fingerprints from earlier versions of this code: if no apk_hash line
+    # is present, treat as miss (forces a rebuild that writes the new format).
+    local stored_inputs_hash stored_apk_hash
+    stored_inputs_hash="$(grep -E '^inputs_hash=' "$fp_file" | head -1 | cut -d= -f2-)"
+    stored_apk_hash="$(grep -E '^apk_hash=' "$fp_file" | head -1 | cut -d= -f2-)"
+
+    if [ -z "$stored_inputs_hash" ] || [ -z "$stored_apk_hash" ]; then
+        echo -e "${INFO} Cache MISS: fingerprint format unrecognized (rebuild will rewrite it)"
+        return 1
+    fi
+
+    local current_inputs_hash
+    current_inputs_hash="$(compute_build_fingerprint)" || {
         echo -e "${WARNING} Cache check skipped: could not compute fingerprint"
         return 1
     }
-    expected_fp="$(cat "$fp_file")"
-
-    if [ "$current_fp" = "$expected_fp" ]; then
-        echo -e "${SUCCESS} Cache HIT: $apk_file"
-        echo -e "${INFO} Fingerprint $current_fp matches. Skipping build."
-        echo -e "${INFO} Drop --cache to force a rebuild."
-        return 0
+    if [ "$current_inputs_hash" != "$stored_inputs_hash" ]; then
+        echo -e "${INFO} Cache MISS: build inputs changed"
+        echo -e "${INFO}   expected $stored_inputs_hash"
+        echo -e "${INFO}   current  $current_inputs_hash"
+        return 1
     fi
-    echo -e "${INFO} Cache MISS: fingerprint changed"
-    echo -e "${INFO}   expected $expected_fp"
-    echo -e "${INFO}   current  $current_fp"
-    return 1
+
+    local current_apk_hash
+    current_apk_hash="$(hash_apk_file "$apk_file")"
+    if [ "$current_apk_hash" != "$stored_apk_hash" ]; then
+        echo -e "${INFO} Cache MISS: APK on disk doesn't match what we built"
+        echo -e "${INFO}   expected $stored_apk_hash"
+        echo -e "${INFO}   current  $current_apk_hash"
+        echo -e "${INFO}   (something other than build_apk.sh wrote to $apk_file)"
+        return 1
+    fi
+
+    echo -e "${SUCCESS} Cache HIT: $apk_file"
+    echo -e "${INFO} inputs_hash=$current_inputs_hash"
+    echo -e "${INFO} apk_hash=$current_apk_hash"
+    echo -e "${INFO} Drop --cache to force a rebuild."
+    return 0
 }
 
 save_cache_fingerprint() {
     should_use_cache || return 0
-    local fp_file fp
+    local fp_file apk_file inputs_hash apk_hash
     fp_file="$(cache_fingerprint_file)"
-    fp="$(compute_build_fingerprint)" || {
-        echo -e "${WARNING} Skipping fingerprint save: could not compute fingerprint"
+    apk_file="$(cache_apk_file)"
+
+    inputs_hash="$(compute_build_fingerprint)" || {
+        echo -e "${WARNING} Skipping fingerprint save: could not compute inputs hash"
         return 0
     }
+    apk_hash="$(hash_apk_file "$apk_file")" || {
+        echo -e "${WARNING} Skipping fingerprint save: APK missing at $apk_file"
+        return 0
+    }
+
     mkdir -p "$(dirname "$fp_file")"
-    printf '%s\n' "$fp" > "$fp_file"
+    {
+        echo "inputs_hash=$inputs_hash"
+        echo "apk_hash=$apk_hash"
+    } > "$fp_file"
     echo -e "${INFO} Saved cache fingerprint: $fp_file"
 }
 

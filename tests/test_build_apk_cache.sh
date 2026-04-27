@@ -146,7 +146,7 @@ echo "=== Test 4: changing build.sh invalidates cache ==="
 echo "# trivial change for cache invalidation test" >> "$TMP/apps/fake_app/build.sh"
 out=$(run_build fake_app --cache)
 echo "$out" | tail -10
-echo "$out" | grep -q "Cache MISS: fingerprint changed" || fail "expected 'Cache MISS: fingerprint changed' after build.sh edit"
+echo "$out" | grep -q "Cache MISS: build inputs changed" || fail "expected 'Cache MISS: build inputs changed' after build.sh edit"
 echo "$out" | grep -q "fake build.sh" || fail "expected fake build.sh to run after invalidation"
 FP2=$(cat "$FP_PATH")
 [ "$FP1" != "$FP2" ] || fail "fingerprint should have changed (was $FP1, still $FP2)"
@@ -184,6 +184,27 @@ if echo "$out" | grep -qE "Cache HIT|Cache MISS"; then
 fi
 [ -f "$TMP/custom_out/fake_app.apk" ] || fail "expected APK at custom output path"
 pass "seventh: --output bypassed cache, APK at custom path"
+
+# 7b. External mutation of apk/<app>.apk forces a MISS (catches download_apk.py,
+#     manual cp, etc. overwriting the cached APK).
+echo
+echo "=== Test 7b: external mutation of cached APK forces MISS ==="
+# Re-populate the cache from a clean state (we destroyed the apk/ contents
+# in test 6 by running --output to a different dir).
+out=$(run_build fake_app --cache)
+echo "$out" | grep -qE "Cache (HIT|saved fingerprint|MISS:)" || fail "expected cache activity on re-population"
+[ -f "$APK_PATH" ] || fail "expected APK at $APK_PATH after repopulation"
+[ -f "$FP_PATH" ] || fail "expected fingerprint at $FP_PATH after repopulation"
+
+# Simulate something else (e.g. download_apk.py) overwriting the APK.
+echo "downloaded-content-$(date +%s%N)" > "$APK_PATH"
+
+out=$(run_build fake_app --cache)
+echo "$out" | tail -10
+echo "$out" | grep -q "Cache MISS: APK on disk doesn't match" \
+    || fail "expected 'APK on disk doesn't match' MISS after external overwrite"
+echo "$out" | grep -q "fake build.sh" || fail "expected rebuild after external overwrite"
+pass "7b: external mutation of APK detected, cache fell through to rebuild"
 
 # 8. --vuln + --cache: separate cache namespace under apk/<vuln_id>/, vuln.patch contributes to fingerprint.
 echo
@@ -241,7 +262,7 @@ echo
 echo "=== Test 10: editing vulnerability.patch invalidates only the vuln cache ==="
 echo "# fake patch v2" > "$TMP/apps/fake_app/synthetic_vulnerabilities/vuln_0/vulnerability.patch"
 out=$("$TMP/run_vuln_with_mocks.sh" fake_app --vuln vuln_0 --cache 2>&1)
-echo "$out" | grep -q "Cache MISS: fingerprint changed" || fail "expected vuln Cache MISS after patch edit"
+echo "$out" | grep -q "Cache MISS: build inputs changed" || fail "expected vuln Cache MISS after patch edit"
 VULN_FP2=$(cat "$VULN_FP")
 [ "$VULN_FP1" != "$VULN_FP2" ] || fail "vuln fingerprint should have changed"
 
