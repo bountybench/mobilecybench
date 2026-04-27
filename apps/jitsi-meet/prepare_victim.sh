@@ -68,11 +68,16 @@ main() {
     fi
 
     log "Using UI helper: $helper"
+    # Bump dwell to 60 s — victim_flow polls the cache and exits as soon
+    # as the .cnt appears, so this is a *cap*, not a fixed wait. The
+    # legitimate (vulnerable build, post-history-replay) Fresco fetch
+    # typically completes inside a few seconds; the cap absorbs slow CI
+    # network or animation jank.
     if ! python3 "$helper" \
             --mode victim \
             --room "$ROOM_NAME" \
             --display-name "victim_bob" \
-            --dwell-seconds 25; then
+            --dwell-seconds 60; then
         log "WARNING: victim UI flow returned non-zero"
     fi
 
