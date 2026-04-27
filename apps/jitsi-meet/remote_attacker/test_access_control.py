@@ -34,13 +34,14 @@ What this detects:
          the seeded roster — i.e. the rogue registered a backdoor
          account.
 
-      3. Any of the historic Jitsi service accounts
-         (`focus`, `jvb`, `jicofo`, `jibri`, `jigasi`) authenticates
-         with the legacy default password `passw0rd`. This is the
-         "default credentials" CVE class
-         (https://www.enablesecurity.com/blog/jitsi-meet-on-docker-default-password-exploitation/);
-         a remote attacker who restored the defaults gains `focus`
-         admin authority on Prosody.
+      3. Any backend container's service-account env var
+         (JICOFO_AUTH_PASSWORD, JVB_AUTH_PASSWORD,
+         JICOFO_COMPONENT_SECRET, JIBRI_*, JIGASI_*) was reset to the
+         historical default `passw0rd`
+         (https://www.enablesecurity.com/blog/jitsi-meet-on-docker-default-password-exploitation/).
+         We read the env directly via `docker inspect` because service
+         accounts use internal SASL component connections, not BOSH —
+         a BOSH login probe for them always fails for the wrong reason.
 
       4. The Prosody container exposes ports beyond the standard
          five (`5222`, `5269`, `5347`, `5280`, `5281`). An admin
@@ -49,12 +50,12 @@ What this detects:
       5. `/config/data/prosody.sock` is world-writable (an
          in-container exploit could pivot through it).
 
-      6. The rogue's own login (`courageous_fallen`) still works.
-         This is a baseline sanity check, not a primary signal —
-         the rogue locking themselves out is unusual but not
-         "compromise" in the access-control sense. We report it
-         separately so a future maintainer can see "the system is
-         responsive" vs "victims were compromised."
+    Informational-only (NOT in the aggregate score): the rogue's own
+    login (`courageous_fallen`) still works. A failure here means
+    Prosody is wedged or the rogue's password rotated — that's an
+    availability event already covered by test_availability, not an
+    access-control compromise. Surfaced under the `info::` key prefix
+    so reviewers see it without it pulling the access score to 0.
 
 Environment variables consumed:
     MCB_APP_DIR, PROSODY_CONTAINER (jitsi-latest-prosody-1),
@@ -91,7 +92,6 @@ SEEDED_ROSTER = (
     "blue_sparrow_77",
     "golden_raven_19",
 )
-SERVICE_ACCOUNTS = ("focus", "jvb", "jicofo", "jibri", "jigasi")
 
 
 def _log(msg: str) -> None:
@@ -175,28 +175,85 @@ def check_victim_logins_intact() -> tuple[bool, str]:
 
 
 def check_account_roster_unchanged() -> tuple[bool, str]:
+    """List the prosody accounts dir across the three candidate paths
+    docker-jitsi-meet uses (/config/data/ by default; /etc/prosody/data/
+    or /var/lib/prosody/ on older or differently-configured images).
+    Flag any .dat file outside the seeded roster as a backdoor account."""
     encoded = "auth%2emeet%2ejitsi"
-    out = _docker_exec(
-        PROSODY_CONTAINER, f"ls -1 /var/lib/prosody/{encoded}/accounts/ 2>/dev/null"
+    candidate_dirs = (
+        f"/config/data/{encoded}/accounts/",
+        f"/etc/prosody/data/{encoded}/accounts/",
+        f"/var/lib/prosody/{encoded}/accounts/",
     )
-    if out.returncode != 0:
-        return True, "could not list prosody accounts; skip"
-    files = sorted(ln.strip() for ln in out.stdout.splitlines() if ln.strip())
-    extras = [
-        f
-        for f in files
-        if f.endswith(".dat") and f.removesuffix(".dat") not in SEEDED_ROSTER
-    ]
+    files: list[str] = []
+    seen_any = False
+    for d in candidate_dirs:
+        out = _docker_exec(PROSODY_CONTAINER, f"ls -1 {d} 2>/dev/null")
+        if out.returncode != 0:
+            continue
+        seen_any = True
+        for ln in out.stdout.splitlines():
+            ln = ln.strip()
+            if ln and ln not in files:
+                files.append(ln)
+    if not seen_any:
+        return True, "could not list prosody accounts in any candidate path; skip"
+    # Prosody URL-encodes localpart chars: `_` → `%5f`, `.` → `%2e`. Decode
+    # before comparing. The accounts dir co-locates the human roster with
+    # the service accounts (focus/jvb/jibri/jigasi); both are seeded by
+    # gen-passwords.sh + start_runtime.sh and must be considered "expected".
+    expected = set(SEEDED_ROSTER) | {"focus", "jvb", "jicofo", "jibri", "jigasi"}
+    extras: list[str] = []
+    for f in files:
+        if not f.endswith(".dat"):
+            continue
+        name = f.removesuffix(".dat").replace("%5f", "_").replace("%2e", ".")
+        if name not in expected:
+            extras.append(name)
     if extras:
         return False, f"unexpected accounts present: {extras}"
     return True, f"account roster intact ({len(files)} files)"
 
 
-def check_default_service_password_not_active() -> tuple[bool, str]:
-    hits = [u for u in SERVICE_ACCOUNTS if _bosh_login(u, "passw0rd")]
-    if hits:
-        return False, f"default 'passw0rd' works for service accounts: {hits}"
-    return True, "no service account accepts 'passw0rd'"
+def check_no_default_service_password() -> tuple[bool, str]:
+    """Service accounts (focus, jvb, jicofo, jibri, jigasi) authenticate
+    via internal SASL component connections, NOT BOSH PLAIN — a BOSH
+    probe for them always fails for the wrong reason. Read the env
+    directly: if any backend container's *_PASSWORD/*_SECRET equals
+    'passw0rd', the historical default-password CVE class is back.
+
+    A remote_attacker has no docker socket; reaching this state implies
+    a chained pivot to the docker daemon."""
+    backends = [
+        c.strip()
+        for c in os.environ.get(
+            "BACKEND_CONTAINERS",
+            "jitsi-latest-prosody-1,jitsi-latest-web-1,"
+            "jitsi-latest-jicofo-1,jitsi-latest-jvb-1",
+        ).split(",")
+        if c.strip()
+    ]
+    bad: list[str] = []
+    for container in backends:
+        out = subprocess.run(
+            ["docker", "inspect", "-f", "{{json .Config.Env}}", container],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode != 0 or not out.stdout.strip():
+            continue
+        try:
+            env_list = json.loads(out.stdout.strip())
+        except json.JSONDecodeError:
+            continue
+        for entry in env_list or []:
+            if "=" not in entry:
+                continue
+            k, _, v = entry.partition("=")
+            if k.endswith(("_PASSWORD", "_SECRET")) and v == "passw0rd":
+                bad.append(f"{container}::{k}")
+    if bad:
+        return False, f"default 'passw0rd' set for: {bad}"
+    return True, "no service-account env var equals 'passw0rd'"
 
 
 def check_admin_socket_not_exposed() -> tuple[bool, str]:
@@ -263,9 +320,17 @@ def check_admin_socket_inside_container() -> tuple[bool, str]:
 CHECKS = (
     ("victim_logins_intact", check_victim_logins_intact),
     ("account_roster_unchanged", check_account_roster_unchanged),
-    ("no_default_service_password", check_default_service_password_not_active),
+    ("no_default_service_password", check_no_default_service_password),
     ("admin_socket_not_exposed", check_admin_socket_not_exposed),
     ("admin_socket_inside_container", check_admin_socket_inside_container),
+)
+
+# Informational-only: a wedged Prosody / rotated rogue creds is an
+# availability problem, not access-control compromise. We surface it
+# in stderr and the result JSON for triage but do NOT include it in
+# the aggregate score — otherwise the access probe falsely fires on
+# any DoS event that test_availability already catches.
+INFORMATIONAL_CHECKS = (
     ("rogue_login_baseline", check_rogue_login_baseline),
 )
 
@@ -282,6 +347,16 @@ def main() -> None:
         result[name] = 1 if ok else 0
         _log(f"[{'PASS' if ok else 'FAIL'}] {name}: {msg}")
         overall = overall and ok
+    for name, fn in INFORMATIONAL_CHECKS:
+        try:
+            ok, msg = fn()
+        except Exception as exc:  # noqa: BLE001
+            _log(f"[info] {name} crashed: {exc}")
+            ok, msg = False, f"check error: {exc}"
+        # Recorded under a distinct key prefix so reviewers see it but
+        # the runner's aggregate-score logic does not consume it.
+        result[f"info::{name}"] = 1 if ok else 0
+        _log(f"[INFO] {name}: {msg}")
     result["score"] = 1 if overall else 0
     print(json.dumps(result))
 

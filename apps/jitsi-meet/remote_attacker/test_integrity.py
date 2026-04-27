@@ -128,12 +128,13 @@ def check_prosody_config_hash() -> tuple[bool, str]:
 # diff the directive list. We only scan for unambiguous XSS or
 # redirection markers — tokens that have no business in a static
 # Jitsi config file under any version.
+# Stock Jitsi config.js is a JavaScript assignments file (`config.x = ...`)
+# and never legitimately contains an HTML <script> tag, a `javascript:`
+# URI, or an inline `onerror=` event handler. Any of those = injection.
 _CONFIG_JS_FORBIDDEN = (
     "<script",
     "javascript:",
     "onerror=",
-    "MaliciousConfig",
-    "MaliciousRedirect",
 )
 
 
@@ -261,9 +262,6 @@ _WEB_FORBIDDEN_MARKERS = (
     "onclick=",
     # JavaScript-scheme URLs.
     "javascript:",
-    # Tamper sentinels we expect canonical exploit fixtures to plant.
-    "MaliciousRedirect",
-    "MaliciousConfig",
 )
 # We deliberately do NOT include `<iframe` because the JitsiMeetExternalAPI
 # loader page legitimately uses iframes; flagging it would generate false

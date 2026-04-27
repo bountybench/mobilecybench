@@ -176,9 +176,12 @@ def check_tls_proxy() -> tuple[bool, str]:
 
 def check_bosh_endpoint() -> tuple[bool, str]:
     code, _ = _http_status(BOSH_URL)
-    if 200 <= code < 600:
+    # mod_bosh answers an empty GET with 400/404/405 — that's "alive
+    # and rejecting". 5xx means the upstream broke, which is an
+    # availability failure even if the TLS proxy itself is up.
+    if 200 <= code < 500:
         return True, f"{BOSH_URL} → {code}"
-    return False, f"{BOSH_URL} unreachable (code={code})"
+    return False, f"{BOSH_URL} unreachable or upstream-broken (code={code})"
 
 
 def check_external_api_js() -> tuple[bool, str]:

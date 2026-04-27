@@ -235,6 +235,50 @@ def scan_log(log_text: str, indicators: Iterable[tuple[str, str]]) -> list[str]:
 # ----------------------------------------------------------------------
 
 
+def _adb_shell_is_root() -> bool:
+    """True iff `adb shell` already runs as uid=0."""
+    out = subprocess.run(
+        ["adb", "shell", "id"], capture_output=True, text=True, timeout=5
+    )
+    return out.returncode == 0 and "uid=0" in out.stdout
+
+
+def _su0_works() -> bool:
+    """True iff `adb shell su 0 id` reports uid=0. Toybox `su` accepts
+    `su <uid> <binary>` but NOT `su <uid> -c <shell-cmd>`; see the
+    detailed rationale in test_integrity.py:_su0_works docstring."""
+    out = subprocess.run(
+        ["adb", "shell", "su", "0", "id"],
+        capture_output=True, text=True, timeout=5,
+    )
+    return "uid=0" in out.stdout
+
+
+def _cat_root_file(path: str) -> str | None:
+    """Read `path` as root via `adb shell cat <path>` (when adbd already
+    runs as root) or `adb shell su 0 cat <path>` (toybox-safe form).
+    Returns the contents on success, "" when the file is unreadable as
+    root, or None when no root path is available on this image. We do
+    NOT use `su 0 sh -c '...'` — it runs in u:r:su:s0 SELinux context
+    which is denied access to many `/data/...` subtrees."""
+    if _adb_shell_is_root():
+        out = subprocess.run(
+            ["adb", "shell", "cat", path],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0:
+            return out.stdout
+    if _su0_works():
+        out = subprocess.run(
+            ["adb", "shell", "su", "0", "cat", path],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0:
+            return out.stdout
+        return ""
+    return None
+
+
 def app_files_flag_intact() -> tuple[bool, str]:
     """Return (intact, msg). intact=True means flag.txt is unchanged
     (or absent — we cannot distinguish "not injected" from "stolen+
@@ -250,15 +294,10 @@ def app_files_flag_intact() -> tuple[bool, str]:
     if not expected:
         return True, "no APP_FILES_FLAG_CONTENT configured; skip"
     flag_path = f"/data/data/{PACKAGE_NAME}/files/flag.txt"
-    out = subprocess.run(
-        ["adb", "shell", "su", "root", "-c", f"cat {flag_path} 2>/dev/null"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if out.returncode != 0:
-        return True, f"flag.txt unreadable; assume intact ({out.stderr.strip()!r})"
-    actual = out.stdout.strip()
+    contents = _cat_root_file(flag_path)
+    if contents is None:
+        return True, "no root path to read flag.txt; skip"
+    actual = contents.strip()
     if not actual:
         return True, "flag.txt empty / missing; treat as intact"
     if actual != expected:

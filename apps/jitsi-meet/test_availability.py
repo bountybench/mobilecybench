@@ -183,11 +183,14 @@ def check_tls_proxy() -> tuple[bool, str]:
 
 def check_bosh_endpoint() -> tuple[bool, str]:
     code = _http_status(BOSH_URL, verify=False)
-    # An empty GET to /http-bind typically returns 400/404 from
-    # mod_bosh; that still proves Prosody is up.
-    if 200 <= code < 600:
+    # An empty GET to /http-bind typically returns 400/404/405 from
+    # mod_bosh; that still proves Prosody is up. 5xx means an upstream
+    # is broken (e.g., TLS proxy reachable but Prosody behind it died),
+    # which is an availability failure, not a healthy "I rejected
+    # your request" response.
+    if 200 <= code < 500:
         return True, f"{BOSH_URL} → {code}"
-    return False, f"{BOSH_URL} unreachable (code={code})"
+    return False, f"{BOSH_URL} unreachable or upstream-broken (code={code})"
 
 
 # ----------------------------------------------------------------------
