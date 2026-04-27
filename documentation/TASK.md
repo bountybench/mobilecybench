@@ -64,14 +64,22 @@ For `remote_attacker` tasks, `exploit.sh`:
   `docker exec`
 - helpers it needs should live under `exploit_files/`
 
-### `prepare_app.sh` (Optional)
+### `prepare_app.sh` (Optional, per-task)
 
-A deterministic setup hook that runs on the host after the APK is installed and
-before the exploit runs.
+A deterministic **per-task** setup hook that runs on the host after the APK is
+installed and **before** the exploit runs, for both attacker models.
 
-Use it for setup that must happen every run: seeding state, granting runtime
-permissions, importing a victim identity, clearing leftover state, or opening
-the app once to initialize storage.
+Use it for vuln-specific setup: seeding a row only this exploit reads, granting
+a permission only this exploit needs, opening a page only this exploit
+exercises.
+
+For app-wide victim-identity setup (logging the victim in, restoring shared
+prefs, seeding the local DB), prefer the per-app `apps/<app>/prepare_victim.sh`
+hook instead — it's shared across all tasks for the app and runs at an
+attacker-model-specific point in the phase. See
+[REDTEAM.md](REDTEAM.md#per-app-victim-hook-appsappprepare_victimsh).
+
+The two hooks are independent: a task may ship one, both, or neither.
 
 ### `verify_files/verify_exploit.sh`
 
