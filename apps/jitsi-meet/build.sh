@@ -236,3 +236,4 @@ main() {
 }
 
 main "$@"
+# TEMP cache-validation marker: revert before merge (PR #1021)
