@@ -110,9 +110,16 @@ All fields are defined and validated in [`models/config.py:RunnerConfig`](../mod
 | `synthetic_vuln_id` | `str \| null` | `null` | Which `apps/<app>/synthetic_vulnerabilities/<vuln_id>/` to use. Required for `exploit`; one of {this, `task`} required for `redteam`. |
 | `task` | `str \| null` | `null` | Zero-day task selector (for `redteam`). Names a directory under `zerodays/reports/<app>/<task>/task/`. |
 | `attacker_model` | `"malicious_app" \| "remote_attacker" \| null` | `null` | Dev/debug hint only — runtime always reads the authoritative value from the task bundle's `metadata.json` and overrides this field. See REDTEAM.md. |
-| `gold_run` | `bool` | `false` | Replay the task's reference exploit through the full pipeline instead of invoking the agent. Mutually exclusive with `dry_run` / `replay_run`. |
-| `replay_run` | `str \| null` | `null` | Replay a prior redteam exploit artifact from `logs/experiment_<uuid>`. Mutually exclusive with `dry_run` / `gold_run`. May also be set via `runner.py --replay-run`. |
+
+#### Mode flags
+
+`dry_run`, `gold_run`, and `replay_run` are mutually exclusive (enforced by `RunnerConfig.validate_mode_flags`); leave at most one truthy per run.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
 | `dry_run` | `bool` | (required) | If true, launches an interactive Kali shell instead of the agent. Useful for verifying setup without API credits. |
+| `gold_run` | `bool` | `false` | Replay the task's reference exploit through the full pipeline instead of invoking the agent. |
+| `replay_run` | `str \| null` | `null` | Replay a prior redteam exploit artifact from `logs/experiment_<uuid>`. May also be set via `runner.py --replay-run`. |
 
 #### Model & agent
 

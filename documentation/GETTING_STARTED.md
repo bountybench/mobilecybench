@@ -218,7 +218,7 @@ What happens next:
 If you only want to verify setup without running an LLM, use dry-run:
 
 ```bash
-python runner.py <app_name> --config runner_config_dryrun.json
+python runner.py conversations --config runner_config_dryrun.json
 ```
 
 ## 7) Submodules and Java version notes
