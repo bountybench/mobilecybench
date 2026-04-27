@@ -17,25 +17,13 @@ bash setup.sh --init-submodules conversations
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
-To run the AI agent, provide an API key. The built-in models cover three
-providers (see `agent/model_providers/factory.py:SupportedModel` for the full
-list, including older entries kept for backwards compatibility):
+To run the AI agent, provide an API key. The built-in models cover three providers (see `agent/model_providers/factory.py:SupportedModel` for the full list, including older entries kept for backwards compatibility):
 
-- **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`;
-  `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`.
-  Requires `OPENAI_API_KEY`.
-- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`;
-  `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires
-  `ANTHROPIC_API_KEY`.
-- **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`.
-  Requires `GEMINI_API_KEY`.
+- **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`; `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`. Requires `OPENAI_API_KEY`.
+- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`; `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires `ANTHROPIC_API_KEY`.
+- **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`. Requires `GEMINI_API_KEY`.
 
-To add a new model, append an entry to `SupportedModel` and a pricing
-row to `utils/token_pricing.json` — see
-[Adding a New Model](ADDING_MODELS.md). For one-off model-sweep
-exploration where cost telemetry doesn't matter, set
-`"allow_unregistered_models": true` in `runner_config.json` to bypass
-the registry.
+To add a new model, append an entry to `SupportedModel` and a pricing row to `utils/token_pricing.json` — see [Adding a New Model](ADDING_MODELS.md). For one-off model-sweep exploration where cost telemetry doesn't matter, set `"allow_unregistered_models": true` in `runner_config.json` to bypass the registry.
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
@@ -44,7 +32,7 @@ python runner.py conversations
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
-The default mode is **discovery** (find unknown vulnerabilities). Other modes: **exploit** (exploit a known synthetic vulnerability) and **detection** (find vulnerabilities autonomously, evaluated via patch-differential replay). Set `"workflow"` in `runner_config.json`. See `documentation/EXPERIMENTS.md` for details.
+For the workflow / task type / attacker model axes that define a run, see the README. This guide focuses on the setup steps below; once the environment is healthy, `documentation/EXPERIMENTS.md` walks through configuring those axes for an actual run and `documentation/REDTEAM.md` covers redteam scoring.
 
 If you do not want to use an API key, run in dry-run mode instead:
 
@@ -54,7 +42,7 @@ python runner.py conversations --config runner_config_dryrun.json
 
 ## 1) System prerequisites
 
-- Python 3.11+ (3.12 or lower recommended for agent dependencies)
+- Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop (for agent stack and some app environments)
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+. Please note that some apps require Java 21 to build.)
 
@@ -92,7 +80,7 @@ Notes:
 
 - Default SDK is 35. To use a different version: `./setup.sh --sdk 34 --system-image google_apis`.
 - You can also pass an app name to auto-select the SDK from its `metadata.json` (example: `./setup.sh conversations`).
-- `setup.sh` installs Android SDK packages, creates the AVD, and generates `start_emulator.sh`, `stop_emulator.sh`, and `check_device.sh`.
+- `setup.sh` installs Android SDK packages and creates the AVD.
 - To initialize submodules during setup, use `--init-submodules` (all) or `--init-submodules <app_name>` (single app).
 - `setup.sh` installs `apktool` if it is missing.
 
@@ -120,8 +108,7 @@ claude auth login   # follow the browser flow; credentials are stored in
 
 **Step 2: Extract tokens into `agent/.env`**
 
-After logging in, extract your OAuth tokens into `agent/.env`. Pick the
-snippet for your platform.
+After logging in, extract your OAuth tokens into `agent/.env`. Pick the snippet for your platform.
 
 **macOS** (Keychain):
 
@@ -149,9 +136,7 @@ print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
 " >> agent/.env
 ```
 
-If your distribution stores credentials in a system secret manager (GNOME
-Keyring, KWallet) instead of the JSON file, export them via that tool first
-and adapt the snippet to read from `subprocess` output.
+If your distribution stores credentials in a system secret manager (GNOME Keyring, KWallet) instead of the JSON file, export them via that tool first and adapt the snippet to read from `subprocess` output.
 
 **Windows** (Credential Manager via PowerShell):
 
@@ -162,10 +147,7 @@ $json = ConvertFrom-Json $cred.GetNetworkCredential().Password
 "CLAUDE_CODE_OAUTH_REFRESH_TOKEN=$($json.claudeAiOauth.refreshToken)"  | Out-File -Encoding utf8 -Append agent/.env
 ```
 
-`Get-StoredCredential` requires the [`CredentialManager` module](https://www.powershellgallery.com/packages/CredentialManager).
-If unavailable, open `Control Panel → User Accounts → Credential Manager →
-Windows Credentials`, expand the `Claude Code-credentials` entry, and copy
-the `accessToken` / `refreshToken` fields manually.
+`Get-StoredCredential` requires the [`CredentialManager` module](https://www.powershellgallery.com/packages/CredentialManager). If unavailable, open `Control Panel → User Accounts → Credential Manager → Windows Credentials`, expand the `Claude Code-credentials` entry, and copy the `accessToken` / `refreshToken` fields manually.
 
 Tokens expire periodically — re-run the extraction before each session.
 
@@ -236,7 +218,7 @@ What happens next:
 If you only want to verify setup without running an LLM, use dry-run:
 
 ```bash
-python runner.py <app_name> --config runner_config_dryrun.json
+python runner.py conversations --config runner_config_dryrun.json
 ```
 
 ## 7) Submodules and Java version notes
