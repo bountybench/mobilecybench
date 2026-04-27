@@ -18,15 +18,19 @@ CRASH_SNIFFER_PID_FILE="${SCRIPT_DIR}/crash_sniffer.pid"
 EMULATOR_GATEWAY="http://10.0.2.2:8080"
 
 generate_secrets_if_missing() {
-  # secrets.json is gitignored and runtime-generated. cleanup.sh deletes it
-  # between experiments so each experiment gets fresh random values. Within
-  # one experiment, multiple start_runtime.sh calls (Phase 1, Phase 2) reuse
-  # the same file so credentials match what the seeded ntfy server expects.
+  # secrets.json is committed with empty placeholder values to document the
+  # schema. We fill in random hex on the first phase of each experiment;
+  # subsequent phases see the populated file and skip regen so credentials
+  # remain consistent with what the seeded ntfy server expects. cleanup.sh
+  # resets the values to empty placeholders between experiments.
   local secrets="$SCRIPT_DIR/secrets.json"
-  if [[ -f "$secrets" ]] && jq -e '.alice_secret' "$secrets" >/dev/null 2>&1; then
+  [[ -f "$secrets" ]] || fatal "secrets.json not found at $secrets"
+  local alice
+  alice=$(jq -r '.alice_secret // ""' "$secrets")
+  if [[ -n "$alice" ]]; then
     return 0
   fi
-  log_info "Generating secrets.json with per-experiment random values"
+  log_info "Filling secrets.json with per-experiment random values"
   python3 - "$secrets" <<'PY'
 import json, secrets, sys
 path = sys.argv[1]
