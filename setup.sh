@@ -181,7 +181,6 @@ else
                 echo ""
                 echo "Mode 1: Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
                 echo "Mode 2: Auto-configure from app metadata (Recommended)"
-                echo "Mode 3: Manual SDK and system image configuration"
                 echo ""
                 echo "Arguments:"
                 echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
@@ -211,7 +210,6 @@ else
                 echo "  $0 conversations                      # Use conversations app (SDK 35, google_apis)"
                 echo "  $0 owncloud-android                   # Use owncloud-android app (SDK 34, google_apis)"
                 echo "  $0 wordpress                          # Use wordpress app (SDK 35, google_apis)"
-                echo "  $0 --sdk 30                           # Use SDK 30 with default system image"
                 exit 0
                 ;;
             *)

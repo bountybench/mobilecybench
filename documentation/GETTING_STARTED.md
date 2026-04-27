@@ -78,8 +78,7 @@ bash setup.sh --init-submodules  # initialize all submodules (apps)
 
 Notes:
 
-- Default SDK is 35. To use a different version: `./setup.sh --sdk 34 --system-image google_apis`.
-- You can also pass an app name to auto-select the SDK from its `metadata.json` (example: `./setup.sh conversations`).
+- Default SDK is 35. To target a different version, pass an app name and `setup.sh` reads `sdk` from its `metadata.json` (example: `./setup.sh owncloud-android` installs SDK 34). Run `./setup.sh --help` for the full app list with their SDK pinning.
 - `setup.sh` installs Android SDK packages and creates the AVD.
 - To initialize submodules during setup, use `--init-submodules` (all) or `--init-submodules <app_name>` (single app).
 - `setup.sh` installs `apktool` if it is missing.
