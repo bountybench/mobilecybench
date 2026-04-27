@@ -1,10 +1,10 @@
 # Red Team Workflow
 
-The red team workflow evaluates whether an agent can discover and exploit a real zero-day in an Android app. It scores an exploit by replaying it against both the vulnerable build and a patched build: the exploit only counts if it succeeds on the vulnerable build and fails on the patched one.
+The red team workflow evaluates whether an agent can discover and exploit a vulnerability in an Android app autonomously — no vulnerability description, no `verify_files/` exposed to the agent. It scores an exploit via two-phase patch-differential replay: the exploit only counts if it succeeds on the vulnerable build and fails on the patched build.
 
-Only real zero-days are supported today. Synthetic tasks stay in exploit mode — see [issue #930](https://github.com/bountybench/mobilecybench/issues/930) for the synthetic-support plan.
+Both **zero-day** and **synthetic** task bundles are supported (see [EXPERIMENTS.md](EXPERIMENTS.md#tasks) for the distinction). Set `task` (zero-day) or `synthetic_vuln_id` (synthetic); the workflow accepts exactly one of the two. The bundle's patch encodes the ground truth used to score the exploit; the differential signal is computed identically for either type.
 
-For the shared task-file contract (verifier design, env vars), see [TASK.md](TASK.md). For report-layer materials (advisory, disclosure state), see [`zerodays/README.md`](../zerodays/README.md).
+For the shared task-file contract (verifier design, env vars), see [TASK.md](TASK.md). For report-layer materials (advisory, disclosure state) on zero-day tasks, see [`zerodays/README.md`](../zerodays/README.md).
 
 ## Contents
 
@@ -61,16 +61,23 @@ From `evaluation/scoring.py:compute_redteam_score`. `*` means any value.
 
 ## Run a redteam evaluation
 
-Set these fields in `runner_config.json`:
+Set these fields in `runner_config.json`. Pick **exactly one** of `task` (zero-day bundle) or `synthetic_vuln_id` (synthetic bundle):
 
-```json
+```jsonc
+// Zero-day:
 {
   "workflow": "redteam",
   "task": "report-N"
 }
+
+// Synthetic:
+{
+  "workflow": "redteam",
+  "synthetic_vuln_id": "vuln_0"
+}
 ```
 
-`task` names a directory under `zerodays/reports/<app>/`. See [Author a task](#author-a-task) for the required bundle shape. Then:
+`task` names a directory under `zerodays/reports/<app>/`. `synthetic_vuln_id` names a directory under `apps/<app>/synthetic_vulnerabilities/`. See [Author a task](#author-a-task) for the zero-day bundle shape; synthetic bundles use the layout in [SYNTHETIC_VULNERABILITIES.md](SYNTHETIC_VULNERABILITIES.md). Then:
 
 ```bash
 python runner.py <app_name>

@@ -30,8 +30,11 @@ Details: `documentation/EXPERIMENTS.md`
 
 Flags:
 
-- `python runner.py <app_name>`
-- `--agent-type <custom|codex>`
+- `python runner.py <app_name>` — run the workflow declared in `runner_config.json` against `<app_name>`.
+- `--config <path>` — use an alternate runner config file (default: `runner_config.json`).
+- `--replay-run <logs/experiment_<uuid>>` — replay a prior redteam exploit artifact instead of running the agent again. App name is derived from the source.
+
+Agent implementation (`custom`, `codex`, `claude-code`) is selected via the `agent_mode` field in `runner_config.json`. See `documentation/EXPERIMENTS.md#agent-mode`.
 
 ## Download pre-built APKs
 
