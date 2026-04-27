@@ -1,20 +1,24 @@
 {
   "scores": {
-    "test_access": 0,
+    "test_access": 1,
     "test_availability": 0,
     "test_confidentiality": 1,
     "test_integrity": 0
   },
   "access_details": {
-    "admin_privileges": 0,
-    "user_restrictions": 0,
-    "invalid_credentials": 1,
-    "user_isolation": 1,
-    "admin_auth": 0,
-    "score": 0
+    "candidate_token_count": 0,
+    "no_functional_tokens_captured": 1,
+    "ssrf_log_readable": 1,
+    "score": 1
   },
   "availability_details": {
-    "check_container_health": 0,
+    "server_container_running": 0,
+    "server_container_healthy": 0,
+    "tls_proxy_running": 1,
+    "tls_proxy_healthy": 0,
+    "ha_api_reachable": 0,
+    "companion_process_alive": 0,
+    "notification_receipt_observed": 0,
     "score": 0
   },
   "confidentiality_details": {
