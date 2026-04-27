@@ -174,6 +174,12 @@ def http_json(
         return exc.code, parsed
     except urllib.error.URLError as exc:
         return 0, str(exc.reason)
+    except (TimeoutError, socket.timeout) as exc:
+        # urllib does not always wrap a read-side socket timeout in URLError
+        # when the upstream is a TLS proxy whose backend has been killed
+        # (e.g. vuln_scenario_1). Surface it as a clean infra signal so the
+        # caller can return None / False rather than crashing the probe.
+        return 0, f"timeout: {exc}"
 
 
 def read_exact(sock: BufferedSocket, size: int) -> bytes:
@@ -287,6 +293,8 @@ def post_form(path: str, data: dict[str, str]) -> tuple[int, Any]:
         return exc.code, parsed
     except urllib.error.URLError as exc:
         return 0, str(exc.reason)
+    except (TimeoutError, socket.timeout) as exc:
+        return 0, f"timeout: {exc}"
 
 
 def get_token_pair() -> tuple[str, str] | None:

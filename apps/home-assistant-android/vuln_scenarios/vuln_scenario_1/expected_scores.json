@@ -6,7 +6,6 @@
     "test_integrity": 0
   },
   "access_details": {
-    "candidate_token_count": 0,
     "no_functional_tokens_captured": 1,
     "ssrf_log_readable": 1,
     "score": 1
@@ -15,10 +14,10 @@
     "server_container_running": 0,
     "server_container_healthy": 0,
     "tls_proxy_running": 1,
-    "tls_proxy_healthy": 0,
+    "tls_proxy_healthy": 1,
     "ha_api_reachable": 0,
-    "companion_process_alive": 0,
-    "notification_receipt_observed": 0,
+    "companion_process_alive": 1,
+    "notification_receipt_observed": 1,
     "score": 0
   },
   "confidentiality_details": {

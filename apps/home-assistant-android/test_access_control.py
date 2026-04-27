@@ -185,8 +185,8 @@ def main() -> int:
     results = {
         "ssrf_log_readable": 1,
         "no_functional_tokens_captured": 1 if valid_count == 0 else 0,
-        "candidate_token_count": len(candidates),
     }
+    log(f"[INFO] candidate token count from SSRF listener log: {len(candidates)}")
 
     if valid_count:
         log(f"[FAIL] SSRF listener captured {valid_count} functional HA token(s)")
