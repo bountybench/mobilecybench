@@ -68,6 +68,37 @@ class FilteringFormatter(logging.Formatter):
         return text
 
 
+class _BootstrapFilter(logging.Filter):
+    """One-shot filter that materializes file handlers on the first log record.
+
+    Installed by ``LoggerManager._configure_minimal`` on both the parent
+    logger and the agent logger. Whichever path emits first runs
+    ``configure()`` (which creates ``logs/experiment_<run_id>/`` + the
+    four file handlers + console handler), then returns ``True`` so the
+    record proceeds through ``callHandlers`` over the freshly-installed
+    handlers and lands on stderr **and** in the appropriate file.
+
+    Why a filter and not a handler: ``Logger.handle`` runs filters
+    *before* iterating handlers, so swapping the handler list mid-flight
+    in ``configure()`` does not collide with the iterator that's about
+    to run.
+    """
+
+    def __init__(self, manager: "LoggerManager") -> None:
+        super().__init__()
+        self._manager = manager
+        self._fired = False
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not self._fired:
+            # Set the flag *before* configure() so any logging configure()
+            # itself does (it shouldn't with announce=False, but defensive)
+            # cannot recurse.
+            self._fired = True
+            self._manager.configure(self._manager._default_config(), announce=False)
+        return True
+
+
 class LoggerManager:
     """Manages application-wide logging configuration and handlers.
 
@@ -84,7 +115,83 @@ class LoggerManager:
         announce: bool = True,
     ) -> None:
         self._name = name
-        self.configure(config or self._default_config(), announce=announce)
+        # Filesystem setup (creating logs/experiment_<uuid>/ + file handlers)
+        # is the heaviest part of init. We trigger it eagerly only when:
+        #   1. a real config dict was passed (the runner's explicit
+        #      reconfigure call after parsing args), or
+        #   2. an env-var hint says the caller pinned a logs location
+        #      (tests via tests/conftest.py, GKE via entrypoint-gke.sh).
+        # Otherwise we drop into minimal mode, which arms a one-shot
+        # bootstrap filter that triggers full configure() on the first
+        # log record. Bare imports that never log keep zero filesystem
+        # footprint; the moment anything actually logs (including
+        # runner.py's pre-reconfigure error path), the experiment
+        # directory and file handlers materialize and the record lands
+        # on disk just like before this fix.
+        env_hint = (
+            "MOBILECYBENCH_LOGS_DIR" in os.environ
+            or "MOBILECYBENCH_SESSION_ID" in os.environ
+        )
+        if config is not None or env_hint:
+            self.configure(config or self._default_config(), announce=announce)
+        else:
+            self._configure_minimal()
+
+    def _configure_minimal(self) -> None:
+        """Lightweight init: no filesystem side-effects, lazy-on-first-log.
+
+        Sets up just enough state that ``logger`` and ``agent_logger`` are
+        usable Logger objects, and arms a ``_BootstrapFilter`` on both so
+        the first emitted record triggers a full ``configure()`` before
+        ``callHandlers`` runs. After that first record the manager looks
+        identical to one constructed with a real config — same
+        experiment directory, same four file handlers, same console
+        handler. Records emitted before bootstrap fires would only land
+        on stderr; in practice nothing in this codebase logs at module
+        import time, so the only emit-then-bootstrap path is
+        ``runner.py:498`` (config-load failure) which we want persisted.
+        """
+        self._config = self._default_config()
+        self._log_level = self._get_log_level()
+        self._logger = logging.getLogger(self._name)
+        self._logger.setLevel(self._log_level)
+
+        # Drop any handlers a previous configure() left behind. Idempotent.
+        for h in self._logger.handlers[:]:
+            self._logger.removeHandler(h)
+            h.close()
+
+        # Sentinel values so accessor methods never NPE before bootstrap fires.
+        self.run_id = self._resolve_run_id()
+        self._is_gold = False
+        self._logs_dir: Optional[Path] = None  # filesystem-not-initialized signal
+        self._log_file = None
+        self._agent_log_file = None
+        self._ui_debug_log_file = None
+        self._error_log_file = None
+        self._error_buffer_handler = None
+
+        self._agent_logger = logging.getLogger(f"{self._name}.Agent")
+        self._agent_logger.setLevel(self._log_level)
+        self._agent_logger.propagate = True
+        for h in self._agent_logger.handlers[:]:
+            self._agent_logger.removeHandler(h)
+            h.close()
+
+        # Drop any bootstrap filter a previous _configure_minimal armed.
+        # configure() does not clear filters (only handlers), so without
+        # this an explicit reconfigure followed by a re-entry into
+        # minimal mode (rare, mostly tests) could double-arm.
+        for lg in (self._logger, self._agent_logger):
+            for f in list(lg.filters):
+                if isinstance(f, _BootstrapFilter):
+                    lg.removeFilter(f)
+
+        # Single shared filter so the agent-logger path and parent-logger
+        # path can't both fire it; whichever logs first wins.
+        bootstrap = _BootstrapFilter(self)
+        self._logger.addFilter(bootstrap)
+        self._agent_logger.addFilter(bootstrap)
 
     def configure(self, config: dict, *, announce: bool = True) -> None:
         """(Re)configure the logger manager with new settings."""
@@ -268,7 +375,14 @@ class LoggerManager:
     def get_ui_debug_log_file_name(self) -> str:
         return self._ui_debug_log_file or ""
 
-    def get_logs_dir(self) -> Path:
+    def get_logs_dir(self) -> Optional[Path]:
+        """Return the experiment logs directory, or None if not yet configured.
+
+        The directory is created lazily — only when ``configure()`` is
+        called with a real config (typically by ``runner.py:main()``
+        after argv parsing) or when the import-time singleton sees a
+        ``MOBILECYBENCH_LOGS_DIR``/``MOBILECYBENCH_SESSION_ID`` env hint.
+        """
         return self._logs_dir
 
     def get_run_id(self) -> str:
@@ -278,6 +392,9 @@ class LoggerManager:
     def update_latest_symlink(self) -> None:
         """Update the 'latest' symlink. Skipped for gold runs so they don't shadow real-LLM experiments."""
         if self._is_gold:
+            return
+        if self._logs_dir is None:
+            # configure() hasn't been called yet — no experiment dir to symlink to.
             return
         try:
             latest_link = self._logs_dir.parent / "latest"
