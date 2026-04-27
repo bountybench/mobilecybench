@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import tempfile
 import time
@@ -17,6 +18,128 @@ from urllib.parse import urlparse
 logger = logging.getLogger("MobileCyBench.emulator_manager")
 
 EMULATOR_CONTAINER_NAME = "emulator-container"
+
+
+def _emulator_pidfile(project_root: Path) -> Path:
+    """Path of the pid file recording the running native emulator.
+
+    Best-effort directory creation; if the project_root is read-only or
+    otherwise unwritable (test fixtures with /mock paths, sandboxes), the
+    caller catches the IOError and degrades silently — this helper is a
+    crash-recovery aid, not a critical path.
+    """
+    runtime_state = project_root / ".runtime_state"
+    try:
+        runtime_state.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return runtime_state / "emulator.pid"
+
+
+def _pid_is_emulator(pid: int) -> bool:
+    """Return True if `pid` is alive AND looks like an Android emulator/qemu.
+
+    Defensive guard against killing an unrelated PID (e.g. PID recycle after
+    a reboot). We never broad-pkill — we only ever kill PIDs we recorded
+    ourselves AND whose ``ps -p`` output still mentions an emulator-shaped
+    binary. If either check fails we treat the pid as stale.
+    """
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    except OSError:
+        return False
+
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return False
+    if result.returncode != 0:
+        return False
+    cmdline = result.stdout.strip().lower()
+    # Match the real-world process names we've seen in this repo:
+    #   - "emulator -avd ..."        (the wrapper from cmdline-tools)
+    #   - "qemu-system-aarch64 ..."  (the headless variant the wrapper execs into)
+    #   - "qemu-system-x86_64 ..."
+    return "emulator" in cmdline or "qemu-system" in cmdline
+
+
+def _reap_emulator_pidfile(
+    project_root: Path, *, term_grace_seconds: float = 5.0
+) -> None:
+    """If a previous run left a pidfile pointing at a live emulator, kill it.
+
+    Reads ``.runtime_state/emulator.pid`` and SIGTERMs (then SIGKILLs after
+    grace) the recorded PID *only if* it still looks like an emulator/qemu
+    process. Always removes the pidfile after, even if the PID was already
+    gone. Never broad-pkills.
+    """
+    pidfile = _emulator_pidfile(project_root)
+    try:
+        exists = pidfile.exists()
+    except OSError:
+        return
+    if not exists:
+        return
+
+    try:
+        raw = pidfile.read_text().strip()
+    except OSError:
+        return
+    try:
+        pid = int(raw)
+    except ValueError:
+        logger.warning("Stale emulator pidfile content %r; removing", raw)
+        pidfile.unlink(missing_ok=True)
+        return
+
+    try:
+        if not _pid_is_emulator(pid):
+            logger.info(
+                "Emulator pidfile points at PID %d which is no longer an emulator; removing pidfile",
+                pid,
+            )
+            return
+
+        logger.warning(
+            "Reaping orphaned emulator process from previous run (PID %d)", pid
+        )
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+
+        # Wait for graceful exit. Re-check the cmdline each tick rather than
+        # just liveness — if the original process exits and the kernel recycles
+        # the PID to an unrelated process during the grace window, a plain
+        # `os.kill(pid, 0)` would still see "alive" and we'd SIGKILL the
+        # wrong target. _pid_is_emulator returning False is our "done" signal.
+        deadline = time.time() + term_grace_seconds
+        while time.time() < deadline:
+            if not _pid_is_emulator(pid):
+                return
+            time.sleep(0.25)
+
+        # Grace period elapsed and the PID still looks like an emulator.
+        # Final defensive re-check immediately before SIGKILL closes the
+        # last microsecond-scale window between the loop's last check and
+        # the signal.
+        if not _pid_is_emulator(pid):
+            return
+        try:
+            os.kill(pid, signal.SIGKILL)
+            logger.info("Sent SIGKILL to PID %d", pid)
+        except ProcessLookupError:
+            pass
+
+    finally:
+        pidfile.unlink(missing_ok=True)
 
 
 def _parse_port(server_url: str) -> Optional[int]:
@@ -368,6 +491,12 @@ class EmulatorManager:
 
         env = os.environ.copy()
         env["ANDROID_HOME"] = self.emulator_config["android_home"]
+
+        # Reap any orphan from a previous Python crash *before* spawning
+        # ours — otherwise the new process plus the orphan both register
+        # with adb and inject_system_ca + later cleanup gets ambiguous.
+        _reap_emulator_pidfile(self.project_root)
+
         try:
             # Use temp file instead of PIPE to avoid deadlock if stderr buffer fills.
             self._stderr_file = tempfile.TemporaryFile()
@@ -378,6 +507,15 @@ class EmulatorManager:
                 env=env,
             )
             logger.info(f"Emulator process started with PID: {self.process.pid}")
+
+            # Persist the PID so a crashed-then-restarted run can find and
+            # reap this exact process (R2.21). Best-effort; never fail the
+            # spawn over a pidfile-write hiccup.
+            try:
+                _emulator_pidfile(self.project_root).write_text(f"{self.process.pid}\n")
+            except Exception as e:
+                logger.warning(f"Failed to persist emulator pidfile: {e}")
+
             self.state = EmulatorState.RUNNING
         except FileNotFoundError as e:
             self.state = EmulatorState.STOPPED
@@ -713,6 +851,11 @@ class EmulatorManager:
                     logger.error(f"Failed to force kill emulator: {kill_error}")
 
         finally:
+            # Reap by pidfile as a final safety net: covers the case where
+            # `adb emu kill` was sent but the qemu child survived (R2.21).
+            # Only kills the PID we wrote at start time — never broad-pkill.
+            _reap_emulator_pidfile(self.project_root)
+
             self.process = None
             if hasattr(self, "_stderr_file") and self._stderr_file:
                 self._stderr_file.close()
