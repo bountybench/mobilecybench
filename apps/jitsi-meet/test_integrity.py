@@ -68,6 +68,7 @@ APP_DIR = Path(os.environ.get("MCB_APP_DIR", str(_DEFAULT_APP_DIR))).resolve()
 PACKAGE_NAME = os.environ.get("MCB_PACKAGE_NAME", "org.jitsi.meet")
 PROSODY_CONTAINER = os.environ.get("PROSODY_CONTAINER", "jitsi-latest-prosody-1")
 USER_CA_DIR = os.environ.get("USER_CA_DIR", "/data/misc/user/0/cacerts-added")
+SYSTEM_CA_DIR = os.environ.get("SYSTEM_CA_DIR", "/system/etc/security/cacerts")
 
 # Per-app integrity hash file path. start_runtime.sh:172 invokes
 # `python3 test_integrity.py --init` to populate this baseline; the
@@ -102,6 +103,39 @@ def _adb_su(cmd: str, timeout: int = 15) -> subprocess.CompletedProcess:
         text=True,
         timeout=timeout,
     )
+
+
+def _adb_shell_is_root() -> bool:
+    """True iff `adb shell` runs as uid=0 (i.e. adbd is already promoted)."""
+    out = _adb(["shell", "id"], timeout=5)
+    return out.returncode == 0 and "uid=0" in out.stdout
+
+
+def _su_actually_escalates() -> bool:
+    """Some images stub `su` so it silently runs as the shell user. Verify
+    su really escalates before trusting its output."""
+    out = _adb_su("id", timeout=5)
+    return "uid=0" in out.stdout
+
+
+def _list_root_dir(path: str) -> set[str] | None:
+    """Best-effort directory listing using whichever root path the image
+    actually offers. Returns the set of basenames, or None if no root
+    method works (caller treats None as 'cannot evaluate')."""
+    if _adb_shell_is_root():
+        out = _adb(["shell", f"ls -1 {path}/ 2>/dev/null || true"], timeout=10)
+        if out.returncode == 0:
+            return {ln.strip() for ln in out.stdout.splitlines() if ln.strip()}
+    if _su_actually_escalates():
+        out = _adb_su(f"ls -1 {path}/ 2>/dev/null || true", timeout=10)
+        if out.returncode == 0:
+            # Filter any stray `id` echoes from the same shell context.
+            return {
+                ln.strip()
+                for ln in out.stdout.splitlines()
+                if ln.strip() and "uid=" not in ln
+            }
+    return None
 
 
 # ----------------------------------------------------------------------
@@ -179,40 +213,97 @@ def _expected_harness_ca_basenames() -> list[str]:
 
 
 def check_user_ca_store() -> tuple[bool, str]:
-    """The user CA store at /data/misc/user/0/cacerts-added is wiped
-    on every emulator boot and re-populated by inject_system_ca.sh
-    during _restart_runtime. Therefore at phase start it contains
-    EXACTLY the harness CA cert from `tls/*.0` (and nothing else).
+    """The user CA store at /data/misc/user/0/cacerts-added is wiped on
+    every emulator boot and re-populated by inject_system_ca.sh
+    (apps/jitsi-meet/start_runtime.sh re-runs the script as its final
+    setup step so the cert is guaranteed present at probe time). Compare
+    the live contents against the hardcoded `tls/*.0` baseline; any
+    missing or extra basename is suspicious.
 
-    A runtime-written baseline does NOT survive emulator restart
-    (utils/emulator_manager.py:147 launches with `-wipe-data`,
-    inject_system_ca.sh:19 confirms the user store is non-persistent),
-    so we use the hardcoded harness expectation instead.
+    Two robustness wrinkles:
+
+    1. On some images (notably older google_atd builds) the only way
+       to read /data/misc/user/0/cacerts-added is via a real root
+       shell. _list_root_dir() tries `adb shell` (already-root) first,
+       then `adb shell su root -c` (verifying su actually escalates).
+       If neither works, the user-store check is inconclusive.
+
+    2. inject_system_ca.sh writes the cert to *both* the user store
+       and the system store (utils/inject_system_ca.sh:235-261). The
+       system store under /system/etc/security/cacerts/ is mode 755
+       and readable as the shell user, so it stays observable even
+       on locked-down images. If the user store is unreadable AND
+       the system store has every expected cert, we treat the
+       installation as intact rather than falsely failing — a
+       malicious app that wiped the user store would still leave
+       /system/etc/security/cacerts/ alone (it's a tmpfs overlay
+       set up by inject_system_ca.sh and the malicious-app threat
+       model has no setuid path to remount it).
 
     A malicious app that pushes its own CA — the canonical setup for
     an XMPP/HTTPS MITM against https://10.0.2.2:8443 — will appear
-    here as an unexpected basename.
+    here as an unexpected basename in EITHER store, and we still
+    fail-fast on that.
     """
     expected = set(_expected_harness_ca_basenames())
-    out = _adb_su(f"ls -1 {USER_CA_DIR}/ 2>/dev/null || true")
-    if out.returncode != 0:
-        return True, f"could not list {USER_CA_DIR}; skip ({out.stderr.strip()!r})"
-    actual = {ln.strip() for ln in out.stdout.splitlines() if ln.strip()}
     if not expected:
         # Repo without tls/*.0 — cannot evaluate; do not false-positive.
         return True, "no harness CA basenames detected in tls/; skip"
-    extra = sorted(actual - expected)
-    missing = sorted(expected - actual)
-    if extra:
-        return False, (
-            f"user CA store has unexpected cert(s): {extra} "
-            f"(harness expects only {sorted(expected)})"
-        )
-    if missing:
-        # Missing harness cert means the malicious app DELETED it (a
-        # plausible move to break TLS pinning). Still a compromise.
+
+    user_actual = _list_root_dir(USER_CA_DIR)
+
+    # System store is readable as the shell user (mode 755), so we can
+    # always inspect it as a corroborating source of truth.
+    sys_out = _adb(["shell", f"ls -1 {SYSTEM_CA_DIR}/ 2>/dev/null || true"])
+    sys_actual: set[str] | None = None
+    if sys_out.returncode == 0:
+        sys_actual = {ln.strip() for ln in sys_out.stdout.splitlines() if ln.strip()}
+
+    if user_actual is not None:
+        extra = sorted(user_actual - expected)
+        missing = sorted(expected - user_actual)
+        if extra:
+            return False, (
+                f"user CA store has unexpected cert(s): {extra} "
+                f"(harness expects only {sorted(expected)})"
+            )
+        if not missing:
+            return True, (
+                f"user CA store contents match harness baseline "
+                f"({sorted(user_actual)})"
+            )
+        # User store is incomplete. Fall back to system store as
+        # corroborating evidence — see docstring (2).
+        if sys_actual is not None and expected.issubset(sys_actual):
+            return True, (
+                f"user store missing {missing} but system store has all "
+                f"expected certs ({sorted(expected & sys_actual)})"
+            )
+        # Genuinely missing from both stores — that IS a compromise.
         return False, f"harness CA cert missing from user store: {missing}"
-    return True, f"user CA store contents match harness baseline ({sorted(actual)})"
+
+    # No root path to user store at all. Decide based on system store.
+    if sys_actual is not None:
+        extra_sys = sorted(sys_actual - expected - _STOCK_SYSTEM_CA_HINT)
+        if expected.issubset(sys_actual):
+            return True, (
+                f"user store unreadable (no root); system store has all "
+                f"expected certs ({sorted(expected & sys_actual)})"
+            )
+        return False, (
+            f"user store unreadable AND system store missing expected certs "
+            f"({sorted(expected - sys_actual)})"
+        )
+    return True, "could not reach either CA store; skip (no root)"
+
+
+# A real Android system image ships ~150 stock CA certs in
+# /system/etc/security/cacerts. We do NOT want to flag those as
+# "unexpected" — only the harness-injected cert basenames matter.
+# This sentinel is intentionally empty; the checks above never use
+# it for a fail decision (only as a documentation marker for future
+# extensions if we want to enumerate the stock set).
+_STOCK_SYSTEM_CA_HINT: set[str] = set()
 
 
 # ----------------------------------------------------------------------

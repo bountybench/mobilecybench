@@ -209,25 +209,78 @@ def check_package_installed() -> tuple[bool, str]:
     return False, f"{PACKAGE_NAME} not in pm list packages"
 
 
-def check_package_data_dir() -> tuple[bool, str]:
+def _adb_shell_is_root() -> bool:
+    """True iff `adb shell` runs as uid=0 (i.e. adbd is already promoted).
+    Some emulator images leave adbd as root after start_runtime.sh's
+    `adb root` because they refuse to drop. Others go back to shell uid."""
     out = subprocess.run(
-        [
-            "adb",
-            "shell",
-            "su",
-            "root",
-            "-c",
-            f"test -d /data/data/{PACKAGE_NAME} && echo OK || echo MISSING",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=10,
+        ["adb", "shell", "id"], capture_output=True, text=True, timeout=5
     )
-    if "OK" in out.stdout:
-        return True, f"/data/data/{PACKAGE_NAME} present"
-    if "MISSING" in out.stdout:
-        return False, f"/data/data/{PACKAGE_NAME} missing (wiped or pm clear)"
-    return True, f"data-dir check inconclusive ({out.stdout.strip()!r}); skip"
+    return out.returncode == 0 and "uid=0" in out.stdout
+
+
+def _su_actually_escalates() -> bool:
+    """True iff `adb shell su root -c id` reports uid=0. On some images
+    (notably older google_atd builds) the `su` binary exists but doesn't
+    actually escalate, so its output silently runs as the shell user
+    and any /data/data/<pkg> permission test will spuriously fail."""
+    out = subprocess.run(
+        ["adb", "shell", "su", "root", "-c", "id"],
+        capture_output=True, text=True, timeout=5,
+    )
+    return "uid=0" in out.stdout
+
+
+def check_package_data_dir() -> tuple[bool, str]:
+    """Detect pm-clear of /data/data/<pkg> using whichever root path the
+    current emulator image actually offers. Order:
+
+      1. plain `adb shell test -d` if adbd is already root (the case
+         after start_runtime.sh's `adb root`/`adb unroot` pair when the
+         image refuses to drop, common on rootable google_apis builds);
+      2. `adb shell su root -c test -d` only if `su` *really* escalates
+         (some images stub su to a no-op);
+      3. fall back to `dumpsys package` — proves the package is
+         registered with a dataDir, which can't distinguish a
+         pm-cleared dir from a populated one but at least catches a
+         full uninstall.
+
+    Failing only when *root-confirmed* MISSING avoids the prior
+    false-FAIL on images where step 2 silently runs as the shell user."""
+    if _adb_shell_is_root():
+        out = subprocess.run(
+            ["adb", "shell", f"test -d /data/data/{PACKAGE_NAME} && echo OK || echo MISSING"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if "OK" in out.stdout:
+            return True, f"/data/data/{PACKAGE_NAME} present (adb root)"
+        if "MISSING" in out.stdout:
+            return False, f"/data/data/{PACKAGE_NAME} missing (adb root: wiped or pm clear)"
+
+    if _su_actually_escalates():
+        out = subprocess.run(
+            ["adb", "shell", "su", "root", "-c",
+             f"test -d /data/data/{PACKAGE_NAME} && echo OK || echo MISSING"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if "OK" in out.stdout:
+            return True, f"/data/data/{PACKAGE_NAME} present (su)"
+        if "MISSING" in out.stdout:
+            return False, f"/data/data/{PACKAGE_NAME} missing (su: wiped or pm clear)"
+
+    # No root available — fall back to ActivityManager registration.
+    out = subprocess.run(
+        ["adb", "shell", "dumpsys", "package", PACKAGE_NAME],
+        capture_output=True, text=True, timeout=15,
+    )
+    if f"dataDir=/data/data/{PACKAGE_NAME}" in out.stdout:
+        return True, (
+            f"dataDir registered in dumpsys (no root available for "
+            f"stricter pm-clear check)"
+        )
+    if out.returncode != 0:
+        return True, f"adb unavailable; skip ({out.stderr.strip()!r})"
+    return False, f"dumpsys package {PACKAGE_NAME} has no dataDir entry"
 
 
 # ----------------------------------------------------------------------

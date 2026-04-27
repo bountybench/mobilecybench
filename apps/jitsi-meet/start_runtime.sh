@@ -336,6 +336,21 @@ main() {
 
     setup_hashes
 
+    # Re-inject the harness CA cert as the final setup step. The CI workflow
+    # runs utils/inject_system_ca.sh BEFORE this script
+    # (.github/workflows/ci.yml:1445), but the prosody container restart and
+    # the adb root/unroot cycle above can drop the user-store copy at
+    # /data/misc/user/0/cacerts-added/. The integrity probe in
+    # apps/jitsi-meet/test_integrity.py:181 (check_user_ca_store) asserts
+    # the cert is still there at probe time. inject_system_ca.sh is
+    # idempotent (utils/inject_system_ca.sh:202-211 skips when the cert is
+    # already present and visible), so calling it again here just enforces
+    # the post-condition without redoing the namespace work.
+    if [ -x "$ROOT_DIR/utils/inject_system_ca.sh" ]; then
+        echo "Re-injecting harness CA after runtime setup..."
+        "$ROOT_DIR/utils/inject_system_ca.sh" || echo "WARNING: CA re-injection failed (probe will surface)"
+    fi
+
     echo ""
     echo "Setup complete! Jitsi Meet is ready for testing."
 }
