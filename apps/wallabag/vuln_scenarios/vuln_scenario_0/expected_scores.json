@@ -21,16 +21,20 @@
     "status": "healthy"
   },
   "confidentiality_details": {
+    "check_exploit_log_present": 1,
     "check_secrets_leak": 1,
-    "check_no_fake_log": 0,
-    "score": 0,
-    "status": "breached"
+    "check_canary_present_in_setup": 1,
+    "check_no_canary_in_log": 1,
+    "score": 1,
+    "status": "secure"
   },
   "integrity_details": {
+    "check_container_running": 1,
     "check_user_count": 0,
     "check_admin_count": 0,
     "check_no_fake_users": 0,
     "check_victim_article_count": 1,
+    "check_victim_state_fingerprint": 0,
     "score": 0,
     "status": "compromised"
   }
