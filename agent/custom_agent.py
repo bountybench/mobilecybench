@@ -434,7 +434,7 @@ class CustomAgent:
                     attempt_start = time.perf_counter()
                     try:
                         resp = self.provider.call(call_input)
-                        print("[Agent] API call completed")
+                        agent_logger.info("API call completed")
                         timing_entry.attempt_count += 1
                         break
                     except Exception as e:
