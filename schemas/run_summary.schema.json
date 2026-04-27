@@ -82,6 +82,7 @@
         "unique_tools",
         "error_count",
         "token_totals",
+        "cost_usd",
         "timing"
       ],
       "properties": {
@@ -90,6 +91,7 @@
         "unique_tools": { "type": "array", "items": { "type": "string" } },
         "error_count": { "type": "integer", "minimum": 0 },
         "token_totals": { "type": "object" },
+        "cost_usd": { "type": ["number", "null"] },
         "timing": { "type": "object" }
       }
     },

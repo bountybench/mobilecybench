@@ -261,6 +261,23 @@ class TestRun:
         ) as f:
             summary = json.load(f)
         assert summary["metrics"]["cost_usd"] == 0.42
+        validate(instance=summary, schema=_load_run_summary_schema())
+
+    def test_run_summary_schema_declares_cost_usd(self):
+        """`metrics.cost_usd` is part of the run_summary contract.
+
+        Pre-existing run_summaries had `cost_usd` written but the schema
+        didn't declare it. The schema is permissive (no
+        `additionalProperties: false`), so the omission only manifested
+        as silent acceptance of any value, including malformed ones.
+        Pin the contract so a future writer that drops the field or
+        emits a wrong-typed value (e.g. a string) trips schema
+        validation.
+        """
+        schema = _load_run_summary_schema()
+        metrics = schema["properties"]["metrics"]
+        assert "cost_usd" in metrics["required"]
+        assert metrics["properties"]["cost_usd"] == {"type": ["number", "null"]}
 
     def test_writes_run_summary_on_validation_error(self, base_config, tmp_path):
         """Run writes run_summary.json even on validation failure."""
