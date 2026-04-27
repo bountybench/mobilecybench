@@ -32,10 +32,12 @@ def _scan_paths(roots, use_root=False):
     if not cs.adb_device_available():
         return ""
     prefix = "su 0 " if use_root else ""
-    find_cmd = "; ".join(f'{prefix}find "{d}" -type f 2>/dev/null' for d in roots)
-    rc, listing = cs.adb_run(["shell", find_cmd], timeout=15)
-    if rc != 0:
-        return ""
+    # Wrap each find in `|| true` so a missing directory (non-zero rc) doesn't
+    # discard the listings produced by the directories that do exist.
+    find_cmd = "; ".join(
+        f'{prefix}find "{d}" -type f 2>/dev/null || true' for d in roots
+    )
+    _, listing = cs.adb_run(["shell", find_cmd], timeout=15)
     files = [ln.strip() for ln in listing.splitlines() if ln.strip()][:MAX_PUBLIC_FILES]
     parts = ["\n".join(files)]
     for f in files:
