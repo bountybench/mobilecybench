@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application
+        android:name=".JerboaApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
+        tools:targetApi="33">
+        <profileable android:shell="true"/>
+
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:launchMode="standard"
+            android:allowTaskReparenting="true"
+            android:windowSoftInputMode="adjustResize"
+            >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+
+            <intent-filter android:autoVerify="false">
+              <action android:name="android.intent.action.VIEW" />
+              <category android:name="android.intent.category.DEFAULT" />
+              <category android:name="android.intent.category.BROWSABLE" />
+              <data android:scheme="https"/>
+              <!--#AUTO_GEN_INSTANCE_LIST_DO_NOT_TOUCH#-->
+              <data android:host="lemmy.world" />
+              <data android:host="lemm.ee" />
+              <data android:host="lemmy.ml" />
+              <data android:host="sh.itjust.works" />
+              <data android:host="hexbear.net" />
+              <data android:host="feddit.de" />
+              <data android:host="lemmy.ca" />
+              <data android:host="programming.dev" />
+              <data android:host="lemmy.dbzer0.com" />
+              <data android:host="discuss.tchncs.de" />
+              <data android:host="lemmy.blahaj.zone" />
+              <data android:host="lemmygrad.ml" />
+              <data android:host="sopuli.xyz" />
+              <data android:host="lemmy.sdf.org" />
+              <data android:host="lemmy.zip" />
+              <data android:host="beehaw.org" />
+              <data android:host="aussie.zone" />
+              <data android:host="feddit.nl" />
+              <data android:host="infosec.pub" />
+              <data android:host="midwest.social" />
+              <data android:host="reddthat.com" />
+              <data android:host="feddit.uk" />
+              <data android:host="slrpnk.net" />
+              <data android:host="lemmy.one" />
+              <data android:host="jlai.lu" />
+              <data android:host="pawb.social" />
+              <data android:host="lemmy.today" />
+              <data android:host="startrek.website" />
+              <data android:host="feddit.it" />
+              <data android:host="ttrpg.network" />
+              <data android:host="mander.xyz" />
+              <data android:host="lemmings.world" />
+              <data android:host="lemdro.id" />
+              <data android:host="lemmy.eco.br" />
+              <data android:host="ani.social" />
+              <data android:host="szmer.info" />
+              <data android:host="lemy.lol" />
+              <data android:host="lemmy.nz" />
+              <data android:host="monero.town" />
+              <data android:host="burggit.moe" />
+              <data android:host="discuss.online" />
+              <data android:host="feddit.dk" />
+              <data android:host="awful.systems" />
+              <data android:host="thelemmy.club" />
+              <data android:host="feddit.nu" />
+              <data android:host="yiffit.net" />
+              <data android:host="leminal.space" />
+              <data android:host="lemmy.wtf" />
+              <!--#INSTANCE_LIST_END#-->
+            </intent-filter>
+        </activity>
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="com.crazylegend.crashyreporter.initializer.CrashyInitializer"
+                android:value="androidx.startup" />
+        </provider>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
+
+    </application>
+
+</manifest>
