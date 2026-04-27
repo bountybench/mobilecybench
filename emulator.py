@@ -102,7 +102,7 @@ def cmd_stop(_args: argparse.Namespace) -> int:
             print("No running emulators found via adb")
 
         # Whether or not adb saw a device, reap any pidfile-tracked qemu
-        # orphan from a prior crashed run (R2.21). Only kills the PID we
+        # orphan from a prior crashed run. Only kills the PID we
         # recorded ourselves; if the pidfile is absent or stale this is a
         # no-op.
         _reap_emulator_pidfile(PROJECT_ROOT)

@@ -1,4 +1,4 @@
-"""Tests for the emulator pidfile reaper introduced for R2.21.
+"""Tests for the emulator pidfile reaper.
 
 Covers:
   - `_emulator_pidfile`: pure path computation, no I/O side effects

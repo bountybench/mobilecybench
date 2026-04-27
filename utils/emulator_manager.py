@@ -508,7 +508,7 @@ class EmulatorManager:
             logger.info(f"Emulator process started with PID: {self.process.pid}")
 
             # Persist the PID so a crashed-then-restarted run can find and
-            # reap this exact process (R2.21). Best-effort; never fail the
+            # reap this exact process. Best-effort; never fail the
             # spawn over a pidfile-write hiccup (read-only fs, etc.).
             try:
                 pidfile = _emulator_pidfile(self.project_root)
@@ -853,7 +853,7 @@ class EmulatorManager:
 
         finally:
             # Reap by pidfile as a final safety net: covers the case where
-            # `adb emu kill` was sent but the qemu child survived (R2.21).
+            # `adb emu kill` was sent but the qemu child survived.
             # Only kills the PID we wrote at start time — never broad-pkill.
             _reap_emulator_pidfile(self.project_root)
 
