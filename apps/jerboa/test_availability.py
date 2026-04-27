@@ -7,11 +7,9 @@ Crash-side-effect probe driven by a co-installed helper APK.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import time
 import uuid
-from pathlib import Path
 
 from jerboa_probe_utils import (
     get_attested_pids,

@@ -93,7 +93,9 @@ def _load_and_run() -> int:
                             summary["score"] = 0
                             break
         except Exception as exc:
-            print(f"[test_confidentiality] backend query failed: {exc}", file=sys.stderr)
+            print(
+                f"[test_confidentiality] backend query failed: {exc}", file=sys.stderr
+            )
             print(json.dumps(summary))
             return 2
 
