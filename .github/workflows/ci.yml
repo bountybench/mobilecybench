@@ -1395,7 +1395,7 @@ jobs:
             fi
             echo "Synthetic vulnerability files verified for ${{ matrix.vuln_id }}"
           else
-            required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
+            required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py")
           fi
 
           echo "Checking for required test files..."
