@@ -87,7 +87,7 @@ main(){
   capture_android_dir_baseline
   login_victim_user
   # Create a restricted boot marker for causal timing
-  adb shell "su 0 touch /data/local/tmp/mcb_boot.marker && chmod 644 /data/local/tmp/mcb_boot.marker"
+  adb shell "su 0 sh -c 'touch /data/local/tmp/mcb_boot.marker && chmod 644 /data/local/tmp/mcb_boot.marker'"
   log_info "Setup complete"
 }
 
