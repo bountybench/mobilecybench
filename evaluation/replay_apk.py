@@ -4,6 +4,7 @@ No Docker container needed — the host builds the APK and deploys via ADB.
 The APK runs in the Android sandbox on the emulator.
 """
 
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ APK_FILENAME = f"{PACKAGE}.apk"
 EVIDENCE_DEVICE_DIR = f"/sdcard/Android/data/{PACKAGE}/files"
 READ_LOGS_PERMISSION = "android.permission.READ_LOGS"
 LOG_ACCESS_ALLOW_BUTTON = "com.android.systemui:id/log_access_dialog_allow_button"
-LOG_ACCESS_FALLBACK_TAP = (540, 1449)
+_BOUNDS_RE = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 
 
 @dataclass
@@ -107,16 +108,12 @@ def manifest_declares_permission(project_dir: Path, permission: str) -> bool:
     if not manifest.is_file():
         return False
 
-    try:
-        root = ElementTree.fromstring(manifest.read_text())
-    except ElementTree.ParseError:
-        return permission in manifest.read_text(errors="replace")
-
+    root = ElementTree.fromstring(manifest.read_text())
     name_attr = "{http://schemas.android.com/apk/res/android}name"
-    for elem in root.iter():
-        if elem.tag.endswith("uses-permission") and elem.attrib.get(name_attr) == permission:
-            return True
-    return False
+    return any(
+        elem.tag.endswith("uses-permission") and elem.attrib.get(name_attr) == permission
+        for elem in root.iter()
+    )
 
 
 def _run_adb(args: list[str], timeout: int = 20) -> subprocess.CompletedProcess[str]:
@@ -128,44 +125,66 @@ def _run_adb(args: list[str], timeout: int = 20) -> subprocess.CompletedProcess[
     )
 
 
-def _tap_bounds_center(bounds: str) -> bool:
-    import re
-
-    match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+def _tap_bounds_center(bounds: str) -> None:
+    """Tap the center of an Android UI bounds string. Raises on bad input."""
+    match = _BOUNDS_RE.fullmatch(bounds)
     if not match:
-        return False
-    left, top, right, bottom = (int(group) for group in match.groups())
-    x = (left + right) // 2
-    y = (top + bottom) // 2
+        raise RuntimeError(f"Malformed bounds string: {bounds!r}")
+    left, top, right, bottom = (int(g) for g in match.groups())
+    x, y = (left + right) // 2, (top + bottom) // 2
     proc = _run_adb(["shell", "input", "tap", str(x), str(y)])
-    return proc.returncode == 0
+    if proc.returncode != 0:
+        raise RuntimeError(f"adb input tap {x} {y} failed: {proc.stderr or proc.stdout}")
 
 
-def _approve_log_access_dialog() -> bool:
-    """Approve Android 13+ one-time logcat access dialog if present."""
-    for _ in range(5):
-        _run_adb(["shell", "uiautomator", "dump", "/sdcard/window.xml"])
-        proc = _run_adb(["exec-out", "cat", "/sdcard/window.xml"])
-        if proc.returncode == 0 and proc.stdout.strip():
-            try:
-                root = ElementTree.fromstring(proc.stdout)
-                for node in root.iter("node"):
-                    if node.attrib.get("resource-id") == LOG_ACCESS_ALLOW_BUTTON:
-                        return _tap_bounds_center(node.attrib.get("bounds", ""))
-            except ElementTree.ParseError:
-                pass
-        time.sleep(1)
-
-    x, y = LOG_ACCESS_FALLBACK_TAP
-    proc = _run_adb(["shell", "input", "tap", str(x), str(y)])
-    return proc.returncode == 0
+def _find_allow_button_bounds() -> str | None:
+    """Dump foreground UI; return the log-access allow button's bounds, else None."""
+    if _run_adb(["shell", "uiautomator", "dump", "/sdcard/window.xml"]).returncode != 0:
+        return None
+    proc = _run_adb(["exec-out", "cat", "/sdcard/window.xml"])
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        root = ElementTree.fromstring(proc.stdout)
+    except ElementTree.ParseError:
+        return None
+    for node in root.iter("node"):
+        if node.attrib.get("resource-id") == LOG_ACCESS_ALLOW_BUTTON:
+            return node.attrib.get("bounds") or None
+    return None
 
 
-def enable_read_logs_access(package: str = PACKAGE) -> None:
-    """Grant READ_LOGS and approve Android's one-time log access dialog.
+def _approve_log_access_dialog(timeout: float = 15.0, interval: float = 0.5) -> None:
+    """Wait for the Android 13+ logcat consent dialog and tap Allow.
 
-    On Android 13+, pm grant alone only makes the app eligible. logd still
-    filters cross-app logs until SystemUI's consent dialog is approved.
+    Raises RuntimeError if the dialog never appears within timeout. Does not
+    blind-tap a fallback location: a missing dialog means the consent flow
+    never started and any later tap would be guessing.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        bounds = _find_allow_button_bounds()
+        if bounds:
+            _tap_bounds_center(bounds)
+            return
+        time.sleep(interval)
+    raise RuntimeError(
+        f"Log-access consent dialog did not appear within {timeout:.0f}s "
+        f"(looked for resource-id {LOG_ACCESS_ALLOW_BUTTON})"
+    )
+
+
+def enable_read_logs_access(package: str = PACKAGE, timeout: float = 15.0) -> None:
+    """Grant READ_LOGS and approve Android's one-time log-access dialog.
+
+    On Android 13+, pm grant alone only makes the app eligible. logd filters
+    cross-app logs until SystemUI's consent dialog is approved; once approved,
+    the consent persists for the package.
+
+    Best-effort: if the dialog never appears or the tap fails, we log a
+    warning and continue. The instrumentation may then see a filtered logcat
+    and the verifier will fail naturally — which is the right place to
+    surface that.
     """
     logger.info("Enabling READ_LOGS access for exploit APK...")
     proc = _run_adb(["shell", "pm", "grant", package, READ_LOGS_PERMISSION])
@@ -174,12 +193,15 @@ def enable_read_logs_access(package: str = PACKAGE) -> None:
 
     proc = _run_adb(["shell", "am", "start", "-n", f"{package}/.MainActivity"])
     if proc.returncode != 0:
-        raise RuntimeError(f"Failed to launch exploit APK for READ_LOGS consent: {proc.stderr or proc.stdout}")
+        raise RuntimeError(
+            f"Failed to launch {package}/.MainActivity for READ_LOGS consent: "
+            f"{proc.stderr or proc.stdout}"
+        )
 
-    time.sleep(3)
-    if not _approve_log_access_dialog():
-        raise RuntimeError("Failed to approve READ_LOGS consent dialog")
-    time.sleep(2)
+    try:
+        _approve_log_access_dialog(timeout=timeout)
+    except RuntimeError as e:
+        logger.warning(f"READ_LOGS consent dialog approval skipped: {e}")
     _run_adb(["shell", "am", "force-stop", package])
 
 
@@ -207,9 +229,6 @@ def run_instrument(
         logger.warning(f"am instrument timed out after {timeout}s")
         stdout = e.stdout.decode() if e.stdout else ""
         return 1, stdout
-
-    # Parse INSTRUMENTATION_CODE from output
-    import re
 
     match = re.search(r"INSTRUMENTATION_CODE:\s*(-?\d+)", stdout)
     if match:

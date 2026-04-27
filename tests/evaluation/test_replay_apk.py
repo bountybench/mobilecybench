@@ -1,13 +1,21 @@
 """Tests for malicious APK replay — evidence assembly and exit code parsing."""
 
+import subprocess
 from unittest.mock import patch
 
+import pytest
+
+from evaluation import replay_apk
 from evaluation.replay_apk import (
     EvidenceBundle,
     assemble_evidence_log,
     manifest_declares_permission,
     run_instrument,
 )
+
+
+def _completed(returncode: int = 0, stdout: str = "", stderr: str = ""):
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 class TestAssembleEvidenceLog:
@@ -140,3 +148,127 @@ class TestManifestDeclaresPermission:
         )
 
         assert not manifest_declares_permission(tmp_path, "android.permission.READ_LOGS")
+
+    def test_missing_manifest_returns_false(self, tmp_path):
+        assert not manifest_declares_permission(tmp_path, "android.permission.READ_LOGS")
+
+
+_DIALOG_XML = (
+    "<hierarchy>"
+    '<node resource-id="com.android.systemui:id/log_access_dialog_allow_button" '
+    'bounds="[100,200][300,400]" />'
+    "</hierarchy>"
+)
+_EMPTY_XML = "<hierarchy></hierarchy>"
+
+
+def _adb_responder(prefix_matchers):
+    """Build a _run_adb side_effect from (prefix, response-or-callable) pairs.
+
+    First matching prefix wins. Unmatched commands return a success result.
+    Callables receive the args list and may pop from a per-test queue.
+    """
+    def side_effect(args, _timeout=20):
+        cmd = " ".join(args)
+        for prefix, response in prefix_matchers:
+            if cmd.startswith(prefix):
+                return response(args) if callable(response) else response
+        return _completed()
+    return side_effect
+
+
+class TestApproveLogAccessDialog:
+    """Polling-based dialog approval — never blind-taps."""
+
+    def test_taps_button_when_dialog_visible(self):
+        side_effect = _adb_responder([
+            ("exec-out cat", _completed(stdout=_DIALOG_XML)),
+        ])
+
+        with patch.object(replay_apk, "_run_adb", side_effect=side_effect) as mock:
+            replay_apk._approve_log_access_dialog(timeout=2, interval=0.01)
+
+        # Bounds [100,200][300,400] → center (200, 300)
+        tap_calls = [c.args[0] for c in mock.call_args_list if c.args[0][:3] == ["shell", "input", "tap"]]
+        assert tap_calls == [["shell", "input", "tap", "200", "300"]]
+
+    def test_raises_when_dialog_never_appears(self):
+        side_effect = _adb_responder([
+            ("exec-out cat", _completed(stdout=_EMPTY_XML)),
+        ])
+
+        with patch.object(replay_apk, "_run_adb", side_effect=side_effect):
+            with pytest.raises(RuntimeError, match="did not appear"):
+                replay_apk._approve_log_access_dialog(timeout=0.2, interval=0.05)
+
+    def test_retries_after_parse_error(self):
+        queue = [_completed(stdout="not xml at all"), _completed(stdout=_DIALOG_XML)]
+        side_effect = _adb_responder([
+            ("exec-out cat", lambda _args: queue.pop(0) if queue else _completed(stdout=_EMPTY_XML)),
+        ])
+
+        with patch.object(replay_apk, "_run_adb", side_effect=side_effect):
+            replay_apk._approve_log_access_dialog(timeout=2, interval=0.01)
+
+    def test_raises_on_malformed_bounds(self):
+        broken_xml = (
+            "<hierarchy>"
+            '<node resource-id="com.android.systemui:id/log_access_dialog_allow_button" '
+            'bounds="bogus" />'
+            "</hierarchy>"
+        )
+        side_effect = _adb_responder([
+            ("exec-out cat", _completed(stdout=broken_xml)),
+        ])
+
+        with patch.object(replay_apk, "_run_adb", side_effect=side_effect):
+            with pytest.raises(RuntimeError, match="Malformed bounds"):
+                replay_apk._approve_log_access_dialog(timeout=2, interval=0.01)
+
+
+class TestEnableReadLogsAccess:
+    """End-to-end: pm grant + launch + dialog approve + force-stop."""
+
+    def test_grants_and_approves(self):
+        side_effect = _adb_responder([
+            ("exec-out cat", _completed(stdout=_DIALOG_XML)),
+        ])
+
+        with patch.object(replay_apk, "_run_adb", side_effect=side_effect) as mock:
+            replay_apk.enable_read_logs_access(timeout=2)
+
+        commands = [" ".join(c.args[0]) for c in mock.call_args_list]
+        assert any(c.startswith("shell pm grant") and "READ_LOGS" in c for c in commands)
+        assert any(c.startswith("shell am start") for c in commands)
+        assert any(c.startswith("shell input tap") for c in commands)
+        assert any(c.startswith("shell am force-stop") for c in commands)
+
+    def test_raises_when_pm_grant_fails(self):
+        side_effect = _adb_responder([
+            ("shell pm grant", _completed(returncode=1, stderr="not found")),
+        ])
+
+        with patch.object(replay_apk, "_run_adb", side_effect=side_effect):
+            with pytest.raises(RuntimeError, match="pm grant READ_LOGS failed"):
+                replay_apk.enable_read_logs_access(timeout=2)
+
+    def test_raises_when_launch_fails(self):
+        side_effect = _adb_responder([
+            ("shell am start", _completed(returncode=1, stderr="no activity")),
+        ])
+
+        with patch.object(replay_apk, "_run_adb", side_effect=side_effect):
+            with pytest.raises(RuntimeError, match="MainActivity"):
+                replay_apk.enable_read_logs_access(timeout=2)
+
+    def test_warns_when_dialog_absent(self, caplog):
+        """Missing dialog must not abort replay — verifier surfaces real failures."""
+        side_effect = _adb_responder([
+            ("exec-out cat", _completed(stdout=_EMPTY_XML)),
+        ])
+
+        with patch.object(replay_apk, "_run_adb", side_effect=side_effect):
+            with caplog.at_level("WARNING"):
+                replay_apk.enable_read_logs_access(timeout=0.1)
+
+        assert any("consent dialog approval skipped" in r.message for r in caplog.records)
