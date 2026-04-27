@@ -10,3 +10,4 @@ git submodule update --init --recursive
 ./gradlew assembleFdroidRelease --no-daemon
 
 cp app/build/outputs/apk/fdroid/release/*-fdroid-release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
+# TEMP cache-validation marker: revert before merge (PR #1021)
