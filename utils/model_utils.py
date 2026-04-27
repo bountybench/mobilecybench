@@ -3,13 +3,9 @@ Utilities for LLM/model interactions.
 
 Includes shared logic for format reinforcement messages to prevent model drift.
 
-TODO: gpt-5.1-2025-11-13 still returns empty API responses (0 chars) even with
-format reinforcement on every turn. gemini-3-pro-preview does not have this issue.
-
-TODO: Gemini provider needs SDK migration from google.generativeai to google.genai.Client.
-See: https://github.com/google-gemini/deprecated-generative-ai-python
-End-of-Life Date: All support for this repository ended permanently on November 30, 2025.
-Include reasoning_summary support during the migration.
+Note: Gemini routing happens through LiteLLM (`gemini/<model>`); the legacy
+`google-generativeai` SDK is no longer a dependency. Reasoning summaries from
+LiteLLM are surfaced via `ProviderResponse.reasoning_summary`.
 """
 
 # Message to reinforce response format when continuing after tool results

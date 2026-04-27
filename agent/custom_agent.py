@@ -30,11 +30,11 @@ try:
 except Exception:
     _jsonschema_validate = None
 
-# Grab data from runner_config
-with open("runner_config.json", "r") as file:
-    data = json.load(file)
 
-timeout_ms = data.get("timeout_ms", 600_000)
+# Default API timeout (ms). Overridden per-instance by the timeout_ms
+# constructor argument; runner.py sources that from runner_config.json.
+# Importing this module no longer requires a runner_config.json on disk.
+DEFAULT_TIMEOUT_MS = 600_000
 
 # Transient exceptions that should trigger retry.
 # litellm's exception classes subclass openai.* so one tuple covers both providers.
@@ -76,7 +76,7 @@ class CustomAgent:
         screenshot_enabled: bool,
         app_name: str,
         additional_context: str = None,
-        timeout_ms: int = timeout_ms,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
         app_server: str = None,
         emulator_server: str = None,
         network_access: bool = True,
@@ -88,6 +88,7 @@ class CustomAgent:
         workflow: str = "exploit",
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
+        allow_unregistered_models: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
@@ -134,6 +135,7 @@ class CustomAgent:
             max_output_tokens=max_model_response_tokens,
             timeout_ms=timeout_ms,
             reasoning_effort=reasoning_effort,
+            allow_unregistered=allow_unregistered_models,
         )
 
         # Use shared logger's file name for consistency

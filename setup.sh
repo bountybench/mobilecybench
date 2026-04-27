@@ -260,14 +260,36 @@ init_submodules() {
 
     # TODO: switch submodule URLs to SSH instead of HTTPS
     if [[ -n "$INIT_SUBMODULE_APP" ]]; then
-        local submodule_path="apps/${INIT_SUBMODULE_APP}/codebase"
         if [[ ! -d "${SCRIPT_DIR}/apps/${INIT_SUBMODULE_APP}" ]]; then
             log "ERROR: App directory not found: apps/${INIT_SUBMODULE_APP}"
             return 1
         fi
-        log "Initializing submodule: ${submodule_path}"
-        git submodule update --init "$submodule_path"
-        log "Submodule initialized: ${submodule_path}"
+
+        # Initialize every submodule registered under apps/<app>/ in .gitmodules.
+        # Most apps have a single `codebase` submodule, but some (e.g. jitsi-meet)
+        # ship additional infra submodules like `jitsi-docker` that must also
+        # be initialized for start_runtime.sh to succeed.
+        local app_prefix="apps/${INIT_SUBMODULE_APP}/"
+        local submodule_paths=()
+        while IFS= read -r submodule_path; do
+            [[ -n "$submodule_path" ]] && submodule_paths+=("$submodule_path")
+        done < <(
+            git -C "$SCRIPT_DIR" config -f .gitmodules \
+                --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+                | awk '{ print $2 }' \
+                | grep "^${app_prefix}" || true
+        )
+
+        if [[ ${#submodule_paths[@]} -eq 0 ]]; then
+            log "ERROR: No submodules registered under ${app_prefix} in .gitmodules"
+            return 1
+        fi
+
+        for submodule_path in "${submodule_paths[@]}"; do
+            log "Initializing submodule: ${submodule_path}"
+            git -C "$SCRIPT_DIR" submodule update --init "$submodule_path"
+            log "Submodule initialized: ${submodule_path}"
+        done
     else
         log "Initializing all submodules (recursive)..."
         git submodule update --init --recursive

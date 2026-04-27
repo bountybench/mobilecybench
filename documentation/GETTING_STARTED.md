@@ -17,7 +17,25 @@ bash setup.sh --init-submodules conversations
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
-To run the AI agent, provide an API key. We currently support Google and OpenAI models and recommend using either `gemini-3-pro-preview` or `gpt-5.2`
+To run the AI agent, provide an API key. The built-in models cover three
+providers (see `agent/model_providers/factory.py:SupportedModel` for the full
+list, including older entries kept for backwards compatibility):
+
+- **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`;
+  `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`.
+  Requires `OPENAI_API_KEY`.
+- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`;
+  `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires
+  `ANTHROPIC_API_KEY`.
+- **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`.
+  Requires `GEMINI_API_KEY`.
+
+To add a new model, append an entry to `SupportedModel` and a pricing
+row to `utils/token_pricing.json` — see
+[Adding a New Model](ADDING_MODELS.md). For one-off model-sweep
+exploration where cost telemetry doesn't matter, set
+`"allow_unregistered_models": true` in `runner_config.json` to bypass
+the registry.
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
@@ -95,12 +113,17 @@ To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner confi
 
 ```bash
 npm install -g @anthropic-ai/claude-code
-claude auth login   # follow the browser flow — stores credentials in macOS Keychain
+claude auth login   # follow the browser flow; credentials are stored in
+                    # the OS-native secret store (macOS Keychain / Linux
+                    # `~/.claude/.credentials.json` / Windows Credential Manager)
 ```
 
 **Step 2: Extract tokens into `agent/.env`**
 
-After logging in, extract your OAuth tokens from the macOS Keychain into the env file:
+After logging in, extract your OAuth tokens into `agent/.env`. Pick the
+snippet for your platform.
+
+**macOS** (Keychain):
 
 ```bash
 CREDS=$(security find-generic-password -s "Claude Code-credentials" -w)
@@ -111,6 +134,38 @@ print(f'CLAUDE_CODE_OAUTH_TOKEN={c[\"accessToken\"]}')
 print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
 " >> agent/.env
 ```
+
+**Linux** (credentials file under `~/.claude/`):
+
+```bash
+python3 -c "
+import json, pathlib, sys
+path = pathlib.Path.home() / '.claude' / '.credentials.json'
+if not path.exists():
+    sys.exit(f'Credentials file not found at {path}; run \"claude auth login\" first.')
+c = json.loads(path.read_text())['claudeAiOauth']
+print(f'CLAUDE_CODE_OAUTH_TOKEN={c[\"accessToken\"]}')
+print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
+" >> agent/.env
+```
+
+If your distribution stores credentials in a system secret manager (GNOME
+Keyring, KWallet) instead of the JSON file, export them via that tool first
+and adapt the snippet to read from `subprocess` output.
+
+**Windows** (Credential Manager via PowerShell):
+
+```powershell
+$cred = Get-StoredCredential -Target "Claude Code-credentials"
+$json = ConvertFrom-Json $cred.GetNetworkCredential().Password
+"CLAUDE_CODE_OAUTH_TOKEN=$($json.claudeAiOauth.accessToken)"           | Out-File -Encoding utf8 -Append agent/.env
+"CLAUDE_CODE_OAUTH_REFRESH_TOKEN=$($json.claudeAiOauth.refreshToken)"  | Out-File -Encoding utf8 -Append agent/.env
+```
+
+`Get-StoredCredential` requires the [`CredentialManager` module](https://www.powershellgallery.com/packages/CredentialManager).
+If unavailable, open `Control Panel → User Accounts → Credential Manager →
+Windows Credentials`, expand the `Claude Code-credentials` entry, and copy
+the `accessToken` / `refreshToken` fields manually.
 
 Tokens expire periodically — re-run the extraction before each session.
 
@@ -145,7 +200,7 @@ echo CODEX_API_KEY="sk-..." >> agent/.env
   "agent_mode": "codex",
   "agent_image": "cybench/mobilecybench-codex:latest",
   "agent_timeout": 1800,
-  "model": "gpt-5.2",
+  "model": "gpt-5.5",
   "reasoning_effort": "high"
 }
 ```
