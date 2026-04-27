@@ -145,6 +145,12 @@ def test_main_returns_1_on_missing_model_key(smoke_test_module, tmp_path):
     assert rc == 1
 
 
+def test_main_returns_1_when_config_path_is_a_directory(smoke_test_module, tmp_path):
+    """`--config <dir>` → read_text raises IsADirectoryError → exit 1, not a traceback."""
+    rc = _run_main(smoke_test_module, ["--config", str(tmp_path)])
+    assert rc == 1
+
+
 def test_main_returns_1_on_provider_construction_error(smoke_test_module):
     """get_model_provider raising ValueError (unsupported model / missing key) → exit 1."""
     with patch(

@@ -19,6 +19,16 @@ Exit codes:
     0  provider returned a response
     1  configuration / API-key error
     2  provider raised at call time (network, invalid id, 4xx/5xx)
+
+Sample success output (gpt-5.5, OPENAI_API_KEY set):
+
+    smoke-test: model='gpt-5.5' allow_unregistered=False
+    smoke-test: provider=OpenAIProvider
+    smoke-test: prompt='Reply with the single word "OK". No tools, no JSON, just OK.'
+
+    OK in 2.10s
+      response_id     = 'resp_...'
+      assistant_text  = 'OK'
 """
 
 from __future__ import annotations
@@ -104,7 +114,11 @@ def main() -> int:
             return 1
         try:
             model, allow_unregistered = _read_model_from_config(config_path)
-        except (json.JSONDecodeError, KeyError) as e:
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            # OSError covers PermissionError / IsADirectoryError on read_text;
+            # JSONDecodeError covers malformed config; KeyError covers a
+            # config that parses but lacks a "model" key. All three should
+            # land on the documented exit-1 path, not a Python traceback.
             print(
                 f"ERROR: failed to read model from {config_path}: {e}", file=sys.stderr
             )

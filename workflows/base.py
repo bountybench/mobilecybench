@@ -303,6 +303,15 @@ class Workflow(ABC):
         (``run_ci_local.sh``); GKE does the same in
         ``infra/gke/entrypoint-gke.sh``. Bring the same affordance into
         the runtime path so partners cloning the repo don't hit it.
+
+        Precondition: a reachable Docker daemon. ``create_docker_network``
+        instantiates ``docker.from_env()`` and will raise if the daemon
+        isn't up. Since this runs at the top of
+        ``_preflight_cleanup_app_runtime`` and ``RedTeamWorkflow.setup_runtime_environment``,
+        both setup paths now hard-require Docker before doing any other
+        work — that's fine for production runs (everything past this
+        point needs Docker too), but unit tests covering those paths must
+        mock ``agent.agent_container.create_docker_network``.
         """
         # Lazy import to keep workflow construction free of docker side-effects.
         from agent.agent_container import create_docker_network
