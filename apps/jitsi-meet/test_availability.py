@@ -227,7 +227,9 @@ def _su0_works() -> bool:
     is a no-op stub."""
     out = subprocess.run(
         ["adb", "shell", "su", "0", "id"],
-        capture_output=True, text=True, timeout=5,
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     return "uid=0" in out.stdout
 
@@ -251,13 +253,17 @@ def _root_test_dir(path: str) -> bool | None:
     if _adb_shell_is_root():
         out = subprocess.run(
             ["adb", "shell", "test", "-d", path],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return out.returncode == 0
     if _su0_works():
         out = subprocess.run(
             ["adb", "shell", "su", "0", "test", "-d", path],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return out.returncode == 0
     return None
@@ -285,7 +291,9 @@ def check_package_data_dir() -> tuple[bool, str]:
     # No root path. Treat 'package installed' as soft proof-of-life.
     out = subprocess.run(
         ["adb", "shell", "pm", "path", PACKAGE_NAME],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     if out.returncode == 0 and out.stdout.strip().startswith("package:"):
         return True, (
