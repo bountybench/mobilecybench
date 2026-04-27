@@ -8,7 +8,7 @@
   "access_details": {
     "subscription_authorization": 0,
     "notification_access": 1,
-    "legitimate_present": 0,
+    "legitimate_present": 1,
     "score": 0
   },
   "availability_details": {
