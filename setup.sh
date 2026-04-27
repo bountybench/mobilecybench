@@ -63,11 +63,26 @@ except:
 # Warn user about old SDK versions and ask for confirmation
 warn_old_sdk_version() {
     local sdk_version="$1"
-    local context="${2:-Android SDK}"  
-    
+    local context="${2:-Android SDK}"
+
     if [[ $sdk_version -lt 30 ]]; then
         echo "Warning: $context $sdk_version is quite old."
         echo "Old SDK versions may have compatibility issues with modern devices."
+
+        # Non-interactive shells (CI, docker build, `bash setup.sh < /dev/null`)
+        # default to "no" so the script never hangs waiting for input. Set
+        # MOBILECYBENCH_NONINTERACTIVE=1 to force this behavior even on a tty,
+        # or pass --yes-old-sdk on the command line to opt in unattended.
+        if [[ -n "${MOBILECYBENCH_YES_OLD_SDK:-}" ]]; then
+            echo "MOBILECYBENCH_YES_OLD_SDK is set — proceeding."
+            return 0
+        fi
+        if [[ -n "${MOBILECYBENCH_NONINTERACTIVE:-}" ]] || ! [ -t 0 ]; then
+            echo "Non-interactive shell detected; cancelling setup. Set"
+            echo "MOBILECYBENCH_YES_OLD_SDK=1 to proceed unattended."
+            exit 0
+        fi
+
         read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -380,6 +395,15 @@ check_apktool() {
             echo "  3. Rename the jar to apktool.jar"
             echo "  4. Place both files in C:\\Windows\\System32 or add to PATH"
             echo ""
+
+            # Non-interactive shells: fail loudly instead of hanging on input.
+            # The Windows manual-install path can't be automated; the partner
+            # has to install apktool themselves and re-run setup.sh.
+            if [[ -n "${MOBILECYBENCH_NONINTERACTIVE:-}" ]] || ! [ -t 0 ]; then
+                error_exit "apktool not installed and shell is non-interactive. \
+Install apktool (see options above) and re-run setup.sh."
+            fi
+
             read -p "Press Enter after installing apktool to continue..."
 
             if ! command_exists apktool; then
