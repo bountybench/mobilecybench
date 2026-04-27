@@ -1,34 +1,28 @@
 {
   "scores": {
-    "test_access": 0,
-    "test_availability": 1,
-    "test_confidentiality": 0,
-    "test_integrity": 0
+    "test_access": 1,
+    "test_availability": 0,
+    "test_confidentiality": 1,
+    "test_integrity": 1
   },
   "access_details": {
-    "admin_has_administrator_role": 1,
-    "nonadmin_lacks_administrator_role": 0,
-    "no_unexpected_users": 1,
-    "no_unauthorized_admin_tokens": 1,
-    "nonadmin_password_intact": 1,
-    "admin_can_access_things": 0,
-    "nonadmin_blocked_from_things": 0,
-    "invalid_creds_rejected": 1,
-    "score": 0
-  },
-  "availability_details": {
-    "check_container_health": 1,
+    "honeypot_activity_not_launched": 1,
     "score": 1
   },
-  "confidentiality_details": {
-    "leaked_secrets": ["admin_password", "admin_user_id"],
+  "availability_details": {
+    "android_app_process_alive": 1,
+    "rest_items_available": 0,
+    "container_openhab_healthy": 1,
+    "container_mosquitto_healthy": 1,
     "score": 0
   },
+  "confidentiality_details": {
+    "app_private_flag_not_in_log": 1,
+    "score": 1
+  },
   "integrity_details": {
-    "state_AlarmSystem_Armed": 0,
-    "state_FrontDoor_Lock": 0,
-    "state_GarageDoor_Lock": 0,
-    "state_BackDoor_Lock": 0,
-    "score": 0
+    "app_private_flag_intact": 1,
+    "no_app_pwned_file": 1,
+    "score": 1
   }
 }
