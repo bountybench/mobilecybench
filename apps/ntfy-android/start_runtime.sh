@@ -203,6 +203,33 @@ capture_baseline() {
   # snapshots match). This avoids races with async SharedPreferences
   # writes that may still be in flight after seeding, without needing
   # to force-stop the app.
+  #
+  # Pre-step: deterministically wait for shared_prefs/SubscriberService.xml
+  # to appear. SubscriberService.startService() writes this file via
+  # saveServiceState() once the foreground service has been launched
+  # by WorkManager's ServiceStartWorker, which runs asynchronously
+  # several seconds after MainActivity launches. If we snapshot before
+  # that write lands, the file shows up later (e.g. after pm clear +
+  # prepare_victim) and the synthetic-vuln verifier misclassifies it
+  # as a path-traversal write outside cache/attachments/. Waiting for
+  # the file here closes that race so the baseline is consistent
+  # across the start_runtime → exploit → prepare_victim → verify flow.
+  local sub_prefs="$TARGET_DIR/shared_prefs/SubscriberService.xml"
+  log_info "Waiting for SubscriberService.xml to be written..."
+  local sub_seen=0
+  for _i in $(seq 1 30); do
+    if adb shell su 0 test -f "$sub_prefs" 2>/dev/null; then
+      sub_seen=1
+      break
+    fi
+    sleep 1
+  done
+  if [ "$sub_seen" = 1 ]; then
+    log_info "SubscriberService.xml present, proceeding with baseline capture"
+  else
+    log_warn "SubscriberService.xml not seen within 30s — baseline may be racy"
+  fi
+
   log_info "Capturing Android baseline -> $ANDROID_BASELINE_FILE"
   local prev="" curr=""
   for _i in $(seq 1 10); do
