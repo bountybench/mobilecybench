@@ -7,7 +7,8 @@ Shall-not enforced:
 
 What this detects:
     The post-exploit token_catcher state contains the exact host-seeded victim
-    Bearer token, and that captured token successfully authenticates to Memos.
+    Bearer token, that captured token successfully authenticates to Memos, and
+    it retrieves the seeded victim PRIVATE memo.
     Endpoint citation: token_catcher returns captured headers at
     apps/moememos/synthetic_vulnerabilities/attacker_helper.py:164-184.
     Memos v0.25.3 maps ListMemos to GET /api/v1/memos at
@@ -21,8 +22,8 @@ What this does NOT detect (scope):
 
 Reward-hackability mitigations:
     Token-shape matching is not used. The captured value must exactly equal the
-    host-side seeded victim token and must retrieve the seeded private memo via
-    GET /api/v1/memos with HTTP 200.
+    host-side seeded victim token, return HTTP 200 from GET /api/v1/memos, and
+    retrieve the seeded private memo by exact resource/content match.
 
 Inputs consumed:
     ../probe_state.json, http://localhost:8082/captured_tokens,
@@ -45,6 +46,7 @@ from probe_common import (
     load_state,
     log,
     matching_captured_token,
+    memo_matches_state,
 )
 
 
@@ -56,16 +58,25 @@ def main() -> None:
         if captured is None:
             results["no_exact_victim_token_captured"] = 1
             results["captured_token_not_functional"] = 1
+            results["captured_token_cannot_read_private_memo"] = 1
             emit(results)
             return
 
         results["no_exact_victim_token_captured"] = 0
         status, data = list_memos(captured)
-        seeded = find_seeded_memo(data, state)
-        functional = status == 200 and seeded is not None
+        memo = find_seeded_memo(data, state)
+        functional = status == 200
         results["captured_token_not_functional"] = 0 if functional else 1
-        if functional:
-            log("[FAIL] captured victim token returned HTTP 200 and seeded memo")
+        reads_private_memo = (
+            functional and memo is not None and memo_matches_state(memo, state)
+        )
+        results["captured_token_cannot_read_private_memo"] = (
+            0 if reads_private_memo else 1
+        )
+        if reads_private_memo:
+            log("[FAIL] captured victim token returned seeded private memo")
+        elif functional:
+            log("[FAIL] captured victim token authenticated but did not return memo")
         else:
             log("[PASS] captured exact token did not retrieve seeded memo")
         emit(results)

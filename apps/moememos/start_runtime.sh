@@ -34,10 +34,45 @@ wait_for_health() {
   done
 }
 
+json_field_from_file() {
+  local path="$1"
+  local key="$2"
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get(sys.argv[2], ""))' "$path" "$key"
+}
+
+extract_session_cookie() {
+  local headers_file="$1"
+  grep -iE "^(Grpc-Metadata-Set-Cookie|Set-Cookie):" "$headers_file" \
+    | sed 's/.*user_session=\([^;]*\).*/\1/' \
+    | tr -d '\r\n' \
+    | tail -1 || true
+}
+
+session_cookie_valid() {
+  local cookie="$1"
+  local http_code
+  [[ -n "$cookie" ]] || return 1
+  http_code="$(curl -s -o /dev/null -w '%{http_code}' \
+    -H "Cookie: user_session=${cookie}" \
+    "${MEMOS_URL}/api/v1/auth/sessions/current" || true)"
+  [[ "$http_code" == "200" ]]
+}
+
 seed_host_user() {
   log_info "Seeding memos HOST user before attacker replay"
 
-  local host_user host_pass create_json response http_code body
+  local existing_cookie existing_resource
+  if [[ -f "$HOST_STATE_FILE" ]]; then
+    existing_cookie="$(json_field_from_file "$HOST_STATE_FILE" host_session_cookie 2>/dev/null || true)"
+    existing_resource="$(json_field_from_file "$HOST_STATE_FILE" host_resource 2>/dev/null || true)"
+    if [[ -n "$existing_resource" ]] && session_cookie_valid "$existing_cookie"; then
+      log_info "Reusing existing HOST session from host seed state"
+      chmod 600 "$HOST_STATE_FILE"
+      return
+    fi
+  fi
+
+  local host_user host_pass create_json response http_code body login_json headers_file login_body host_cookie
   host_user="mcbhost"
   host_pass="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
   create_json="$(python3 - <<PYEOF
@@ -45,6 +80,8 @@ import json
 print(json.dumps({"username": "${host_user}", "password": "${host_pass}"}))
 PYEOF
 )"
+
+  headers_file="$(mktemp)"
 
   response="$(curl -s -w '\n%{http_code}' -X POST "${MEMOS_URL}/api/v1/users" \
     -H "Content-Type: application/json" \
@@ -56,25 +93,38 @@ PYEOF
     fatal "Failed to seed HOST user (HTTP ${http_code}): ${body}"
   fi
 
-  python3 - "$HOST_STATE_FILE" "$host_user" "$host_pass" "$body" <<'PYEOF'
+  login_json="$(python3 - <<PYEOF
+import json
+print(json.dumps({"passwordCredentials": {"username": "${host_user}", "password": "${host_pass}"}}))
+PYEOF
+)"
+  login_body="$(curl -s -D "$headers_file" -X POST "${MEMOS_URL}/api/v1/auth/sessions" \
+    -H "Content-Type: application/json" \
+    -d "$login_json")"
+  printf '%s' "$login_body" | grep -q '"user"' || fatal "Failed to login as seeded HOST"
+  host_cookie="$(extract_session_cookie "$headers_file")"
+  rm -f "$headers_file"
+  [[ -n "$host_cookie" ]] || fatal "Failed to extract HOST session cookie"
+
+  python3 - "$HOST_STATE_FILE" "$host_user" "$host_cookie" "$body" <<'PYEOF'
 import json
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
 username = sys.argv[2]
-password = sys.argv[3]
+session_cookie = sys.argv[3]
 response = json.loads(sys.argv[4])
 state = {
     "host_username": username,
-    "host_password": password,
     "host_resource": response.get("name", ""),
+    "host_session_cookie": session_cookie,
 }
 path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
 path.chmod(0o600)
 PYEOF
 
-  log_info "Seeded HOST user '${host_user}' and wrote host seed state"
+  log_info "Seeded HOST user '${host_user}', minted a session, and wrote host seed state"
 }
 
 install_app() {

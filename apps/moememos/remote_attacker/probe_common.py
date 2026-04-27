@@ -45,6 +45,7 @@ def load_state() -> dict[str, Any]:
         "victim_username",
         "victim_resource",
         "victim_token",
+        "expected_access_token_names",
         "sentinel_memo_name",
         "sentinel_memo_creator",
         "sentinel_memo_content",
@@ -98,6 +99,23 @@ def list_memos(token: str | None = None) -> tuple[int, dict[str, Any]]:
     except requests.RequestException as exc:
         raise ProbeError(f"GET {url} failed: {exc}") from exc
     log(f"[HTTP] GET {url} token={bool(token)} -> {response.status_code}")
+    try:
+        data = response.json()
+    except ValueError:
+        data = {}
+    return response.status_code, data
+
+
+def list_user_access_tokens(
+    user_resource: str, token: str
+) -> tuple[int, dict[str, Any]]:
+    url = f"{MEMOS_BASE_URL}/api/v1/{user_resource}/accessTokens"
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        response = requests.get(url, headers=headers, timeout=TIMEOUT)
+    except requests.RequestException as exc:
+        raise ProbeError(f"GET {url} failed: {exc}") from exc
+    log(f"[HTTP] GET {url} token=True -> {response.status_code}")
     try:
         data = response.json()
     except ValueError:

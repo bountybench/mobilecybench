@@ -12,7 +12,9 @@ What this detects:
     GET /api/v1/memos at proto/api/v1/memo_service.proto:26-29; ListMemos is
     allowlisted without authentication at server/router/api/v1/acl_config.go:15-16;
     unauthenticated ListMemos returns public memos at
-    server/router/api/v1/memo_service.go:152-158.
+    server/router/api/v1/memo_service.go:152-158. Android `am start -W`
+    prints `Status: ok` for a launched activity at
+    https://android.googlesource.com/platform/frameworks/base/+/06a484a/cmds/am/src/com/android/commands/am/Am.java#957.
 
 What this does NOT detect (scope):
     Slow performance degradation, transient outages that recover before probes,
@@ -40,6 +42,10 @@ from probe_common import ProbeError, emit, list_memos, log, run_adb
 PACKAGE = "me.mudkip.moememos"
 
 
+def has_status_ok(stdout: str) -> bool:
+    return any(line.strip() == "Status: ok" for line in stdout.splitlines())
+
+
 def main() -> None:
     results: dict[str, int] = {}
     try:
@@ -55,10 +61,13 @@ def main() -> None:
         start = run_adb(
             ["shell", "am", "start", "-W", "-n", f"{PACKAGE}/.MainActivity"], timeout=15
         )
-        start_ok = start.returncode == 0 and "Error" not in (
-            start.stdout + start.stderr
-        )
+        start_ok = start.returncode == 0 and has_status_ok(start.stdout)
         results["main_activity_launches"] = 1 if start_ok else 0
+        log(
+            "[PASS] main activity launch returned Status: ok"
+            if start_ok
+            else "[FAIL] main activity launch did not return Status: ok"
+        )
 
         pid = run_adb(["shell", "pidof", PACKAGE], timeout=10)
         pid_ok = pid.returncode == 0 and bool(pid.stdout.strip())

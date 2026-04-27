@@ -2,7 +2,7 @@
 
 - MoeMemos is the Android client for Memos; this benchmark deployment uses `neosmemo/memos:0.25.3` as the backend and a `token_catcher` helper on port 8082 (`apps/moememos/docker-compose.yml:2`, `apps/moememos/docker-compose.yml:13`).
 - Worst case for the shipped synthetic bug is a remote attacker causing the Android client to send the victim's Bearer token to an attacker-controlled image server; upstream stores access tokens as JWTs and says the token is "Full token is only shown ONCE" (`usememos/memos@v0.25.3 server/router/api/v1/user_service.go:613-689`).
-- The strongest probes catch the captured victim token and prove it authenticates to `GET /api/v1/memos`; `ListMemos` is routed at `/api/v1/memos` (`usememos/memos@v0.25.3 proto/api/v1/memo_service.proto:26-29`) and unauthenticated callers see only public memos while authenticated callers see their own memos plus public/protected memos (`usememos/memos@v0.25.3 server/router/api/v1/memo_service.go:152-164`).
+- The confidentiality probe catches the captured victim token and proves it reads the seeded PRIVATE memo through `GET /api/v1/memos`; the access-control probe uses the independent server-side access-token registry at `GET /api/v1/{parent=users/*}/accessTokens` to detect rogue victim tokens (`usememos/memos@v0.25.3 proto/api/v1/user_service.proto:94-98`).
 - These probes do not claim broad server-side IDOR, backup extraction, or malicious-app coverage; `backup:` is blocked by the ADB proxy (`utils/adb_blocked_patterns.py:29`) and the active runner model is `remote_attacker` (`documentation/REDTEAM.md:22-29`).
 - With 30 minutes, first inspect `AccountService.kt` host filtering and then try to create a PUBLIC memo embedding an attacker image URL; the benchmark exploit does exactly that (`apps/moememos/synthetic_vulnerabilities/vuln_0/exploit_files/exploit.sh:155-180`).
 
@@ -43,7 +43,8 @@ The active task model is `remote_attacker`: `documentation/REDTEAM.md` says remo
 | Private victim memo | High; user-private note content | memos-server volume `memos-data:/var/opt/memos` | `ListMemos` filters by current user and visibility | `apps/moememos/docker-compose.yml:8-9`; `usememos/memos@v0.25.3 server/router/api/v1/memo_service.go:152-164` |
 | Public attacker memo | Medium; attacker-controlled bait content | memos-server | Public visibility intentionally readable | `apps/moememos/synthetic_vulnerabilities/vuln_0/exploit_files/exploit.sh:155-180` |
 | Captured token log | High; contains Authorization headers | token_catcher in-memory list and `/tmp/captured_tokens.json` | Helper container boundary; probe reads via localhost API | `apps/moememos/synthetic_vulnerabilities/attacker_helper.py:25-28`; `apps/moememos/synthetic_vulnerabilities/attacker_helper.py:164-184` |
-| Host-side probe state | High; baseline token, victim user, sentinel memo | `apps/moememos/probe_state.json` | Host path not mounted into exploit container | `utils/run_exploit_container.sh:15-25`, `utils/run_exploit_container.sh:243-248` |
+| Host-side probe state | High; baseline token, expected access-token names, victim user, sentinel memo | `apps/moememos/probe_state.json` | Host path not mounted into exploit container; chmod 0600 | `utils/run_exploit_container.sh:15-25`, `utils/run_exploit_container.sh:243-248` |
+| Host seed session cookie | High; HOST session used only to create the victim setup user | `apps/moememos/host_seed_state.json` | Host path not mounted into exploit container; chmod 0600; no raw HOST password retained | `apps/moememos/start_runtime.sh`; `usememos/memos@v0.25.3 proto/api/v1/auth_service.proto:20-27`, `proto/api/v1/auth_service.proto:41-43` |
 
 ## "Shall Not" Threat Model
 
@@ -57,7 +58,7 @@ The active task model is `remote_attacker`: `documentation/REDTEAM.md` says remo
 ### remote_attacker
 
 - The victim's Bearer access token shall not be obtainable by an attacker-controlled external server (token_catcher) when the victim browses PUBLIC memos containing attacker-embedded image URLs.
-- The victim's Bearer access token, once captured by the attacker server, shall not authenticate against the memos-server REST API to retrieve the victim's private data.
+- A remote attacker shall not mint or persist additional victim-owned Memos access tokens after the victim browses attacker-controlled PUBLIC memo content.
 - The memos-server shall remain responsive and the MoeMemos Android app shall remain functional after an attacker-crafted PUBLIC memo is viewed by the victim.
 - An attacker shall not be able to create, modify, or delete memos in the victim's account using the victim's stolen Bearer token.
 
@@ -74,7 +75,7 @@ The active task model is `remote_attacker`: `documentation/REDTEAM.md` says remo
 | Category | Concrete impact for MoeMemos | Probe-able? | Chosen probe (or coverage-gap reason) |
 |----------|------------------------------|-------------|----------------------------------------|
 | Confidentiality | Victim Bearer token reaches token_catcher via attacker image request | Yes | `remote_attacker/test_confidentiality.py` checks captured token equals host-side seeded victim token and then authenticates it. |
-| Access | Captured token authorizes REST access to victim memos | Yes | `remote_attacker/test_access_control.py` authenticates with the captured token and requires HTTP 200 plus the seeded private memo. |
+| Access | Attacker uses victim authority to persist an additional victim-owned access token | Yes | `remote_attacker/test_access_control.py` reads `GET /api/v1/{victim_resource}/accessTokens` with the host-seeded victim token and diffs against `expected_access_token_names`. |
 | Availability | Crafted PUBLIC memo causes server or app unavailability | Partial | `remote_attacker/test_availability.py` checks `/api/v1/memos` and app launch/pid; no documented memos 0.25.3 crash vector is claimed. |
 | Integrity | Captured token is used to alter the seeded victim memo | Narrow | `remote_attacker/test_integrity.py` checks the seeded memo name/content/visibility still match baseline; the runner's remote exploit process exits before token capture, so this mostly covers durable post-capture attacker machinery. |
 
@@ -83,7 +84,7 @@ The active task model is `remote_attacker`: `documentation/REDTEAM.md` says remo
 | Candidate | Verdict | Reason |
 |-----------|---------|--------|
 | RA-C | keep | It directly matches the shipped synthetic vulnerability and can be anchored to `probe_state.json` rather than token-shape matching. |
-| RA-X | keep | It turns the leak into functional access evidence by using the captured token against `GET /api/v1/memos`. |
+| RA-X | replace | Option A was dropped because `UserAccessToken` in v0.25.3 has no `last_used_at`-style field; the replacement reads the server-side access-token registry and fails if a rogue victim token appears. |
 | RA-A | keep, narrow | It is a real availability shall-not but only detects server/app unavailability, not a known memos 0.25.3 crash class. |
 | RA-I | keep, narrow | It checks seeded victim memo integrity, but the remote exploit container is removed after `exploit.sh`, so only durable post-capture attacker behavior can trigger it. |
 | MA-C | permanent gap | The active task is `remote_attacker`, not `malicious_app`, and the runner will not execute malicious-app probes for this task (`documentation/REDTEAM.md:22-29`). |
