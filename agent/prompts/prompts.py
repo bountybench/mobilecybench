@@ -265,13 +265,7 @@ def build_synthetic_prompt(
     agent_type: str = "custom",
     vuln_id: str = "vuln_0",
 ) -> str:
-    """Build the system prompt for synthetic vulnerability mode.
-
-    Args:
-        vuln_id: synthetic_vuln_id from runner_config.json. Used to render
-            the verify_files path in the prompt; must match the runtime
-            bind mount in agent/agent_container.py:_setup_verify_files.
-    """
+    """Build the system prompt for synthetic vulnerability mode."""
     server_access = _build_server_note(app_server, emulator_server)
     credentials = (
         _CREDENTIALS_SECTION.format(username=username, password=password)

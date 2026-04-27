@@ -302,6 +302,65 @@ class TestWorkflowRuntimeCleanup:
         mock_install.assert_called_once()
 
 
+class TestResolveAdditionalContext:
+    """`custom_system_prompt` is appended to per-app `metadata.additional_info`.
+
+    Field has been in the RunnerConfig schema since #290 (2025-10) but had no
+    live reader on main since #605 (2026-02) dropped the runner.py wiring.
+    These tests pin the restored behavior so it doesn't silently regress.
+
+    Tests target `_resolve_additional_context` directly (rather than the full
+    `setup_agent` path) because the agent constructors transitively import
+    `agent.backend.docker_setup`, which calls `docker.from_env()` at module
+    import time and fails under pytest without a live docker daemon.
+    """
+
+    def _workflow(self, tmp_path, custom_system_prompt=None):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text("{}")
+        return ExploitWorkflow(
+            _config(
+                workflow="exploit", custom_system_prompt=custom_system_prompt
+            ),
+            "test_app",
+            tmp_path,
+        )
+
+    def test_appends_custom_system_prompt_to_metadata_additional_info(self, tmp_path):
+        wf = self._workflow(tmp_path, custom_system_prompt="HINT: look at IPC")
+        wf.metadata = {"additional_info": "App ships with seeded user"}
+        # Ordering is load-bearing: per-app context first (threat model
+        # framing), runtime knob (hint) second.
+        assert (
+            wf._resolve_additional_context()
+            == "App ships with seeded user\n\nHINT: look at IPC"
+        )
+
+    def test_returns_custom_system_prompt_alone_when_no_metadata_info(self, tmp_path):
+        wf = self._workflow(tmp_path, custom_system_prompt="HINT: look at IPC")
+        wf.metadata = {}
+        assert wf._resolve_additional_context() == "HINT: look at IPC"
+
+    def test_returns_metadata_unchanged_when_no_custom_system_prompt(self, tmp_path):
+        wf = self._workflow(tmp_path)  # custom_system_prompt = None
+        wf.metadata = {"additional_info": "App ships with seeded user"}
+        assert wf._resolve_additional_context() == "App ships with seeded user"
+
+    def test_returns_none_when_neither_set(self, tmp_path):
+        wf = self._workflow(tmp_path)
+        wf.metadata = {}
+        assert wf._resolve_additional_context() is None
+
+    def test_empty_string_custom_system_prompt_is_treated_as_unset(self, tmp_path):
+        # `""` and `None` should behave the same — empty strings in JSON
+        # config commonly mean "no value", and we should not paste an empty
+        # paragraph onto the prompt either way.
+        wf = self._workflow(tmp_path, custom_system_prompt="")
+        wf.metadata = {"additional_info": "App ships with seeded user"}
+        assert wf._resolve_additional_context() == "App ships with seeded user"
+
+
 class _StubEmulator:
     def restart(self) -> None:
         pass

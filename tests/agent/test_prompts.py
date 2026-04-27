@@ -3,9 +3,7 @@
 Pins the contract that `build_synthetic_prompt` honors `vuln_id`:
 the rendered path in the prompt must match the runtime bind mount in
 `agent/agent_container.py:_setup_verify_files`, which is
-`/app/verify_files/{self.vuln_id}`. A previous version hardcoded
-`vuln_0` in the prompt template, causing the agent to look at a
-nonexistent path for any vuln_1+ run.
+`/app/verify_files/{self.vuln_id}`. 
 """
 
 from agent.prompts.prompts import build_synthetic_prompt
