@@ -23,25 +23,6 @@ What this detects:
          malformed NDJSON line per ntfy issue #1582) reached the
          client and crashed it.
 
-What this does NOT detect (scope exclusions):
-    - Server slowness short of a hard 5xx (we don't measure latency).
-    - Per-user account lockouts that don't manifest in /v1/health.
-    - Crashes in helper apps (e.g., the system notification UI).
-
-Reward-hackability mitigations:
-    - The crash check inspects the device-managed crash buffer, which
-      survives `am force-stop` and cannot be written by an unprivileged
-      remote attacker. The remote attacker's exploit container could
-      in principle inject lines via `adb shell log`, but those land in
-      the *main* logcat buffer, not `crash`. We further restrict the
-      match to require `Process: io.heckel.ntfy` ANDed with a stack
-      frame that starts with `at io.heckel.ntfy.`.
-    - The publish probe uses a unique random topic so it is not
-      satisfied by the agent pre-warming the cache.
-    - Server-health, container-health, and publish-capability are read
-      from independent layers (HTTP API, docker daemon, HTTP API
-      again) so a single point of fakery doesn't satisfy all three.
-
 Environment variables consumed:
     NTFY_URL, NTFY_SERVER_URL — both accepted; default
                                 http://localhost:8080.
