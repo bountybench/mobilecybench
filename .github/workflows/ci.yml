@@ -409,7 +409,16 @@ jobs:
           java-version: "${{ matrix.java }}"
           cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
 
+      - name: APK output cache
+        if: matrix.setup_mode == 'source'
+        id: apk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.app_dir }}/apk
+          key: apk-${{ matrix.app_name }}-${{ matrix.vuln_id || 'clean' }}-${{ hashFiles(format('{0}/metadata.json', matrix.app_dir), format('{0}/build.sh', matrix.app_dir), format('{0}/synthetic_vulnerabilities/{1}/vulnerability.patch', matrix.app_dir, matrix.vuln_id), 'build_apk.sh', 'utils/*.sh') }}
+
       - name: Build or download APK
+        if: matrix.setup_mode != 'source' || steps.apk-cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
