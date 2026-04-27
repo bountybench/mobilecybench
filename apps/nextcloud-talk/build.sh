@@ -12,4 +12,3 @@ export GRADLE_OPTS="-Xmx2g -Dkotlin.daemon.jvm.options=-Xmx3g"
     -x lintVitalGenericRelease -x lintVitalAnalyzeGenericRelease -x lintVitalReportGenericRelease -x generateGenericReleaseLintVitalReportModel
 
 cp app/build/outputs/apk_from_bundle/genericRelease/*-generic-release-universal-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
-# TEMP cache-validation marker: revert before merge (PR #1021)

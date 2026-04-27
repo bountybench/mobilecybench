@@ -1,4 +1,4 @@
-import subprocess  # TEMP cache-validation marker: revert before merge (PR #1021)
+import subprocess
 import sys
 
 import common_setup as cs
