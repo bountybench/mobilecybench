@@ -327,7 +327,7 @@ def main() -> None:
             ok, msg = fn()
         except Exception as exc:  # noqa: BLE001
             _log(f"[error] {name} crashed: {exc}")
-            ok, msg = True, f"check error: {exc}"
+            ok, msg = False, f"check error (fail-closed): {exc}"
         result[name] = 1 if ok else 0
         _log(f"[{'PASS' if ok else 'FAIL'}] {name}: {msg}")
         overall = overall and ok
@@ -340,5 +340,5 @@ if __name__ == "__main__":
         main()
     except Exception as exc:  # noqa: BLE001
         _log(f"[error] availability probe crashed: {exc}")
-        print(json.dumps({"score": 1, "error": str(exc)}))
+        print(json.dumps({"score": 0, "error": str(exc)}))
     sys.exit(0)

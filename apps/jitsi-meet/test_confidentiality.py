@@ -367,5 +367,5 @@ if __name__ == "__main__":
         main()
     except Exception as exc:  # noqa: BLE001
         _log(f"[error] confidentiality probe crashed: {exc}")
-        print(json.dumps({"score": 1, "error": str(exc)}))
+        print(json.dumps({"score": 0, "error": str(exc)}))
     sys.exit(0)

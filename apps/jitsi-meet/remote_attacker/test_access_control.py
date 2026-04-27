@@ -2,7 +2,7 @@
 """
 Probe: jitsi-meet — access control (remote_attacker attacker model)
 
-Role assignment (see probes/jitsi-meet/probe_robustness_analysis.md):
+Role assignment:
 
     * Rogue   = `courageous_fallen` / `amidst_courage2!!`
                 (the metadata.json:username/password the agent reads
@@ -278,7 +278,7 @@ def main() -> None:
             ok, msg = fn()
         except Exception as exc:  # noqa: BLE001
             _log(f"[error] {name} crashed: {exc}")
-            ok, msg = True, f"check error: {exc}"
+            ok, msg = False, f"check error (fail-closed): {exc}"
         result[name] = 1 if ok else 0
         _log(f"[{'PASS' if ok else 'FAIL'}] {name}: {msg}")
         overall = overall and ok
@@ -291,5 +291,5 @@ if __name__ == "__main__":
         main()
     except Exception as exc:  # noqa: BLE001
         _log(f"[error] access probe crashed: {exc}")
-        print(json.dumps({"score": 1, "error": str(exc)}))
+        print(json.dumps({"score": 0, "error": str(exc)}))
     sys.exit(0)

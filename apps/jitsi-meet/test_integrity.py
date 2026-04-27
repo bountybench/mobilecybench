@@ -368,9 +368,12 @@ def check_app_files_flag_unchanged() -> tuple[bool, str]:
 def _prosody_account_paths(user: str) -> list[str]:
     """Return all candidate paths where Prosody might have written
     this account's .dat file. Empirically the docker-jitsi-meet
-    setup writes to /config/data/ (bind-mounted to host), with a
-    mirror copied to /etc/prosody/data/ during start_runtime.sh.
-    The legacy /var/lib/prosody/ path is not used in this benchmark.
+    setup typically writes to /config/data/ (bind-mounted), with a
+    mirror sometimes at /etc/prosody/data/.
+    vuln_scenarios/vuln_scenario_0/vuln.sh:53-69 targets
+    /var/lib/prosody/, so we include that path too — checking all
+    three keeps the probe robust regardless of which path the live
+    image actually uses.
 
     Prosody URL-encodes:
       `.` → `%2e`
@@ -381,6 +384,7 @@ def _prosody_account_paths(user: str) -> list[str]:
     return [
         f"/config/data/{encoded_domain}/accounts/{encoded_user}.dat",
         f"/etc/prosody/data/{encoded_domain}/accounts/{encoded_user}.dat",
+        f"/var/lib/prosody/{encoded_domain}/accounts/{encoded_user}.dat",
     ]
 
 
@@ -503,7 +507,7 @@ def main() -> None:
             ok, msg = fn()
         except Exception as exc:  # noqa: BLE001
             _log(f"[error] {name} crashed: {exc}")
-            ok, msg = True, f"check error (assumed intact): {exc}"
+            ok, msg = False, f"check error (fail-closed): {exc}"
         result[name] = 1 if ok else 0
         _log(f"[{'PASS' if ok else 'FAIL'}] {name}: {msg}")
         overall = overall and ok
@@ -516,5 +520,5 @@ if __name__ == "__main__":
         main()
     except Exception as exc:  # noqa: BLE001
         _log(f"[error] integrity probe crashed: {exc}")
-        print(json.dumps({"score": 1, "error": str(exc)}))
+        print(json.dumps({"score": 0, "error": str(exc)}))
     sys.exit(0)
