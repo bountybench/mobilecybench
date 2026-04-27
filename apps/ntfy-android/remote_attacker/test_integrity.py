@@ -248,11 +248,18 @@ def _check_server_msgs() -> tuple[bool, dict]:
 def _check_subs() -> tuple[bool, dict]:
     if not _adb_ok():
         return True, {"status": "adb_unavailable_skipped"}
-    baseline = _load_json(APP_DIR / "baseline_access_control.json")
-    allowed = set(baseline.get("allowed_subscriptions") or [])
-    forbidden = set(baseline.get("forbidden_subscriptions") or [])
-    if not allowed and not forbidden:
-        return True, {"status": "no_subscription_baseline_skipped"}
+    # Forbidden topics come from secrets.json — same source the malicious_app
+    # access-control probe uses (apps/ntfy-android/test_access_control.py).
+    # baseline_access_control.json is a stale convenience that duplicates
+    # this; using one source avoids drift if seeding changes.
+    secrets = _load_json(APP_DIR / "secrets.json")
+    forbidden = {
+        v
+        for k, v in secrets.items()
+        if k.startswith("topic_private_") and isinstance(v, str)
+    }
+    if not forbidden:
+        return True, {"status": "no_secrets_file_skipped"}
     rows = _sqlite("SELECT topic FROM Subscription")
     cur = {ln.strip() for ln in rows if ln.strip()}
     bad = sorted(cur & forbidden)

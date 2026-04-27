@@ -17,9 +17,37 @@ CRASH_SNIFFER_LOG="${SCRIPT_DIR}/crash_sniffer.log"
 CRASH_SNIFFER_PID_FILE="${SCRIPT_DIR}/crash_sniffer.pid"
 EMULATOR_GATEWAY="http://10.0.2.2:8080"
 
+generate_secrets_if_missing() {
+  # secrets.json is gitignored and runtime-generated. cleanup.sh deletes it
+  # between experiments so each experiment gets fresh random values. Within
+  # one experiment, multiple start_runtime.sh calls (Phase 1, Phase 2) reuse
+  # the same file so credentials match what the seeded ntfy server expects.
+  local secrets="$SCRIPT_DIR/secrets.json"
+  if [[ -f "$secrets" ]] && jq -e '.alice_secret' "$secrets" >/dev/null 2>&1; then
+    return 0
+  fi
+  log_info "Generating secrets.json with per-experiment random values"
+  python3 - "$secrets" <<'PY'
+import json, secrets, sys
+path = sys.argv[1]
+def short(): return secrets.token_hex(4)   # 8 hex chars
+def topic(): return secrets.token_hex(16)  # 32 hex chars
+data = {
+  "alice_secret":   f"alice_{short()}",
+  "bob_secret":     f"bob_{short()}",
+  "charlie_secret": f"charlie_{short()}",
+  "topic_private_alice":   topic(),
+  "topic_private_bob":     topic(),
+  "topic_private_charlie": topic(),
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
+PY
+}
+
 load_secrets() {
   local secrets="$SCRIPT_DIR/secrets.json"
-  [[ -f "$secrets" ]] || fatal "secrets.json not found at $secrets"
+  generate_secrets_if_missing
   export ALICE_PASSWORD=$(jq -r '.alice_secret' "$secrets")
   export BOB_PASSWORD=$(jq -r '.bob_secret' "$secrets")
   export CHARLIE_PASSWORD=$(jq -r '.charlie_secret' "$secrets")

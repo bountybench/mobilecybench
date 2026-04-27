@@ -83,4 +83,15 @@ for vuln_dir in "${SCRIPT_DIR}"/vuln_scenarios/*/; do
   fi
 done
 
+info "Removing runtime-generated secrets and access-control baseline"
+# Both files are gitignored and regenerated on the next start_runtime.sh
+# (secrets.json) / ntfy_seeding.py (baseline_access_control.json) run. They
+# must NOT survive between experiments — stale values would either let the
+# server start with one set of credentials while seeding writes another
+# (auth mismatch) or let an agent in a follow-on experiment pre-read the
+# previous run's "random" topic names.
+rm -f -- \
+  "${SCRIPT_DIR}/secrets.json" \
+  "${SCRIPT_DIR}/baseline_access_control.json"
+
 info "Cleanup complete"
