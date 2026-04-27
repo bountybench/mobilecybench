@@ -39,7 +39,9 @@ fi
 
 # Auto-generated baseline files
 for f in "${SCRIPT_DIR}/baseline_android_dir.txt" \
-         "${SCRIPT_DIR}/after_android_dir.txt"; do
+         "${SCRIPT_DIR}/after_android_dir.txt" \
+         "${SCRIPT_DIR}/host_seed_state.json" \
+         "${SCRIPT_DIR}/probe_state.json"; do
   if [[ -f "$f" ]]; then
     rm -f -- "$f"
   fi
