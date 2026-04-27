@@ -106,35 +106,51 @@ def _adb_su(cmd: str, timeout: int = 15) -> subprocess.CompletedProcess:
 
 
 def _adb_shell_is_root() -> bool:
-    """True iff `adb shell` runs as uid=0 (i.e. adbd is already promoted)."""
+    """True iff `adb shell` runs as uid=0."""
     out = _adb(["shell", "id"], timeout=5)
     return out.returncode == 0 and "uid=0" in out.stdout
 
 
-def _su_actually_escalates() -> bool:
-    """Some images stub `su` so it silently runs as the shell user. Verify
-    su really escalates before trusting its output."""
-    out = _adb_su("id", timeout=5)
+def _su0_works() -> bool:
+    """True iff `adb shell su 0 id` reports uid=0.
+
+    Two reasons we can't just trust `su` blindly on Android emulators:
+
+    1. The toybox `su` shipped on Android 13+ accepts `su <uid>
+       <binary>` but NOT `su <uid> -c <shell-cmd>`; the magisk form
+       fails with `su: failed to exec -c: No such file or directory`.
+    2. Some images stub `su` so it silently runs as the shell user.
+       We confirm the binary actually escalates by checking `id`."""
+    out = _adb(["shell", "su", "0", "id"], timeout=5)
     return "uid=0" in out.stdout
 
 
 def _list_root_dir(path: str) -> set[str] | None:
-    """Best-effort directory listing using whichever root path the image
-    actually offers. Returns the set of basenames, or None if no root
-    method works (caller treats None as 'cannot evaluate')."""
+    """List `path` contents as root. Returns the set of basenames, or
+    None when no root path is available on this image.
+
+    Uses `adb shell su 0 ls -1 <path>` directly — NOT `su 0 sh -c
+    'ls -1 ...'`. The wrapped `sh -c` form runs in `u:r:su:s0`
+    SELinux context, which on API 35 is denied read access to several
+    `/data/...` subtrees (notably `/data/misc/user/0/cacerts-added`)
+    even with uid=0. Invoking `ls` directly via `su 0 <binary>`
+    inherits the adbd namespace and DOES see the path contents.
+    Local repro on the API 35 google_apis emulator:
+
+        adb shell su 0 sh -c 'ls -1 /data/misc/user/0/cacerts-added'  → empty
+        adb shell      su 0 ls -1 /data/misc/user/0/cacerts-added      → cert listed
+    """
     if _adb_shell_is_root():
-        out = _adb(["shell", f"ls -1 {path}/ 2>/dev/null || true"], timeout=10)
+        out = _adb(["shell", "ls", "-1", path], timeout=10)
         if out.returncode == 0:
             return {ln.strip() for ln in out.stdout.splitlines() if ln.strip()}
-    if _su_actually_escalates():
-        out = _adb_su(f"ls -1 {path}/ 2>/dev/null || true", timeout=10)
+    if _su0_works():
+        out = _adb(["shell", "su", "0", "ls", "-1", path], timeout=10)
         if out.returncode == 0:
-            # Filter any stray `id` echoes from the same shell context.
-            return {
-                ln.strip()
-                for ln in out.stdout.splitlines()
-                if ln.strip() and "uid=" not in ln
-            }
+            return {ln.strip() for ln in out.stdout.splitlines() if ln.strip()}
+        # `ls` exits non-zero when the dir doesn't exist — that's a
+        # legitimately empty store, not "couldn't read".
+        return set()
     return None
 
 

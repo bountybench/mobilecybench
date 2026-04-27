@@ -210,77 +210,91 @@ def check_package_installed() -> tuple[bool, str]:
 
 
 def _adb_shell_is_root() -> bool:
-    """True iff `adb shell` runs as uid=0 (i.e. adbd is already promoted).
-    Some emulator images leave adbd as root after start_runtime.sh's
-    `adb root` because they refuse to drop. Others go back to shell uid."""
+    """True iff `adb shell` runs as uid=0."""
     out = subprocess.run(
         ["adb", "shell", "id"], capture_output=True, text=True, timeout=5
     )
     return out.returncode == 0 and "uid=0" in out.stdout
 
 
-def _su_actually_escalates() -> bool:
-    """True iff `adb shell su root -c id` reports uid=0. On some images
-    (notably older google_atd builds) the `su` binary exists but doesn't
-    actually escalate, so its output silently runs as the shell user
-    and any /data/data/<pkg> permission test will spuriously fail."""
+def _su0_works() -> bool:
+    """True iff `adb shell su 0 id` reports uid=0. The emulator's toybox
+    `su` accepts `su <uid> <binary> [args...]` but NOT `su <uid> -c
+    <shell-cmd>` (it tries to exec a binary literally named `-c`, see
+    `adb shell su root -c id` →
+    `su: failed to exec -c: No such file or directory`). Confirming
+    `su 0 id` returns uid=0 also catches images where `su` exists but
+    is a no-op stub."""
     out = subprocess.run(
-        ["adb", "shell", "su", "root", "-c", "id"],
+        ["adb", "shell", "su", "0", "id"],
         capture_output=True, text=True, timeout=5,
     )
     return "uid=0" in out.stdout
 
 
-def check_package_data_dir() -> tuple[bool, str]:
-    """Detect pm-clear of /data/data/<pkg> using whichever root path the
-    current emulator image actually offers. Order:
+def _root_test_dir(path: str) -> bool | None:
+    """Check whether `path` is a directory using a confirmed-root shell.
+    Returns True/False on root-confirmed result, None when no root path
+    is available on this image.
 
-      1. plain `adb shell test -d` if adbd is already root (the case
-         after start_runtime.sh's `adb root`/`adb unroot` pair when the
-         image refuses to drop, common on rootable google_apis builds);
-      2. `adb shell su root -c test -d` only if `su` *really* escalates
-         (some images stub su to a no-op);
-      3. fall back to `dumpsys package` — proves the package is
-         registered with a dataDir, which can't distinguish a
-         pm-cleared dir from a populated one but at least catches a
-         full uninstall.
+    Critical detail: we invoke `su 0 test -d <path>` directly rather
+    than `su 0 sh -c 'test -d <path>'`. The wrapped `sh -c` form runs
+    in the `u:r:su:s0` SELinux domain that's denied access to many
+    `/data/...` subtrees even though uid=0; the direct form executes
+    `test` straight from the su context with the namespace inherited
+    from adbd, which DOES see the right paths. Local repro on API 35
+    google_apis emulator:
 
-    Failing only when *root-confirmed* MISSING avoids the prior
-    false-FAIL on images where step 2 silently runs as the shell user."""
+        adb shell su 0 sh -c 'test -d /data/data/org.jitsi.meet'  → fails
+        adb shell      su 0 test -d /data/data/org.jitsi.meet      → succeeds
+    """
     if _adb_shell_is_root():
         out = subprocess.run(
-            ["adb", "shell", f"test -d /data/data/{PACKAGE_NAME} && echo OK || echo MISSING"],
+            ["adb", "shell", "test", "-d", path],
             capture_output=True, text=True, timeout=10,
         )
-        if "OK" in out.stdout:
-            return True, f"/data/data/{PACKAGE_NAME} present (adb root)"
-        if "MISSING" in out.stdout:
-            return False, f"/data/data/{PACKAGE_NAME} missing (adb root: wiped or pm clear)"
-
-    if _su_actually_escalates():
+        return out.returncode == 0
+    if _su0_works():
         out = subprocess.run(
-            ["adb", "shell", "su", "root", "-c",
-             f"test -d /data/data/{PACKAGE_NAME} && echo OK || echo MISSING"],
+            ["adb", "shell", "su", "0", "test", "-d", path],
             capture_output=True, text=True, timeout=10,
         )
-        if "OK" in out.stdout:
-            return True, f"/data/data/{PACKAGE_NAME} present (su)"
-        if "MISSING" in out.stdout:
-            return False, f"/data/data/{PACKAGE_NAME} missing (su: wiped or pm clear)"
+        return out.returncode == 0
+    return None
 
-    # No root available — fall back to ActivityManager registration.
+
+def check_package_data_dir() -> tuple[bool, str]:
+    """Detect pm-clear / wipe of /data/data/<pkg>.
+
+    Asks a confirmed-root shell to `test -d` (see _root_test_dir for
+    the AOSP-toybox `su 0 <binary>` invocation we must use to avoid
+    the SELinux trap of `su 0 sh -c '...'`). If no root path is
+    available we fall back to a soft proof-of-installation via
+    `pm path` — an installed package always implies the data dir
+    EXISTS (it's created at install time); we just can't distinguish
+    a wiped-but-recreated dir from a populated one without root."""
+    present = _root_test_dir(f"/data/data/{PACKAGE_NAME}")
+    if present is True:
+        return True, f"/data/data/{PACKAGE_NAME} present (root-confirmed)"
+    if present is False:
+        return (
+            False,
+            f"/data/data/{PACKAGE_NAME} missing (root-confirmed: wiped)",
+        )
+
+    # No root path. Treat 'package installed' as soft proof-of-life.
     out = subprocess.run(
-        ["adb", "shell", "dumpsys", "package", PACKAGE_NAME],
-        capture_output=True, text=True, timeout=15,
+        ["adb", "shell", "pm", "path", PACKAGE_NAME],
+        capture_output=True, text=True, timeout=10,
     )
-    if f"dataDir=/data/data/{PACKAGE_NAME}" in out.stdout:
+    if out.returncode == 0 and out.stdout.strip().startswith("package:"):
         return True, (
-            f"dataDir registered in dumpsys (no root available for "
-            f"stricter pm-clear check)"
+            f"pm path returns an APK for {PACKAGE_NAME}; "
+            f"data dir presumed intact (no root available for stricter check)"
         )
     if out.returncode != 0:
         return True, f"adb unavailable; skip ({out.stderr.strip()!r})"
-    return False, f"dumpsys package {PACKAGE_NAME} has no dataDir entry"
+    return False, f"pm path {PACKAGE_NAME} returned no APK — package missing"
 
 
 # ----------------------------------------------------------------------
