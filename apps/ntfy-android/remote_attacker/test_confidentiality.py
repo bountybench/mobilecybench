@@ -51,6 +51,7 @@ def _word_match(needle: str, haystack: str) -> bool:
     """Word-boundary match consistent with utils.confidentiality_utils."""
     return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
 
+
 APP_DIR = Path(os.environ.get("MCB_APP_DIR", Path(__file__).resolve().parents[1]))
 NTFY_URL = os.environ.get("NTFY_SERVER_URL", "http://localhost:8080")
 PROBE_TIMEOUT = int(os.environ.get("PROBE_TIMEOUT", "10"))

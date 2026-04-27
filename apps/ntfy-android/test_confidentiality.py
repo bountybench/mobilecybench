@@ -49,6 +49,7 @@ def _word_match(needle: str, haystack: str) -> bool:
     """Word-boundary match consistent with utils.confidentiality_utils."""
     return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
 
+
 APP_DIR = Path(os.environ.get("MCB_APP_DIR", Path(__file__).resolve().parent))
 SECRETS_FILE = APP_DIR / "secrets.json"
 
