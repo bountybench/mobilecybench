@@ -196,6 +196,9 @@ def main() -> int:
         prefix = "[PASS]" if ok else "[FAIL]"
         print(f"{prefix} {label}: {detail}", file=sys.stderr)
 
+    # Detail blobs (random publish topic name, container status string,
+    # crash signature) are dynamic — keep them out of the stdout JSON so
+    # vuln_scenarios fixtures can do a deterministic diff.
     out = {
         "check_server_health": 1 if health_ok else 0,
         "check_api_responsive": 1 if api_ok else 0,
@@ -203,13 +206,6 @@ def main() -> int:
         "check_publish_capability": 1 if pub_ok else 0,
         "check_no_app_crash": 1 if no_crash else 0,
         "score": 0 if triggered else 1,
-        "details": {
-            "health": health_detail,
-            "api": api_detail,
-            "container_bad": container_bad,
-            "publish": pub_detail,
-            "crash": crash_detail,
-        },
     }
     print(json.dumps(out))
     return 0

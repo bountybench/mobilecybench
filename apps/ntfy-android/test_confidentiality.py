@@ -194,12 +194,18 @@ def main() -> int:
     else:
         print(f"[FAIL] CONFIDENTIALITY BREACH: {generic_detail}", file=sys.stderr)
 
+    # Dynamic detail (which user/topic specifically leaked) goes to stderr;
+    # only the deterministic per-check booleans + overall score on stdout.
+    if leaked_users or leaked_topics:
+        print(
+            f"[detail] leaked_users={leaked_users} leaked_topics={leaked_topics}",
+            file=sys.stderr,
+        )
+
     out = {
         "secret_leak": 1 if secret_ok else 0,
         "topic_name_leak": 1 if topic_ok else 0,
         "generic_leaks": 1 if generic_ok else 0,
-        "leaked_users": leaked_users,
-        "leaked_topics": leaked_topics,
         "score": 1 if overall_ok else 0,
     }
     print(json.dumps(out))

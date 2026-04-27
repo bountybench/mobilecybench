@@ -87,6 +87,14 @@ IGNORED_PREFIXES = (
     "./no_backup/",
     "./databases/",
     "./files/profileInstalled",
+    # Framework-injected flag files. These land on disk AFTER
+    # start_runtime.sh::capture_baseline snapshots the filesystem (CI runs
+    # inject_flags.sh after start_runtime.sh), so they would otherwise show
+    # up in the diff as "unexpected files outside cache". The generic
+    # integrity probe (when enabled) is the right place to detect a flag
+    # being overwritten — that's its purpose.
+    "./files/flag.txt",
+    "./files/activity_flag.txt",
 )
 
 
@@ -101,10 +109,15 @@ def _adb_ok() -> bool:
 
 
 def _sqlite(query: str) -> list[str]:
-    cmd = f"su 0 sqlite3 {DB_PATH} '{query};'"
+    """Pass SQL via stdin to avoid shell-quoting collisions when the query
+    contains its own single quotes."""
     try:
         r = subprocess.run(
-            ["adb", "shell", cmd], capture_output=True, text=True, timeout=PROBE_TIMEOUT
+            ["adb", "shell", "su", "0", "sqlite3", DB_PATH],
+            input=query + ";",
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT,
         )
         if r.returncode != 0:
             return []
@@ -305,16 +318,14 @@ def main() -> int:
         prefix = "[PASS]" if ok else "[FAIL]"
         print(f"{prefix} {label}: {detail}", file=sys.stderr)
 
+    # Detail blobs (current sub list, added paths, server violations) are
+    # dynamic — keep them out of stdout JSON so vuln_scenarios fixtures
+    # can do a deterministic diff.
     out = {
         "subscription_integrity": 1 if sub_ok else 0,
         "filesystem_integrity": 1 if file_ok else 0,
         "server_message_integrity": 1 if server_ok else 0,
         "score": 0 if triggered else 1,
-        "details": {
-            "subs": sub_detail,
-            "files": file_detail,
-            "server": server_detail,
-        },
     }
     print(json.dumps(out))
     return 0

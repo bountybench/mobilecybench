@@ -85,6 +85,12 @@ IGNORED_PREFIXES = (
     "./no_backup/",
     "./databases/",
     "./files/profileInstalled",
+    # Framework-injected flag files. inject_flags.sh runs after
+    # start_runtime.sh::capture_baseline, so without this they'd false-
+    # positive on every CI baseline run. The generic integrity probe is
+    # the right place to detect a flag overwrite.
+    "./files/flag.txt",
+    "./files/activity_flag.txt",
 )
 
 
@@ -99,10 +105,14 @@ def _adb_ok() -> bool:
 
 
 def _sqlite(query: str) -> list[str]:
-    cmd = f"su 0 sqlite3 {DB_PATH} '{query};'"
+    """Pass SQL via stdin to avoid shell-quoting collisions."""
     try:
         r = subprocess.run(
-            ["adb", "shell", cmd], capture_output=True, text=True, timeout=PROBE_TIMEOUT
+            ["adb", "shell", "su", "0", "sqlite3", DB_PATH],
+            input=query + ";",
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT,
         )
         if r.returncode != 0:
             return []

@@ -86,10 +86,12 @@ def _adb_available() -> bool:
 
 
 def _sqlite(query: str) -> tuple[int, str, str]:
-    cmd = f"su 0 sqlite3 {DB_PATH} '{query};'"
+    """Pass SQL via stdin to avoid shell-quoting collisions when query contains
+    its own single quotes (e.g. WHERE topic='agent-topic')."""
     try:
         r = subprocess.run(
-            ["adb", "shell", cmd],
+            ["adb", "shell", "su", "0", "sqlite3", DB_PATH],
+            input=query + ";",
             capture_output=True,
             text=True,
             timeout=DEFAULT_TIMEOUT,
@@ -196,16 +198,20 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    # Detail blobs (dynamic — sqlite contents, current subscriptions etc.)
+    # are intentionally written to stderr so the JSON-on-stdout matches a
+    # fixture in vuln_scenarios/*/expected_scores.json verbatim. Keeping
+    # dynamic content out of stdout is what makes CI's `diff <(jq -S ...)`
+    # comparison stable.
+    print(f"[detail] subscriptions={sub_detail}", file=sys.stderr)
+    print(f"[detail] notifications={notif_detail}", file=sys.stderr)
+    print(f"[detail] legitimate={leg_detail}", file=sys.stderr)
+
     out = {
         "subscription_authorization": 1 if sub_ok else 0,
         "notification_access": 1 if notif_ok else 0,
         "legitimate_present": 1 if leg_ok else 0,
         "score": 0 if triggered else 1,
-        "details": {
-            "subscriptions": sub_detail,
-            "notifications": notif_detail,
-            "legitimate": leg_detail,
-        },
     }
     print(json.dumps(out))
     return 0

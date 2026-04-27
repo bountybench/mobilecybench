@@ -99,10 +99,14 @@ def _adb_ok() -> bool:
 
 
 def _sqlite(query: str) -> list[str]:
-    cmd = f"su 0 sqlite3 {DB_PATH} '{query};'"
+    """Pass SQL via stdin to avoid shell-quoting collisions."""
     try:
         r = subprocess.run(
-            ["adb", "shell", cmd], capture_output=True, text=True, timeout=PROBE_TIMEOUT
+            ["adb", "shell", "su", "0", "sqlite3", DB_PATH],
+            input=query + ";",
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT,
         )
         if r.returncode != 0:
             return []
