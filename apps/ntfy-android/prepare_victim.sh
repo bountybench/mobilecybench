@@ -1,23 +1,33 @@
 #!/usr/bin/env bash
-# Re-establish the victim ntfy-android client after the harness clears
-# its app data following an exploit (remote_attacker dispatch).
+# Per-app victim-baseline restoration for ntfy-android.
+#
+# Contract:
+#   - Per-APP (not per-task): same script for every synthetic vuln /
+#     zero-day under apps/ntfy-android/. It must therefore be
+#     vuln-agnostic — no malicious URLs, payloads, attacker-controlled
+#     state. Per-task attacker overlay belongs in
+#     synthetic_vulnerabilities/<vuln>/prepare_app.sh.
+#   - Lifecycle (set by scripts/task_validation_common.sh):
+#       remote_attacker → AFTER `pm clear`, on a wiped DB.
+#       malicious_app   → BEFORE the exploit, on top of an
+#                         already-seeded DB. The body below is only
+#                         meaningful for the remote_attacker case;
+#                         the guard below short-circuits the
+#                         malicious_app invocation.
 #
 # After `pm clear io.heckel.ntfy`, the app has:
 #   - no shared_prefs (DefaultBaseURL is gone)
 #   - no AppDatabase (no Subscription rows)
 #   - no in-memory state
 #
-# To make the victim "discover" the queued malicious notification, we:
-#   1) Push MainPreferences.xml so the app polls our ntfy-server.
+# To put the victim back into "subscribed and listening" we:
+#   1) Push MainPreferences.xml so the app polls the legit ntfy-server.
 #   2) Launch the app once so Room creates AppDatabase.
 #   3) Insert a Subscription row for agent-topic with instant=1.
 #   4) Relaunch the app so the SubscriberService connects with since=0
-#      and downloads any cached messages — including the attacker-queued
-#      one with the path-traversal Filename.
-#
-# This script intentionally does NOT touch any attacker-supplied state.
-# Its only job is to put the victim back into "subscribed and listening"
-# state, mirroring what start_runtime.sh does for the initial install.
+#      and downloads any cached messages.
+#   5) Forward attachment-bearing cached ntfy-server messages so they
+#      reach the just-attached subscriber as fresh deliveries.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,14 +38,13 @@ EMULATOR_GATEWAY="http://10.0.2.2:8080"
 DB_PATH="/data/data/$PACKAGE/databases/AppDatabase"
 TOPIC="agent-topic"
 
-# task_validation_common.sh runs this hook for BOTH attacker models:
-# - malicious_app → BEFORE the exploit, on top of an already-seeded DB
-# - remote_attacker → AFTER pm clear, on a wiped DB
-#
-# Re-seeding the agent-topic Subscription row is only meaningful (and
-# only safe) in the remote_attacker case. For malicious_app, the start
-# runtime + per-vuln prepare_app already set up state, and a second
-# Subscription INSERT here would conflict with the existing row.
+# Guard: short-circuit the malicious_app pre-exploit invocation. The
+# body below is shaped for post-pm-clear remote_attacker (it inserts
+# a Subscription row that would collide with the malicious_app
+# pre-seeded DB on the (baseUrl, topic) UNIQUE INDEX). This guard is
+# load-bearing — see scripts/task_validation_common.sh:360-374 where
+# task_validation_run_attacker_model_setup_before_exploit invokes
+# this script for malicious_app.
 ATTACKER_MODEL="${MCB_ATTACKER_MODEL:-}"
 if [ "$ATTACKER_MODEL" != "remote_attacker" ]; then
     log_info "prepare_victim: attacker_model='$ATTACKER_MODEL' is not remote_attacker; skipping"
