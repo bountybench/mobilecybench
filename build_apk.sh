@@ -52,6 +52,7 @@ OUTPUT_DIR=""
 OUTPUT_DIR_EXPLICIT="0"
 BUILD_COMMIT_OVERRIDE=""
 HARDENED_OUTPUT_PATH=""
+USE_CACHE=""
 
 show_usage() {
     echo "Usage: $0 <app_name> [options]"
@@ -69,6 +70,19 @@ show_usage() {
     echo "                      zero_day_vulnerabilities/<bundle_name>"
     echo "  --commit <ref>      Override metadata.json commit_version for this build"
     echo "                      (useful for pinned historical/task baseline builds)"
+    echo "  --cache             Opt in to the local fingerprint cache. Default is to"
+    echo "                      always rebuild. With --cache, the script computes a"
+    echo "                      sha256 over the build inputs (metadata.json, build.sh,"
+    echo "                      build_apk.sh, utils/*.sh, and vulnerability.patch for"
+    echo "                      --vuln builds), stores it next to the produced APK as"
+    echo "                      .fingerprint, and on subsequent invocations skips the"
+    echo "                      build if the fingerprint matches and the APK still"
+    echo "                      exists. Cache lives at apps/<app>/apk/.fingerprint"
+    echo "                      (or apps/<app>/apk/<vuln_id>/.fingerprint for vuln"
+    echo "                      builds) — clear with: rm -rf apps/<app>/apk/"
+    echo "                      Cache is ignored for --commit / --output /"
+    echo "                      --hardened-patch (those break the"
+    echo "                      fingerprint-determines-output assumption)."
     echo "  --hardened-patch <path>"
     echo "                      Build a hardened APK by applying an explicit patch file"
     echo "                      (useful when the remediation patch lives outside the app dir,"
@@ -100,97 +114,109 @@ show_usage() {
     echo "                    (for task fix.patch paths, or pass --output <dir>)"
 }
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --vuln)
-            if [ -z "$2" ] || [[ "$2" == -* ]]; then
-                echo -e "${ERROR} --vuln requires a vulnerability reference argument (e.g., vuln_0)"
+# Parse CLI args and validate environment. Sets globals used by the rest of
+# the script. Returns 0 on success, 1 on user/validation error, 2 on --help.
+# Implemented as a function so the script is sourceable for tests; a direct
+# invocation triggers this from main().
+parse_args_and_validate() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --vuln)
+                if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                    echo -e "${ERROR} --vuln requires a vulnerability reference argument (e.g., vuln_0)"
+                    show_usage
+                    return 1
+                fi
+                VULN_ID="$2"
+                shift 2
+                ;;
+            --hardened-patch)
+                if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                    echo -e "${ERROR} --hardened-patch requires a patch file path"
+                    show_usage
+                    return 1
+                fi
+                HARDENED_PATCH_PATH="$2"
+                shift 2
+                ;;
+            --output)
+                if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                    echo -e "${ERROR} --output requires a directory path"
+                    show_usage
+                    return 1
+                fi
+                OUTPUT_DIR="$2"
+                OUTPUT_DIR_EXPLICIT="1"
+                shift 2
+                ;;
+            --commit)
+                if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                    echo -e "${ERROR} --commit requires a git ref or commit"
+                    show_usage
+                    return 1
+                fi
+                BUILD_COMMIT_OVERRIDE="$2"
+                shift 2
+                ;;
+            --cache)
+                USE_CACHE="1"
+                shift
+                ;;
+            -h|--help)
                 show_usage
-                exit 1
-            fi
-            VULN_ID="$2"
-            shift 2
-            ;;
-        --hardened-patch)
-            if [ -z "$2" ] || [[ "$2" == -* ]]; then
-                echo -e "${ERROR} --hardened-patch requires a patch file path"
+                return 2
+                ;;
+            -*)
+                echo -e "${ERROR} Unknown option: $1"
                 show_usage
-                exit 1
-            fi
-            HARDENED_PATCH_PATH="$2"
-            shift 2
-            ;;
-        --output)
-            if [ -z "$2" ] || [[ "$2" == -* ]]; then
-                echo -e "${ERROR} --output requires a directory path"
-                show_usage
-                exit 1
-            fi
-            OUTPUT_DIR="$2"
-            OUTPUT_DIR_EXPLICIT="1"
-            shift 2
-            ;;
-        --commit)
-            if [ -z "$2" ] || [[ "$2" == -* ]]; then
-                echo -e "${ERROR} --commit requires a git ref or commit"
-                show_usage
-                exit 1
-            fi
-            BUILD_COMMIT_OVERRIDE="$2"
-            shift 2
-            ;;
-        -h|--help)
-            show_usage
-            exit 0
-            ;;
-        -*)
-            echo -e "${ERROR} Unknown option: $1"
-            show_usage
-            exit 1
-            ;;
-        *)
-            if [ -z "$APP_NAME" ]; then
-                APP_NAME="$1"
-            else
-                echo -e "${ERROR} Multiple app names specified. Only one app allowed."
-                show_usage
-                exit 1
-            fi
-            shift
-            ;;
-    esac
-done
+                return 1
+                ;;
+            *)
+                if [ -z "$APP_NAME" ]; then
+                    APP_NAME="$1"
+                else
+                    echo -e "${ERROR} Multiple app names specified. Only one app allowed."
+                    show_usage
+                    return 1
+                fi
+                shift
+                ;;
+        esac
+    done
 
-# Validate app name provided
-if [ -z "$APP_NAME" ]; then
-    echo -e "${ERROR} App name is required"
-    show_usage
-    exit 1
-fi
+    # Validate app name provided
+    if [ -z "$APP_NAME" ]; then
+        echo -e "${ERROR} App name is required"
+        show_usage
+        return 1
+    fi
 
-# Resolve app directory
-APP_DIR="$ROOT_DIR/apps/$APP_NAME"
-if [ ! -d "$APP_DIR" ]; then
-    echo -e "${ERROR} App directory not found: $APP_DIR"
-    exit 1
-fi
+    # Resolve app directory
+    APP_DIR="$ROOT_DIR/apps/$APP_NAME"
+    if [ ! -d "$APP_DIR" ]; then
+        echo -e "${ERROR} App directory not found: $APP_DIR"
+        return 1
+    fi
 
-# Set default output directory
-if [ -z "$OUTPUT_DIR" ]; then
-    OUTPUT_DIR="$APP_DIR/apk"
-fi
+    # Set default output directory
+    if [ -z "$OUTPUT_DIR" ]; then
+        OUTPUT_DIR="$APP_DIR/apk"
+    fi
 
-VULN_OUTPUT_NAME=""
-if [ -n "$VULN_ID" ]; then
-    VULN_OUTPUT_NAME="$(basename "$VULN_ID")"
-fi
+    VULN_OUTPUT_NAME=""
+    if [ -n "$VULN_ID" ]; then
+        VULN_OUTPUT_NAME="$(basename "$VULN_ID")"
+    fi
 
-# Validate build script exists
-if [ ! -f "$APP_DIR/build.sh" ]; then
-    echo -e "${ERROR} build.sh not found in $APP_DIR"
-    exit 1
-fi
+    # Validate build script exists
+    if [ ! -f "$APP_DIR/build.sh" ]; then
+        echo -e "${ERROR} build.sh not found in $APP_DIR"
+        return 1
+    fi
+
+    # Standard location for unsigned APK (build.sh copies here)
+    UNSIGNED_APK="$APP_DIR/unsigned.apk"
+}
 
 resolve_vuln_dir() {
     local vuln_id="$1"
@@ -312,12 +338,13 @@ setup_android() {
     echo "sdk.dir=$ANDROID_HOME" > "$APP_DIR/codebase/local.properties"
 }
 
-# Standard location for unsigned APK (build.sh copies here)
-UNSIGNED_APK="$APP_DIR/unsigned.apk"
+# Standard location for unsigned APK (build.sh copies here). Set by
+# parse_args_and_validate once APP_DIR is known.
+UNSIGNED_APK=""
 
 # Clean up temporary files
 cleanup_unsigned_apk() {
-    if [[ -f "$UNSIGNED_APK" ]]; then
+    if [[ -n "$UNSIGNED_APK" && -f "$UNSIGNED_APK" ]]; then
         rm -f "$UNSIGNED_APK"
     fi
 }
@@ -560,8 +587,142 @@ build_and_package() {
     return 0
 }
 
+# --- Local APK fingerprint cache -------------------------------------------
+#
+# OPT-IN. Activated by --cache. Default behavior (no flag) is to always
+# rebuild; this block is a no-op in that case.
+#
+# Inputs (per build mode):
+#   regular:  apps/<app>/metadata.json, apps/<app>/build.sh,
+#             build_apk.sh, utils/*.sh
+#   --vuln:   above + <resolved_vuln_dir>/vulnerability.patch
+#
+# Storage: a single sha256-hex line in `apps/<app>/apk/.fingerprint` (or
+# `apps/<app>/apk/<vuln_id>/.fingerprint` for vuln builds). The fingerprint
+# file is ~64 bytes; it lives next to the APK that the build already produces,
+# so this adds no new directories. Clear with `rm -rf apps/<app>/apk/`.
+#
+# Cache is intentionally disabled for --commit / --hardened-patch / --output
+# overrides because those break the fingerprint-determines-output assumption.
+
+compute_build_fingerprint() {
+    local files=(
+        "$APP_DIR/metadata.json"
+        "$APP_DIR/build.sh"
+        "$ROOT_DIR/build_apk.sh"
+    )
+
+    # utils/*.sh in deterministic order
+    local util
+    while IFS= read -r util; do
+        files+=("$util")
+    done < <(find "$ROOT_DIR/utils" -maxdepth 1 -name '*.sh' -type f 2>/dev/null | sort)
+
+    if [ -n "$VULN_ID" ]; then
+        local vuln_dir
+        vuln_dir="$(resolve_vuln_dir "$VULN_ID")" || return 1
+        files+=("$vuln_dir/vulnerability.patch")
+    fi
+
+    # Hash file contents in given order. Missing files contribute nothing
+    # (mirrors hashFiles() glob semantics).
+    local hashes=""
+    for f in "${files[@]}"; do
+        if [ -f "$f" ]; then
+            hashes+="$(shasum -a 256 "$f" | cut -d' ' -f1)"
+        fi
+    done
+    printf '%s' "$hashes" | shasum -a 256 | cut -d' ' -f1
+}
+
+should_use_cache() {
+    [ "$USE_CACHE" = "1" ] || return 1
+    # Even with --cache, these flags break the fingerprint-determines-output
+    # assumption and bypass the cache:
+    [ -n "$BUILD_COMMIT_OVERRIDE" ] && return 1
+    [ -n "$HARDENED_PATCH_PATH" ] && return 1
+    [ "$OUTPUT_DIR_EXPLICIT" = "1" ] && return 1
+    return 0
+}
+
+cache_fingerprint_file() {
+    if [ -n "$VULN_ID" ]; then
+        printf '%s' "$OUTPUT_DIR/$VULN_OUTPUT_NAME/.fingerprint"
+    else
+        printf '%s' "$OUTPUT_DIR/.fingerprint"
+    fi
+}
+
+cache_apk_file() {
+    if [ -n "$VULN_ID" ]; then
+        printf '%s' "$OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+    else
+        printf '%s' "$OUTPUT_DIR/${APP_NAME}.apk"
+    fi
+}
+
+# Returns 0 (success) on cache hit, 1 on miss. On hit, the existing APK is
+# left in place and the caller should exit 0.
+try_cache_hit() {
+    local fp_file apk_file current_fp expected_fp
+    fp_file="$(cache_fingerprint_file)"
+    apk_file="$(cache_apk_file)"
+
+    if [ ! -f "$fp_file" ]; then
+        echo -e "${INFO} Cache MISS: no fingerprint at $fp_file"
+        return 1
+    fi
+    if [ ! -f "$apk_file" ]; then
+        echo -e "${INFO} Cache MISS: APK missing at $apk_file"
+        return 1
+    fi
+
+    current_fp="$(compute_build_fingerprint)" || {
+        echo -e "${WARNING} Cache check skipped: could not compute fingerprint"
+        return 1
+    }
+    expected_fp="$(cat "$fp_file")"
+
+    if [ "$current_fp" = "$expected_fp" ]; then
+        echo -e "${SUCCESS} Cache HIT: $apk_file"
+        echo -e "${INFO} Fingerprint $current_fp matches. Skipping build."
+        echo -e "${INFO} Drop --cache to force a rebuild."
+        return 0
+    fi
+    echo -e "${INFO} Cache MISS: fingerprint changed"
+    echo -e "${INFO}   expected $expected_fp"
+    echo -e "${INFO}   current  $current_fp"
+    return 1
+}
+
+save_cache_fingerprint() {
+    should_use_cache || return 0
+    local fp_file fp
+    fp_file="$(cache_fingerprint_file)"
+    fp="$(compute_build_fingerprint)" || {
+        echo -e "${WARNING} Skipping fingerprint save: could not compute fingerprint"
+        return 0
+    }
+    mkdir -p "$(dirname "$fp_file")"
+    printf '%s\n' "$fp" > "$fp_file"
+    echo -e "${INFO} Saved cache fingerprint: $fp_file"
+}
+
+# --- end local APK fingerprint cache ---------------------------------------
+
 # Main logic
 main() {
+    # set -e at top of file would abort on parse_args_and_validate's non-zero
+    # return; the `|| rc=$?` form preserves the exit code without aborting.
+    local rc=0
+    parse_args_and_validate "$@" || rc=$?
+    if [ "$rc" = "2" ]; then
+        return 0  # --help: exit cleanly
+    fi
+    if [ "$rc" != "0" ]; then
+        return 1
+    fi
+
     echo -e "${INFO} =================================="
     echo -e "${INFO} APK Build Wrapper"
     echo -e "${INFO} =================================="
@@ -629,6 +790,12 @@ main() {
 
     echo -e "${INFO} =================================="
 
+    # Cache short-circuit: skip the whole build if fingerprint matches and
+    # the previously-built APK is still on disk.
+    if should_use_cache && try_cache_hit; then
+        exit 0
+    fi
+
     # Step 1: Check submodule is initialized
     check_submodule_initialized || exit 1
 
@@ -655,6 +822,8 @@ main() {
         # Step 5: Restore clean codebase state
         echo -e "${INFO} Restoring clean codebase state..."
         checkout_commit || true
+
+        save_cache_fingerprint
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Vulnerable APK build completed!"
@@ -698,6 +867,8 @@ main() {
         echo -e "${INFO} Restoring clean codebase state..."
         checkout_commit || true
 
+        save_cache_fingerprint
+
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} APK build completed!"
         echo -e "${SUCCESS} Output: $OUTPUT_DIR/${APP_NAME}.apk"
@@ -705,5 +876,8 @@ main() {
     fi
 }
 
-# Run main
-main "$@"
+# Run main only when executed directly (not when sourced for testing).
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    main "$@"
+    exit $?
+fi
