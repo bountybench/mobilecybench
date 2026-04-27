@@ -23,8 +23,8 @@ def _load_and_run() -> int:
     summary = {"score": 1, "vectors": {}}
     victim_jwt = get_victim_jwt_from_db()
     if not victim_jwt:
-        print(json.dumps(summary))
-        return 1
+        print(json.dumps({**summary, "error": "missing victim JWT"}))
+        return 2
 
     canary_body = f"mcb-post-{uuid.uuid4().hex}"
     helper_ok, _ = run_helper_reproduction(
@@ -55,8 +55,9 @@ def _load_and_run() -> int:
                         summary["vectors"]["V-004"] = True
                         summary["score"] = 0
                         break
-        except Exception:
-            pass
+        except Exception as exc:
+            print(json.dumps({**summary, "error": str(exc)}))
+            return 2
 
     print(json.dumps(summary))
     return 0 if summary["score"] == 0 else 1

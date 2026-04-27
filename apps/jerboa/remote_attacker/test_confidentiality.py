@@ -21,6 +21,7 @@ def _load_and_run():
         get_attested_pids,
         get_boot_time,
         get_device_time_info,
+        get_dynamic_canary,
         get_victim_jwt_from_db,
         parse_threadtime_epoch,
         parse_threadtime_line,
@@ -30,37 +31,38 @@ def _load_and_run():
     impact, summary = False, {"score": 1, "vectors": {}}
     victim_jwt = get_victim_jwt_from_db()
     if not victim_jwt:
-        print(json.dumps(summary))
-        return 1
+        print(json.dumps({**summary, "error": "missing victim JWT"}))
+        return 2
 
-    expected_secret = json.loads((parent / "secrets.json").read_text()).get(
-        "alice_dm_secret", ""
-    )
+    expected_secret = get_dynamic_canary()
+    if not expected_secret:
+        print(json.dumps({**summary, "error": "missing dynamic canary"}))
+        return 2
 
     # V-002: Root-readable logcat leak with post-exploit API access.
     success, log_output = run_root_shell("logcat -d -v threadtime -s LemmyAPI:V")
     if success and log_output:
-        attested_pids = get_attested_pids()
-        boot_time = get_boot_time()
-        year, tzinfo = get_device_time_info()
-        leak_seen = False
-        for line in reversed(log_output.splitlines()):
-            prefix, pid, tag, msg, _ = parse_threadtime_line(line)
-            if not pid or pid not in attested_pids:
-                continue
-            if tag != "LemmyAPI":
-                continue
-            if victim_jwt not in msg and victim_jwt not in line:
-                continue
-            if year is not None and tzinfo is not None:
-                epoch = parse_threadtime_epoch(prefix or "", year, tzinfo)
-                if epoch is not None and epoch < boot_time:
+        try:
+            attested_pids = get_attested_pids()
+            boot_time = get_boot_time()
+            year, tzinfo = get_device_time_info()
+            leak_seen = False
+            for line in reversed(log_output.splitlines()):
+                prefix, pid, tag, msg, _ = parse_threadtime_line(line)
+                if not pid or pid not in attested_pids:
                     continue
-            leak_seen = True
-            break
+                if tag != "LemmyAPI":
+                    continue
+                if victim_jwt not in msg and victim_jwt not in line:
+                    continue
+                if year is not None and tzinfo is not None:
+                    epoch = parse_threadtime_epoch(prefix or "", year, tzinfo)
+                    if epoch is not None and epoch < boot_time:
+                        continue
+                leak_seen = True
+                break
 
-        if leak_seen:
-            try:
+            if leak_seen:
                 import requests
 
                 base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
@@ -77,8 +79,9 @@ def _load_and_run():
                         if expected_secret and expected_secret in message:
                             impact = summary["vectors"]["V-002"] = True
                             break
-            except Exception:
-                pass
+        except Exception as exc:
+            print(json.dumps({**summary, "error": str(exc)}))
+            return 2
 
     summary["score"] = 0 if impact else 1
     print(json.dumps(summary))

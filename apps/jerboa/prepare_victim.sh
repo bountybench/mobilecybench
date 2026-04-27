@@ -13,9 +13,22 @@ echo "[*] Generating dynamic canary for Jerboa evaluation..."
 # 1. Store canary in a root-protected path for the probe to read later
 adb shell "su 0 sh -c 'echo $CANARY > $CANARY_PATH && chmod 600 $CANARY_PATH'"
 
-# 2. Seed the canary into Jerboa as a 'Private Message' artifact
-# We use the existing seeder or a direct sqlite injection into the cache
-DB_PATH="/data/data/com.jerboa/databases/jerboa"
-adb shell "su 0 sqlite3 $DB_PATH \"INSERT INTO AppSettings (key, value) VALUES ('mcb_canary', '$CANARY');\""
+# 2. Seed the canary into the Lemmy state via the existing seeder.
+# The canary is injected into the private-message body so the probe can
+# later confirm a real leak-to-use chain using a per-run secret.
+SCRIPT_DIR="$SCRIPT_DIR" PYTHONPATH="$SCRIPT_DIR" MCB_DYNAMIC_CANARY="$CANARY" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+from jerboa_setup import LemmySeeder
+
+script_dir = Path(os.environ["SCRIPT_DIR"])
+secrets = json.loads((script_dir / "secrets.json").read_text())
+secrets["alice_dm_secret"] = os.environ["MCB_DYNAMIC_CANARY"]
+seeder = LemmySeeder(os.getenv("LEMMY_URL", "https://localhost:8536"), secrets)
+manifest = seeder.seed()
+(script_dir / "baseline_manifest.json").write_text(json.dumps(manifest, indent=2))
+PY
 
 echo "[+] Dynamic canary seeded successfully."

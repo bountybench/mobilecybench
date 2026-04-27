@@ -119,6 +119,24 @@ def get_dynamic_canary() -> str:
     return output.strip() if success else ""
 
 
+def get_victim_jwt_from_db() -> str:
+    """Returns the current victim JWT from Jerboa's Room database."""
+    db_path = f"{JERBOA_PRIVATE_DIR}/databases/jerboa"
+    queries = (
+        "SELECT jwt FROM account WHERE current = 1 LIMIT 1;",
+        "SELECT jwt FROM Account WHERE current = 1 LIMIT 1;",
+        "SELECT jwt FROM account LIMIT 1;",
+        "SELECT jwt FROM Account LIMIT 1;",
+    )
+    for query in queries:
+        success, output = run_root_shell(
+            f"sqlite3 {quote_path(db_path)} {quote_path(query)} 2>/dev/null"
+        )
+        if success and output.strip():
+            return output.strip()
+    return ""
+
+
 def get_attested_pids() -> set[str]:
     """Identifies Jerboa PIDs using UID and Cgroup membership (Kernel Attestation)."""
     success, output = run_root_shell(f"pm list packages -U {JERBOA_PACKAGE}")

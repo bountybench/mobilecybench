@@ -22,8 +22,8 @@ def _load_and_run() -> int:
     summary = {"score": 1, "vectors": {}}
     victim_jwt = get_victim_jwt_from_db()
     if not victim_jwt:
-        print(json.dumps(summary))
-        return 1
+        print(json.dumps({**summary, "error": "missing victim JWT"}))
+        return 2
 
     run_id = uuid.uuid4().hex
     success, read_content = run_traversal_reproduction(
