@@ -1,7 +1,7 @@
 """Tests for the emulator pidfile reaper introduced for R2.21.
 
 Covers:
-  - `_emulator_pidfile`: path computation + read-only-fs resilience
+  - `_emulator_pidfile`: pure path computation, no I/O side effects
   - `_pid_is_emulator`: discriminating emulator-shaped vs other PIDs
   - `_reap_emulator_pidfile`: every observable branch (no file, garbage,
     dead PID, alive non-emulator, alive emulator, TOCTOU re-check
@@ -20,7 +20,6 @@ import os
 import signal
 import subprocess
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -74,29 +73,30 @@ def _terminate(proc: subprocess.Popen, *, timeout: float = 5.0) -> None:
         pass
 
 
+def _plant_pidfile(tmp_path, content: str):
+    """Mirror what `start_in_background` does on a real spawn: mkdir parent
+    (since `_emulator_pidfile` is now a pure path helper), then write."""
+    pidfile = _emulator_pidfile(tmp_path)
+    pidfile.parent.mkdir(parents=True, exist_ok=True)
+    pidfile.write_text(content)
+    return pidfile
+
+
 # ---------------------------------------------------------------------------
 # _emulator_pidfile
 # ---------------------------------------------------------------------------
 
 
-def test_emulator_pidfile_creates_runtime_state_dir(tmp_path):
+def test_emulator_pidfile_returns_path_without_io(tmp_path):
+    """`_emulator_pidfile` is a pure path computation — no directory creation.
+
+    The directory is created lazily by the writer in `start_in_background`.
+    Callers that only want the path (e.g. the reaper checking
+    ``pidfile.exists()``) must not materialise ``.runtime_state/`` on disk.
+    """
     pidfile = _emulator_pidfile(tmp_path)
     assert pidfile == tmp_path / ".runtime_state" / "emulator.pid"
-    assert (tmp_path / ".runtime_state").is_dir()
-
-
-def test_emulator_pidfile_silent_on_unwritable_root(tmp_path, monkeypatch):
-    """mkdir failure (e.g. read-only fs) must not raise — caller catches OSError later."""
-
-    def boom(*args, **kwargs):
-        raise PermissionError("read-only file system")
-
-    # Path.mkdir is called via the bound method; patching at the Path class
-    # level is the simplest way to force the failure deterministically.
-    monkeypatch.setattr(Path, "mkdir", boom)
-    # Should NOT raise — degrades silently. The returned path may not exist.
-    result = _emulator_pidfile(tmp_path)
-    assert result.name == "emulator.pid"
+    assert not (tmp_path / ".runtime_state").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -168,17 +168,14 @@ def test_pid_is_emulator_handles_permission_error():
 
 
 def test_reap_no_pidfile_is_noop(tmp_path):
-    """If the pidfile doesn't exist, the function returns silently."""
+    """If the pidfile doesn't exist, the function returns silently and does
+    not materialise `.runtime_state/` as a side effect."""
     _reap_emulator_pidfile(tmp_path)
-    # Nothing to assert beyond "didn't raise"; runtime_state dir may be
-    # created by the helper, but no pidfile should exist.
-    pidfile = tmp_path / ".runtime_state" / "emulator.pid"
-    assert not pidfile.exists()
+    assert not (tmp_path / ".runtime_state").exists()
 
 
 def test_reap_garbage_pidfile_logs_and_removes(tmp_path, caplog):
-    pidfile = _emulator_pidfile(tmp_path)
-    pidfile.write_text("not-an-int\n")
+    pidfile = _plant_pidfile(tmp_path, "not-an-int\n")
     _reap_emulator_pidfile(tmp_path)
     assert not pidfile.exists()
     assert any("Stale emulator pidfile" in m for m in caplog.messages)
@@ -188,8 +185,7 @@ def test_reap_dead_pid_removes_pidfile(tmp_path):
     """A pidfile whose PID has already exited gets cleaned up; nothing is killed."""
     proc = subprocess.Popen(["sleep", "0.01"])
     proc.wait()
-    pidfile = _emulator_pidfile(tmp_path)
-    pidfile.write_text(f"{proc.pid}\n")
+    pidfile = _plant_pidfile(tmp_path, f"{proc.pid}\n")
     _reap_emulator_pidfile(tmp_path)
     assert not pidfile.exists()
 
@@ -202,8 +198,7 @@ def test_reap_refuses_to_kill_non_emulator_pid(tmp_path):
     """
     proc = subprocess.Popen(["sleep", "30"])
     try:
-        pidfile = _emulator_pidfile(tmp_path)
-        pidfile.write_text(f"{proc.pid}\n")
+        pidfile = _plant_pidfile(tmp_path, f"{proc.pid}\n")
         _reap_emulator_pidfile(tmp_path)
         assert not pidfile.exists()
         # The unrelated process must still be running.
@@ -222,8 +217,7 @@ def test_reap_kills_emulator_shaped_pid(tmp_path):
     proc = _spawn_named("qemu-system-aarch64 -avd MobileCybenchEmulatorAPI35")
     try:
         time.sleep(0.2)
-        pidfile = _emulator_pidfile(tmp_path)
-        pidfile.write_text(f"{proc.pid}\n")
+        pidfile = _plant_pidfile(tmp_path, f"{proc.pid}\n")
         _reap_emulator_pidfile(tmp_path, term_grace_seconds=2.0)
         proc.wait(timeout=5)
         assert not pidfile.exists()
@@ -257,8 +251,7 @@ def test_reap_sigkill_when_process_ignores_sigterm(tmp_path, monkeypatch):
 
         monkeypatch.setattr(os, "kill", fake_kill)
 
-        pidfile = _emulator_pidfile(tmp_path)
-        pidfile.write_text(f"{proc.pid}\n")
+        pidfile = _plant_pidfile(tmp_path, f"{proc.pid}\n")
         _reap_emulator_pidfile(tmp_path, term_grace_seconds=0.5)
 
         proc.wait(timeout=5)
@@ -281,8 +274,7 @@ def test_reap_skips_sigkill_if_pid_recycled_during_grace(tmp_path, monkeypatch):
     proc = _spawn_named("emulator-test-recycle")
     try:
         time.sleep(0.2)
-        pidfile = _emulator_pidfile(tmp_path)
-        pidfile.write_text(f"{proc.pid}\n")
+        pidfile = _plant_pidfile(tmp_path, f"{proc.pid}\n")
 
         # First call (the upfront check) returns True (real cmdline).
         # Second call (inside the wait loop) returns False (simulating
@@ -327,10 +319,9 @@ def test_reap_skips_sigkill_if_pid_recycled_during_grace(tmp_path, monkeypatch):
 
 def test_reap_pidfile_with_trailing_whitespace(tmp_path):
     """Pidfiles written with a trailing newline must still parse."""
-    pidfile = _emulator_pidfile(tmp_path)
     proc = subprocess.Popen(["sleep", "0.01"])
     proc.wait()
-    pidfile.write_text(f"  {proc.pid}\n")  # leading + trailing whitespace
+    pidfile = _plant_pidfile(tmp_path, f"  {proc.pid}\n")  # leading + trailing whitespace
     _reap_emulator_pidfile(tmp_path)
     assert not pidfile.exists()
 
@@ -377,8 +368,7 @@ def test_start_in_background_reaps_orphan_first(mock_run, mock_popen, tmp_path):
     # kill-wise but still exercises the cleanup path before spawn.
     proc = subprocess.Popen(["sleep", "0.01"])
     proc.wait()
-    pidfile = _emulator_pidfile(tmp_path)
-    pidfile.write_text(f"{proc.pid}\n")
+    pidfile = _plant_pidfile(tmp_path, f"{proc.pid}\n")
 
     with patch.dict("os.environ", {"ANDROID_HOME": str(tmp_path / "android")}):
         with patch("utils.emulator_manager.Path.exists", return_value=True):
@@ -419,8 +409,7 @@ def test_stop_native_emulator_removes_pidfile(mock_run, tmp_path):
     # Plant a pidfile pointing at a dead PID so reaping is a no-op kill-wise.
     proc = subprocess.Popen(["sleep", "0.01"])
     proc.wait()
-    pidfile = _emulator_pidfile(tmp_path)
-    pidfile.write_text(f"{proc.pid}\n")
+    pidfile = _plant_pidfile(tmp_path, f"{proc.pid}\n")
 
     mgr.state = EmulatorState.RUNNING
     mgr.device_id = "emulator-5554"

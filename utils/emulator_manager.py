@@ -23,17 +23,12 @@ EMULATOR_CONTAINER_NAME = "emulator-container"
 def _emulator_pidfile(project_root: Path) -> Path:
     """Path of the pid file recording the running native emulator.
 
-    Best-effort directory creation; if the project_root is read-only or
-    otherwise unwritable (test fixtures with /mock paths, sandboxes), the
-    caller catches the IOError and degrades silently — this helper is a
-    crash-recovery aid, not a critical path.
+    Pure path computation — no I/O. The writer in ``start_in_background``
+    is responsible for creating ``.runtime_state/`` immediately before
+    writing, so callers that only want to *check* for a pidfile (e.g. the
+    reaper) don't spuriously materialise the directory on disk.
     """
-    runtime_state = project_root / ".runtime_state"
-    try:
-        runtime_state.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-    return runtime_state / "emulator.pid"
+    return project_root / ".runtime_state" / "emulator.pid"
 
 
 def _pid_is_emulator(pid: int) -> bool:
@@ -422,6 +417,15 @@ class EmulatorManager:
 
     def _start_native_emulator(self):
         """Start emulator as a native subprocess (original behavior)."""
+        # Reap any orphan from a previous Python crash *first*, before any
+        # other state queries. If our pidfile records a still-live qemu from
+        # a crashed run, killing it here lets the device-already-running
+        # guard below see a clean adb state — turning the recovery flow into
+        # "just retry" instead of "stop_emulator.sh then retry". Only ever
+        # signals the PID we recorded ourselves; a user-started emulator
+        # (no pidfile) is untouched and trips the guard normally.
+        _reap_emulator_pidfile(self.project_root)
+
         self._verify_avd_exists()
 
         logger.info("=" * 60)
@@ -492,11 +496,6 @@ class EmulatorManager:
         env = os.environ.copy()
         env["ANDROID_HOME"] = self.emulator_config["android_home"]
 
-        # Reap any orphan from a previous Python crash *before* spawning
-        # ours — otherwise the new process plus the orphan both register
-        # with adb and inject_system_ca + later cleanup gets ambiguous.
-        _reap_emulator_pidfile(self.project_root)
-
         try:
             # Use temp file instead of PIPE to avoid deadlock if stderr buffer fills.
             self._stderr_file = tempfile.TemporaryFile()
@@ -510,9 +509,11 @@ class EmulatorManager:
 
             # Persist the PID so a crashed-then-restarted run can find and
             # reap this exact process (R2.21). Best-effort; never fail the
-            # spawn over a pidfile-write hiccup.
+            # spawn over a pidfile-write hiccup (read-only fs, etc.).
             try:
-                _emulator_pidfile(self.project_root).write_text(f"{self.process.pid}\n")
+                pidfile = _emulator_pidfile(self.project_root)
+                pidfile.parent.mkdir(parents=True, exist_ok=True)
+                pidfile.write_text(f"{self.process.pid}\n")
             except Exception as e:
                 logger.warning(f"Failed to persist emulator pidfile: {e}")
 
