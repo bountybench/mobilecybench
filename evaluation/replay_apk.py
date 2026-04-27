@@ -111,7 +111,8 @@ def manifest_declares_permission(project_dir: Path, permission: str) -> bool:
     root = ElementTree.fromstring(manifest.read_text())
     name_attr = "{http://schemas.android.com/apk/res/android}name"
     return any(
-        elem.tag.endswith("uses-permission") and elem.attrib.get(name_attr) == permission
+        elem.tag.endswith("uses-permission")
+        and elem.attrib.get(name_attr) == permission
         for elem in root.iter()
     )
 
@@ -134,7 +135,9 @@ def _tap_bounds_center(bounds: str) -> None:
     x, y = (left + right) // 2, (top + bottom) // 2
     proc = _run_adb(["shell", "input", "tap", str(x), str(y)])
     if proc.returncode != 0:
-        raise RuntimeError(f"adb input tap {x} {y} failed: {proc.stderr or proc.stdout}")
+        raise RuntimeError(
+            f"adb input tap {x} {y} failed: {proc.stderr or proc.stdout}"
+        )
 
 
 def _find_allow_button_bounds() -> str | None:
