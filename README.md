@@ -10,7 +10,7 @@ MobileCybench is a framework to capture agentic offensive cyber-capabilities in 
 
 ## Prerequisites
 
-- Python 3.11+ (3.12 or lower recommended for agent dependencies)
+- Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop running
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+)
 

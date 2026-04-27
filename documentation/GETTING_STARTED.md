@@ -42,7 +42,7 @@ python runner.py conversations --config runner_config_dryrun.json
 
 ## 1) System prerequisites
 
-- Python 3.11+ (3.12 or lower recommended for agent dependencies)
+- Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop (for agent stack and some app environments)
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+. Please note that some apps require Java 21 to build.)
 
@@ -80,7 +80,7 @@ Notes:
 
 - Default SDK is 35. To use a different version: `./setup.sh --sdk 34 --system-image google_apis`.
 - You can also pass an app name to auto-select the SDK from its `metadata.json` (example: `./setup.sh conversations`).
-- `setup.sh` installs Android SDK packages, creates the AVD, and generates `start_emulator.sh`, `stop_emulator.sh`, and `check_device.sh`.
+- `setup.sh` installs Android SDK packages and creates the AVD.
 - To initialize submodules during setup, use `--init-submodules` (all) or `--init-submodules <app_name>` (single app).
 - `setup.sh` installs `apktool` if it is missing.
 
