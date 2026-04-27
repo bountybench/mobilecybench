@@ -250,7 +250,12 @@ def run_helper_reproduction(
     logcat_pattern: str | None = None,
     run_id: str | None = None,
 ) -> tuple[bool, str]:
-    """Install and launch the helper APK, then read back its JSON side effect."""
+    """Install and launch the helper APK, then read back its JSON transport envelope.
+
+    The helper is treated as a stimulus generator. The probe must independently
+    verify any impact it cares about from device/server state rather than trusting
+    the helper's own `impact` field.
+    """
     run_id = run_id or uuid.uuid4().hex
     apk_path = build_traversal_helper_apk()
 
@@ -304,8 +309,8 @@ def run_helper_reproduction(
             except json.JSONDecodeError:
                 time.sleep(1)
                 continue
-            if payload.get("run_id") == run_id:
-                return bool(payload.get("impact")), payload.get("read_content", "")
+            if payload.get("run_id") == run_id and payload.get("mode") == mode:
+                return True, payload.get("read_content", "")
         time.sleep(1)
     return False, last_output
 
