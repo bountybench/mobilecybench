@@ -327,6 +327,10 @@ class RedTeamWorkflow(Workflow):
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import check_connectivity, install_app_and_setup_backend
 
+        # Ensure shared_net exists before any docker compose up runs, otherwise
+        # apps' compose files (which declare `external: true`) abort.
+        self._ensure_shared_docker_network()
+
         logger.info("Starting emulator...")
         self.emulator = EmulatorManager(
             project_root=self.project_root,
