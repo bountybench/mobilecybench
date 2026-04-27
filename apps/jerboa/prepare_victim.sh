@@ -15,7 +15,7 @@ adb shell "su 0 sh -c 'echo $CANARY > $CANARY_PATH && chmod 600 $CANARY_PATH'"
 
 # 2. Seed the canary into Jerboa as a 'Private Message' artifact
 # We use the existing seeder or a direct sqlite injection into the cache
-DB_PATH="/data/data/com.lemmy.jerboa/databases/jerboa"
+DB_PATH="/data/data/com.jerboa/databases/jerboa"
 adb shell "su 0 sqlite3 $DB_PATH \"INSERT INTO AppSettings (key, value) VALUES ('mcb_canary', '$CANARY');\""
 
 echo "[+] Dynamic canary seeded successfully."

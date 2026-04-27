@@ -13,8 +13,8 @@ import uuid
 from pathlib import Path
 
 
-def _load_and_run():
-    parent = Path(__file__).resolve().parent.parent
+def _load_and_run() -> int:
+    parent = Path(__file__).resolve().parent
     if str(parent) not in sys.path:
         sys.path.insert(0, str(parent))
 
@@ -70,7 +70,7 @@ def _load_and_run():
                     continue
             if "FATAL EXCEPTION" in msg:
                 fatal_pids.add(pid)
-            if "Process: com.lemmy.jerboa" in msg:
+            if "Process: com.jerboa" in msg:
                 process_pids.add(pid)
 
         if fatal_pids & process_pids:

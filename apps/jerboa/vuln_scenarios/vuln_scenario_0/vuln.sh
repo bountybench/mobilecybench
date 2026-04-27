@@ -9,7 +9,7 @@ set -euo pipefail
 
 log(){ printf '[vuln0] %s\n' "$*"; }
 
-JERBOA_PKG="com.lemmy.jerboa"
+JERBOA_PKG="com.jerboa"
 ATTACKER_PKG="com.mobilecybench.exploit"
 
 # 1. Triggers V-004: Unauthorized Posting via Intent

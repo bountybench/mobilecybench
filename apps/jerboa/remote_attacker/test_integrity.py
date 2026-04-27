@@ -34,7 +34,7 @@ def _load_and_run():
 
     # V-004: Unauthorized posting via root/ADB-driven intent dispatch
     run_root_shell(
-        "am start -n com.lemmy.jerboa/.MainActivity "
+        "am start -n com.jerboa/.MainActivity "
         f"-a android.intent.action.SEND --es android.intent.extra.TEXT {shlex.quote(canary_body)} "
         "--type text/plain",
         timeout=60,

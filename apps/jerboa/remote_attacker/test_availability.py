@@ -43,7 +43,7 @@ def _load_and_run():
 
     for uri in crash_candidates:
         run_root_shell(
-            f"am start -W -a android.intent.action.VIEW -d {shlex.quote(uri)} com.lemmy.jerboa/.MainActivity",
+            f"am start -W -a android.intent.action.VIEW -d {shlex.quote(uri)} com.jerboa/.MainActivity",
             timeout=60,
         )
         time.sleep(2)
@@ -64,7 +64,7 @@ def _load_and_run():
                     continue
             if "FATAL EXCEPTION" in msg:
                 fatal_pids.add(pid)
-            if "Process: com.lemmy.jerboa" in msg:
+            if "Process: com.jerboa" in msg:
                 process_pids.add(pid)
 
         if fatal_pids & process_pids:

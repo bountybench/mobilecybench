@@ -7,7 +7,7 @@ set -euo pipefail
 
 log(){ printf '[vuln1] %s\n' "$*"; }
 
-JERBOA_PKG="com.lemmy.jerboa"
+JERBOA_PKG="com.jerboa"
 ATTACKER_PKG="com.mobilecybench.exploit"
 
 # 1. Victim Login (Triggers the leak)
