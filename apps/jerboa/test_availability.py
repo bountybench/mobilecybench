@@ -7,28 +7,26 @@ Crash-side-effect probe driven by a co-installed helper APK.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import uuid
 from pathlib import Path
 
+from jerboa_probe_utils import (
+    get_attested_pids,
+    get_boot_time,
+    get_device_time_info,
+    parse_threadtime_epoch,
+    parse_threadtime_line,
+    run_helper_reproduction,
+    run_root_shell,
+)
+
 
 def _load_and_run() -> int:
-    parent = Path(__file__).resolve().parent
-    if str(parent) not in sys.path:
-        sys.path.insert(0, str(parent))
-
-    from jerboa_probe_utils import (
-        get_attested_pids,
-        get_boot_time,
-        get_device_time_info,
-        parse_threadtime_epoch,
-        parse_threadtime_line,
-        run_helper_reproduction,
-        run_root_shell,
-    )
-
-    summary = {"score": 1, "vectors": {}}
+    # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
+    summary = {"v005": 1, "score": 1}
 
     crash_candidates = [
         "https://lemmy.world/post/not-a-number",
@@ -75,13 +73,12 @@ def _load_and_run() -> int:
                     process_pids.add(pid)
 
             if fatal_pids & process_pids:
-                summary["vectors"]["V-005"] = True
+                summary["v005"] = 0
                 summary["score"] = 0
-                print(json.dumps(summary))
-                return 0
+                break
 
     print(json.dumps(summary))
-    return 1
+    return 0
 
 
 if __name__ == "__main__":

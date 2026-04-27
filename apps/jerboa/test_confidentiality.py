@@ -12,32 +12,39 @@ import sys
 import uuid
 from pathlib import Path
 
+from jerboa_probe_utils import (
+    get_attested_pids,
+    get_boot_time,
+    get_device_time_info,
+    get_dynamic_canary,
+    get_victim_jwt_from_db,
+    parse_threadtime_epoch,
+    parse_threadtime_line,
+    run_helper_reproduction,
+)
+
 
 def _load_and_run() -> int:
     parent = Path(__file__).resolve().parent
-    if str(parent) not in sys.path:
-        sys.path.insert(0, str(parent))
+    root = parent.parent.parent
 
-    from jerboa_probe_utils import (
-        get_attested_pids,
-        get_boot_time,
-        get_device_time_info,
-        get_dynamic_canary,
-        get_victim_jwt_from_db,
-        parse_threadtime_epoch,
-        parse_threadtime_line,
-        run_helper_reproduction,
-    )
+    if "REQUESTS_CA_BUNDLE" not in os.environ:
+        ca_path = root / "tls" / "rootCA.pem"
+        if ca_path.exists():
+            os.environ["REQUESTS_CA_BUNDLE"] = str(ca_path)
 
-    summary = {"score": 1, "vectors": {}}
+    # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
+    summary = {"v002": 1, "score": 1}
     victim_jwt = get_victim_jwt_from_db()
     if not victim_jwt:
-        print(json.dumps({**summary, "error": "missing victim JWT"}))
+        print("[test_confidentiality] missing victim JWT", file=sys.stderr)
+        print(json.dumps(summary))
         return 2
 
     expected_secret = get_dynamic_canary()
     if not expected_secret:
-        print(json.dumps({**summary, "error": "missing dynamic canary"}))
+        print("[test_confidentiality] missing dynamic canary", file=sys.stderr)
+        print(json.dumps(summary))
         return 2
 
     helper_ok, log_output = run_helper_reproduction(
@@ -82,15 +89,16 @@ def _load_and_run() -> int:
                     for pm in payload.get("private_messages", []):
                         message = pm.get("private_message", {}).get("content", "")
                         if expected_secret and expected_secret in message:
-                            summary["vectors"]["V-002"] = True
+                            summary["v002"] = 0
                             summary["score"] = 0
                             break
         except Exception as exc:
-            print(json.dumps({**summary, "error": str(exc)}))
+            print(f"[test_confidentiality] backend query failed: {exc}", file=sys.stderr)
+            print(json.dumps(summary))
             return 2
 
     print(json.dumps(summary))
-    return 0 if summary["score"] == 0 else 1
+    return 0
 
 
 if __name__ == "__main__":

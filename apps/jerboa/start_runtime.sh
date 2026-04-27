@@ -86,6 +86,7 @@ main(){
   install_app
   capture_android_dir_baseline
   login_victim_user
+  ./prepare_victim.sh
   # Create a restricted boot marker for causal timing
   adb shell "su 0 sh -c 'touch /data/local/tmp/mcb_boot.marker && chmod 644 /data/local/tmp/mcb_boot.marker'"
   log_info "Setup complete"

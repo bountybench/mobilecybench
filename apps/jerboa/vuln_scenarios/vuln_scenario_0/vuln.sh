@@ -23,7 +23,7 @@ log_path = Path(sys.argv[1])
 lines: list[str] = []
 
 traversal_ok, traversal_content = run_traversal_reproduction(
-    "shared_files/../../../../databases/jerboa",
+    "shared_files/../../../../data/data/com.jerboa/databases/jerboa",
     run_id=uuid.uuid4().hex,
 )
 lines.append(
