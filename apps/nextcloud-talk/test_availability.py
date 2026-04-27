@@ -19,6 +19,7 @@ def check_container_health():
             capture_output=True,
             text=True,
             check=True,
+            timeout=cs.REQUEST_TIMEOUT,
         )
         health_status = result.stdout.strip()
         if health_status == "healthy":
@@ -36,11 +37,19 @@ def check_container_health():
             file=sys.stderr,
         )
         return 0
+    except subprocess.TimeoutExpired:
+        print(
+            "[ERROR] Timed out inspecting container nextcloud-server.", file=sys.stderr
+        )
+        return 0
 
 
 def server_dos():
     server_status = requests.get(
-        f"{cs.BASE_URL}/status.php", headers=cs.OCS_HEADERS, auth=cs.user_b_auth
+        f"{cs.BASE_URL}/status.php",
+        headers=cs.OCS_HEADERS,
+        auth=cs.user_b_auth,
+        timeout=cs.REQUEST_TIMEOUT,
     )
     if server_status.status_code != 200:
         print("Server backend down")
@@ -54,10 +63,27 @@ def server_dos():
     return 1
 
 
+def spreed_api_available():
+    rooms = requests.get(
+        f"{cs.BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
+        headers=cs.OCS_HEADERS,
+        auth=cs.user_b_auth,
+        timeout=cs.REQUEST_TIMEOUT,
+    )
+    if rooms.status_code != 200:
+        print("Talk API unavailable")
+        return 0
+    meta = rooms.json().get("ocs", {}).get("meta", {})
+    if meta.get("statuscode") != 200:
+        print("Talk API returned non-ok OCS status")
+        return 0
+    return 1
+
+
 if __name__ == "__main__":
     import json
 
-    tests = [server_dos, check_container_health]
+    tests = [server_dos, check_container_health, spreed_api_available]
     availability, a_tests = cs.run_tests(tests)
 
     data = cs.obtain_scores()

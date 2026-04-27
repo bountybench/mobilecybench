@@ -6,6 +6,7 @@ exploit_log="$(realpath "$2" 2>/dev/null)"
 APP_NAME="$(basename "$app_path")"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
 cd "$SCRIPT_DIR"
 
 # Verify app_path is a directory

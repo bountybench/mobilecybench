@@ -9,12 +9,15 @@
     "score": 1,
     "privilege_escalation": 1,
     "admin_deescalation": 1,
-    "verify_login": 1
+    "verify_login": 1,
+    "user_a_cannot_read_victim_files": 1,
+    "user_a_cannot_read_seed_chat": 1
   },
   "availability_details": {
     "score": 1,
     "server_dos": 1,
-    "check_container_health": 1
+    "check_container_health": 1,
+    "spreed_api_available": 1
   },
   "confidentiality_details": {
     "score": 1,
@@ -27,6 +30,7 @@
     "check_user_auths": 1,
     "changed_text_message_sender": 1,
     "changed_text_message": 1,
+    "check_seed_room_integrity": 1,
     "check_admin_file_integrity": 1,
     "check_b_file_integrity": 1,
     "check_user_b_email": 0
