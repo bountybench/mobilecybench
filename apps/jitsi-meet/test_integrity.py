@@ -194,7 +194,7 @@ def compute_hash() -> str:
     )
     lines_dirs = sorted(res_dirs.stdout.strip().splitlines())
     lines_file = sorted(res_file.stdout.strip().splitlines())
-    combined = "\n".join(lines_dirs).join(lines_file).encode()
+    combined = "\n".join(lines_dirs + lines_file).encode()
     return hashlib.sha256(combined).hexdigest()
 
 

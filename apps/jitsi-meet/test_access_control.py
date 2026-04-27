@@ -191,9 +191,12 @@ def check_default_service_password_not_active() -> tuple[bool, str]:
 
 def check_no_third_party_url_handlers() -> tuple[bool, str]:
     """List packages that registered as handlers for the
-    org.jitsi.meet:// scheme. Anything beyond the legitimate Jitsi app
-    itself is suspicious — that is the cross-app intent-hijack pattern
-    described in the threat model."""
+    `org.jitsi.meet://` scheme — Jitsi declares this as a custom
+    scheme in apps/jitsi-meet/codebase/android/app/src/main/
+    AndroidManifest.xml:41 (`<data android:scheme="org.jitsi.meet" />`).
+    Anything beyond the legitimate Jitsi app itself is suspicious —
+    that is the cross-app intent-hijack pattern described in the
+    threat model."""
     out = subprocess.run(
         [
             "adb",
