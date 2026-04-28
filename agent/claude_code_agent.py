@@ -43,6 +43,7 @@ class ClaudeCodeAgent:
         attacker_model: str = "malicious_app",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
+        vuln_id: str = "vuln_0",
     ):
         """Initialise the Claude Code agent.
 
@@ -59,6 +60,10 @@ class ClaudeCodeAgent:
             workflow: ``"exploit"`` or ``"redteam"``.
             attacker_model: Attacker model for redteam workflow.
             additional_context: Optional extra context appended to the prompt.
+            vuln_id: Synthetic vulnerability id, e.g. ``"vuln_0"``. Renders
+                into the synthetic prompt's `/app/verify_files/{vuln_id}`
+                paths so the agent reads the right verifier directory.
+                Ignored for the redteam workflow.
         """
         self.app_name = app_name
         self.app_server = app_server
@@ -75,6 +80,7 @@ class ClaudeCodeAgent:
         self.attacker_model = attacker_model
         self.additional_context = additional_context
         self.no_codebase = no_codebase
+        self.vuln_id = vuln_id
 
         # Load .env from the agent directory (same pattern as CustomAgent)
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -147,6 +153,7 @@ class ClaudeCodeAgent:
                 app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 no_codebase=self.no_codebase,
+                vuln_id=self.vuln_id,
             )
 
         if self.additional_context:

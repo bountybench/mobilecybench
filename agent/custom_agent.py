@@ -89,11 +89,13 @@ class CustomAgent:
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
         allow_unregistered_models: bool = False,
+        vuln_id: str = "vuln_0",
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
         self.attacker_model = attacker_model
         self.no_codebase = no_codebase
+        self.vuln_id = vuln_id
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -190,6 +192,7 @@ class CustomAgent:
                 app_server=self.app_server if self.network_access else None,
                 emulator_server=self.emulator_server,
                 no_codebase=self.no_codebase,
+                vuln_id=self.vuln_id,
             )
 
         # Append additional context if provided

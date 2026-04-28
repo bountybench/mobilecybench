@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Optional
 
 from models.config import RunnerConfig
 
@@ -59,6 +60,22 @@ class Workflow(ABC):
         """Set up the runtime environment (emulator, APK, backend services)."""
         pass
 
+    def _resolve_additional_context(self) -> Optional[str]:
+        """Build the agent's `additional_context` from metadata + runner config.
+
+        Order is load-bearing: the per-app `metadata.additional_info` carries
+        threat-model framing that should appear first; the per-run
+        `runner_config.custom_system_prompt` is a runtime knob (hints,
+        framing tweaks) appended after it.
+        """
+        additional_info = self.metadata.get("additional_info")
+        extra = self.config.custom_system_prompt
+        if not extra:
+            return additional_info
+        if not additional_info:
+            return extra
+        return f"{additional_info}\n\n{extra}"
+
     def setup_agent(self) -> None:
         """Configure and initialize the agent."""
         if self.config.dry_run:
@@ -69,7 +86,7 @@ class Workflow(ABC):
         workflow = self.config.workflow
         include_ssrf = False
 
-        additional_context = self.metadata.get("additional_info")
+        additional_context = self._resolve_additional_context()
 
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
 
@@ -90,6 +107,7 @@ class Workflow(ABC):
                 attacker_model=self.config.attacker_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         elif agent_mode == "codex":
             from agent.codex_agent import CodexAgent
@@ -109,6 +127,7 @@ class Workflow(ABC):
                 no_codebase=self.config.no_codebase,
                 model=self.config.model,
                 reasoning_effort=self.config.reasoning_effort,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         else:
             from agent.custom_agent import CustomAgent
@@ -132,6 +151,7 @@ class Workflow(ABC):
                 reasoning_effort=self.config.reasoning_effort,
                 no_codebase=self.config.no_codebase,
                 allow_unregistered_models=self.config.allow_unregistered_models,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 

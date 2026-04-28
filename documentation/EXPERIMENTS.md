@@ -131,7 +131,7 @@ All fields are defined and validated in [`models/config.py:RunnerConfig`](../mod
 | `agent_image` | `str` | (required) | Docker image to run the agent in (e.g. `cybench/mobilecybench:latest`). Pulled implicitly on first use. |
 | `max_iterations` | `int (>0)` | (required) | Maximum agent turns before stopping. Custom agent only. |
 | `max_model_response_tokens` | `int (>0)` | (required) | Per-call output token cap forwarded to the provider. |
-| `custom_system_prompt` | `str \| null` | `null` | Override the auto-generated system prompt with a literal string. |
+| `custom_system_prompt` | `str \| null` | `null` | Free-form text appended to the workflow-built system prompt (after any per-app `additional_info` from `metadata.json`). Useful for hints, framing tweaks, or additional guidance. Applies to all agent modes. |
 | `allowed_tools` | `list[str] \| null` | `null` | Restrict the tool surface. Validated against `{execute_command, get_current_ui_state, execute_command_with_ui_state}`. Null = all tools. |
 | `allow_unregistered_models` | `bool` | `false` | Permit models not in `SupportedModel`. When true, falls through to LiteLLM with auto-detected routing and a WARNING; `cost_usd` is `$0` until pricing is registered. See [ADDING_MODELS.md](ADDING_MODELS.md). |
 
