@@ -18,8 +18,8 @@ format_size() {
 
 main() {
     # Optional: any positional args are treated as submodule paths to scope
-    # the init/update + report to. With no args, behaves as before (all
-    # submodules). With args (e.g. `apps/jitsi-meet/codebase`), only those
+    # the init/update + report to. With no args, handle all
+    # submodules. With args (e.g. `apps/jitsi-meet/codebase`), only those
     # paths are touched — useful when one app's clone is broken or slow
     # and you only need a different app's codebase.
     local -a paths=("$@")

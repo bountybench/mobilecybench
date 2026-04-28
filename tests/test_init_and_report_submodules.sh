@@ -22,17 +22,23 @@ SRC_SCRIPT="$REPO_ROOT/init_and_report_submodules.sh"
 TMP="$(mktemp -d -t init_submodules_test.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Synthetic project layout
-mkdir -p "$TMP/apps/foo/codebase" "$TMP/apps/bar/codebase" "$TMP/apps/wordpress/codebase"
-echo "f" > "$TMP/apps/foo/codebase/file.txt"
-echo "b" > "$TMP/apps/bar/codebase/file.txt"
-echo "w" > "$TMP/apps/wordpress/codebase/file.txt"
+# Synthetic project layout. `foo` has TWO submodules (mirrors real-world
+# apps that ship both `codebase` and `<app>-docker`, e.g. jitsi-meet).
+mkdir -p "$TMP/apps/foo/codebase" "$TMP/apps/foo/foo-docker" \
+         "$TMP/apps/bar/codebase" "$TMP/apps/wordpress/codebase"
+echo "f1" > "$TMP/apps/foo/codebase/file.txt"
+echo "f2" > "$TMP/apps/foo/foo-docker/file.txt"
+echo "b"  > "$TMP/apps/bar/codebase/file.txt"
+echo "w"  > "$TMP/apps/wordpress/codebase/file.txt"
 
 # .gitmodules so `git config --file .gitmodules` enumerates them.
 cat > "$TMP/.gitmodules" <<'EOF'
 [submodule "apps/foo/codebase"]
 	path = apps/foo/codebase
 	url = https://example.invalid/foo
+[submodule "apps/foo/foo-docker"]
+	path = apps/foo/foo-docker
+	url = https://example.invalid/foo-docker
 [submodule "apps/bar/codebase"]
 	path = apps/bar/codebase
 	url = https://example.invalid/bar
@@ -127,11 +133,12 @@ bash ./init_and_report_submodules.sh > /dev/null
 # Init/update should have been called with NO path args (= operate on all).
 assert_grep "Test 1: init called without path args" "^git submodule init$" git_calls.log
 assert_grep "Test 1: update called without path args" "^git submodule update --recursive --progress$" git_calls.log
-# Report should mention all three submodules.
-assert_grep "Test 1: report includes foo"       "Submodule: apps/foo/codebase"       submodule_size_report.txt
-assert_grep "Test 1: report includes bar"       "Submodule: apps/bar/codebase"       submodule_size_report.txt
-assert_grep "Test 1: report includes wordpress" "Submodule: apps/wordpress/codebase" submodule_size_report.txt
-assert_grep "Test 1: count is 3"                "Submodules/App Count: 3"            submodule_size_report.txt
+# Report should mention all four submodules (foo has codebase + foo-docker).
+assert_grep "Test 1: report includes foo/codebase"   "Submodule: apps/foo/codebase"       submodule_size_report.txt
+assert_grep "Test 1: report includes foo/foo-docker" "Submodule: apps/foo/foo-docker"     submodule_size_report.txt
+assert_grep "Test 1: report includes bar"            "Submodule: apps/bar/codebase"       submodule_size_report.txt
+assert_grep "Test 1: report includes wordpress"      "Submodule: apps/wordpress/codebase" submodule_size_report.txt
+assert_grep "Test 1: count is 4"                     "Submodules/App Count: 4"            submodule_size_report.txt
 
 # =====================================================================
 # Test 2: one path arg — scopes init AND report to that path
@@ -148,14 +155,27 @@ echo "PASS: Test 2: report excludes bar when scoped"
 assert_grep "Test 2: count is 1"                  "Submodules/App Count: 1"      submodule_size_report.txt
 
 # =====================================================================
-# Test 3: parent path arg matches descendant submodule
+# Test 3: parent path arg matches ALL descendant submodules
+#         (real apps like jitsi-meet ship `codebase` AND `<app>-docker`,
+#         so `apps/jitsi-meet` must scope to BOTH submodules.)
 # =====================================================================
 rm -f git_calls.log submodule_size_report.txt
-# `apps/foo` is the parent of `apps/foo/codebase` — should match.
 bash ./init_and_report_submodules.sh apps/foo > /dev/null
-assert_grep "Test 3: report includes foo when parent path given" \
+assert_grep "Test 3: report includes foo/codebase" \
     "Submodule: apps/foo/codebase" submodule_size_report.txt
-assert_grep "Test 3: count is 1" "Submodules/App Count: 1" submodule_size_report.txt
+assert_grep "Test 3: report includes foo/foo-docker (sibling submodule)" \
+    "Submodule: apps/foo/foo-docker" submodule_size_report.txt
+if grep -q "Submodule: apps/bar/codebase" submodule_size_report.txt; then
+    echo "FAIL: Test 3 — report should not include bar when scoped to apps/foo"; exit 1
+fi
+echo "PASS: Test 3: report excludes apps/bar when scoped to apps/foo"
+assert_grep "Test 3: count is 2 (both foo submodules)" \
+    "Submodules/App Count: 2" submodule_size_report.txt
+# Also assert init/update were called with the parent path passed through to git.
+assert_grep "Test 3: init called WITH apps/foo" \
+    "^git submodule init apps/foo$" git_calls.log
+assert_grep "Test 3: update called WITH apps/foo" \
+    "^git submodule update --recursive --progress apps/foo$" git_calls.log
 
 # =====================================================================
 # Test 4: scoped to working submodule does NOT trigger unrelated failures

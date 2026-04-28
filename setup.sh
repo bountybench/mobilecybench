@@ -666,11 +666,6 @@ create_avd() {
 #     the user has e.g. system pip on PATH ahead of a venv pip.
 #   - Spurious PEP 668 failures on Homebrew macOS when the runner
 #     subprocess inherits a non-activated PATH but $VIRTUAL_ENV is set.
-#
-# CI/GKE impact: neither path invokes setup.sh (CI runs `pip install -e .`
-# at the workflow level, GKE installs in the Dockerfile), so this change
-# only affects manual `bash setup.sh ...` and the headed-emulator runner
-# subprocess.
 install_self_package() {
     if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/pip" ]]; then
         "${VIRTUAL_ENV}/bin/pip" install -e .
