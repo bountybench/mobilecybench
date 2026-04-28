@@ -33,7 +33,20 @@ install_app(){
   log_info "Installing Jerboa"
   adb uninstall com.jerboa >/dev/null 2>&1 || true
   adb uninstall com.jerboa.debug >/dev/null 2>&1 || true
-  adb_install_apk "$APK_PATH"
+  # Emulator package manager can transiently drop connections ("Broken pipe").
+  # Retry a few times, restarting adb server between attempts; fail closed if still broken.
+  local attempt
+  for attempt in 1 2 3; do
+    if adb_install_apk "$APK_PATH"; then
+      break
+    fi
+    log_warn "APK install failed (attempt ${attempt}/3); restarting adb server and retrying..."
+    adb kill-server >/dev/null 2>&1 || true
+    adb start-server >/dev/null 2>&1 || true
+    wait_for_device_boot 120 || true
+    sleep 2
+  done
+  adb shell pm path com.jerboa >/dev/null 2>&1 || adb shell pm path com.jerboa.debug >/dev/null 2>&1 || fatal "Jerboa not installed after retries"
 
   log_info "Launching Jerboa"
   if adb shell pm list packages | grep -q "com.jerboa.debug"; then

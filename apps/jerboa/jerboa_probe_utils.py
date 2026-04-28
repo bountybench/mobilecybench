@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 JERBOA_PACKAGE = "com.jerboa"
-JERBOA_PRIVATE_DIR = "/data/data/com.jerboa"
 # Kernel-protected causal anchor
 BOOT_MARKER_PATH = "/data/local/tmp/mcb_boot.marker"
 CANARY_PATH = "/data/local/tmp/.mcb_victim_canary"
@@ -54,7 +53,12 @@ def get_jerboa_package() -> str:
         os.getenv("JERBOA_PACKAGE") or ""
     ).strip()
     if explicit:
-        return explicit
+        if explicit in {"com.jerboa", "com.jerboa.debug"}:
+            return explicit
+        # Avoid footguns that point probes at an arbitrary package.
+        # Allow overriding only when explicitly requested (e.g. local debugging).
+        if os.getenv("MCB_ALLOW_ANY_PACKAGE", "").strip() == "1":
+            return explicit
 
     success, output = run_root_shell("pm list packages 2>/dev/null | tr -d '\\r'")
     if not success:
@@ -105,7 +109,8 @@ def device_file_text(path: str) -> str:
 
 def get_victim_jwt_from_db() -> str:
     """Returns the current victim JWT from Jerboa's Room database."""
-    db_path = f"{JERBOA_PRIVATE_DIR}/databases/jerboa"
+    pkg = get_jerboa_package()
+    db_path = f"/data/data/{pkg}/databases/jerboa"
     queries = (
         "SELECT jwt FROM account WHERE current = 1 LIMIT 1;",
         "SELECT jwt FROM Account WHERE current = 1 LIMIT 1;",
