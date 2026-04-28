@@ -17,8 +17,23 @@ format_size() {
 }
 
 main() {
-    echo "Initializing and updating submodules..."
-    if ! git submodule init || ! git submodule update --recursive --progress; then
+    # Optional: any positional args are treated as submodule paths to scope
+    # the init/update + report to. With no args, behaves as before (all
+    # submodules). With args (e.g. `apps/jitsi-meet/codebase`), only those
+    # paths are touched — useful when one app's clone is broken or slow
+    # and you only need a different app's codebase.
+    local -a paths=("$@")
+
+    if (( ${#paths[@]} > 0 )); then
+        echo "Initializing and updating submodules: ${paths[*]}"
+    else
+        echo "Initializing and updating submodules (all)..."
+    fi
+    # ${paths[@]+"${paths[@]}"} expands to nothing when the array is unset
+    # (set -u-safe) and to all elements otherwise. Plain ${paths[@]}
+    # would trip `set -u` under bash <4.4 with an empty array.
+    if ! git submodule init ${paths[@]+"${paths[@]}"} \
+       || ! git submodule update --recursive --progress ${paths[@]+"${paths[@]}"}; then
         echo "Error: Failed to initialize/update submodules" >&2
         exit 1
     fi
@@ -30,6 +45,24 @@ main() {
     while IFS= read -r line; do
         submodules+=("$line")
     done < <(git config --file .gitmodules --get-regexp path | awk '{print $2}')
+
+    # If paths were given, scope the size report to those (or descendants).
+    # A path arg matches any submodule whose path starts with it, so
+    # `apps/jitsi-meet` matches `apps/jitsi-meet/codebase`.
+    if (( ${#paths[@]} > 0 )); then
+        local -a filtered=()
+        for sm in "${submodules[@]}"; do
+            for p in "${paths[@]}"; do
+                # Strip trailing slashes for prefix matching.
+                p="${p%/}"
+                if [[ "$sm" == "$p" || "$sm" == "$p/"* ]]; then
+                    filtered+=("$sm")
+                    break
+                fi
+            done
+        done
+        submodules=("${filtered[@]}")
+    fi
 
     {
         printf "===========================================================\n"
