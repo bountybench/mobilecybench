@@ -6,6 +6,10 @@ the rendered path in the prompt must match the runtime bind mount in
 `/app/verify_files/{self.vuln_id}`. 
 """
 
+import pytest
+
+from agent.claude_code_agent import ClaudeCodeAgent
+from agent.codex_agent import CodexAgent
 from agent.prompts.prompts import build_synthetic_prompt
 
 
@@ -66,11 +70,6 @@ def test_synthetic_prompt_renders_vuln_id_in_both_locations():
 # so we don't trip the agents' real `__init__` (which validates CLI
 # providers, writes files, hits ToolRuntime — all heavy, none relevant
 # to the prompt-building contract under test).
-
-import pytest
-
-from agent.claude_code_agent import ClaudeCodeAgent
-from agent.codex_agent import CodexAgent
 
 
 def _make_agent_skeleton(cls, **attrs):
