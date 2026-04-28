@@ -57,7 +57,7 @@ A placeholder line so future users know the variable exists.
 python scripts/smoke_test_model.py
 ```
 
-By default it picks up `model` from `runner_config.json` and sends a trivial single-token prompt. Pass `--model my-model-id` to override. Exit codes:
+By default it picks up `model` from `runner_config.json` and sends a trivial single-token prompt. Pass `--model my-model-id` to override, or `--allow-unregistered` to bypass the registry check (useful when smoke-testing before completing step 1). Exit codes:
 
 - `0` — provider returned a non-empty response (model integration is wired up).
 - `1` — configuration or API-key error (provider couldn't be constructed).
