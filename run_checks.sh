@@ -257,22 +257,30 @@ GENERIC_SCORES_DEST="${GENERIC_SCORES_OUT:-generic_scores.json}"
 echo "$gen_json_output" > "$GENERIC_SCORES_DEST"
 echo "Scores saved to $GENERIC_SCORES_DEST"
 
-# Run remote_attacker probes if the app ships them.
-# Path contract is defined by workflows/redteam.py:248 (RemoteAttackerOps.probe_dir).
+# Run remote_attacker probes if the app ships them AND this caller opted in.
+# Path contract is defined by RemoteAttackerOps.probe_dir() in workflows/redteam.py.
 # Score file is parallel to scores.json so existing MA consumers stay untouched.
 # Output destination can be overridden via REMOTE_ATTACKER_SCORES_OUT (mirrors
 # APP_SCORES_OUT / GENERIC_SCORES_OUT). Not registered in
 # utils/run_artifacts.py: redteam scoring goes through workflows/redteam.py
 # (SCORE_FILE = "redteam_scores.json"); this file is consumed only by CI/gold-run.
+#
+# RA_CHECKS_ENABLED gate: run_checks.sh is shared between CI/gold-run and
+# workflows/base.py:_run_checks (the redteam phase runner). MA-mode redteam
+# phases must NOT execute the RA block — a buggy RA probe returning non-zero
+# would set probes_ok=False on an unrelated MA-mode phase. Only callers that
+# explicitly want the RA half (run_ci_local.sh, .github/workflows/ci.yml) set
+# RA_CHECKS_ENABLED=1.
 RA_PROBE_DIR="$app_path/remote_attacker"
-RA_SCORES_DEST="${REMOTE_ATTACKER_SCORES_OUT:-$app_path/scores_remote_attacker.json}"
-# Always remove a stale RA score file so a mid-run abort can't leave the
-# previous run's output in place to be consumed as if it were fresh.
-rm -f "$RA_SCORES_DEST"
-if [ -d "$RA_PROBE_DIR" ]; then
+RA_SCORES_DEST="${REMOTE_ATTACKER_SCORES_OUT:-scores_remote_attacker.json}"
+if [ -d "$RA_PROBE_DIR" ] && [ "${RA_CHECKS_ENABLED:-0}" = "1" ]; then
+    # Always remove a stale RA score file so a mid-run abort can't leave the
+    # previous run's output in place to be consumed as if it were fresh.
+    rm -f "$RA_SCORES_DEST"
     echo
-    echo "App ships remote_attacker probes. Running them..."
-    # Probe-set completeness gate: matches workflows/redteam.py:225-238 contract.
+    echo "App ships remote_attacker probes and RA_CHECKS_ENABLED=1. Running them..."
+    # Probe-set completeness gate matches RemoteAttackerOps.validate() in
+    # workflows/redteam.py.
     ra_required=(test_access_control.py test_availability.py test_confidentiality.py test_integrity.py)
     for f in "${ra_required[@]}"; do
         if [ ! -f "$RA_PROBE_DIR/$f" ]; then
@@ -371,6 +379,10 @@ EOF
 )
 
     echo "$ra_json_output" | jq . > /dev/null || echo "Final JSON for remote_attacker scores is invalid!"
+    # Resolve the score-file path relative to $app_path so default
+    # "scores_remote_attacker.json" lands next to scores.json / generic_scores.json
+    # (cwd is currently $RA_PROBE_DIR — return to $app_path before writing).
+    cd "$app_path" || { echo "ERROR: cannot cd back into $app_path"; exit 1; }
     echo "$ra_json_output" > "$RA_SCORES_DEST"
     echo "Scores saved to $RA_SCORES_DEST"
 fi

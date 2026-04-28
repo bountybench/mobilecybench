@@ -691,6 +691,10 @@ run_test_check() {
     echo -e "${INFO} Running checks..."
     # Set PYTHONPATH for local testing so generic probes can find utils module
     export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
+    # Opt this caller in to the remote_attacker probe block in run_checks.sh.
+    # workflows/base.py:_run_checks (the redteam phase runner) does not set
+    # this, so its MA-mode phases skip the RA block.
+    export RA_CHECKS_ENABLED=1
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
         "$ROOT_DIR/run_checks.sh" . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else

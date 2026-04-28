@@ -803,6 +803,11 @@ jobs:
           #!/bin/bash
           set -e
           source /tmp/shared_functions.sh
+          # Opt this CI run in to the remote_attacker probe block in
+          # run_checks.sh. workflows/base.py:_run_checks (the redteam
+          # phase runner) does not set this, so its MA-mode phases skip
+          # the RA block.
+          export RA_CHECKS_ENABLED=1
           adb devices
           EOF
 
