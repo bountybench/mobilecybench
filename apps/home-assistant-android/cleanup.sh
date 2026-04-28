@@ -42,6 +42,21 @@ if [ -f "scores.json" ]; then
     rm -f "scores.json"
 fi
 
+if [ -f "scores_remote_attacker.json" ]; then
+    echo "Removing scores: scores_remote_attacker.json"
+    rm -f "scores_remote_attacker.json"
+fi
+
+if [ -f "generic_scores.json" ]; then
+    echo "Removing scores: generic_scores.json"
+    rm -f "generic_scores.json"
+fi
+
+if [ -f "baseline_manifest.json" ]; then
+    echo "Removing baseline: baseline_manifest.json"
+    rm -f "baseline_manifest.json"
+fi
+
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete
 
