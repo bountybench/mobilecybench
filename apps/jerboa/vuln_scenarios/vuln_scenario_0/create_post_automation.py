@@ -14,7 +14,7 @@ except ImportError as e:
     sys.exit(2)
 
 try:
-    from utils.ui_utils import wait_for_ui_stable
+    from utils.ui_utils import click_then_expect, wait_for_ui_stable
 except ImportError as e:
     print(f"[create_post_automation] missing ui utils: {e}", file=sys.stderr)
     sys.exit(2)
@@ -77,12 +77,17 @@ def _parse_bounds(bounds: str) -> tuple[int, int, int, int] | None:
 
 
 def _click_community_selector(d) -> bool:
-    """Find and tap the actual community picker overlay.
+    """Find and tap the community picker overlay."""
+    back_button = d(description="Back")
 
-    Jerboa renders the community picker as a full-width clickable box near the
-    bottom of the create-post form. The label text is not a reliable selector in
-    uiautomator2, so we use geometry from the rendered hierarchy instead.
-    """
+    selector = d(description="Community")
+    if selector.exists:
+        try:
+            if click_then_expect(d, selector, back_button, timeout=10):
+                return True
+        except Exception as e:
+            _log(f"Community description click failed: {e}")
+
     width, height = d.window_size()
     candidates: list[tuple[int, int, object]] = []
 
@@ -115,7 +120,7 @@ def _click_community_selector(d) -> bool:
     _, _, node = candidates[0]
     try:
         node.click()
-        return True
+        return bool(back_button.wait(timeout=10))
     except Exception:
         return False
 
