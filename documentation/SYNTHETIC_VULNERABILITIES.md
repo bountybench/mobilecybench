@@ -82,11 +82,12 @@ What synthetic tasks add on top of that shared layout is:
 
 ```text
 apps/<app_name>/
+├── prepare_victim.sh                   # Optional, per-app; see REDTEAM.md
 ├── synthetic_vulnerabilities/
 │   └── vuln_0/
 │       ├── metadata.json
 │       ├── vulnerability.patch
-│       ├── prepare_app.sh              # Optional; see TASK.md
+│       ├── prepare_app.sh              # Optional, per-task; see TASK.md
 │       ├── exploit_files/
 │       └── verify_files/
 ```
