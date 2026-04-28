@@ -759,10 +759,14 @@ run_test_check() {
         fi
         echo -e "${SUCCESS} All generic scores are 1."
 
-        # If the app ships remote_attacker probes, clean-build must also score all 1s.
+        # If the app ships remote_attacker probes, clean-build must also score
+        # all 1s. We check only the top-level .scores object (the four CIA
+        # dimensions); probe detail blocks are diagnostic and may legitimately
+        # contain numeric counts (e.g. extracted_refresh_token_count) that are
+        # 0 in a secure state.
         if [ -f scores_remote_attacker.json ]; then
-            if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores_remote_attacker.json > /dev/null; then
-                echo -e "${ERROR} scores_remote_attacker.json does not contain all 1s."
+            if ! jq -e '.scores | to_entries | all(.value == 1)' scores_remote_attacker.json > /dev/null; then
+                echo -e "${ERROR} scores_remote_attacker.json top-level scores are not all 1s."
                 cat scores_remote_attacker.json
                 echo -e "${INFO} Cleaning up..."
                 ./cleanup.sh
