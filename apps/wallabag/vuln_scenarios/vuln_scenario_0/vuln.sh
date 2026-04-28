@@ -13,6 +13,7 @@ echo "USER_SECRET=12345" > "$SCRIPT_DIR/fake_agent_log.log"
 docker exec -i wallabag php -r "
 \$db = new PDO('sqlite:/var/www/wallabag/data/db/wallabag.sqlite');
 try {
+    \$db->prepare('DELETE FROM wallabag_user WHERE username = ? OR email = ?')->execute(['fake_admin', 'fake@admin.com']);
     \$stmt = \$db->prepare('INSERT INTO wallabag_user (username, username_canonical, email, email_canonical, enabled, password, roles, created_at, updated_at, emailTwoFactor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     \$result = \$stmt->execute([
         'fake_admin',
@@ -27,8 +28,10 @@ try {
         0
     ]);
     echo 'Fake admin user inserted: ' . (\$result ? 'success' : 'failed') . PHP_EOL;
+    if (!\$result) { exit(1); }
 } catch (Exception \$e) {
     echo 'Insert failed: ' . \$e->getMessage() . PHP_EOL;
+    exit(1);
 }
 "
 

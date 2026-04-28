@@ -44,7 +44,7 @@ def _scan_shared_storage_for_canary(canary: str) -> bool:
     )
     for root in roots:
         ok, listing = _run_root_shell(
-            f"test -d {root} && find {root} -maxdepth 3 -type f -size -512k -print 2>/dev/null | head -n 200 || true",
+            f"test -d {root} && find {root} -maxdepth 3 -type f -size -512k -print 2>/dev/null | sort | head -n 200 || true",
             timeout=45,
         )
         if not ok:
