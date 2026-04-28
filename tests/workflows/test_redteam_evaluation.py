@@ -345,6 +345,7 @@ def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_
         return MagicMock(container=MagicMock())
 
     with (
+        patch("agent.agent_container.create_docker_network"),
         patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
         patch.object(RedTeamWorkflow, "setup_apks"),
         patch.object(type(wf._bundle), "validate_build_artifacts"),
@@ -365,6 +366,51 @@ def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_
         "apk_path": wf._bundle.phase1_apk(),
         "post_checkout_hook": wf._bundle.prepare_phase1_codebase,
     }
+
+
+def test_setup_runtime_environment_creates_shared_net_before_install(
+    redteam_config, tmp_path
+):
+    """RedTeamWorkflow.setup_runtime_environment must create shared_net BEFORE
+    install_app_and_setup_backend (which runs `docker compose up` against the
+    app's compose file with `external: true`). R2.19.
+    """
+    wf = _make_workflow(redteam_config, tmp_path)
+    call_order: list[str] = []
+
+    def fake_create_network(name: str) -> None:
+        call_order.append(f"create_network:{name}")
+
+    def fake_install(*args, **kwargs):
+        call_order.append("install_app_and_setup_backend")
+
+    with (
+        patch(
+            "agent.agent_container.create_docker_network",
+            side_effect=fake_create_network,
+        ),
+        patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
+        patch.object(RedTeamWorkflow, "setup_apks"),
+        patch.object(type(wf._bundle), "validate_build_artifacts"),
+        patch("utils.emulator_certs.inject_system_ca"),
+        patch(
+            "utils.setup_utils.install_app_and_setup_backend", side_effect=fake_install
+        ),
+        patch(
+            "agent.agent_container.setup_agent_environment",
+            return_value=MagicMock(container=MagicMock()),
+        ),
+        patch("utils.setup_utils.check_connectivity"),
+        patch.object(MaliciousAppOps, "setup_agent_extras"),
+    ):
+        wf.setup_runtime_environment()
+
+    install_idx = call_order.index("install_app_and_setup_backend")
+    network_idx = call_order.index("create_network:shared_net")
+    assert network_idx < install_idx, (
+        f"create_docker_network must run before install_app_and_setup_backend; "
+        f"got order: {call_order}"
+    )
 
 
 @pytest.mark.parametrize(

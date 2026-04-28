@@ -289,8 +289,19 @@ class Workflow(ABC):
                 logger.error(f"cleanup.sh stderr:\n{e.stderr.strip()}")
             raise
 
+    def _ensure_shared_docker_network(self) -> None:
+        """Ensure ``shared_net`` exists before any app's docker-compose runs."""
+        # Lazy import to keep workflow construction free of docker side-effects.
+        from agent.agent_container import create_docker_network
+
+        create_docker_network("shared_net")
+
     def _preflight_cleanup_app_runtime(self) -> None:
         """Best-effort clean slate for stale containers before setup."""
+        # Network must exist before any cleanup.sh / start_runtime.sh runs
+        # `docker compose up`, otherwise compose aborts on the external
+        # network reference.
+        self._ensure_shared_docker_network()
         stale_app_dir = self._get_stale_backend_app_dir()
         if stale_app_dir is not None:
             logger.info(

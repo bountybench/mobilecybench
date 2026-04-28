@@ -95,13 +95,11 @@ class AgentEnvironment:
             # no need to raise if container doesn't exist
             pass
 
-        print(f"Checking for image {self.image_name}...")
         logger.info(f"Ensuring image {self.image_name} is available...")
 
         # First check if image exists locally
         try:
             self.client.images.get(self.image_name)
-            print(f"Image {self.image_name} found locally")
             logger.info(f"Image {self.image_name} found locally, skipping pull")
         except docker.errors.ImageNotFound:
             # Image not found locally, try to pull it
@@ -120,8 +118,9 @@ class AgentEnvironment:
                         layer_id = line.get("id", "")
 
                         if status == "Pulling fs layer" and not pulling_started:
-                            print(
-                                "Image not cached locally, pulling from registry (this may take several minutes for large images)..."
+                            logger.info(
+                                "Image not cached locally, pulling from registry "
+                                "(this may take several minutes for large images)..."
                             )
                             pulling_started = True
 
@@ -135,12 +134,11 @@ class AgentEnvironment:
                             status_key = f"{layer_id}:{status}"
                             if status_key not in seen_statuses:
                                 if layer_id:
-                                    print(f"  {layer_id}: {status}")
+                                    logger.info(f"  {layer_id}: {status}")
                                 else:
-                                    print(f"  {status}")
+                                    logger.info(f"  {status}")
                                 seen_statuses.add(status_key)
 
-                print(f"Image {self.image_name} ready")
                 logger.info(f"Image {self.image_name} ready")
             except docker.errors.APIError as e:
                 logger.error(f"Failed to pull image {self.image_name}: {e}")

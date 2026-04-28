@@ -51,13 +51,38 @@ A placeholder line so future users know the variable exists.
 
 ### 4. Smoke-test
 
+`runner.py --config runner_config_dryrun.json` (or `dry_run: true` in the config) launches an interactive Kali shell instead of the agent — useful for verifying the runtime environment, but it never invokes the provider, so it can't validate a model integration. Use the dedicated provider smoke-test:
+
 ```bash
-# Set dry_run: true in runner_config.json
+python scripts/smoke_test_model.py
+```
+
+By default it picks up `model` from `runner_config.json` and sends a trivial single-token prompt. Pass `--model my-model-id` to override, or `--allow-unregistered` to bypass the registry check (useful when smoke-testing before completing step 1). Exit codes:
+
+- `0` — provider returned a non-empty response (model integration is wired up).
+- `1` — configuration or API-key error (provider couldn't be constructed).
+- `2` — provider raised at call time (network / 4xx / 5xx).
+
+Sample success output for `gpt-5.5`:
+
+```
+smoke-test: model='gpt-5.5' allow_unregistered=False
+smoke-test: provider=OpenAIProvider
+smoke-test: prompt='Reply with the single word "OK". No tools, no JSON, just OK.'
+
+OK in 2.10s
+  response_id     = 'resp_…'
+  assistant_text  = 'OK'
+```
+
+Once the smoke-test passes, do a one-iteration real run to exercise the agent loop:
+
+```bash
+# Set max_iterations: 1 in runner_config.json (keep dry_run: false), then:
 python runner.py conversations
 ```
 
-Open `logs/latest/conversation.jsonl` and confirm at least one turn has
-non-empty `assistant_text` and a tool call.
+Open `logs/latest/conversation.jsonl` and confirm the single turn has non-empty `assistant_text` (or `reasoning_summary`) and at least one tool call.
 
 ---
 

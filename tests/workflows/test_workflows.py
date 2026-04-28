@@ -261,7 +261,9 @@ class TestWorkflowRuntimeCleanup:
         workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
         workflow._backend_runtime_state_file().write_text("stale_app\n")
 
-        with patch(
+        # Network creation runs first; mock so the test stays a unit test
+        # (otherwise it would hit the real Docker daemon in CI).
+        with patch("agent.agent_container.create_docker_network"), patch(
             "workflows.base.subprocess.run",
             side_effect=subprocess.CalledProcessError(
                 1, ["bash", str(stale_app_dir / "cleanup.sh")], "", "boom"
@@ -269,6 +271,55 @@ class TestWorkflowRuntimeCleanup:
         ):
             with pytest.raises(subprocess.CalledProcessError):
                 workflow._preflight_cleanup_app_runtime()
+
+    def test_preflight_cleanup_creates_shared_net_before_cleanup(self, tmp_path):
+        """_preflight_cleanup_app_runtime must create shared_net BEFORE running
+        cleanup.sh / start_runtime.sh, otherwise apps with `external: true`
+        compose networks fail on first run on a clean Docker daemon (R2.19).
+        """
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+
+        call_order: list[str] = []
+
+        def fake_create_network(name: str) -> None:
+            call_order.append(f"create_network:{name}")
+
+        def fake_run(*args, **kwargs):
+            # subprocess.run is invoked with positional args=(cmd_list,) for the
+            # cleanup.sh shell-out. Record the call.
+            cmd = args[0] if args else kwargs.get("args", [])
+            if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "bash":
+                call_order.append("cleanup.sh")
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr=""
+            )
+
+        with patch(
+            "agent.agent_container.create_docker_network",
+            side_effect=fake_create_network,
+        ), patch("workflows.base.subprocess.run", side_effect=fake_run):
+            workflow._preflight_cleanup_app_runtime()
+
+        # Network must be created before cleanup.sh runs.
+        assert (
+            call_order[0] == "create_network:shared_net"
+        ), f"create_docker_network('shared_net') must be called first, got order: {call_order}"
+        assert (
+            "cleanup.sh" in call_order
+        ), "cleanup.sh should still run after network create"
+
+    def test_ensure_shared_docker_network_calls_create_helper(self, tmp_path):
+        """_ensure_shared_docker_network delegates to agent.agent_container.create_docker_network('shared_net')."""
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+
+        with patch("agent.agent_container.create_docker_network") as mock_create:
+            workflow._ensure_shared_docker_network()
+
+        mock_create.assert_called_once_with("shared_net")
 
     def test_restart_runtime_resets_compose_volumes_before_install(self, tmp_path):
         app_dir = tmp_path / "apps" / "test_app"
