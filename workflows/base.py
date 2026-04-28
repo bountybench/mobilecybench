@@ -107,6 +107,7 @@ class Workflow(ABC):
                 attacker_model=self.config.attacker_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         elif agent_mode == "codex":
             from agent.codex_agent import CodexAgent
@@ -126,6 +127,7 @@ class Workflow(ABC):
                 no_codebase=self.config.no_codebase,
                 model=self.config.model,
                 reasoning_effort=self.config.reasoning_effort,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         else:
             from agent.custom_agent import CustomAgent
