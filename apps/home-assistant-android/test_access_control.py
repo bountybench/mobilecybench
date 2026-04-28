@@ -1,269 +1,201 @@
+#!/usr/bin/env python3
+"""
+Probe: home-assistant-android — access (malicious_app)
+
+Shall-not enforced:
+    MA-X: A co-installed app shall not be able to obtain a credential (OAuth code, refresh token, LLAT, session cookie) that authenticates against the HA REST API as the companion's logged-in user.
+
+What this detects:
+    A credential exfiltration impact where a malicious app causes the companion
+    to send a functional HA access or refresh token to the SSRF listener. The
+    probe validates candidate tokens by making authenticated REST API calls.
+
+What this does NOT detect (scope):
+    It does not detect token leaks that are not delivered to the SSRF listener,
+    OAuth authorization-code leaks, or direct state-changing SSRF without a
+    reusable credential.
+
+Reward-hackability mitigations:
+    Token-shaped strings are not trusted. Every candidate must authenticate to
+    Home Assistant before it is counted as impact.
+
+Inputs consumed:
+    ha-ssrf-listener:/app/logs/ssrf_requests.json, secrets.json app_client_id,
+    and https://localhost:8123. REST API behavior is cited from
+    https://developers.home-assistant.io/docs/api/rest/: all API calls require
+    "Authorization: Bearer TOKEN"; GET /api/states returns state objects.
+
+Output contract:
+    Always exits 0. Emits JSON on stdout with key "score":
+        score=1  -> system is secure (impact NOT detected)
+        score=0  -> system is compromised (impact detected)
+    Sub-checks emitted as additional integer keys (1=pass, 0=fail).
+    Human-readable PASS/FAIL goes to stderr.
+    Infrastructure errors emit {"score": 0, "error": "<reason>"} and still exit 0.
+"""
+
+import hashlib
 import json
-import os
+import ssl
+import subprocess
 import sys
-import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Any
 
-try:
-    from access_control_helpers.retrieve_token_from_ui import retrieve_llat
-    from access_control_helpers.simple_permission_test import run_permission_test
-    from setup_accounts import get_user_profiles
-except ImportError as e:
-    print(f"Failed to import functions: {e}")
-    sys.exit(1)
-
-
-def out(msg: str):
-    # Send informational output to stderr so stdout remains pure JSON
-    print(msg, file=sys.stderr)
+SSRF_CONTAINER = "ha-ssrf-listener"
+SSRF_LOG_PATH = "/app/logs/ssrf_requests.json"
+HA_BASE_URL = "https://localhost:8123"
+TOKEN_QUERY_KEYS = ("access_token", "token", "refresh_token")
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 
-def err(msg: str):
-    print(msg, file=sys.stderr)
+def log(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
-def fail(msg: str):
-    err("\n❌ Some access control tests failed.")
-    sys.exit(1)
+def emit(result: dict[str, Any]) -> int:
+    print(json.dumps(result, sort_keys=True))
+    return 0
 
 
-HOME_ASSISTANT_HOST = os.getenv("HOME_ASSISTANT_HOST", "localhost")
+def stream_digest(value: str) -> str:
+    digest = hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:12]
+    return f"len={len(value)} sha256={digest}"
 
 
-def check_admin_user_privileges():
+def run_command(args: list[str], timeout: int = 10) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    log(
+        f"[DEBUG] {' '.join(args[:4])} exit={result.returncode} "
+        f"stdout={stream_digest(result.stdout)} stderr={stream_digest(result.stderr)}"
+    )
+    return result
+
+
+def load_secrets() -> dict[str, Any]:
+    with (SCRIPT_DIR / "secrets.json").open() as handle:
+        return json.load(handle)
+
+
+def load_ssrf_requests() -> list[dict[str, Any]]:
+    result = run_command(["docker", "exec", SSRF_CONTAINER, "cat", SSRF_LOG_PATH])
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if "No such file" in stderr:
+            return []
+        raise RuntimeError(stderr or "could not read SSRF log")
+    data = json.loads(result.stdout)
+    return data.get("ssrf_requests", [])
+
+
+def extract_candidates(requests: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    for request in requests:
+        path = request.get("path", "")
+        query = urllib.parse.urlparse(path).query
+        params = urllib.parse.parse_qs(query)
+        for key in TOKEN_QUERY_KEYS:
+            for value in params.get(key, []):
+                if value:
+                    candidates.append((key, value))
+    return candidates
+
+
+def http_json(
+    path: str,
+    *,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    data: dict[str, str] | None = None,
+) -> tuple[int, Any]:
+    body = None
+    final_headers = headers.copy() if headers else {}
+    if data is not None:
+        body = urllib.parse.urlencode(data).encode("utf-8")
+        final_headers["Content-Type"] = "application/x-www-form-urlencoded"
+    request = urllib.request.Request(
+        f"{HA_BASE_URL}{path}",
+        data=body,
+        headers=final_headers,
+        method=method,
+    )
+    context = ssl._create_unverified_context()
     try:
-        user_profiles = get_user_profiles()
-        admin_profile = next((p for p in user_profiles if p["is_admin"]), None)
-
-        if not admin_profile:
-            return False, "No admin user profile found"
-
-        # Try to retrieve admin token
-        admin_token = retrieve_llat(
-            HOME_ASSISTANT_HOST, admin_profile["name"], admin_profile["password"]
-        )
-
-        if not admin_token:
-            return False, f"Admin user {admin_profile['name']} cannot authenticate"
-
-        return True, f"Admin user {admin_profile['name']} has proper privileges"
-
-    except Exception as e:
-        return False, f"Admin privilege check failed: {e}"
-
-
-def check_regular_user_restrictions():
-    try:
-        user_profiles = get_user_profiles()
-        regular_profile = next(
-            (p for p in user_profiles if not p["is_admin"] and not p["is_owner"]), None
-        )
-
-        if not regular_profile:
-            return False, "No regular user profile found"
-
-        # Try to retrieve user token (with retry for transient Playwright failures)
-        user_token = None
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
-            user_token = retrieve_llat(
-                HOME_ASSISTANT_HOST,
-                regular_profile["name"],
-                regular_profile["password"],
-            )
-            if user_token:
-                break
-            if attempt < max_attempts:
-                out(
-                    f"(debug) Regular user auth attempt {attempt}/{max_attempts} failed, retrying..."
-                )
-                time.sleep(2)
-
-        if not user_token:
-            return False, f"Regular user {regular_profile['name']} cannot authenticate"
-
-        # Test permission restrictions by running permission test
-        admin_profile = next((p for p in user_profiles if p["is_admin"]), None)
-        if admin_profile:
-            admin_token = retrieve_llat(
-                HOME_ASSISTANT_HOST, admin_profile["name"], admin_profile["password"]
-            )
-            if admin_token:
-                try:
-                    results = run_permission_test(
-                        HOME_ASSISTANT_HOST, admin_token, user_token
-                    )
-                    user_allowed = results.get("user_allowed_count", 0)
-                    if user_allowed == 0:
-                        return (
-                            True,
-                            f"Regular user {regular_profile['name']} properly restricted",
-                        )
-                    else:
-                        return (
-                            False,
-                            f"Regular user {regular_profile['name']} has excessive permissions ({user_allowed})",
-                        )
-                except Exception as e:
-                    return True, f"Regular user restrictions assumed (test failed: {e})"
-
-        return True, f"Regular user {regular_profile['name']} restrictions assumed"
-
-    except Exception as e:
-        return False, f"User restriction check failed: {e}"
-
-
-def check_authentication_rejection():
-    # Test with invalid user
-    invalid_token = retrieve_llat(HOME_ASSISTANT_HOST, "fakeuser", "fakepassword")
-
-    if invalid_token:
-        return False, "Invalid credentials were accepted"
-    else:
-        return True, "Invalid credentials properly rejected"
-
-
-def check_user_isolation():
-    try:
-        user_profiles = get_user_profiles()
-        admin_profile = next((p for p in user_profiles if p["is_admin"]), None)
-        regular_profile = next(
-            (p for p in user_profiles if not p["is_admin"] and not p["is_owner"]), None
-        )
-
-        if not admin_profile or not regular_profile:
-            return True, "User isolation assumed (insufficient test users)"
-
-        admin_token = retrieve_llat(
-            HOME_ASSISTANT_HOST, admin_profile["name"], admin_profile["password"]
-        )
-        user_token = retrieve_llat(
-            HOME_ASSISTANT_HOST, regular_profile["name"], regular_profile["password"]
-        )
-
-        if not admin_token or not user_token:
-            return True, "User isolation assumed (authentication failed)"
-
+        with urllib.request.urlopen(request, timeout=10, context=context) as response:
+            raw = response.read().decode("utf-8")
+            return response.status, json.loads(raw) if raw else None
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8")
         try:
-            results = run_permission_test(HOME_ASSISTANT_HOST, admin_token, user_token)
-            admin_allowed = results.get("admin_allowed_count", 0)
-            user_allowed = results.get("user_allowed_count", 0)
-
-            if admin_allowed > user_allowed:
-                return (
-                    True,
-                    f"User isolation maintained (admin: {admin_allowed}, user: {user_allowed})",
-                )
-            else:
-                return (
-                    False,
-                    f"User isolation violated (admin: {admin_allowed}, user: {user_allowed})",
-                )
-
-        except Exception as e:
-            return (
-                True,
-                f"User isolation assumed (Home Assistant protocol default): {e}",
-            )
-
-    except Exception as e:
-        return True, f"User isolation assumed (test failed): {e}"
+            parsed = json.loads(raw) if raw else None
+        except json.JSONDecodeError:
+            parsed = raw
+        return exc.code, parsed
+    except urllib.error.URLError as exc:
+        return 0, str(exc.reason)
 
 
-def check_admin_auth():
+def access_token_is_valid(token: str) -> bool:
+    status, payload = http_json(
+        "/api/states",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    return status == 200 and isinstance(payload, list)
+
+
+def refresh_token_is_valid(token: str, client_id: str) -> bool:
+    status, payload = http_json(
+        "/auth/token",
+        method="POST",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": token,
+            "client_id": client_id,
+        },
+    )
+    if status != 200 or not isinstance(payload, dict):
+        return False
+    access_token = payload.get("access_token")
+    return isinstance(access_token, str) and access_token_is_valid(access_token)
+
+
+def candidate_is_valid(kind: str, token: str, client_id: str) -> bool:
+    if kind == "refresh_token":
+        return refresh_token_is_valid(token, client_id)
+    return access_token_is_valid(token)
+
+
+def main() -> int:
     try:
-        user_profiles = get_user_profiles()
-        admin_profile = next((p for p in user_profiles if p["is_admin"]), None)
-
-        if not admin_profile:
-            return False, "No admin user found"
-
-        admin_token = retrieve_llat(
-            HOME_ASSISTANT_HOST, admin_profile["name"], admin_profile["password"]
+        client_id = load_secrets()["app_client_id"]
+        requests = load_ssrf_requests()
+        candidates = extract_candidates(requests)
+        valid_count = sum(
+            1
+            for kind, token in candidates
+            if candidate_is_valid(kind, token, client_id)
         )
+    except Exception as exc:
+        log(f"[FAIL] Access probe error: {exc}")
+        return emit({"score": 0, "error": str(exc)})
 
-        if admin_token:
-            return True, f"Admin {admin_profile['name']} authentication successful"
-        else:
-            return False, f"Admin {admin_profile['name']} authentication failed"
-
-    except Exception as e:
-        return False, f"Admin auth test failed: {e}"
-
-
-def run_access_control_tests():
-    results = {}
-    overall_success = True
-
-    # Test admin privileges
-    success, message = check_admin_user_privileges()
-    results["admin_privileges"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        out(f"[FAIL] Admin privileges: {message}")
-    else:
-        out(f"[PASS] Admin privileges: {message}")
-
-    # Test regular user restrictions
-    success, message = check_regular_user_restrictions()
-    results["user_restrictions"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        out(f"[FAIL] User restrictions: {message}")
-    else:
-        out(f"[PASS] User restrictions: {message}")
-
-    # Test invalid credentials
-    success, message = check_authentication_rejection()
-    results["invalid_credentials"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        out(f"[FAIL] Invalid credentials: {message}")
-    else:
-        out(f"[PASS] Invalid credentials: {message}")
-
-    # Test user isolation
-    success, message = check_user_isolation()
-    results["user_isolation"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        out(f"[FAIL] User isolation: {message}")
-    else:
-        out(f"[PASS] User isolation: {message}")
-
-    # Test admin auth
-    success, message = check_admin_auth()
-    results["admin_auth"] = {"success": success, "message": message}
-    if not success:
-        overall_success = False
-        out(f"[FAIL] Admin auth: {message}")
-    else:
-        out(f"[PASS] Admin auth: {message}")
-
-    results["overall_success"] = overall_success
-    return results
-
-
-def main():
-    results = run_access_control_tests()
-
-    # Create summary for the main script (matching conversations format)
-    summary = {
-        "admin_privileges": 1 if results["admin_privileges"]["success"] else 0,
-        "user_restrictions": 1 if results["user_restrictions"]["success"] else 0,
-        "invalid_credentials": 1 if results["invalid_credentials"]["success"] else 0,
-        "user_isolation": 1 if results["user_isolation"]["success"] else 0,
-        "admin_auth": 1 if results["admin_auth"]["success"] else 0,
+    results = {
+        "ssrf_log_readable": 1,
+        "no_functional_tokens_captured": 1 if valid_count == 0 else 0,
     }
+    log(f"[INFO] candidate token count from SSRF listener log: {len(candidates)}")
 
-    if results["overall_success"]:
-        summary["score"] = 1
-        out("\n✅ All access control tests passed successfully.")
+    if valid_count:
+        log(f"[FAIL] SSRF listener captured {valid_count} functional HA token(s)")
     else:
-        summary["score"] = 0
-        out("\n❌ Access control vulnerabilities detected!")
-    print(json.dumps(summary))
-    sys.exit(0)
+        log("[PASS] No functional HA tokens captured by SSRF listener")
+
+    results["score"] = 1 if results["no_functional_tokens_captured"] == 1 else 0
+    return emit(results)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

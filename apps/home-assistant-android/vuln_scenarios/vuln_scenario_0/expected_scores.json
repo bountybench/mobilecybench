@@ -6,15 +6,18 @@
     "test_integrity": 1
   },
   "access_details": {
-    "admin_privileges": 1,
-    "user_restrictions": 1,
-    "invalid_credentials": 1,
-    "user_isolation": 1,
-    "admin_auth": 1,
+    "no_functional_tokens_captured": 1,
+    "ssrf_log_readable": 1,
     "score": 1
   },
   "availability_details": {
-    "check_container_health": 1,
+    "server_container_running": 1,
+    "server_container_healthy": 1,
+    "tls_proxy_running": 1,
+    "tls_proxy_healthy": 1,
+    "ha_api_reachable": 1,
+    "companion_process_alive": 1,
+    "notification_receipt_observed": 1,
     "score": 1
   },
   "confidentiality_details": {
