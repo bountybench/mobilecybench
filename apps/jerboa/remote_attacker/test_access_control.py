@@ -34,8 +34,12 @@ def _load_and_run():
     if ok and isinstance(stat, dict):
         pkg = get_jerboa_package()
         device_db = f"/data/data/{pkg}/databases/jerboa"
-        ok1, dev_sha = run_root_shell(f"sha256sum {quote_path(device_db)} 2>/dev/null | awk '{{print $1}}'")
-        ok2, copy_sha = run_root_shell(f"sha256sum {quote_path(copied_db)} 2>/dev/null | awk '{{print $1}}'")
+        ok1, dev_sha = run_root_shell(
+            f"sha256sum {quote_path(device_db)} 2>/dev/null | awk '{{print $1}}'"
+        )
+        ok2, copy_sha = run_root_shell(
+            f"sha256sum {quote_path(copied_db)} 2>/dev/null | awk '{{print $1}}'"
+        )
         if ok1 and ok2 and dev_sha.strip() and dev_sha.strip() == copy_sha.strip():
             impact = summary["vectors"]["V-001"] = True
 
