@@ -320,9 +320,7 @@ class TestResolveAdditionalContext:
         app_dir.mkdir(parents=True)
         (app_dir / "metadata.json").write_text("{}")
         return ExploitWorkflow(
-            _config(
-                workflow="exploit", custom_system_prompt=custom_system_prompt
-            ),
+            _config(workflow="exploit", custom_system_prompt=custom_system_prompt),
             "test_app",
             tmp_path,
         )

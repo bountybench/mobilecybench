@@ -27,9 +27,7 @@ def test_synthetic_prompt_default_is_vuln_0_for_back_compat():
 
 def test_synthetic_prompt_distinct_per_vuln_id():
     prompts = {
-        vuln_id: build_synthetic_prompt(
-            package_name="com.example.app", vuln_id=vuln_id
-        )
+        vuln_id: build_synthetic_prompt(package_name="com.example.app", vuln_id=vuln_id)
         for vuln_id in ("vuln_0", "vuln_1", "vuln_2")
     }
     # Each prompt should reference exactly its own vuln_id, not any other.
@@ -49,6 +47,6 @@ def test_synthetic_prompt_renders_vuln_id_in_both_locations():
         vuln_id="vuln_2",
     )
     occurrences = prompt.count("/app/verify_files/vuln_2")
-    assert occurrences == 2, (
-        f"expected 2 references to /app/verify_files/vuln_2, got {occurrences}"
-    )
+    assert (
+        occurrences == 2
+    ), f"expected 2 references to /app/verify_files/vuln_2, got {occurrences}"
