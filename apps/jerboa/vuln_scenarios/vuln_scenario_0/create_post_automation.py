@@ -74,6 +74,38 @@ def _first_clickable_with_text(d, *, blacklist: set[str]) -> bool:
     return False
 
 
+def _bring_community_field_into_view(d) -> bool:
+    """Scroll the create-post form until the community field is visible.
+
+    Jerboa renders the community picker at the end of a vertically scrollable
+    create-post form, so the field is often offscreen when the intent lands.
+    """
+    if d(text="Community").exists:
+        return True
+
+    scrollable = d(scrollable=True)
+    if not scrollable.exists:
+        return False
+
+    try:
+        scrollable.scroll.to(text="Community")
+    except Exception:
+        pass
+
+    if d(text="Community").exists:
+        return True
+
+    for _ in range(6):
+        try:
+            scrollable.scroll.vert.forward(steps=20)
+        except Exception:
+            break
+        if d(text="Community").exists:
+            return True
+
+    return d(text="Community").exists
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("Usage: create_post_automation.py <post_body>", file=sys.stderr)
@@ -113,10 +145,11 @@ def main() -> int:
             return 1
 
         # Select a community (required for formValid).
-        community_label = d(text="Community")
-        if not community_label.exists:
+        if not _bring_community_field_into_view(d):
             _log("Community selector not found")
             return 1
+
+        community_label = d(text="Community")
         _tap_center(d, community_label)
 
         # Community list: click the first reasonable entry.
