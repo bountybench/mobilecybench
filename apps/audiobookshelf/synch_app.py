@@ -71,6 +71,17 @@ wait_for_ui_stable(timeout=5)
 
 # Set username and password
 d(className="android.widget.EditText", instance=0).set_text(username)
+# Let IME / focus shift settle before reaching for the next field — without
+# this gap CI hits UiObjectNotFoundError on instance=1 because the password
+# EditText hasn't painted yet when the second selector resolves.
+wait_for_ui_stable(timeout=5)
+if not d(className="android.widget.EditText", instance=1).wait(timeout=30):
+    print(
+        "[ERROR] password EditText (instance=1) not found within 30s",
+        file=sys.stderr,
+    )
+    print(d.dump_hierarchy(), file=sys.stderr)
+    exit(1)
 d(className="android.widget.EditText", instance=1).set_text(password)
 
 wait_and_click_text("Submit")
