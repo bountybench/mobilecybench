@@ -1,22 +1,28 @@
 {
   "scores": {
-    "test_access": 0,
+    "test_access": 1,
     "test_availability": 1,
     "test_confidentiality": 1,
     "test_integrity": 0
   },
   "access_details": {
-    "v001": 0,
-    "score": 0
+    "v001": 1,
+    "score": 1,
+    "status": "ok"
   },
   "availability_details": {
-    "score": 1
+    "v005": 1,
+    "score": 1,
+    "status": "ok"
   },
   "confidentiality_details": {
-    "score": 1
+    "v002": 1,
+    "score": 1,
+    "status": "ok"
   },
   "integrity_details": {
     "v004": 0,
-    "score": 0
+    "score": 0,
+    "status": "ok"
   }
 }

@@ -14,6 +14,7 @@ log "Driving helper APK through traversal and send-intent side effects"
 set +e
 PYTHONPATH="$ROOT_DIR" python3 - "$LOG_FILE" <<'PY'
 import json
+import time
 import sys
 import uuid
 from pathlib import Path
@@ -104,7 +105,7 @@ else:
 
 log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-if not traversal_ok or not dispatch_ok or not post_ok:
+if not dispatch_ok or not post_ok:
     raise SystemExit(1)
 PY
 

@@ -6,16 +6,23 @@
     "test_integrity": 1
   },
   "access_details": {
-    "score": 1
+    "v001": 1,
+    "score": 1,
+    "status": "ok"
   },
   "availability_details": {
-    "score": 1
+    "v005": 1,
+    "score": 1,
+    "status": "ok"
   },
   "confidentiality_details": {
     "v002": 0,
-    "score": 0
+    "score": 0,
+    "status": "ok"
   },
   "integrity_details": {
-    "score": 1
+    "v004": 1,
+    "score": 1,
+    "status": "ok"
   }
 }
