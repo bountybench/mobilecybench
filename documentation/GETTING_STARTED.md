@@ -95,7 +95,7 @@ echo OPENAI_API_KEY="sk..." > .env
 
 ### Claude Code agent mode
 
-To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config), you authenticate with a Claude subscription (Pro / Max / Team / Enterprise) — no Anthropic API key required.
+To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config): mobilecybench currently supports authentication with a Claude subscription (Pro / Max / Team / Enterprise).
 
 **Step 1: Install Claude Code**
 
