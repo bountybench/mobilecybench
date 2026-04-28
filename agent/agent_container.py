@@ -857,35 +857,22 @@ def _disable_emulator_root() -> None:
 
 
 def _load_claude_code_auth() -> Tuple[Dict[str, str], Optional[str]]:
-    """Load Claude Code auth material from ``agent/.env``.
+    """Load Claude Code auth from ``agent/.env``.
 
-    Returns a ``(env_vars, snapshot_json)`` pair describing how to
-    configure the agent container.
+    Returns ``(env_vars, snapshot_json)``. Two shapes, mutually exclusive:
 
-    Two supported shapes, mutually exclusive:
-
-    1. ``CLAUDE_CODE_OAUTH_TOKEN`` only — long-lived token from
-       ``claude setup-token`` (one year, no refresh, decoupled from
-       any interactive ``/login`` session). Forwarded as a container
-       env var so the CLI's documented auth precedence #5 picks it
-       up directly. No credentials file is written. This is the
-       recommended path for headless/CI use; see
-       https://code.claude.com/docs/en/authentication.
-
+    1. ``CLAUDE_CODE_OAUTH_TOKEN`` only → forwarded as a container env
+       var (CLI auth precedence #5). For long-lived tokens from
+       ``claude setup-token``. Recommended.
     2. ``CLAUDE_CODE_OAUTH_TOKEN`` + ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN``
-       — legacy rotating subscription pair extracted from the macOS
-       Keychain (or equivalent). Synthesized into a
-       ``~/.claude/.credentials.json`` blob written inside the
-       container. The CLI may rotate this pair at any inference call,
-       which invalidates the token for any other client on the same
-       account (including an interactive ``claude`` session on the
-       host). Kept for backwards compatibility; users should migrate
-       to ``claude setup-token``.
+       → synthesized into ``~/.claude/.credentials.json`` inside the
+       container. Legacy rotating-pair flow; refresh rotates the pair
+       globally for the account.
 
-    The two shapes cannot be combined safely — if both an env var and
-    a snapshot file are present, the env var wins per CLI auth
-    precedence and the snapshot is silently ignored. The legacy path
-    therefore deliberately does *not* set the env var.
+    Env var (precedence #5) wins over file (#6), so the legacy path
+    deliberately does not also set the env var.
+
+    See https://code.claude.com/docs/en/authentication.
     """
     # Ensure agent/.env is loaded before reading credentials.
     # This function is called during setup_runtime_environment(), which
@@ -921,12 +908,11 @@ def _load_claude_code_auth() -> Tuple[Dict[str, str], Optional[str]]:
             }
         }
         logger.warning(
-            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN is set in agent/.env, so the "
-            "legacy rotating-pair OAuth path is active. This rotates tokens "
-            "globally and will 401 if you use Claude Code interactively "
-            "during a run. To switch to the recommended path: run "
-            "`claude setup-token`, paste into CLAUDE_CODE_OAUTH_TOKEN, and "
-            "DELETE the CLAUDE_CODE_OAUTH_REFRESH_TOKEN line."
+            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN is set; using legacy "
+            "rotating-pair OAuth path. Tokens rotate globally and may "
+            "401 if Claude Code is used interactively during a run. "
+            "To switch: run `claude setup-token`, paste into "
+            "CLAUDE_CODE_OAUTH_TOKEN, delete the REFRESH_TOKEN line."
         )
         return {}, json.dumps(creds)
 
