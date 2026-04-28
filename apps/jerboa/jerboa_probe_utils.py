@@ -203,8 +203,6 @@ def run_helper_reproduction(
     target_uri_path: str | None = None,
     body: str | None = None,
     uri: str | None = None,
-    logcat_tag: str | None = None,
-    logcat_pattern: str | None = None,
     run_id: str | None = None,
 ) -> tuple[bool, str]:
     """Install and launch the helper APK, then read back its JSON transport envelope.
@@ -228,14 +226,6 @@ def run_helper_reproduction(
     if install.returncode != 0:
         return False, install.stdout + install.stderr
 
-    if logcat_tag is not None:
-        subprocess.run(
-            ["adb", "shell", "appops", "set", HELPER_PACKAGE, "READ_LOGS", "allow"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
     launch_cmd = (
         f"am start -n {HELPER_PACKAGE}/.MainActivity "
         f"--es mcb_run_id {shlex.quote(run_id)} "
@@ -247,10 +237,6 @@ def run_helper_reproduction(
         launch_cmd += f" --es mcb_body {shlex.quote(body)}"
     if uri is not None:
         launch_cmd += f" --es mcb_uri {shlex.quote(uri)}"
-    if logcat_tag is not None:
-        launch_cmd += f" --es mcb_log_tag {shlex.quote(logcat_tag)}"
-    if logcat_pattern is not None:
-        launch_cmd += f" --es mcb_pattern {shlex.quote(logcat_pattern)}"
     launch_ok, launch_out = run_root_shell(launch_cmd, timeout=60)
     if not launch_ok:
         return False, launch_out

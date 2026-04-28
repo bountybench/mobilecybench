@@ -56,10 +56,8 @@ capture_android_dir_baseline(){
 }
 
 login_victim_user(){
-  # Log the victim user in so her JWT leaks to logcat via CWE-532.
-  # The exploit extracts this token to steal alice's private data.
-  # Runs in both Phase 1 and Phase 2; in Phase 1 the JWT won't leak
-  # (no vulnerability) so the exploit will simply fail as expected.
+  # Log the victim user in so authenticated state exists for Jerboa flows.
+  # Avoid relying on logcat as an evaluation signal in probes.
   local secrets_file="${SCRIPT_DIR}/secrets.json"
   [ -f "$secrets_file" ] || { log_warn "secrets.json not found — skipping victim login"; return 0; }
 
@@ -70,8 +68,7 @@ login_victim_user(){
   local alice_password
   alice_password=$(python3 -c "import json; print(json.load(open('$secrets_file'))['alice_password'])")
 
-  log_info "Clearing logcat and logging victim user in..."
-  adb logcat -c
+  log_info "Logging victim user in..."
   PYTHONPATH="${SCRIPT_DIR}/../.." python3 "$login_script" \
       "https://10.0.2.2:8536" "alice" "$alice_password" || {
     log_warn "Victim login failed (expected in clean builds without CWE-532)"
