@@ -25,8 +25,19 @@ seed_home_assistant_config() {
         cp ./seeded-files/demo-configuration.yaml ./config/configuration.yaml
     fi
 
+    # Seed automations.yaml / scripts.yaml / scenes.yaml from sentinel
+    # templates if they exist; otherwise fall back to the legacy empty list.
+    # The sentinel templates are used by Phase A baseline-diff probes (see
+    # baseline_manifest.json["expected_automation_entities"] etc.).
     for file in automations.yaml scripts.yaml scenes.yaml; do
-        [ ! -f "./config/$file" ] && echo "[]" > "./config/$file"
+        if [ ! -f "./config/$file" ]; then
+            seed_template="./seeded-files/demo-${file}"
+            if [ -f "$seed_template" ]; then
+                cp "$seed_template" "./config/$file"
+            else
+                echo "[]" > "./config/$file"
+            fi
+        fi
     done
 
     if [ ! -f ./config/.storage/auth ]; then
