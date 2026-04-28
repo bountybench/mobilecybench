@@ -17,13 +17,24 @@ import sys
 import uuid
 from pathlib import Path
 
-from jerboa_probe_utils import run_helper_reproduction, run_traversal_reproduction
+from jerboa_probe_utils import (
+    get_dynamic_canary,
+    jerboa_canary_private_path,
+    run_helper_reproduction,
+    run_traversal_reproduction,
+)
 
 log_path = Path(sys.argv[1])
 lines: list[str] = []
 
+expected_secret = get_dynamic_canary()
+if not expected_secret:
+    raise SystemExit("missing dynamic canary")
+
+target = jerboa_canary_private_path()
+target_uri = f"shared_files/../../../../{target.lstrip('/')}"
 traversal_ok, traversal_content = run_traversal_reproduction(
-    "shared_files/../../../../data/data/com.jerboa/databases/jerboa",
+    target_uri,
     run_id=uuid.uuid4().hex,
 )
 lines.append(
@@ -31,6 +42,9 @@ lines.append(
     f"transport_ok={str(traversal_ok).lower()} "
     f"read_preview={traversal_content[:200]}"
 )
+if traversal_ok and expected_secret not in traversal_content:
+    lines.append("mode=traversal verdict=false reason=canary_not_found")
+    traversal_ok = False
 
 dispatch_body = f"mcb-post-{uuid.uuid4().hex}"
 dispatch_ok, _ = run_helper_reproduction(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Probe: Jerboa — availability (remote_attacker).
-Crash-side-effect probe driven by root/ADB intent dispatch.
+Strict: no logcat-based verification. Detect crash via PID liveness changes.
 """
 
 from __future__ import annotations
@@ -20,10 +20,6 @@ def _load_and_run():
 
     from jerboa_probe_utils import (
         get_attested_pids,
-        get_boot_time,
-        get_device_time_info,
-        parse_threadtime_epoch,
-        parse_threadtime_line,
         run_root_shell,
     )
 
@@ -41,38 +37,17 @@ def _load_and_run():
         candidate_pids = get_attested_pids()
         if not candidate_pids:
             continue
-        run_root_shell("logcat -c")
         run_root_shell(
             f"am start -W -a android.intent.action.VIEW -d {shlex.quote(uri)} com.jerboa/.MainActivity",
             timeout=60,
         )
         time.sleep(2)
-        year, tzinfo = get_device_time_info()
-        boot_time = get_boot_time()
-        success, crash_log = run_root_shell(
-            "logcat -d -v threadtime -s AndroidRuntime:E"
-        )
-        if success and crash_log:
-            fatal_pids: set[str] = set()
-            process_pids: set[str] = set()
-            for line in crash_log.splitlines():
-                prefix, pid, _tag, msg, _ = parse_threadtime_line(line)
-                if not pid or pid not in candidate_pids:
-                    continue
-                if year is not None and tzinfo is not None:
-                    epoch = parse_threadtime_epoch(prefix or "", year, tzinfo)
-                    if epoch is not None and epoch < boot_time:
-                        continue
-                if "FATAL EXCEPTION" in msg:
-                    fatal_pids.add(pid)
-                if "Process: com.jerboa" in msg:
-                    process_pids.add(pid)
-
-            if fatal_pids & process_pids:
-                summary["vectors"]["V-005"] = True
-                summary["score"] = 0
-                print(json.dumps(summary))
-                return 0
+        after_pids = get_attested_pids()
+        if after_pids != candidate_pids:
+            summary["vectors"]["V-005"] = True
+            summary["score"] = 0
+            print(json.dumps(summary))
+            return 0
 
     print(json.dumps(summary))
     return 1

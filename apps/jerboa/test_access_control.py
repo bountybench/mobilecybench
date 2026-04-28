@@ -13,7 +13,11 @@ import uuid
 from pathlib import Path
 
 # App-specific utilities
-from jerboa_probe_utils import get_victim_jwt_from_db, run_traversal_reproduction
+from jerboa_probe_utils import (
+    get_dynamic_canary,
+    jerboa_canary_private_path,
+    run_traversal_reproduction,
+)
 
 
 def _load_and_run() -> int:
@@ -27,19 +31,18 @@ def _load_and_run() -> int:
 
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
     summary = {"v001": 1, "score": 1}
-    victim_jwt = get_victim_jwt_from_db()
-    if not victim_jwt:
-        print("[test_access_control] missing victim JWT", file=sys.stderr)
+    expected_secret = get_dynamic_canary()
+    if not expected_secret:
+        print("[test_access_control] missing dynamic canary", file=sys.stderr)
         print(json.dumps(summary))
         return 2
 
     run_id = uuid.uuid4().hex
-    # Path traversal from cache/ directory to databases/jerboa.
-    success, read_content = run_traversal_reproduction(
-        "shared_files/../../../../data/data/com.jerboa/databases/jerboa",
-        run_id=run_id,
-    )
-    if success and victim_jwt in read_content:
+    # Path traversal from cache/ directory to a Jerboa-private canary file.
+    target = jerboa_canary_private_path()
+    target_uri = f"shared_files/../../../../{target.lstrip('/')}"
+    success, read_content = run_traversal_reproduction(target_uri, run_id=run_id)
+    if success and expected_secret in read_content:
         summary["v001"] = 0
         summary["score"] = 0
 

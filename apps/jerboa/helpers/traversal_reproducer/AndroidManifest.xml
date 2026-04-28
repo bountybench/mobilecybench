@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.mobilecybench.exploit">
-    <uses-permission android:name="android.permission.READ_LOGS" />
     <application android:label="Jerboa Traversal Reproducer">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
