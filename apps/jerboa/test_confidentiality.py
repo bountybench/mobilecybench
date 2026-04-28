@@ -23,10 +23,11 @@ def _load_and_run() -> int:
             os.environ["REQUESTS_CA_BUNDLE"] = str(ca_path)
 
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
-    summary = {"v002": 1, "score": 1}
+    summary = {"v002": 1, "score": 1, "status": "ok"}
     expected_secret = get_dynamic_canary()
     if not expected_secret:
         print("[test_confidentiality] missing dynamic canary", file=sys.stderr)
+        summary.update({"score": 0, "status": "error"})
         print(json.dumps(summary))
         return 2
 

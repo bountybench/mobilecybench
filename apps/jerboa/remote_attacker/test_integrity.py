@@ -24,10 +24,19 @@ def _load_and_run():
         run_root_shell,
     )
 
-    impact, summary = False, {"score": 1, "vectors": {}}
+    impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
     victim_jwt = get_victim_jwt_from_db()
     if not victim_jwt:
-        print(json.dumps({**summary, "error": "missing victim JWT"}))
+        print(
+            json.dumps(
+                {
+                    **summary,
+                    "score": 0,
+                    "status": "error",
+                    "error": "missing victim JWT",
+                }
+            )
+        )
         return 2
 
     canary_body = f"mcb-post-{uuid.uuid4().hex}"
@@ -62,7 +71,7 @@ def _load_and_run():
                     impact = summary["vectors"]["V-004"] = True
                     break
     except Exception as exc:
-        print(json.dumps({**summary, "error": str(exc)}))
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
         return 2
 
     summary["score"] = 0 if impact else 1

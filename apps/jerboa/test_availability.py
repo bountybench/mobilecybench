@@ -19,7 +19,8 @@ from jerboa_probe_utils import (
 
 def _load_and_run() -> int:
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
-    summary = {"v005": 1, "score": 1}
+    summary = {"v005": 1, "score": 1, "status": "ok"}
+    saw_attested = False
 
     crash_candidates = [
         "https://lemmy.world/post/not-a-number",
@@ -33,6 +34,7 @@ def _load_and_run() -> int:
         candidate_pids = get_attested_pids()
         if not candidate_pids:
             continue
+        saw_attested = True
         run_helper_reproduction(
             mode="dispatch_view",
             uri=uri,
@@ -46,6 +48,9 @@ def _load_and_run() -> int:
             summary["v005"] = 0
             summary["score"] = 0
             break
+
+    if not saw_attested:
+        summary.update({"v005": 0, "score": 0, "status": "error"})
 
     print(json.dumps(summary))
     return 0

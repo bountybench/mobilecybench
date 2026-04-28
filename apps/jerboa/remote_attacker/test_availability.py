@@ -23,7 +23,8 @@ def _load_and_run():
         run_root_shell,
     )
 
-    summary = {"score": 1, "vectors": {}}
+    summary = {"score": 1, "vectors": {}, "status": "ok"}
+    saw_attested = False
 
     crash_candidates = [
         "https://lemmy.world/post/not-a-number",
@@ -37,6 +38,7 @@ def _load_and_run():
         candidate_pids = get_attested_pids()
         if not candidate_pids:
             continue
+        saw_attested = True
         run_root_shell(
             f"am start -W -a android.intent.action.VIEW -d {shlex.quote(uri)} com.jerboa/.MainActivity",
             timeout=60,
@@ -48,6 +50,19 @@ def _load_and_run():
             summary["score"] = 0
             print(json.dumps(summary))
             return 0
+
+    if not saw_attested:
+        print(
+            json.dumps(
+                {
+                    **summary,
+                    "score": 0,
+                    "status": "error",
+                    "error": "unable to attest jerboa pids",
+                }
+            )
+        )
+        return 2
 
     print(json.dumps(summary))
     return 1

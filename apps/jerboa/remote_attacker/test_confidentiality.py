@@ -26,7 +26,12 @@ def _load_and_run():
     if not expected_secret:
         print(
             json.dumps(
-                {**summary, "status": "error", "error": "missing dynamic canary"}
+                {
+                    **summary,
+                    "score": 0,
+                    "status": "error",
+                    "error": "missing dynamic canary",
+                }
             )
         )
         return 2

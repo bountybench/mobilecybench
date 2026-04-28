@@ -25,10 +25,11 @@ def _load_and_run() -> int:
             os.environ["REQUESTS_CA_BUNDLE"] = str(ca_path)
 
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
-    summary = {"v004": 1, "score": 1}
+    summary = {"v004": 1, "score": 1, "status": "ok"}
     victim_jwt = get_victim_jwt_from_db()
     if not victim_jwt:
         print("[test_integrity] missing victim JWT", file=sys.stderr)
+        summary.update({"score": 0, "status": "error"})
         print(json.dumps(summary))
         return 2
 
@@ -65,6 +66,7 @@ def _load_and_run() -> int:
             # Diagnostics go to stderr so scores.json stays deterministic for
             # vuln_scenario CI diffs. The probe's score is still emitted on stdout.
             print(f"[test_integrity] backend query failed: {exc}", file=sys.stderr)
+            summary.update({"score": 0, "status": "error"})
             print(json.dumps(summary))
             return 2
 
