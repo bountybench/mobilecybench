@@ -52,8 +52,100 @@ PY
   fi
 
   lemmy_url="${LEMMY_URL:-https://localhost:8536}"
+  case "$lemmy_url" in
+    https://localhost:*|https://127.0.0.1:*)
+      ;;
+    *)
+      log "Refusing unexpected LEMMY_URL (fail-closed): $lemmy_url"
+      exit 1
+      ;;
+  esac
+
+  # Ensure there is a fresh DM containing the per-run dynamic canary so the probe
+  # can verify a real confidentiality break, not just any JSON blob.
+  log "[*] Seeding a DM containing the dynamic canary (admin -> alice)..."
+  seed_ok="$(PYTHONPATH="$SCRIPT_DIR/../.." python3 - "$lemmy_url" <<'PY'
+import json
+import os
+import sys
+import urllib.request
+
+from jerboa_probe_utils import get_dynamic_canary
+
+base_url = sys.argv[1].rstrip("/")
+canary = get_dynamic_canary()
+if not canary:
+    raise SystemExit("missing dynamic canary")
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+secrets = json.loads(open(os.path.join(script_dir, "..", "..", "secrets.json"), "r").read())
+admin_pw = secrets["admin_password"]
+
+def _req(method: str, path: str, payload=None, headers=None):
+    url = f"{base_url}{path}"
+    data = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Content-Type", "application/json")
+    if headers:
+        for k, v in headers.items():
+            req.add_header(k, v)
+    ctx = None
+    try:
+        import ssl
+
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    except Exception:
+        ctx = None
+    with urllib.request.urlopen(req, context=ctx, timeout=15) as resp:
+        body = resp.read().decode("utf-8", errors="replace")
+        return resp.status, body
+
+st, body = _req("POST", "/api/v3/user/login", {"username_or_email": "admin", "password": admin_pw})
+if st != 200:
+    raise SystemExit(f"admin login failed: {st} {body[:200]}")
+admin_jwt = json.loads(body).get("jwt")
+if not admin_jwt:
+    raise SystemExit("admin jwt missing")
+
+st, body = _req(
+    "GET",
+    "/api/v3/user?username=alice",
+    None,
+    headers={"Authorization": f"Bearer {admin_jwt}"},
+)
+if st != 200:
+    raise SystemExit(f"alice lookup failed: {st} {body[:200]}")
+data = json.loads(body)
+view = data.get("person_view") or data.get("user_view") or {}
+person = view.get("person") or view.get("user") or {}
+alice_id = person.get("id")
+if not alice_id:
+    raise SystemExit("alice id missing")
+
+msg = f"Hello Alice! Your secret verification code is: {canary}"
+st, body = _req(
+    "POST",
+    "/api/v3/private_message",
+    {"recipient_id": int(alice_id), "content": msg},
+    headers={"Authorization": f"Bearer {admin_jwt}"},
+)
+if st != 200:
+    raise SystemExit(f"dm send failed: {st} {body[:200]}")
+print("ok")
+PY
+)" || true
+  if [[ "${seed_ok:-}" != "ok" ]]; then
+    log "Failed to seed DM containing dynamic canary"
+    exit 1
+  fi
+
   log "[*] Calling Lemmy API to read private messages..."
-  messages="$(curl -sk -H "Authorization: Bearer $alice_jwt" \
+  messages="$(curl --fail --show-error -sk --connect-timeout 5 --max-time 20 \
+    -H "Authorization: Bearer $alice_jwt" \
     "$lemmy_url/api/v3/private_message/list")"
 
   if [[ -z "$messages" ]] || printf '%s\n' "$messages" | grep -q '"error"'; then

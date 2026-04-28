@@ -11,6 +11,7 @@ log() { printf '[vuln0] %s\n' "$*"; }
 log "Starting vuln_scenario_0 for Jerboa"
 log "Driving helper APK through traversal and send-intent side effects"
 
+set +e
 PYTHONPATH="$ROOT_DIR" python3 - "$LOG_FILE" <<'PY'
 import json
 import sys
@@ -18,6 +19,7 @@ import uuid
 from pathlib import Path
 
 from jerboa_probe_utils import (
+    get_victim_jwt_from_db,
     get_dynamic_canary,
     jerboa_canary_private_path,
     run_helper_reproduction,
@@ -59,9 +61,62 @@ lines.append(
 )
 
 log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-if not traversal_ok or not dispatch_ok:
+
+# Do not claim the scenario is triggered unless we can confirm the state change
+# from the victim's authenticated view of the backend.
+post_ok = False
+victim_jwt = get_victim_jwt_from_db()
+if not victim_jwt:
+    lines.append("mode=dispatch_send verdict=false reason=missing_victim_jwt")
+else:
+    try:
+        import os
+
+        import requests
+
+        base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+        # Lemmy is typically served with a self-signed cert in CI.
+        # Bound retries to reduce flakes from eventual consistency / noisy feeds.
+        deadline = time.time() + 30
+        while time.time() < deadline and not post_ok:
+            response = requests.get(
+                f"{base_url}/api/v3/post/list",
+                params={"type_": "All", "limit": 200},
+                headers={"Authorization": f"Bearer {victim_jwt}"},
+                timeout=(5, 15),
+                verify=False,
+            )
+            if response.status_code == 200:
+                posts = response.json().get("posts", [])
+                for pv in posts:
+                    body_candidates = [
+                        pv.get("post_view", {}).get("post", {}).get("body", ""),
+                        pv.get("post", {}).get("body", ""),
+                        pv.get("post", {}).get("post", {}).get("body", ""),
+                    ]
+                    if any(dispatch_body == body for body in body_candidates):
+                        post_ok = True
+                        break
+            if not post_ok:
+                time.sleep(1)
+    except Exception as exc:
+        lines.append(f"mode=dispatch_send verdict=false reason=backend_query_failed err={exc}")
+
+log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+if not traversal_ok or not dispatch_ok or not post_ok:
     raise SystemExit(1)
 PY
+
+rc=$?
+set -e
+if [[ $rc -ne 0 ]]; then
+  log "Scenario trigger failed (exit=$rc). Diagnostics:"
+  if [[ -f "$LOG_FILE" ]]; then
+    sed -n '1,200p' "$LOG_FILE" || true
+  fi
+  exit "$rc"
+fi
 
 log "Replay log written to: $LOG_FILE"
 log "[+] Vulnerability successfully triggered."
