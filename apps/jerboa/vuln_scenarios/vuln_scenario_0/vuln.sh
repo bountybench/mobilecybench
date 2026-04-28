@@ -12,8 +12,9 @@ log "Starting vuln_scenario_0 for Jerboa"
 log "Driving helper APK; require confirmed unauthorized post side effect"
 
 set +e
-PYTHONPATH="$ROOT_DIR" python3 - "$LOG_FILE" <<'PY'
+ROOT_DIR="$ROOT_DIR" PYTHONPATH="$ROOT_DIR" python3 - "$LOG_FILE" <<'PY'
 import json
+import os
 import time
 import sys
 import uuid
@@ -21,6 +22,7 @@ from pathlib import Path
 
 from jerboa_probe_utils import (
     get_victim_jwt_from_db,
+    get_jerboa_package,
     run_root_shell,
     run_helper_reproduction,
 )
@@ -41,13 +43,16 @@ lines.append(
 )
 if not dispatch_ok:
     # Fallback: dispatch directly from root shell (more reliable than UI-driven startActivity).
+    package_name = get_jerboa_package()
     dispatch_ok, _ = run_root_shell(
-        "am start -n com.jerboa/.MainActivity "
+        f"am start -n {package_name}/.MainActivity "
         f"-a android.intent.action.SEND --es android.intent.extra.TEXT {json.dumps(dispatch_body)} "
         "--type text/plain",
         timeout=60,
     )
-    lines.append(f"mode=dispatch_send fallback=root_am_start used={str(dispatch_ok).lower()}")
+    lines.append(
+        f"mode=dispatch_send fallback=root_am_start package={package_name} used={str(dispatch_ok).lower()}"
+    )
 
 log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -59,13 +64,12 @@ if not victim_jwt:
     lines.append("mode=dispatch_send verdict=false reason=missing_victim_jwt")
 else:
     try:
-        import os
-
         import requests
 
         base_url = os.getenv("LEMMY_URL", "https://127.0.0.1:8536")
+        root_dir = Path(os.environ["ROOT_DIR"]).resolve()
         ca_bundle = os.getenv("REQUESTS_CA_BUNDLE") or str(
-            (Path(__file__).resolve().parents[3] / "tls" / "rootCA.pem")
+            (root_dir.parent.parent / "tls" / "rootCA.pem")
         )
         verify = ca_bundle if Path(ca_bundle).exists() else False
         # Drive UI to actually submit the post (ACTION_SEND alone only prefills).

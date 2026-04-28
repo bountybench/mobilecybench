@@ -20,6 +20,7 @@ def _load_and_run():
         file_causal_stat,
         get_dynamic_canary,
     )
+    from probe_common import extract_private_message_contents
 
     impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
     expected_secret = get_dynamic_canary()
@@ -43,18 +44,9 @@ def _load_and_run():
     else:
         text = ""
 
-    found = False
-    if text.strip().startswith("{"):
-        try:
-            payload = json.loads(text)
-            pms = payload.get("private_messages") or []
-            for pm in pms:
-                content = (pm.get("private_message") or {}).get("content") or ""
-                if expected_secret in content:
-                    found = True
-                    break
-        except Exception:
-            found = expected_secret in text
+    contents = extract_private_message_contents(text)
+    if contents:
+        found = any(expected_secret in content for content in contents)
     else:
         found = expected_secret in text
 

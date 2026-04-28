@@ -20,7 +20,8 @@ def _load_and_run():
 
     from jerboa_probe_utils import (
         get_attested_pids,
-        run_root_shell,
+        get_jerboa_package,
+        run_adb_shell,
     )
 
     summary = {"score": 1, "vectors": {}, "status": "ok"}
@@ -33,23 +34,37 @@ def _load_and_run():
         "https://lemmy.world/u/%",
         "https://lemmy.world/post/999999999999999999999999999",
     ]
+    try:
+        package_name = get_jerboa_package()
 
-    for uri in crash_candidates:
-        candidate_pids = get_attested_pids()
-        if not candidate_pids:
-            continue
-        saw_attested = True
-        run_root_shell(
-            f"am start -W -a android.intent.action.VIEW -d {shlex.quote(uri)} com.jerboa/.MainActivity",
-            timeout=60,
+        for uri in crash_candidates:
+            candidate_pids = get_attested_pids()
+            if not candidate_pids:
+                continue
+            saw_attested = True
+            run_adb_shell(
+                f"am start -W -a android.intent.action.VIEW -d {shlex.quote(uri)} {package_name}/.MainActivity",
+                timeout=60,
+            )
+            time.sleep(2)
+            after_pids = get_attested_pids()
+            if after_pids != candidate_pids:
+                summary["vectors"]["V-005"] = True
+                summary["score"] = 0
+                print(json.dumps(summary))
+                return 0
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    **summary,
+                    "score": 0,
+                    "status": "error",
+                    "error": str(exc),
+                }
+            )
         )
-        time.sleep(2)
-        after_pids = get_attested_pids()
-        if after_pids != candidate_pids:
-            summary["vectors"]["V-005"] = True
-            summary["score"] = 0
-            print(json.dumps(summary))
-            return 0
+        return 2
 
     if not saw_attested:
         print(

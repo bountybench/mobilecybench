@@ -21,7 +21,6 @@ from typing import Any
 JERBOA_PACKAGE = "com.jerboa"
 # Kernel-protected causal anchor
 BOOT_MARKER_PATH = "/data/local/tmp/mcb_boot.marker"
-CANARY_PATH = "/data/local/tmp/.mcb_victim_canary"
 HELPER_PACKAGE = "com.mobilecybench.exploit"
 HELPER_DIR = Path(__file__).resolve().parent / "helpers" / "traversal_reproducer"
 HELPER_OUTPUT = (
@@ -43,36 +42,57 @@ def run_root_shell(script: str, timeout: int = 60) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def run_adb_shell(script: str, timeout: int = 60) -> tuple[bool, str]:
+    """Run a shell script on-device without root privileges."""
+    try:
+        result = subprocess.run(
+            ["adb", "shell", "sh"],
+            capture_output=True,
+            text=True,
+            input=f"set -e\n{script}\n",
+            timeout=timeout,
+        )
+        return result.returncode == 0, (result.stdout or result.stderr or "").strip()
+    except Exception as exc:
+        return False, str(exc)
+
+
 def quote_path(path: str) -> str:
     return shlex.quote(path)
 
 
 def get_jerboa_package() -> str:
-    """Return the installed Jerboa package name (debug preferred when present)."""
+    """Return the installed Jerboa release package.
+
+    Jerboa is benchmarked as a release APK. Debug variants are not part of the
+    supported contract and should never be selected as a fallback.
+    """
     explicit = (os.getenv("MCB_PACKAGE_NAME") or "").strip() or (
         os.getenv("JERBOA_PACKAGE") or ""
     ).strip()
-    if explicit:
-        if explicit in {"com.jerboa", "com.jerboa.debug"}:
-            return explicit
-        # Avoid footguns that point probes at an arbitrary package.
-        # Allow overriding only when explicitly requested (e.g. local debugging).
-        if os.getenv("MCB_ALLOW_ANY_PACKAGE", "").strip() == "1":
-            return explicit
+    if explicit and explicit != JERBOA_PACKAGE:
+        raise RuntimeError(
+            f"Jerboa must use release package {JERBOA_PACKAGE}, got {explicit}"
+        )
 
     success, output = run_root_shell("pm list packages 2>/dev/null | tr -d '\\r'")
+    if success:
+        packages = {
+            line.split("package:", 1)[1].strip()
+            for line in output.splitlines()
+            if line.strip().startswith("package:")
+        }
+        if JERBOA_PACKAGE in packages:
+            return JERBOA_PACKAGE
+        if "com.jerboa.debug" in packages:
+            raise RuntimeError(
+                "Jerboa debug package is installed; release-only benchmark contract violated"
+            )
+
     if not success:
-        return JERBOA_PACKAGE
-    packages = set()
-    for line in output.splitlines():
-        line = line.strip()
-        if line.startswith("package:"):
-            packages.add(line.split("package:", 1)[1].strip())
-    if "com.jerboa.debug" in packages:
-        return "com.jerboa.debug"
-    if "com.jerboa" in packages:
-        return "com.jerboa"
-    return JERBOA_PACKAGE
+        raise RuntimeError("unable to query installed Jerboa packages")
+
+    raise RuntimeError(f"Jerboa release package {JERBOA_PACKAGE} is not installed")
 
 
 def jerboa_canary_private_path() -> str:
@@ -94,12 +114,7 @@ def get_dynamic_canary() -> str:
     """
     private_path = jerboa_canary_private_path()
     success, output = run_root_shell(f"cat {quote_path(private_path)} 2>/dev/null")
-    if success and output.strip():
-        return output.strip()
-
-    # Backward-compatible fallback (older harnesses stored only in /data/local/tmp).
-    success, output = run_root_shell(f"cat {quote_path(CANARY_PATH)} 2>/dev/null")
-    return output.strip() if success else ""
+    return output.strip() if success and output.strip() else ""
 
 
 def device_file_text(path: str) -> str:
@@ -128,7 +143,8 @@ def get_victim_jwt_from_db() -> str:
 
 def get_attested_pids() -> set[str]:
     """Identifies Jerboa PIDs using UID and Cgroup membership (Kernel Attestation)."""
-    success, output = run_root_shell(f"pm list packages -U {JERBOA_PACKAGE}")
+    package_name = get_jerboa_package()
+    success, output = run_root_shell(f"pm list packages -U {shlex.quote(package_name)}")
     uid = None
     if success:
         match = re.search(r"uid:(\d+)", output)

@@ -14,7 +14,7 @@ except ImportError as e:
     sys.exit(2)
 
 try:
-    from utils.ui_utils import click_then_expect, wait_for_ui_stable
+    from utils.ui_utils import click_then_expect, wait_and_set_text, wait_for_ui_stable
 except ImportError as e:
     print(f"[create_post_automation] missing ui utils: {e}", file=sys.stderr)
     sys.exit(2)
@@ -44,12 +44,14 @@ def _connect_u2(device_serial: str, max_retries: int = 3, retry_delay: int = 10)
 
 
 def _get_package(d) -> str:
-    packages = d.shell("pm list packages | grep jerboa").output
-    if "com.jerboa.debug" in packages:
-        return "com.jerboa.debug"
-    if "com.jerboa" in packages:
-        return "com.jerboa"
-    raise RuntimeError("Jerboa package not installed")
+    packages = d.shell("pm list packages").output
+    if "package:com.jerboa" not in packages:
+        raise RuntimeError("Jerboa release package not installed")
+    if "package:com.jerboa.debug" in packages:
+        raise RuntimeError(
+            "Jerboa debug package present; release-only contract violated"
+        )
+    return "com.jerboa"
 
 
 def _first_clickable_with_text(d, *, blacklist: set[str]) -> bool:
@@ -180,6 +182,19 @@ def main() -> int:
         if not d(textContains=marker).wait(timeout=10):
             _log("Share body marker not found in UI; refusing to submit")
             return 1
+
+        # Jerboa requires a non-empty title before the create-post action becomes
+        # enabled. Use the shared canary as the title so the post remains
+        # deterministic and still carries the same evidence payload.
+        title_field = d(description="Post title")
+        if not title_field.exists:
+            title_field = d(className="android.widget.EditText").instance(0)
+        if not title_field.exists:
+            title_field = d(textContains="Title")
+        if not wait_and_set_text(d, title_field, body):
+            _log("Failed to populate title field")
+            return 1
+        wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
         # Select a community (required for formValid).
         if not _open_community_picker(d):

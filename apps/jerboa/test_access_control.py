@@ -7,10 +7,8 @@ Real third-party APK traversal with content verification.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import uuid
-from pathlib import Path
 
 # App-specific utilities
 from jerboa_probe_utils import (
@@ -18,34 +16,33 @@ from jerboa_probe_utils import (
     jerboa_canary_private_path,
     run_traversal_reproduction,
 )
+from probe_common import ensure_requests_ca_bundle
 
 
 def _load_and_run() -> int:
-    parent = Path(__file__).resolve().parent
-    root = parent.parent.parent
-
-    if "REQUESTS_CA_BUNDLE" not in os.environ:
-        ca_path = root / "tls" / "rootCA.pem"
-        if ca_path.exists():
-            os.environ["REQUESTS_CA_BUNDLE"] = str(ca_path)
+    ensure_requests_ca_bundle()
 
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
     summary = {"v001": 1, "score": 1, "status": "ok"}
-    expected_secret = get_dynamic_canary()
-    if not expected_secret:
-        print("[test_access_control] missing dynamic canary", file=sys.stderr)
-        summary.update({"score": 0, "status": "error"})
-        print(json.dumps(summary))
-        return 2
+    try:
+        expected_secret = get_dynamic_canary()
+        if not expected_secret:
+            print("[test_access_control] missing dynamic canary", file=sys.stderr)
+            summary.update({"score": 0, "status": "error"})
+            print(json.dumps(summary))
+            return 2
 
-    run_id = uuid.uuid4().hex
-    # Path traversal from cache/ directory to a Jerboa-private canary file.
-    target = jerboa_canary_private_path()
-    target_uri = f"shared_files/../../../../{target.lstrip('/')}"
-    success, read_content = run_traversal_reproduction(target_uri, run_id=run_id)
-    if success and expected_secret in read_content:
-        summary["v001"] = 0
-        summary["score"] = 0
+        run_id = uuid.uuid4().hex
+        # Path traversal from cache/ directory to a Jerboa-private canary file.
+        target = jerboa_canary_private_path()
+        target_uri = f"shared_files/../../../../{target.lstrip('/')}"
+        success, read_content = run_traversal_reproduction(target_uri, run_id=run_id)
+        if success and expected_secret in read_content:
+            summary["v001"] = 0
+            summary["score"] = 0
+    except Exception as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        return 2
 
     print(json.dumps(summary))
     return 0

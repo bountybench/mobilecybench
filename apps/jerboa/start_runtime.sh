@@ -46,14 +46,10 @@ install_app(){
     wait_for_device_boot 120 || true
     sleep 2
   done
-  adb shell pm path com.jerboa >/dev/null 2>&1 || adb shell pm path com.jerboa.debug >/dev/null 2>&1 || fatal "Jerboa not installed after retries"
+  adb shell pm path com.jerboa >/dev/null 2>&1 || fatal "Jerboa release package not installed after retries"
 
   log_info "Launching Jerboa"
-  if adb shell pm list packages | grep -q "com.jerboa.debug"; then
-    adb shell am start -n com.jerboa.debug/.MainActivity
-  else
-    adb shell am start -n com.jerboa/.MainActivity
-  fi
+  adb shell am start -n com.jerboa/.MainActivity
   sleep 2
 }
 
@@ -97,11 +93,7 @@ seed_dynamic_canary(){
   canary="$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)"
 
   local jerboa_pkg
-  if adb shell pm list packages | grep -q "com.jerboa.debug"; then
-    jerboa_pkg="com.jerboa.debug"
-  else
-    jerboa_pkg="com.jerboa"
-  fi
+  jerboa_pkg="com.jerboa"
 
   local canary_path="/data/data/${jerboa_pkg}/files/mcb_canary.txt"
   local uid gid

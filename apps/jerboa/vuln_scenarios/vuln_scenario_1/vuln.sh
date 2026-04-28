@@ -12,14 +12,14 @@ detect_jerboa_package() {
   local packages
   packages="$(adb shell pm list packages 2>/dev/null | tr -d '\r')"
 
-  if printf '%s\n' "$packages" | grep -qx 'package:com.jerboa.debug'; then
-    printf '%s\n' 'com.jerboa.debug'
-    return 0
-  fi
-
   if printf '%s\n' "$packages" | grep -qx 'package:com.jerboa'; then
     printf '%s\n' 'com.jerboa'
     return 0
+  fi
+
+  if printf '%s\n' "$packages" | grep -qx 'package:com.jerboa.debug'; then
+    printf '%s\n' 'debug package present; release-only contract violated' >&2
+    return 1
   fi
 
   return 1
@@ -30,7 +30,7 @@ main() {
   rm -f "$OUTPUT_FILE"
 
   package_name="$(detect_jerboa_package)" || {
-    log "Jerboa package not installed"
+    log "Jerboa release package not installed or release-only contract violated"
     exit 1
   }
 
