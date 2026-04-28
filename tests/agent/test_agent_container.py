@@ -520,3 +520,66 @@ class TestSaveAgentExploit:
 
         # Should not raise
         agent_env.save_agent_exploit(tmp_path / "logs")
+
+
+class TestLoadClaudeCodeAuth:
+    """Tests for the auth loader's two routing paths."""
+
+    @staticmethod
+    def _import_loader(monkeypatch):
+        """Import _load_claude_code_auth with dotenv neutralized.
+
+        The function calls ``load_dotenv(agent/.env)`` if that file exists.
+        Patch it to a no-op so tests are hermetic against the developer's
+        local ``agent/.env``.
+        """
+        from agent import agent_container
+
+        monkeypatch.setattr(
+            "agent.agent_container.Path",
+            agent_container.Path,  # keep Path itself; we patch dotenv instead
+        )
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **kw: False)
+        return agent_container._load_claude_code_auth
+
+    def test_no_credentials_returns_empty(self, monkeypatch):
+        loader = self._import_loader(monkeypatch)
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", raising=False)
+
+        env_vars, snapshot = loader()
+
+        assert env_vars == {}
+        assert snapshot is None
+
+    def test_setup_token_only_forwards_env_var(self, monkeypatch):
+        loader = self._import_loader(monkeypatch)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-LONG_LIVED")
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", raising=False)
+
+        env_vars, snapshot = loader()
+
+        assert env_vars == {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-LONG_LIVED"}
+        assert snapshot is None
+
+    def test_legacy_pair_writes_snapshot_no_env_var(self, monkeypatch):
+        loader = self._import_loader(monkeypatch)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-ACCESS")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "sk-ant-ort01-REFRESH")
+
+        env_vars, snapshot = loader()
+
+        # Critical: env var must NOT be forwarded in legacy mode, otherwise
+        # CLI auth precedence #5 would override the snapshot file (#6) and
+        # the access token would be used without refresh capability.
+        assert env_vars == {}
+        assert snapshot is not None
+
+        import json
+
+        parsed = json.loads(snapshot)
+        oauth = parsed["claudeAiOauth"]
+        assert oauth["accessToken"] == "sk-ant-oat01-ACCESS"
+        assert oauth["refreshToken"] == "sk-ant-ort01-REFRESH"
+        assert oauth["expiresAt"] == 0
+        assert "user:inference" in oauth["scopes"]

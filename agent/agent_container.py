@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import tarfile
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import docker
 import docker.errors
@@ -856,16 +856,36 @@ def _disable_emulator_root() -> None:
             pass
 
 
-def _load_claude_code_credentials() -> Optional[str]:
-    """Load Claude Code OAuth credentials from environment variables.
+def _load_claude_code_auth() -> Tuple[Dict[str, str], Optional[str]]:
+    """Load Claude Code auth material from ``agent/.env``.
 
-    Expects ``CLAUDE_CODE_OAUTH_TOKEN`` (required) and optionally
-    ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN`` to be set in ``agent/.env``.
-    See ``agent/.env.example`` for details.
+    Returns a ``(env_vars, snapshot_json)`` pair describing how to
+    configure the agent container.
 
-    Returns the raw JSON string to write into
-    ``~/.claude/.credentials.json`` inside the container, or *None* if
-    no credentials were found.
+    Two supported shapes, mutually exclusive:
+
+    1. ``CLAUDE_CODE_OAUTH_TOKEN`` only — long-lived token from
+       ``claude setup-token`` (one year, no refresh, decoupled from
+       any interactive ``/login`` session). Forwarded as a container
+       env var so the CLI's documented auth precedence #5 picks it
+       up directly. No credentials file is written. This is the
+       recommended path for headless/CI use; see
+       https://code.claude.com/docs/en/authentication.
+
+    2. ``CLAUDE_CODE_OAUTH_TOKEN`` + ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN``
+       — legacy rotating subscription pair extracted from the macOS
+       Keychain (or equivalent). Synthesized into a
+       ``~/.claude/.credentials.json`` blob written inside the
+       container. The CLI may rotate this pair at any inference call,
+       which invalidates the token for any other client on the same
+       account (including an interactive ``claude`` session on the
+       host). Kept for backwards compatibility; users should migrate
+       to ``claude setup-token``.
+
+    The two shapes cannot be combined safely — if both an env var and
+    a snapshot file are present, the env var wins per CLI auth
+    precedence and the snapshot is silently ignored. The legacy path
+    therefore deliberately does *not* set the env var.
     """
     # Ensure agent/.env is loaded before reading credentials.
     # This function is called during setup_runtime_environment(), which
@@ -878,7 +898,16 @@ def _load_claude_code_credentials() -> Optional[str]:
 
     token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     refresh = os.environ.get("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "")
-    if token:
+
+    if not token:
+        logger.warning(
+            "No Claude Code credentials found. Set CLAUDE_CODE_OAUTH_TOKEN "
+            "in agent/.env (run `claude setup-token` to generate one)."
+        )
+        return {}, None
+
+    if refresh:
+        # Legacy: rotating subscription pair. Build snapshot blob.
         creds = {
             "claudeAiOauth": {
                 "accessToken": token,
@@ -891,13 +920,22 @@ def _load_claude_code_credentials() -> Optional[str]:
                 ],
             }
         }
-        logger.info("Built Claude Code credentials from environment variables")
-        return json.dumps(creds)
+        logger.warning(
+            "Using legacy rotating-pair OAuth credentials "
+            "(CLAUDE_CODE_OAUTH_TOKEN + CLAUDE_CODE_OAUTH_REFRESH_TOKEN). "
+            "These rotate on every refresh and contend with any other "
+            "Claude Code client on the same account. Recommended: run "
+            "`claude setup-token` and replace both lines in agent/.env "
+            "with a single CLAUDE_CODE_OAUTH_TOKEN."
+        )
+        return {}, json.dumps(creds)
 
-    logger.warning(
-        "No Claude Code credentials found. " "Set CLAUDE_CODE_OAUTH_TOKEN in agent/.env"
+    # setup-token path: forward the env var, no file.
+    logger.info(
+        "Forwarding CLAUDE_CODE_OAUTH_TOKEN to agent container "
+        "(long-lived setup-token; no credentials file written)."
     )
-    return None
+    return {"CLAUDE_CODE_OAUTH_TOKEN": token}, None
 
 
 def setup_agent_environment(
@@ -958,9 +996,10 @@ def setup_agent_environment(
         if codex_key:
             env_vars["CODEX_API_KEY"] = codex_key
     elif agent_mode == "claude-code":
-        # Load OAuth credentials for injection into the container.
-        # Prefer the macOS Keychain (canonical source); fall back to env vars.
-        claude_creds = _load_claude_code_credentials()
+        # See _load_claude_code_auth() for the two supported shapes
+        # (long-lived setup-token env var vs. legacy rotating-pair file).
+        extra_env, claude_creds = _load_claude_code_auth()
+        env_vars.update(extra_env)
         if claude_creds:
             env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
 
