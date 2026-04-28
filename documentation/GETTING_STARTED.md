@@ -124,16 +124,17 @@ The runner forwards `CLAUDE_CODE_OAUTH_TOKEN` directly into the agent container'
 
 ---
 
-#### Legacy fallback: rotating subscription pair
+#### Fallback: rotating subscription pair
 
-If you cannot run `claude setup-token` (e.g. very old CLI version), you can extract the rotating subscription pair from your OS secret store. **Avoid this path if possible** — the access token is short-lived (~1 hour), the CLI inside the container will refresh it on first inference, and refreshing rotates the pair globally for your account, which invalidates the token for any other Claude Code client (including an interactive `claude` window on this host). Sweeps die mid-iteration whenever the pair is rotated by another client. This is what `documentation/GETTING_STARTED.md` previously recommended; it is preserved here only for backwards compatibility with existing `agent/.env` files.
+If you cannot run `claude setup-token`, you can extract the rotating subscription pair from your OS secret store. We recommend avoiding this path if possible — the access token is short-lived (~1 hour), the CLI inside the container will refresh it on first inference, and refreshing rotates the pair globally for your account, which invalidates the token for any other Claude Code client (including an interactive `claude` window on this host). Sweeps die mid-iteration whenever the pair is rotated by another client. 
 
 First log in interactively:
 
 ```bash
-claude /login   # browser flow; credentials land in the OS secret store
-                # (macOS Keychain / Linux ~/.claude/.credentials.json /
-                # Windows Credential Manager)
+claude auth login   # browser flow; credentials land in the OS secret
+                    # store (macOS Keychain / Linux
+                    # ~/.claude/.credentials.json / Windows Credential
+                    # Manager).
 ```
 
 Then extract both fields into `agent/.env`:
@@ -157,7 +158,7 @@ python3 -c "
 import json, pathlib, sys
 path = pathlib.Path.home() / '.claude' / '.credentials.json'
 if not path.exists():
-    sys.exit(f'Credentials file not found at {path}; run \"claude /login\" first.')
+    sys.exit(f'Credentials file not found at {path}; run \"claude auth login\" first.')
 c = json.loads(path.read_text())['claudeAiOauth']
 print(f'CLAUDE_CODE_OAUTH_TOKEN={c[\"accessToken\"]}')
 print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
