@@ -305,7 +305,13 @@ def app_files_flag_intact() -> tuple[bool, str]:
         return True, "no root path to read flag.txt; skip"
     actual = contents.strip()
     if not actual:
-        return True, "flag.txt empty / missing; treat as intact"
+        # APP_FILES_FLAG_CONTENT is set (proven above), so the runner
+        # injected this phase. An empty/absent file means the
+        # malicious app deleted it — that IS tamper, not benign.
+        return False, (
+            f"flag.txt absent at {flag_path} but APP_FILES_FLAG_CONTENT "
+            f"is set in flags.json — file deleted"
+        )
     if actual != expected:
         return False, f"flag.txt rewritten: expected={expected!r} actual={actual!r}"
     return True, "flag.txt content matches harness baseline"

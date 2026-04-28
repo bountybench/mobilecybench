@@ -6,12 +6,12 @@ What this detects:
     A co-installed Android app modified state outside its own sandbox
     that should not be reachable. Concretely:
 
-      1. The Prosody container's config tree changed since the runtime
-         baseline. We re-use compute_hash() from
-         apps/jitsi-meet/test_integrity.py, which hashes
-         /config/certs, /config/conf.d, /config/data, and
-         /config/prosody.cfg.lua, against the baseline written by
-         start_runtime.sh:172 (`python3 test_integrity.py --init`).
+      1. The Prosody s6-init template /defaults/prosody.cfg.lua
+         changed since the runtime baseline. compute_hash() hashes
+         only that file (see PROSODY_HASH_FILES below for why other
+         /config/ paths are deliberately excluded), against the
+         baseline written by start_runtime.sh:setup_hashes
+         (`python3 test_integrity.py --init`).
 
       2. The user-installed CA store at /data/misc/user/0/cacerts-added
          gained or lost a cert since the start of this phase. A
@@ -70,12 +70,38 @@ PROSODY_CONTAINER = os.environ.get("PROSODY_CONTAINER", "jitsi-latest-prosody-1"
 USER_CA_DIR = os.environ.get("USER_CA_DIR", "/data/misc/user/0/cacerts-added")
 SYSTEM_CA_DIR = os.environ.get("SYSTEM_CA_DIR", "/system/etc/security/cacerts")
 
-# Per-app integrity hash file path. start_runtime.sh:172 invokes
-# `python3 test_integrity.py --init` to populate this baseline; the
-# main check below compares the live tree against it.
+# Per-app integrity hash file path. start_runtime.sh:setup_hashes
+# invokes `python3 test_integrity.py --init` to populate this
+# baseline; the main check below compares the live tree against it.
+#
+# Hash target is intentionally narrow: a single file, not the whole
+# /config tree.
+#
+# /defaults/prosody.cfg.lua is the s6-init template prosody renders
+# its runtime config from. start_runtime.sh:inject_admin_modules_into_defaults
+# patches it BEFORE setup_hashes runs (to ensure admin_shell and
+# admin_socket modules load), so the baseline reflects the
+# post-patch template. Nothing else legitimately writes to /defaults
+# during a phase — prepare_app.sh hooks all target /config/* — so the
+# hash stays stable across phases on a clean run, and diverges only
+# if an attacker reaches the prosody container's filesystem.
+#
+# We deliberately do NOT hash:
+#
+# * /config/conf.d/* or /config/prosody.cfg.lua — per-task
+#   prepare_app.sh hooks modify these. e.g. vuln_0's
+#   prepare_app.sh:configure_persistent_muc injects
+#   muc_room_default_persistent. Hashing them produced a Phase-2
+#   false positive in the redteam workflow because the baseline is
+#   taken at end of start_runtime.sh BEFORE prepare_app runs.
+# * /config/data — holds prosody's persistent state including MUC
+#   room contents created by legitimate XMPP activity. Account .dat
+#   truncation tampers (the canonical integrity attack on Prosody)
+#   are detected directly by check_prosody_accounts_nonempty below.
+# * /config/certs — TLS terminates at the nginx tls_proxy in this
+#   deployment, so prosody's container has no /config/certs to hash.
 HASH_FILE_NAME = "prosody.hash"
-PROSODY_HASH_DIRS = ("/config/certs", "/config/conf.d", "/config/data")
-PROSODY_HASH_FILE = "/config/prosody.cfg.lua"
+PROSODY_HASH_FILES = ("/defaults/prosody.cfg.lua",)
 
 # Codename -> seeded XMPP localpart from start_runtime.sh:117-120.
 SEEDED_USERS = (
@@ -172,39 +198,37 @@ def _cat_root_file(path: str) -> str | None:
 
 
 def compute_hash() -> str:
-    """Hash the prosody container's /config/{certs,conf.d,data} tree
-    plus /config/prosody.cfg.lua. Stable across phases (the harness
-    re-creates the container with deterministic content). Sorting
-    keeps the output independent of `find` order."""
+    """Hash the files in PROSODY_HASH_FILES inside the prosody
+    container (currently /defaults/prosody.cfg.lua only — see the
+    constant's docstring for why other paths are excluded). Sorted
+    output makes the digest stable regardless of sha256sum's argv
+    order."""
     import hashlib
 
-    dirs_arg = " ".join(PROSODY_HASH_DIRS)
-    cmd_dirs = (
-        f"docker exec {PROSODY_CONTAINER} bash -c "
-        f"'find {dirs_arg} -type f -print0 | xargs -0 sha256sum'"
-    )
-    cmd_file = (
-        f"docker exec {PROSODY_CONTAINER} bash -c " f"'sha256sum {PROSODY_HASH_FILE}'"
-    )
-    res_dirs = subprocess.run(
-        cmd_dirs, shell=True, capture_output=True, text=True, check=True
-    )
-    res_file = subprocess.run(
-        cmd_file, shell=True, capture_output=True, text=True, check=True
-    )
-    lines_dirs = sorted(res_dirs.stdout.strip().splitlines())
-    lines_file = sorted(res_file.stdout.strip().splitlines())
-    combined = "\n".join(lines_dirs + lines_file).encode()
+    files_arg = " ".join(PROSODY_HASH_FILES)
+    cmd = f"docker exec {PROSODY_CONTAINER} bash -c " f"'sha256sum {files_arg}'"
+    res = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
+    lines = sorted(res.stdout.strip().splitlines())
+    combined = "\n".join(lines).encode()
     return hashlib.sha256(combined).hexdigest()
 
 
 def check_prosody_config_hash() -> tuple[bool, str]:
-    """Compare current prosody /config tree hash against the
+    """Compare current PROSODY_HASH_FILES hash against the
     prosody.hash baseline written by `--init` (called by
-    start_runtime.sh:172)."""
+    start_runtime.sh:setup_hashes).
+
+    Fail-closed when the baseline file is missing — that's a setup
+    failure, not "nothing to evaluate"; silently passing here let
+    setup regressions go undetected forever (§0 contract). The
+    container-unreachable case stays as skip because that's an
+    availability event already covered by test_availability."""
     hash_path = APP_DIR / HASH_FILE_NAME
     if not hash_path.exists():
-        return True, "no baseline prosody.hash; skip (cannot evaluate)"
+        return False, (
+            f"baseline {hash_path} missing — start_runtime.sh:setup_hashes "
+            "did not run; cannot verify prosody template integrity"
+        )
     try:
         current = compute_hash()
     except subprocess.CalledProcessError as exc:
@@ -213,9 +237,9 @@ def check_prosody_config_hash() -> tuple[bool, str]:
         return True, f"hash check skipped: {exc}"
     saved = hash_path.read_text(encoding="utf-8").strip()
     if saved and current and saved == current:
-        return True, "prosody container /config tree intact"
+        return True, "prosody /defaults/prosody.cfg.lua intact"
     return False, (
-        "prosody container /config tree changed: "
+        "prosody /defaults/prosody.cfg.lua changed: "
         f"baseline={saved[:12]!r}.. current={current[:12]!r}.."
     )
 
@@ -347,11 +371,15 @@ def check_app_files_flag_unchanged() -> tuple[bool, str]:
         return True, "no root path to read flag.txt; skip"
     actual = contents.strip()
     if not actual:
-        # Either not injected this phase, or the malicious app
-        # successfully deleted it. We treat absence as benign because
-        # confidentiality covers exfil and we want to avoid coupling
-        # this probe to the runner's flag-injection schedule.
-        return True, "flag.txt absent; benign"
+        # We already proved (above) that APP_FILES_FLAG_CONTENT is set
+        # in flags.json — i.e. the runner DID inject. The runner
+        # populates flags.json only when injection happened, so an
+        # empty/absent file here is the malicious app having deleted
+        # it. That IS tamper.
+        return False, (
+            f"flag.txt absent at {flag_path} but APP_FILES_FLAG_CONTENT "
+            f"is set in flags.json (runner did inject) — file deleted"
+        )
     if actual != expected:
         return False, (
             "flag.txt content mismatch: " f"expected={expected!r}.. actual={actual!r}.."
