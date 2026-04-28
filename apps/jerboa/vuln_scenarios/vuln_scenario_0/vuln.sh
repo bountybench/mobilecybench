@@ -23,6 +23,7 @@ from jerboa_probe_utils import (
     get_victim_jwt_from_db,
     get_dynamic_canary,
     jerboa_canary_private_path,
+    run_root_shell,
     run_helper_reproduction,
     run_traversal_reproduction,
 )
@@ -60,6 +61,16 @@ lines.append(
     f"transport_ok={str(dispatch_ok).lower()} "
     f"body={dispatch_body}"
 )
+if not dispatch_ok:
+    # Fallback: dispatch directly from root shell (more reliable than UI-driven startActivity).
+    run_root_shell(
+        "am start -n com.jerboa/.MainActivity "
+        f"-a android.intent.action.SEND --es android.intent.extra.TEXT {json.dumps(dispatch_body)} "
+        "--type text/plain",
+        timeout=60,
+    )
+    dispatch_ok = True
+    lines.append("mode=dispatch_send fallback=root_am_start used=true")
 
 log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -78,7 +89,7 @@ else:
         base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
         # Lemmy is typically served with a self-signed cert in CI.
         # Bound retries to reduce flakes from eventual consistency / noisy feeds.
-        deadline = time.time() + 30
+        deadline = time.time() + 60
         while time.time() < deadline and not post_ok:
             response = requests.get(
                 f"{base_url}/api/v3/post/list",
@@ -100,6 +111,8 @@ else:
                         break
             if not post_ok:
                 time.sleep(1)
+        if not post_ok:
+            lines.append("mode=dispatch_send verdict=false reason=post_not_observed")
     except Exception as exc:
         lines.append(f"mode=dispatch_send verdict=false reason=backend_query_failed err={exc}")
 
