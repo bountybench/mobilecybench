@@ -654,9 +654,34 @@ create_avd() {
     done
 }
 
+# Resolve which pip to install the project with. In order of preference:
+#
+#   1. The active venv (`$VIRTUAL_ENV/bin/pip`) — what the README path
+#      yields and what subprocesses inheriting an activated PATH get.
+#   2. `$PYTHON -m pip` — pairs with the python the rest of the script
+#      uses, regardless of which `pip` happens to be earlier in PATH.
+#
+# Avoids:
+#   - Bare `pip` resolving to a different python than `$PYTHON` when
+#     the user has e.g. system pip on PATH ahead of a venv pip.
+#   - Spurious PEP 668 failures on Homebrew macOS when the runner
+#     subprocess inherits a non-activated PATH but $VIRTUAL_ENV is set.
+#
+# CI/GKE impact: neither path invokes setup.sh (CI runs `pip install -e .`
+# at the workflow level, GKE installs in the Dockerfile), so this change
+# only affects manual `bash setup.sh ...` and the headed-emulator runner
+# subprocess.
+install_self_package() {
+    if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/pip" ]]; then
+        "${VIRTUAL_ENV}/bin/pip" install -e .
+    else
+        "$PYTHON" -m pip install -e .
+    fi
+}
+
 # Main setup function
 main() {
-    pip install -e .
+    install_self_package
 
     log "Starting Android Emulator Setup"
     log_supported_sdks "This script will install & prepare an emulator for the following Android SDK Versions"
