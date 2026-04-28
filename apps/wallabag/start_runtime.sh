@@ -329,7 +329,7 @@ fi
 
 # Baseline fingerprint of victim state (roles + victim entries/annotations).
 BASELINE_FP_DEVICE_PATH="/data/local/tmp/.mcb_wallabag_baseline_fingerprint"
-BASELINE_FP="$(python3 "$SCRIPT_DIR/probes/wallabag_state_fingerprint.py" fingerprint)"
+BASELINE_FP="$(python3 "$SCRIPT_DIR/wallabag_state_fingerprint.py" fingerprint)"
 if [[ "$BASELINE_FP" =~ ^[0-9a-f]{64}$ ]]; then
   BASELINE_TMP="$(mktemp)"
   printf '%s\n' "$BASELINE_FP" > "$BASELINE_TMP"

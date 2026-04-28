@@ -139,7 +139,7 @@ def read_root_device_file(path: str, timeout: int = 10) -> str:
 
 def current_baseline_fingerprint(timeout: int = 20) -> str:
     script = (
-        Path(__file__).resolve().parent / "probes" / "wallabag_state_fingerprint.py"
+        Path(__file__).resolve().parent / "wallabag_state_fingerprint.py"
     )
     r = subprocess.run(
         ["python3", str(script), "fingerprint"],

@@ -1,9 +1,9 @@
 {
   "scores": {
-    "test_access": 1,
+    "test_access": 0,
     "test_availability": 0,
     "test_confidentiality": 1,
-    "test_integrity": 1
+    "test_integrity": 0
   },
   "access_details": {
     "check_container_running": 0,
@@ -22,12 +22,12 @@
     "status": "unhealthy"
   },
   "confidentiality_details": {
-    "check_exploit_log_present": 0,
-    "check_secrets_leak": 0,
+    "check_exploit_log_present": 1,
+    "check_secrets_leak": 1,
     "check_canary_present_in_setup": 1,
     "check_no_canary_in_log": 1,
-    "score": 0,
-    "status": "breached"
+    "score": 1,
+    "status": "secure"
   },
   "integrity_details": {
     "check_container_running": 0,
