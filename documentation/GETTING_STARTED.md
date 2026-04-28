@@ -95,20 +95,48 @@ echo OPENAI_API_KEY="sk..." > .env
 
 ### Claude Code agent mode
 
-To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config), you need OAuth tokens from a Claude Max or Pro subscription instead of an API key.
+To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config), you authenticate with a Claude subscription (Pro / Max / Team / Enterprise) — no Anthropic API key required.
 
-**Step 1: Install and authenticate Claude Code**
+**Step 1: Install Claude Code**
 
 ```bash
 npm install -g @anthropic-ai/claude-code
-claude auth login   # follow the browser flow; credentials are stored in
-                    # the OS-native secret store (macOS Keychain / Linux
-                    # `~/.claude/.credentials.json` / Windows Credential Manager)
 ```
 
-**Step 2: Extract tokens into `agent/.env`**
+**Step 2: Generate a long-lived OAuth token (recommended)**
 
-After logging in, extract your OAuth tokens into `agent/.env`. Pick the snippet for your platform.
+Run [`claude setup-token`](https://code.claude.com/docs/en/authentication#generate-a-long-lived-token) to mint a token specifically scoped for headless / CI use. It is valid for ~1 year, has no paired refresh token, and is **decoupled from any interactive `claude` session you may run on this host**, so it will not be invalidated when you use Claude Code interactively while a sweep is in flight.
+
+```bash
+claude setup-token
+# walks through OAuth in your browser, then prints a token to the terminal
+```
+
+Copy the printed token into `agent/.env` as `CLAUDE_CODE_OAUTH_TOKEN`. Leave `CLAUDE_CODE_OAUTH_REFRESH_TOKEN` unset — its presence switches the runner to the legacy rotating-pair flow described below.
+
+```bash
+echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste-token-here>' >> agent/.env
+```
+
+The runner forwards `CLAUDE_CODE_OAUTH_TOKEN` directly into the agent container's environment; the in-container Claude Code CLI picks it up via its documented [auth precedence #5](https://code.claude.com/docs/en/authentication#authentication-precedence). No credentials file is written.
+
+**Step 3: Configure `runner_config.json`** (continues below)
+
+---
+
+#### Legacy fallback: rotating subscription pair
+
+If you cannot run `claude setup-token` (e.g. very old CLI version), you can extract the rotating subscription pair from your OS secret store. **Avoid this path if possible** — the access token is short-lived (~1 hour), the CLI inside the container will refresh it on first inference, and refreshing rotates the pair globally for your account, which invalidates the token for any other Claude Code client (including an interactive `claude` window on this host). Sweeps die mid-iteration whenever the pair is rotated by another client. This is what `documentation/GETTING_STARTED.md` previously recommended; it is preserved here only for backwards compatibility with existing `agent/.env` files.
+
+First log in interactively:
+
+```bash
+claude /login   # browser flow; credentials land in the OS secret store
+                # (macOS Keychain / Linux ~/.claude/.credentials.json /
+                # Windows Credential Manager)
+```
+
+Then extract both fields into `agent/.env`:
 
 **macOS** (Keychain):
 
@@ -129,7 +157,7 @@ python3 -c "
 import json, pathlib, sys
 path = pathlib.Path.home() / '.claude' / '.credentials.json'
 if not path.exists():
-    sys.exit(f'Credentials file not found at {path}; run \"claude auth login\" first.')
+    sys.exit(f'Credentials file not found at {path}; run \"claude /login\" first.')
 c = json.loads(path.read_text())['claudeAiOauth']
 print(f'CLAUDE_CODE_OAUTH_TOKEN={c[\"accessToken\"]}')
 print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
@@ -149,7 +177,7 @@ $json = ConvertFrom-Json $cred.GetNetworkCredential().Password
 
 `Get-StoredCredential` requires the [`CredentialManager` module](https://www.powershellgallery.com/packages/CredentialManager). If unavailable, open `Control Panel → User Accounts → Credential Manager → Windows Credentials`, expand the `Claude Code-credentials` entry, and copy the `accessToken` / `refreshToken` fields manually.
 
-Tokens expire periodically — re-run the extraction before each session.
+Tokens expire periodically — re-run the extraction before each session. Migrating to `claude setup-token` (above) eliminates this re-extraction ritual.
 
 **Step 3: Configure `runner_config.json`**
 
