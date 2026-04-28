@@ -41,14 +41,13 @@ lines.append(
 )
 if not dispatch_ok:
     # Fallback: dispatch directly from root shell (more reliable than UI-driven startActivity).
-    run_root_shell(
+    dispatch_ok, _ = run_root_shell(
         "am start -n com.jerboa/.MainActivity "
         f"-a android.intent.action.SEND --es android.intent.extra.TEXT {json.dumps(dispatch_body)} "
         "--type text/plain",
         timeout=60,
     )
-    dispatch_ok = True
-    lines.append("mode=dispatch_send fallback=root_am_start used=true")
+    lines.append(f"mode=dispatch_send fallback=root_am_start used={str(dispatch_ok).lower()}")
 
 log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -71,8 +70,6 @@ else:
         verify = ca_bundle if Path(ca_bundle).exists() else False
         # Drive UI to actually submit the post (ACTION_SEND alone only prefills).
         # Use uiautomator2; fail closed if automation cannot complete.
-        ui = Path(__file__).resolve().parent / "create_post_automation.py"
-        # In CI, __file__ may not resolve under stdin; compute from log path location.
         ui = log_path.parent / "create_post_automation.py"
         if not ui.exists():
             raise RuntimeError(f"missing UI automation helper: {ui}")

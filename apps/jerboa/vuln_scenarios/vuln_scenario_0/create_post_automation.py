@@ -13,6 +13,12 @@ except ImportError as e:
     print(f"[create_post_automation] missing deps: {e}", file=sys.stderr)
     sys.exit(2)
 
+try:
+    from utils.ui_utils import wait_for_ui_stable
+except ImportError as e:
+    print(f"[create_post_automation] missing ui utils: {e}", file=sys.stderr)
+    sys.exit(2)
+
 
 def _log(msg: str) -> None:
     print(f"[create_post_automation] {msg}", file=sys.stderr)
@@ -46,16 +52,8 @@ def _get_package(d) -> str:
     raise RuntimeError("Jerboa package not installed")
 
 
-def _tap_center(d, obj) -> None:
-    info = obj.info
-    b = info.get("bounds") or {}
-    x = int((b["left"] + b["right"]) / 2)
-    y = int((b["top"] + b["bottom"]) / 2)
-    d.click(x, y)
-
-
 def _first_clickable_with_text(d, *, blacklist: set[str]) -> bool:
-    # Prefer text-bearing clickable nodes; fall back to any clickable node.
+    # Prefer text-bearing clickable nodes.
     for node in d.xpath('//*[@clickable="true" and string-length(@text) > 0]').all():
         t = (node.attrib.get("text") or "").strip()
         if not t or t in blacklist:
@@ -65,45 +63,78 @@ def _first_clickable_with_text(d, *, blacklist: set[str]) -> bool:
             return True
         except Exception:
             continue
-    for node in d.xpath('//*[@clickable="true"]').all():
-        try:
-            node.click()
-            return True
-        except Exception:
-            continue
     return False
 
 
-def _bring_community_field_into_view(d) -> bool:
-    """Scroll the create-post form until the community field is visible.
+def _parse_bounds(bounds: str) -> tuple[int, int, int, int] | None:
+    try:
+        left_top, right_bottom = bounds.replace("[", "").split("]")
+        left_x, top_y = map(int, left_top.split(","))
+        right_x, bottom_y = map(int, right_bottom.strip("[").split(","))
+        return left_x, top_y, right_x, bottom_y
+    except Exception:
+        return None
 
-    Jerboa renders the community picker at the end of a vertically scrollable
-    create-post form, so the field is often offscreen when the intent lands.
+
+def _click_community_selector(d) -> bool:
+    """Find and tap the actual community picker overlay.
+
+    Jerboa renders the community picker as a full-width clickable box near the
+    bottom of the create-post form. The label text is not a reliable selector in
+    uiautomator2, so we use geometry from the rendered hierarchy instead.
     """
-    if d(text="Community").exists:
-        return True
+    width, height = d.window_size()
+    candidates: list[tuple[int, int, object]] = []
 
+    for node in d.xpath('//*[@clickable="true" and @enabled="true"]').all():
+        bounds = node.attrib.get("bounds")
+        if not bounds:
+            continue
+        parsed = _parse_bounds(bounds)
+        if not parsed:
+            continue
+        left_x, top_y, right_x, bottom_y = parsed
+        node_width = right_x - left_x
+        node_height = bottom_y - top_y
+
+        # Skip the top app bar action and unrelated side controls.
+        if top_y < height * 0.2:
+            continue
+        if node_width < width * 0.7:
+            continue
+        if not (40 <= node_height <= 140):
+            continue
+
+        candidates.append((top_y, left_x, node))
+
+    if not candidates:
+        return False
+
+    # The community picker is the lowest full-width clickable element in the form.
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    _, _, node = candidates[0]
+    try:
+        node.click()
+        return True
+    except Exception:
+        return False
+
+
+def _open_community_picker(d) -> bool:
+    """Scroll the create-post form until the community picker can be tapped."""
     scrollable = d(scrollable=True)
     if not scrollable.exists:
         return False
 
-    try:
-        scrollable.scroll.to(text="Community")
-    except Exception:
-        pass
-
-    if d(text="Community").exists:
-        return True
-
-    for _ in range(6):
+    for _ in range(8):
+        if _click_community_selector(d):
+            return True
         try:
-            scrollable.scroll.vert.forward(steps=20)
+            scrollable.scroll.vert.forward(steps=30)
         except Exception:
             break
-        if d(text="Community").exists:
-            return True
 
-    return d(text="Community").exists
+    return _click_community_selector(d)
 
 
 def main() -> int:
@@ -137,6 +168,7 @@ def main() -> int:
         if not d(text="Create post").wait(timeout=25):
             _log("Create post screen not detected")
             return 1
+        wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
         # Fail-closed: require evidence that the share body actually landed on-screen.
         marker = body[:16]
@@ -145,12 +177,10 @@ def main() -> int:
             return 1
 
         # Select a community (required for formValid).
-        if not _bring_community_field_into_view(d):
+        if not _open_community_picker(d):
             _log("Community selector not found")
             return 1
-
-        community_label = d(text="Community")
-        _tap_center(d, community_label)
+        wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
         # Community list: click the first reasonable entry.
         deadline = time.time() + 30
@@ -171,6 +201,7 @@ def main() -> int:
         if not clicked:
             _log("Failed to select a community")
             return 1
+        wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
         # Back on create post screen; click the create icon (content-desc is "TODO" in some builds).
         if not d(text="Create post").wait(timeout=15):
