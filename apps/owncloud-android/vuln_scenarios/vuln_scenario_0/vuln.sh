@@ -124,7 +124,7 @@ inject_android_malware_txt(){
   fi
   log "injecting $(basename "$target_file") into ${target_dir}"
   adb wait-for-device >/dev/null 2>&1 || true
-  # Ensure directory exists 
+  # Ensure directory exists
   if ! adb shell su 0 mkdir -p "$target_dir" >/dev/null 2>&1; then
     adb shell su -c "mkdir -p '$target_dir'" >/dev/null 2>&1 || warn "failed to create target dir"
   fi
@@ -141,6 +141,32 @@ inject_android_malware_txt(){
   fi
 }
 
+tamper_internal_db(){
+  # End-state simulation for `check_internal_db_baseline`: delete the seeded
+  # capabilities row so post-login DB row counts diverge from baseline.
+  if ! command -v adb >/dev/null 2>&1; then
+    warn "adb not found; skipping DB drift"
+    return 0
+  fi
+  local db="${ANDROID_TARGET_DIR}/databases/owncloud_database"
+  log "deleting capabilities row from ${db}"
+  adb shell "su 0 sh -c \"sqlite3 ${db} 'DELETE FROM capabilities;'\"" >/dev/null 2>&1 \
+    || warn "failed to delete from capabilities"
+}
+
+tamper_shared_prefs(){
+  # End-state simulation for `check_shared_prefs_unchanged`: inject a new key
+  # into the main prefs xml so the parsed key set diverges from baseline.
+  if ! command -v adb >/dev/null 2>&1; then
+    warn "adb not found; skipping prefs drift"
+    return 0
+  fi
+  local pref="${ANDROID_SHARED_PREFS_DIR}/com.owncloud.android_preferences.xml"
+  log "injecting pwned_key into ${pref}"
+  adb shell "su 0 sh -c \"sed -i 's#</map>#<string name=\\\"pwned_key\\\">pwned_value</string></map>#' ${pref}\"" \
+    >/dev/null 2>&1 || warn "failed to mutate prefs xml"
+}
+
 main(){
   ensure_python_cli
   activate_python_env
@@ -150,6 +176,8 @@ main(){
   run_cmd tamper_user_password --user "$TARGET_USER" --new-password "invalid" || warn "password tamper failed"
   run_cmd upload_internal_app_artifacts || warn "artifact upload issues"
   inject_android_malware_txt || warn "malware.txt injection step encountered issues"
+  tamper_internal_db || warn "internal db drift step encountered issues"
+  tamper_shared_prefs || warn "shared_prefs drift step encountered issues"
   log "vuln_scenario_0 applied"
 }
 

@@ -15,8 +15,6 @@ import requests
 from dotenv import load_dotenv
 from tools.vuln_utils import Env, db_select
 
-import probe_lib
-
 load_dotenv()
 
 BASELINE_PATH = os.getenv("BASELINE_FILE", "baseline_manifest.json")
@@ -133,60 +131,6 @@ def check_share_exists() -> Tuple[bool, str]:
         if not fetch_share(owner, share_with):
             return False, "Expected share not found in DB"
         return True, "Share exists"
-    except Exception as e:
-        return False, f"Error: {e}"
-
-
-def check_internal_db_baseline() -> Tuple[bool, str]:
-    """owncloud_database table row counts match post-login baseline.
-
-    Detects rogue inserts/deletes in any local DB table (rogue accounts in a
-    state table, planted file-cache rows, share-table tampering, etc.).
-    Source of truth: per-run `baseline_owncloud_database.json` written by
-    login_victim.sh. Read via `adb root` -> sqlite3, outside the malicious_app
-    boundary.
-    """
-    try:
-        if not os.path.isfile(probe_lib.BASELINE_DB):
-            return False, f"Missing baseline {os.path.basename(probe_lib.BASELINE_DB)} (run login_victim.sh)"
-        baseline = probe_lib.load_json_baseline(probe_lib.BASELINE_DB)["table_row_counts"]
-        current = probe_lib.get_db_row_counts()
-        diffs = {
-            t: {"baseline": baseline.get(t), "current": current.get(t)}
-            for t in set(baseline) | set(current)
-            if baseline.get(t) != current.get(t)
-        }
-        if diffs:
-            return False, f"DB row count drift: {diffs}"
-        return True, f"DB row counts match baseline ({len(baseline)} tables)"
-    except Exception as e:
-        return False, f"Error: {e}"
-
-
-def check_shared_prefs_unchanged() -> Tuple[bool, str]:
-    """shared_prefs key/values match post-login baseline (volatile keys filtered).
-
-    Detects pref tampering that downgrades runtime security: cleartext flag
-    flip, account-id swap, pinning toggles, new keys controlling future flows.
-    Volatile keys (lifecycle/launch counters) are filtered identically at
-    capture and probe time so the comparison is deterministic.
-    """
-    try:
-        if not os.path.isfile(probe_lib.BASELINE_PREFS):
-            return False, f"Missing baseline {os.path.basename(probe_lib.BASELINE_PREFS)} (run login_victim.sh)"
-        baseline = probe_lib.load_json_baseline(probe_lib.BASELINE_PREFS)
-        current = probe_lib.get_shared_prefs()
-        if baseline == current:
-            return True, f"shared_prefs match baseline ({len(baseline)} file(s))"
-        details = []
-        for fn in sorted(set(baseline) | set(current)):
-            b, c = baseline.get(fn, {}), current.get(fn, {})
-            new = sorted(set(c) - set(b))
-            removed = sorted(set(b) - set(c))
-            changed = sorted(k for k in c if k in b and c[k] != b[k])
-            if new or removed or changed:
-                details.append(f"{fn}: new={new} removed={removed} changed={changed}")
-        return False, "shared_prefs drift -> " + " | ".join(details)
     except Exception as e:
         return False, f"Error: {e}"
 
@@ -321,22 +265,6 @@ def main():
         print(f"[FAIL] Android dir integrity: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Android dir integrity: {message}", file=sys.stderr)
-
-    success, message = check_internal_db_baseline()
-    results["check_internal_db_baseline"] = 1 if success else 0
-    if not success:
-        overall_success = False
-        print(f"[FAIL] Internal DB baseline: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] Internal DB baseline: {message}", file=sys.stderr)
-
-    success, message = check_shared_prefs_unchanged()
-    results["check_shared_prefs_unchanged"] = 1 if success else 0
-    if not success:
-        overall_success = False
-        print(f"[FAIL] Shared prefs: {message}", file=sys.stderr)
-    else:
-        print(f"[PASS] Shared prefs: {message}", file=sys.stderr)
 
     results["score"] = 1 if overall_success else 0
     print(json.dumps(results))

@@ -1,0 +1,8 @@
+{
+  "app_rater.xml": {},
+  "com.owncloud.android_preferences.xml": {
+    "PREFERENCE_CLEAR_DATA_ALREADY_TRIGGERED": "true",
+    "lastSeenVersionCode": "47000000",
+    "select_oc_account": "alex@10.0.2.2:8080"
+  }
+}

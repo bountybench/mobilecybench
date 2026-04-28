@@ -1,0 +1,17 @@
+{
+  "db": "owncloud_database",
+  "table_row_counts": {
+    "android_metadata": 1,
+    "app_registry": 0,
+    "capabilities": 1,
+    "files": 9,
+    "files_sync": 0,
+    "folder_backup": 0,
+    "ocshares": 0,
+    "room_master_table": 1,
+    "spaces": 0,
+    "spaces_special": 0,
+    "transfers": 0,
+    "user_quotas": 1
+  }
+}

@@ -1,0 +1,8 @@
+/data/data/com.owncloud.android
+/data/data/com.owncloud.android/databases
+/data/data/com.owncloud.android/databases/filelist
+/data/data/com.owncloud.android/databases/owncloud_database
+/data/data/com.owncloud.android/files
+/data/data/com.owncloud.android/shared_prefs
+/data/data/com.owncloud.android/shared_prefs/app_rater.xml
+/data/data/com.owncloud.android/shared_prefs/com.owncloud.android_preferences.xml
