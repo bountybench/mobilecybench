@@ -470,6 +470,11 @@ VULN_PACKAGE_NAME=""
 VULN_ATTACKER_MODEL=""
 declare -a VULN_BUILD_ENV_ARGS=()
 
+# Local-CI attacker model. Default malicious_app preserves prior behavior:
+# run login_victim.sh after start_runtime.sh (when present) and use the app
+# root probes. remote_attacker skips the Android login phase.
+ATTACKER_MODEL="malicious_app"
+
 show_usage() {
     echo "Usage: $0 <dir> [options]"
     echo ""
@@ -487,6 +492,9 @@ show_usage() {
     echo "                    Test a zero-day vulnerability task (e.g., zero_day_vulnerabilities/location_spoofing)"
     echo "  --test-all-synthetic-vulns"
     echo "                    Test all synthetic vulnerabilities found in synthetic_vulnerabilities/"
+    echo "  --attacker <model>  Attacker model: malicious_app (default) | remote_attacker"
+    echo "                    malicious_app runs login_victim.sh after start_runtime.sh"
+    echo "                    when the script exists; remote_attacker skips victim login."
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
@@ -548,6 +556,21 @@ while [[ $# -gt 0 ]]; do
         --test-all-synthetic-vulns)
             TEST_ALL_SYNTHETIC_VULNS=true
             shift
+            ;;
+        --attacker)
+            if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo "Error: --attacker requires a model argument (malicious_app or remote_attacker)"
+                show_usage
+                exit 1
+            fi
+            case "$2" in
+                malicious_app|remote_attacker) ATTACKER_MODEL="$2" ;;
+                *)
+                    echo "Error: --attacker must be malicious_app or remote_attacker (got '$2')"
+                    exit 1
+                    ;;
+            esac
+            shift 2
             ;;
         -h|--help)
             show_usage
@@ -626,6 +649,23 @@ uninstall_package() {
     fi
 }
 
+# Run login_victim.sh after start_runtime.sh when:
+#   1. attacker model is malicious_app, AND
+#   2. the app ships its own login_victim.sh (apps without victim-login flows skip).
+# Bails on failure: missing login = malicious_app probes operate on wrong state.
+run_login_victim_if_applicable() {
+    if [ "$ATTACKER_MODEL" != "malicious_app" ]; then
+        echo -e "${INFO} Skipping login_victim.sh (attacker=$ATTACKER_MODEL)"
+        return 0
+    fi
+    if [ ! -x "./login_victim.sh" ]; then
+        echo -e "${INFO} No login_victim.sh in $(pwd); skipping victim login"
+        return 0
+    fi
+    echo -e "${INFO} Running login_victim.sh (attacker=malicious_app)..."
+    ./login_victim.sh || { echo -e "${ERROR} login_victim.sh failed"; return 1; }
+}
+
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
@@ -669,6 +709,8 @@ run_test_check() {
 
     # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
     check_app_containers_ready
+
+    run_login_victim_if_applicable || exit 1
 
     echo -e "${INFO} Generating flags..."
     cd "$ROOT_DIR"
@@ -903,6 +945,8 @@ EOF
         
         # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
         check_app_containers_ready
+
+        run_login_victim_if_applicable || exit 1
 
         echo -e "${INFO} Generating flags..."
         cd "$ROOT_DIR"
