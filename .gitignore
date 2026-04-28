@@ -1,6 +1,10 @@
 setup.log
 .DS_Store
 *.apk
+**/.build/
+**/*.class
+**/*.dex
+**/*.idsig
 .venv/
 venv/
 pycache/
