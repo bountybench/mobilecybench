@@ -921,29 +921,12 @@ def _load_claude_code_auth() -> Tuple[Dict[str, str], Optional[str]]:
             }
         }
         logger.warning(
-            "\n"
-            "================================================================\n"
-            "  LEGACY OAuth path active (rotating subscription pair).\n"
-            "  CLAUDE_CODE_OAUTH_REFRESH_TOKEN is set in agent/.env.\n"
-            "\n"
-            "  This path REFRESHES the token pair on first inference, which\n"
-            "  invalidates the pair for every other Claude Code client on\n"
-            "  this Anthropic account (including any interactive `claude`\n"
-            "  session). If you use Claude Code interactively while this run\n"
-            "  is in flight, the run will die with HTTP 401.\n"
-            "\n"
-            "  *** If you just ran `claude setup-token` and pasted the new\n"
-            "      token into CLAUDE_CODE_OAUTH_TOKEN: you ALSO need to\n"
-            "      DELETE the CLAUDE_CODE_OAUTH_REFRESH_TOKEN line from\n"
-            "      agent/.env. Otherwise this code stays on the legacy path\n"
-            "      with a stale refresh token and the run will 401. ***\n"
-            "\n"
-            "  To migrate cleanly:\n"
-            "    1. claude setup-token                  # prints a token\n"
-            "    2. Edit agent/.env so it has ONLY:\n"
-            "         CLAUDE_CODE_OAUTH_TOKEN=<paste>\n"
-            "       (no CLAUDE_CODE_OAUTH_REFRESH_TOKEN line at all)\n"
-            "================================================================"
+            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN is set in agent/.env, so the "
+            "legacy rotating-pair OAuth path is active. This rotates tokens "
+            "globally and will 401 if you use Claude Code interactively "
+            "during a run. To switch to the recommended path: run "
+            "`claude setup-token`, paste into CLAUDE_CODE_OAUTH_TOKEN, and "
+            "DELETE the CLAUDE_CODE_OAUTH_REFRESH_TOKEN line."
         )
         return {}, json.dumps(creds)
 
