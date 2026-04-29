@@ -21,7 +21,7 @@ DEFAULT_METADATA = os.path.join(SCRIPT_DIR, "metadata.json")
 
 
 def log(message):
-    print(f"[login_victim] {message}", file=sys.stderr, flush=True)
+    print(f"[prepare_victim] {message}", file=sys.stderr, flush=True)
 
 
 def wait_until(check, timeout=30, interval=0.5):

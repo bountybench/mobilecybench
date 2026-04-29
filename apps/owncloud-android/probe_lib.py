@@ -5,7 +5,7 @@ Single source of truth for:
 - volatility filters that keep baselines stable across runs,
 - baseline file paths.
 
-`login_victim.py` calls the same `get_*` functions to write baselines that probes
+`prepare_victim.py` calls the same `get_*` functions to write baselines that probes
 later compare against, so capture and probe see byte-identical state shape.
 """
 

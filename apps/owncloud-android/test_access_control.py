@@ -203,13 +203,13 @@ def check_no_rogue_accountmanager_account() -> Tuple[bool, str]:
     or via an unprotected account broadcast). Rogue accounts redirect future
     syncs to attacker-controlled servers, so any drift -> attack.
     Source of truth: per-run `baseline_accountmanager.json` written by
-    login_victim.sh from a privileged `dumpsys account` read.
+    prepare_victim.sh from a privileged `dumpsys account` read.
     """
     try:
         if not os.path.isfile(probe_lib.BASELINE_ACCT):
             return (
                 False,
-                f"Missing baseline {os.path.basename(probe_lib.BASELINE_ACCT)} (run login_victim.sh)",
+                f"Missing baseline {os.path.basename(probe_lib.BASELINE_ACCT)} (run prepare_victim.sh)",
             )
         baseline_accts = set(
             probe_lib.load_json_baseline(probe_lib.BASELINE_ACCT)["accounts"]

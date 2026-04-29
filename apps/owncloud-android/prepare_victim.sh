@@ -2,4 +2,4 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-python3 "$SCRIPT_DIR/login_victim.py" "$@"
+python3 "$SCRIPT_DIR/prepare_victim.py" "$@"
