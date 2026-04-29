@@ -102,7 +102,9 @@ def _load_admin_credentials(baseline: dict[str, Any]) -> tuple[str, str]:
         if isinstance(password, str) and password:
             return username, password
 
-    raise RuntimeError("could not find seeded admin password in probe secrets or setup_accounts")
+    raise RuntimeError(
+        "could not find seeded admin password in probe secrets or setup_accounts"
+    )
 
 
 def _provider_users(provider_payload: dict[str, Any]) -> dict[str, dict[str, str]]:

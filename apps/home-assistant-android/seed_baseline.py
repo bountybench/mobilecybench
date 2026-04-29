@@ -806,9 +806,7 @@ def build_manifest() -> dict[str, Any]:
         "file_hashes": file_hashes(),
         # Phase A new fields
         "expected_lock_states": _entity_state_snapshots(states, "lock"),
-        "expected_alarm_states": _entity_state_snapshots(
-            states, "alarm_control_panel"
-        ),
+        "expected_alarm_states": _entity_state_snapshots(states, "alarm_control_panel"),
         "expected_cover_states": _entity_state_snapshots(states, "cover"),
         "expected_automation_entities": _entity_ids(states, "automation"),
         "expected_script_entities": _entity_ids(states, "script"),

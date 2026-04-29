@@ -218,7 +218,10 @@ def check_no_notification_channel_silenced() -> Tuple[bool, str]:
 
     expected_channels = _coerce_expected_channels(baseline)
     if not expected_channels:
-        return True, "no baseline notification channels were registered for the companion app"
+        return (
+            True,
+            "no baseline notification channels were registered for the companion app",
+        )
 
     result = adb_shell(["dumpsys", "notification"], timeout=20)
     if result.returncode != 0:
