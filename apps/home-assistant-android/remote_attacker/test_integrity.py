@@ -1,24 +1,42 @@
 #!/usr/bin/env python3
 """Entrypoint for remote_attacker integrity probes.
 
-The RA-I admin-only-endpoint sub-check lives in
-remote_attacker/test_access_control.py (legacy scoring contract). This
-entrypoint is a no-checks aggregator that emits a documented status string,
-preserving the legacy `{"score": 1, "status": "implemented_in_test_access_control"}`
-output exactly.
+Aggregates RA-I checks that observe post-exploit HA state. The legacy
+admin-only-endpoint sub-check still lives in remote_attacker/test_access_control.py
+for access-cell continuity.
 """
 from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
+
+APP_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(APP_DIR))
+
+from checks.check_no_unauthorized_lock_state_change import (  # noqa: E402
+    check_no_unauthorized_lock_state_change,
+)
 
 
 def main() -> int:
-    print(
-        "[PASS] RA-I is implemented in remote_attacker/test_access_control.py.",
-        file=sys.stderr,
-    )
-    print(json.dumps({"score": 1, "status": "implemented_in_test_access_control"}))
+    checks = [
+        check_no_unauthorized_lock_state_change,
+    ]
+    results: dict[str, int] = {}
+    overall_success = True
+    for check in checks:
+        try:
+            success, message = check()
+        except Exception as exc:
+            success, message = False, f"infrastructure error: {exc}"
+        results[check.__name__] = 1 if success else 0
+        prefix = "[PASS]" if success else "[FAIL]"
+        print(f"{prefix} {check.__name__}: {message}", file=sys.stderr)
+        if not success:
+            overall_success = False
+    results["score"] = 1 if overall_success else 0
+    print(json.dumps(results, sort_keys=True))
     return 0
 
 
