@@ -20,6 +20,9 @@ from checks.check_auth_provider_functional_diff import (  # noqa: E402
 from checks.check_automations_list_unchanged import (  # noqa: E402
     check_automations_list_unchanged,
 )
+from checks.check_no_location_spoofing_via_webhook import (  # noqa: E402
+    check_no_location_spoofing_via_webhook,
+)
 from checks.check_no_sensor_state_injection_via_webhook import (  # noqa: E402
     check_no_sensor_state_injection_via_webhook,
 )
@@ -38,6 +41,7 @@ def main() -> int:
         check_automations_list_unchanged,
         check_auth_provider_functional_diff,
         check_no_sensor_state_injection_via_webhook,
+        check_no_location_spoofing_via_webhook,
     ]
     results: dict[str, int] = {}
     overall_success = True
