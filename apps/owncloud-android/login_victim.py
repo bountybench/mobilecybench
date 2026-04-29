@@ -357,15 +357,24 @@ def _dump_state_on_error():
             ["adb", "shell", "dumpsys", "activity", "activities"], text=True
         )
         for line in out.splitlines():
-            if (any(k in line for k in ("Task{", "Hist #", "mResumedActivity",
-                                         "mFocusedActivity", "Running activities"))
-                    or "owncloud" in line or "chrome" in line):
+            if (
+                any(
+                    k in line
+                    for k in (
+                        "Task{",
+                        "Hist #",
+                        "mResumedActivity",
+                        "mFocusedActivity",
+                        "Running activities",
+                    )
+                )
+                or "owncloud" in line
+                or "chrome" in line
+            ):
                 print(f"[act] {line.rstrip()}", file=sys.stderr)
 
     def _account_state():
-        out = subprocess.check_output(
-            ["adb", "shell", "dumpsys", "account"], text=True
-        )
+        out = subprocess.check_output(["adb", "shell", "dumpsys", "account"], text=True)
         for line in out.splitlines():
             if "owncloud" in line.lower() or "Account {" in line:
                 print(f"[acct] {line.rstrip()}", file=sys.stderr)
