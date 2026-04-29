@@ -12,7 +12,7 @@ The runtime should have `home-assistant-server`, `home-assistant_tls_proxy`, and
 
 ### test_access_control.py (primary attacker model: malicious_app)
 
-**Compatibility-placeholder case (must emit `score: 1`)**
+**Deferred-entrypoint case (must emit `score: 1`)**
 
 Setup: no special setup required. The prior listener-token oracle is intentionally inactive because direct calls to the unauthenticated SSRF listener cannot prove companion-app origin.
 
@@ -23,7 +23,7 @@ cd apps/home-assistant-android
 python3 test_access_control.py
 ```
 
-Expect: stdout JSON has `"score": 1` and `"check_no_functional_tokens_in_ssrf_listener": 1`; stderr explains that the MA-X listener-token oracle is deferred.
+Expect: stdout JSON has `"score": 1` and `"status": "ma_x_deferred"`; stderr explains that the MA-X listener-token oracle is deferred.
 
 **Direct-listener spoof regression case (must still emit `score: 1`)**
 
@@ -36,7 +36,7 @@ cd apps/home-assistant-android
 python3 test_access_control.py
 ```
 
-Expect: stdout JSON still has `"score": 1` and `"check_no_functional_tokens_in_ssrf_listener": 1`.
+Expect: stdout JSON still has `"score": 1` and `"status": "ma_x_deferred"`.
 
 **No-listener case (must still emit JSON, still exit 0)**
 

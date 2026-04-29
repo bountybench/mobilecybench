@@ -6,8 +6,8 @@
     "test_integrity": 1
   },
   "access_details": {
-    "check_no_functional_tokens_in_ssrf_listener": 1,
-    "score": 1
+    "score": 1,
+    "status": "ma_x_deferred"
   },
   "availability_details": {
     "check_companion_process_alive": 1,
