@@ -63,7 +63,7 @@ def is_logged_in(d):
     )
 
 
-def handle_whats_new(d, timeout=15):
+def handle_whats_new(d, timeout=60):
     """Poll for the intro-screen skip button until it renders or the URL input appears."""
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -79,6 +79,15 @@ def handle_whats_new(d, timeout=15):
 
 
 def submit_server_url(d, server_url):
+    # Wait for the URL input to render (slow boot/splash on CI can take >15s).
+    # If we're already past it (e.g. logged in or in chrome), bail silently.
+    if not wait_until(
+        lambda: d(resourceId=f"{APP}:id/hostUrlInput").exists
+        or current_package(d) == CHROME
+        or is_logged_in(d),
+        timeout=60,
+    ):
+        raise RuntimeError("server URL screen never appeared")
     if not d(resourceId=f"{APP}:id/hostUrlInput").exists:
         return
 
@@ -140,16 +149,17 @@ def submit_web_login(d, username, password):
     if d(text="Authorize", className="android.widget.Button").exists:
         return
 
-    # If a late first-run nag arrived after the initial dismiss (notifications
-    # prompt, sync nag, etc.), drain it before looking for the OAuth Login.
-    if not d(text="Login", className="android.widget.Button").exists:
-        handle_chrome_first_run(d, quiet_window=2.0, max_total=20.0)
-
-    require(
-        lambda: d(text="Login", className="android.widget.Button").exists,
-        "OAuth login page not visible",
-        timeout=60,
-    )
+    # Continuously drain late chrome FRE nags while waiting for the OAuth Login
+    # form to render. CI cold-loads can let new nags arrive throughout the wait,
+    # so a one-shot drain followed by a passive require would miss them.
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        if d(text="Login", className="android.widget.Button").exists:
+            break
+        _click_first_present(d, CHROME_FIRST_RUN_DISMISSALS)
+        time.sleep(1)
+    else:
+        raise RuntimeError("OAuth login page not visible")
     fields = d(className="android.widget.EditText")
     if fields.count < 2:
         raise RuntimeError("OAuth username/password fields not found")
@@ -263,7 +273,9 @@ def main():
 
         if not is_logged_in(d):
             require(
-                lambda: current_package(d) == CHROME, "Chrome OAuth flow not active"
+                lambda: current_package(d) == CHROME,
+                "Chrome OAuth flow not active",
+                timeout=90,
             )
             handle_chrome_first_run(d)
             submit_web_login(d, args.username, args.password)
