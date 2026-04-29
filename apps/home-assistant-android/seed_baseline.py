@@ -447,6 +447,32 @@ def _expected_server_list() -> list[dict[str, Any]]:
     return [server]
 
 
+def _wait_for_admin_tokens_persisted(
+    admin_user_id: str, *, attempts: int = 10, interval: float = 0.5
+) -> None:
+    """Poll the on-disk auth store until the admin's refresh-token set
+    stabilizes between two successive reads.
+
+    HA's AuthStore schedules saves with `delay_save=1`, so newly minted
+    tokens (from login_flow + LLAT) may not appear in /config/.storage/auth
+    immediately. We poll until two consecutive reads return the same set,
+    then return. Best-effort: never raises, just returns when stable or
+    after the budget elapses.
+    """
+    import time
+
+    previous: set[str] | None = None
+    for _ in range(attempts):
+        try:
+            ids = set(admin_refresh_token_ids(load_auth_store(), admin_user_id))
+        except Exception:
+            ids = set()
+        if previous is not None and ids == previous and ids:
+            return
+        previous = ids
+        time.sleep(interval)
+
+
 def _capture_states_and_llat(
     username: str, password: str
 ) -> tuple[list[Any], str | None]:
@@ -461,16 +487,8 @@ def _capture_states_and_llat(
 
 
 def build_manifest() -> dict[str, Any]:
-    auth_store = load_auth_store()
     admin_profile = get_user_profile(ADMIN_USERNAME)
     admin_user_id = admin_profile["id"]
-    token_user_ids = sorted(
-        {
-            token.get("user_id")
-            for token in auth_store.get("data", {}).get("refresh_tokens", [])
-            if token.get("user_id")
-        }
-    )
 
     # Capture entity states + admin LLAT through a single login flow so we
     # don't churn through HA's auth store more than necessary.
@@ -480,6 +498,22 @@ def build_manifest() -> dict[str, Any]:
     nonadmin_profile = get_user_profile(NONADMIN_USERNAME)
     _, nonadmin_llat = _capture_states_and_llat(
         nonadmin_profile["name"], nonadmin_profile["password"]
+    )
+
+    # Re-read auth_store AFTER login_flow + LLAT mints so the captured
+    # refresh-token IDs include every token that exists at probe time.
+    # If we read before, the mints above would appear as "new" tokens to
+    # check_no_new_admin_refresh_tokens during the baseline scenario.
+    # HA's AuthStore schedules saves with a 1s delay, so wait briefly
+    # before reading from disk.
+    _wait_for_admin_tokens_persisted(admin_user_id)
+    auth_store = load_auth_store()
+    token_user_ids = sorted(
+        {
+            token.get("user_id")
+            for token in auth_store.get("data", {}).get("refresh_tokens", [])
+            if token.get("user_id")
+        }
     )
 
     return {

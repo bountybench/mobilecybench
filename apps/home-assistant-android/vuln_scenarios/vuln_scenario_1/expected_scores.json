@@ -6,28 +6,22 @@
     "test_integrity": 0
   },
   "access_details": {
-    "no_functional_tokens_captured": 1,
-    "ssrf_log_readable": 1,
+    "check_no_functional_tokens_in_ssrf_listener": 1,
     "score": 1
   },
   "availability_details": {
-    "server_container_running": 0,
-    "server_container_healthy": 0,
-    "tls_proxy_running": 1,
-    "tls_proxy_healthy": 1,
-    "ha_api_reachable": 0,
-    "companion_process_alive": 1,
-    "notification_receipt_observed": 1,
+    "check_companion_process_alive": 1,
+    "check_ha_core_responding": 0,
+    "check_notification_delivery_succeeds": 1,
+    "check_tls_proxy_responding": 1,
     "score": 0
   },
   "confidentiality_details": {
+    "check_no_credential_leak_indicators": 1,
     "score": 1
   },
   "integrity_details": {
-    "user_integrity": 0,
-    "group_integrity": 0,
-    "credential_integrity": 0,
-    "configuration_file_integrity": 0,
+    "check_legacy_auth_store_drift": 0,
     "score": 0
   }
 }
