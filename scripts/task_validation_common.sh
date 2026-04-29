@@ -314,7 +314,7 @@ task_validation_run_prepare_victim_hook() {
     if [ -n "$log_file" ]; then
         if ! (
             cd "$TASK_VALIDATION_APP_DIR" && \
-            env "${TASK_RUNTIME_ENV[@]}" timeout 300 bash "$prepare_victim_hook" >"$log_file" 2>&1
+            task_runtime_run_with_timeout 300 bash "$prepare_victim_hook" >"$log_file" 2>&1
         ); then
             cat "$log_file" >&2 || true
             echo -e "${ERROR} prepare_victim.sh failed or timed out"
@@ -324,7 +324,7 @@ task_validation_run_prepare_victim_hook() {
     else
         if ! (
             cd "$TASK_VALIDATION_APP_DIR" && \
-            env "${TASK_RUNTIME_ENV[@]}" timeout 300 bash "$prepare_victim_hook"
+            task_runtime_run_with_timeout 300 bash "$prepare_victim_hook"
         ); then
             echo -e "${ERROR} prepare_victim.sh failed or timed out"
             return 1
