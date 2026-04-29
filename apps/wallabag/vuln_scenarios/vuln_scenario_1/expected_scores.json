@@ -7,10 +7,11 @@
   },
   "access_details": {
     "check_container_running": 0,
-    "check_unauthorized_admins": 0,
+    "check_expected_usernames": 0,
     "check_victim_not_escalated": 0,
     "check_agentuser_not_escalated": 0,
-    "check_expected_user_count": 0,
+    "check_connection_prefs": 0,
+    "check_deeplink_rejects_attack_url": 0,
     "check_auth_enforcement": 0,
     "score": 0,
     "status": "compromised"
@@ -31,7 +32,7 @@
     "check_container_running": 0,
     "check_user_count": 0,
     "check_admin_count": 0,
-    "check_no_fake_users": 0,
+    "check_expected_usernames": 0,
     "check_victim_article_count": 0,
     "check_victim_state_fingerprint": 0,
     "score": 0,
