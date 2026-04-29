@@ -382,8 +382,25 @@ sign_apk() {
 
     # Find apksigner
     local apksigner=""
+
     if [[ -d "$ANDROID_HOME/build-tools" ]]; then
-        apksigner=$(find "$ANDROID_HOME/build-tools" -name "apksigner" -type f 2>/dev/null | sort -V | tail -1)
+        # apksigner is apksigner.bat on Windows, apksigner elsewhere
+        local binary_name="apksigner"
+        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+            binary_name="apksigner.bat"
+        fi
+
+        # sort -V (version sort) isn't available on Windows — use a Python one-liner
+        # instead, which is guaranteed present alongside Android Studio / SDK tooling
+        apksigner=$(find "$ANDROID_HOME/build-tools" -name "$binary_name" -type f 2>/dev/null \
+            | python3 -c "
+    import sys, re
+    lines = sys.stdin.read().splitlines()
+    def ver(p):
+        m = re.search(r'[\\/]([\d.]+)[\\/]', p)
+        return [int(x) for x in m.group(1).split('.')] if m else [0]
+    print(sorted(lines, key=ver)[-1] if lines else '')
+    ")
     fi
 
     if [[ -z "$apksigner" ]]; then
