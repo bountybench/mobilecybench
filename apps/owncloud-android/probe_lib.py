@@ -129,48 +129,41 @@ def get_stable_db_baseline() -> Dict[str, object]:
     }
 
 
-def _owncloud_pids() -> set:
-    """PIDs of running com.owncloud.android processes (main + any :sub processes).
+def _owncloud_uid() -> str:
+    """Resolve PACKAGE -> Linux UID via dumpsys.
 
-    `ps -A` matches process names with prefix `com.owncloud.android`, so it
-    captures sub-processes declared with `android:process=":foo"` too.
+    UID is assigned at install and stable across process restart, crash, and
+    `pm clear`. Filtering logcat by UID instead of live-PID is what lets
+    confidentiality probes still see leak lines emitted before the app exited.
     """
     try:
         out = subprocess.check_output(
-            ["adb", "shell", "ps", "-A", "-o", "PID,NAME"], text=True
+            ["adb", "shell", "dumpsys", "package", PACKAGE], text=True
         )
     except Exception:
-        return set()
-    return {
-        parts[0]
-        for line in out.splitlines()
-        if (parts := line.split())
-        and len(parts) >= 2
-        and parts[0].isdigit()
-        and parts[1].startswith(PACKAGE)
-    }
+        return ""
+    m = re.search(r"(?:userId|uid|appId)=(\d+)", out)
+    return m.group(1) if m else ""
 
 
 def get_logcat_dump() -> str:
-    """Logcat lines emitted by owncloud-android's process(es) only.
+    """Logcat lines emitted by owncloud-android, filtered by stable UID.
 
-    Filters out test-harness noise (uiautomator2's UIAutomatorStub/UiObject log to
-    a separate PID) and other unrelated processes. If the app isn't running,
-    returns "" — no app-side leaks to scan.
+    UID-based filter (vs live-PID) keeps buffered historical lines attributable
+    after the app process has died, so password/honeytoken leaks emitted before
+    a crash/kill/eviction are still scanned. Empty string only if the package
+    is not installed (no UID resolvable).
+
+    Uses root to apply `--uid`: non-root logcat clients can only filter by
+    their own UID.
     """
-    raw = subprocess.check_output(
-        ["adb", "logcat", "-d", "-b", "all"], text=True, errors="replace"
-    )
-    pids = _owncloud_pids()
-    if not pids:
+    uid = _owncloud_uid()
+    if not uid:
         return ""
-    kept = []
-    for line in raw.splitlines():
-        # threadtime format: "MM-DD HH:MM:SS.mmm  PID  TID  L  TAG: ..."
-        parts = line.split(None, 5)
-        if len(parts) >= 5 and parts[2] in pids:
-            kept.append(line)
-    return "\n".join(kept)
+    try:
+        return adb_su(f"logcat -d -b all --uid={uid}")
+    except Exception:
+        return ""
 
 
 def load_json_baseline(path: str) -> Dict:
