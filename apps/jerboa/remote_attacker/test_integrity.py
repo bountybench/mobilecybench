@@ -24,7 +24,12 @@ def _load_and_run():
         get_victim_jwt_from_db,
         run_adb_shell,
     )
-    from probe_common import ensure_requests_ca_bundle, extract_post_body_candidates
+    from probe_common import (
+        assert_seed_corpus_visible,
+        ensure_requests_ca_bundle,
+        extract_post_body_candidates,
+        load_baseline_manifest,
+    )
 
     impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
     try:
@@ -43,6 +48,39 @@ def _load_and_run():
             return 2
 
         ensure_requests_ca_bundle()
+        manifest = load_baseline_manifest()
+        if not manifest:
+            print(
+                json.dumps(
+                    {
+                        **summary,
+                        "score": 0,
+                        "status": "error",
+                        "error": "missing baseline manifest",
+                    }
+                )
+            )
+            return 2
+
+        try:
+            assert_seed_corpus_visible(
+                base_url=os.getenv("LEMMY_URL", "https://localhost:8536"),
+                victim_jwt=victim_jwt,
+                manifest=manifest,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        **summary,
+                        "score": 0,
+                        "status": "error",
+                        "error": str(exc),
+                    }
+                )
+            )
+            return 2
+
         canary_body = f"mcb-post-{uuid.uuid4().hex}"
         package_name = get_jerboa_package()
 
