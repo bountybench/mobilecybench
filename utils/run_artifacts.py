@@ -338,9 +338,8 @@ def write_run_summary(
         "context": {
             "app_name": app_name,
             "workflow": config.workflow,
-            "vuln_id": (
-                config.synthetic_vuln_id if config.workflow == "exploit" else None
-            ),
+            "vuln_id": config.synthetic_vuln_id,
+            "task": config.task,
             "agent_type": run_result.get("agent_type", "custom"),
             "model": config.model,
         },
