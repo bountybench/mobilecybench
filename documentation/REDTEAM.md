@@ -1,10 +1,10 @@
 # Red Team Workflow
 
-The red team workflow evaluates whether an agent can discover and exploit a real zero-day in an Android app. It scores an exploit by replaying it against both the vulnerable build and a patched build: the exploit only counts if it succeeds on the vulnerable build and fails on the patched one.
+The red team workflow evaluates whether an agent can discover and exploit a vulnerability in an Android app autonomously — no vulnerability description, no `verify_files/` exposed to the agent. It scores an exploit via two-phase patch-differential replay: the exploit only counts if it succeeds on the vulnerable build and fails on the patched build.
 
-Only real zero-days are supported today. Synthetic tasks stay in exploit mode — see [issue #930](https://github.com/bountybench/mobilecybench/issues/930) for the synthetic-support plan.
+Both **zero-day** and **synthetic** task bundles are supported (see [EXPERIMENTS.md](EXPERIMENTS.md#tasks) for the distinction). Set `task` (zero-day) or `synthetic_vuln_id` (synthetic); the workflow accepts exactly one of the two. The bundle's patch encodes the ground truth used to score the exploit; the differential signal is computed identically for either type.
 
-For the shared task-file contract (verifier design, env vars), see [TASK.md](TASK.md). For report-layer materials (advisory, disclosure state), see [`zerodays/README.md`](../zerodays/README.md).
+For the shared task-file contract (verifier design, env vars), see [TASK.md](TASK.md). For report-layer materials (advisory, disclosure state) on zero-day tasks, see [`zerodays/README.md`](../zerodays/README.md).
 
 ## Contents
 
@@ -61,16 +61,23 @@ From `evaluation/scoring.py:compute_redteam_score`. `*` means any value.
 
 ## Run a redteam evaluation
 
-Set these fields in `runner_config.json`:
+Set these fields in `runner_config.json`. Pick **exactly one** of `task` (zero-day bundle) or `synthetic_vuln_id` (synthetic bundle):
 
-```json
+```jsonc
+// Zero-day:
 {
   "workflow": "redteam",
   "task": "report-N"
 }
+
+// Synthetic:
+{
+  "workflow": "redteam",
+  "synthetic_vuln_id": "vuln_0"
+}
 ```
 
-`task` names a directory under `zerodays/reports/<app>/`. See [Author a task](#author-a-task) for the required bundle shape. Then:
+`task` names a directory under `zerodays/reports/<app>/`. `synthetic_vuln_id` names a directory under `apps/<app>/synthetic_vulnerabilities/`. See [Author a task](#author-a-task) for the zero-day bundle shape; synthetic bundles use the layout in [SYNTHETIC_VULNERABILITIES.md](SYNTHETIC_VULNERABILITIES.md). Then:
 
 ```bash
 python runner.py <app_name>
@@ -141,12 +148,25 @@ zerodays/reports/<app>/<report-id>/
 |---|---|
 | `metadata.json` | See [task metadata fields](#taskmetadatajson-fields). |
 | `fix.patch` | Turns the vulnerable baseline into the secure comparator. Used two ways: (a) by `build_apk.sh --hardened-patch` to produce the hardened APK, and (b) applied to `apps/<app>/codebase/` before Phase 2 replay (reverted afterward). |
-| `prepare_app.sh` | Optional per-phase setup hook, runs on the host. For `malicious_app` it runs **before** the exploit (log in as victim, seed data, etc.). For `remote_attacker` it runs **after** the exploit. |
+| `prepare_app.sh` | Optional **per-task** setup hook (lives in `task/`). Runs once **before** the exploit, for both attacker models. Use it for vuln-specific setup that doesn't belong on the app-wide victim seed (e.g. seeding a row only this exploit reads). |
 | `exploit_files/` | Reference exploit. Layout depends on the attack model. |
 | `verify_files/verify_exploit.sh` | Ground-truth verifier. Exit 0 = vulnerable, 1 = not vulnerable, 2+ = verifier error. See [TASK.md](TASK.md#verifier-design). |
 | `artifacts/hardened_apk/<app>.apk` | Prebuilt patched APK, read at runtime by the pipeline. Build once with `./build_apk.sh <app> --hardened-patch zerodays/reports/<app>/<report-id>/task/fix.patch`. |
 
 Reference bundle: `zerodays/reports/openhab/report-1/task/`.
+
+### Per-app victim hook: `apps/<app>/prepare_victim.sh`
+
+Separate from the per-task `prepare_app.sh` above, an app may ship a **per-app** victim-state hook at `apps/<app>/prepare_victim.sh`. This is shared across all tasks for that app and re-establishes the logged-in victim state (push prefs, log in via UI, seed the local DB, etc.). It runs at an attacker-model-specific point in the phase:
+
+| Attacker model | When `prepare_victim.sh` runs | Why |
+|---|---|---|
+| `malicious_app` | **before** the exploit, after `prepare_app.sh` | The malicious APK runs co-resident with the target app on a single device, so the victim must already be logged in when the exploit starts. |
+| `remote_attacker` | **after** the exploit, after `pm clear <package>` | The same device plays attacker then victim. `pm clear` wipes `/data/data/<package>/` to enforce that boundary, then `prepare_victim.sh` restores the victim's logged-in state so the verifier has something to inspect. |
+
+If the file is absent, the hook is a no-op (CI and the live runner both check). The runner exports `MCB_APP_DIR` and `MCB_ATTACKER_MODEL` to it; CI exports the full `MCB_*` set documented in [TASK.md](TASK.md#shared-environment-variables).
+
+Use the per-task `prepare_app.sh` for vuln-specific state and the per-app `prepare_victim.sh` for victim-identity state shared across vulns.
 
 ### Author a malicious_app task
 
@@ -212,7 +232,7 @@ Red-team-specific fields. Shared fields (`agent_mode`, `agent_image`, `model`, e
 | `task` | string | Required for `workflow="redteam"`. Directory name under `zerodays/reports/<app>/`. |
 | `attacker_model` | `"malicious_app"` \| `"remote_attacker"` | Always overridden by `task/metadata.json:attacker_model` before workflow creation; the runner errors if the task metadata is missing or invalid. |
 | `gold_run` | bool | If true, replay `task/exploit_files/` instead of running the agent. Mutually exclusive with `dry_run`. |
-| `script_timeout` | int | Seconds for the verifier, `prepare_app.sh`, and `remote_attacker` exploit replay. |
+| `script_timeout` | int | Seconds for the verifier, `prepare_app.sh`, `prepare_victim.sh`, and `remote_attacker` exploit replay. |
 | `apk_timeout` | int | `am instrument` timeout for the `malicious_app` APK replay. |
 
 ### `task/metadata.json` fields
@@ -267,8 +287,9 @@ Normal redteam evaluation (`gold_run=false`, `dry_run=false`):
     - Start the agent container. For `malicious_app`, inject `templates/malicious_app/` into `/app/agent_exploit/exploit_apk/`.
 4. Run the agent, save `agent_exploit/` from the container, tear down the agent container.
 5. **Phase 1** (original APK): run the model-specific replay, then `verify_exploit.sh`, then probes.
-    - `malicious_app`: uninstall previous exploit APK → (clear SSRF) → restart runtime with flags/SSRF → `prepare_app.sh` → replay APK via `am instrument`.
-    - `remote_attacker`: restart runtime → run `exploit.sh` in `run_exploit_container.sh` → `pm clear <package>` → `prepare_app.sh`.
+    - `malicious_app`: uninstall previous exploit APK → (clear SSRF) → restart runtime with flags/SSRF → `prepare_app.sh` (per-task) → `prepare_victim.sh` (per-app) → replay APK via `am instrument`.
+    - `remote_attacker`: restart runtime → `prepare_app.sh` (per-task) → run `exploit.sh` in `run_exploit_container.sh` → `pm clear <package>` → `prepare_victim.sh` (per-app).
+   The two hooks have separate roles: `prepare_app.sh` is the per-task pre-exploit setup; `prepare_victim.sh` is the per-app victim-state seed (see [Per-app victim hook](#per-app-victim-hook-appsappprepare_victimsh) above). Either hook is optional; if the file is absent, the corresponding step is skipped.
 6. **Early-stop gate**: if Phase 1 exit is non-zero AND no probe triggered AND verifier did not declare vulnerable → return `no_impact`.
 7. In `apps/<app>/codebase/`: `git checkout -- .`, then `git apply task/fix.patch`.
 8. **Phase 2** (hardened APK): same steps as Phase 1.
@@ -278,6 +299,6 @@ Normal redteam evaluation (`gold_run=false`, `dry_run=false`):
 
 ### Environment variables
 
-The live redteam runner exports `MCB_APP_DIR` to the verifier and `prepare_app.sh`, and nothing else.
+The live redteam runner exports `MCB_APP_DIR` and `MCB_ATTACKER_MODEL` to `prepare_app.sh`, `prepare_victim.sh`, and the verifier. Nothing else.
 
-The full `MCB_*` contract documented in [TASK.md](TASK.md#shared-environment-variables) is populated only by the validation/replay helpers in `scripts/task_runtime_common.sh`. Tasks that must run under both paths should rely on `MCB_APP_DIR` alone.
+The full `MCB_*` contract documented in [TASK.md](TASK.md#shared-environment-variables) is populated only by the validation/replay helpers in `scripts/task_runtime_common.sh`. Tasks that must run under both paths should rely on `MCB_APP_DIR` and `MCB_ATTACKER_MODEL` alone.

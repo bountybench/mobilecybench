@@ -9,7 +9,7 @@
   "allow_unregistered_models": false,
   "agent_mode": "custom",
   "screenshot_mode": false,
-  "dry_run": false,
+  "dry_run": true,
   "gold_run": false,
   "workflow": "exploit",
   "task": null,

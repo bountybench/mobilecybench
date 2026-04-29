@@ -409,7 +409,16 @@ jobs:
           java-version: "${{ matrix.java }}"
           cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
 
+      - name: APK output cache
+        if: matrix.setup_mode == 'source'
+        id: apk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.app_dir }}/apk
+          key: apk-${{ matrix.app_name }}-${{ matrix.vuln_id || 'clean' }}-${{ hashFiles(format('{0}/metadata.json', matrix.app_dir), format('{0}/build.sh', matrix.app_dir), format('{0}/synthetic_vulnerabilities/{1}/vulnerability.patch', matrix.app_dir, matrix.vuln_id), 'build_apk.sh', 'utils/*.sh') }}
+
       - name: Build or download APK
+        if: matrix.setup_mode != 'source' || steps.apk-cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
@@ -483,7 +492,7 @@ jobs:
           fi
 
       - name: Build vulnerable APK for synthetic vulnerability
-        if: matrix.vuln_id != '' && matrix.setup_mode == 'source'
+        if: matrix.vuln_id != '' && matrix.setup_mode == 'source' && steps.apk-cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GRADLE_OPTS: "-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx2g -XX:MaxMetaspaceSize=1g"
@@ -794,6 +803,11 @@ jobs:
           #!/bin/bash
           set -e
           source /tmp/shared_functions.sh
+          # Opt this CI run in to the remote_attacker probe block in
+          # run_checks.sh. workflows/base.py:_run_checks (the redteam
+          # phase runner) does not set this, so its MA-mode phases skip
+          # the RA block.
+          export RA_CHECKS_ENABLED=1
           adb devices
           EOF
 
@@ -892,7 +906,22 @@ jobs:
               uninstall_package "$package_name"
               exit 1
           fi
-          
+
+          # If the app ships remote_attacker probes, clean-build must also
+          # score all 1s. We check only the top-level .scores object (the four
+          # CIA dimensions); probe detail blocks are diagnostic and may
+          # legitimately contain numeric counts (e.g. extracted_refresh_token_count)
+          # that are 0 in a secure state.
+          if [ -f scores_remote_attacker.json ]; then
+            if ! jq -e '.scores | to_entries | all(.value == 1)' scores_remote_attacker.json > /dev/null; then
+              echo "ERROR: scores_remote_attacker.json top-level scores are not all 1s."
+              cat scores_remote_attacker.json
+              ./cleanup.sh
+              uninstall_package "$package_name"
+              exit 1
+            fi
+          fi
+
           echo "Baseline and generic probe checks passed. Cleaning up..."
 
           ./cleanup.sh
@@ -975,9 +1004,7 @@ jobs:
           score2="scores.json"
           
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-            echo "Vuln scenario 0 scores match. Cleaning up..."
-            ./cleanup.sh
-            uninstall_package "$package_name"
+            echo "Vuln scenario 0 scores match."
           else
             echo "ERROR: Vuln scenario 0 scores do not match"
             cat scores.json
@@ -985,6 +1012,31 @@ jobs:
             uninstall_package "$package_name"
             exit 1
           fi
+
+          # Optional remote_attacker scenario diff: only enforced when both
+          # the expected-scores file and the actual-scores file exist.
+          ra_expected="vuln_scenarios/vuln_scenario_0/expected_scores_remote_attacker.json"
+          ra_actual="scores_remote_attacker.json"
+          if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
+            if diff <(jq -S . "$ra_expected") <(jq -S . "$ra_actual") >/dev/null; then
+              echo "Vuln scenario 0 remote_attacker scores match."
+            else
+              echo "ERROR: Vuln scenario 0 remote_attacker scores do not match"
+              cat "$ra_actual"
+              ./cleanup.sh
+              uninstall_package "$package_name"
+              exit 1
+            fi
+          elif [ -f "$ra_expected" ] && [ ! -f "$ra_actual" ]; then
+            echo "ERROR: vuln_scenario_0 expects remote_attacker scores but scores_remote_attacker.json was not produced"
+            ./cleanup.sh
+            uninstall_package "$package_name"
+            exit 1
+          fi
+
+          echo "Vuln scenario 0 checks passed. Cleaning up..."
+          ./cleanup.sh
+          uninstall_package "$package_name"
           EOF
               ;;
             "vuln_scenario_1")
@@ -1073,9 +1125,7 @@ jobs:
           score2="scores.json"
           
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
-            echo "Vuln scenario 1 scores match. Cleaning up..."
-            ./cleanup.sh
-            uninstall_package "$package_name"
+            echo "Vuln scenario 1 scores match."
           else
             echo "ERROR: Vuln scenario 1 scores do not match"
             cat scores.json
@@ -1083,6 +1133,31 @@ jobs:
             uninstall_package "$package_name"
             exit 1
           fi
+
+          # Optional remote_attacker scenario diff: only enforced when both
+          # the expected-scores file and the actual-scores file exist.
+          ra_expected="vuln_scenarios/vuln_scenario_1/expected_scores_remote_attacker.json"
+          ra_actual="scores_remote_attacker.json"
+          if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
+            if diff <(jq -S . "$ra_expected") <(jq -S . "$ra_actual") >/dev/null; then
+              echo "Vuln scenario 1 remote_attacker scores match."
+            else
+              echo "ERROR: Vuln scenario 1 remote_attacker scores do not match"
+              cat "$ra_actual"
+              ./cleanup.sh
+              uninstall_package "$package_name"
+              exit 1
+            fi
+          elif [ -f "$ra_expected" ] && [ ! -f "$ra_actual" ]; then
+            echo "ERROR: vuln_scenario_1 expects remote_attacker scores but scores_remote_attacker.json was not produced"
+            ./cleanup.sh
+            uninstall_package "$package_name"
+            exit 1
+          fi
+
+          echo "Vuln scenario 1 checks passed. Cleaning up..."
+          ./cleanup.sh
+          uninstall_package "$package_name"
           EOF
               ;;
             "synthetic_vuln")
@@ -1436,10 +1511,15 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader -noaudio -no-boot-anim -memory 2048 -read-only
           disable-animations: true
+          # The test harness needs ADB to listen on all interfaces so exploit
+          # containers can reach it at host.docker.internal:5037. Start that
+          # server before the emulator launches; restarting ADB after the
+          # runner has booted the emulator races with the runner's own ADB
+          # commands and can leave two daemons fighting for port 5037.
+          pre-emulator-launch-script: |
+            adb kill-server || true
+            adb -a -P 5037 start-server
           script: |
-            # Restart ADB on all interfaces so exploit containers can reach
-            # the emulator via host.docker.internal:5037
-            adb kill-server && adb -a -P 5037 start-server
             adb wait-for-device
             utils/android_emulator_ready.sh
             utils/inject_system_ca.sh

@@ -17,25 +17,13 @@ bash setup.sh --init-submodules conversations
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
-To run the AI agent, provide an API key. The built-in models cover three
-providers (see `agent/model_providers/factory.py:SupportedModel` for the full
-list, including older entries kept for backwards compatibility):
+To run the AI agent, provide an API key. The built-in models cover three providers (see `agent/model_providers/factory.py:SupportedModel` for the full list, including older entries kept for backwards compatibility):
 
-- **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`;
-  `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`.
-  Requires `OPENAI_API_KEY`.
-- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`;
-  `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires
-  `ANTHROPIC_API_KEY`.
-- **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`.
-  Requires `GEMINI_API_KEY`.
+- **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`; `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`. Requires `OPENAI_API_KEY`.
+- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`; `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires `ANTHROPIC_API_KEY`.
+- **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`. Requires `GEMINI_API_KEY`.
 
-To add a new model, append an entry to `SupportedModel` and a pricing
-row to `utils/token_pricing.json` — see
-[Adding a New Model](ADDING_MODELS.md). For one-off model-sweep
-exploration where cost telemetry doesn't matter, set
-`"allow_unregistered_models": true` in `runner_config.json` to bypass
-the registry.
+To add a new model, append an entry to `SupportedModel` and a pricing row to `utils/token_pricing.json` — see [Adding a New Model](ADDING_MODELS.md). For one-off model-sweep exploration where cost telemetry doesn't matter, set `"allow_unregistered_models": true` in `runner_config.json` to bypass the registry.
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
@@ -44,7 +32,7 @@ python runner.py conversations
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
-The default mode is **discovery** (find unknown vulnerabilities). Other modes: **exploit** (exploit a known synthetic vulnerability) and **detection** (find vulnerabilities autonomously, evaluated via patch-differential replay). Set `"workflow"` in `runner_config.json`. See `documentation/EXPERIMENTS.md` for details.
+For the workflow / task type / attacker model axes that define a run, see the README. This guide focuses on the setup steps below; once the environment is healthy, `documentation/EXPERIMENTS.md` walks through configuring those axes for an actual run and `documentation/REDTEAM.md` covers redteam scoring.
 
 If you do not want to use an API key, run in dry-run mode instead:
 
@@ -54,7 +42,7 @@ python runner.py conversations --config runner_config_dryrun.json
 
 ## 1) System prerequisites
 
-- Python 3.11+ (3.12 or lower recommended for agent dependencies)
+- Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop (for agent stack and some app environments)
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+. Please note that some apps require Java 21 to build.)
 
@@ -90,9 +78,8 @@ bash setup.sh --init-submodules  # initialize all submodules (apps)
 
 Notes:
 
-- Default SDK is 35. To use a different version: `./setup.sh --sdk 34 --system-image google_apis`.
-- You can also pass an app name to auto-select the SDK from its `metadata.json` (example: `./setup.sh conversations`).
-- `setup.sh` installs Android SDK packages, creates the AVD, and generates `start_emulator.sh`, `stop_emulator.sh`, and `check_device.sh`.
+- Default SDK is 35. To target a different version, pass an app name and `setup.sh` reads `sdk` from its `metadata.json` (example: `./setup.sh owncloud-android` installs SDK 34). Run `./setup.sh --help` for the full app list with their SDK pinning.
+- `setup.sh` installs Android SDK packages and creates the AVD.
 - To initialize submodules during setup, use `--init-submodules` (all) or `--init-submodules <app_name>` (single app).
 - `setup.sh` installs `apktool` if it is missing.
 
@@ -107,21 +94,49 @@ echo OPENAI_API_KEY="sk..." > .env
 
 ### Claude Code agent mode
 
-To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config), you need OAuth tokens from a Claude Max or Pro subscription instead of an API key.
+To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config): mobilecybench currently supports authentication with a Claude subscription (Pro / Max / Team / Enterprise).
 
-**Step 1: Install and authenticate Claude Code**
+**Step 1: Install Claude Code**
 
 ```bash
 npm install -g @anthropic-ai/claude-code
-claude auth login   # follow the browser flow; credentials are stored in
-                    # the OS-native secret store (macOS Keychain / Linux
-                    # `~/.claude/.credentials.json` / Windows Credential Manager)
 ```
 
-**Step 2: Extract tokens into `agent/.env`**
+**Step 2: Generate a long-lived OAuth token (recommended)**
 
-After logging in, extract your OAuth tokens into `agent/.env`. Pick the
-snippet for your platform.
+Run [`claude setup-token`](https://code.claude.com/docs/en/authentication#generate-a-long-lived-token) to mint a token specifically scoped for headless / CI use. It is valid for ~1 year, has no paired refresh token, and is **decoupled from any interactive `claude` session you may run on this host**, so it will not be invalidated when you use Claude Code interactively while a sweep is in flight.
+
+```bash
+claude setup-token
+# walks through OAuth in your browser, then prints a token to the terminal
+```
+
+Copy the printed token into `agent/.env` as `CLAUDE_CODE_OAUTH_TOKEN`. Leave `CLAUDE_CODE_OAUTH_REFRESH_TOKEN` unset — its presence switches the runner to the legacy rotating-pair flow described below.
+
+```bash
+echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste-token-here>' >> agent/.env
+```
+
+The runner forwards `CLAUDE_CODE_OAUTH_TOKEN` directly into the agent container's environment; the in-container Claude Code CLI picks it up via its documented [auth precedence #5](https://code.claude.com/docs/en/authentication#authentication-precedence). No credentials file is written.
+
+**Step 3: Configure `runner_config.json`** (continues below)
+
+---
+
+#### Fallback: rotating subscription pair
+
+If you cannot run `claude setup-token`, you can extract the rotating subscription pair from your OS secret store. We recommend avoiding this path if possible — the access token is short-lived (~1 hour), the CLI inside the container will refresh it on first inference, and refreshing rotates the pair globally for your account, which invalidates the token for any other Claude Code client (including an interactive `claude` window on this host). Sweeps die mid-iteration whenever the pair is rotated by another client. 
+
+First log in interactively:
+
+```bash
+claude auth login   # browser flow; credentials land in the OS secret
+                    # store (macOS Keychain / Linux
+                    # ~/.claude/.credentials.json / Windows Credential
+                    # Manager).
+```
+
+Then extract both fields into `agent/.env`:
 
 **macOS** (Keychain):
 
@@ -149,9 +164,7 @@ print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
 " >> agent/.env
 ```
 
-If your distribution stores credentials in a system secret manager (GNOME
-Keyring, KWallet) instead of the JSON file, export them via that tool first
-and adapt the snippet to read from `subprocess` output.
+If your distribution stores credentials in a system secret manager (GNOME Keyring, KWallet) instead of the JSON file, export them via that tool first and adapt the snippet to read from `subprocess` output.
 
 **Windows** (Credential Manager via PowerShell):
 
@@ -162,12 +175,9 @@ $json = ConvertFrom-Json $cred.GetNetworkCredential().Password
 "CLAUDE_CODE_OAUTH_REFRESH_TOKEN=$($json.claudeAiOauth.refreshToken)"  | Out-File -Encoding utf8 -Append agent/.env
 ```
 
-`Get-StoredCredential` requires the [`CredentialManager` module](https://www.powershellgallery.com/packages/CredentialManager).
-If unavailable, open `Control Panel → User Accounts → Credential Manager →
-Windows Credentials`, expand the `Claude Code-credentials` entry, and copy
-the `accessToken` / `refreshToken` fields manually.
+`Get-StoredCredential` requires the [`CredentialManager` module](https://www.powershellgallery.com/packages/CredentialManager). If unavailable, open `Control Panel → User Accounts → Credential Manager → Windows Credentials`, expand the `Claude Code-credentials` entry, and copy the `accessToken` / `refreshToken` fields manually.
 
-Tokens expire periodically — re-run the extraction before each session.
+Tokens expire periodically — re-run the extraction before each session. Migrating to `claude setup-token` (above) eliminates this re-extraction ritual.
 
 **Step 3: Configure `runner_config.json`**
 
@@ -236,7 +246,7 @@ What happens next:
 If you only want to verify setup without running an LLM, use dry-run:
 
 ```bash
-python runner.py <app_name> --config runner_config_dryrun.json
+python runner.py conversations --config runner_config_dryrun.json
 ```
 
 ## 7) Submodules and Java version notes

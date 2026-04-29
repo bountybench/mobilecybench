@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Optional
 
 from models.config import RunnerConfig
 
@@ -77,6 +78,22 @@ class Workflow(ABC):
         """Set up the runtime environment (emulator, APK, backend services)."""
         pass
 
+    def _resolve_additional_context(self) -> Optional[str]:
+        """Build the agent's `additional_context` from metadata + runner config.
+
+        Order is load-bearing: the per-app `metadata.additional_info` carries
+        threat-model framing that should appear first; the per-run
+        `runner_config.custom_system_prompt` is a runtime knob (hints,
+        framing tweaks) appended after it.
+        """
+        additional_info = self.metadata.get("additional_info")
+        extra = self.config.custom_system_prompt
+        if not extra:
+            return additional_info
+        if not additional_info:
+            return extra
+        return f"{additional_info}\n\n{extra}"
+
     def setup_agent(self) -> None:
         """Configure and initialize the agent."""
         if self.config.dry_run:
@@ -87,7 +104,7 @@ class Workflow(ABC):
         workflow = self.config.workflow
         include_ssrf = False
 
-        additional_context = self.metadata.get("additional_info")
+        additional_context = self._resolve_additional_context()
         agent_username, agent_password = self._agent_credentials()
 
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
@@ -109,6 +126,7 @@ class Workflow(ABC):
                 attacker_model=self.config.attacker_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         elif agent_mode == "codex":
             from agent.codex_agent import CodexAgent
@@ -128,6 +146,7 @@ class Workflow(ABC):
                 no_codebase=self.config.no_codebase,
                 model=self.config.model,
                 reasoning_effort=self.config.reasoning_effort,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         else:
             from agent.custom_agent import CustomAgent
@@ -151,6 +170,7 @@ class Workflow(ABC):
                 reasoning_effort=self.config.reasoning_effort,
                 no_codebase=self.config.no_codebase,
                 allow_unregistered_models=self.config.allow_unregistered_models,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
@@ -308,8 +328,19 @@ class Workflow(ABC):
                 logger.error(f"cleanup.sh stderr:\n{e.stderr.strip()}")
             raise
 
+    def _ensure_shared_docker_network(self) -> None:
+        """Ensure ``shared_net`` exists before any app's docker-compose runs."""
+        # Lazy import to keep workflow construction free of docker side-effects.
+        from agent.agent_container import create_docker_network
+
+        create_docker_network("shared_net")
+
     def _preflight_cleanup_app_runtime(self) -> None:
         """Best-effort clean slate for stale containers before setup."""
+        # Network must exist before any cleanup.sh / start_runtime.sh runs
+        # `docker compose up`, otherwise compose aborts on the external
+        # network reference.
+        self._ensure_shared_docker_network()
         stale_app_dir = self._get_stale_backend_app_dir()
         if stale_app_dir is not None:
             logger.info(

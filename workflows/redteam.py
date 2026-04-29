@@ -31,7 +31,10 @@ class PhaseResult:
 
     exit_code: int
     evidence_log_path: Path | None = None
-    failure_kind: Literal["prepare_app_crash", "replay_runtime_error"] | None = None
+    failure_kind: (
+        Literal["prepare_app_crash", "prepare_victim_crash", "replay_runtime_error"]
+        | None
+    ) = None
 
 
 # =============================================================================
@@ -74,7 +77,7 @@ class MaliciousAppOps:
     def run_phase(
         self, workflow: "RedTeamWorkflow", phase_dir: Path, **kwargs
     ) -> PhaseResult:
-        """Run one phase: restart → prepare_app → replay APK → collect evidence."""
+        """Run one phase: restart → prepare_app → prepare_victim → replay APK."""
         from evaluation.replay_apk import (
             replay_malicious_apk,
             uninstall,
@@ -93,13 +96,23 @@ class MaliciousAppOps:
             start_ssrf=kwargs.get("needs_ssrf", False),
         )
 
-        logger.info("[phase] Running prepare_app.sh...")
+        logger.info("[phase] Running prepare_app.sh (per-task)...")
         try:
             workflow._run_prepare_app()
         except Exception as e:
             logger.error(f"prepare_app failed: {e}")
             phase_dir.mkdir(parents=True, exist_ok=True)
             return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
+
+        # Per-app victim seed: malicious_app needs the victim already logged
+        # in before the malicious APK runs co-resident with it.
+        logger.info("[phase] Running prepare_victim.sh (per-app)...")
+        try:
+            workflow._run_prepare_victim()
+        except Exception as e:
+            logger.error(f"prepare_victim failed: {e}")
+            phase_dir.mkdir(parents=True, exist_ok=True)
+            return PhaseResult(exit_code=2, failure_kind="prepare_victim_crash")
 
         logger.info("[phase] Replaying malicious APK...")
         timeout = workflow.config.apk_timeout
@@ -177,11 +190,21 @@ class RemoteAttackerOps:
     def run_phase(
         self, workflow: "RedTeamWorkflow", phase_dir: Path, **kwargs
     ) -> PhaseResult:
-        """Run one phase: restart → exploit → clear app → prepare_app → return."""
+        """Run one phase: restart → prepare_app → exploit → pm clear → prepare_victim."""
         package_name = workflow.metadata.get("package_name", "")
 
         logger.info("[phase] Restarting runtime with target APK...")
         workflow._restart_runtime(kwargs["target_apk"])
+
+        # Per-task pre-exploit setup (e.g. seed a row only this exploit reads).
+        # Mirrors CI's task_runtime_run_prepare_hook (pre-exploit, both models).
+        logger.info("[phase] Running prepare_app.sh (per-task)...")
+        try:
+            workflow._run_prepare_app()
+        except Exception as e:
+            logger.error(f"prepare_app failed: {e}")
+            phase_dir.mkdir(parents=True, exist_ok=True)
+            return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
 
         logger.info("[phase] Running exploit.sh in container...")
         exploit_result = workflow._run_exploit(
@@ -202,19 +225,22 @@ class RemoteAttackerOps:
                 timeout=30,
             )
 
-        logger.info("[phase] Running prepare_app.sh...")
-        prepare_app_failed = False
+        # Per-app victim seed: pm clear wiped /data/data/<package>/, so re-seed
+        # the victim's logged-in state before the verifier runs. Mirrors CI's
+        # task_validation_run_attacker_model_setup_after_exploit.
+        logger.info("[phase] Running prepare_victim.sh (per-app)...")
+        prepare_victim_failed = False
         try:
-            workflow._run_prepare_app()
+            workflow._run_prepare_victim()
         except Exception as e:
-            logger.error(f"prepare_app failed: {e}")
-            prepare_app_failed = True
+            logger.error(f"prepare_victim failed: {e}")
+            prepare_victim_failed = True
 
         evidence_path = exploit_result.get("replay_evidence_path")
         return PhaseResult(
             exit_code=exploit_result["replay_exit_code"],
             evidence_log_path=Path(evidence_path) if evidence_path else None,
-            failure_kind="prepare_app_crash" if prepare_app_failed else None,
+            failure_kind="prepare_victim_crash" if prepare_victim_failed else None,
         )
 
     def setup_agent_extras(self, workflow: "RedTeamWorkflow") -> None:
@@ -326,6 +352,10 @@ class RedTeamWorkflow(Workflow):
         from utils.emulator_certs import inject_system_ca
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import check_connectivity, install_app_and_setup_backend
+
+        # Ensure shared_net exists before any docker compose up runs, otherwise
+        # apps' compose files (which declare `external: true`) abort.
+        self._ensure_shared_docker_network()
 
         logger.info("Starting emulator...")
         self.emulator = EmulatorManager(
@@ -740,28 +770,56 @@ class RedTeamWorkflow(Workflow):
                 logger.info(f"[probes]   {category}.{name} = {val}")
 
     # ------------------------------------------------------------------
-    # prepare_app hook
+    # Setup hooks: per-task prepare_app + per-app prepare_victim
     # ------------------------------------------------------------------
 
     def _run_prepare_app(self) -> None:
-        """Run task/prepare_app.sh (per-phase setup: login victim, seed state)."""
+        """Run <task_dir>/prepare_app.sh — the per-task pre-exploit hook.
+
+        Mirrors CI's task_runtime_run_prepare_hook. Always runs once before
+        the exploit, for both attacker models. Use it for vuln-specific setup
+        (seeding a row only this exploit reads, etc.). For app-wide victim
+        identity setup, use _run_prepare_victim instead.
+        """
+        self._run_setup_hook(
+            hook=self._bundle.task_dir / "prepare_app.sh",
+            label="prepare_app",
+        )
+
+    def _run_prepare_victim(self) -> None:
+        """Run <app_dir>/prepare_victim.sh — the per-app victim-state hook.
+
+        Mirrors CI's task_validation_run_prepare_victim_hook. Position depends
+        on attacker model (driven by the call site in the ops class):
+          - malicious_app: pre-exploit, after _run_prepare_app
+          - remote_attacker: post-pm-clear, before the verifier
+        Use it for app-wide victim identity setup (logging in, restoring
+        prefs, seeding the local DB) shared across vulns for the same app.
+        """
+        self._run_setup_hook(
+            hook=self.app_dir / "prepare_victim.sh",
+            label="prepare_victim",
+        )
+
+    def _run_setup_hook(self, *, hook: Path, label: str) -> None:
+        """Shared executor for prepare_app / prepare_victim hooks. No-op if absent."""
         from utils.command_executor import CommandExecutor
 
-        hook = self._bundle.task_dir / "prepare_app.sh"
         if not hook.exists():
-            logger.info("No prepare_app hook found at %s", hook)
+            logger.info("No %s hook found at %s", label, hook)
             return
 
-        logger.info(f"prepare_app hook: {hook}")
+        logger.info(f"{label} hook: {hook}")
 
         env = os.environ.copy()
         env["MCB_APP_DIR"] = str(self.app_dir)
+        env["MCB_ATTACKER_MODEL"] = self._attacker_model
 
         cmd = CommandExecutor()
         cmd.run_with_progress(
             f"bash {hook}",
             timeout=self.config.script_timeout,
-            message="Running prepare_app hook",
+            message=f"Running {label} hook",
             cwd=self.app_dir,
             env=env,
         )
