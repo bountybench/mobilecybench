@@ -55,6 +55,24 @@ class Workflow(ABC):
         with open(metadata_path, encoding="utf-8") as f:
             self.metadata = json.load(f)
 
+    def _agent_credentials(self) -> tuple[str | None, str | None]:
+        """Return credentials to expose to the agent prompt.
+
+        App metadata `username`/`password` describe the app or victim setup
+        account. Remote-attacker redteam runs may define a separate low-privilege
+        attacker account so the prompt does not hand out victim/admin
+        credentials as "your credentials".
+        """
+        if (
+            self.config.workflow == "redteam"
+            and self.config.attacker_model == "remote_attacker"
+        ):
+            remote_username = self.metadata.get("remote_attacker_username")
+            remote_password = self.metadata.get("remote_attacker_password")
+            if remote_username and remote_password:
+                return remote_username, remote_password
+        return self.metadata.get("username"), self.metadata.get("password")
+
     @abstractmethod
     def setup_runtime_environment(self) -> None:
         """Set up the runtime environment (emulator, APK, backend services)."""
@@ -87,6 +105,7 @@ class Workflow(ABC):
         include_ssrf = False
 
         additional_context = self._resolve_additional_context()
+        agent_username, agent_password = self._agent_credentials()
 
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
 
@@ -100,8 +119,8 @@ class Workflow(ABC):
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
-                username=self.metadata.get("username"),
-                password=self.metadata.get("password"),
+                username=agent_username,
+                password=agent_password,
                 include_ssrf=include_ssrf,
                 workflow=workflow,
                 attacker_model=self.config.attacker_model,
@@ -118,8 +137,8 @@ class Workflow(ABC):
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
-                username=self.metadata.get("username"),
-                password=self.metadata.get("password"),
+                username=agent_username,
+                password=agent_password,
                 include_ssrf=include_ssrf,
                 workflow=workflow,
                 attacker_model=self.config.attacker_model,
@@ -143,8 +162,8 @@ class Workflow(ABC):
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
-                username=self.metadata.get("username"),
-                password=self.metadata.get("password"),
+                username=agent_username,
+                password=agent_password,
                 include_ssrf=include_ssrf,
                 workflow=workflow,
                 attacker_model=self.config.attacker_model,

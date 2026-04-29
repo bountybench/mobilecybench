@@ -181,6 +181,36 @@ def _run_evaluate(wf, ops_cls, exits, probes, *, verifier=(1, 1)):
         return wf.evaluate()
 
 
+def test_remote_attacker_prompt_uses_split_attacker_credentials(
+    remote_attacker_config, tmp_path
+):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    wf.metadata.update(
+        {
+            "username": "victim-admin",
+            "password": "victim-pass",
+            "remote_attacker_username": "lowpriv-attacker",
+            "remote_attacker_password": "lowpriv-pass",
+        }
+    )
+
+    assert wf._agent_credentials() == ("lowpriv-attacker", "lowpriv-pass")
+
+
+def test_malicious_app_prompt_keeps_app_credentials(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    wf.metadata.update(
+        {
+            "username": "victim-admin",
+            "password": "victim-pass",
+            "remote_attacker_username": "lowpriv-attacker",
+            "remote_attacker_password": "lowpriv-pass",
+        }
+    )
+
+    assert wf._agent_credentials() == ("victim-admin", "victim-pass")
+
+
 def test_exploit_missing_saves_zero_score(redteam_config, tmp_path):
     wf = _make_workflow(redteam_config, tmp_path)
     _write_agent_artifact("malicious_app", present=False)
