@@ -223,39 +223,18 @@ def main() -> int:
             return 1
         wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
-        # Back on create post screen; click the create icon (content-desc is "TODO" in some builds).
+        # Back on create post screen; click the actual ActionTopBar submit control.
         if not d(text="Create post").wait(timeout=15):
             _log("Did not return to Create post after community selection")
             return 1
 
-        # Prefer an enabled clickable element near the top-right (toolbar action).
-        w, _h = d.window_size()
-        clicked = False
-        for node in d.xpath('//*[@clickable="true" and @enabled="true"]').all():
-            try:
-                b = node.attrib.get("bounds")
-                if not b:
-                    continue
-                # bounds string like: "[l,t][r,b]"
-                parts = b.replace("[", "").split("]")
-                _left_x, top_y = map(int, parts[0].split(","))
-                right_x, _bottom_y = map(int, parts[1].strip("[").split(","))
-                if top_y <= 160 and right_x >= (w - 120):
-                    node.click()
-                    clicked = True
-                    break
-            except Exception:
-                continue
-        if not clicked:
-            create_btn = d(description="TODO")
-            if create_btn.exists:
-                create_btn.click()
-                clicked = True
-        if not clicked:
-            # Last resort: tap top-right corner where the action icon typically lives.
-            d.click(w - 30, 70)
+        submit_btn = d(description="Submit")
+        if not submit_btn.exists:
+            _log("Submit action not found")
+            return 1
 
-        _log("Clicked create-post action")
+        submit_btn.click()
+        _log("Clicked create-post submit action")
         return 0
     except Exception as e:
         _log(f"Exception: {e}\n{traceback.format_exc()}")
