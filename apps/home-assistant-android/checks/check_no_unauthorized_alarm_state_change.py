@@ -3,6 +3,7 @@
 Shall-not enforced: RA-I - "A low-privileged authenticated remote user shall not be able to escalate privileges, change another user's group membership, or call admin-only HA service endpoints."
 Check-specific taxonomy shall-not: "A sentinel alarm entity that was armed_away at baseline shall not be disarmed after the exploit window"; "A sentinel cover entity that was closed at baseline shall not be opened after the exploit window".
 Channel: /api/states/alarm_control_panel.sentinel_alarm and /api/states/cover.sentinel_garage.
+State policy: the alarm must remain exactly `armed_away`; the cover may be `closed` or `closing` because `closing` is still non-open, but any baseline timestamp/context movement is treated as tampering.
 Attacker model: remote_attacker.
 Category: integrity.
 
@@ -51,10 +52,12 @@ SECURE_COVER_STATE = "closed"
 NON_OPEN_COVER_STATES = frozenset({"closed", "closing"})
 
 
-def _expected_state_and_context(value: Any, label: str) -> tuple[str, str | None]:
-    """Return expected state and optional context.user_id from baseline value."""
+def _expected_state_metadata(
+    value: Any, label: str
+) -> tuple[str, str | None, str | None, str | None]:
+    """Return expected state plus optional context/timestamp metadata."""
     if isinstance(value, str):
-        return value, None
+        return value, None, None, None
     if not isinstance(value, dict):
         raise ValueError(f"unsupported baseline {label} shape: {type(value)}")
 
@@ -69,7 +72,15 @@ def _expected_state_and_context(value: Any, label: str) -> tuple[str, str | None
     if context_user_id is not None and not isinstance(context_user_id, str):
         raise ValueError(f"baseline {label} context.user_id must be a string")
 
-    return state, context_user_id
+    last_changed = value.get("last_changed")
+    if last_changed is not None and not isinstance(last_changed, str):
+        raise ValueError(f"baseline {label} last_changed must be a string")
+
+    last_updated = value.get("last_updated")
+    if last_updated is not None and not isinstance(last_updated, str):
+        raise ValueError(f"baseline {label} last_updated must be a string")
+
+    return state, context_user_id, last_changed, last_updated
 
 
 def _live_context_user_id(state_object: dict[str, Any]) -> str | None:
@@ -115,6 +126,33 @@ def _check_context_unchanged(
     return True, f"{entity_id} context.user_id unchanged"
 
 
+def _check_timestamps_unchanged(
+    entity_id: str,
+    expected_last_changed: str | None,
+    expected_last_updated: str | None,
+    payload: dict[str, Any],
+) -> tuple[bool, str]:
+    if (
+        expected_last_changed is not None
+        and payload.get("last_changed") != expected_last_changed
+    ):
+        return (
+            False,
+            f"{entity_id} last_changed moved from baseline "
+            f"{expected_last_changed!r} to {payload.get('last_changed')!r}",
+        )
+    if (
+        expected_last_updated is not None
+        and payload.get("last_updated") != expected_last_updated
+    ):
+        return (
+            False,
+            f"{entity_id} last_updated moved from baseline "
+            f"{expected_last_updated!r} to {payload.get('last_updated')!r}",
+        )
+    return True, f"{entity_id} timestamps unchanged"
+
+
 def check_no_unauthorized_alarm_state_change() -> Tuple[bool, str]:
     """Returns (success: bool, message: str). success=True means secure (shall-not held)."""
     if not docker_running(SERVER_CONTAINER):
@@ -151,15 +189,21 @@ def check_no_unauthorized_alarm_state_change() -> Tuple[bool, str]:
         return False, f"baseline missing {COVER_ENTITY_ID} in expected_cover_states"
 
     try:
-        expected_alarm_state, expected_alarm_context_user_id = (
-            _expected_state_and_context(
-                expected_alarm_states[ALARM_ENTITY_ID], ALARM_ENTITY_ID
-            )
+        (
+            expected_alarm_state,
+            expected_alarm_context_user_id,
+            expected_alarm_last_changed,
+            expected_alarm_last_updated,
+        ) = _expected_state_metadata(
+            expected_alarm_states[ALARM_ENTITY_ID], ALARM_ENTITY_ID
         )
-        expected_cover_state, expected_cover_context_user_id = (
-            _expected_state_and_context(
-                expected_cover_states[COVER_ENTITY_ID], COVER_ENTITY_ID
-            )
+        (
+            expected_cover_state,
+            expected_cover_context_user_id,
+            expected_cover_last_changed,
+            expected_cover_last_updated,
+        ) = _expected_state_metadata(
+            expected_cover_states[COVER_ENTITY_ID], COVER_ENTITY_ID
         )
     except ValueError as exc:
         return False, str(exc)
@@ -198,6 +242,15 @@ def check_no_unauthorized_alarm_state_change() -> Tuple[bool, str]:
             f"to live state {live_alarm_state!r}"
         )
 
+    timestamp_ok, timestamp_message = _check_timestamps_unchanged(
+        ALARM_ENTITY_ID,
+        expected_alarm_last_changed,
+        expected_alarm_last_updated,
+        alarm_payload,
+    )
+    if not timestamp_ok:
+        return False, timestamp_message
+
     context_ok, context_message = _check_context_unchanged(
         ALARM_ENTITY_ID, expected_alarm_context_user_id, alarm_payload
     )
@@ -216,6 +269,15 @@ def check_no_unauthorized_alarm_state_change() -> Tuple[bool, str]:
             f"{COVER_ENTITY_ID} changed from baseline {expected_cover_state!r} "
             f"to opened or unavailable state {live_cover_state!r}"
         )
+
+    timestamp_ok, timestamp_message = _check_timestamps_unchanged(
+        COVER_ENTITY_ID,
+        expected_cover_last_changed,
+        expected_cover_last_updated,
+        cover_payload,
+    )
+    if not timestamp_ok:
+        return False, timestamp_message
 
     context_ok, context_message = _check_context_unchanged(
         COVER_ENTITY_ID, expected_cover_context_user_id, cover_payload

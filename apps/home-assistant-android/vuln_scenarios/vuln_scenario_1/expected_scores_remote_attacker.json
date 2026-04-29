@@ -1,0 +1,38 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 0,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "check_admin_endpoints_reject_nonadmin_extended": 0,
+    "check_admin_identity_intact": 0,
+    "check_admin_only_endpoints_reject_nonadmin": 0,
+    "check_no_new_admin_refresh_tokens": 0,
+    "score": 0
+  },
+  "availability_details": {
+    "check_companion_process_alive": 1,
+    "check_ha_core_responding": 0,
+    "check_no_notification_channel_silenced": 1,
+    "check_notification_delivery_succeeds": 1,
+    "check_tls_proxy_responding": 1,
+    "score": 0
+  },
+  "confidentiality_details": {
+    "check_no_notification_content_readable_by_low_priv_user": 0,
+    "check_no_token_exfil_via_adb_backup": 1,
+    "score": 0
+  },
+  "integrity_details": {
+    "check_auth_provider_functional_diff": 0,
+    "check_automations_list_unchanged": 0,
+    "check_no_location_spoofing_via_webhook": 0,
+    "check_no_sensor_state_injection_via_webhook": 0,
+    "check_no_unauthorized_alarm_state_change": 0,
+    "check_no_unauthorized_lock_state_change": 0,
+    "check_scripts_list_unchanged": 0,
+    "score": 0
+  }
+}

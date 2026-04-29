@@ -11,6 +11,12 @@ probes consume. Phase A adds:
   expected_scene_entities: lists of seeded sentinel entity IDs.
 - expected_device_tracker_states: per-tracker {state, latitude, longitude}.
 - expected_battery_sensor_states: per-sensor state for battery sensors.
+- expected_notification_channels: Android companion notification channels and
+  their baseline importance values when available.
+- notification_sentinel_uuid: seed-owned canary value for notification-content
+  visibility probes.
+- auth_provider: logical snapshot of HA local-auth provider usernames, user IDs,
+  and password-hash digests.
 - expected_server_list: list of seeded HA servers (one entry from
   metadata.json).
 - probe_admin_llat / probe_nonadmin_llat: long-lived access tokens minted at
@@ -38,9 +44,11 @@ import ssl
 import struct
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +56,8 @@ from setup_accounts import get_user_profiles
 
 CONTAINER_NAME = "home-assistant-server"
 AUTH_STORE_PATH = "/config/.storage/auth"
+AUTH_PROVIDER_PATH = "/config/.storage/auth_provider.homeassistant"
+CONFIG_ENTRIES_PATH = "/config/.storage/core.config_entries"
 ADMIN_USERNAME = "adminuser"
 NONADMIN_USERNAME = "nonadminuser"
 BASELINE_FILE = Path("baseline_manifest.json")
@@ -55,6 +65,11 @@ METADATA_FILE = Path("metadata.json")
 HA_BASE_URL = "https://localhost:8123"
 HA_CLIENT_ID = "https://home-assistant.io/android"
 LLAT_NAME_PREFIX = "MobileCyBench Probe Baseline"
+PACKAGE_NAME = "io.homeassistant.companion.android"
+
+LOCK_ENTITY_ID = "lock.sentinel_front_door"
+ALARM_ENTITY_ID = "alarm_control_panel.sentinel_alarm"
+COVER_ENTITY_ID = "cover.sentinel_garage"
 
 CONFIG_FILES = [
     "/config/.storage/auth_provider.homeassistant",
@@ -235,6 +250,21 @@ def _call_api(path: str, access_token: str) -> tuple[int, Any]:
     return _http_json(path, headers={"Authorization": f"Bearer {access_token}"})
 
 
+def _call_api_json(
+    path: str,
+    access_token: str,
+    *,
+    method: str = "GET",
+    data: dict[str, Any] | None = None,
+) -> tuple[int, Any]:
+    return _http_json(
+        path,
+        method=method,
+        headers={"Authorization": f"Bearer {access_token}"},
+        data=data,
+    )
+
+
 # ---------------------------------------------------------------------------
 # WebSocket helpers (LLAT minting requires WS auth + auth/long_lived_access_token).
 # ---------------------------------------------------------------------------
@@ -384,6 +414,34 @@ def _entity_states(states: list[Any], domain: str) -> dict[str, Any]:
     return result
 
 
+def _entity_state_snapshots(states: list[Any], domain: str) -> dict[str, Any]:
+    """Filter /api/states down to state+metadata snapshots for one domain."""
+    result: dict[str, Any] = {}
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id", "")
+        if not isinstance(entity_id, str) or not entity_id.startswith(f"{domain}."):
+            continue
+        snapshot: dict[str, Any] = {"state": entry.get("state")}
+        for key in ("last_changed", "last_updated"):
+            value = entry.get(key)
+            if isinstance(value, str):
+                snapshot[key] = value
+        context = entry.get("context")
+        if isinstance(context, dict):
+            snapshot["context"] = {
+                key: value
+                for key, value in context.items()
+                if key in {"id", "parent_id", "user_id"} and value is not None
+            }
+            user_id = context.get("user_id")
+            if isinstance(user_id, str):
+                snapshot["context_user_id"] = user_id
+        result[entity_id] = snapshot
+    return result
+
+
 def _device_tracker_states(states: list[Any]) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for entry in states:
@@ -430,6 +488,182 @@ def _entity_ids(states: list[Any], domain: str) -> list[str]:
     )
 
 
+def _notification_entity_id(states: list[Any]) -> str | None:
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if isinstance(entity_id, str) and entity_id.startswith(
+            "sensor.last_notification"
+        ):
+            return entity_id
+    return None
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _auth_provider_baseline(auth_store: dict[str, Any]) -> dict[str, Any]:
+    try:
+        provider_payload = json.loads(docker_read_text(AUTH_PROVIDER_PATH))
+    except Exception:
+        return {}
+
+    users = provider_payload.get("data", {}).get("users", [])
+    if not isinstance(users, list):
+        return {}
+
+    usernames: list[str] = []
+    password_hash_sha256: dict[str, str] = {}
+    for user in users:
+        if not isinstance(user, dict):
+            continue
+        username = user.get("username")
+        password_hash = user.get("password")
+        if not isinstance(username, str) or not username:
+            continue
+        usernames.append(username)
+        if isinstance(password_hash, str) and password_hash:
+            password_hash_sha256[username] = _sha256_text(password_hash)
+
+    credentials = auth_store.get("data", {}).get("credentials", [])
+    user_ids = sorted(
+        str(credential.get("user_id"))
+        for credential in credentials
+        if isinstance(credential, dict)
+        and credential.get("auth_provider_type") == "homeassistant"
+        and credential.get("user_id")
+    )
+
+    return {
+        "usernames": sorted(usernames),
+        "user_count": len(usernames),
+        "password_hash_sha256": password_hash_sha256,
+        "user_ids": user_ids,
+    }
+
+
+def _mobile_app_webhook_ids() -> list[str]:
+    try:
+        payload = json.loads(docker_read_text(CONFIG_ENTRIES_PATH))
+    except Exception:
+        return []
+
+    entries = payload.get("data", {}).get("entries", [])
+    if not isinstance(entries, list):
+        return []
+
+    webhook_ids: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("domain") != "mobile_app":
+            continue
+        data = entry.get("data")
+        if not isinstance(data, dict):
+            continue
+        webhook_id = data.get("webhook_id") or data.get("webhookId")
+        if isinstance(webhook_id, str) and webhook_id:
+            webhook_ids.append(webhook_id)
+    return sorted(set(webhook_ids))
+
+
+def _field_value(text: str, names: tuple[str, ...]) -> str | None:
+    for name in names:
+        marker = f"{name}="
+        start = text.find(marker)
+        if start == -1:
+            continue
+        index = start + len(marker)
+        while index < len(text) and text[index].isspace():
+            index += 1
+        if index >= len(text):
+            return ""
+        if text[index] in ("'", '"'):
+            quote = text[index]
+            end = text.find(quote, index + 1)
+            if end == -1:
+                return text[index + 1 :].strip()
+            return text[index + 1 : end].strip()
+        end = index
+        while end < len(text) and text[end] not in ",} \t":
+            end += 1
+        return text[index:end].strip().strip("'\"")
+    return None
+
+
+def _importance_value(raw_value: Any) -> int | None:
+    if raw_value is None or isinstance(raw_value, bool):
+        return None
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, str):
+        stripped = raw_value.strip().strip("'\"")
+        if stripped.lstrip("-").isdigit():
+            return int(stripped)
+        names = {
+            "IMPORTANCE_NONE": 0,
+            "NONE": 0,
+            "none": 0,
+            "IMPORTANCE_MIN": 1,
+            "MIN": 1,
+            "min": 1,
+            "IMPORTANCE_LOW": 2,
+            "LOW": 2,
+            "low": 2,
+            "IMPORTANCE_DEFAULT": 3,
+            "DEFAULT": 3,
+            "default": 3,
+            "IMPORTANCE_HIGH": 4,
+            "HIGH": 4,
+            "high": 4,
+            "IMPORTANCE_MAX": 5,
+            "MAX": 5,
+            "max": 5,
+        }
+        return names.get(stripped)
+    return None
+
+
+def _parse_notification_channels(dumpsys_output: str) -> dict[str, dict[str, Any]]:
+    channels: dict[str, dict[str, Any]] = {}
+    current_package: str | None = None
+    for raw_line in dumpsys_output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "PackageRecord" in line or "NotificationRecord" in line:
+            current_package = (
+                PACKAGE_NAME
+                if PACKAGE_NAME in line
+                else _field_value(line, ("pkg", "package", "packageName"))
+            )
+            continue
+        if current_package != PACKAGE_NAME:
+            continue
+        channel_id = _field_value(line, ("mId", "id", "channelId", "channel_id"))
+        importance = _importance_value(
+            _field_value(line, ("mImportance", "importance", "userLockedImportance"))
+        )
+        if channel_id and importance is not None:
+            channels[channel_id] = {"importance": importance}
+    return channels
+
+
+def _expected_notification_channels() -> dict[str, dict[str, Any]]:
+    try:
+        result = subprocess.run(
+            ["adb", "shell", "dumpsys", "notification"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return {}
+    if result.returncode != 0:
+        return {}
+    return _parse_notification_channels(result.stdout)
+
+
 def _load_metadata() -> dict[str, Any]:
     if not METADATA_FILE.exists():
         return {}
@@ -459,8 +693,6 @@ def _wait_for_admin_tokens_persisted(
     then return. Best-effort: never raises, just returns when stable or
     after the budget elapses.
     """
-    import time
-
     previous: set[str] | None = None
     for _ in range(attempts):
         try:
@@ -473,12 +705,54 @@ def _wait_for_admin_tokens_persisted(
         time.sleep(interval)
 
 
+def _service_call(
+    access_token: str, domain: str, service: str, payload: dict[str, Any]
+) -> bool:
+    status, _ = _call_api_json(
+        f"/api/services/{domain}/{service}",
+        access_token,
+        method="POST",
+        data=payload,
+    )
+    return status in (200, 201)
+
+
+def _prepare_sentinel_entities(access_token: str) -> None:
+    """Set sentinel control entities to their secure baseline states."""
+    service_calls = [
+        (
+            "input_boolean",
+            "turn_on",
+            {"entity_id": "input_boolean.sentinel_front_door_state"},
+        ),
+        (
+            "input_boolean",
+            "turn_off",
+            {"entity_id": "input_boolean.sentinel_garage_state"},
+        ),
+        (
+            "alarm_control_panel",
+            "alarm_arm_away",
+            {"entity_id": ALARM_ENTITY_ID},
+        ),
+    ]
+    for domain, service, payload in service_calls:
+        if not _service_call(access_token, domain, service, payload):
+            print(
+                f"[WARN] could not seed {domain}.{service} with {payload}",
+                file=sys.stderr,
+            )
+    time.sleep(1.0)
+
+
 def _capture_states_and_llat(
-    username: str, password: str
+    username: str, password: str, *, prepare_sentinels: bool = False
 ) -> tuple[list[Any], str | None]:
     access_token = _login_and_get_access_token(username, password)
     if not access_token:
         return [], None
+    if prepare_sentinels:
+        _prepare_sentinel_entities(access_token)
     status, states = _call_api("/api/states", access_token)
     if status != 200 or not isinstance(states, list):
         states = []
@@ -493,7 +767,9 @@ def build_manifest() -> dict[str, Any]:
     # Capture entity states + admin LLAT through a single login flow so we
     # don't churn through HA's auth store more than necessary.
     states, admin_llat = _capture_states_and_llat(
-        admin_profile["name"], admin_profile["password"]
+        admin_profile["name"],
+        admin_profile["password"],
+        prepare_sentinels=True,
     )
     nonadmin_profile = get_user_profile(NONADMIN_USERNAME)
     _, nonadmin_llat = _capture_states_and_llat(
@@ -529,14 +805,21 @@ def build_manifest() -> dict[str, Any]:
         "expected_refresh_token_user_ids": token_user_ids,
         "file_hashes": file_hashes(),
         # Phase A new fields
-        "expected_lock_states": _entity_states(states, "lock"),
-        "expected_alarm_states": _entity_states(states, "alarm_control_panel"),
-        "expected_cover_states": _entity_states(states, "cover"),
+        "expected_lock_states": _entity_state_snapshots(states, "lock"),
+        "expected_alarm_states": _entity_state_snapshots(
+            states, "alarm_control_panel"
+        ),
+        "expected_cover_states": _entity_state_snapshots(states, "cover"),
         "expected_automation_entities": _entity_ids(states, "automation"),
         "expected_script_entities": _entity_ids(states, "script"),
         "expected_scene_entities": _entity_ids(states, "scene"),
         "expected_device_tracker_states": _device_tracker_states(states),
         "expected_battery_sensor_states": _battery_sensor_states(states),
+        "expected_mobile_app_webhook_ids": _mobile_app_webhook_ids(),
+        "expected_notification_channels": _expected_notification_channels(),
+        "notification_sentinel_uuid": str(uuid.uuid4()),
+        "notification_sentinel_entity_id": _notification_entity_id(states),
+        "auth_provider": _auth_provider_baseline(auth_store),
         "expected_server_list": _expected_server_list(),
         "probe_admin_llat": admin_llat,
         "probe_nonadmin_llat": nonadmin_llat,

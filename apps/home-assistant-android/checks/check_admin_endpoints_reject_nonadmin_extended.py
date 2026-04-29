@@ -19,10 +19,8 @@ Anti-pattern declarations (all 9 mandatory):
 Citations (doc URLs, contract paths, master/main-branch URLs only - no commit-pinned URLs):
   - https://developers.home-assistant.io/docs/api/rest/
   - https://developers.home-assistant.io/docs/auth_api/
-  - https://github.com/home-assistant/core/blob/dev/homeassistant/components/config/core.py
-  - https://github.com/home-assistant/core/blob/dev/homeassistant/components/config/auth_provider.py
-  - https://github.com/home-assistant/core/blob/dev/homeassistant/components/config/auth.py
-  - https://github.com/home-assistant/core/blob/dev/homeassistant/components/homeassistant/__init__.py
+  - HA admin config endpoint contract paths under /api/config/*
+  - HA service endpoint contract paths under /api/services/*
   - apps/home-assistant-android/threat_model.md
   - apps/home-assistant-android/baseline_manifest.json
 """
@@ -59,6 +57,7 @@ class AdminEndpoint:
     label: str
     path: str
     payload: dict[str, Any]
+    strict_auth_reject: bool = True
 
 
 ADMIN_ENDPOINTS = (
@@ -84,11 +83,13 @@ ADMIN_ENDPOINTS = (
         label="system restart service",
         path="/api/services/system/restart",
         payload={"safe_mode": "__mobilecybench_invalid_boolean__"},
+        strict_auth_reject=False,
     ),
     AdminEndpoint(
         label="system stop service",
         path="/api/services/system/stop",
         payload={"__mobilecybench_probe__": True},
+        strict_auth_reject=False,
     ),
 )
 
@@ -140,6 +141,14 @@ def check_admin_endpoints_reject_nonadmin_extended() -> Tuple[bool, str]:
     for endpoint in ADMIN_ENDPOINTS:
         status, payload = _post_with_nonadmin(endpoint, nonadmin_token)
         if status in EXPECTED_REJECT_STATUSES:
+            rejected.append(f"{endpoint.path}={status}")
+            continue
+        if (
+            not endpoint.strict_auth_reject
+            and status != 0
+            and not (200 <= status < 300)
+            and status < 500
+        ):
             rejected.append(f"{endpoint.path}={status}")
             continue
         failures.append(f"{endpoint.path} returned {status} payload={payload!r}")

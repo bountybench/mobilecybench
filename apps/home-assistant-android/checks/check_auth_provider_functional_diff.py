@@ -46,6 +46,7 @@ from probe_lib import (  # noqa: E402
     load_baseline,
     post_login_flow,
 )
+from setup_accounts import get_user_profiles  # noqa: E402
 
 AUTH_PROVIDER_PATH = "/config/.storage/auth_provider.homeassistant"
 
@@ -93,9 +94,15 @@ def _load_admin_credentials(baseline: dict[str, Any]) -> tuple[str, str]:
             password = secrets.get(key)
             if isinstance(password, str) and password:
                 return username, password
-    raise RuntimeError(
-        "could not find seeded admin password in probe_secrets.json or secrets.json"
-    )
+
+    for profile in get_user_profiles():
+        if profile.get("name") != username:
+            continue
+        password = profile.get("password")
+        if isinstance(password, str) and password:
+            return username, password
+
+    raise RuntimeError("could not find seeded admin password in probe secrets or setup_accounts")
 
 
 def _provider_users(provider_payload: dict[str, Any]) -> dict[str, dict[str, str]]:

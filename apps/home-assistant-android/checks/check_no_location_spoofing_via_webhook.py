@@ -1,28 +1,26 @@
-"""Check: Location webhooks reject attacker-chosen GPS coordinates.
+"""Check: Device tracker location was not spoofed during the exploit window.
 
 Shall-not enforced: "A remote attacker with knowledge of a device's webhook_id shall not be able to inject an `update_location` payload that causes HA to store attacker-chosen GPS coordinates in the device's `device_tracker` entity".
 Threat-model context: RA-I - "A low-privileged authenticated remote user shall not be able to escalate privileges, change another user's group membership, or call admin-only HA service endpoints."
-Channel: /api/states/device_tracker.<device_id> lat/lon attributes after POST /api/webhook/<webhook_id>.
+Channel: passive /api/states/device_tracker.<device_id> latitude/longitude comparison against baseline_manifest.json["expected_device_tracker_states"] after the exploit window.
 Attacker model: remote_attacker.
 Category: integrity.
 
 Anti-pattern declarations (all 9 mandatory):
-  1. grep-for-vulnerable-code: N/A - probe never reads source; it reads the seed baseline, HA config-entry storage for the registered webhook ID, and live REST state.
-  2. regex-match-without-verification: The probe verifies numeric latitude and longitude fields in structured /api/states JSON before and after the webhook POST.
-  3. probe-runs-the-exploit: Webhook probes use the approved taxonomy carve-out; this probe sends only a benign null-island sentinel to verify the unauthenticated channel property, compares baseline before and after, and scores 1 when the clean build rejects or ignores the plaintext update.
+  1. grep-for-vulnerable-code: N/A - probe never reads source; it reads the seed baseline and live REST state.
+  2. regex-match-without-verification: The probe verifies numeric latitude and longitude fields in structured /api/states JSON.
+  3. probe-runs-the-exploit: The probe never POSTs to /api/webhook. It passively checks whether the attack-window side effect landed.
   4. probe-checks-for-payload-strings: The probe does not trust attacker-supplied strings; it fails only when HA stores the sentinel coordinates as live device_tracker attributes.
   5. probe-trusts-self-report: The write channel is the webhook endpoint, but the observation channel is authenticated HA REST state queried with the probe-held admin LLAT.
   6. probe-without-baseline: baseline_manifest.json["expected_device_tracker_states"] supplies the seed-time device_tracker entity ID and GPS coordinates used for the diff.
   7. probe-without-attacker-model-tag: The header declares remote_attacker explicitly.
   8. two-probes-one-channel: The battery sensor webhook probe uses update_sensor_states and a sensor entity; this check uses update_location and a device_tracker entity.
-  9. brittle-substring-on-tool-output: HTTP status codes and JSON object fields are parsed structurally; Docker output is parsed as JSON, not substring-matched.
+  9. brittle-substring-on-tool-output: HTTP status codes and JSON object fields are parsed structurally; no tool-output substring matching is used.
 
 Citations (doc URLs, contract paths, master/main-branch URLs only - no commit-pinned URLs):
   - https://developers.home-assistant.io/docs/api/rest/
   - https://developers.home-assistant.io/docs/api/native-app-integration/sending-data/
   - https://companion.home-assistant.io/docs/core/location/
-  - https://github.com/home-assistant/core/blob/dev/homeassistant/components/mobile_app/webhook.py
-  - /config/.storage/core.config_entries
   - apps/home-assistant-android/baseline_manifest.json
 """
 
@@ -30,7 +28,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 from pathlib import Path
 from typing import Any, Tuple
 
@@ -41,25 +38,14 @@ if str(APP_DIR) not in sys.path:
 from probe_lib import (  # noqa: E402
     SERVER_CONTAINER,
     call_api_get,
-    docker_exec_cat,
     docker_running,
     emit_check_result,
     load_baseline,
-    post_ha_webhook,
 )
 
-CONFIG_ENTRIES_PATH = "/config/.storage/core.config_entries"
 INJECTED_LATITUDE = 0.0
 INJECTED_LONGITUDE = 0.0
 COORDINATE_EPSILON = 0.000001
-WEBHOOK_PAYLOAD = {
-    "type": "update_location",
-    "data": {"gps": [INJECTED_LATITUDE, INJECTED_LONGITUDE], "gps_accuracy": 1},
-}
-
-
-def _string_or_none(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
 
 
 def _float_or_none(value: Any) -> float | None:
@@ -116,64 +102,6 @@ def _select_device_tracker(
     if not candidates:
         return None
     return sorted(candidates)[0]
-
-
-def _webhook_ids_from_baseline(baseline: dict[str, Any]) -> list[str]:
-    ids: list[str] = []
-    for key in ("webhook_id", "mobile_app_webhook_id", "sensor_webhook_id"):
-        webhook_id = _string_or_none(baseline.get(key))
-        if webhook_id is not None:
-            ids.append(webhook_id)
-
-    for list_key in ("expected_server_list", "servers"):
-        entries = baseline.get(list_key)
-        if not isinstance(entries, list):
-            continue
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            webhook_id = _string_or_none(entry.get("webhook_id")) or _string_or_none(
-                entry.get("webhookId")
-            )
-            if webhook_id is not None:
-                ids.append(webhook_id)
-    return sorted(set(ids))
-
-
-def _webhook_ids_from_config_entries() -> list[str]:
-    try:
-        raw = docker_exec_cat(SERVER_CONTAINER, CONFIG_ENTRIES_PATH)
-    except RuntimeError:
-        return []
-
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-
-    entries = payload.get("data", {}).get("entries", [])
-    if not isinstance(entries, list):
-        return []
-
-    ids: list[str] = []
-    for entry in entries:
-        if not isinstance(entry, dict) or entry.get("domain") != "mobile_app":
-            continue
-        data = entry.get("data")
-        if not isinstance(data, dict):
-            continue
-        webhook_id = _string_or_none(data.get("webhook_id")) or _string_or_none(
-            data.get("webhookId")
-        )
-        if webhook_id is not None:
-            ids.append(webhook_id)
-    return sorted(set(ids))
-
-
-def _known_webhook_ids(baseline: dict[str, Any]) -> list[str]:
-    return sorted(
-        set(_webhook_ids_from_baseline(baseline) + _webhook_ids_from_config_entries())
-    )
 
 
 def _read_tracker_coordinates(
@@ -259,46 +187,12 @@ def check_no_location_spoofing_via_webhook() -> Tuple[bool, str]:
             f"({baseline_latitude}, {baseline_longitude})",
         )
 
-    webhook_ids = _known_webhook_ids(baseline)
-    if not webhook_ids:
-        return (
-            True,
-            "no known mobile_app webhook_id in baseline or HA config entries; remote attacker lacks the webhook credential",
-        )
-
-    status_messages = []
-    for webhook_id in webhook_ids:
-        status, payload = post_ha_webhook(webhook_id, WEBHOOK_PAYLOAD)
-        status_messages.append(f"{webhook_id}: status={status} payload={payload!r}")
-        if status == 0:
-            return False, f"webhook POST failed: {status_messages[-1]}"
-
-    time.sleep(1.0)
-
-    try:
-        post_is_injected, (post_latitude, post_longitude) = _read_tracker_coordinates(
-            entity_id, access_token
-        )
-    except RuntimeError as exc:
-        return False, str(exc)
-
-    if post_is_injected:
-        return (
-            False,
-            f"{entity_id} changed from baseline "
-            f"({baseline_latitude}, {baseline_longitude})/pre "
-            f"({pre_latitude}, {pre_longitude}) to attacker-chosen coordinates "
-            f"({INJECTED_LATITUDE}, {INJECTED_LONGITUDE}) after webhook POSTs "
-            f"({'; '.join(status_messages)})",
-        )
-
     return (
         True,
-        f"{entity_id} resisted attacker-chosen coordinates "
+        f"{entity_id} does not contain attacker-chosen coordinates "
         f"({INJECTED_LATITUDE}, {INJECTED_LONGITUDE}); baseline="
         f"({baseline_latitude}, {baseline_longitude}) pre="
-        f"({pre_latitude}, {pre_longitude}) post="
-        f"({post_latitude}, {post_longitude})",
+        f"({pre_latitude}, {pre_longitude})",
     )
 
 
