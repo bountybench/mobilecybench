@@ -181,6 +181,36 @@ def _run_evaluate(wf, ops_cls, exits, probes, *, verifier=(1, 1)):
         return wf.evaluate()
 
 
+def test_remote_attacker_prompt_uses_split_attacker_credentials(
+    remote_attacker_config, tmp_path
+):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    wf.metadata.update(
+        {
+            "username": "victim-admin",
+            "password": "victim-pass",
+            "remote_attacker_username": "lowpriv-attacker",
+            "remote_attacker_password": "lowpriv-pass",
+        }
+    )
+
+    assert wf._agent_credentials() == ("lowpriv-attacker", "lowpriv-pass")
+
+
+def test_malicious_app_prompt_keeps_app_credentials(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    wf.metadata.update(
+        {
+            "username": "victim-admin",
+            "password": "victim-pass",
+            "remote_attacker_username": "lowpriv-attacker",
+            "remote_attacker_password": "lowpriv-pass",
+        }
+    )
+
+    assert wf._agent_credentials() == ("victim-admin", "victim-pass")
+
+
 def test_exploit_missing_saves_zero_score(redteam_config, tmp_path):
     wf = _make_workflow(redteam_config, tmp_path)
     _write_agent_artifact("malicious_app", present=False)
@@ -288,6 +318,10 @@ def test_phase2_restore_runs_even_on_exception(redteam_config, tmp_path):
 
 
 def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path):
+    """RemoteAttackerOps.run_phase must call hooks in the order:
+    prepare_app (per-task, pre-exploit) → exploit → pm_clear → prepare_victim
+    (per-app, post-pm-clear). This mirrors CI's three-slot architecture in
+    scripts/task_validation_common.sh."""
     wf = _make_workflow(remote_attacker_config, tmp_path)
     order = []
 
@@ -307,6 +341,11 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
             "_run_prepare_app",
             side_effect=lambda: order.append("prepare_app"),
         ),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_prepare_victim",
+            side_effect=lambda: order.append("prepare_victim"),
+        ),
         patch(
             "workflows.redteam.subprocess.run",
             side_effect=lambda cmd, **_kwargs: order.append("pm_clear")
@@ -321,7 +360,7 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
         )
 
     assert result.exit_code == 1
-    assert order == ["exploit", "pm_clear", "prepare_app"]
+    assert order == ["prepare_app", "exploit", "pm_clear", "prepare_victim"]
 
 
 def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_path):
@@ -336,6 +375,7 @@ def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_
         return MagicMock(container=MagicMock())
 
     with (
+        patch("agent.agent_container.create_docker_network"),
         patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
         patch.object(RedTeamWorkflow, "setup_apks"),
         patch.object(type(wf._bundle), "validate_build_artifacts"),
@@ -356,6 +396,51 @@ def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_
         "apk_path": wf._bundle.phase1_apk(),
         "post_checkout_hook": wf._bundle.prepare_phase1_codebase,
     }
+
+
+def test_setup_runtime_environment_creates_shared_net_before_install(
+    redteam_config, tmp_path
+):
+    """RedTeamWorkflow.setup_runtime_environment must create shared_net BEFORE
+    install_app_and_setup_backend (which runs `docker compose up` against the
+    app's compose file with `external: true`). R2.19.
+    """
+    wf = _make_workflow(redteam_config, tmp_path)
+    call_order: list[str] = []
+
+    def fake_create_network(name: str) -> None:
+        call_order.append(f"create_network:{name}")
+
+    def fake_install(*args, **kwargs):
+        call_order.append("install_app_and_setup_backend")
+
+    with (
+        patch(
+            "agent.agent_container.create_docker_network",
+            side_effect=fake_create_network,
+        ),
+        patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
+        patch.object(RedTeamWorkflow, "setup_apks"),
+        patch.object(type(wf._bundle), "validate_build_artifacts"),
+        patch("utils.emulator_certs.inject_system_ca"),
+        patch(
+            "utils.setup_utils.install_app_and_setup_backend", side_effect=fake_install
+        ),
+        patch(
+            "agent.agent_container.setup_agent_environment",
+            return_value=MagicMock(container=MagicMock()),
+        ),
+        patch("utils.setup_utils.check_connectivity"),
+        patch.object(MaliciousAppOps, "setup_agent_extras"),
+    ):
+        wf.setup_runtime_environment()
+
+    install_idx = call_order.index("install_app_and_setup_backend")
+    network_idx = call_order.index("create_network:shared_net")
+    assert network_idx < install_idx, (
+        f"create_docker_network must run before install_app_and_setup_backend; "
+        f"got order: {call_order}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -380,9 +465,12 @@ def test_validate_arguments_requires_bundle_patch(
         wf.validate_arguments()
 
 
-def test_remote_attacker_preserves_evidence_on_prepare_app_crash(
+def test_remote_attacker_preserves_evidence_on_prepare_victim_crash(
     remote_attacker_config, tmp_path
 ):
+    """prepare_victim runs AFTER the exploit (post-pm-clear), so a crash
+    here must not lose the exploit's evidence — the verifier still needs
+    to see what the exploit did before pm clear wiped state."""
     wf = _make_workflow(remote_attacker_config, tmp_path)
 
     def fake_exploit(*args, **kwargs):
@@ -394,11 +482,12 @@ def test_remote_attacker_preserves_evidence_on_prepare_app_crash(
 
     with (
         patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
         patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
         patch.object(
             RedTeamWorkflow,
-            "_run_prepare_app",
-            side_effect=RuntimeError("prepare_app crashed"),
+            "_run_prepare_victim",
+            side_effect=RuntimeError("prepare_victim crashed"),
         ),
         patch(
             "workflows.redteam.subprocess.run",
@@ -415,7 +504,45 @@ def test_remote_attacker_preserves_evidence_on_prepare_app_crash(
     assert result.exit_code == 0
     assert result.evidence_log_path is not None
     assert result.evidence_log_path.exists()
+    assert result.failure_kind == "prepare_victim_crash"
+
+
+def test_remote_attacker_prepare_app_crash_short_circuits_before_exploit(
+    remote_attacker_config, tmp_path
+):
+    """prepare_app runs BEFORE the exploit. If it crashes, the exploit must
+    not run (no setup state for it to attack), and there is no evidence to
+    preserve."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_prepare_app",
+            side_effect=RuntimeError("prepare_app crashed"),
+        ),
+        patch.object(RedTeamWorkflow, "_run_exploit") as mock_exploit,
+        patch.object(RedTeamWorkflow, "_run_prepare_victim") as mock_victim,
+        patch("workflows.redteam.subprocess.run") as mock_subproc,
+    ):
+        result = RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=Path("apk/test.apk"),
+        )
+
+    assert result.exit_code == 2
     assert result.failure_kind == "prepare_app_crash"
+    assert result.evidence_log_path is None
+    mock_exploit.assert_not_called()
+    mock_victim.assert_not_called()
+    # pm clear must also not run if there was no exploit.
+    assert not any(
+        isinstance(c.args[0], list) and c.args[0][:3] == ["adb", "shell", "pm"]
+        for c in mock_subproc.call_args_list
+    )
 
 
 def test_malicious_app_replay_error_sets_failure_kind(redteam_config, tmp_path):
@@ -561,3 +688,230 @@ def test_phase2_replay_runtime_error_short_circuits_to_infrastructure_error(
     assert result["phases"]["phase2_patched"]["failure_kind"] == "replay_runtime_error"
     # Crucially, signals must not be present — we never reached compute_redteam_score.
     assert "signals" not in result
+
+
+# ---------------------------------------------------------------------------
+# Two-slot setup hooks (issue #1015)
+#
+# The runner mirrors CI's three-slot architecture:
+#   - prepare_app.sh (per-task, <task_dir>/) — runs once before exploit, both
+#     attacker models. Mirrors task_runtime_run_prepare_hook.
+#   - prepare_victim.sh (per-app, <app_dir>/) — runs at attacker-model-specific
+#     point. Mirrors task_validation_run_prepare_victim_hook.
+# ---------------------------------------------------------------------------
+
+
+def _capture_setup_hook():
+    """Capture (cmd, env, cwd) for any CommandExecutor.run_with_progress call."""
+    captured: list[dict] = []
+
+    def fake_run(self, command, timeout, message="", cwd=None, env=None, check=True):
+        captured.append(
+            {"command": command, "env": env, "cwd": cwd, "message": message}
+        )
+        return MagicMock(returncode=0)
+
+    return captured, patch(
+        "utils.command_executor.CommandExecutor.run_with_progress",
+        autospec=True,
+        side_effect=fake_run,
+    )
+
+
+def test_run_prepare_app_runs_per_task_hook(remote_attacker_config, tmp_path):
+    """_run_prepare_app reads <task_dir>/prepare_app.sh, NOT
+    <app_dir>/prepare_victim.sh — even when the latter exists."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    task_hook = wf._bundle.task_dir / "prepare_app.sh"
+    (wf.app_dir / "prepare_victim.sh").write_text("#!/bin/bash\nexit 0\n")
+
+    captured, patcher = _capture_setup_hook()
+    with patcher:
+        wf._run_prepare_app()
+
+    assert len(captured) == 1
+    assert captured[0]["command"] == f"bash {task_hook}"
+    assert captured[0]["env"]["MCB_ATTACKER_MODEL"] == "remote_attacker"
+    assert captured[0]["env"]["MCB_APP_DIR"] == str(wf.app_dir)
+    assert captured[0]["cwd"] == wf.app_dir
+
+
+def test_run_prepare_app_no_op_when_absent(remote_attacker_config, tmp_path):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    (wf._bundle.task_dir / "prepare_app.sh").unlink()
+
+    captured, patcher = _capture_setup_hook()
+    with patcher:
+        wf._run_prepare_app()
+
+    assert captured == []
+
+
+def test_run_prepare_victim_runs_per_app_hook(remote_attacker_config, tmp_path):
+    """_run_prepare_victim reads <app_dir>/prepare_victim.sh, NOT
+    <task_dir>/prepare_app.sh — they're independent slots."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    prepare_victim = wf.app_dir / "prepare_victim.sh"
+    prepare_victim.write_text("#!/bin/bash\nexit 0\n")
+    assert (wf._bundle.task_dir / "prepare_app.sh").exists()
+
+    captured, patcher = _capture_setup_hook()
+    with patcher:
+        wf._run_prepare_victim()
+
+    assert len(captured) == 1
+    assert captured[0]["command"] == f"bash {prepare_victim}"
+    assert captured[0]["env"]["MCB_ATTACKER_MODEL"] == "remote_attacker"
+    assert captured[0]["env"]["MCB_APP_DIR"] == str(wf.app_dir)
+    assert captured[0]["cwd"] == wf.app_dir
+
+
+def test_run_prepare_victim_no_op_when_absent(remote_attacker_config, tmp_path):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    fallback = wf.app_dir / "prepare_victim.sh"
+    if fallback.exists():
+        fallback.unlink()
+
+    captured, patcher = _capture_setup_hook()
+    with patcher:
+        wf._run_prepare_victim()
+
+    assert captured == []
+
+
+def test_malicious_app_run_phase_orders_both_hooks_pre_exploit(
+    redteam_config, tmp_path
+):
+    """MaliciousAppOps.run_phase order: restart → prepare_app → prepare_victim
+    → replay APK. Both hooks fire pre-exploit; prepare_victim must run AFTER
+    prepare_app so per-task state can be present before the app-wide victim
+    seed runs (and so the victim is logged in before the malicious APK runs
+    co-resident with the target app)."""
+    wf = _make_workflow(redteam_config, tmp_path)
+    order = []
+
+    with (
+        patch("evaluation.replay_apk.uninstall"),
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_prepare_app",
+            side_effect=lambda: order.append("prepare_app"),
+        ),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_prepare_victim",
+            side_effect=lambda: order.append("prepare_victim"),
+        ),
+        patch(
+            "evaluation.replay_apk.replay_malicious_apk",
+            side_effect=lambda *_a, **_kw: order.append("replay")
+            or MagicMock(exit_code=0, evidence_log_path=None),
+        ),
+    ):
+        MaliciousAppOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            apk_project_dir=tmp_path / "exploit_apk",
+            target_apk=Path("apk/test.apk"),
+        )
+
+    assert order == ["prepare_app", "prepare_victim", "replay"]
+
+
+def test_malicious_app_prepare_victim_crash_short_circuits_replay(
+    redteam_config, tmp_path
+):
+    """If prepare_victim crashes for malicious_app, the replay must not run
+    (the victim isn't seeded, so any 'success' would be infrastructure
+    noise). Mirrors the existing prepare_app-crash short-circuit."""
+    wf = _make_workflow(redteam_config, tmp_path)
+
+    with (
+        patch("evaluation.replay_apk.uninstall"),
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_prepare_victim",
+            side_effect=RuntimeError("victim seed failed"),
+        ),
+        patch("evaluation.replay_apk.replay_malicious_apk") as mock_replay,
+    ):
+        result = MaliciousAppOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            apk_project_dir=tmp_path / "exploit_apk",
+            target_apk=Path("apk/test.apk"),
+        )
+
+    assert result.exit_code == 2
+    assert result.failure_kind == "prepare_victim_crash"
+    assert result.evidence_log_path is None
+    mock_replay.assert_not_called()
+
+
+def test_remote_attacker_run_phase_real_bash_end_to_end(
+    remote_attacker_config, tmp_path
+):
+    """Integration: real bash subprocess for both hooks, full
+    RemoteAttackerOps.run_phase orchestration. Verifies (a) the per-task
+    prepare_app.sh runs PRE-exploit, (b) the per-app prepare_victim.sh runs
+    POST-pm-clear, (c) MCB_ATTACKER_MODEL is exported to both, and (d) the
+    bash invocations actually fire (not just the Python wiring)."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+
+    order_log = tmp_path / "order.log"
+    order_log.write_text("")
+
+    task_hook = wf._bundle.task_dir / "prepare_app.sh"
+    task_hook.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+echo "prepare_app:$MCB_ATTACKER_MODEL" >> "{order_log}"
+"""
+    )
+    task_hook.chmod(0o755)
+
+    app_hook = wf.app_dir / "prepare_victim.sh"
+    app_hook.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+echo "prepare_victim:$MCB_ATTACKER_MODEL" >> "{order_log}"
+"""
+    )
+    app_hook.chmod(0o755)
+
+    def fake_exploit(*args, **_kwargs):
+        order_log.write_text(order_log.read_text() + "exploit\n")
+        phase_dir = args[1]
+        phase_dir.mkdir(parents=True, exist_ok=True)
+        evidence = phase_dir / "replay_evidence.log"
+        evidence.write_text("ok")
+        return {"replay_exit_code": 1, "replay_evidence_path": str(evidence)}
+
+    def fake_subprocess_run(cmd, **_kwargs):
+        if isinstance(cmd, list) and cmd[:3] == ["adb", "shell", "pm"]:
+            order_log.write_text(order_log.read_text() + "pm_clear\n")
+        return MagicMock(returncode=0)
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch("workflows.redteam.subprocess.run", side_effect=fake_subprocess_run),
+    ):
+        result = RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=Path("apk/test.apk"),
+        )
+
+    assert result.exit_code == 1
+    assert result.failure_kind is None
+    assert order_log.read_text().strip().splitlines() == [
+        "prepare_app:remote_attacker",
+        "exploit",
+        "pm_clear",
+        "prepare_victim:remote_attacker",
+    ]

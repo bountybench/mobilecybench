@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Optional
 
 from models.config import RunnerConfig
 
@@ -54,10 +55,44 @@ class Workflow(ABC):
         with open(metadata_path, encoding="utf-8") as f:
             self.metadata = json.load(f)
 
+    def _agent_credentials(self) -> tuple[str | None, str | None]:
+        """Return credentials to expose to the agent prompt.
+
+        App metadata `username`/`password` describe the app or victim setup
+        account. Remote-attacker redteam runs may define a separate low-privilege
+        attacker account so the prompt does not hand out victim/admin
+        credentials as "your credentials".
+        """
+        if (
+            self.config.workflow == "redteam"
+            and self.config.attacker_model == "remote_attacker"
+        ):
+            remote_username = self.metadata.get("remote_attacker_username")
+            remote_password = self.metadata.get("remote_attacker_password")
+            if remote_username and remote_password:
+                return remote_username, remote_password
+        return self.metadata.get("username"), self.metadata.get("password")
+
     @abstractmethod
     def setup_runtime_environment(self) -> None:
         """Set up the runtime environment (emulator, APK, backend services)."""
         pass
+
+    def _resolve_additional_context(self) -> Optional[str]:
+        """Build the agent's `additional_context` from metadata + runner config.
+
+        Order is load-bearing: the per-app `metadata.additional_info` carries
+        threat-model framing that should appear first; the per-run
+        `runner_config.custom_system_prompt` is a runtime knob (hints,
+        framing tweaks) appended after it.
+        """
+        additional_info = self.metadata.get("additional_info")
+        extra = self.config.custom_system_prompt
+        if not extra:
+            return additional_info
+        if not additional_info:
+            return extra
+        return f"{additional_info}\n\n{extra}"
 
     def setup_agent(self) -> None:
         """Configure and initialize the agent."""
@@ -69,7 +104,8 @@ class Workflow(ABC):
         workflow = self.config.workflow
         include_ssrf = False
 
-        additional_context = self.metadata.get("additional_info")
+        additional_context = self._resolve_additional_context()
+        agent_username, agent_password = self._agent_credentials()
 
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
 
@@ -83,13 +119,14 @@ class Workflow(ABC):
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
-                username=self.metadata.get("username"),
-                password=self.metadata.get("password"),
+                username=agent_username,
+                password=agent_password,
                 include_ssrf=include_ssrf,
                 workflow=workflow,
                 attacker_model=self.config.attacker_model,
                 additional_context=additional_context,
                 no_codebase=self.config.no_codebase,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         elif agent_mode == "codex":
             from agent.codex_agent import CodexAgent
@@ -100,8 +137,8 @@ class Workflow(ABC):
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
-                username=self.metadata.get("username"),
-                password=self.metadata.get("password"),
+                username=agent_username,
+                password=agent_password,
                 include_ssrf=include_ssrf,
                 workflow=workflow,
                 attacker_model=self.config.attacker_model,
@@ -109,6 +146,7 @@ class Workflow(ABC):
                 no_codebase=self.config.no_codebase,
                 model=self.config.model,
                 reasoning_effort=self.config.reasoning_effort,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         else:
             from agent.custom_agent import CustomAgent
@@ -124,14 +162,15 @@ class Workflow(ABC):
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 package_name=self.metadata.get("package_name"),
-                username=self.metadata.get("username"),
-                password=self.metadata.get("password"),
+                username=agent_username,
+                password=agent_password,
                 include_ssrf=include_ssrf,
                 workflow=workflow,
                 attacker_model=self.config.attacker_model,
                 reasoning_effort=self.config.reasoning_effort,
                 no_codebase=self.config.no_codebase,
                 allow_unregistered_models=self.config.allow_unregistered_models,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
@@ -289,8 +328,19 @@ class Workflow(ABC):
                 logger.error(f"cleanup.sh stderr:\n{e.stderr.strip()}")
             raise
 
+    def _ensure_shared_docker_network(self) -> None:
+        """Ensure ``shared_net`` exists before any app's docker-compose runs."""
+        # Lazy import to keep workflow construction free of docker side-effects.
+        from agent.agent_container import create_docker_network
+
+        create_docker_network("shared_net")
+
     def _preflight_cleanup_app_runtime(self) -> None:
         """Best-effort clean slate for stale containers before setup."""
+        # Network must exist before any cleanup.sh / start_runtime.sh runs
+        # `docker compose up`, otherwise compose aborts on the external
+        # network reference.
+        self._ensure_shared_docker_network()
         stale_app_dir = self._get_stale_backend_app_dir()
         if stale_app_dir is not None:
             logger.info(

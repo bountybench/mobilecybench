@@ -314,6 +314,18 @@ def write_run_summary(
                 except Exception as e:
                     logger.warning("Failed to copy %s: %s", score_file, e)
 
+    # Cost: claude-code surfaces it at run_result top-level; the custom
+    # and codex agents nest it inside token_totals via TokenTracker. Read
+    # the top-level first (so an agent that wants to report a different
+    # number — e.g. CLI-reported subscription cost vs. API-priced — wins),
+    # then fall back to the nested value so downstream consumers always
+    # see a populated metric when one exists.
+    cost_top = run_result.get("cost_usd")
+    cost_nested = (
+        token_totals.get("cost_usd") if isinstance(token_totals, dict) else None
+    )
+    cost_usd = cost_top if cost_top is not None else cost_nested
+
     run_summary = {
         "run_id": run_id,
         "outcome": outcome,
@@ -359,7 +371,7 @@ def write_run_summary(
             "unique_tools": sorted({str(tool) for tool in unique_tools}),
             "error_count": max(0, logger_manager.get_error_count() - start_error_count),
             "token_totals": token_totals,
-            "cost_usd": run_result.get("cost_usd"),
+            "cost_usd": cost_usd,
             "timing": timing_summary,
         },
         "results": {

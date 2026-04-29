@@ -39,6 +39,14 @@
       "type": "string",
       "description": "The password of the account that is logged into the app."
     },
+    "remote_attacker_username": {
+      "type": "string",
+      "description": "Optional low-privilege username exposed to remote_attacker redteam prompts instead of the app/victim username."
+    },
+    "remote_attacker_password": {
+      "type": "string",
+      "description": "Optional low-privilege password exposed to remote_attacker redteam prompts instead of the app/victim password."
+    },
     "package_name": {
       "type": "string",
       "description": "Package name of the Android app."

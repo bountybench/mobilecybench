@@ -63,11 +63,26 @@ except:
 # Warn user about old SDK versions and ask for confirmation
 warn_old_sdk_version() {
     local sdk_version="$1"
-    local context="${2:-Android SDK}"  
-    
+    local context="${2:-Android SDK}"
+
     if [[ $sdk_version -lt 30 ]]; then
         echo "Warning: $context $sdk_version is quite old."
         echo "Old SDK versions may have compatibility issues with modern devices."
+
+        # Non-interactive shells (CI, docker build, `bash setup.sh < /dev/null`)
+        # default to "no" so the script never hangs waiting for input. Set
+        # MOBILECYBENCH_NONINTERACTIVE=1 to force this behavior even on a tty,
+        # or pass --yes-old-sdk on the command line to opt in unattended.
+        if [[ -n "${MOBILECYBENCH_YES_OLD_SDK:-}" ]]; then
+            echo "MOBILECYBENCH_YES_OLD_SDK is set — proceeding."
+            return 0
+        fi
+        if [[ -n "${MOBILECYBENCH_NONINTERACTIVE:-}" ]] || ! [ -t 0 ]; then
+            echo "Non-interactive shell detected; cancelling setup. Set"
+            echo "MOBILECYBENCH_YES_OLD_SDK=1 to proceed unattended."
+            exit 0
+        fi
+
         read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -166,7 +181,6 @@ else
                 echo ""
                 echo "Mode 1: Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
                 echo "Mode 2: Auto-configure from app metadata (Recommended)"
-                echo "Mode 3: Manual SDK and system image configuration"
                 echo ""
                 echo "Arguments:"
                 echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
@@ -196,7 +210,6 @@ else
                 echo "  $0 conversations                      # Use conversations app (SDK 35, google_apis)"
                 echo "  $0 owncloud-android                   # Use owncloud-android app (SDK 34, google_apis)"
                 echo "  $0 wordpress                          # Use wordpress app (SDK 35, google_apis)"
-                echo "  $0 --sdk 30                           # Use SDK 30 with default system image"
                 exit 0
                 ;;
             *)
@@ -380,6 +393,15 @@ check_apktool() {
             echo "  3. Rename the jar to apktool.jar"
             echo "  4. Place both files in C:\\Windows\\System32 or add to PATH"
             echo ""
+
+            # Non-interactive shells: fail loudly instead of hanging on input.
+            # The Windows manual-install path can't be automated; the partner
+            # has to install apktool themselves and re-run setup.sh.
+            if [[ -n "${MOBILECYBENCH_NONINTERACTIVE:-}" ]] || ! [ -t 0 ]; then
+                error_exit "apktool not installed and shell is non-interactive. \
+Install apktool (see options above) and re-run setup.sh."
+            fi
+
             read -p "Press Enter after installing apktool to continue..."
 
             if ! command_exists apktool; then
@@ -632,9 +654,29 @@ create_avd() {
     done
 }
 
+# Resolve which pip to install the project with. In order of preference:
+#
+#   1. The active venv (`$VIRTUAL_ENV/bin/pip`) — what the README path
+#      yields and what subprocesses inheriting an activated PATH get.
+#   2. `$PYTHON -m pip` — pairs with the python the rest of the script
+#      uses, regardless of which `pip` happens to be earlier in PATH.
+#
+# Avoids:
+#   - Bare `pip` resolving to a different python than `$PYTHON` when
+#     the user has e.g. system pip on PATH ahead of a venv pip.
+#   - Spurious PEP 668 failures on Homebrew macOS when the runner
+#     subprocess inherits a non-activated PATH but $VIRTUAL_ENV is set.
+install_self_package() {
+    if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/pip" ]]; then
+        "${VIRTUAL_ENV}/bin/pip" install -e .
+    else
+        "$PYTHON" -m pip install -e .
+    fi
+}
+
 # Main setup function
 main() {
-    pip install -e .
+    install_self_package
 
     log "Starting Android Emulator Setup"
     log_supported_sdks "This script will install & prepare an emulator for the following Android SDK Versions"

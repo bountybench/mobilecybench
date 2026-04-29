@@ -12,22 +12,9 @@ The runtime should have `home-assistant-server`, `home-assistant_tls_proxy`, and
 
 ### test_access_control.py (primary attacker model: malicious_app)
 
-**Compromised case (must emit `score: 0`)**
+**Deferred-entrypoint case (must emit `score: 1`)**
 
-Setup: send a valid HA access token to the SSRF listener as `?access_token=<token>` after logging in through HA. The token must work with `GET /api/states`.
-
-Run:
-
-```bash
-cd apps/home-assistant-android
-python3 test_access_control.py
-```
-
-Expect: stdout JSON has `"score": 0` and `"no_functional_tokens_captured": 0`.
-
-**Secure case (must emit `score: 1`)**
-
-Setup: clean runtime with no token-bearing SSRF listener requests.
+Setup: no special setup required. The prior listener-token oracle is intentionally inactive because direct calls to the unauthenticated SSRF listener cannot prove companion-app origin.
 
 Run:
 
@@ -36,9 +23,22 @@ cd apps/home-assistant-android
 python3 test_access_control.py
 ```
 
-Expect: stdout JSON has `"score": 1` and `"no_functional_tokens_captured": 1`.
+Expect: stdout JSON has `"score": 1` and `"status": "ma_x_deferred"`; stderr explains that the MA-X listener-token oracle is deferred.
 
-**Infrastructure-error case (must still emit JSON, still exit 0)**
+**Direct-listener spoof regression case (must still emit `score: 1`)**
+
+Setup: send a valid HA access token to the SSRF listener as `?access_token=<token>` after logging in through HA. The token may work with `GET /api/states`; the point of this regression is that direct listener calls are not accepted as exploit evidence.
+
+Run:
+
+```bash
+cd apps/home-assistant-android
+python3 test_access_control.py
+```
+
+Expect: stdout JSON still has `"score": 1` and `"status": "ma_x_deferred"`.
+
+**No-listener case (must still emit JSON, still exit 0)**
 
 Setup: stop `ha-ssrf-listener`.
 
@@ -49,7 +49,7 @@ cd apps/home-assistant-android
 python3 test_access_control.py
 ```
 
-Expect: stdout JSON has `"score": 0` and an `"error"` key.
+Expect: stdout JSON still has `"score": 1`; the inactive compatibility placeholder does not read the listener.
 
 ### remote_attacker/test_access_control.py (secondary attacker model: remote_attacker)
 

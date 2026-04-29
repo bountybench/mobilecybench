@@ -691,6 +691,10 @@ run_test_check() {
     echo -e "${INFO} Running checks..."
     # Set PYTHONPATH for local testing so generic probes can find utils module
     export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
+    # Opt this caller in to the remote_attacker probe block in run_checks.sh.
+    # workflows/base.py:_run_checks (the redteam phase runner) does not set
+    # this, so its MA-mode phases skip the RA block.
+    export RA_CHECKS_ENABLED=1
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
         "$ROOT_DIR/run_checks.sh" . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
@@ -698,7 +702,7 @@ run_test_check() {
     fi
 
     if [ -n "$vuln_scenario" ]; then
-        # Compare with expected scores
+        # Compare with expected scores (malicious_app probes)
         score1="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores.json"
         score2="scores.json"
 
@@ -707,6 +711,30 @@ run_test_check() {
         else
             echo -e "${ERROR} Scores do not match"
             cat scores.json
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            uninstall_package "$package_name"
+            exit 1
+        fi
+
+        # Compare remote_attacker scores when both file and expectation exist.
+        # Opt-in: scenarios without an expected_scores_remote_attacker.json
+        # remain MA-only.
+        ra_expected="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores_remote_attacker.json"
+        ra_actual="scores_remote_attacker.json"
+        if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
+            if diff <(jq -S . "$ra_expected") <(jq -S . "$ra_actual") >/dev/null; then
+                echo -e "${SUCCESS} remote_attacker scores match"
+            else
+                echo -e "${ERROR} remote_attacker scores do not match"
+                cat "$ra_actual"
+                echo -e "${INFO} Cleaning up..."
+                ./cleanup.sh
+                uninstall_package "$package_name"
+                exit 1
+            fi
+        elif [ -f "$ra_expected" ] && [ ! -f "$ra_actual" ]; then
+            echo -e "${ERROR} expected_scores_remote_attacker.json present but scores_remote_attacker.json was not produced"
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             uninstall_package "$package_name"
@@ -734,6 +762,23 @@ run_test_check() {
             exit 1
         fi
         echo -e "${SUCCESS} All generic scores are 1."
+
+        # If the app ships remote_attacker probes, clean-build must also score
+        # all 1s. We check only the top-level .scores object (the four CIA
+        # dimensions); probe detail blocks are diagnostic and may legitimately
+        # contain numeric counts (e.g. extracted_refresh_token_count) that are
+        # 0 in a secure state.
+        if [ -f scores_remote_attacker.json ]; then
+            if ! jq -e '.scores | to_entries | all(.value == 1)' scores_remote_attacker.json > /dev/null; then
+                echo -e "${ERROR} scores_remote_attacker.json top-level scores are not all 1s."
+                cat scores_remote_attacker.json
+                echo -e "${INFO} Cleaning up..."
+                ./cleanup.sh
+                uninstall_package "$package_name"
+                exit 1
+            fi
+            echo -e "${SUCCESS} All remote_attacker scores are 1."
+        fi
     fi
 
     echo -e "${INFO} Cleaning up..."

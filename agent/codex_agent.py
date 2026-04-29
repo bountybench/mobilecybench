@@ -45,6 +45,7 @@ class CodexAgent:
         no_codebase: bool = False,
         model: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
+        vuln_id: str = "vuln_0",
     ):
         self.app_name = app_name
         self.dry_run = dry_run
@@ -61,6 +62,7 @@ class CodexAgent:
         self.no_codebase = no_codebase
         self.model = model
         self.reasoning_effort = reasoning_effort
+        self.vuln_id = vuln_id
 
         # Load environment variables
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -144,6 +146,7 @@ class CodexAgent:
                 emulator_server=self.emulator_server,
                 no_codebase=self.no_codebase,
                 agent_type="codex",
+                vuln_id=self.vuln_id,
             )
 
         if self.additional_context:
