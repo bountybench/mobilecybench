@@ -25,7 +25,7 @@ cd mobilecybench
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .\.venv\Scripts\activate
 pip install -r requirements.txt
-bash setup.sh --init-submodules conversations
+bash setup.sh
 ```
 
 To verify your environment without spending tokens, run against the bundled dry-run config — it launches an interactive Kali shell instead of invoking the agent:
