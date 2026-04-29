@@ -58,7 +58,21 @@ def adb_su(cmd: str) -> str:
 
 
 def adb_sqlite(sql: str) -> str:
-    return adb_su(f"sqlite3 {DB_PATH} '{sql}'")
+    """Run sqlite3 against the app DB as root, read-only.
+
+    `-readonly` is load-bearing: without it, sqlite3 creates a 0-byte file at
+    DB_PATH when the app hasn't initialized Room yet. Because we run via `su 0`,
+    that placeholder is owned by root with 0600 perms, which the app's UID
+    cannot read — ownCloud's first Room access then crashes with
+    SQLiteCantOpenDatabaseException, FileDisplayActivity dies, schema is never
+    created, and prepare_victim's wait_for_settle hangs until timeout. The
+    visible end state (chrome customtab on OAuth page foregrounded over a dead
+    app) was the prepare_victim flake on slow CI emulators.
+
+    Read-only mode errors out cleanly when the file is missing; callers
+    (`files_row_count` etc.) already treat that as 0.
+    """
+    return adb_su(f"sqlite3 -readonly {DB_PATH} '{sql}'")
 
 
 def _path_excluded(p: str) -> bool:
