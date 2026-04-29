@@ -307,8 +307,12 @@ def main():
 
 
 def _dump_state_on_error():
-    """Print current foreground + visible top-level resourceIds/text so a CI
-    failure log tells us which screen the app is actually stuck on."""
+    """One-shot failure diagnostic. Captures everything needed to RCA the OAuth/UI/DB
+    transition that failed, so a single failed CI run is enough to fix without burning
+    another cycle. Sections (each ~bounded, total ~500 lines): foreground+UI, ownCloud
+    logcat (UID-filtered), crash buffer, activity task stack, AccountManager dump,
+    DB file/tables listing, and live processes for owncloud + chrome.
+    """
     try:
         d = u2.connect()
         log(f"state: app_current={d.app_current()}")
@@ -322,6 +326,71 @@ def _dump_state_on_error():
         log(f"state: visible={seen}")
     except Exception as e:
         log(f"state: dump failed: {e}")
+
+    def _section(name, fn):
+        log(f"--- {name} ---")
+        try:
+            fn()
+        except Exception as e:
+            log(f"{name}: dump failed: {e}")
+
+    def _logcat_owncloud():
+        # UID-filtered (vs PID) so historical lines from before any crash are kept.
+        # `--uid` requires root; non-root logcat clients can only filter by self UID.
+        uid = probe_lib._owncloud_uid()
+        if not uid:
+            print("[ocl] no UID resolved (package not installed?)", file=sys.stderr)
+            return
+        out = probe_lib.adb_su(f"logcat -d -b all --uid={uid} -t 300")
+        for line in out.splitlines():
+            print(f"[ocl] {line}", file=sys.stderr)
+
+    def _logcat_crash():
+        out = subprocess.check_output(
+            ["adb", "logcat", "-d", "-b", "crash"], text=True, errors="replace"
+        )
+        for line in out.splitlines()[-100:]:
+            print(f"[crash] {line}", file=sys.stderr)
+
+    def _activity_stack():
+        out = subprocess.check_output(
+            ["adb", "shell", "dumpsys", "activity", "activities"], text=True
+        )
+        for line in out.splitlines():
+            if (any(k in line for k in ("Task{", "Hist #", "mResumedActivity",
+                                         "mFocusedActivity", "Running activities"))
+                    or "owncloud" in line or "chrome" in line):
+                print(f"[act] {line.rstrip()}", file=sys.stderr)
+
+    def _account_state():
+        out = subprocess.check_output(
+            ["adb", "shell", "dumpsys", "account"], text=True
+        )
+        for line in out.splitlines():
+            if "owncloud" in line.lower() or "Account {" in line:
+                print(f"[acct] {line.rstrip()}", file=sys.stderr)
+
+    def _db_state():
+        ls = probe_lib.adb_su(f"ls -la {probe_lib.DATA_DIR}/databases/ 2>&1")
+        for line in ls.splitlines():
+            print(f"[db] {line}", file=sys.stderr)
+        tables = probe_lib.adb_su(f"sqlite3 {probe_lib.DB_PATH} '.tables' 2>&1")
+        print(f"[db] tables: {tables}", file=sys.stderr)
+
+    def _processes():
+        out = subprocess.check_output(
+            ["adb", "shell", "ps", "-A", "-o", "PID,USER,NAME"], text=True
+        )
+        for line in out.splitlines():
+            if "owncloud" in line.lower() or "chrome" in line.lower():
+                print(f"[ps] {line.rstrip()}", file=sys.stderr)
+
+    _section("logcat owncloud (uid-filtered, last 300)", _logcat_owncloud)
+    _section("logcat crash buffer", _logcat_crash)
+    _section("activity task stack", _activity_stack)
+    _section("dumpsys account (owncloud)", _account_state)
+    _section("DB state", _db_state)
+    _section("processes (owncloud + chrome)", _processes)
 
 
 if __name__ == "__main__":
