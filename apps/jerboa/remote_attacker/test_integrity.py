@@ -85,12 +85,14 @@ def _load_and_run():
         package_name = get_jerboa_package()
 
         # V-004: Unauthorized posting via ADB-driven intent dispatch
-        run_adb_shell(
+        helper_ok, helper_out = run_adb_shell(
             f"am start -n {package_name}/.MainActivity "
             f"-a android.intent.action.SEND --es android.intent.extra.TEXT {shlex.quote(canary_body)} "
             "--type text/plain",
             timeout=60,
         )
+        if not helper_ok:
+            raise RuntimeError(f"dispatch_send reproduction failed: {helper_out}")
 
         base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
         import requests

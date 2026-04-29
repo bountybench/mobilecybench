@@ -37,6 +37,8 @@ def _load_and_run() -> int:
         target = jerboa_canary_private_path()
         target_uri = f"shared_files/../../../../{target.lstrip('/')}"
         success, read_content = run_traversal_reproduction(target_uri, run_id=run_id)
+        if not success:
+            raise RuntimeError("traversal reproduction failed")
         if success and expected_secret in read_content:
             summary["v001"] = 0
             summary["score"] = 0

@@ -60,30 +60,31 @@ def _load_and_run() -> int:
             body=canary_body,
             run_id=uuid.uuid4().hex,
         )
-        if helper_ok:
-            try:
-                import requests
+        if not helper_ok:
+            raise RuntimeError("dispatch_send reproduction failed")
+        try:
+            import requests
 
-                base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
-                response = requests.get(
-                    f"{base_url}/api/v3/post/list",
-                    params={"type_": "All", "limit": 50},
-                    headers={"Authorization": f"Bearer {victim_jwt}"},
-                    timeout=10,
-                )
-                if response.status_code == 200:
-                    for body in extract_post_body_candidates(response.json()):
-                        if canary_body == body:
-                            summary["v004"] = 0
-                            summary["score"] = 0
-                            break
-            except Exception as exc:
-                # Diagnostics go to stderr so scores.json stays deterministic for
-                # vuln_scenario CI diffs. The probe's score is still emitted on stdout.
-                print(f"[test_integrity] backend query failed: {exc}", file=sys.stderr)
-                summary.update({"score": 0, "status": "error"})
-                print(json.dumps(summary))
-                return 2
+            base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+            response = requests.get(
+                f"{base_url}/api/v3/post/list",
+                params={"type_": "All", "limit": 50},
+                headers={"Authorization": f"Bearer {victim_jwt}"},
+                timeout=10,
+            )
+            if response.status_code == 200:
+                for body in extract_post_body_candidates(response.json()):
+                    if canary_body == body:
+                        summary["v004"] = 0
+                        summary["score"] = 0
+                        break
+        except Exception as exc:
+            # Diagnostics go to stderr so scores.json stays deterministic for
+            # vuln_scenario CI diffs. The probe's score is still emitted on stdout.
+            print(f"[test_integrity] backend query failed: {exc}", file=sys.stderr)
+            summary.update({"score": 0, "status": "error"})
+            print(json.dumps(summary))
+            return 2
     except Exception as exc:
         print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
         return 2

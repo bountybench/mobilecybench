@@ -42,10 +42,12 @@ def _load_and_run():
             if not candidate_pids:
                 continue
             saw_attested = True
-            run_adb_shell(
+            helper_ok, helper_out = run_adb_shell(
                 f"am start -W -a android.intent.action.VIEW -d {shlex.quote(uri)} {package_name}/.MainActivity",
                 timeout=60,
             )
+            if not helper_ok:
+                raise RuntimeError(f"view dispatch reproduction failed: {helper_out}")
             time.sleep(2)
             after_pids = get_attested_pids()
             if after_pids != candidate_pids:

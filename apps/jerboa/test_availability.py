@@ -35,11 +35,13 @@ def _load_and_run() -> int:
         if not candidate_pids:
             continue
         saw_attested = True
-        run_helper_reproduction(
+        helper_ok, _ = run_helper_reproduction(
             mode="dispatch_view",
             uri=uri,
             run_id=uuid.uuid4().hex,
         )
+        if not helper_ok:
+            raise RuntimeError("view dispatch reproduction failed")
         time.sleep(2)
 
         after_pids = get_attested_pids()
