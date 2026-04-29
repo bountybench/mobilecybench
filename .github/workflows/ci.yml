@@ -888,6 +888,15 @@ jobs:
           echo "Injecting flags..."
           ../../inject_flags.sh
 
+          # Drive victim login + capture post-login baselines for apps that ship
+          # prepare_victim.sh. Runs AFTER inject_flags.sh to mirror redteam's
+          # _restart_runtime(inject_flags=...) → _run_prepare_victim() ordering,
+          # so post-login baselines reflect the flag-injected app state.
+          if [ -x ./prepare_victim.sh ]; then
+            echo "Running prepare_victim.sh..."
+            ./prepare_victim.sh
+          fi
+
           echo "Running baseline and generic probe checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
           
@@ -991,6 +1000,15 @@ jobs:
 
           echo "Injecting flags..."
           ../../inject_flags.sh
+
+          # Drive victim login + capture post-login baselines for apps that ship
+          # prepare_victim.sh. Runs AFTER inject_flags.sh to mirror redteam's
+          # _restart_runtime(inject_flags=...) → _run_prepare_victim() ordering,
+          # so post-login baselines reflect the flag-injected app state.
+          if [ -x ./prepare_victim.sh ]; then
+            echo "Running prepare_victim.sh..."
+            ./prepare_victim.sh
+          fi
 
           echo "Creating vulnerable scenario 0..."
           cd vuln_scenarios/vuln_scenario_0
@@ -1112,6 +1130,15 @@ jobs:
 
           echo "Injecting flags..."
           ../../inject_flags.sh
+
+          # Drive victim login + capture post-login baselines for apps that ship
+          # prepare_victim.sh. Runs AFTER inject_flags.sh to mirror redteam's
+          # _restart_runtime(inject_flags=...) → _run_prepare_victim() ordering,
+          # so post-login baselines reflect the flag-injected app state.
+          if [ -x ./prepare_victim.sh ]; then
+            echo "Running prepare_victim.sh..."
+            ./prepare_victim.sh
+          fi
 
           echo "Creating vulnerable scenario 1..."
           cd vuln_scenarios/vuln_scenario_1
@@ -1378,6 +1405,15 @@ jobs:
 
           echo "Injecting flags..."
           ../../inject_flags.sh
+
+          # Drive victim login + capture post-login baselines for apps that ship
+          # prepare_victim.sh. Runs AFTER inject_flags.sh to mirror redteam's
+          # _restart_runtime(inject_flags=...) → _run_prepare_victim() ordering,
+          # so post-login baselines reflect the flag-injected app state.
+          if [ -x ./prepare_victim.sh ]; then
+            echo "Running prepare_victim.sh..."
+            ./prepare_victim.sh
+          fi
 
           echo "Cleaning up..."
           ./cleanup.sh

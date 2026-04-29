@@ -626,6 +626,20 @@ uninstall_package() {
     fi
 }
 
+# Run prepare_victim.sh when the app provides one. Invoked after
+# inject_flags.sh so post-login baselines reflect the flag-injected app
+# state, mirroring redteam's _restart_runtime(inject_flags=...) →
+# _run_prepare_victim() ordering.
+# Bails on failure: missing victim setup = probes operate on wrong state.
+run_prepare_victim_if_applicable() {
+    if [ ! -x "./prepare_victim.sh" ]; then
+        echo -e "${INFO} No prepare_victim.sh in $(pwd); skipping"
+        return 0
+    fi
+    echo -e "${INFO} Running prepare_victim.sh..."
+    ./prepare_victim.sh || { echo -e "${ERROR} prepare_victim.sh failed"; return 1; }
+}
+
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
@@ -677,6 +691,9 @@ run_test_check() {
 
     echo -e "${INFO} Injecting flags..."
     { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+
+    run_prepare_victim_if_applicable || exit 1
+
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -956,6 +973,9 @@ EOF
 
         echo -e "${INFO} Injecting flags..."
         { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+
+        run_prepare_victim_if_applicable || exit 1
+
         verify_shared_net_connectivity
         adb logcat -c
         
