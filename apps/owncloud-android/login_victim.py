@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -268,6 +269,16 @@ def main():
     # auto-clicks "Wait" (keep system running) whenever it appears.
     d.watcher.when("Wait").click()
     d.watcher.start(2.0)
+
+    # Pre-grant POST_NOTIFICATIONS so FileDisplayActivity doesn't pop the
+    # GrantPermissionsActivity dialog mid-lifecycle and crash. start_runtime
+    # already does `adb install -g`, but `pm clear` between synthetic_vuln
+    # phases wipes runtime grants — this re-grants idempotently each run.
+    # Mirrors apps/moodle/start_runtime.sh:108 and apps/ntfy-android/start_runtime.sh:56.
+    subprocess.run(
+        ["adb", "shell", "pm", "grant", APP, "android.permission.POST_NOTIFICATIONS"],
+        check=False,
+    )
 
     log("launching ownCloud")
     d.app_start(APP, wait=True)
