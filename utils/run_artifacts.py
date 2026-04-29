@@ -392,6 +392,11 @@ def write_run_summary(
             ),
             "conversation_jsonl": conversation_path,
             "system_prompt_file": system_prompt_path,
+            "screenshots_dir": (
+                str(logs_dir / "screenshots")
+                if (logs_dir / "screenshots").is_dir()
+                else None
+            ),
             **_score_artifact_paths(config.workflow, logs_dir, workflow),
             "logs_dir": str(logs_dir),
         },
