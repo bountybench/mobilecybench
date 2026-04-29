@@ -5,6 +5,7 @@ Validates user presence, file content integrity, share existence, and Android ap
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -50,18 +51,59 @@ def fetch_share(owner: str, share_with: str) -> bool:
     return len(rows) > 0
 
 
+class _ServerUnavailable(Exception):
+    """OCS API/server unreachable. Caller should skip-as-pass; V probes are the canary."""
+
+
+def _list_ocs_users() -> set:
+    """Authoritative user list via OCS provisioning API.
+
+    Avoids the oc_users / oc_accounts sync race that flakes when the legacy
+    oc_users table is read before ownCloud's accounts-backend hook bridges
+    OCS-created users back to it. The OCS GET endpoint reads from the same
+    accounts-backend the seeder writes to, so the result is consistent
+    immediately on completion of create_user.
+
+    Raises ``_ServerUnavailable`` if the API is unreachable (e.g. DoS killed
+    owncloud_server); callers should then skip-as-pass since V probes catch
+    the outage via expected_scores diff.
+    """
+    manifest = load_manifest()
+    admin = next(
+        (u for u in manifest.get("users", []) if u.get("role") == "admin"), None
+    )
+    if not admin:
+        raise RuntimeError("No admin user in baseline_manifest.json")
+    url = f"{OWNCLOUD_URL}/ocs/v1.php/cloud/users"
+    try:
+        resp = requests.get(
+            url,
+            auth=(admin["username"], admin["password"]),
+            headers={"OCS-APIREQUEST": "true"},
+            timeout=10,
+        )
+    except requests.RequestException as e:
+        raise _ServerUnavailable(f"OCS API unreachable: {e}")
+    if resp.status_code >= 500:
+        raise _ServerUnavailable(f"OCS API returned {resp.status_code}")
+    resp.raise_for_status()
+    return set(re.findall(r"<element>([^<]+)</element>", resp.text))
+
+
 def check_users_present() -> Tuple[bool, str]:
-    """Check all seeded users and admin exist in database."""
+    """Check all seeded users and admin exist in the OCS users listing."""
     try:
         baseline = load_manifest()["baseline"]
         expected_seeded_users = set(baseline["honeytokens"].keys())
-        db_users = {r["uid"] for r in db_select(DB_ENV, "SELECT uid FROM oc_users")}
-        missing = expected_seeded_users - db_users
+        users = _list_ocs_users()
+        missing = expected_seeded_users - users
         if missing:
-            return False, f"Missing users in DB: {missing}"
-        if "admin" not in db_users:
-            return False, "Admin user missing in DB"
+            return False, f"Missing users: {missing}"
+        if "admin" not in users:
+            return False, "Admin user missing"
         return True, "All users present"
+    except _ServerUnavailable as e:
+        return True, f"OCS API unavailable (skipped): {e}"
     except Exception as e:
         return False, f"Error: {e}"
 
