@@ -7,8 +7,8 @@ from utils.uuid_flags_utils import load_flags
 
 logger = logging.getLogger(__name__)
 
-_ADB_ROOT_ATTEMPTS = 5
-_ADB_ROOT_RETRY_DELAY_SECONDS = 1
+_ADB_RESTART_ATTEMPTS = 5
+_ADB_RESTART_RETRY_DELAY_SECONDS = 1
 
 
 def _run(cmd, log_errors=True):
@@ -45,15 +45,17 @@ def _wait_for_shell():
         time.sleep(0.5)
 
 
-def _adb_shell_is_root() -> bool:
+def _adb_shell_root_state():
     result = _run(["adb", "shell", "id"], log_errors=False)
-    return result.returncode == 0 and "uid=0" in result.stdout
+    if result.returncode != 0:
+        return None
+    return "uid=0" in result.stdout
 
 
 def _ensure_root() -> bool:
     _run(["adb", "wait-for-device"], log_errors=False)
     last_root_result = None
-    for attempt in range(_ADB_ROOT_ATTEMPTS):
+    for attempt in range(_ADB_RESTART_ATTEMPTS):
         # `adb root` restarts adbd. During that restart adb may report a
         # non-zero exit such as "unable to connect for root: closed" even
         # though the device is transitioning to root successfully. Treat the
@@ -61,15 +63,15 @@ def _ensure_root() -> bool:
         last_root_result = _run(["adb", "root"], log_errors=False)
         _run(["adb", "wait-for-device"], log_errors=False)
         _wait_for_shell()
-        if _adb_shell_is_root():
+        if _adb_shell_root_state() is True:
             return True
-        if attempt + 1 < _ADB_ROOT_ATTEMPTS:
-            time.sleep(_ADB_ROOT_RETRY_DELAY_SECONDS)
+        if attempt + 1 < _ADB_RESTART_ATTEMPTS:
+            time.sleep(_ADB_RESTART_RETRY_DELAY_SECONDS)
 
     if last_root_result is not None:
         logger.error(
             "Failed to obtain adb root after %d attempts; last adb root rc=%d stdout=%r stderr=%r",
-            _ADB_ROOT_ATTEMPTS,
+            _ADB_RESTART_ATTEMPTS,
             last_root_result.returncode,
             last_root_result.stdout,
             last_root_result.stderr,
@@ -78,10 +80,28 @@ def _ensure_root() -> bool:
 
 
 def _unroot() -> bool:
-    if _run(["adb", "unroot"]).returncode != 0:
-        return False
-    _wait_for_shell()
-    return True
+    last_unroot_result = None
+    for attempt in range(_ADB_RESTART_ATTEMPTS):
+        # `adb unroot` also restarts adbd, so it can close the connection and
+        # return non-zero even when unroot is taking effect. Verify with
+        # `adb shell id` just like _ensure_root().
+        last_unroot_result = _run(["adb", "unroot"], log_errors=False)
+        _run(["adb", "wait-for-device"], log_errors=False)
+        _wait_for_shell()
+        if _adb_shell_root_state() is False:
+            return True
+        if attempt + 1 < _ADB_RESTART_ATTEMPTS:
+            time.sleep(_ADB_RESTART_RETRY_DELAY_SECONDS)
+
+    if last_unroot_result is not None:
+        logger.error(
+            "Failed to unroot adb after %d attempts; last adb unroot rc=%d stdout=%r stderr=%r",
+            _ADB_RESTART_ATTEMPTS,
+            last_unroot_result.returncode,
+            last_unroot_result.stdout,
+            last_unroot_result.stderr,
+        )
+    return False
 
 
 def check_android_app_file(package_name: str, filename: str) -> bool:
