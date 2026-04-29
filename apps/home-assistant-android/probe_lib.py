@@ -163,6 +163,23 @@ def docker_exec_sha256(container: str, path: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def docker_exec_yaml_parse(container: str, path: str) -> Any:
+    """Parse a YAML file inside a docker container and return JSON-compatible data.
+
+    The HA Core container already carries the YAML parser it uses for config
+    loading, so this avoids adding a host-side PyYAML dependency to probes.
+    """
+    script = (
+        "import json, sys, yaml; "
+        "data = yaml.safe_load(open(sys.argv[1], encoding='utf-8')); "
+        "print(json.dumps([] if data is None else data, sort_keys=True))"
+    )
+    result = docker_exec(container, ["python3", "-c", script, path])
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"could not parse {path}")
+    return json.loads(result.stdout)
+
+
 # ---------------------------------------------------------------------------
 # Auth-store helpers
 # ---------------------------------------------------------------------------
