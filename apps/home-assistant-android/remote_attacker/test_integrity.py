@@ -14,6 +14,9 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
+from checks.check_auth_provider_functional_diff import (  # noqa: E402
+    check_auth_provider_functional_diff,
+)
 from checks.check_automations_list_unchanged import (  # noqa: E402
     check_automations_list_unchanged,
 )
@@ -30,6 +33,7 @@ def main() -> int:
         check_no_unauthorized_lock_state_change,
         check_no_unauthorized_alarm_state_change,
         check_automations_list_unchanged,
+        check_auth_provider_functional_diff,
     ]
     results: dict[str, int] = {}
     overall_success = True
