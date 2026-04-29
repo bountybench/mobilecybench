@@ -1,187 +1,152 @@
 #!/bin/bash
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 CODEBASE_DIR="$SCRIPT_DIR/codebase"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
-# Patch gradle.properties
-patch() {
-    cd $CODEBASE_DIR
+if [[ ! -d "$ANDROID_HOME" && -d "/usr/local/lib/android/sdk" ]]; then
+    ANDROID_HOME="/usr/local/lib/android/sdk"
+fi
 
-    echo "Patching gradle.properties for low memory usage..."
-
-    # Remove MaxPermSize if present (deprecated in newer Java versions)
-    sed -i.bak 's/-XX:MaxPermSize=[^ ]*//g' gradle.properties
-
-    sed -i.bak \
-        -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx6144m -XX:MaxMetaspaceSize=1024m -XX:+UseParallelGC -Dfile.encoding=UTF-8 -Xss8m/' \
-        -e '/^org.gradle.parallel/d' \
-        -e '/^android.enableR8/d' \
-        -e '/^org.gradle.daemon/d' \
-        -e '/^kotlin.daemon.jvmargs/d' \
-        gradle.properties
-
-    grep -q '^org.gradle.parallel=false' gradle.properties || echo 'org.gradle.parallel=false' >> gradle.properties
-    grep -q '^org.gradle.daemon=false' gradle.properties || echo 'org.gradle.daemon=false' >> gradle.properties
-    grep -q '^kotlin.daemon.jvmargs' gradle.properties || echo 'kotlin.daemon.jvmargs=-Xmx2g' >> gradle.properties
-}
-# Clean function - run BEFORE build
-clean_build() {
-    echo "Cleaning build caches..."
-    cd $CODEBASE_DIR
-
-    ./gradlew clean || true
-    rm -rf .gradle 2>/dev/null || true
-    rm -rf build 2>/dev/null || true
-    rm -rf vector-app/build 2>/dev/null || true
-
-    echo "Clean completed."
-}
-
-# Check prerequisites
-check_prerequisites() {
-    echo "Checking prerequisites..."
-
-    cd $CODEBASE_DIR
-
-    if ! command -v java >/dev/null 2>&1; then
-        echo "ERROR: Java not found. Please install Java 17."
-        exit 1
-    fi
-
-    if [[ ! -d "$ANDROID_HOME" && -d "/usr/local/lib/android/sdk" ]]; then
-        ANDROID_HOME="/usr/local/lib/android/sdk"
-    fi
-
-    if [[ ! -d "$ANDROID_HOME" ]]; then
-        echo "ERROR: Android SDK not found at $ANDROID_HOME"
-        echo "Please run the Android emulator setup first."
-        exit 1
-    fi
-
-    echo "Prerequisites verified."
-}
+# GitHub Actions standard runners: 4 vCPU, 16GB RAM shared with OS + tooling.
+# 3 workers: leaves 1 core for the OS/linker, avoids thrashing.
+# 6g heap: safe ceiling — OS + SDK tools + in-process Kotlin compiler all share the 16GB.
+CI_WORKERS=3
+JVM_HEAP="-Xmx6g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Xss4m -Dfile.encoding=UTF-8"
 
 setup_environment() {
-    echo "Setting up build environment..."
-    
-    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
+    if   [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
         export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+    elif [[ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]]; then
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
     elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
     elif command -v /usr/libexec/java_home &>/dev/null; then
-        export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+        export JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null)"
+    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || -n "$WINDIR" ]]; then
+        # On Windows, use JAVA_HOME if already set in the environment (most reliable),
+        # otherwise query the registry via where.exe to find the real path.
+        # Do NOT use the awk fallback — it splits on spaces in "C:\Program Files\..."
+        if [[ -n "${JAVA_HOME:-}" && -d "${JAVA_HOME}" ]]; then
+            : # already valid, use it as-is
+        else
+            # Resolve via where.exe — gives us the java.exe path, strip to home dir
+            local java_exe
+            java_exe=$(where.exe java 2>/dev/null | head -1)
+            if [[ -n "$java_exe" ]]; then
+                # Convert to Unix path and strip \bin\java.exe
+                JAVA_HOME=$(cd "$(dirname "$java_exe")/.." && pwd)
+            else
+                echo "ERROR: Could not detect JAVA_HOME on Windows. Set it manually."
+                exit 1
+            fi
+        fi
+        export JAVA_HOME
     else
-        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
+        # Last resort — awk fallback, safe on Linux/Mac where paths have no spaces
+        export JAVA_HOME="$(java -XshowSettings:properties -version 2>&1 \
+                            | awk '/java.home/{print $3}')"
     fi
-    echo $JAVA_HOME
-    export PATH="$JAVA_HOME/bin:$PATH"
 
-    export ANDROID_HOME="$ANDROID_HOME"
+    export PATH="$JAVA_HOME/bin:$PATH"
+    export ANDROID_HOME
     export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
-    # Create local.properties
-    echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-    echo "Environment configured."
+    echo "sdk.dir=$ANDROID_HOME" > "$CODEBASE_DIR/local.properties"
+    echo "Environment configured (JAVA_HOME=$JAVA_HOME)"
 }
 
-# Build Element Android APK
+patch_gradle_properties() {
+    cd "$CODEBASE_DIR"
+
+    # Strip every line we own before appending — prevents duplicates if
+    # this script runs more than once, and eliminates conflicting jvmargs
+    # that would cause the Gradle daemon to restart mid-build.
+    sed -i.bak \
+        -e 's/-XX:MaxPermSize=[^ ]*//g' \
+        -e '/^org\.gradle\.jvmargs/d'   \
+        -e '/^org\.gradle\.parallel/d'  \
+        -e '/^org\.gradle\.daemon/d'    \
+        -e '/^org\.gradle\.caching/d'   \
+        -e '/^org\.gradle\.vfs\.watch/d'\
+        -e '/^kotlin\.daemon\.jvmargs/d'\
+        gradle.properties
+
+    cat >> gradle.properties <<EOF
+org.gradle.jvmargs=$JVM_HEAP
+org.gradle.parallel=true
+org.gradle.daemon=false
+org.gradle.caching=false
+android.lint.checkReleaseBuilds=false
+EOF
+}
+
+check_prerequisites() {
+    command -v java >/dev/null 2>&1 || { echo "ERROR: Java not found."; exit 1; }
+    [[ -d "$ANDROID_HOME" ]]        || { echo "ERROR: Android SDK not found at $ANDROID_HOME"; exit 1; }
+    java -version
+    echo "Prerequisites OK"
+}
+
 build_element() {
+    cd "$CODEBASE_DIR"
     echo "=================================================="
-    echo "Building Element Android from source..."
-    echo "This will take several minutes..."
+    echo "Building Element Android — cold CI, $CI_WORKERS workers"
     echo "=================================================="
-
-    cd $CODEBASE_DIR
-
-    echo ">>> Cleaning Gradle Build Caches..."
-    ./gradlew clean
-
-    export GRADLE_OPTS="-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx1g -XX:MaxMetaspaceSize=512m"
 
     ./gradlew assembleFdroidKotlinCryptoRelease \
-        --no-daemon \
-        --max-workers=2 \
-        --console=plain \
-        -x lint \
-        -x lintFdroidKotlinCryptoRelease \
-        -x lintAnalyzeFdroidKotlinCryptoRelease \
-        -x lintVitalAnalyzeFdroidKotlinCryptoRelease \
-        -x test \
-        -Dorg.gradle.parallel=false \
-        -Dorg.gradle.jvmargs="-Xmx4g -Xss4m -XX:MaxMetaspaceSize=512m" \
-        -Dkotlin.daemon.jvm.options="-Xmx1g" \
-        -Pandroid.lint.abortOnError=false \
-        -Pandroid.lint.checkReleaseBuilds=false
+        --no-daemon                                             \
+        --no-build-cache                                        \
+        --max-workers="$CI_WORKERS"                             \
+        --console=plain                                         \
+        -x lintVitalAnalyzeFdroidKotlinCryptoRelease            \
+        -x lintVitalReportFdroidKotlinCryptoRelease             \
+        -x lintVitalFdroidKotlinCryptoRelease                   \
+        -Pandroid.lint.abortOnError=false                       \
+        -Dkotlin.incremental=false                              \
+        -Dkotlin.compiler.execution.strategy=in-process         \
+        -Dkotlin.daemon.useFallbackStrategy=false
 }
 
 copy_apk() {
-    echo "Locating unsigned APK..."
-    cd $CODEBASE_DIR
-
+    cd "$CODEBASE_DIR"
     local output_dir="vector-app/build/outputs/apk"
-    local apk_dest="$SCRIPT_DIR"
-    local apk_new_name="unsigned.apk"
 
-    ls
-
-    if [[ ! -d "$output_dir" ]]; then
-        echo "ERROR: APK output directory not found: $output_dir"
-        exit 1
-    fi
+    [[ -d "$output_dir" ]] || { echo "ERROR: APK output dir not found: $output_dir"; exit 1; }
 
     local apk_source
     apk_source="$(find "$output_dir" -type f \
         \( -name "*unsigned*.apk" -o \( -name "*.apk" ! -name "*signed*" \) \) \
         | head -n 1)"
 
-    if [[ -z "$apk_source" ]]; then
-        echo "ERROR: No APK found in $output_dir"
-        echo "Available APKs:"
+    [[ -n "$apk_source" ]] || {
+        echo "ERROR: No APK found. Available files:"
         find "$output_dir" -name "*.apk" -type f
         exit 1
-    fi
+    }
 
-    mkdir -p "$apk_dest"
-    cp "$apk_source" "$apk_dest/$apk_new_name"
-
-    echo "APK copied:"
-    echo "  Source: $apk_source"
-    echo "  Dest:   $apk_dest/$apk_new_name"
+    cp "$apk_source" "$SCRIPT_DIR/unsigned.apk"
+    echo "APK → $SCRIPT_DIR/unsigned.apk (source: $apk_source)"
 }
 
-clear_cache() {
-    echo "Clearing cache - preserving working build state..."
-    cd $CODEBASE_DIR
-
-    rm -rf vector-app/build/intermediates 2>/dev/null || true
-    rm -rf vector-app/build/tmp 2>/dev/null || true
-    rm -rf .gradle/buildOutputCleanup/cache.properties 2>/dev/null || true
-
-    echo "Clearing completed."
+clear_intermediate_cache() {
+    cd "$CODEBASE_DIR"
+    rm -rf vector-app/build/intermediates vector-app/build/tmp 2>/dev/null || true
 }
 
-# Main function
 main() {
-    echo ">>> Element Android Setup"
-    echo "========================"
-
-    cd $CODEBASE_DIR
-
-    echo ">>> Configuring environment..."
+    echo ">>> Element Android CI Build"
+    cd "$CODEBASE_DIR"
     setup_environment
-    patch
+    patch_gradle_properties
     check_prerequisites
-
-    echo ">>> Starting build process..."
     build_element
     copy_apk
-    clear_cache
-
-    echo ""
-    echo ">>> Setup complete! Element Android is ready for testing."
+    clear_intermediate_cache
+    echo ">>> Done. APK at $SCRIPT_DIR/unsigned.apk"
 }
 
 main "$@"
