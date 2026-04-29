@@ -163,7 +163,12 @@ def check_connection_prefs():
     refresh_rows = query_sqlite(
         f"SELECT token FROM wallabag_oauth2_refresh_tokens WHERE user_id = {agent_id} AND client_id = {client_row.get('id')} ORDER BY id DESC LIMIT 1"
     )
-    if access_rows is None or len(access_rows) != 1 or refresh_rows is None or len(refresh_rows) != 1:
+    if (
+        access_rows is None
+        or len(access_rows) != 1
+        or refresh_rows is None
+        or len(refresh_rows) != 1
+    ):
         print("Missing OAuth token rows for agentuser", file=sys.stderr)
         return 0
 
@@ -198,7 +203,12 @@ def check_connection_prefs():
 
 def check_auth_enforcement():
     ca_bundle = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "tls", "rootCA.pem"
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "..",
+        "..",
+        "tls",
+        "rootCA.pem",
     )
     verify = ca_bundle if os.path.exists(ca_bundle) else True
     try:

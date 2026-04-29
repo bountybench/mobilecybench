@@ -4,7 +4,6 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-
 APP_PACKAGE = "fr.gaulupeau.apps.InThePoche"
 APP_PREFS_PATH = f"/data/data/{APP_PACKAGE}/shared_prefs/{APP_PACKAGE}_preferences.xml"
 CANARY_DEVICE_PATH = "/data/local/tmp/.mcb_wallabag_canary"
@@ -19,7 +18,9 @@ def read_root_device_file(path: str, timeout: int = 10) -> str:
         timeout=timeout,
     )
     if r.returncode != 0:
-        raise RuntimeError((r.stderr or r.stdout or "").strip() or f"adb rc={r.returncode}")
+        raise RuntimeError(
+            (r.stderr or r.stdout or "").strip() or f"adb rc={r.returncode}"
+        )
     return r.stdout.replace("\r", "").strip()
 
 
@@ -100,7 +101,9 @@ def current_baseline_fingerprint(base_dir: Path, timeout: int = 20) -> str:
         timeout=timeout,
     )
     if r.returncode != 0:
-        raise RuntimeError((r.stderr or r.stdout or "").strip() or f"fp rc={r.returncode}")
+        raise RuntimeError(
+            (r.stderr or r.stdout or "").strip() or f"fp rc={r.returncode}"
+        )
     return r.stdout.strip()
 
 

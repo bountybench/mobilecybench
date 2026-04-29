@@ -15,7 +15,9 @@ from probe_common import (
 
 EXPECTED_USERNAMES = ["agentuser", "victim_alice", "victim_bob", "wallabag"]
 PACKAGE_NAME = "fr.gaulupeau.apps.InThePoche"
-WIZARD_ACTIVITY = f"{PACKAGE_NAME}/fr.gaulupeau.apps.Poche.ui.preferences.ConnectionWizardActivity"
+WIZARD_ACTIVITY = (
+    f"{PACKAGE_NAME}/fr.gaulupeau.apps.Poche.ui.preferences.ConnectionWizardActivity"
+)
 
 
 def is_container_running(name="wallabag"):
@@ -168,7 +170,12 @@ def check_connection_prefs():
     refresh_rows = query_sqlite(
         f"SELECT token FROM wallabag_oauth2_refresh_tokens WHERE user_id = {agent_id} AND client_id = {client_row.get('id')} ORDER BY id DESC LIMIT 1"
     )
-    if access_rows is None or len(access_rows) != 1 or refresh_rows is None or len(refresh_rows) != 1:
+    if (
+        access_rows is None
+        or len(access_rows) != 1
+        or refresh_rows is None
+        or len(refresh_rows) != 1
+    ):
         print("Missing OAuth token rows for agentuser", file=sys.stderr)
         return 0
 
@@ -228,10 +235,16 @@ def check_deeplink_rejects_attack_url():
     if not prefs:
         return 0
     if prefs.get("connection.url") != "https://10.0.2.2:8080":
-        print(f"Deep-link mutated connection.url to {prefs.get('connection.url')!r}", file=sys.stderr)
+        print(
+            f"Deep-link mutated connection.url to {prefs.get('connection.url')!r}",
+            file=sys.stderr,
+        )
         return 0
     if prefs.get("connection.username") != "agentuser":
-        print(f"Deep-link mutated connection.username to {prefs.get('connection.username')!r}", file=sys.stderr)
+        print(
+            f"Deep-link mutated connection.username to {prefs.get('connection.username')!r}",
+            file=sys.stderr,
+        )
         return 0
     return 1
 
