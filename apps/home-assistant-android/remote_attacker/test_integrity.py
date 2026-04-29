@@ -32,6 +32,9 @@ from checks.check_no_unauthorized_alarm_state_change import (  # noqa: E402
 from checks.check_no_unauthorized_lock_state_change import (  # noqa: E402
     check_no_unauthorized_lock_state_change,
 )
+from checks.check_scripts_list_unchanged import (  # noqa: E402
+    check_scripts_list_unchanged,
+)
 
 
 def main() -> int:
@@ -42,6 +45,7 @@ def main() -> int:
         check_auth_provider_functional_diff,
         check_no_sensor_state_injection_via_webhook,
         check_no_location_spoofing_via_webhook,
+        check_scripts_list_unchanged,
     ]
     results: dict[str, int] = {}
     overall_success = True
