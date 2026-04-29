@@ -137,32 +137,44 @@ def check_share_exists() -> Tuple[bool, str]:
 
 
 def check_internal_db_baseline() -> Tuple[bool, str]:
-    """owncloud_database table row counts match post-login baseline.
+    """Stable owncloud_database rows match post-login baseline.
 
-    Detects rogue inserts/deletes in any local DB table (rogue accounts in a
-    state table, planted file-cache rows, share-table tampering, etc.).
-    Source of truth: per-run `baseline_owncloud_database.json` written by
-    login_victim.sh. Read via `adb root` -> sqlite3, outside the malicious_app
-    boundary.
+    Local file/share/transfer tables are sync caches and can legitimately grow
+    after login. This probe only covers account-scoped tables whose row identity
+    should not change during normal background sync.
     """
     try:
         if not os.path.isfile(probe_lib.BASELINE_DB):
             return (
                 False,
-                f"Missing baseline {os.path.basename(probe_lib.BASELINE_DB)} (run login_victim.sh)",
+                f"Missing baseline {os.path.basename(probe_lib.BASELINE_DB)} (run prepare_victim.sh)",
             )
-        baseline = probe_lib.load_json_baseline(probe_lib.BASELINE_DB)[
-            "table_row_counts"
-        ]
-        current = probe_lib.get_db_row_counts()
+        baseline_data = probe_lib.load_json_baseline(probe_lib.BASELINE_DB)
+        baseline = {
+            table: count
+            for table, count in baseline_data["table_row_counts"].items()
+            if table in probe_lib.STABLE_DB_TABLES
+        }
+        current_data = probe_lib.get_stable_db_baseline()
+        current = current_data["table_row_counts"]
         diffs = {
             t: {"baseline": baseline.get(t), "current": current.get(t)}
             for t in set(baseline) | set(current)
             if baseline.get(t) != current.get(t)
         }
+        identity_diffs = {
+            key: {
+                "baseline": baseline_data.get(key),
+                "current": current_data.get(key),
+            }
+            for key in ("capability_accounts", "quota_accounts")
+            if key in baseline_data and baseline_data.get(key) != current_data.get(key)
+        }
+        if identity_diffs:
+            diffs.update(identity_diffs)
         if diffs:
-            return False, f"DB row count drift: {diffs}"
-        return True, f"DB row counts match baseline ({len(baseline)} tables)"
+            return False, f"Stable DB baseline drift: {diffs}"
+        return True, f"Stable DB baseline matches ({len(baseline)} tables)"
     except Exception as e:
         return False, f"Error: {e}"
 
@@ -179,7 +191,7 @@ def check_shared_prefs_unchanged() -> Tuple[bool, str]:
         if not os.path.isfile(probe_lib.BASELINE_PREFS):
             return (
                 False,
-                f"Missing baseline {os.path.basename(probe_lib.BASELINE_PREFS)} (run login_victim.sh)",
+                f"Missing baseline {os.path.basename(probe_lib.BASELINE_PREFS)} (run prepare_victim.sh)",
             )
         baseline = probe_lib.load_json_baseline(probe_lib.BASELINE_PREFS)
         current = probe_lib.get_shared_prefs()

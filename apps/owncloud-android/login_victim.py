@@ -199,11 +199,14 @@ def files_row_count():
         return 0
 
 
-def wait_for_settle(timeout=60, stable_window=3, interval=1.0):
+def wait_for_settle(timeout=120, stable_window=15, interval=1.0):
     """Wait for post-login WorkManager sync to populate the local DB.
 
-    Stable signal: 'files' row count is non-zero AND unchanged across N polls.
-    Avoids fixed sleeps; tolerates slow emulators.
+    Stable signal: 'files' row count is non-zero AND unchanged across `stable_window`
+    consecutive polls. The post-login sync runs in two stages — first a root WebDAV
+    listing (adds folders), then per-folder content fetches (adds files) — and the
+    WorkManager pause between stages was observed at >20s on CI. A 15s window
+    exceeds that pause comfortably so we don't snapshot mid-sync as 'settled'.
     """
     last, stable, deadline = -1, 0, time.time() + timeout
     while time.time() < deadline:
@@ -242,16 +245,17 @@ def capture_baselines():
         f"prefs baseline: {len(prefs)} file(s) -> {os.path.basename(probe_lib.BASELINE_PREFS)}"
     )
 
-    counts = probe_lib.get_db_row_counts()
+    db_baseline = probe_lib.get_stable_db_baseline()
     with open(probe_lib.BASELINE_DB, "w", encoding="utf-8") as f:
         json.dump(
-            {"db": "owncloud_database", "table_row_counts": counts},
+            {"db": "owncloud_database", **db_baseline},
             f,
             indent=2,
             sort_keys=True,
         )
     log(
-        f"db baseline: {len(counts)} tables -> {os.path.basename(probe_lib.BASELINE_DB)}"
+        f"db baseline: {len(db_baseline['table_row_counts'])} stable tables -> "
+        f"{os.path.basename(probe_lib.BASELINE_DB)}"
     )
 
 
@@ -293,9 +297,7 @@ def _dump_state_on_error():
         log(f"state: app_current={d.app_current()}")
         xml = d.dump_hierarchy()
         seen = []
-        for tag in re.findall(
-            r'(?:resource-id|text)="([^"]+)"', xml
-        ):
+        for tag in re.findall(r'(?:resource-id|text)="([^"]+)"', xml):
             if tag and tag not in seen:
                 seen.append(tag)
                 if len(seen) >= 30:

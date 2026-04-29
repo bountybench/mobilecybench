@@ -39,6 +39,12 @@ DIR_EXCLUDE_SUFFIXES: Tuple[str, ...] = ("-shm", "-wal", "-journal", ".lck")
 # baseline survives re-runs.
 PREF_VOLATILE_KEYS = {"last_unlock_timestamp", "launch_count", "date_first_launch"}
 
+# `files`, `files_sync`, `transfers`, shares, spaces, and app-registry tables are
+# local caches/work queues. Normal post-login sync can add rows after baseline
+# capture, so DB integrity only covers account-scoped rows that should exist for
+# the logged-in victim and whose row identities are stable across background sync.
+STABLE_DB_TABLES: Tuple[str, ...] = ("capabilities", "user_quotas")
+
 
 def adb_su(cmd: str) -> str:
     """Run a single shell command as root via adb; returns stripped stdout.
@@ -90,7 +96,7 @@ def get_shared_prefs() -> Dict[str, Dict[str, str]]:
     }
 
 
-def get_db_row_counts() -> Dict[str, int]:
+def _db_tables() -> set:
     tables = [
         t
         for t in adb_sqlite(
@@ -98,7 +104,29 @@ def get_db_row_counts() -> Dict[str, int]:
         ).splitlines()
         if t and not t.startswith("sqlite_")
     ]
-    return {t: int(adb_sqlite(f"SELECT COUNT(*) FROM {t};")) for t in tables}
+    return set(tables)
+
+
+def get_stable_db_baseline() -> Dict[str, object]:
+    tables = _db_tables()
+    counts = {
+        t: int(adb_sqlite(f"SELECT COUNT(*) FROM {t};"))
+        for t in STABLE_DB_TABLES
+        if t in tables
+    }
+    return {
+        "table_row_counts": counts,
+        "capability_accounts": sorted(
+            adb_sqlite(
+                "SELECT account FROM capabilities WHERE account IS NOT NULL ORDER BY account;"
+            ).splitlines()
+        ),
+        "quota_accounts": sorted(
+            adb_sqlite(
+                "SELECT accountName FROM user_quotas ORDER BY accountName;"
+            ).splitlines()
+        ),
+    }
 
 
 def _owncloud_pids() -> set:
