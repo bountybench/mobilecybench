@@ -18,37 +18,14 @@ CI_WORKERS=3
 JVM_HEAP="-Xmx6g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Xss4m -Dfile.encoding=UTF-8"
 
 setup_environment() {
-    if   [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
+    if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
         export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-    elif [[ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]]; then
-        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
     elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
     elif command -v /usr/libexec/java_home &>/dev/null; then
-        export JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null)"
-    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || -n "$WINDIR" ]]; then
-        # On Windows, use JAVA_HOME if already set in the environment (most reliable),
-        # otherwise query the registry via where.exe to find the real path.
-        # Do NOT use the awk fallback — it splits on spaces in "C:\Program Files\..."
-        if [[ -n "${JAVA_HOME:-}" && -d "${JAVA_HOME}" ]]; then
-            : # already valid, use it as-is
-        else
-            # Resolve via where.exe — gives us the java.exe path, strip to home dir
-            local java_exe
-            java_exe=$(where.exe java 2>/dev/null | head -1)
-            if [[ -n "$java_exe" ]]; then
-                # Convert to Unix path and strip \bin\java.exe
-                JAVA_HOME=$(cd "$(dirname "$java_exe")/.." && pwd)
-            else
-                echo "ERROR: Could not detect JAVA_HOME on Windows. Set it manually."
-                exit 1
-            fi
-        fi
-        export JAVA_HOME
+        export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
     else
-        # Last resort — awk fallback, safe on Linux/Mac where paths have no spaces
-        export JAVA_HOME="$(java -XshowSettings:properties -version 2>&1 \
-                            | awk '/java.home/{print $3}')"
+        export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 | grep 'java.home' | awk '{print $3}')
     fi
 
     export PATH="$JAVA_HOME/bin:$PATH"
