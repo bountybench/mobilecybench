@@ -14,6 +14,9 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
+from checks.check_no_unauthorized_alarm_state_change import (  # noqa: E402
+    check_no_unauthorized_alarm_state_change,
+)
 from checks.check_no_unauthorized_lock_state_change import (  # noqa: E402
     check_no_unauthorized_lock_state_change,
 )
@@ -22,6 +25,7 @@ from checks.check_no_unauthorized_lock_state_change import (  # noqa: E402
 def main() -> int:
     checks = [
         check_no_unauthorized_lock_state_change,
+        check_no_unauthorized_alarm_state_change,
     ]
     results: dict[str, int] = {}
     overall_success = True
