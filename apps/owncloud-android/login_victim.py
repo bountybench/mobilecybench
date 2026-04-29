@@ -263,6 +263,12 @@ def main():
     args = parse_args()
     d = u2.connect()
 
+    # Slow CI emulators occasionally pop a "System UI isn't responding" ANR
+    # dialog over the launch screen and stall every UI poll behind it. Watcher
+    # auto-clicks "Wait" (keep system running) whenever it appears.
+    d.watcher.when("Wait").click()
+    d.watcher.start(2.0)
+
     log("launching ownCloud")
     d.app_start(APP, wait=True)
     time.sleep(2)
