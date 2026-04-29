@@ -308,6 +308,48 @@ def http_json(
         return 0, f"timeout: {exc}"
 
 
+def post_ha_webhook(
+    webhook_id: str, payload: dict[str, Any], timeout: int = 10
+) -> tuple[int, Any]:
+    """POST a JSON payload to /api/webhook/<webhook_id>.
+
+    Returns (status_code, parsed_body). The mobile_app webhook contract does
+    not require a JSON response body, so non-JSON bodies are returned as text
+    instead of raising a JSONDecodeError.
+    """
+    body = json.dumps(payload).encode("utf-8")
+    escaped_webhook_id = urllib.parse.quote(webhook_id, safe="")
+    request = urllib.request.Request(
+        f"{HA_BASE_URL}/api/webhook/{escaped_webhook_id}",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=timeout, context=_ssl_unverified_context()
+        ) as response:
+            raw = response.read().decode("utf-8")
+            if not raw:
+                return response.status, None
+            try:
+                return response.status, json.loads(raw)
+            except json.JSONDecodeError:
+                return response.status, raw
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8")
+        if not raw:
+            return exc.code, None
+        try:
+            return exc.code, json.loads(raw)
+        except json.JSONDecodeError:
+            return exc.code, raw
+    except urllib.error.URLError as exc:
+        return 0, str(exc.reason)
+    except (TimeoutError, socket.timeout) as exc:
+        return 0, f"timeout: {exc}"
+
+
 def post_form(path: str, data: dict[str, str], timeout: int = 10) -> tuple[int, Any]:
     """POST application/x-www-form-urlencoded payload to HA. Same return contract as http_json."""
     body = urllib.parse.urlencode(data).encode("utf-8")
