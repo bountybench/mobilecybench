@@ -880,13 +880,6 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
-          # Drive victim login + capture post-login baselines for apps that ship
-          # login_victim.sh (currently owncloud-android). Required so probes that
-          # diff against post-login state have their baselines on disk.
-          if [ -x ./login_victim.sh ]; then
-            echo "Running login_victim.sh..."
-            ./login_victim.sh
-          fi
 
           echo "Generating flags..."
           cd ../..
@@ -1001,13 +994,6 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
-          # Drive victim login + capture post-login baselines for apps that ship
-          # login_victim.sh (currently owncloud-android). Required so probes that
-          # diff against post-login state have their baselines on disk.
-          if [ -x ./login_victim.sh ]; then
-            echo "Running login_victim.sh..."
-            ./login_victim.sh
-          fi
 
           echo "Generating flags..."
           cd ../..
@@ -1139,13 +1125,6 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
-          # Drive victim login + capture post-login baselines for apps that ship
-          # login_victim.sh (currently owncloud-android). Required so probes that
-          # diff against post-login state have their baselines on disk.
-          if [ -x ./login_victim.sh ]; then
-            echo "Running login_victim.sh..."
-            ./login_victim.sh
-          fi
 
           echo "Generating flags..."
           cd ../..
@@ -1422,13 +1401,6 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
-          # Drive victim login + capture post-login baselines for apps that ship
-          # login_victim.sh (currently owncloud-android). Required so probes that
-          # diff against post-login state have their baselines on disk.
-          if [ -x ./login_victim.sh ]; then
-            echo "Running login_victim.sh..."
-            ./login_victim.sh
-          fi
 
           echo "Generating flags..."
           cd ../..
