@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Entrypoint for malicious_app access-control probes.
 
-Aggregates all check_* functions for the MA-X cell. Each check is a
-self-contained file under apps/home-assistant-android/checks/.
+Preserves the legacy MA-X JSON contract. The current check is an inactive
+compatibility placeholder because the old SSRF-listener token oracle could be
+spoofed by direct malicious-app traffic.
 
 Output contract preserved from the legacy probe:
 - Always exits 0.
