@@ -87,10 +87,11 @@ def submit_server_url(d, server_url):
     time.sleep(0.3)
     d(resourceId=f"{APP}:id/embeddedCheckServerButton").click()
 
+    # Chrome cold-start can be slow on a CI emulator; give it room.
     require(
         lambda: current_package(d) == CHROME or is_logged_in(d),
         "Chrome OAuth flow did not open",
-        timeout=30,
+        timeout=60,
     )
 
 
@@ -147,7 +148,7 @@ def submit_web_login(d, username, password):
     require(
         lambda: d(text="Login", className="android.widget.Button").exists,
         "OAuth login page not visible",
-        timeout=45,
+        timeout=60,
     )
     fields = d(className="android.widget.EditText")
     if fields.count < 2:
@@ -172,10 +173,14 @@ def authorize_app(d):
 
     log("authorizing ownCloud app access")
     d(text="Authorize", className="android.widget.Button").click()
+    # AccountManager is the authoritative post-OAuth signal: the OAuth code
+    # exchange runs in AccountAuthenticatorService, registering the account
+    # regardless of which UI is foregrounded. Avoids racing the FileDisplayActivity
+    # render on slow CI emulators where the same UI race timed out at 45s.
     require(
-        lambda: is_logged_in(d),
-        "ownCloud did not return from OAuth flow",
-        timeout=45,
+        lambda: probe_lib.get_owncloud_accounts(),
+        "OAuth flow did not register an ownCloud account",
+        timeout=120,
     )
 
 
@@ -264,7 +269,6 @@ def main():
             submit_web_login(d, args.username, args.password)
             authorize_app(d)
 
-        require(lambda: is_logged_in(d), "login did not finish", timeout=30)
         log("SUCCESS: alex logged in")
 
     wait_for_settle()
