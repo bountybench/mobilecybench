@@ -12,13 +12,19 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
+from checks.check_no_notification_content_readable_by_low_priv_user import (  # noqa: E402
+    check_no_notification_content_readable_by_low_priv_user,
+)
 from checks.check_no_token_exfil_via_adb_backup import (  # noqa: E402
     check_no_token_exfil_via_adb_backup,
 )
 
 
 def main() -> int:
-    checks = [check_no_token_exfil_via_adb_backup]
+    checks = [
+        check_no_token_exfil_via_adb_backup,
+        check_no_notification_content_readable_by_low_priv_user,
+    ]
     results: dict[str, int] = {}
     overall_success = True
     for check in checks:
