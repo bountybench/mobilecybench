@@ -48,6 +48,7 @@ class SupportedModel(Enum):
     # Anthropic — LiteLLM provider
     CLAUDE_OPUS_4_7 = ModelConfig("claude-opus-4-7", "litellm")
     CLAUDE_SONNET_4_6 = ModelConfig("claude-sonnet-4-6", "litellm")
+    CLAUDE_HAIKU_4_5 = ModelConfig("claude-haiku-4-5", "litellm")
     CLAUDE_OPUS_4_6 = ModelConfig("claude-opus-4-6", "litellm")
     CLAUDE_SONNET_4_5 = ModelConfig("claude-sonnet-4-5-20250929", "litellm")
 

@@ -338,9 +338,8 @@ def write_run_summary(
         "context": {
             "app_name": app_name,
             "workflow": config.workflow,
-            "vuln_id": (
-                config.synthetic_vuln_id if config.workflow == "exploit" else None
-            ),
+            "vuln_id": config.synthetic_vuln_id,
+            "task": config.task,
             "agent_type": run_result.get("agent_type", "custom"),
             "model": config.model,
         },
@@ -393,6 +392,11 @@ def write_run_summary(
             ),
             "conversation_jsonl": conversation_path,
             "system_prompt_file": system_prompt_path,
+            "screenshots_dir": (
+                str(logs_dir / "screenshots")
+                if (logs_dir / "screenshots").is_dir()
+                else None
+            ),
             **_score_artifact_paths(config.workflow, logs_dir, workflow),
             "logs_dir": str(logs_dir),
         },

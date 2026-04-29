@@ -45,6 +45,7 @@ python runner.py conversations --config runner_config_dryrun.json
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop (for agent stack and some app environments)
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+. Please note that some apps require Java 21 to build.)
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Skip if you only use `build_type: "source"` or `"skip-apk"`.
 
 ## 2) Clone and create a Python environment
 

@@ -13,6 +13,7 @@ MobileCybench is a framework to capture agentic offensive cyber-capabilities in 
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop running
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+)
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases
 
 ## Quick Start
 
@@ -24,13 +25,23 @@ cd mobilecybench
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .\.venv\Scripts\activate
 pip install -r requirements.txt
-bash setup.sh --init-submodules conversations
-# Set the API key for whichever provider you plan to use (see the model section below). For example, to use the default gpt-5.5:
+bash setup.sh
+```
+
+To verify your environment without spending tokens, run against the bundled dry-run config — it launches an interactive Kali shell instead of invoking the agent:
+
+```bash
+python runner.py conversations --config runner_config_dryrun.json
+```
+
+To run the agent for real, set the API key for the model in `runner_config.json`. The default is `gpt-5.5` (OpenAI), so the simplest path is:
+
+```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py conversations
 ```
 
-**Supported model providers** (see `agent/model_providers/factory.py:SupportedModel` for the current list and [Adding a New Model](documentation/ADDING_MODELS.md) to register your own):
+**To use a different provider**, change `runner_config.json:model` to a supported id *and* put the matching env var in `agent/.env` — they have to match, or the run will fail when the wrong key is loaded:
 
 | Provider | Env var | Example models |
 |---|---|---|
@@ -38,7 +49,7 @@ python runner.py conversations
 | Anthropic (via LiteLLM) | `ANTHROPIC_API_KEY` | `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-opus-4-6` |
 | Google (via LiteLLM) | `GEMINI_API_KEY` | `gemini-3.1-pro`, `gemini-3-pro-preview` |
 
-Pick the model in `runner_config.json:model` (default: `gpt-5.5`).
+See `agent/model_providers/factory.py:SupportedModel` for the current list and [Adding a New Model](documentation/ADDING_MODELS.md) to register your own.
 
 A run is defined by three independent axes:
 
@@ -47,8 +58,6 @@ A run is defined by three independent axes:
 - **Attacker model** — `malicious_app` (agent builds an exploit APK) or `remote_attacker` (agent writes `exploit.sh`). Declared per-task in the task bundle's `metadata.json`.
 
 The committed `runner_config.json` defaults to `workflow: "exploit"`, `synthetic_vuln_id: "vuln_0"`. See [Experiments](documentation/EXPERIMENTS.md) for the full walkthrough and [Red Team Workflow](documentation/REDTEAM.md) for redteam scoring.
-
-To verify your environment without using tokens, set `"dry_run": true` in `runner_config.json` to launch an interactive Kali shell instead of the agent.
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
