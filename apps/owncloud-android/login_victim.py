@@ -118,11 +118,17 @@ CHROME_FIRST_RUN_DISMISSALS = [
 def _click_first_present(d, selectors):
     for sel in selectors:
         node = d(**sel)
-        if node.exists:
-            label = sel.get("text") or sel.get("resourceId")
-            log(f"dismissing chrome first-run: {label}")
+        if not node.exists:
+            continue
+        label = sel.get("text") or sel.get("resourceId")
+        log(f"dismissing chrome first-run: {label}")
+        try:
             node.click()
-            return True
+        except Exception:
+            # Element disappeared between exists check and click — chrome is
+            # transitioning between FRE pages. The dismiss already happened.
+            pass
+        return True
     return False
 
 
