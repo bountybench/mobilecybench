@@ -1511,10 +1511,15 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader -noaudio -no-boot-anim -memory 2048 -read-only
           disable-animations: true
+          # The test harness needs ADB to listen on all interfaces so exploit
+          # containers can reach it at host.docker.internal:5037. Start that
+          # server before the emulator launches; restarting ADB after the
+          # runner has booted the emulator races with the runner's own ADB
+          # commands and can leave two daemons fighting for port 5037.
+          pre-emulator-launch-script: |
+            adb kill-server || true
+            adb -a -P 5037 start-server
           script: |
-            # Restart ADB on all interfaces so exploit containers can reach
-            # the emulator via host.docker.internal:5037
-            adb kill-server && adb -a -P 5037 start-server
             adb wait-for-device
             utils/android_emulator_ready.sh
             utils/inject_system_ca.sh
