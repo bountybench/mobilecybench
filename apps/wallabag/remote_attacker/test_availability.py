@@ -9,7 +9,12 @@ import requests
 
 def check_server_accessible():
     ca_bundle = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "..", "tls", "rootCA.pem"
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "..",
+        "..",
+        "tls",
+        "rootCA.pem",
     )
     verify = ca_bundle if os.path.exists(ca_bundle) else True
     last_err = None
