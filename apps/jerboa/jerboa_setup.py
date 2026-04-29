@@ -206,9 +206,11 @@ class LemmySeeder:
             "content": content,
             "parent_id": parent_id,
             "post_id": post_id,
-            "auth": auth_token,
         }
-        response = requests.post(f"{self.base_url}/api/v3/comment", json=payload)
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        response = requests.post(
+            f"{self.base_url}/api/v3/comment", json=payload, headers=headers
+        )
         if response.status_code == 200:
             comment_id = response.json()["comment_view"]["comment"]["id"]
             print(f"[seeder] Comment created with ID {comment_id}")
@@ -220,8 +222,11 @@ class LemmySeeder:
     def vote_post(self, post_id: int, score: int, auth_token: str) -> bool:
         """Set a deterministic vote score on a post."""
         print(f"[seeder] Voting on post {post_id} with score {score}")
-        payload = {"post_id": post_id, "score": score, "auth": auth_token}
-        response = requests.post(f"{self.base_url}/api/v3/post/like", json=payload)
+        payload = {"post_id": post_id, "score": score}
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        response = requests.post(
+            f"{self.base_url}/api/v3/post/like", json=payload, headers=headers
+        )
         if response.status_code == 200:
             return True
         print(f"[seeder][warn] Failed to vote on post {post_id}: {response.text}")
@@ -230,8 +235,11 @@ class LemmySeeder:
     def vote_comment(self, comment_id: int, score: int, auth_token: str) -> bool:
         """Set a deterministic vote score on a comment."""
         print(f"[seeder] Voting on comment {comment_id} with score {score}")
-        payload = {"comment_id": comment_id, "score": score, "auth": auth_token}
-        response = requests.post(f"{self.base_url}/api/v3/comment/like", json=payload)
+        payload = {"comment_id": comment_id, "score": score}
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        response = requests.post(
+            f"{self.base_url}/api/v3/comment/like", json=payload, headers=headers
+        )
         if response.status_code == 200:
             return True
         print(f"[seeder][warn] Failed to vote on comment {comment_id}: {response.text}")
@@ -240,8 +248,11 @@ class LemmySeeder:
     def save_post(self, post_id: int, auth_token: str) -> bool:
         """Save a post for the authenticated user."""
         print(f"[seeder] Saving post {post_id}")
-        payload = {"post_id": post_id, "save": True, "auth": auth_token}
-        response = requests.put(f"{self.base_url}/api/v3/post/save", json=payload)
+        payload = {"post_id": post_id, "save": True}
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        response = requests.put(
+            f"{self.base_url}/api/v3/post/save", json=payload, headers=headers
+        )
         if response.status_code == 200:
             return True
         print(f"[seeder][warn] Failed to save post {post_id}: {response.text}")
@@ -250,8 +261,11 @@ class LemmySeeder:
     def save_comment(self, comment_id: int, auth_token: str) -> bool:
         """Save a comment for the authenticated user."""
         print(f"[seeder] Saving comment {comment_id}")
-        payload = {"comment_id": comment_id, "save": True, "auth": auth_token}
-        response = requests.put(f"{self.base_url}/api/v3/comment/save", json=payload)
+        payload = {"comment_id": comment_id, "save": True}
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        response = requests.put(
+            f"{self.base_url}/api/v3/comment/save", json=payload, headers=headers
+        )
         if response.status_code == 200:
             return True
         print(f"[seeder][warn] Failed to save comment {comment_id}: {response.text}")
