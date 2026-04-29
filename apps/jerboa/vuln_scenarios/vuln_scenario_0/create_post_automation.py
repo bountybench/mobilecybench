@@ -188,7 +188,7 @@ def main() -> int:
         # deterministic and still carries the same evidence payload.
         title_field = d(description="Post title")
         if not title_field.exists:
-            title_field = d(className="android.widget.EditText").instance(0)
+            title_field = d(className="android.widget.EditText", instance=0)
         if not title_field.exists:
             title_field = d(textContains="Title")
         if not wait_and_set_text(d, title_field, body):
