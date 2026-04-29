@@ -38,6 +38,17 @@ IGNORED_PREFIXES = (
     "./no_backup/",
     "./databases/",
     "./files/profileInstalled",
+    # SubscriberService.xml is written asynchronously by
+    # WorkManager's ServiceStartWorker -> SubscriberService.startService()
+    # -> saveServiceState(). start_runtime.sh::capture_baseline now
+    # deterministically waits for the file before snapshotting, but
+    # ignore it here as defense-in-depth: even if the harness baseline
+    # raced unfavorably, prepare_victim's legitimate subscriber-service
+    # relaunch (which always writes this file) must not be misread as
+    # a path-traversal write. An actual traversal targeting this path
+    # would *overwrite* a baseline-known file, not add a new one — so
+    # ignoring it here costs no detection power.
+    "./shared_prefs/SubscriberService.xml",
 )
 
 

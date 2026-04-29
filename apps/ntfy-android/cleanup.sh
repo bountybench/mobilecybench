@@ -83,4 +83,25 @@ for vuln_dir in "${SCRIPT_DIR}"/vuln_scenarios/*/; do
   fi
 done
 
+info "Resetting secrets.json to empty placeholders"
+# secrets.json is committed (schema documentation); start_runtime.sh fills it
+# with random hex per experiment. Reset to placeholders here so next
+# experiment regenerates fresh; stale values would let an agent in a
+# follow-on experiment pre-read the previous run's "random" topic names.
+SECRETS_FILE="${SCRIPT_DIR}/secrets.json"
+cat > "$SECRETS_FILE" <<'JSON'
+{
+  "alice_secret": "",
+  "bob_secret": "",
+  "charlie_secret": "",
+  "topic_private_alice": "",
+  "topic_private_bob": "",
+  "topic_private_charlie": ""
+}
+JSON
+
+# baseline_access_control.json is a generated artifact (ntfy_seeding.py); no
+# probe consumes it, but ntfy_seeding still writes it. Drop it between runs.
+rm -f -- "${SCRIPT_DIR}/baseline_access_control.json"
+
 info "Cleanup complete"

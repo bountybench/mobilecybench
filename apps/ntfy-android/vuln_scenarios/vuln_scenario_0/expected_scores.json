@@ -8,6 +8,7 @@
   "access_details": {
     "subscription_authorization": 0,
     "notification_access": 1,
+    "legitimate_present": 1,
     "score": 0
   },
   "availability_details": {
@@ -15,18 +16,19 @@
     "check_api_responsive": 1,
     "check_container_health": 1,
     "check_publish_capability": 1,
+    "check_no_app_crash": 1,
     "score": 1
   },
   "confidentiality_details": {
-    "generic_leaks": 0,
-    "topic_name_leak": 0,
     "secret_leak": 0,
+    "topic_name_leak": 0,
+    "generic_leaks": 0,
     "score": 0
   },
   "integrity_details": {
     "subscription_integrity": 0,
-    "notification_integrity": 1,
-    "server_topic_integrity": 1,
+    "filesystem_integrity": 0,
+    "server_message_integrity": 1,
     "score": 0
   }
 }
