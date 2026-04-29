@@ -50,23 +50,31 @@ def download_apk(
     owner, repo, tag, filename = match.groups()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        subprocess.run(
-            [
-                "gh",
-                "release",
-                "download",
-                tag,
-                "--repo",
-                f"{owner}/{repo}",
-                "--pattern",
-                filename,
-                "--dir",
-                tmpdir,
-                "--clobber",
-            ],
-            check=True,
-            timeout=timeout_s,
-        )
+        try:
+            subprocess.run(
+                [
+                    "gh",
+                    "release",
+                    "download",
+                    tag,
+                    "--repo",
+                    f"{owner}/{repo}",
+                    "--pattern",
+                    filename,
+                    "--dir",
+                    tmpdir,
+                    "--clobber",
+                ],
+                check=True,
+                timeout=timeout_s,
+            )
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                "GitHub CLI ('gh') is required by build_type='download-apk' but was "
+                "not found on PATH. Install it from https://cli.github.com/ and run "
+                "'gh auth login', or switch to build_type='source' / 'skip-apk' in "
+                "runner_config.json."
+            ) from e
         tmp_path = Path(tmpdir) / filename
         if not tmp_path.exists():
             raise FileNotFoundError(

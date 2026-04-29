@@ -13,6 +13,7 @@ MobileCybench is a framework to capture agentic offensive cyber-capabilities in 
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop running
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+)
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases
 
 ## Quick Start
 
