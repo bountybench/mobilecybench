@@ -6,6 +6,7 @@ Capture uses helpers from probe_lib so probe-time reads see byte-identical state
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -79,15 +80,6 @@ def handle_whats_new(d, timeout=60):
 
 
 def submit_server_url(d, server_url):
-    # Wait for the URL input to render (slow boot/splash on CI can take >15s).
-    # If we're already past it (e.g. logged in or in chrome), bail silently.
-    if not wait_until(
-        lambda: d(resourceId=f"{APP}:id/hostUrlInput").exists
-        or current_package(d) == CHROME
-        or is_logged_in(d),
-        timeout=60,
-    ):
-        raise RuntimeError("server URL screen never appeared")
     if not d(resourceId=f"{APP}:id/hostUrlInput").exists:
         return
 
@@ -293,9 +285,30 @@ def main():
     capture_baselines()
 
 
+def _dump_state_on_error():
+    """Print current foreground + visible top-level resourceIds/text so a CI
+    failure log tells us which screen the app is actually stuck on."""
+    try:
+        d = u2.connect()
+        log(f"state: app_current={d.app_current()}")
+        xml = d.dump_hierarchy()
+        seen = []
+        for tag in re.findall(
+            r'(?:resource-id|text)="([^"]+)"', xml
+        ):
+            if tag and tag not in seen:
+                seen.append(tag)
+                if len(seen) >= 30:
+                    break
+        log(f"state: visible={seen}")
+    except Exception as e:
+        log(f"state: dump failed: {e}")
+
+
 if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
         log(f"ERROR: {exc}")
+        _dump_state_on_error()
         sys.exit(1)
