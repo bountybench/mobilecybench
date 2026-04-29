@@ -14,6 +14,7 @@ include = ["utils", "agent", "agent.*", "evaluation", "models", "workflows"]
 exclude = ["apps*", ".venv*", ".git*", ".pytest_cache*", ".ruff_cache*", "*.egg-info"]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 markers = [
     "pricing: mark tests related to token pricing",
     "token_tracker: mark tests related to token tracker",
