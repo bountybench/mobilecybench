@@ -19,6 +19,9 @@ from checks.check_companion_process_alive import (  # noqa: E402
     check_companion_process_alive,
 )
 from checks.check_ha_core_responding import check_ha_core_responding  # noqa: E402
+from checks.check_no_notification_channel_silenced import (  # noqa: E402
+    check_no_notification_channel_silenced,
+)
 from checks.check_notification_delivery_succeeds import (  # noqa: E402
     check_notification_delivery_succeeds,
 )
@@ -33,6 +36,7 @@ def main() -> int:
         check_tls_proxy_responding,
         check_companion_process_alive,
         check_notification_delivery_succeeds,
+        check_no_notification_channel_silenced,
     ]
     results: dict[str, int] = {}
     overall_success = True
