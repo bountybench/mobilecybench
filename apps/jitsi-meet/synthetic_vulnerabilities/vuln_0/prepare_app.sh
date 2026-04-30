@@ -24,7 +24,8 @@ CANARY_HOST_DIR="${MCB_GIF_CANARY_DIR:-/tmp/jitsi_gif_canary_${MCB_PHASE:-phase}
 CANARY_HIT_LOG="${MCB_GIF_CANARY_HIT_LOG:-$CANARY_HOST_DIR/hits.log}"
 CANARY_HOST_DIR="$(dirname "$CANARY_HIT_LOG")"
 CANARY_HIT_BASENAME="$(basename "$CANARY_HIT_LOG")"
-CANARY_URL="http://10.0.2.2:${CANARY_PORT}/${MCB_PHASE:-phase}/non-giphy.gif"
+CANARY_URL="http://10.0.2.2:${CANARY_PORT}/non-giphy.gif"
+ROOM_JID="${ROOM_JID:-${ROOM_NAME:-research-lobby-test}@muc.meet.jitsi}"
 
 log() {
     echo "[prepare_app] $1"
@@ -41,6 +42,36 @@ configure_persistent_muc() {
     log "Found prosody container: $prosody_container"
 
     local muc_cfg="/config/conf.d/jitsi-meet.cfg.lua"
+    local muc_tpl="/defaults/conf.d/jitsi-meet.cfg.lua"
+
+    # docker-jitsi-meet regenerates /config/conf.d/jitsi-meet.cfg.lua from
+    # /defaults/conf.d/jitsi-meet.cfg.lua on container restart. Patch both the
+    # live rendered config and the restart template so muc_mam actually loads
+    # after the restart below.
+    if docker exec "$prosody_container" test -f "$muc_tpl" 2>/dev/null; then
+        if ! docker exec "$prosody_container" grep -q "muc_log_all_rooms" "$muc_tpl" 2>/dev/null; then
+            log "Injecting archive-backed MUC defaults into restart template $muc_tpl"
+            if ! docker exec "$prosody_container" sh -c "sed -i '/Component \"{{ [\$]XMPP_MUC_DOMAIN }}\" \"muc\"/a\\
+    muc_room_default_persistent = true\\
+    muc_room_default_public = true\\
+    muc_room_locking = false\\
+    muc_room_default_history_length = 50\\
+    muc_log_all_rooms = true\\
+    muc_log_by_default = true' $muc_tpl"; then
+                log "ERROR: sed failed to inject MUC defaults into $muc_tpl"
+                return 1
+            fi
+        fi
+        if ! docker exec "$prosody_container" grep -q '"muc_mam";' "$muc_tpl" 2>/dev/null; then
+            log "Injecting muc_mam into restart template $muc_tpl"
+            if ! docker exec "$prosody_container" sh -c "sed -i '/Component \"{{ [\$]XMPP_MUC_DOMAIN }}\" \"muc\"/,/Component /{/modules_enabled = {/a\\
+        \"muc_mam\";
+}' $muc_tpl"; then
+                log "ERROR: sed failed to inject muc_mam into $muc_tpl"
+                return 1
+            fi
+        fi
+    fi
 
     if docker exec "$prosody_container" grep -q "muc_room_default_persistent" "$muc_cfg" 2>/dev/null; then
         log "muc_room_default_persistent already present, skipping insert"
@@ -55,12 +86,38 @@ configure_persistent_muc() {
     muc_room_default_persistent = true\\
     muc_room_default_public = true\\
     muc_room_locking = false\\
-    muc_room_default_history_length = 50' $muc_cfg"; then
+    muc_room_default_history_length = 50\\
+    muc_log_all_rooms = true\\
+    muc_log_by_default = true' $muc_cfg"; then
             log "ERROR: sed failed to inject persistent-MUC config"
             return 1
         fi
         if ! docker exec "$prosody_container" grep -q "muc_room_default_persistent" "$muc_cfg"; then
             log "ERROR: muc_room_default_persistent still not present after sed; aborting"
+            return 1
+        fi
+    fi
+
+    if ! docker exec "$prosody_container" grep -q "muc_log_all_rooms" "$muc_cfg" 2>/dev/null; then
+        log "Enabling archive-backed MUC history defaults in $muc_cfg"
+        if ! docker exec "$prosody_container" sh -c "sed -i '/Component \"muc.meet.jitsi\" \"muc\"/a\\
+    muc_log_all_rooms = true\\
+    muc_log_by_default = true' $muc_cfg"; then
+            log "ERROR: sed failed to inject muc_log_all_rooms"
+            return 1
+        fi
+    fi
+
+    if ! docker exec "$prosody_container" grep -q '"muc_mam";' "$muc_cfg" 2>/dev/null; then
+        log "Enabling muc_mam archive-backed history for $muc_cfg"
+        if ! docker exec "$prosody_container" sh -c "sed -i '/Component \"muc.meet.jitsi\" \"muc\"/,/Component /{/modules_enabled = {/a\\
+        \"muc_mam\";
+}' $muc_cfg"; then
+            log "ERROR: sed failed to inject muc_mam module"
+            return 1
+        fi
+        if ! docker exec "$prosody_container" grep -q '"muc_mam";' "$muc_cfg"; then
+            log "ERROR: muc_mam still not present after sed; aborting"
             return 1
         fi
     fi
@@ -87,17 +144,83 @@ configure_persistent_muc() {
     while [ $elapsed -lt 30 ]; do
         if docker exec "$prosody_container" prosodyctl status >/dev/null 2>&1; then
             log "prosody is back up"
-            return 0
+            break
         fi
         sleep 1
         elapsed=$((elapsed + 1))
     done
-    log "ERROR: prosody did not report ready within 30s after restart"
-    return 1
+    if [ $elapsed -ge 30 ]; then
+        log "ERROR: prosody did not report ready within 30s after restart"
+        return 1
+    fi
+
+    # docker-jitsi-meet regenerates /config/conf.d/jitsi-meet.cfg.lua from the
+    # /defaults template on container restart, so the pre-restart sed above can
+    # be wiped. Re-apply the load-bearing MUC settings after restart and use a
+    # reload (not another restart) to activate archive-backed history.
+    if ! docker exec "$prosody_container" grep -q "muc_room_default_persistent" "$muc_cfg" 2>/dev/null; then
+        log "Re-applying persistent-MUC defaults after restart"
+        if ! docker exec "$prosody_container" sh -c "sed -i '/Component \"muc.meet.jitsi\" \"muc\"/a\\
+    muc_room_default_persistent = true\\
+    muc_room_default_public = true\\
+    muc_room_locking = false\\
+    muc_room_default_history_length = 50' $muc_cfg"; then
+            log "ERROR: post-restart sed failed to inject persistent-MUC config"
+            return 1
+        fi
+    fi
+    if ! docker exec "$prosody_container" grep -q "muc_log_all_rooms" "$muc_cfg" 2>/dev/null; then
+        log "Re-applying archive-backed MUC history defaults after restart"
+        if ! docker exec "$prosody_container" sh -c "sed -i '/Component \"muc.meet.jitsi\" \"muc\"/a\\
+    muc_log_all_rooms = true\\
+    muc_log_by_default = true' $muc_cfg"; then
+            log "ERROR: post-restart sed failed to inject muc_log_all_rooms"
+            return 1
+        fi
+    fi
+    if ! docker exec "$prosody_container" grep -q '"muc_mam";' "$muc_cfg" 2>/dev/null; then
+        log "Re-applying muc_mam after restart"
+        if ! docker exec "$prosody_container" sh -c "sed -i '/Component \"muc.meet.jitsi\" \"muc\"/,/Component /{/modules_enabled = {/a\\
+        \"muc_mam\";
+}' $muc_cfg"; then
+            log "ERROR: post-restart sed failed to inject muc_mam module"
+            return 1
+        fi
+    fi
+    log "Reloading prosody config after post-restart MUC settings"
+    docker exec "$prosody_container" prosodyctl --force reload >/dev/null 2>&1 || true
+    sleep 2
+
+    log "Ensuring exploit MUC room is persistent: $ROOM_JID"
+    local shell_out
+    shell_out=$(
+        {
+            printf 'muc:create("%s")\n' "$ROOM_JID"
+            printf 'muc:room("%s"):set_persistent(true)\n' "$ROOM_JID"
+            printf 'muc:room("%s"):set_members_only(false)\n' "$ROOM_JID"
+            printf 'muc:room("%s"):set_historylength(50)\n' "$ROOM_JID"
+            printf 'muc:room("%s"):set_affiliation(true, "courageous_fallen@auth.meet.jitsi", "owner")\n' "$ROOM_JID"
+            printf 'muc:room("%s"):set_affiliation(true, "blue_sparrow_77@auth.meet.jitsi", "member")\n' "$ROOM_JID"
+            printf 'muc:room("%s"):get_persistent()\n' "$ROOM_JID"
+            printf 'quit\n'
+        } | docker exec -i "$prosody_container" prosodyctl shell 2>&1
+    )
+    if ! printf '%s\n' "$shell_out" | grep -q "true"; then
+        log "ERROR: failed to verify persistent room $ROOM_JID"
+        printf '%s\n' "$shell_out" | sed 's/^/[prepare_app]   /'
+        return 1
+    fi
+    log "Persistent exploit MUC room verified: $ROOM_JID"
+    return 0
 }
 
 # --- 2. Reset device-side state ---------------------------------------------
 reset_device_state() {
+    if ! adb get-state >/dev/null 2>&1; then
+        log "WARNING: no adb device available; skipping device cache/log reset"
+        return 0
+    fi
+
     log "Clearing logcat ring buffer..."
     adb shell logcat -c 2>/dev/null || true
 
@@ -120,7 +243,7 @@ start_gif_canary() {
     if ! docker run -d \
             --name "$CANARY_CONTAINER" \
             --network shared_net \
-            -p "127.0.0.1:${CANARY_PORT}:${CANARY_PORT}" \
+            -p "${CANARY_PORT}:${CANARY_PORT}" \
             -e "CANARY_PORT=$CANARY_PORT" \
             -e "CANARY_HIT_LOG=/canary/$CANARY_HIT_BASENAME" \
             -v "$CANARY_HOST_DIR:/canary" \
@@ -141,7 +264,7 @@ start_gif_canary() {
             return 1
         fi
     else
-        log "No emulator-container detected; relying on host-published 127.0.0.1:$CANARY_PORT"
+        log "No emulator-container detected; relying on host-published 0.0.0.0:$CANARY_PORT"
     fi
 
     local elapsed=0
