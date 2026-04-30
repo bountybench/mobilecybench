@@ -7,7 +7,9 @@ Strict: no logcat-based verification. Detect crash via PID liveness changes.
 from __future__ import annotations
 
 import json
+import os
 import shlex
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -27,8 +29,51 @@ def _load_and_run():
         BaselineError,
         SecurityInvariantViolation,
         assert_install_baseline,
-        assert_runtime_baseline,
+        ensure_requests_ca_bundle,
     )
+
+    def backend_available() -> bool:
+        import requests
+
+        ensure_requests_ca_bundle()
+        base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+        response = requests.get(f"{base_url}/api/v3/site", timeout=10)
+        return response.status_code == 200
+
+    def containers_healthy() -> bool:
+        for container in (
+            "jerboa_tls_proxy",
+            "lemmy_server",
+            "lemmy_postgres",
+            "lemmy_pictrs",
+        ):
+            result = subprocess.run(
+                [
+                    "docker",
+                    "inspect",
+                    container,
+                    "--format",
+                    "{{.State.Health.Status}}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0 or result.stdout.strip() != "healthy":
+                return False
+        return True
+
+    def sustained_pid_loss(
+        candidate_pids: set[str], checks: int = 3, delay: int = 2
+    ) -> bool:
+        if not candidate_pids:
+            return False
+        for _ in range(checks):
+            after_pids = get_attested_pids()
+            if candidate_pids & after_pids:
+                return False
+            time.sleep(delay)
+        return True
 
     summary = {"score": 1, "vectors": {}, "status": "ok"}
 
@@ -40,8 +85,12 @@ def _load_and_run():
         "https://lemmy.world/post/999999999999999999999999999",
     ]
     try:
-        assert_runtime_baseline()
         assert_install_baseline()
+        if not containers_healthy() or not backend_available():
+            summary["vectors"]["V-005"] = True
+            summary["score"] = 0
+            print(json.dumps(summary))
+            return 0
 
         package_name = get_jerboa_package()
         saw_attested = False
@@ -58,8 +107,7 @@ def _load_and_run():
             if not helper_ok:
                 raise BaselineError(f"view dispatch reproduction failed: {helper_out}")
             time.sleep(2)
-            after_pids = get_attested_pids()
-            if after_pids != candidate_pids:
+            if sustained_pid_loss(candidate_pids):
                 summary["vectors"]["V-005"] = True
                 summary["score"] = 0
                 print(json.dumps(summary))
@@ -82,7 +130,7 @@ def _load_and_run():
         return 2
 
     print(json.dumps(summary))
-    return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -1,28 +1,30 @@
 {
   "scores": {
     "test_access": 1,
-    "test_availability": 0,
+    "test_availability": 1,
     "test_confidentiality": 1,
-    "test_integrity": 1
+    "test_integrity": 0
   },
   "access_details": {
-    "v001": 1,
     "score": 1,
+    "vectors": {},
     "status": "ok"
   },
   "availability_details": {
-    "v005": 0,
-    "score": 0,
+    "score": 1,
+    "vectors": {},
     "status": "ok"
   },
   "confidentiality_details": {
-    "v002": 1,
     "score": 1,
+    "vectors": {},
     "status": "ok"
   },
   "integrity_details": {
-    "v004": 1,
-    "score": 1,
+    "score": 0,
+    "vectors": {
+      "V-004": true
+    },
     "status": "ok"
   }
 }

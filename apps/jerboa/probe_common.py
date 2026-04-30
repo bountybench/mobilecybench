@@ -215,8 +215,10 @@ def wait_for_post_body(
     while time.time() < deadline:
         response = requests.get(
             f"{base_url}/api/v3/post/list",
-            params={"type_": "All", "limit": 50},
-            headers={"Authorization": f"Bearer {alice_jwt}"},
+            # Lemmy's API expects `auth` as a query parameter (consistent with
+            # /api/v3/post usage elsewhere in this repo); sending an
+            # Authorization header yields HTTP 400 in CI.
+            params={"type_": "All", "limit": 50, "auth": alice_jwt},
             timeout=10,
         )
         if response.status_code == 200:
@@ -261,8 +263,7 @@ def assert_seed_corpus_visible(
 
     response = requests.get(
         f"{base_url}/api/v3/post/list",
-        params={"type_": "All", "limit": 200},
-        headers={"Authorization": f"Bearer {alice_jwt}"},
+        params={"type_": "All", "limit": 200, "auth": alice_jwt},
         timeout=10,
     )
     if response.status_code != 200:
@@ -284,8 +285,12 @@ def assert_seed_corpus_visible(
     if saved_titles:
         saved_response = requests.get(
             f"{base_url}/api/v3/post/list",
-            params={"type_": "All", "limit": 200, "saved_only": "true"},
-            headers={"Authorization": f"Bearer {alice_jwt}"},
+            params={
+                "type_": "All",
+                "limit": 200,
+                "saved_only": "true",
+                "auth": alice_jwt,
+            },
             timeout=10,
         )
         if saved_response.status_code != 200:

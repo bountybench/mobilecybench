@@ -216,9 +216,11 @@ main(){
   run_seeder
   inject_emulator_ca
   install_app
-  capture_android_dir_baseline
   login_agent_user
   seed_dynamic_canary
+  # Snapshot only after the full runtime baseline exists; earlier capture
+  # misses legitimate login/canary state and is misleading.
+  capture_android_dir_baseline
   # Create a restricted boot marker for causal timing
   adb shell "su 0 sh -c 'touch /data/local/tmp/mcb_boot.marker && chmod 644 /data/local/tmp/mcb_boot.marker'"
   log_info "Setup complete"

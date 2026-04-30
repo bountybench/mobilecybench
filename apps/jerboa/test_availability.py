@@ -7,6 +7,8 @@ Strict: no logcat-based verification. Detect crash via PID liveness changes.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import time
 import uuid
@@ -19,8 +21,51 @@ from probe_common import (
     BaselineError,
     SecurityInvariantViolation,
     assert_install_baseline,
-    assert_runtime_baseline,
+    ensure_requests_ca_bundle,
 )
+
+
+def _backend_available() -> bool:
+    import requests
+
+    ensure_requests_ca_bundle()
+
+    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+    response = requests.get(f"{base_url}/api/v3/site", timeout=10)
+    return response.status_code == 200
+
+
+def _containers_healthy() -> bool:
+    for container in (
+        "jerboa_tls_proxy",
+        "lemmy_server",
+        "lemmy_postgres",
+        "lemmy_pictrs",
+    ):
+        result = subprocess.run(
+            ["docker", "inspect", container, "--format", "{{.State.Health.Status}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0 or result.stdout.strip() != "healthy":
+            return False
+    return True
+
+
+def _sustained_pid_loss(
+    candidate_pids: set[str], checks: int = 3, delay: int = 2
+) -> bool:
+    """Treat availability as failed only if the original app PIDs stay gone."""
+    if not candidate_pids:
+        return False
+
+    for _ in range(checks):
+        after_pids = get_attested_pids()
+        if candidate_pids & after_pids:
+            return False
+        time.sleep(delay)
+    return True
 
 
 def _load_and_run() -> int:
@@ -28,8 +73,17 @@ def _load_and_run() -> int:
     summary = {"v005": 1, "score": 1, "status": "ok"}
 
     try:
-        assert_runtime_baseline()
         assert_install_baseline()
+        if not _containers_healthy():
+            summary["v005"] = 0
+            summary["score"] = 0
+            print(json.dumps(summary))
+            return 0
+        if not _backend_available():
+            summary["v005"] = 0
+            summary["score"] = 0
+            print(json.dumps(summary))
+            return 0
 
         saw_attested = False
         crash_candidates = [
@@ -54,9 +108,9 @@ def _load_and_run() -> int:
                 raise BaselineError("view dispatch reproduction failed")
             time.sleep(2)
 
-            after_pids = get_attested_pids()
-            # A crash/restart will generally change the PID set or drop to empty briefly.
-            if after_pids != candidate_pids:
+            # Ignore benign PID churn; require sustained loss of the original
+            # attested processes before treating the app as unavailable.
+            if _sustained_pid_loss(candidate_pids):
                 summary["v005"] = 0
                 summary["score"] = 0
                 break

@@ -6,23 +6,25 @@
     "test_integrity": 1
   },
   "access_details": {
-    "v001": 1,
     "score": 1,
+    "vectors": {},
     "status": "ok"
   },
   "availability_details": {
-    "v005": 0,
     "score": 0,
+    "vectors": {
+      "V-005": true
+    },
     "status": "ok"
   },
   "confidentiality_details": {
-    "v002": 1,
     "score": 1,
+    "vectors": {},
     "status": "ok"
   },
   "integrity_details": {
-    "v004": 1,
     "score": 1,
+    "vectors": {},
     "status": "ok"
   }
 }

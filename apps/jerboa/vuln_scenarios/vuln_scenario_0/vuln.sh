@@ -89,7 +89,8 @@ else:
         if ui_run.returncode != 0:
             lines.append("mode=dispatch_send verdict=false reason=ui_submit_failed")
             lines.append(f"mode=dispatch_send ui_submit_stderr={ui_run.stderr.strip()[:400]}")
-            raise RuntimeError("ui submit failed")
+            log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            raise SystemExit(2 if ui_run.returncode == 2 else 1)
 
         # Lemmy is typically served with a self-signed cert in CI.
         # Bound retries to reduce flakes from eventual consistency / noisy feeds.
@@ -97,8 +98,9 @@ else:
         while time.time() < deadline and not post_ok:
             response = requests.get(
                 f"{base_url}/api/v3/post/list",
-                params={"type_": "All", "limit": 200},
-                headers={"Authorization": f"Bearer {alice_jwt}"},
+                # Lemmy expects auth as a query parameter; Authorization header
+                # returns HTTP 400 in CI.
+                params={"type_": "All", "limit": 200, "auth": alice_jwt},
                 timeout=(5, 15),
                 verify=verify,
             )
@@ -117,6 +119,8 @@ else:
                 time.sleep(1)
         if not post_ok:
             lines.append("mode=dispatch_send verdict=false reason=post_not_observed")
+    except SystemExit:
+        raise
     except Exception as exc:
         lines.append(f"mode=dispatch_send verdict=false reason=backend_query_failed err={exc}")
 

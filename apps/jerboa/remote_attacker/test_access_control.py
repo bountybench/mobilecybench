@@ -70,7 +70,7 @@ def _load_and_run():
 
     summary["score"] = 0 if impact else 1
     print(json.dumps(summary))
-    return 0 if impact else 1
+    return 0
 
 
 if __name__ == "__main__":

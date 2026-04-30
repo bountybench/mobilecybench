@@ -6,6 +6,8 @@ import sys
 import time
 import traceback
 
+os.environ.setdefault("UI_TARGET_PACKAGE", "com.jerboa")
+
 try:
     import adbutils
     import uiautomator2 as u2
@@ -43,6 +45,28 @@ def _connect_u2(device_serial: str, max_retries: int = 3, retry_delay: int = 10)
     raise RuntimeError("uiautomator2 connect failed")
 
 
+def _verify_or_recover_u2(d, device_serial: str):
+    try:
+        d.info
+        d.window_size()
+        d.app_current()
+        return d
+    except Exception as e:
+        _log(f"uiautomator2 device check failed: {e}")
+        _log("Attempting uiautomator2 server restart")
+        try:
+            d.shell("am start -n com.github.uiautomator/.MainActivity")
+            time.sleep(2)
+            d.shell(
+                "am start -n com.github.uiautomator.test/androidx.test.runner.AndroidJUnitRunner"
+            )
+            time.sleep(2)
+            return u2.connect(device_serial)
+        except Exception as recovery_error:
+            _log(f"uiautomator2 recovery failed: {recovery_error}")
+            return None
+
+
 def _get_package(d) -> str:
     packages = d.shell("pm list packages").output
     if "package:com.jerboa" not in packages:
@@ -66,6 +90,16 @@ def _first_clickable_with_text(d, *, blacklist: set[str]) -> bool:
         except Exception:
             continue
     return False
+
+
+def _wait_for_any_text(d, candidates: list[str], timeout: int = 15) -> str | None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        for candidate in candidates:
+            if d(text=candidate).exists:
+                return candidate
+        time.sleep(0.5)
+    return None
 
 
 def _parse_bounds(bounds: str) -> tuple[int, int, int, int] | None:
@@ -144,6 +178,32 @@ def _open_community_picker(d) -> bool:
     return _click_community_selector(d)
 
 
+def _select_seeded_community(d) -> bool:
+    """Select a deterministically seeded community from the community list."""
+    seeded_names = ["technology", "gaming", "news"]
+
+    if not _wait_for_any_text(d, ["Search communities", "Create post"], timeout=15):
+        _log("Community selection screen did not become recognizable")
+        return False
+
+    search_field = d(className="android.widget.EditText", instance=0)
+    if search_field.exists and not wait_and_set_text(d, search_field, seeded_names[0]):
+        _log("Failed to populate community search field")
+        return False
+    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+
+    for name in seeded_names:
+        exact = d(text=name)
+        if exact.wait(timeout=10):
+            if click_then_expect(d, exact, d(text="Create post"), timeout=15):
+                return True
+            _log(f"Tapped community {name} but did not return to Create post")
+            return False
+
+    _log("Failed to find any deterministically seeded community option")
+    return False
+
+
 def _submit_post_once(d, pkg: str, body: str) -> bool:
     # Maintain causal chain: (re)send the share intent with our body payload.
     # Do NOT launch MainActivity directly, which can drop intent extras.
@@ -185,24 +245,8 @@ def _submit_post_once(d, pkg: str, body: str) -> bool:
         return False
     wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
-    # Community list: click the first reasonable entry.
-    deadline = time.time() + 30
-    clicked = False
-    while time.time() < deadline and not clicked:
-        clicked = _first_clickable_with_text(
-            d,
-            blacklist={
-                "Community",
-                "Create post",
-                "Close",
-                "Anonymous",
-                "Add account",
-            },
-        )
-        if not clicked:
-            time.sleep(1)
-    if not clicked:
-        _log("Failed to select a community")
+    if not _select_seeded_community(d):
+        _log("Failed to select a seeded community")
         return False
     wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
@@ -237,6 +281,9 @@ def main() -> int:
             return 2
         serial = devices[0].serial
         d = _connect_u2(serial)
+        d = _verify_or_recover_u2(d, serial)
+        if d is None:
+            return 2
         pkg = _get_package(d)
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
