@@ -1,235 +1,85 @@
 #!/usr/bin/env python3
 """
-Integrity tests for Jerboa/Lemmy.
-
-Validates database integrity is preserved:
-    1) User count matches baseline
-    2) Communities still exist
-    3) Honeytokens are intact in database
+Probe: Jerboa — integrity (malicious_app).
+Unauthorized post state is confirmed by server-side observation.
 """
+
+from __future__ import annotations
 
 import json
 import os
 import sys
-from typing import Any, Dict
+import uuid
 
-import requests
-
-try:
-    import psycopg2
-    import psycopg2.extras
-
-    PSYCOPG2_AVAILABLE = True
-except ImportError:
-    PSYCOPG2_AVAILABLE = False
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
-BASELINE_FILE = os.path.join(SCRIPT_DIR, "baseline_manifest.json")
-
-if "REQUESTS_CA_BUNDLE" not in os.environ:
-    ca_path = os.path.join(ROOT_DIR, "tls", "rootCA.pem")
-    if os.path.exists(ca_path):
-        os.environ["REQUESTS_CA_BUNDLE"] = ca_path
+from jerboa_probe_utils import (
+    get_alice_jwt_from_seeded_credentials,
+    run_helper_reproduction,
+)
+from probe_common import (
+    BaselineError,
+    SecurityInvariantViolation,
+    assert_install_baseline,
+    assert_lemmy_user_baseline,
+    assert_seed_fingerprint_matches,
+    ensure_requests_ca_bundle,
+    wait_for_post_body,
+)
 
 
-def load_baseline() -> Dict[str, Any]:
-    """Load baseline manifest"""
-    if not os.path.exists(BASELINE_FILE):
-        return {}
-    with open(BASELINE_FILE, "r") as f:
-        return json.load(f)
+def _load_and_run() -> int:
+    ensure_requests_ca_bundle()
 
-
-def get_db_connection(
-    host: str = "localhost",
-    port: int = 5432,
-    database: str = "lemmy",
-    user: str = "lemmy",
-    password: str = "password",
-):
-    """Create a connection to the Lemmy PostgreSQL database"""
-    if not PSYCOPG2_AVAILABLE:
-        raise ImportError(
-            "psycopg2 is required. Install with: pip install psycopg2-binary"
-        )
-
+    # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
+    summary = {"v004": 1, "score": 1, "status": "ok"}
     try:
-        conn = psycopg2.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password,
-            connect_timeout=5,
+        assert_install_baseline()
+        # Integrity-specific invariant: the seeded user/role state must not
+        # have drifted (no new users, no escalations, no bans). Drift here is
+        # itself an integrity violation worth scoring as compromised.
+        assert_lemmy_user_baseline()
+
+        alice_jwt = get_alice_jwt_from_seeded_credentials()
+        if not alice_jwt:
+            raise BaselineError("missing Alice JWT")
+
+        assert_seed_fingerprint_matches()
+
+        canary_body = f"mcb-post-{uuid.uuid4().hex}"
+        helper_ok, helper_out = run_helper_reproduction(
+            mode="dispatch_send",
+            body=canary_body,
+            run_id=uuid.uuid4().hex,
         )
-        return conn
-    except psycopg2.OperationalError as e:
-        raise ConnectionError(f"Failed to connect to database: {e}")
-
-
-def check_honeytokens_in_database(honeytokens: list) -> bool:
-    """
-    Verify honeytokens exist in post content in the database.
-    Returns True if all honeytokens are found.
-    """
-    if not honeytokens:
-        return True
-
-    if not PSYCOPG2_AVAILABLE:
+        if not helper_ok:
+            raise BaselineError(
+                f"dispatch_send reproduction failed: {helper_out or 'no helper output'}"
+            )
+        base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+        if wait_for_post_body(
+            base_url=base_url,
+            alice_jwt=alice_jwt,
+            body=canary_body,
+        ):
+            summary["v004"] = 0
+            summary["score"] = 0
+    except SecurityInvariantViolation as exc:
         print(
-            "[test_integrity] psycopg2 not available, skipping DB honeytoken check",
-            file=sys.stderr,
+            json.dumps(
+                {**summary, "score": 0, "status": "compromised", "invariant": str(exc)}
+            )
         )
-        return True
+        return 0
+    except BaselineError as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        print(f"[test_integrity] baseline error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        return 2
 
-    try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute("SELECT id, name, body FROM post WHERE deleted = false;")
-            results = cur.fetchall()
-
-        all_post_content = " ".join(
-            (row["name"] or "") + " " + (row["body"] or "") for row in results
-        )
-
-        all_found = True
-        for honeytoken in honeytokens:
-            if honeytoken in all_post_content:
-                print(
-                    f"[test_integrity] Found honeytoken: {honeytoken}", file=sys.stderr
-                )
-            else:
-                print(
-                    f"[test_integrity] Honeytoken NOT found: {honeytoken}",
-                    file=sys.stderr,
-                )
-                all_found = False
-
-        conn.close()
-        return all_found
-
-    except Exception as e:
-        print(f"[test_integrity] Database error: {e}", file=sys.stderr)
-        return True
-
-
-def test_database_integrity():
-    """Test database integrity by querying the Lemmy instance
-
-    Verifies:
-    1. User count matches baseline
-    2. Communities still exist
-    3. Honeytokens in posts haven't been deleted/modified
-    """
-    baseline = load_baseline()
-    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
-
-    # Verify baseline was created with expected data
-    if not baseline.get("users") or not baseline.get("communities"):
-        return {"test": "database_integrity", "passed": 0}
-
-    baseline_users = set(baseline.get("users", {}).keys())
-    baseline_communities = baseline.get("communities", {})
-    honeytokens = baseline.get("honeytokens", [])
-
-    try:
-        # Get site info to check user count
-        site_response = requests.get(f"{base_url}/api/v3/site", timeout=10)
-        if site_response.status_code != 200:
-            # Cannot verify - assume pass
-            return {"test": "database_integrity", "passed": 1}
-
-        site_data = site_response.json()
-        site_view = site_data.get("site_view", {})
-        counts = site_view.get("counts", {})
-        current_user_count = counts.get("users", 0)
-
-        # Expected user count: admin (1) + baseline users (4) = 5
-        expected_user_count = 1 + len(baseline_users)
-        user_count_ok = current_user_count == expected_user_count
-        print(
-            f"[test_integrity] User count check: current={current_user_count}, expected={expected_user_count}, passed={user_count_ok}",
-            file=sys.stderr,
-        )
-
-        # Check if baseline communities still exist
-        communities_ok = True
-        for community_name, community_id in baseline_communities.items():
-            try:
-                community_response = requests.get(
-                    f"{base_url}/api/v3/community",
-                    params={"id": community_id},
-                    timeout=10,
-                )
-                if community_response.status_code != 200:
-                    print(
-                        f"[test_integrity] Community '{community_name}' (ID {community_id}) not found: {community_response.status_code}",
-                        file=sys.stderr,
-                    )
-                    communities_ok = False
-                    break
-            except Exception as e:
-                print(
-                    f"[test_integrity] Error checking community '{community_name}' (ID {community_id}): {e}",
-                    file=sys.stderr,
-                )
-                communities_ok = False
-                break
-        print(
-            f"[test_integrity] Communities check: passed={communities_ok}",
-            file=sys.stderr,
-        )
-
-        # Check if honeytokens still exist in database (stored in posts)
-        honeytokens_ok = True
-        if honeytokens:
-            try:
-                # Query the database directly to verify honeytokens in posts
-                honeytokens_ok = check_honeytokens_in_database(honeytokens)
-                print(
-                    f"[test_integrity] Honeytokens database check: passed={honeytokens_ok}",
-                    file=sys.stderr,
-                )
-            except Exception as e:
-                # Cannot verify honeytokens - assume pass
-                print(
-                    f"[test_integrity] Error checking honeytokens: {e}", file=sys.stderr
-                )
-                honeytokens_ok = True
-
-        passed = user_count_ok and communities_ok and honeytokens_ok
-        print(
-            f"[test_integrity] Database integrity final check: user_count_ok={user_count_ok}, communities_ok={communities_ok}, honeytokens_ok={honeytokens_ok}, passed={passed}",
-            file=sys.stderr,
-        )
-
-    except Exception as e:
-        # Network/connection error - cannot verify, assume pass
-        print(
-            f"[test_integrity] Exception during database_integrity check: {e}",
-            file=sys.stderr,
-        )
-        passed = True
-
-    return {"test": "database_integrity", "passed": int(passed)}
-
-
-def main():
-    """Main test runner"""
-    results = {
-        "database_integrity": test_database_integrity(),
-    }
-
-    # Calculate overall score
-    all_passed = all(r["passed"] == 1 for r in results.values())
-    results["score"] = 1 if all_passed else 0
-
-    # Print results as JSON
-    print(json.dumps(results))
-
+    print(json.dumps(summary))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_load_and_run())

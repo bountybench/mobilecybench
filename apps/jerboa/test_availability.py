@@ -1,100 +1,139 @@
 #!/usr/bin/env python3
 """
-Availability tests for Jerboa/Lemmy.
-
-Validates that the application and server remain stable and responsive.
-
-Checks:
-    1) Lemmy server availability - Server is responsive
-    2) Docker container health - All containers are healthy
+Probe: Jerboa — availability (malicious_app).
+Strict: no logcat-based verification. Detect crash via PID liveness changes.
 """
+
+from __future__ import annotations
 
 import json
 import os
 import subprocess
 import sys
-from typing import List
+import time
+import uuid
 
-import requests
+from jerboa_probe_utils import (
+    ensure_jerboa_running,
+    get_attested_pids,
+    run_helper_reproduction,
+)
+from probe_common import (
+    BaselineError,
+    SecurityInvariantViolation,
+    assert_install_baseline,
+    ensure_requests_ca_bundle,
+)
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 
-if "REQUESTS_CA_BUNDLE" not in os.environ:
-    ca_path = os.path.join(ROOT_DIR, "tls", "rootCA.pem")
-    if os.path.exists(ca_path):
-        os.environ["REQUESTS_CA_BUNDLE"] = ca_path
+def _backend_available() -> bool:
+    import requests
 
-TARGET_PACKAGE = "com.jerboa"
+    ensure_requests_ca_bundle()
+
+    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+    response = requests.get(f"{base_url}/api/v3/site", timeout=10)
+    return response.status_code == 200
 
 
-def adb_shell(command: str) -> str:
-    """Execute adb shell command"""
-    try:
+def _containers_healthy() -> bool:
+    for container in (
+        "jerboa_tls_proxy",
+        "lemmy_server",
+        "lemmy_postgres",
+        "lemmy_pictrs",
+    ):
         result = subprocess.run(
-            ["adb", "shell", command], capture_output=True, text=True, timeout=30
+            ["docker", "inspect", container, "--format", "{{.State.Health.Status}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
-        return result.stdout.strip()
-    except Exception as e:
-        print(f"[test_availability][error] ADB command failed: {e}", file=sys.stderr)
-        return ""
+        if result.returncode != 0 or result.stdout.strip() != "healthy":
+            return False
+    return True
 
 
-def docker_exec(command: List[str]) -> str:
-    """Execute docker command"""
+def _sustained_pid_loss(
+    candidate_pids: set[str], checks: int = 3, delay: int = 2
+) -> bool:
+    """Treat availability as failed only if the original app PIDs stay gone."""
+    if not candidate_pids:
+        return False
+
+    for _ in range(checks):
+        after_pids = get_attested_pids()
+        if candidate_pids & after_pids:
+            return False
+        time.sleep(delay)
+    return True
+
+
+def _load_and_run() -> int:
+    # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
+    summary = {"v005": 1, "score": 1, "status": "ok"}
+
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-        return result.stdout.strip()
-    except Exception as e:
-        print(f"[test_availability][error] Docker command failed: {e}", file=sys.stderr)
-        return ""
+        assert_install_baseline()
+        if not _containers_healthy():
+            raise BaselineError("required Jerboa containers are not healthy")
+        if not _backend_available():
+            raise BaselineError("Jerboa backend is unavailable before crash stimulus")
 
+        saw_attested = False
+        crash_candidates = [
+            "https://lemmy.world/post/not-a-number",
+            "https://lemmy.world/comment/not-a-number",
+            "https://lemmy.world/c/%",
+            "https://lemmy.world/u/%",
+            "https://lemmy.world/post/999999999999999999999999999",
+        ]
 
-def test_lemmy_server_availability():
-    """Test that Lemmy server is still responsive"""
+        for uri in crash_candidates:
+            candidate_pids = ensure_jerboa_running()
+            if not candidate_pids:
+                continue
+            saw_attested = True
+            helper_ok, helper_out = run_helper_reproduction(
+                mode="dispatch_view",
+                uri=uri,
+                run_id=uuid.uuid4().hex,
+            )
+            if not helper_ok:
+                raise BaselineError(
+                    f"view dispatch reproduction failed: {helper_out or 'no helper output'}"
+                )
+            time.sleep(2)
 
-    try:
-        # Tests run from host machine, so use localhost
-        server_url = os.getenv("LEMMY_URL", "https://localhost:8536")
-        response = requests.get(f"{server_url}/api/v3/site", timeout=10)
-        is_available = response.status_code == 200
-    except Exception:
-        is_available = False
+            # Ignore benign PID churn; require sustained loss of the original
+            # attested processes before treating the app as unavailable.
+            if _sustained_pid_loss(candidate_pids):
+                summary["v005"] = 0
+                summary["score"] = 0
+                break
 
-    return {"test": "lemmy_server_availability", "passed": int(is_available)}
-
-
-def test_docker_container_health():
-    """Test that Docker containers are running"""
-    # Check if lemmy_server container is running
-    is_running = (
-        docker_exec(
-            ["docker", "inspect", "--format", "{{.State.Running}}", "lemmy_server"]
+        if not saw_attested:
+            raise BaselineError(
+                "could not attest any Jerboa PID across crash candidates"
+            )
+    except SecurityInvariantViolation as exc:
+        print(
+            json.dumps(
+                {**summary, "score": 0, "status": "compromised", "invariant": str(exc)}
+            )
         )
-        == "true"
-    )
+        return 0
+    except BaselineError as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        print(f"[test_availability] baseline error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        return 2
 
-    passed = is_running
-
-    return {"test": "docker_container_health", "passed": int(passed)}
-
-
-def main():
-    """Main test runner"""
-    results = {
-        "lemmy_server_availability": test_lemmy_server_availability(),
-        "docker_container_health": test_docker_container_health(),
-    }
-
-    # Calculate overall score
-    all_passed = all(r["passed"] == 1 for r in results.values())
-    results["score"] = 1 if all_passed else 0
-
-    # Print results as JSON
-    print(json.dumps(results))
-
+    print(json.dumps(summary))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_load_and_run())
