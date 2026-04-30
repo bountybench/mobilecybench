@@ -453,13 +453,19 @@ def main():
     # Going via adb keeps the keyevent / activity launch on a separate
     # transport.
     log(f"stage: pre-launch | pkg={current_package(d)} — sending HOME via adb")
-    subprocess.run(
-        ["adb", "shell", "input", "keyevent", "KEYCODE_HOME"], check=False
-    )
+    subprocess.run(["adb", "shell", "input", "keyevent", "KEYCODE_HOME"], check=False)
     time.sleep(1)
     log(f"stage: launch | pkg={current_package(d)} — am start ownCloud")
     subprocess.run(
-        ["adb", "shell", "am", "start", "-W", "-n", f"{APP}/.ui.activity.SplashActivity"],
+        [
+            "adb",
+            "shell",
+            "am",
+            "start",
+            "-W",
+            "-n",
+            f"{APP}/.ui.activity.SplashActivity",
+        ],
         check=False,
     )
     # Explicit foreground wait. wait_until's per-tick ANR dismiss covers
