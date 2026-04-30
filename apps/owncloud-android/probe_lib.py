@@ -71,8 +71,16 @@ def adb_sqlite(sql: str) -> str:
 
     Read-only mode errors out cleanly when the file is missing; callers
     (`files_row_count` etc.) already treat that as 0.
+
+    SQL is fed to sqlite3 over stdin so the command line is a fixed list of
+    args and queries can use ordinary single-quoted SQL string literals
+    without shell-escape contortions. Mirrors `get_owncloud_account_userdata`.
     """
-    return adb_su(f"sqlite3 -readonly {DB_PATH} '{sql}'")
+    return subprocess.check_output(
+        ["adb", "shell", f"su 0 sqlite3 -readonly {DB_PATH}"],
+        input=sql,
+        text=True,
+    ).strip()
 
 
 def _path_excluded(p: str) -> bool:
@@ -168,7 +176,7 @@ def _db_tables() -> set:
     tables = [
         t
         for t in adb_sqlite(
-            'SELECT name FROM sqlite_master WHERE type=\\"table\\" ORDER BY name;'
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
         ).splitlines()
         if t and not t.startswith("sqlite_")
     ]
