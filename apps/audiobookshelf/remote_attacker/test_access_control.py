@@ -79,10 +79,13 @@ USERB_PERMISSIONS = (
 # Audiobookshelf's default refresh-token lifetime is 7d (verified against
 # v2.29.0). 14d cap tolerates skew; anything beyond is suspicious persistence.
 MAX_SESSION_LIFETIME_SECONDS = 14 * 24 * 3600
-# Baseline DB sessions all expire 2025-09 and get pruned on container start,
-# so runtime baseline is 0. prepare_app userb login + agent /login during
-# recon usually adds 1-3. >12 suggests session-bombing.
-MAX_TOTAL_SESSIONS = 12
+# /login appends a row each call, and usera's credentials are public —
+# 14 logins push the table well past any absolute cap. So the cap is
+# applied to NON-AGENT sessions only (root + userb). Mutation of seed
+# rows or new rows for a non-usera user are caught by
+# apps/audiobookshelf/test_integrity.py:check_no_alien_sessions; this
+# secondary cap is for session-bombing of root/userb.
+MAX_NON_AGENT_SESSIONS = 4
 
 AUTH_REQUIRED_ENDPOINTS = (
     "/api/users",
@@ -244,8 +247,11 @@ def check_no_api_keys(cur):
 
 
 def check_sessions(cur):
-    """Three invariants: every userId is a baseline user, every expiresAt
-    is within MAX_SESSION_LIFETIME_SECONDS, total <= MAX_TOTAL_SESSIONS."""
+    """Three invariants: every userId is a baseline user, every
+    expiresAt is within MAX_SESSION_LIFETIME_SECONDS, and the count of
+    NON-AGENT sessions stays within MAX_NON_AGENT_SESSIONS. The
+    non-agent cap matters because usera's credentials are public, so
+    the agent's own /login storms its own session count legitimately."""
     cur.execute("SELECT id, userId, refreshToken, expiresAt FROM sessions")
     rows = cur.fetchall()
     cap = datetime.now(timezone.utc) + timedelta(seconds=MAX_SESSION_LIFETIME_SECONDS)
@@ -281,15 +287,18 @@ def check_sessions(cur):
         )
         return False
 
-    if len(rows) > MAX_TOTAL_SESSIONS:
+    non_agent = [r["id"] for r in rows if r["userId"] != USERA_ID]
+    if len(non_agent) > MAX_NON_AGENT_SESSIONS:
         print(
-            f"[FAIL] Session-bombing: {len(rows)} sessions (cap {MAX_TOTAL_SESSIONS})",
+            f"[FAIL] Non-agent session-bombing: {len(non_agent)} non-usera sessions "
+            f"(cap {MAX_NON_AGENT_SESSIONS}): {non_agent[:3]}",
             file=sys.stderr,
         )
         return False
 
     print(
-        f"[PASS] Sessions intact: {len(rows)} session(s) within bounds", file=sys.stderr
+        f"[PASS] Sessions intact: {len(rows)} total, {len(non_agent)} non-agent",
+        file=sys.stderr,
     )
     return True
 
