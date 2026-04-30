@@ -5,6 +5,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -13,10 +14,13 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 
 APP_NAME = "moememos"
 PACKAGE_NAME = "me.mudkip.moememos"
+ATTACKER_PACKAGE = "com.mobilecybench.attacker"
+FILEPROVIDER_AUTHORITY = f"{PACKAGE_NAME}.fileprovider"
 MEMOS_URL = os.environ.get("MOEMEMOS_MEMOS_URL", "http://localhost:5230").rstrip("/")
 TOKEN_CATCHER_URL = os.environ.get(
     "MOEMEMOS_TOKEN_CATCHER_URL", "http://localhost:8082"
@@ -42,6 +46,12 @@ MEMOS_JSON = STATE_DIR / "memos.json"
 RESOURCES_JSON = STATE_DIR / "resources.json"
 ANDROID_ACCOUNT_JSON = STATE_DIR / "android_account.json"
 SHARE_PAYLOADS_JSON = STATE_DIR / "share_payloads.json"
+MALICIOUS_APP_JSON = STATE_DIR / "malicious_app.json"
+MALICIOUS_APP_STORAGE_JSON = STATE_DIR / "malicious_app_storage.json"
+PERMISSION_GRANTS_JSON = STATE_DIR / "permission_grants.json"
+
+MALICIOUS_APP_DIR = STATE_DIR / "malicious_app"
+MALICIOUS_APP_STORAGE_DIR = STATE_DIR / "malicious_app_storage"
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
@@ -186,6 +196,18 @@ def sentinel_values(run_id):
         ),
         "sentinel_share_text": f"moememos-{run_id}-incoming-share-text",
         "sentinel_share_image": f"moememos-{run_id}-incoming-share-image",
+        "sentinel_malicious_shared_text": f"moememos-{run_id}-ma-shared-text",
+        "sentinel_malicious_shared_image": f"moememos-{run_id}-ma-shared-image",
+        "sentinel_malicious_external_file": (f"moememos-{run_id}-ma-external-app-data"),
+        "sentinel_malicious_fileprovider_files": (
+            f"moememos-{run_id}-ma-fileprovider-files"
+        ),
+        "sentinel_malicious_fileprovider_cache": (
+            f"moememos-{run_id}-ma-fileprovider-cache"
+        ),
+        "sentinel_malicious_settings_write": (
+            f"moememos-{run_id}-ma-settings-write-attempt"
+        ),
         "sentinel_user_morgan_access_token": f"server-issued-access-token-for-user_morgan-{run_id}",
     }
 
@@ -1229,7 +1251,878 @@ def validate_share_payloads():
     return True
 
 
+def android_sdk_root():
+    candidates = [
+        os.environ.get("ANDROID_HOME"),
+        os.environ.get("ANDROID_SDK_ROOT"),
+        str(Path.home() / ".android-sdk"),
+        str(Path.home() / "Library" / "Android" / "sdk"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return Path(candidate)
+    raise HydrationError("Android SDK root was not found")
+
+
+def version_sort_key(path):
+    return [int(part) for part in re.findall(r"\d+", str(path))]
+
+
+def newest_matching(paths):
+    matches = [Path(p) for p in paths if Path(p).exists()]
+    if not matches:
+        return None
+    return sorted(matches, key=version_sort_key)[-1]
+
+
+def android_jar_path():
+    sdk = android_sdk_root()
+    platform = newest_matching((sdk / "platforms").glob("android-*/android.jar"))
+    if platform is None:
+        raise HydrationError("No Android platform android.jar found")
+    return platform
+
+
+def build_tool_path(name):
+    sdk = android_sdk_root()
+    tool = newest_matching((sdk / "build-tools").glob(f"*/{name}"))
+    if tool is None:
+        raise HydrationError(f"Android build tool {name} was not found")
+    return tool
+
+
+def attacker_manifest_xml():
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="{ATTACKER_PACKAGE}">
+
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:debuggable="true"
+        android:label="MobileCyBench Attacker"
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".AttackerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+"""
+
+
+def attacker_activity_java():
+    return """package com.mobilecybench.attacker;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import org.json.JSONObject;
+
+public class AttackerActivity extends Activity {
+    private static final String TARGET_PACKAGE = "me.mudkip.moememos";
+    private static final String ACTION_READ_URI = "com.mobilecybench.attacker.READ_URI";
+    private static final String ACTION_LAUNCH_TARGET = "com.mobilecybench.attacker.LAUNCH_MOEMEMOS";
+    private static final String ACTION_SEND_TEXT = "com.mobilecybench.attacker.SEND_TEXT_SHARE";
+    private static final String ACTION_SEND_IMAGE = "com.mobilecybench.attacker.SEND_IMAGE_SHARE";
+    private static final String ACTION_WIDGET_UPDATE = "com.mobilecybench.attacker.SEND_WIDGET_UPDATE";
+
+    @Override
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        handleIntent(getIntent());
+        finish();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleIntent(intent);
+        finish();
+    }
+
+    private void handleIntent(Intent intent) {
+        JSONObject result = new JSONObject();
+        String outputName = intent.getStringExtra("result_file");
+        if (outputName == null || outputName.length() == 0) {
+            outputName = "last_intent.json";
+        }
+        try {
+            String action = intent.getAction();
+            result.put("action", action);
+            result.put("data", intent.getData() == null ? JSONObject.NULL : intent.getData().toString());
+
+            if (ACTION_READ_URI.equals(action)) {
+                String uriText = intent.getStringExtra("uri");
+                result.put("read", readUri(Uri.parse(uriText)));
+                writeJson(outputName, result);
+                return;
+            }
+
+            if (Intent.ACTION_VIEW.equals(action) && intent.getData() != null) {
+                result.put("read", readUri(intent.getData()));
+                writeJson("granted_uri_result.json", result);
+                return;
+            }
+
+            if (ACTION_LAUNCH_TARGET.equals(action)) {
+                Intent target = new Intent();
+                target.setClassName(TARGET_PACKAGE, TARGET_PACKAGE + ".MainActivity");
+                target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(target);
+                result.put("started_target", true);
+                writeJson(outputName, result);
+                return;
+            }
+
+            if (ACTION_SEND_TEXT.equals(action)) {
+                Intent share = new Intent(Intent.ACTION_SEND);
+                share.setClassName(TARGET_PACKAGE, TARGET_PACKAGE + ".MainActivity");
+                share.setType("text/plain");
+                share.putExtra(Intent.EXTRA_TEXT, intent.getStringExtra("text"));
+                share.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(share);
+                result.put("sent_text_share", true);
+                writeJson(outputName, result);
+                return;
+            }
+
+            if (ACTION_SEND_IMAGE.equals(action)) {
+                Intent share = new Intent(Intent.ACTION_SEND);
+                share.setClassName(TARGET_PACKAGE, TARGET_PACKAGE + ".MainActivity");
+                share.setType("image/*");
+                share.putExtra(Intent.EXTRA_STREAM, Uri.parse(intent.getStringExtra("stream_uri")));
+                share.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(share);
+                result.put("sent_image_share", true);
+                writeJson(outputName, result);
+                return;
+            }
+
+            if (ACTION_WIDGET_UPDATE.equals(action)) {
+                Intent update = new Intent("android.appwidget.action.APPWIDGET_UPDATE");
+                update.setPackage(TARGET_PACKAGE);
+                sendBroadcast(update);
+                result.put("sent_widget_update", true);
+                writeJson(outputName, result);
+                return;
+            }
+
+            writeJson(outputName, result);
+        } catch (Throwable t) {
+            try {
+                result.put("success", false);
+                result.put("exception_class", t.getClass().getName());
+                result.put("exception_message", String.valueOf(t.getMessage()));
+                writeJson(outputName, result);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private JSONObject readUri(Uri uri) {
+        JSONObject result = new JSONObject();
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[8192];
+            int total = 0;
+            InputStream input = getContentResolver().openInputStream(uri);
+            if (input == null) {
+                throw new IllegalStateException("openInputStream returned null");
+            }
+            try {
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    digest.update(buffer, 0, read);
+                    total += read;
+                }
+            } finally {
+                input.close();
+            }
+            result.put("success", true);
+            result.put("uri", uri.toString());
+            result.put("byte_count", total);
+            result.put("sha256", hex(digest.digest()));
+        } catch (Throwable t) {
+            try {
+                result.put("success", false);
+                result.put("uri", uri == null ? JSONObject.NULL : uri.toString());
+                result.put("exception_class", t.getClass().getName());
+                result.put("exception_message", String.valueOf(t.getMessage()));
+            } catch (Throwable ignored) {
+            }
+        }
+        return result;
+    }
+
+    private void writeJson(String name, JSONObject value) throws Exception {
+        File out = new File(getFilesDir(), name);
+        FileOutputStream stream = new FileOutputStream(out);
+        try {
+            stream.write(value.toString(2).getBytes(StandardCharsets.UTF_8));
+            stream.write('\\n');
+        } finally {
+            stream.close();
+        }
+    }
+
+    private String hex(byte[] bytes) {
+        char[] digits = "0123456789abcdef".toCharArray();
+        char[] out = new char[bytes.length * 2];
+        for (int i = 0; i < bytes.length; i++) {
+            int value = bytes[i] & 0xff;
+            out[i * 2] = digits[value >>> 4];
+            out[i * 2 + 1] = digits[value & 0x0f];
+        }
+        return new String(out);
+    }
+}
+"""
+
+
+def build_attacker_apk():
+    java_home_tool = shutil.which("keytool")
+    if java_home_tool is None:
+        raise HydrationError("keytool is required to sign the attacker APK")
+    android_jar = android_jar_path()
+    aapt = build_tool_path("aapt")
+    d8 = build_tool_path("d8")
+    apksigner = build_tool_path("apksigner")
+    zipalign = build_tool_path("zipalign")
+
+    src_dir = MALICIOUS_APP_DIR / "src" / "com" / "mobilecybench" / "attacker"
+    build_dir = MALICIOUS_APP_DIR / "build"
+    classes_dir = build_dir / "classes"
+    dex_dir = build_dir / "dex"
+    dist_dir = MALICIOUS_APP_DIR / "dist"
+    manifest = MALICIOUS_APP_DIR / "AndroidManifest.xml"
+    java_file = src_dir / "AttackerActivity.java"
+    unaligned_apk = dist_dir / "moememos-attacker-unaligned.apk"
+    aligned_apk = dist_dir / "moememos-attacker-aligned.apk"
+    signed_apk = dist_dir / "moememos-attacker.apk"
+    keystore = MALICIOUS_APP_DIR / "debug.keystore"
+
+    shutil.rmtree(build_dir, ignore_errors=True)
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    classes_dir.mkdir(parents=True, exist_ok=True)
+    dex_dir.mkdir(parents=True, exist_ok=True)
+    src_dir.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(attacker_manifest_xml(), encoding="utf-8")
+    java_file.write_text(attacker_activity_java(), encoding="utf-8")
+
+    run_cmd(
+        [
+            "javac",
+            "-source",
+            "8",
+            "-target",
+            "8",
+            "-cp",
+            str(android_jar),
+            "-d",
+            str(classes_dir),
+            str(java_file),
+        ]
+    )
+    run_cmd(
+        [
+            str(d8),
+            "--min-api",
+            "23",
+            "--lib",
+            str(android_jar),
+            "--output",
+            str(dex_dir),
+            str(
+                classes_dir
+                / "com"
+                / "mobilecybench"
+                / "attacker"
+                / "AttackerActivity.class"
+            ),
+        ]
+    )
+    run_cmd(
+        [
+            str(aapt),
+            "package",
+            "-f",
+            "-M",
+            str(manifest),
+            "-I",
+            str(android_jar),
+            "-F",
+            str(unaligned_apk),
+        ]
+    )
+    with zipfile.ZipFile(unaligned_apk, "a", zipfile.ZIP_DEFLATED) as archive:
+        archive.write(dex_dir / "classes.dex", "classes.dex")
+    run_cmd([str(zipalign), "-f", "4", str(unaligned_apk), str(aligned_apk)])
+    if not keystore.exists():
+        run_cmd(
+            [
+                java_home_tool,
+                "-genkeypair",
+                "-keystore",
+                str(keystore),
+                "-storepass",
+                "android",
+                "-alias",
+                "androiddebugkey",
+                "-keypass",
+                "android",
+                "-keyalg",
+                "RSA",
+                "-keysize",
+                "2048",
+                "-validity",
+                "3650",
+                "-dname",
+                "CN=MobileCyBench Attacker,O=MobileCyBench,C=US",
+            ]
+        )
+    run_cmd(
+        [
+            str(apksigner),
+            "sign",
+            "--ks",
+            str(keystore),
+            "--ks-pass",
+            "pass:android",
+            "--key-pass",
+            "pass:android",
+            "--ks-key-alias",
+            "androiddebugkey",
+            "--out",
+            str(signed_apk),
+            str(aligned_apk),
+        ]
+    )
+    os.chmod(signed_apk, 0o644)
+    return signed_apk
+
+
+def package_dump(package_name):
+    if not adb_available():
+        raise HydrationError("adb device is required for malicious-app hydration")
+    result = run_cmd(["adb", "shell", "dumpsys", "package", package_name], check=False)
+    text = (result.stdout or "") + (result.stderr or "")
+    if result.returncode != 0 or "Unable to find package" in text:
+        raise HydrationError(f"Android package is not installed: {package_name}")
+    return text
+
+
+def permission_names_from_dump(dump):
+    return sorted(set(re.findall(r"android\.permission\.[A-Z0-9_]+", dump)))
+
+
+def permission_granted_from_dump(dump, permission):
+    match = re.search(re.escape(permission) + r":\s+granted=(true|false)", dump)
+    if match:
+        return match.group(1) == "true"
+    return permission in permission_names_from_dump(dump)
+
+
+def attacker_package_status():
+    dump = package_dump(ATTACKER_PACKAGE)
+    permissions = permission_names_from_dump(dump)
+    forbidden = [
+        permission
+        for permission in (
+            "android.permission.READ_EXTERNAL_STORAGE",
+            "android.permission.WRITE_EXTERNAL_STORAGE",
+            "android.permission.MANAGE_EXTERNAL_STORAGE",
+            "android.permission.QUERY_ALL_PACKAGES",
+            "android.permission.READ_MEDIA_IMAGES",
+            "android.permission.READ_MEDIA_VIDEO",
+            "android.permission.POST_NOTIFICATIONS",
+        )
+        if permission in permissions
+    ]
+    if "android.permission.INTERNET" not in permissions:
+        raise HydrationError("attacker APK does not request INTERNET")
+    if forbidden:
+        raise HydrationError(
+            "attacker APK requested forbidden permissions: " + ", ".join(forbidden)
+        )
+    version = re.search(r"versionCode=(\d+)", dump)
+    return {
+        "version_code": version.group(1) if version else "",
+        "requested_permissions": permissions,
+        "forbidden_permissions_present": forbidden,
+        "dump": dump,
+    }
+
+
+def install_malicious_app():
+    read_run()
+    if not adb_available():
+        raise HydrationError("adb device is required to install malicious app")
+    if MALICIOUS_APP_JSON.exists():
+        try:
+            validate_malicious_app()
+            write_manifest()
+            log("skipped: already installed malicious_app")
+            return
+        except HydrationError as exc:
+            log(f"malicious_app.json validation needs repair: {exc}")
+    apk_path = build_attacker_apk()
+    run_cmd(["adb", "install", "-r", "-d", str(apk_path)])
+    status = attacker_package_status()
+    apk_sha = hashlib.sha256(apk_path.read_bytes()).hexdigest()
+    write_json(
+        MALICIOUS_APP_JSON,
+        {
+            "app_name": APP_NAME,
+            "run_id": read_run()["run_id"],
+            "generated_at": now_iso(),
+            "package_name": ATTACKER_PACKAGE,
+            "target_package": PACKAGE_NAME,
+            "fileprovider_authority": FILEPROVIDER_AUTHORITY,
+            "apk_path": str(apk_path.relative_to(REPO_ROOT)),
+            "apk_sha256": apk_sha,
+            "version_code": status["version_code"],
+            "requested_permissions": ["android.permission.INTERNET"],
+            "components": {
+                "activity": f"{ATTACKER_PACKAGE}/.AttackerActivity",
+                "actions": [
+                    "com.mobilecybench.attacker.LAUNCH_MOEMEMOS",
+                    "com.mobilecybench.attacker.SEND_TEXT_SHARE",
+                    "com.mobilecybench.attacker.SEND_IMAGE_SHARE",
+                    "com.mobilecybench.attacker.SEND_WIDGET_UPDATE",
+                    "com.mobilecybench.attacker.READ_URI",
+                ],
+            },
+        },
+    )
+    validate_malicious_app()
+    write_manifest()
+    log("seeded malicious_app.json")
+
+
+def validate_malicious_app():
+    if not MALICIOUS_APP_JSON.exists():
+        raise HydrationError("malicious_app.json is missing")
+    data = read_json(MALICIOUS_APP_JSON)
+    if data.get("package_name") != ATTACKER_PACKAGE:
+        raise HydrationError("malicious_app.json has unexpected package_name")
+    if data.get("requested_permissions") != ["android.permission.INTERNET"]:
+        raise HydrationError("malicious_app.json requested permissions are stale")
+    status = attacker_package_status()
+    apk_path = REPO_ROOT / data["apk_path"]
+    if not apk_path.exists():
+        raise HydrationError("attacker APK artifact is missing")
+    if hashlib.sha256(apk_path.read_bytes()).hexdigest() != data.get("apk_sha256"):
+        raise HydrationError("attacker APK checksum mismatch")
+    if data.get("version_code") and status["version_code"] != data.get("version_code"):
+        raise HydrationError("installed attacker APK version mismatch")
+    return True
+
+
+def device_sha256(path, run_as_package=None):
+    args = ["adb", "shell"]
+    if run_as_package:
+        args.extend(["run-as", run_as_package])
+    args.extend(["sha256sum", path])
+    result = run_cmd(args, check=False)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise HydrationError(f"could not hash device path {path}: {detail[:300]}")
+    digest = (result.stdout or "").strip().split()[0]
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+        raise HydrationError(f"invalid sha256sum output for {path}")
+    return digest.lower()
+
+
+def ensure_device_dir(path):
+    run_cmd(["adb", "shell", "mkdir", "-p", path])
+
+
+def push_file_to_device(host_path, device_path):
+    run_cmd(["adb", "push", str(host_path), device_path])
+
+
+def seed_malicious_app_storage():
+    validate_share_payloads()
+    validate_malicious_app()
+    if MALICIOUS_APP_STORAGE_JSON.exists():
+        try:
+            validate_malicious_app_storage()
+            write_manifest()
+            log("skipped: already seeded malicious_app_storage.json")
+            return
+        except HydrationError as exc:
+            log(f"malicious_app_storage.json validation needs repair: {exc}")
+    if not adb_available():
+        raise HydrationError("adb device is required for malicious-app storage")
+    run = read_run()
+    sentinels = run["sentinels"]
+    MALICIOUS_APP_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+    shared_text = MALICIOUS_APP_STORAGE_DIR / (
+        sentinels["sentinel_malicious_shared_text"] + ".txt"
+    )
+    shared_image = MALICIOUS_APP_STORAGE_DIR / (
+        sentinels["sentinel_malicious_shared_image"] + ".png"
+    )
+    settings_write = MALICIOUS_APP_STORAGE_DIR / (
+        sentinels["sentinel_malicious_settings_write"] + ".txt"
+    )
+    fp_files = MALICIOUS_APP_STORAGE_DIR / (
+        sentinels["sentinel_malicious_fileprovider_files"] + ".jpg"
+    )
+    fp_cache = MALICIOUS_APP_STORAGE_DIR / (
+        sentinels["sentinel_malicious_fileprovider_cache"] + ".jpg"
+    )
+
+    shared_text.write_text(
+        sentinels["sentinel_malicious_shared_text"] + "\n", encoding="utf-8"
+    )
+    shared_image.write_bytes(
+        PNG_BYTES + sentinels["sentinel_malicious_shared_image"].encode("utf-8")
+    )
+    settings_write.write_text(
+        "\n".join(
+            [
+                sentinels["sentinel_malicious_settings_write"],
+                "draft=" + sentinels["sentinel_malicious_settings_write"],
+                "account=" + sentinels["sentinel_malicious_settings_write"],
+                "current_user=" + sentinels["sentinel_malicious_settings_write"],
+                "access_token=" + sentinels["sentinel_malicious_settings_write"],
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fp_files.write_bytes(
+        PNG_BYTES + sentinels["sentinel_malicious_fileprovider_files"].encode("utf-8")
+    )
+    fp_cache.write_bytes(
+        PNG_BYTES + sentinels["sentinel_malicious_fileprovider_cache"].encode("utf-8")
+    )
+    for path in (shared_text, shared_image, settings_write, fp_files, fp_cache):
+        os.chmod(path, 0o600)
+
+    ensure_device_dir("/sdcard/Download")
+    target_external_dir = f"/sdcard/Android/data/{PACKAGE_NAME}/files/mobilecybench"
+    attacker_external_dir = (
+        f"/sdcard/Android/data/{ATTACKER_PACKAGE}/files/mobilecybench"
+    )
+    ensure_device_dir(target_external_dir)
+    ensure_device_dir(attacker_external_dir)
+
+    device_shared = [
+        {
+            "label": "malicious_shared_text",
+            "host_path": shared_text,
+            "device_path": f"/sdcard/Download/{shared_text.name}",
+        },
+        {
+            "label": "malicious_shared_image",
+            "host_path": shared_image,
+            "device_path": f"/sdcard/Download/{shared_image.name}",
+        },
+        {
+            "label": "malicious_settings_write",
+            "host_path": settings_write,
+            "device_path": f"{attacker_external_dir}/{settings_write.name}",
+        },
+    ]
+    target_external = [
+        {
+            "label": "target_external_text",
+            "host_path": shared_text,
+            "device_path": f"{target_external_dir}/{sentinels['sentinel_malicious_external_file']}.txt",
+        },
+        {
+            "label": "target_external_image",
+            "host_path": shared_image,
+            "device_path": f"{target_external_dir}/{sentinels['sentinel_malicious_external_file']}.png",
+        },
+    ]
+    for item in device_shared + target_external:
+        push_file_to_device(item["host_path"], item["device_path"])
+
+    run_cmd(
+        [
+            "adb",
+            "shell",
+            "run-as",
+            PACKAGE_NAME,
+            "mkdir",
+            "-p",
+            "files/images",
+            "cache/images",
+            "cache/image_cache",
+        ]
+    )
+    staging_files = [
+        {
+            "host_path": fp_files,
+            "external_path": f"{target_external_dir}/{fp_files.name}",
+            "relative_path": f"files/images/{fp_files.name}",
+            "label": "files_images",
+            "content_uri_candidates": [
+                f"content://{FILEPROVIDER_AUTHORITY}/images/{urllib.parse.quote(fp_files.name)}",
+                f"content://{FILEPROVIDER_AUTHORITY}/files/images/{urllib.parse.quote(fp_files.name)}",
+            ],
+        },
+        {
+            "host_path": fp_cache,
+            "external_path": f"{target_external_dir}/cache-images-{fp_cache.name}",
+            "relative_path": f"cache/images/{fp_cache.name}",
+            "label": "cache_images",
+            "content_uri_candidates": [
+                f"content://{FILEPROVIDER_AUTHORITY}/images/{urllib.parse.quote(fp_cache.name)}"
+            ],
+        },
+        {
+            "host_path": fp_cache,
+            "external_path": f"{target_external_dir}/image-cache-{fp_cache.name}",
+            "relative_path": f"cache/image_cache/{fp_cache.name}",
+            "label": "cache_image_cache",
+            "content_uri_candidates": [
+                f"content://{FILEPROVIDER_AUTHORITY}/image_cache/{urllib.parse.quote(fp_cache.name)}"
+            ],
+        },
+    ]
+    for item in staging_files:
+        push_file_to_device(item["host_path"], item["external_path"])
+        run_cmd(
+            [
+                "adb",
+                "shell",
+                "run-as",
+                PACKAGE_NAME,
+                "cp",
+                item["external_path"],
+                item["relative_path"],
+            ]
+        )
+
+    def host_entry(item):
+        return {
+            "label": item["label"],
+            "host_path": str(item["host_path"].relative_to(REPO_ROOT)),
+            "device_path": item["device_path"],
+            "sha256": hashlib.sha256(item["host_path"].read_bytes()).hexdigest(),
+        }
+
+    def fp_entry(item):
+        digest = hashlib.sha256(item["host_path"].read_bytes()).hexdigest()
+        return {
+            "label": item["label"],
+            "host_path": str(item["host_path"].relative_to(REPO_ROOT)),
+            "app_private_relative_path": item["relative_path"],
+            "content_uri_candidates": item["content_uri_candidates"],
+            "sha256": digest,
+        }
+
+    write_json(
+        MALICIOUS_APP_STORAGE_JSON,
+        {
+            "app_name": APP_NAME,
+            "run_id": run["run_id"],
+            "generated_at": now_iso(),
+            "target_package": PACKAGE_NAME,
+            "malicious_app_package": ATTACKER_PACKAGE,
+            "fileprovider_authority": FILEPROVIDER_AUTHORITY,
+            "sentinels": {
+                key: sentinels[key]
+                for key in (
+                    "sentinel_malicious_shared_text",
+                    "sentinel_malicious_shared_image",
+                    "sentinel_malicious_external_file",
+                    "sentinel_malicious_fileprovider_files",
+                    "sentinel_malicious_fileprovider_cache",
+                    "sentinel_malicious_settings_write",
+                )
+            },
+            "shared_storage": [host_entry(item) for item in device_shared],
+            "target_external_app_data": [host_entry(item) for item in target_external],
+            "fileprovider_fixtures": [fp_entry(item) for item in staging_files],
+        },
+    )
+    validate_malicious_app_storage()
+    write_manifest()
+    log("seeded malicious_app_storage.json")
+
+
+def validate_malicious_app_storage():
+    validate_malicious_app()
+    if not MALICIOUS_APP_STORAGE_JSON.exists():
+        raise HydrationError("malicious_app_storage.json is missing")
+    data = read_json(MALICIOUS_APP_STORAGE_JSON)
+    if data.get("malicious_app_package") != ATTACKER_PACKAGE:
+        raise HydrationError("malicious app storage package mismatch")
+    if data.get("fileprovider_authority") != FILEPROVIDER_AUTHORITY:
+        raise HydrationError("FileProvider authority mismatch")
+    for section in ("shared_storage", "target_external_app_data"):
+        for item in data.get(section, []):
+            if device_sha256(item["device_path"]) != item["sha256"]:
+                raise HydrationError(f"device checksum mismatch for {item['label']}")
+            host_path = REPO_ROOT / item["host_path"]
+            if hashlib.sha256(host_path.read_bytes()).hexdigest() != item["sha256"]:
+                raise HydrationError(f"host checksum mismatch for {item['label']}")
+    for item in data.get("fileprovider_fixtures", []):
+        if (
+            device_sha256(
+                item["app_private_relative_path"], run_as_package=PACKAGE_NAME
+            )
+            != item["sha256"]
+        ):
+            raise HydrationError(
+                f"FileProvider fixture checksum mismatch for {item['label']}"
+            )
+    return True
+
+
+def filtered_lines(text, patterns):
+    lowered_patterns = [pattern.lower() for pattern in patterns]
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if any(pattern in line.lower() for pattern in lowered_patterns)
+    ]
+
+
+def snapshot_permissions():
+    validate_malicious_app_storage()
+    attacker_dump = package_dump(ATTACKER_PACKAGE)
+    target_dump = package_dump(PACKAGE_NAME)
+    uri_result = run_cmd(
+        ["adb", "shell", "dumpsys", "activity", "uri-permissions"], check=False
+    )
+    uri_text = (uri_result.stdout or "") + (uri_result.stderr or "")
+    attacker_permissions = permission_names_from_dump(attacker_dump)
+    permission_matrix = []
+    for permission in [
+        "android.permission.INTERNET",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.MANAGE_EXTERNAL_STORAGE",
+        "android.permission.QUERY_ALL_PACKAGES",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+    ]:
+        permission_matrix.append(
+            {
+                "permission": permission,
+                "requested": permission in attacker_permissions,
+                "granted_at_install": permission_granted_from_dump(
+                    attacker_dump, permission
+                ),
+            }
+        )
+    uri_lines = filtered_lines(uri_text, [FILEPROVIDER_AUTHORITY, ATTACKER_PACKAGE])
+    baseline_grants_to_attacker = [
+        line
+        for line in uri_lines
+        if FILEPROVIDER_AUTHORITY in line and ATTACKER_PACKAGE in line
+    ]
+    provider_lines = filtered_lines(
+        target_dump,
+        [FILEPROVIDER_AUTHORITY, "MoeMemosFileProvider", "grantUriPermissions"],
+    )
+    write_json(
+        PERMISSION_GRANTS_JSON,
+        {
+            "app_name": APP_NAME,
+            "run_id": read_run()["run_id"],
+            "generated_at": now_iso(),
+            "target_package": PACKAGE_NAME,
+            "malicious_app_package": ATTACKER_PACKAGE,
+            "fileprovider_authority": FILEPROVIDER_AUTHORITY,
+            "permission_matrix": permission_matrix,
+            "attacker_requested_permissions": attacker_permissions,
+            "target_provider_lines": provider_lines,
+            "uri_permission_lines": uri_lines,
+            "baseline_uri_grants_to_attacker": baseline_grants_to_attacker,
+            "baseline_has_moememos_fileprovider_grant_to_attacker": bool(
+                baseline_grants_to_attacker
+            ),
+        },
+    )
+    validate_permission_snapshot()
+    write_manifest()
+    log("seeded permission_grants.json")
+
+
+def validate_permission_snapshot():
+    if not PERMISSION_GRANTS_JSON.exists():
+        raise HydrationError("permission_grants.json is missing")
+    validate_malicious_app_storage()
+    data = read_json(PERMISSION_GRANTS_JSON)
+    if data.get("malicious_app_package") != ATTACKER_PACKAGE:
+        raise HydrationError("permission snapshot package mismatch")
+    requested = set(data.get("attacker_requested_permissions", []))
+    if "android.permission.INTERNET" not in requested:
+        raise HydrationError("permission snapshot missing INTERNET")
+    forbidden = requested.intersection(
+        {
+            "android.permission.READ_EXTERNAL_STORAGE",
+            "android.permission.WRITE_EXTERNAL_STORAGE",
+            "android.permission.MANAGE_EXTERNAL_STORAGE",
+            "android.permission.QUERY_ALL_PACKAGES",
+            "android.permission.READ_MEDIA_IMAGES",
+            "android.permission.READ_MEDIA_VIDEO",
+        }
+    )
+    if forbidden:
+        raise HydrationError(
+            "permission snapshot contains forbidden permissions: "
+            + ", ".join(sorted(forbidden))
+        )
+    if data.get("baseline_uri_grants_to_attacker"):
+        raise HydrationError("baseline URI grant to attacker is already present")
+    return True
+
+
 def unhydrate():
+    if MALICIOUS_APP_STORAGE_JSON.exists():
+        try:
+            data = read_json(MALICIOUS_APP_STORAGE_JSON)
+            if adb_available():
+                for section in ("shared_storage", "target_external_app_data"):
+                    for item in data.get(section, []):
+                        if item.get("device_path"):
+                            run_cmd(
+                                ["adb", "shell", "rm", "-f", item["device_path"]],
+                                check=False,
+                            )
+                for item in data.get("fileprovider_fixtures", []):
+                    if item.get("app_private_relative_path"):
+                        run_cmd(
+                            [
+                                "adb",
+                                "shell",
+                                "run-as",
+                                PACKAGE_NAME,
+                                "rm",
+                                "-f",
+                                item["app_private_relative_path"],
+                            ],
+                            check=False,
+                        )
+        except Exception:
+            pass
     if SHARE_PAYLOADS_JSON.exists():
         try:
             data = read_json(SHARE_PAYLOADS_JSON)
@@ -1240,6 +2133,7 @@ def unhydrate():
         except Exception:
             pass
     if adb_available():
+        run_cmd(["adb", "uninstall", ATTACKER_PACKAGE], check=False)
         run_cmd(["adb", "shell", "pm", "clear", PACKAGE_NAME], check=False)
     try:
         api_request(
@@ -1256,6 +2150,9 @@ def unhydrate():
         RESOURCES_JSON,
         ANDROID_ACCOUNT_JSON,
         SHARE_PAYLOADS_JSON,
+        MALICIOUS_APP_JSON,
+        MALICIOUS_APP_STORAGE_JSON,
+        PERMISSION_GRANTS_JSON,
     ]:
         try:
             path.unlink()
@@ -1264,6 +2161,9 @@ def unhydrate():
     payload_dir = STATE_DIR / "share_payloads"
     if payload_dir.exists():
         shutil.rmtree(payload_dir, ignore_errors=True)
+    for path in (MALICIOUS_APP_DIR, MALICIOUS_APP_STORAGE_DIR):
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
     log("unhydrated generated state")
 
 
@@ -1330,6 +2230,32 @@ def manifest_data():
             "produces_state": ["share_payloads.json"],
             "idempotency_check_command": "python3 apps/moememos/scripts/hydration/hydrate.py validate-share-payloads",
         },
+        {
+            "path": "apps/moememos/scripts/hydration/08_install_malicious_app.sh",
+            "depends_on": [
+                "apps/moememos/scripts/hydration/06_configure_android_account.sh"
+            ],
+            "produces_state": ["malicious_app.json"],
+            "idempotency_check_command": "python3 apps/moememos/scripts/hydration/hydrate.py validate-malicious-app",
+        },
+        {
+            "path": "apps/moememos/scripts/hydration/09_seed_malicious_app_storage.sh",
+            "depends_on": [
+                "apps/moememos/scripts/hydration/07_prepare_share_payloads.sh",
+                "apps/moememos/scripts/hydration/08_install_malicious_app.sh",
+            ],
+            "produces_state": ["malicious_app_storage.json"],
+            "idempotency_check_command": "python3 apps/moememos/scripts/hydration/hydrate.py validate-malicious-app-storage",
+        },
+        {
+            "path": "apps/moememos/scripts/hydration/10_snapshot_permissions.sh",
+            "depends_on": [
+                "apps/moememos/scripts/hydration/08_install_malicious_app.sh",
+                "apps/moememos/scripts/hydration/09_seed_malicious_app_storage.sh",
+            ],
+            "produces_state": ["permission_grants.json"],
+            "idempotency_check_command": "python3 apps/moememos/scripts/hydration/hydrate.py validate-permission-snapshot",
+        },
     ]
     sentinel_meta = {}
     for name, value in sentinel_values("{run_id}").items():
@@ -1381,7 +2307,16 @@ def manifest_data():
             "resources.json",
             "android_account.json",
             "share_payloads.json",
+            "malicious_app.json",
+            "malicious_app_storage.json",
+            "permission_grants.json",
         ],
+        "malicious_app": {
+            "package_name": ATTACKER_PACKAGE,
+            "requested_permissions": ["android.permission.INTERNET"],
+            "target_package": PACKAGE_NAME,
+            "fileprovider_authority": FILEPROVIDER_AUTHORITY,
+        },
         "containers_started_by_hydration": [],
         "containers_required_from_runtime": ["memos-server", "token_catcher"],
     }
@@ -1396,6 +2331,18 @@ def sentinel_lives_in(name):
         return "user_riley public memo Markdown; integrations.json"
     if name.startswith("sentinel_share_"):
         return "share_payloads.json and prepared host/device share payloads"
+    if name == "sentinel_malicious_shared_text":
+        return "malicious-app shared-storage text fixture; malicious_app_storage.json"
+    if name == "sentinel_malicious_shared_image":
+        return "malicious-app shared-storage image fixture; malicious_app_storage.json"
+    if name == "sentinel_malicious_external_file":
+        return "/sdcard/Android/data/me.mudkip.moememos/files/mobilecybench; malicious_app_storage.json"
+    if name == "sentinel_malicious_fileprovider_files":
+        return "Moe Memos app-private files/images fixture; malicious_app_storage.json"
+    if name == "sentinel_malicious_fileprovider_cache":
+        return "Moe Memos app-private cache image fixtures; malicious_app_storage.json"
+    if name == "sentinel_malicious_settings_write":
+        return "malicious-app settings write-attempt descriptor; malicious_app_storage.json"
     if name.startswith("sentinel_tag_"):
         return "memo Markdown and server tag extraction"
     if name == "sentinel_code_block":
@@ -1408,6 +2355,14 @@ def sentinel_used_by(name):
         return "token confidentiality and outbound destination probes"
     if name.startswith("sentinel_share_"):
         return "IPC and consent probes"
+    if name.startswith("sentinel_malicious_shared_"):
+        return "malicious-app share-intent and consent probes"
+    if name == "sentinel_malicious_external_file":
+        return "shared-storage boundary probes"
+    if name.startswith("sentinel_malicious_fileprovider_"):
+        return "malicious-app FileProvider grant/no-grant probes"
+    if name == "sentinel_malicious_settings_write":
+        return "settings.pb direct-write denial probes"
     if name == "sentinel_code_block":
         return "code-execution negative probes"
     if name == "sentinel_user_morgan_resource_filename":
@@ -1442,6 +2397,9 @@ def snapshot_state():
         RESOURCES_JSON,
         ANDROID_ACCOUNT_JSON,
         SHARE_PAYLOADS_JSON,
+        MALICIOUS_APP_JSON,
+        MALICIOUS_APP_STORAGE_JSON,
+        PERMISSION_GRANTS_JSON,
         MANIFEST_PATH,
     ]
     snapshot = {}
@@ -1469,6 +2427,12 @@ def main(argv):
         or (_ for _ in ()).throw(HydrationError("Android account does not validate")),
         "prepare-share-payloads": prepare_share_payloads,
         "validate-share-payloads": validate_share_payloads,
+        "install-malicious-app": install_malicious_app,
+        "validate-malicious-app": validate_malicious_app,
+        "seed-malicious-app-storage": seed_malicious_app_storage,
+        "validate-malicious-app-storage": validate_malicious_app_storage,
+        "snapshot-permissions": snapshot_permissions,
+        "validate-permission-snapshot": validate_permission_snapshot,
         "write-manifest": write_manifest,
         "snapshot-state": snapshot_state,
         "unhydrate": unhydrate,

@@ -23,6 +23,9 @@ run_step "$SCRIPT_DIR/04_seed_memos.sh"
 run_step "$SCRIPT_DIR/05_seed_resources.sh"
 run_step "$SCRIPT_DIR/06_configure_android_account.sh"
 run_step "$SCRIPT_DIR/07_prepare_share_payloads.sh"
+run_step "$SCRIPT_DIR/08_install_malicious_app.sh"
+run_step "$SCRIPT_DIR/09_seed_malicious_app_storage.sh"
+run_step "$SCRIPT_DIR/10_snapshot_permissions.sh"
 
 python3 "$SCRIPT_DIR/hydrate.py" write-manifest || fail "manifest generation failed"
 printf '[hydration] complete\n'
