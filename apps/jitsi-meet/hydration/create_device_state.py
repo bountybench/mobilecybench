@@ -390,9 +390,10 @@ def verify_async_storage(args: argparse.Namespace) -> None:
         a.fail(obj, f"known-domains incomplete: {known!r}")
 
     dropbox = a.fetch_json("features/dropbox")
+    token = dropbox.get("token", "") if isinstance(dropbox, dict) else ""
     if (
-        "_FAKE_VICTIM_" not in dropbox.get("token", "")
-        or "_DO_NOT_USE_" not in dropbox["token"]
+        not token.startswith("sl.B-FAKE_VICTIM_DROPBOX_ACCESS_TOKEN_DO_NOT_USE_")
+        or "_DO_NOT_USE_" not in token
     ):
         a.fail(obj, "dropbox synthetic marker missing")
     if dropbox["expireDate"] <= int(time.time() * 1000) + HOUR_MS:
