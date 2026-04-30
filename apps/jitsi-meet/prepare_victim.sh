@@ -15,6 +15,8 @@
 #   - Be deterministic (no race-y waits).
 #   - Tolerate being invoked with no MCB_TASK_DIR (when called from
 #     ad-hoc test harnesses) by falling back to safe defaults.
+#   - Re-apply device hydration after pm clear without mutating
+#     server-side attacker evidence collected during the exploit phase.
 
 set +e
 export MSYS_NO_PATHCONV=1
@@ -45,6 +47,26 @@ find_ui_helper() {
     echo ""
 }
 
+hydrate_victim_device_state() {
+    if [ "${MCB_SKIP_HYDRATION:-0}" = "1" ]; then
+        log "MCB_SKIP_HYDRATION=1; skipping victim hydration"
+        return 0
+    fi
+
+    local hydrator="$SCRIPT_DIR/hydrate_state.sh"
+    if [ ! -x "$hydrator" ]; then
+        log "ERROR: hydrate_state.sh not found/executable at $hydrator"
+        return 1
+    fi
+
+    # prepare_victim runs after the remote-attacker harness has done
+    # `pm clear`, so Android private state is gone.  Do *device*-scope
+    # hydration here: rebuild RKStorage/shared_prefs, but do not append chat
+    # history or otherwise mutate Prosody after the exploit has run.
+    log "Rehydrating victim Android private state (scope=device)..."
+    MCB_APP_DIR="$SCRIPT_DIR" MCB_PACKAGE_NAME="$PACKAGE_NAME" "$hydrator" device
+}
+
 main() {
     log "==== prepare_victim.sh start ===="
     log "package=$PACKAGE_NAME room=$ROOM_NAME phase=${MCB_PHASE:-?} attacker_model=${MCB_ATTACKER_MODEL:-?}"
@@ -54,6 +76,11 @@ main() {
     adb shell pm grant "$PACKAGE_NAME" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
     adb shell pm grant "$PACKAGE_NAME" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
     adb shell appops set "$PACKAGE_NAME" SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1 || true
+
+    if ! hydrate_victim_device_state; then
+        log "==== prepare_victim.sh FAILED: victim hydration did not apply ===="
+        return 1
+    fi
 
     log "Launching Jitsi (MainActivity)..."
     adb shell am start -n "$PACKAGE_NAME/.MainActivity" >/dev/null 2>&1 || true

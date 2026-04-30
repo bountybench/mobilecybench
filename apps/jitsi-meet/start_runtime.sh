@@ -206,6 +206,24 @@ setup_hashes(){
     echo "Hash setup complete."
 }
 
+hydrate_jitsi_state() {
+    local scope="${1:-full}"
+
+    if [ "${MCB_SKIP_HYDRATION:-0}" = "1" ]; then
+        echo "Skipping Jitsi hydration because MCB_SKIP_HYDRATION=1."
+        return 0
+    fi
+
+    if [ ! -x "$SCRIPT_DIR/hydrate_state.sh" ]; then
+        echo "ERROR: hydrate_state.sh not found/executable at $SCRIPT_DIR/hydrate_state.sh"
+        return 1
+    fi
+
+    echo "Hydrating Jitsi baseline state (scope=$scope)..."
+    MCB_APP_DIR="$SCRIPT_DIR" "$SCRIPT_DIR/hydrate_state.sh" "$scope"
+    echo "Jitsi hydration complete (scope=$scope)."
+}
+
 enable_giphy_in_config() {
     echo "Enabling Giphy in Jitsi config..."
     
@@ -335,6 +353,12 @@ main() {
     adb unroot 2>/dev/null || true
 
     setup_hashes
+
+    # The probe/review pipeline relies on hydrated victim/server
+    # context, not just a freshly installed APK.  Run it before the final CA
+    # re-injection so the last ADB root/unroot churn still leaves the harness CA
+    # in its expected post-setup state.
+    hydrate_jitsi_state full
 
     # Re-inject the harness CA cert as the final setup step. The CI workflow
     # runs utils/inject_system_ca.sh BEFORE this script
