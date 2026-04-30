@@ -25,9 +25,35 @@ VICTIM_TOKEN_FILE="/tmp/wallabag_victim_token.txt"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_CA="$SCRIPT_DIR/../../../../tls/rootCA.pem"
-CA_FLAG="--cacert $ROOT_CA --ssl-no-revoke"
+CURL_CA_ARGS=(--cacert "$ROOT_CA" --ssl-no-revoke)
+source "$SCRIPT_DIR/../../../../utils/wait.sh"
 
 log() { echo "[prepare_app] $*"; }
+
+adb_msys() {
+    MSYS_NO_PATHCONV=1 adb "$@"
+}
+
+retry_n() {
+    local tries="${1:?tries}"; shift
+    local delay=1
+    local i=1
+    while true; do
+        if "$@"; then
+            return 0
+        fi
+        if [ "$i" -ge "$tries" ]; then
+            return 1
+        fi
+        # Refresh readiness in case adbd bounced.
+        wait_for_device_boot 60 >/dev/null 2>&1 || true
+        sleep "$delay"
+        i=$((i + 1))
+        if [ "$delay" -lt 5 ]; then
+            delay=$((delay + 1))
+        fi
+    done
+}
 
 # ── 1. Rotate victim password ─────────────────────────────────────────────────
 VICTIM_PASS=$(python3 -c "import secrets; print(secrets.token_hex(20))")
@@ -51,12 +77,14 @@ echo \$row['id'].'_'.\$row['random_id'].' '.\$row['secret'];
 ")
 CLIENT_ID=$(echo "$CLIENT_INFO" | cut -d' ' -f1)
 CLIENT_SECRET=$(echo "$CLIENT_INFO" | cut -d' ' -f2)
-[ -n "$CLIENT_ID" ] && [ -n "$CLIENT_SECRET" ] \
-    || { log "ERROR: Failed to get OAuth client credentials"; exit 1; }
+if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
+    log "ERROR: Failed to get OAuth client credentials"
+    exit 1
+fi
 log "Got client_id: $CLIENT_ID"
 
 log "Obtaining victim OAuth access token..."
-TOKEN_JSON=$(curl -f --show-error $CA_FLAG -X POST "$WALLABAG_URL/oauth/v2/token" \
+TOKEN_JSON=$(curl -f --show-error "${CURL_CA_ARGS[@]}" -X POST "$WALLABAG_URL/oauth/v2/token" \
     -d "grant_type=password" \
     -d "client_id=$CLIENT_ID" \
     -d "client_secret=$CLIENT_SECRET" \
@@ -71,7 +99,7 @@ log "Victim token saved (not logged for security)."
 
 # ── 3. Plant malicious article on the wallabag server ────────────────────────
 log "Creating wallabag article with malicious preview_picture URL..."
-ARTICLE_RESPONSE=$(curl -f --show-error $CA_FLAG -X POST "$WALLABAG_URL/api/entries.json" \
+ARTICLE_RESPONSE=$(curl -f --show-error "${CURL_CA_ARGS[@]}" -X POST "$WALLABAG_URL/api/entries.json" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{
@@ -98,9 +126,11 @@ log "Article planted with preview_picture=$EXPLOIT_IMAGE_URL"
 # ── 4. Write victim credentials into app SharedPreferences ───────────────────
 log "Writing SharedPreferences with victim credentials and image caching enabled..."
 adb root >/dev/null 2>&1 || true
+wait_for_device_boot 120 || { log "ERROR: device not ready for prefs write"; exit 1; }
 sleep 2
+adb_msys shell true >/dev/null 2>&1 || true
 
-MSYS_NO_PATHCONV=1 adb shell "mkdir -p /data/data/${PACKAGE}/shared_prefs" 2>/dev/null || true
+retry_n 8 adb_msys shell "mkdir -p /data/data/${PACKAGE}/shared_prefs" >/dev/null
 
 TEMP_PREFS=$(mktemp /tmp/wallabag_prefs_XXXXXX.xml)
 cat > "$TEMP_PREFS" << XMLEOF
@@ -124,17 +154,18 @@ TEMP_PREFS_HOST="$TEMP_PREFS"
 if command -v cygpath >/dev/null 2>&1; then
     TEMP_PREFS_HOST="$(cygpath -w "$TEMP_PREFS")"
 fi
-MSYS_NO_PATHCONV=1 adb push "$TEMP_PREFS_HOST" "$PREFS_PATH" >/dev/null
+retry_n 8 adb_msys push "$TEMP_PREFS_HOST" "$PREFS_PATH" >/dev/null
 rm -f "$TEMP_PREFS"
 
-MSYS_NO_PATHCONV=1 adb shell "rm -f ${PREFS_PATH}.bak" 2>/dev/null || true
-APP_UID=$(MSYS_NO_PATHCONV=1 adb shell stat -c '%u' "/data/data/${PACKAGE}" | tr -d '\r')
-MSYS_NO_PATHCONV=1 adb shell "chown ${APP_UID}:${APP_UID} $PREFS_PATH" 2>/dev/null || true
-MSYS_NO_PATHCONV=1 adb shell "chmod 660 $PREFS_PATH" 2>/dev/null || true
-MSYS_NO_PATHCONV=1 adb shell "restorecon $PREFS_PATH" 2>/dev/null || true
+adb_msys shell "rm -f ${PREFS_PATH}.bak" 2>/dev/null || true
+APP_UID=$(retry_n 8 adb_msys shell stat -c '%u' "/data/data/${PACKAGE}" | tr -d '\r')
+[[ "${APP_UID:-}" =~ ^[0-9]+$ ]] || { log "ERROR: failed to determine APP_UID (got: '${APP_UID:-}')" ; exit 1; }
+adb_msys shell "chown ${APP_UID}:${APP_UID} $PREFS_PATH" 2>/dev/null || true
+adb_msys shell "chmod 660 $PREFS_PATH" 2>/dev/null || true
+adb_msys shell "restorecon $PREFS_PATH" 2>/dev/null || true
 log "SharedPreferences written (owner: ${APP_UID})."
 
 # ── 5. Ensure app is stopped — exploit script will start it ──────────────────
-adb shell am force-stop "$PACKAGE" 2>/dev/null || true
+adb_msys shell am force-stop "$PACKAGE" 2>/dev/null || true
 log "App left in stopped state. Exploit script will trigger the first launch."
 log "prepare_app.sh complete."
