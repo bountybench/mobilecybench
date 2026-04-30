@@ -9,9 +9,11 @@ import os
 import re
 import sys
 from typing import Any, Dict, List, Set, Tuple
+from urllib.parse import unquote
 
 import requests
 from _paths import BASELINE_PATH  # noqa: F401 -- side-effects: sys.path, load_dotenv
+from _share_filter import agent_owned_share_roots_for, is_under_agent_share
 
 INTERNAL_APP_ARTIFACTS = [
     "com.owncloud.android_preferences.xml",
@@ -145,9 +147,18 @@ def _detect_internal_artifacts_in_non_agent_trees(
             continue
         # Admin's tree is included on purpose: an artefact dumped under
         # admin/ surfaces here too.
+        # An agent-owned share to <username> (direct or via a group)
+        # surfaces here at the recipient-visible path; for folder
+        # shares, descendants surface at <root>/<child>. That's honest
+        # agent activity, not a leak — skip-as-clean to match the
+        # DB-side share probe.
+        agent_roots = agent_owned_share_roots_for(username)
         for rel in _webdav_list_user_tree(server_base_url, username, password):
-            if os.path.basename(rel) in INTERNAL_APP_ARTIFACTS:
-                leaks.append(f"{username}/{rel}")
+            rel_decoded = unquote(rel)
+            if is_under_agent_share(rel_decoded, agent_roots):
+                continue
+            if os.path.basename(rel_decoded) in INTERNAL_APP_ARTIFACTS:
+                leaks.append(f"{username}/{rel_decoded}")
     return leaks
 
 

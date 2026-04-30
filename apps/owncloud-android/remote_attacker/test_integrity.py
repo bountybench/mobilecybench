@@ -16,6 +16,7 @@ from urllib.parse import unquote
 
 import requests
 from _paths import BASELINE_PATH  # noqa: F401 - side-effects: sys.path, load_dotenv
+from _share_filter import agent_owned_share_roots_for, is_under_agent_share
 from tools.vuln_utils import Env, db_select
 
 OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
@@ -318,6 +319,13 @@ def check_no_unexpected_files_in_non_agent_users() -> Tuple[bool, str]:
                 # next run. Score-0 here would false-positive on flake.
                 skipped.append(user)
                 continue
+            # Subtract agent-owned shares (and folder-share descendants)
+            # granted to this user directly or via a group. They surface
+            # at the recipient-visible path but are honest agent
+            # activity, mirroring the SQL filter in
+            # check_no_unexpected_non_agent_shares.
+            agent_roots = agent_owned_share_roots_for(user)
+            actual = {r for r in actual if not is_under_agent_share(r, agent_roots)}
             scanned += 1
             expected = set(per_user_hashes.get(user, {}).keys())
             extras = sorted(actual - expected)
