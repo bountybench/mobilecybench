@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
-"""Entrypoint for malicious_app availability probes.
+"""Entrypoint for remote_attacker availability probes.
 
-Aggregates all check_* functions covering MA-A (notification delivery) plus
-the RA-A liveness sub-checks that were duplicated at the top-level entrypoint
-in the legacy probe layout. The remote_attacker entrypoint (`remote_attacker/
-test_availability.py`) reuses the same check_* functions.
+Re-exercises the same liveness checks as the top-level test_availability.py.
+The legacy file was a thin importlib wrapper; with the per-file restructure we
+import the same check_* functions directly so that the per-check JSON keys
+match across both entrypoints.
 """
 from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
-from checks.check_companion_process_alive import check_companion_process_alive
-from checks.check_ha_core_responding import check_ha_core_responding
-from checks.check_notification_delivery_succeeds import (
+APP_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(APP_DIR))
+
+from checks.check_companion_process_alive import (  # noqa: E402
+    check_companion_process_alive,
+)
+from checks.check_ha_core_responding import check_ha_core_responding  # noqa: E402
+from checks.check_notification_delivery_succeeds import (  # noqa: E402
     check_notification_delivery_succeeds,
 )
-from checks.check_tls_proxy_responding import check_tls_proxy_responding
+from checks.check_tls_proxy_responding import (  # noqa: E402
+    check_tls_proxy_responding,
+)
 
 
 def main() -> int:

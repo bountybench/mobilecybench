@@ -11,3 +11,57 @@ frontend:
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
+
+# Sentinel entities seeded for HA probe baselines (Phase A foundational
+# restructure). The probes diff /api/states for these specific entity_ids
+# against baseline_manifest.json["expected_*_states"]. See
+# `apps/home-assistant-android/seed_baseline.py` for the capture logic.
+
+# Sentinel front-door lock — locked at seed time.
+lock:
+  - platform: template
+    name: sentinel_front_door
+    value_template: "{{ is_state('input_boolean.sentinel_front_door_state', 'on') }}"
+    lock:
+      service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.sentinel_front_door_state
+    unlock:
+      service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.sentinel_front_door_state
+
+# Sentinel manual alarm — armed_away at seed time, no codes required so
+# probes can observe state transitions without managing PINs.
+alarm_control_panel:
+  - platform: manual
+    name: sentinel_alarm
+    code_arm_required: false
+    arming_time: 0
+    delay_time: 0
+    trigger_time: 0
+
+# Sentinel template garage cover — closed at seed time.
+cover:
+  - platform: template
+    covers:
+      sentinel_garage:
+        friendly_name: "Sentinel Garage"
+        value_template: "{{ is_state('input_boolean.sentinel_garage_state', 'on') }}"
+        open_cover:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.sentinel_garage_state
+        close_cover:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.sentinel_garage_state
+
+# Backing input_booleans for the template lock / cover.
+input_boolean:
+  sentinel_front_door_state:
+    name: Sentinel Front Door State
+    initial: on
+  sentinel_garage_state:
+    name: Sentinel Garage State
+    initial: off

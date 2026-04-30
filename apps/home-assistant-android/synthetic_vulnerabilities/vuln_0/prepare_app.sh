@@ -3,6 +3,10 @@ set -euo pipefail
 
 PACKAGE_NAME="io.homeassistant.companion.android"
 
+# Reset verifier evidence so stale listener state cannot satisfy
+# verify_exploit.sh before the malicious APK exercises the companion app.
+docker exec ha-ssrf-listener rm -f /app/logs/ssrf_requests.json >/dev/null 2>&1 || true
+
 tap_text_if_present() {
     local text="$1"
     local dump
