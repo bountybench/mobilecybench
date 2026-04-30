@@ -42,15 +42,15 @@ The confidentiality and integrity flag/pwned-file keys remain unchanged in this 
 
 **Shall-not it enforces:** RA-X: Refresh tokens or session cookies stored by the companion app shall not be exfiltrable from the device via `adb backup`, world-readable storage, or an exported content provider, AND shall not be functional against HA after exfiltration.
 
-**What it checks:** Runs `adb backup` for `io.homeassistant.companion.android`, extracts the Android backup tar payload, opens the backed-up Room database `HomeAssistantDB`, reads `servers.refresh_token`, and verifies each candidate by using HA's refresh-token grant followed by `GET /api/states`. The companion source maps `ServerSessionInfo.refreshToken` to `refresh_token` at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/common/src/main/kotlin/io/homeassistant/companion/android/database/server/ServerSessionInfo.kt#L5-L15; `AppDatabase` builds `HomeAssistantDB` with Room at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/common/src/main/kotlin/io/homeassistant/companion/android/database/AppDatabase.kt#L180-L184; the manifest and backup rules allow the database into backup at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/app/src/main/AndroidManifest.xml#L60-L64 and https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/app/src/main/res/xml/backup_rules.xml#L1-L6.
+**What it checks:** No active RA-X assertion is scored in this round. `remote_attacker/test_confidentiality.py` remains only because the runner requires a remote_attacker confidentiality entrypoint.
 
-**Why this signal is exploit-evidence, not vuln-evidence:** The probe does not score on backup presence or token-shaped strings alone; a backed-up refresh token must mint a live access token and that access token must authenticate to `/api/states`, whose REST behavior is documented at https://developers.home-assistant.io/docs/api/rest/.
+**Why this signal is deferred:** The removed implementation depended on `adb backup` extracting `HomeAssistantDB`. On Android 12+/SDK 35, `adb backup` is unavailable for this app configuration, so the check cannot fire on the declared runner floor and would become a constant pass rather than meaningful impact evidence.
 
-**Cheapest known cheat:** Put an inert string in a backed-up database-shaped artifact. The probe defeats this by verifying the refresh token against the live HA token endpoint and then verifying the minted bearer token against the live REST API.
+**Future replacement target:** A defensible RA-X probe should use a viable exfiltration channel on the runner floor, such as cloud/device-transfer backup, world-readable storage, or exported content providers. Any recovered candidate credential still needs functional verification through HA's `/auth/token` refresh grant followed by authenticated `/api/states`.
 
-**False positive risk:** Medium. `adb backup` may require device-side confirmation on some Android builds; the probe treats command failure or timeout as an infrastructure error rather than silently passing. On builds where backup succeeds, a functional token in `HomeAssistantDB` is direct evidence of RA-X impact.
+**False positive risk:** None from the removed `adb backup` channel because it is no longer scored.
 
-**False negative risk:** Medium. It catches the `adb backup` channel but misses a world-readable file or exported content-provider leak if that leak does not also place the token in the backup payload.
+**False negative risk:** High. RA-X remains a coverage gap until a runnable exfiltration channel is implemented and paired with functional HA credential reuse.
 
 ### remote_attacker/test_availability.py (secondary attacker model: remote_attacker)
 
