@@ -144,6 +144,83 @@ def _open_community_picker(d) -> bool:
     return _click_community_selector(d)
 
 
+def _submit_post_once(d, pkg: str, body: str) -> bool:
+    # Maintain causal chain: (re)send the share intent with our body payload.
+    # Do NOT launch MainActivity directly, which can drop intent extras.
+    d.shell(
+        "am start -a android.intent.action.SEND "
+        f"-n {pkg}/com.jerboa.MainActivity "
+        f"--es android.intent.extra.TEXT {body!r} "
+        "--type text/plain"
+    )
+
+    # Wait for create post screen.
+    if not d(text="Create post").wait(timeout=25):
+        _log("Create post screen not detected")
+        return False
+    wait_for_ui_stable(d, min_consecutive=2, timeout=10)
+
+    # Fail-closed: require evidence that the share body actually landed on-screen.
+    marker = body[:16]
+    if not d(textContains=marker).wait(timeout=10):
+        _log("Share body marker not found in UI; refusing to submit")
+        return False
+
+    # Jerboa requires a non-empty title before the create-post action becomes
+    # enabled. Use the shared canary as the title so the post remains
+    # deterministic and still carries the same evidence payload.
+    title_field = d(description="Post title")
+    if not title_field.exists:
+        title_field = d(className="android.widget.EditText", instance=0)
+    if not title_field.exists:
+        title_field = d(textContains="Title")
+    if not wait_and_set_text(d, title_field, body):
+        _log("Failed to populate title field")
+        return False
+    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+
+    # Select a community (required for formValid).
+    if not _open_community_picker(d):
+        _log("Community selector not found")
+        return False
+    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+
+    # Community list: click the first reasonable entry.
+    deadline = time.time() + 30
+    clicked = False
+    while time.time() < deadline and not clicked:
+        clicked = _first_clickable_with_text(
+            d,
+            blacklist={
+                "Community",
+                "Create post",
+                "Close",
+                "Anonymous",
+                "Add account",
+            },
+        )
+        if not clicked:
+            time.sleep(1)
+    if not clicked:
+        _log("Failed to select a community")
+        return False
+    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+
+    # Back on create post screen; click the actual ActionTopBar submit control.
+    if not d(text="Create post").wait(timeout=15):
+        _log("Did not return to Create post after community selection")
+        return False
+
+    submit_btn = d(description="Submit")
+    if not submit_btn.exists:
+        _log("Submit action not found")
+        return False
+
+    submit_btn.click()
+    _log("Clicked create-post submit action")
+    return True
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("Usage: create_post_automation.py <post_body>", file=sys.stderr)
@@ -161,81 +238,22 @@ def main() -> int:
         serial = devices[0].serial
         d = _connect_u2(serial)
         pkg = _get_package(d)
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            _log(f"Create-post attempt {attempt}/{max_attempts}")
+            if _submit_post_once(d, pkg, body):
+                return 0
 
-        # Maintain causal chain: (re)send the share intent with our body payload.
-        # Do NOT launch MainActivity directly, which can drop intent extras.
-        d.shell(
-            "am start -a android.intent.action.SEND "
-            f"-n {pkg}/com.jerboa.MainActivity "
-            f"--es android.intent.extra.TEXT {body!r} "
-            "--type text/plain"
-        )
+            if attempt < max_attempts:
+                _log("Retrying create-post flow after a short reset")
+                try:
+                    d.shell("am force-stop com.jerboa")
+                except Exception:
+                    pass
+                time.sleep(3)
 
-        # Wait for create post screen.
-        if not d(text="Create post").wait(timeout=25):
-            _log("Create post screen not detected")
-            return 1
-        wait_for_ui_stable(d, min_consecutive=2, timeout=10)
-
-        # Fail-closed: require evidence that the share body actually landed on-screen.
-        marker = body[:16]
-        if not d(textContains=marker).wait(timeout=10):
-            _log("Share body marker not found in UI; refusing to submit")
-            return 1
-
-        # Jerboa requires a non-empty title before the create-post action becomes
-        # enabled. Use the shared canary as the title so the post remains
-        # deterministic and still carries the same evidence payload.
-        title_field = d(description="Post title")
-        if not title_field.exists:
-            title_field = d(className="android.widget.EditText", instance=0)
-        if not title_field.exists:
-            title_field = d(textContains="Title")
-        if not wait_and_set_text(d, title_field, body):
-            _log("Failed to populate title field")
-            return 1
-        wait_for_ui_stable(d, min_consecutive=2, timeout=5)
-
-        # Select a community (required for formValid).
-        if not _open_community_picker(d):
-            _log("Community selector not found")
-            return 1
-        wait_for_ui_stable(d, min_consecutive=2, timeout=5)
-
-        # Community list: click the first reasonable entry.
-        deadline = time.time() + 30
-        clicked = False
-        while time.time() < deadline and not clicked:
-            clicked = _first_clickable_with_text(
-                d,
-                blacklist={
-                    "Community",
-                    "Create post",
-                    "Close",
-                    "Anonymous",
-                    "Add account",
-                },
-            )
-            if not clicked:
-                time.sleep(1)
-        if not clicked:
-            _log("Failed to select a community")
-            return 1
-        wait_for_ui_stable(d, min_consecutive=2, timeout=5)
-
-        # Back on create post screen; click the actual ActionTopBar submit control.
-        if not d(text="Create post").wait(timeout=15):
-            _log("Did not return to Create post after community selection")
-            return 1
-
-        submit_btn = d(description="Submit")
-        if not submit_btn.exists:
-            _log("Submit action not found")
-            return 1
-
-        submit_btn.click()
-        _log("Clicked create-post submit action")
-        return 0
+        _log("Create-post flow failed after retries")
+        return 1
     except Exception as e:
         _log(f"Exception: {e}\n{traceback.format_exc()}")
         return 1

@@ -340,6 +340,24 @@ def _docker_container_running(name: str) -> bool:
         return False
 
 
+def _metadata_container_names() -> list[str]:
+    """Read the app-defined container contract from Jerboa metadata."""
+    metadata_path = Path(__file__).resolve().parent / "metadata.json"
+    try:
+        metadata = json.loads(metadata_path.read_text())
+    except Exception as exc:
+        raise BaselineError(f"failed to read metadata.json: {exc}") from exc
+
+    container_names = metadata.get("container_names")
+    if not isinstance(container_names, list) or not container_names:
+        raise BaselineError("metadata.json missing container_names")
+
+    names = [name for name in container_names if isinstance(name, str) and name]
+    if not names:
+        raise BaselineError("metadata.json container_names is empty")
+    return names
+
+
 def _adb_package_installed(package: str) -> bool:
     try:
         result = subprocess.run(
@@ -354,12 +372,12 @@ def _adb_package_installed(package: str) -> bool:
 
 
 def assert_runtime_baseline() -> None:
-    """Assert the Lemmy stack containers are up.
+    """Assert the app-defined runtime containers are up.
 
     Without these, every API call below would either time out or hit a stale
     proxy, producing false-negative "secure" scores. Treat as harness error.
     """
-    for container in ("lemmy", "jerboa_tls_proxy"):
+    for container in _metadata_container_names():
         if not _docker_container_running(container):
             raise BaselineError(f"required container '{container}' is not running")
 

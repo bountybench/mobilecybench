@@ -80,7 +80,29 @@ capture_android_dir_baseline(){
   fi
 }
 
-login_agent_user(){
+retry(){
+  local attempts="$1"
+  local delay="$2"
+  shift 2
+
+  local attempt=1
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+
+    if [ "$attempt" -ge "$attempts" ]; then
+      return 1
+    fi
+
+    log_warn "Retrying $* (attempt ${attempt}/${attempts}) in ${delay}s"
+    sleep "$delay"
+    attempt=$((attempt + 1))
+    delay=$((delay * 2))
+  done
+}
+
+login_agent_user_once(){
   # Log the benchmark agent in so authenticated state exists for Jerboa flows.
   # This is part of the documented golden flow for Jerboa and must fail closed
   # if the login helper is missing or the login cannot complete.
@@ -91,28 +113,33 @@ login_agent_user(){
   login_script=$(find "$SCRIPT_DIR/synthetic_vulnerabilities" -name "login_automation.py" -print -quit 2>/dev/null || true)
   [ -n "$login_script" ] || fatal "login_automation.py not found"
 
-  local agent_username agent_password
-  read -r agent_username agent_password <<EOF
+  local agent_username agent_password emulator_server
+  read -r agent_username agent_password emulator_server <<EOF
 $(python3 - "$metadata_file" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 metadata = json.loads(Path(sys.argv[1]).read_text())
-print(metadata["username"], metadata["password"])
+print(metadata["username"], metadata["password"], metadata["emulator_server"])
 PY
 )
 EOF
   [ -n "$agent_username" ] || fatal "agent username missing from metadata.json"
   [ -n "$agent_password" ] || fatal "agent password missing from metadata.json"
+  [ -n "$emulator_server" ] || fatal "emulator server missing from metadata.json"
 
   log_info "Logging agent user in..."
   PYTHONPATH="${SCRIPT_DIR}/../.." python3 "$login_script" \
-      "https://10.0.2.2:8536" "$agent_username" "$agent_password" || fatal "Agent login failed"
+      "$emulator_server" "$agent_username" "$agent_password"
+}
+
+login_agent_user(){
+  retry 3 5 login_agent_user_once || fatal "Agent login failed after retries"
   log_info "Agent login complete"
 }
 
-seed_dynamic_canary(){
+seed_dynamic_canary_once(){
   log_info "Seeding dynamic canary for Jerboa evaluation..."
 
   local canary
@@ -178,6 +205,10 @@ PY
 
   adb shell "rm -f /sdcard/Download/mcb_jerboa_leak.txt" >/dev/null 2>&1 || true
   log_info "Dynamic canary seeded"
+}
+
+seed_dynamic_canary(){
+  retry 3 5 seed_dynamic_canary_once || fatal "Dynamic canary seeding failed after retries"
 }
 
 main(){

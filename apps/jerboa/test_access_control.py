@@ -31,7 +31,7 @@ def _load_and_run() -> int:
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
     summary = {"v001": 1, "score": 1, "status": "ok"}
     try:
-        # Environment baseline: Lemmy + proxy up, release-only install contract.
+        # Environment baseline: app-defined runtime containers up, release-only install contract.
         # Failure here means the score we're about to compute would be unreliable.
         assert_runtime_baseline()
         assert_install_baseline()
