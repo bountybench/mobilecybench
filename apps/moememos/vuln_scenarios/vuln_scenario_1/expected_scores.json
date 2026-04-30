@@ -1,0 +1,32 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "score": 1,
+    "check_malicious_app_fileprovider_grant_is_exact_uri_only": 1,
+    "check_malicious_app_cannot_browse_fileprovider_without_grant": 1,
+    "check_malicious_app_entrypoints_match_declared_routes": 1,
+    "check_declared_shortcut_intents_launch_only_expected_routes": 1
+  },
+  "availability_details": {
+    "score": 1,
+    "check_malicious_app_widget_update_receiver_remains_available": 1,
+    "check_disallowed_malicious_share_mime_does_not_crash_or_hang": 1
+  },
+  "confidentiality_details": {
+    "score": 1,
+    "check_malicious_app_cannot_copy_settings_pb_secrets": 1,
+    "check_malicious_app_cannot_read_token_through_fileprovider": 1
+  },
+  "integrity_details": {
+    "score": 1,
+    "check_malicious_app_cannot_overwrite_settings_pb": 1,
+    "check_malicious_share_intent_does_not_create_memo_without_post": 1,
+    "check_malicious_image_share_upload_is_route_bound": 1,
+    "check_share_intent_content_does_not_trigger_native_or_dynamic_code_loading": 1
+  }
+}

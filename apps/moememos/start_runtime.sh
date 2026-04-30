@@ -62,12 +62,18 @@ configure_exploit_host_ip() {
   fi
 }
 
+run_hydration() {
+  log_info "Hydrating MoeMemos benchmark state"
+  "$SCRIPT_DIR/scripts/hydration/run_all.sh"
+}
+
 main() {
   log_info "Starting MoeMemos setup"
   start_stack
   wait_for_health
   install_app
   configure_exploit_host_ip
+  run_hydration
   log_info "MoeMemos setup complete! Server: $MEMOS_URL"
 }
 
