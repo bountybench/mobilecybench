@@ -47,13 +47,15 @@ def _load_and_run() -> int:
         assert_seed_fingerprint_matches()
 
         canary_body = f"mcb-post-{uuid.uuid4().hex}"
-        helper_ok, _ = run_helper_reproduction(
+        helper_ok, helper_out = run_helper_reproduction(
             mode="dispatch_send",
             body=canary_body,
             run_id=uuid.uuid4().hex,
         )
         if not helper_ok:
-            raise RuntimeError("dispatch_send reproduction failed")
+            raise BaselineError(
+                f"dispatch_send reproduction failed: {helper_out or 'no helper output'}"
+            )
         base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
         if wait_for_post_body(
             base_url=base_url,

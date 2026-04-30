@@ -159,13 +159,28 @@ def extract_private_message_contents(text: str) -> list[str]:
     return contents
 
 
+def lemmy_auth_request_kwargs(
+    jwt: str,
+    *,
+    params: dict[str, Any] | None = None,
+    include_query_auth: bool = False,
+) -> dict[str, Any]:
+    merged = dict(params or {})
+    if include_query_auth:
+        merged["auth"] = jwt
+    return {
+        "params": merged,
+        "headers": {"Authorization": f"Bearer {jwt}"},
+    }
+
+
 def fetch_private_message_contents(base_url: str, alice_jwt: str) -> list[str]:
     """Fetch Alice's private-message bodies from Lemmy's authenticated API."""
     import requests
 
     response = requests.get(
         f"{base_url}/api/v3/private_message/list",
-        headers={"Authorization": f"Bearer {alice_jwt}"},
+        **lemmy_auth_request_kwargs(alice_jwt),
         timeout=10,
     )
     if response.status_code != 200:
@@ -241,10 +256,9 @@ def wait_for_post_body(
     while time.time() < deadline:
         response = requests.get(
             f"{base_url}/api/v3/post/list",
-            # Lemmy's API expects `auth` as a query parameter (consistent with
-            # /api/v3/post usage elsewhere in this repo); sending an
-            # Authorization header yields HTTP 400 in CI.
-            params={"type_": "All", "limit": 50, "auth": alice_jwt},
+            **lemmy_auth_request_kwargs(
+                alice_jwt, params={"type_": "All", "limit": 50}
+            ),
             timeout=10,
         )
         if response.status_code == 200:
@@ -289,13 +303,18 @@ def assert_seed_corpus_visible(
 
     response = requests.get(
         f"{base_url}/api/v3/post/list",
-        params={"type_": "All", "limit": 200, "auth": alice_jwt},
+        **lemmy_auth_request_kwargs(alice_jwt, params={"type_": "All", "limit": 50}),
         timeout=10,
     )
     if response.status_code != 200:
         raise RuntimeError(f"post list query failed: {response.status_code}")
 
     post_payload = response.json()
+    post_rows = post_payload.get("posts") or []
+    if len(post_rows) >= 50:
+        raise RuntimeError(
+            "post list reached limit 50; seeded corpus visibility may be truncated"
+        )
     seen_titles = set(extract_post_title_candidates(post_payload))
     seen_urls = set(extract_post_url_candidates(post_payload))
 
@@ -311,17 +330,21 @@ def assert_seed_corpus_visible(
     if saved_titles:
         saved_response = requests.get(
             f"{base_url}/api/v3/post/list",
-            params={
-                "type_": "All",
-                "limit": 200,
-                "saved_only": "true",
-                "auth": alice_jwt,
-            },
+            **lemmy_auth_request_kwargs(
+                alice_jwt,
+                params={"type_": "All", "limit": 50, "saved_only": "true"},
+            ),
             timeout=10,
         )
         if saved_response.status_code != 200:
             raise RuntimeError(f"saved post query failed: {saved_response.status_code}")
-        saved_seen = set(extract_post_title_candidates(saved_response.json()))
+        saved_payload = saved_response.json()
+        saved_rows = saved_payload.get("posts") or []
+        if len(saved_rows) >= 50:
+            raise RuntimeError(
+                "saved post list reached limit 50; seeded corpus visibility may be truncated"
+            )
+        saved_seen = set(extract_post_title_candidates(saved_payload))
         missing_saved = [title for title in saved_titles if title not in saved_seen]
         if missing_saved:
             raise RuntimeError(f"missing saved seeded posts: {missing_saved[:4]}")
@@ -332,14 +355,23 @@ def assert_seed_corpus_visible(
             raise RuntimeError(f"missing manifest post record for {post_title}")
 
         detail = requests.get(
-            f"{base_url}/api/v3/post",
-            params={"id": post["id"], "auth": alice_jwt},
+            f"{base_url}/api/v3/comment/list",
+            **lemmy_auth_request_kwargs(
+                alice_jwt,
+                params={"post_id": post["id"], "limit": 50, "sort": "New"},
+            ),
             timeout=10,
         )
         if detail.status_code != 200:
-            raise RuntimeError(f"post detail query failed for {post_title}")
+            raise RuntimeError(f"comment list query failed for {post_title}")
 
-        seen_comment_bodies = set(extract_comment_body_candidates(detail.json()))
+        detail_payload = detail.json()
+        comment_rows = detail_payload.get("comments") or []
+        if len(comment_rows) >= 50:
+            raise RuntimeError(
+                f"comment list for {post_title} reached limit 50; seeded corpus visibility may be truncated"
+            )
+        seen_comment_bodies = set(extract_comment_body_candidates(detail_payload))
         missing_comment_bodies = [
             body for body in expected_bodies if body not in seen_comment_bodies
         ]
@@ -476,8 +508,7 @@ def assert_lemmy_user_baseline() -> None:
     admin_token = _lemmy_admin_token()
     response = requests.get(
         f"{LEMMY_BASE_URL}/api/v3/user/list",
-        params={"limit": 50, "sort": "New"},
-        headers={"Authorization": f"Bearer {admin_token}"},
+        **lemmy_auth_request_kwargs(admin_token, params={"limit": 50, "sort": "New"}),
         timeout=10,
     )
     if response.status_code == 404:
@@ -486,7 +517,11 @@ def assert_lemmy_user_baseline() -> None:
         for username in EXPECTED_LEMMY_USERS:
             r = requests.get(
                 f"{LEMMY_BASE_URL}/api/v3/user",
-                params={"username": username, "auth": admin_token},
+                **lemmy_auth_request_kwargs(
+                    admin_token,
+                    params={"username": username},
+                    include_query_auth=True,
+                ),
                 timeout=10,
             )
             if r.status_code != 200:

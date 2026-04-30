@@ -247,28 +247,51 @@ Path(os.environ["AUTH_TMP"]).write_text(
     encoding="utf-8",
 )
 PY
+  local auth_status=$?
+  if [ "$auth_status" -ne 0 ] || [ ! -s "$auth_tmp" ]; then
+    rm -f "$auth_tmp" "$fp_tmp"
+    return 1
+  fi
 
   auth_host="$auth_tmp"
   if command -v cygpath >/dev/null 2>&1; then
     auth_host="$(cygpath -w "$auth_tmp")"
   fi
-  MSYS_NO_PATHCONV=1 adb push "$auth_host" /data/local/tmp/mcb_jerboa_probe_auth.json >/dev/null
-  adb shell "su 0 sh -c 'mv /data/local/tmp/mcb_jerboa_probe_auth.json \"$PROBE_AUTH_DEVICE_PATH\" && chmod 600 \"$PROBE_AUTH_DEVICE_PATH\"'" >/dev/null
+  MSYS_NO_PATHCONV=1 adb push "$auth_host" /data/local/tmp/mcb_jerboa_probe_auth.json >/dev/null || {
+    rm -f "$auth_tmp" "$fp_tmp"
+    return 1
+  }
+  adb shell "su 0 sh -c 'mv /data/local/tmp/mcb_jerboa_probe_auth.json \"$PROBE_AUTH_DEVICE_PATH\" && chmod 600 \"$PROBE_AUTH_DEVICE_PATH\"'" >/dev/null || {
+    rm -f "$auth_tmp" "$fp_tmp"
+    return 1
+  }
 
   fingerprint="$(
     REQUESTS_CA_BUNDLE="$SCRIPT_DIR/../../tls/rootCA.pem" \
     PYTHONPATH="$SCRIPT_DIR/../.." \
       python3 "$SCRIPT_DIR/jerboa_state_fingerprint.py" fingerprint
-  )"
-  [ -n "$fingerprint" ] || fatal "Jerboa baseline fingerprint is empty"
+  )" || {
+    rm -f "$auth_tmp" "$fp_tmp"
+    return 1
+  }
+  [ -n "$fingerprint" ] || {
+    rm -f "$auth_tmp" "$fp_tmp"
+    return 1
+  }
   printf '%s\n' "$fingerprint" > "$fp_tmp"
 
   fp_host="$fp_tmp"
   if command -v cygpath >/dev/null 2>&1; then
     fp_host="$(cygpath -w "$fp_tmp")"
   fi
-  MSYS_NO_PATHCONV=1 adb push "$fp_host" /data/local/tmp/mcb_jerboa_baseline_fingerprint >/dev/null
-  adb shell "su 0 sh -c 'mv /data/local/tmp/mcb_jerboa_baseline_fingerprint \"$BASELINE_FP_DEVICE_PATH\" && chmod 600 \"$BASELINE_FP_DEVICE_PATH\"'" >/dev/null
+  MSYS_NO_PATHCONV=1 adb push "$fp_host" /data/local/tmp/mcb_jerboa_baseline_fingerprint >/dev/null || {
+    rm -f "$auth_tmp" "$fp_tmp"
+    return 1
+  }
+  adb shell "su 0 sh -c 'mv /data/local/tmp/mcb_jerboa_baseline_fingerprint \"$BASELINE_FP_DEVICE_PATH\" && chmod 600 \"$BASELINE_FP_DEVICE_PATH\"'" >/dev/null || {
+    rm -f "$auth_tmp" "$fp_tmp"
+    return 1
+  }
 
   rm -f "$auth_tmp" "$fp_tmp"
   log_info "Probe auth cache and baseline fingerprint stored"

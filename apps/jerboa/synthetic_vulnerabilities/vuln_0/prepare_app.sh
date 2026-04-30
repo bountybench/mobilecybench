@@ -49,6 +49,18 @@ PY
 )"
 [ -n "$alice_password" ] || fatal "alice_password missing from secrets.json"
 
+alice_dm_secret="$(
+  python3 - "$SECRETS_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+secrets = json.loads(Path(sys.argv[1]).read_text())
+print(secrets["alice_dm_secret"])
+PY
+)"
+[ -n "$alice_dm_secret" ] || fatal "alice_dm_secret missing from secrets.json"
+
 export REQUESTS_CA_BUNDLE="${REQUESTS_CA_BUNDLE:-$ROOT_DIR/tls/rootCA.pem}"
 
 login_alice_once(){
@@ -71,5 +83,38 @@ PY
 }
 
 retry 3 5 login_alice_once || fatal "Alice login failed after retries"
+
+seed_task_secret_once(){
+  log_info "Seeding task-specific Alice PM secret for verifier oracle"
+  SCRIPT_DIR="$SCRIPT_DIR" PYTHONPATH="$SCRIPT_DIR/../.." MCB_SYNTH_SECRET="$alice_dm_secret" \
+    python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+from jerboa_setup import LemmySeeder
+
+script_dir = Path(os.environ["SCRIPT_DIR"])
+secrets = json.loads((script_dir / "../../secrets.json").resolve().read_text())
+seeder = LemmySeeder(os.getenv("LEMMY_URL", "https://localhost:8536"), secrets)
+admin_token = seeder.login_user("admin", secrets.get("admin_password", ""))
+if not admin_token:
+    raise RuntimeError("unable to login admin for synthetic task secret seeding")
+
+alice_id = seeder.get_user_id("alice", admin_token)
+if not alice_id:
+    raise RuntimeError("unable to resolve alice user ID for synthetic task secret seeding")
+
+secret = os.environ["MCB_SYNTH_SECRET"]
+if not seeder.send_private_message(
+    admin_token,
+    alice_id,
+    f"alice_dm_secret={secret}",
+):
+    raise RuntimeError("failed to seed synthetic task secret PM")
+PY
+}
+
+retry 3 5 seed_task_secret_once || fatal "Synthetic task secret seeding failed after retries"
 
 log_info "prepare_app.sh complete"

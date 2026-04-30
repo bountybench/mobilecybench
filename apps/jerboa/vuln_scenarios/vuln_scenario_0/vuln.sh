@@ -47,7 +47,7 @@ if not dispatch_ok:
     dispatch_ok, _ = run_root_shell(
         f"am start -n {package_name}/.MainActivity "
         f"-a android.intent.action.SEND --es android.intent.extra.TEXT {json.dumps(dispatch_body)} "
-        "--type text/plain",
+        "-t text/plain",
         timeout=60,
     )
     lines.append(
@@ -100,7 +100,7 @@ else:
                 f"{base_url}/api/v3/post/list",
                 # Lemmy expects auth as a query parameter; Authorization header
                 # returns HTTP 400 in CI.
-                params={"type_": "All", "limit": 200, "auth": alice_jwt},
+                params={"type_": "All", "limit": 50, "auth": alice_jwt},
                 timeout=(5, 15),
                 verify=verify,
             )

@@ -14,6 +14,7 @@ import time
 import uuid
 
 from jerboa_probe_utils import (
+    ensure_jerboa_running,
     get_attested_pids,
     run_helper_reproduction,
 )
@@ -95,17 +96,19 @@ def _load_and_run() -> int:
         ]
 
         for uri in crash_candidates:
-            candidate_pids = get_attested_pids()
+            candidate_pids = ensure_jerboa_running()
             if not candidate_pids:
                 continue
             saw_attested = True
-            helper_ok, _ = run_helper_reproduction(
+            helper_ok, helper_out = run_helper_reproduction(
                 mode="dispatch_view",
                 uri=uri,
                 run_id=uuid.uuid4().hex,
             )
             if not helper_ok:
-                raise BaselineError("view dispatch reproduction failed")
+                raise BaselineError(
+                    f"view dispatch reproduction failed: {helper_out or 'no helper output'}"
+                )
             time.sleep(2)
 
             # Ignore benign PID churn; require sustained loss of the original

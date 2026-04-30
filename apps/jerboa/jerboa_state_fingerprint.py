@@ -39,7 +39,31 @@ def _admin_jwt() -> str:
     token = cache.get("admin_jwt")
     if isinstance(token, str) and token:
         return token
-    raise RuntimeError("missing admin_jwt in probe auth cache")
+    secrets_path = os.path.join(os.path.dirname(__file__), "secrets.json")
+    try:
+        with open(secrets_path, "r", encoding="utf-8") as handle:
+            secrets = json.load(handle)
+    except Exception as exc:
+        raise RuntimeError(f"missing admin_jwt in probe auth cache: {exc}") from exc
+
+    password = secrets.get("admin_password")
+    if not isinstance(password, str) or not password:
+        raise RuntimeError("missing admin_password for admin JWT fallback")
+
+    requests = _requests()
+    response = requests.post(
+        f"{LEMMY_BASE_URL}/api/v3/user/login",
+        json={"username_or_email": "admin", "password": password},
+        timeout=15,
+        verify=_verify_value(),
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"admin login failed: HTTP {response.status_code}")
+    payload = response.json()
+    token = payload.get("jwt") if isinstance(payload, dict) else None
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("admin login returned no JWT")
+    return token
 
 
 def _alice_jwt() -> str:
@@ -71,13 +95,27 @@ def _get_json(
     return payload
 
 
+def _auth_request_kwargs(
+    jwt: str,
+    *,
+    params: dict[str, Any] | None = None,
+    include_query_auth: bool = False,
+) -> dict[str, Any]:
+    merged = dict(params or {})
+    if include_query_auth:
+        merged["auth"] = jwt
+    return {
+        "params": merged,
+        "headers": {"Authorization": f"Bearer {jwt}"},
+    }
+
+
 def _list_users() -> list[dict[str, Any]]:
     admin_jwt = _admin_jwt()
     try:
         payload = _get_json(
             "/api/v3/user/list",
-            params={"limit": 50, "sort": "New"},
-            headers={"Authorization": f"Bearer {admin_jwt}"},
+            **_auth_request_kwargs(admin_jwt, params={"limit": 50, "sort": "New"}),
         )
         rows = payload.get("users") or []
     except RuntimeError as exc:
@@ -87,7 +125,9 @@ def _list_users() -> list[dict[str, Any]]:
         for username in EXPECTED_USERS:
             payload = _get_json(
                 "/api/v3/user",
-                params={"username": username, "auth": admin_jwt},
+                **_auth_request_kwargs(
+                    admin_jwt, params={"username": username}, include_query_auth=True
+                ),
             )
             person_view = payload.get("person_view") or payload.get("user_view") or {}
             rows.append(person_view)
@@ -136,11 +176,15 @@ def _post_record(post_view: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _list_posts(alice_jwt: str, *, saved_only: bool = False) -> list[dict[str, Any]]:
-    params: dict[str, Any] = {"type_": "All", "limit": 200, "auth": alice_jwt}
+    params: dict[str, Any] = {"type_": "All", "limit": 50}
     if saved_only:
         params["saved_only"] = "true"
-    payload = _get_json("/api/v3/post/list", params=params)
+    payload = _get_json(
+        "/api/v3/post/list", **_auth_request_kwargs(alice_jwt, params=params)
+    )
     rows = payload.get("posts") or []
+    if len(rows) >= 50:
+        raise RuntimeError("post list reached limit 50; fingerprint would be truncated")
     out: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict):
@@ -157,9 +201,18 @@ def _list_comments(alice_jwt: str, posts: list[dict[str, Any]]) -> list[dict[str
     comments: list[dict[str, Any]] = []
     for post in posts:
         payload = _get_json(
-            "/api/v3/post", params={"id": post["id"], "auth": alice_jwt}
+            "/api/v3/comment/list",
+            **_auth_request_kwargs(
+                alice_jwt,
+                params={"post_id": post["id"], "limit": 50, "sort": "New"},
+            ),
         )
-        for row in payload.get("comments") or []:
+        rows = payload.get("comments") or []
+        if len(rows) >= 50:
+            raise RuntimeError(
+                f"comment list for post {post['id']} reached limit 50; fingerprint would be truncated"
+            )
+        for row in rows:
             if not isinstance(row, dict):
                 continue
             comment = (

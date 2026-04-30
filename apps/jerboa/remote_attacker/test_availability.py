@@ -21,6 +21,7 @@ def _load_and_run():
         sys.path.insert(0, str(parent))
 
     from jerboa_probe_utils import (
+        ensure_jerboa_running,
         get_attested_pids,
         get_jerboa_package,
         run_adb_shell,
@@ -96,7 +97,7 @@ def _load_and_run():
         saw_attested = False
 
         for uri in crash_candidates:
-            candidate_pids = get_attested_pids()
+            candidate_pids = ensure_jerboa_running()
             if not candidate_pids:
                 continue
             saw_attested = True

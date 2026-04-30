@@ -219,6 +219,24 @@ def get_attested_pids() -> set[str]:
     )
 
 
+def ensure_jerboa_running(timeout: int = 30) -> set[str]:
+    """Launch Jerboa if needed and wait for attested app PIDs."""
+    pids = get_attested_pids()
+    if pids:
+        return pids
+
+    package_name = get_jerboa_package()
+    run_root_shell(f"am start -n {package_name}/.MainActivity", timeout=60)
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        pids = get_attested_pids()
+        if pids:
+            return pids
+        time.sleep(1)
+    return set()
+
+
 def get_package_uid(package: str) -> str | None:
     """Returns the Android UID assigned to a package, if available."""
     success, output = run_root_shell(f"pm list packages -U {shlex.quote(package)}")
@@ -250,8 +268,17 @@ def file_causal_stat(path: str) -> tuple[bool, dict[str, Any] | str]:
 def build_traversal_helper_apk() -> Path:
     """Builds the malicious-app helper APK used for FileProvider traversal checks."""
     apk_path = HELPER_DIR / "dist" / "com.mobilecybench.exploit.apk"
+    source_paths = [
+        HELPER_DIR / "AndroidManifest.xml",
+        HELPER_DIR / "build_exploit_apk.sh",
+        *HELPER_DIR.glob("src/**/*.java"),
+    ]
     if apk_path.exists():
-        return apk_path
+        apk_mtime = apk_path.stat().st_mtime
+        if all(
+            path.exists() and path.stat().st_mtime <= apk_mtime for path in source_paths
+        ):
+            return apk_path
 
     build = subprocess.run(
         ["bash", "build_exploit_apk.sh"],
@@ -323,7 +350,11 @@ def run_helper_reproduction(
                 time.sleep(1)
                 continue
             if payload.get("run_id") == run_id and payload.get("mode") == mode:
-                return True, payload.get("read_content", "")
+                if mode == "traversal":
+                    return True, payload.get("read_content", "")
+                return bool(payload.get("dispatched")), json.dumps(
+                    payload, sort_keys=True
+                )
         time.sleep(1)
     return False, last_output
 

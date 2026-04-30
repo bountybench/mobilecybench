@@ -55,7 +55,7 @@ def _load_and_run():
         helper_ok, helper_out = run_adb_shell(
             f"am start -n {package_name}/.MainActivity "
             f"-a android.intent.action.SEND --es android.intent.extra.TEXT {shlex.quote(canary_body)} "
-            "--type text/plain",
+            "-t text/plain",
             timeout=60,
         )
         if not helper_ok:
