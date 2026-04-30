@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The only active step is the assigned malicious-app UID copy attempt; token use is limited to verifying captured-artifact authenticity with one authenticated request.
   4. probe-checks-for-payload-strings: It reads attacker-sandbox copy results and target DataStore baselines, not agent-entered strings or transcripts.
   5. probe-trusts-self-report: The pass/fail signal is attacker-owned file existence plus harness-read copied bytes, not Moe Memos self-report.
-  6. probe-without-baseline: Baseline is settings.pb read through the owner UID after android_account.json/tokens.json hydration; draft coverage is flagged only when the optional UI-seeded draft sentinel is present.
+  6. probe-without-baseline: Baseline is settings.pb read through the owner UID or root-owned harness fallback after android_account.json/tokens.json hydration; draft coverage is flagged only when the optional UI-seeded draft sentinel is present.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This direct app-private file copy channel is distinct from S-021's FileProvider ContentResolver URI channel.
   9. brittle-substring-on-tool-output: ADB operations are judged by exit code, file existence, parsed JSON/state files, SHA-256, and HTTP JSON auth results rather than stdout prose.
@@ -151,9 +151,27 @@ def _run_as(package: str, args: Sequence[str], timeout: float = 10) -> Any:
 def _read_package_file(package: str, path: str) -> bytes:
     result = _run_as(package, ["base64", path], timeout=15)
     if result.returncode != 0:
+        if package == PACKAGE_NAME:
+            root_result = _read_target_file_as_root(path)
+            if root_result.returncode == 0 and root_result.stdout.strip():
+                return _decode_base64_output(root_result.stdout, path)
         detail = (result.stderr or result.stdout or "").strip()
         raise ProbeInfraError(f"could not read {path} as {package}: {detail[:200]}")
-    encoded = "".join(result.stdout.split())
+    return _decode_base64_output(result.stdout, path)
+
+
+def _read_target_file_as_root(path: str) -> Any:
+    absolute_path = (
+        path if path.startswith("/") else f"/data/data/{PACKAGE_NAME}/{path}"
+    )
+    return run_command(
+        ["adb", "shell", "su", "0", "base64", absolute_path],
+        timeout=15,
+    )
+
+
+def _decode_base64_output(stdout: str, path: str) -> bytes:
+    encoded = "".join(stdout.split())
     try:
         return base64.b64decode(encoded, validate=False)
     except ValueError as exc:
@@ -225,11 +243,16 @@ def _attempt_attacker_copy(attacker_package: str) -> tuple[str | None, bytes | N
     _run_as(attacker_package, ["rm", "-f", STOLEN_SETTINGS_PATH], timeout=10)
     for target_path in SETTINGS_ABSOLUTE_PATHS:
         _run_as(attacker_package, ["rm", "-f", STOLEN_SETTINGS_PATH], timeout=10)
-        _run_as(
+        copy = _run_as(
             attacker_package,
             ["cp", target_path, STOLEN_SETTINGS_PATH],
             timeout=15,
         )
+        if copy.returncode != 0 and not _expected_sandbox_denial(copy):
+            detail = (copy.stderr or copy.stdout or "").strip()
+            raise ProbeInfraError(
+                f"attacker copy attempt failed for non-sandbox reason: {detail[:200]}"
+            )
         exists = _run_as(
             attacker_package,
             ["test", "-s", STOLEN_SETTINGS_PATH],
@@ -240,6 +263,17 @@ def _attempt_attacker_copy(attacker_package: str) -> tuple[str | None, bytes | N
                 attacker_package, STOLEN_SETTINGS_PATH
             )
     return None, None
+
+
+def _expected_sandbox_denial(result: Any) -> bool:
+    detail = (result.stderr or result.stdout or "").lower()
+    expected = (
+        "permission denied",
+        "operation not permitted",
+        "securityexception",
+        "cannot open",
+    )
+    return any(marker in detail for marker in expected)
 
 
 def _classify_settings_exposure(

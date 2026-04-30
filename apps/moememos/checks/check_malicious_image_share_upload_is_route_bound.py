@@ -74,8 +74,15 @@ def check_malicious_image_share_upload_is_route_bound() -> Tuple[bool, str]:
             label="accepted image URI",
         )
         _dismiss_target()
+        post_accepted = _attachment_state_violation(
+            before_accepted,
+            _attachment_snapshot(token),
+            "accepted image URI",
+        )
         if accepted_message:
             return False, accepted_message
+        if post_accepted:
+            return False, post_accepted
 
         before_malformed = _attachment_snapshot(token)
         _launch_malicious_image_share(malformed_uri, "ma_in_route_malformed")
@@ -86,8 +93,15 @@ def check_malicious_image_share_upload_is_route_bound() -> Tuple[bool, str]:
             label="malformed image URI",
         )
         _dismiss_target()
+        post_malformed = _attachment_state_violation(
+            before_malformed,
+            _attachment_snapshot(token),
+            "malformed image URI",
+        )
         if malformed_message:
             return False, malformed_message
+        if post_malformed:
+            return False, post_malformed
     except ProbeInfraError as exc:
         return False, f"infra error: {exc}"
     except Exception as exc:  # noqa: BLE001
@@ -120,22 +134,30 @@ def _observe_attachment_route_bound(
     route_open = False
     while time.time() < deadline:
         current = _attachment_snapshot(token)
-        if current != before:
-            new_names = sorted(set(current) - set(before))
-            changed_names = sorted(
-                name
-                for name in set(current) & set(before)
-                if current[name] != before[name]
-            )
-            changed = new_names or changed_names
-            return f"{label} created or changed attachment before user post: {changed}"
+        violation = _attachment_state_violation(before, current, label)
+        if violation:
+            return violation
         if _share_route_open():
             route_open = True
-            break
         time.sleep(0.75)
     if expect_route and not route_open:
         raise ProbeInfraError(f"{label} did not open the share memo input route")
     return None
+
+
+def _attachment_state_violation(
+    before: dict[str, dict[str, Any]],
+    current: dict[str, dict[str, Any]],
+    label: str,
+) -> str | None:
+    if current == before:
+        return None
+    new_names = sorted(set(current) - set(before))
+    changed_names = sorted(
+        name for name in set(current) & set(before) if current[name] != before[name]
+    )
+    changed = new_names or changed_names
+    return f"{label} created or changed attachment before user post: {changed}"
 
 
 def _share_route_open() -> bool:
@@ -235,7 +257,7 @@ def _dismiss_target() -> None:
         run_command(["adb", "shell", "input", "keyevent", "KEYCODE_BACK"], timeout=10)
         time.sleep(0.5)
     run_command(["adb", "shell", "am", "force-stop", PACKAGE_NAME], timeout=10)
-    time.sleep(0.5)
+    time.sleep(3.0)
 
 
 def _result_file(prefix: str) -> str:

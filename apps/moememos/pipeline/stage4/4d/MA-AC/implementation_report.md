@@ -31,7 +31,12 @@
 - S-022 compares granted bytes against `malicious_app_storage.json:fileprovider_fixtures[*].sha256` rather than `resources.json`, because Stage 3 hydrates deterministic app-private FileProvider fixtures for the malicious-app URI checks.
 - S-022 uses an Android framework exact-URI grant for the hydrated Moe Memos FileProvider URI rather than a full Moe Memos external-viewer UI tap. It verifies the exact-grant versus sibling-denial boundary; Gate-2 should require a future UI trigger if source-package provenance must be covered in this probe.
 - S-024 now uses the malicious app for launcher, text/plain share, and image/* share delivery. The image stream URI comes from `malicious_app_storage.json` because the generated helper APK does not expose its own FileProvider.
-- S-029 intentionally returns a vacuous pass only if Android exposes no shortcut metadata channel through `cmd shortcut` / `dumpsys shortcut` or exposes IDs without launchable ACTION_VIEW data fields, matching the spec implementation note.
+- S-029 now treats a missing shortcut metadata channel or missing launchable ACTION_VIEW data fields as an infra failure rather than a pass.
+
+## Stage 5 v2 revision notes
+- S-022/S-023 now force-stop the attacker and revoke URI permissions around the grant/no-grant boundary to avoid residual transient grant coupling.
+- S-024 now requires a strict `ResumedActivity`/`topResumedActivity` match and accepts either visible share sentinel staging or an input route as the conforming-share liveness signal.
+- S-029 no longer vacuously passes on missing shortcut metadata or missing launchable ACTION_VIEW data, uses shell `am start`, and tightens compose/search route visibility checks.
 
 ## Open questions
 - Gate-2 should confirm the Android `cmd package query-activities` output shape on the target API level; the check falls back to `dumpsys package` if that command is unavailable.

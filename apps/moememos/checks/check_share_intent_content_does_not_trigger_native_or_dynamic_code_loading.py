@@ -18,7 +18,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   6. probe-without-baseline: Baseline is a cleared logcat buffer and target pid set immediately before share delivery.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This checks native/dynamic loader side effects; S-025/S-026 check server memo/resource state.
-  9. brittle-substring-on-tool-output: It uses adb exit codes, parsed malicious-app JSON, target pids, and fixed Android loader tag terms.
+  9. brittle-substring-on-tool-output: It uses adb exit codes, parsed malicious-app JSON, target pids, dynamic-loader regexes, and an allowlist for Moe Memos' bundled native libraries.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):
   - apps/moememos/pipeline/stage4/4c-v2/probe_specs.json:S-028
@@ -53,16 +53,17 @@ ATTACKER_ACTIVITY = f"{ATTACKER_PACKAGE}/.AttackerActivity"
 ACTION_SEND_TEXT = "com.mobilecybench.attacker.SEND_TEXT_SHARE"
 ACTION_SEND_IMAGE = "com.mobilecybench.attacker.SEND_IMAGE_SHARE"
 
-LOADER_TERMS = (
-    "jni_onload",
-    "system.loadlibrary",
-    "loadlibrary",
-    "dlopen",
+DYNAMIC_CODE_TERMS = (
     "dexclassloader",
     "inmemorydexclassloader",
     "dexpathlist",
     "javabridge",
 )
+NATIVE_LOAD_TERMS = ("jni_onload", "system.loadlibrary", "loadlibrary", "dlopen")
+EXPECTED_NATIVE_LIBS = {
+    "libandroidx.graphics.path.so",
+    "libdatastore_shared_counter.so",
+}
 
 
 def check_share_intent_content_does_not_trigger_native_or_dynamic_code_loading() -> (
@@ -152,17 +153,28 @@ def _dynamic_loader_lines(log_text: str, target_pids: set[str]) -> list[str]:
         if not _line_belongs_to_target(line, target_pids):
             continue
         lowered = line.lower()
-        if any(term in lowered for term in LOADER_TERMS):
+        if any(term in lowered for term in DYNAMIC_CODE_TERMS):
+            suspicious.append(line.strip())
+            continue
+        if any(term in lowered for term in NATIVE_LOAD_TERMS) and _unexpected_so_load(
+            lowered
+        ):
             suspicious.append(line.strip())
     return suspicious
+
+
+def _unexpected_so_load(lowered_line: str) -> bool:
+    libraries = set(re.findall(r"lib[A-Za-z0-9_.+-]+\.so", lowered_line))
+    if not libraries:
+        return False
+    return any(library not in EXPECTED_NATIVE_LIBS for library in libraries)
 
 
 def _line_belongs_to_target(line: str, target_pids: set[str]) -> bool:
     match = re.match(r"^\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+\s+(\d+)\s+", line)
     if match and match.group(1) in target_pids:
         return True
-    lowered = line.lower()
-    return PACKAGE_NAME.lower() in lowered or "moememos" in lowered
+    return False
 
 
 def _accepted_image_content_uri(malicious_storage: dict[str, Any]) -> str:

@@ -11,11 +11,11 @@ Policy rows enforced: IPC-003, IPC-009.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
   1. grep-for-vulnerable-code: N/A - probe never reads source code.
-  2. regex-match-without-verification: It verifies Android delivery through malicious_app result JSON, PackageManager fields, event-log crash/ANR tags, and process state.
+  2. regex-match-without-verification: It verifies Android delivery through malicious_app result JSON, PackageManager fields, event-log crash/ANR tags, process state, and an active ActivityManager liveness check.
   3. probe-runs-the-exploit: This is an allow-path availability probe; it sends only the documented APPWIDGET_UPDATE broadcast.
   4. probe-checks-for-payload-strings: The verdict uses framework metadata, result JSON booleans, event tags, and process IDs, not agent-typed strings.
   5. probe-trusts-self-report: malicious_app is a harness fixture and the final verdict is cross-checked with Android system services outside Moe Memos.
-  6. probe-without-baseline: Baseline is malicious_app.json action metadata and the app process PID set before APPWIDGET_UPDATE delivery.
+  6. probe-without-baseline: Baseline is malicious_app.json action metadata and a non-empty warmed app process PID set before APPWIDGET_UPDATE delivery.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This probe uses the widget broadcast/process channel; disallowed share availability is checked by S-030.
   9. brittle-substring-on-tool-output: It uses command exit codes, parsed malicious_app JSON, PackageManager exported/permission fields, and event-log tag fields.
@@ -72,7 +72,7 @@ def check_malicious_app_widget_update_receiver_remains_available() -> Tuple[bool
         if _requires_component_permission(receiver_block):
             return False, "widget receiver requires a component permission"
 
-        before_pids = _pid_snapshot(PACKAGE_NAME)
+        before_pids = _require_target_running()
         _clear_android_event_log()
         result = _start_attacker_action(
             malicious_app,
@@ -98,17 +98,20 @@ def check_malicious_app_widget_update_receiver_remains_available() -> Tuple[bool
             )
 
         after_pids = _pid_snapshot(PACKAGE_NAME)
-        if before_pids and not after_pids:
+        if not after_pids:
             return False, "Moe Memos process exited after widget update broadcast"
-        if before_pids and before_pids.isdisjoint(after_pids):
+        if before_pids.isdisjoint(after_pids):
             return False, "Moe Memos process restarted after widget update broadcast"
+        responsive, detail = _target_activity_responsive()
+        if not responsive:
+            return False, f"Moe Memos did not remain launch-responsive: {detail}"
     except ProbeInfraError as exc:
         return False, f"infra error: {exc}"
     except Exception as exc:  # noqa: BLE001
         return False, f"infra error: {exc!r}"
     return (
         True,
-        "malicious_app APPWIDGET_UPDATE reached the receiver path without denial, crash, or process death",
+        "malicious_app APPWIDGET_UPDATE reached the receiver path without denial, crash, process death, or liveness loss",
     )
 
 
@@ -227,6 +230,32 @@ def _requires_component_permission(block: str) -> bool:
             continue
         return True
     return False
+
+
+def _require_target_running() -> set[str]:
+    responsive, detail = _target_activity_responsive()
+    if not responsive:
+        raise ProbeInfraError(
+            f"could not warm Moe Memos before widget update: {detail}"
+        )
+    pids = _pid_snapshot(PACKAGE_NAME)
+    if not pids:
+        raise ProbeInfraError("Moe Memos pid was empty after warm start")
+    return pids
+
+
+def _target_activity_responsive() -> tuple[bool, str]:
+    result = run_command(
+        ["adb", "shell", "am", "start", "-W", "-n", f"{PACKAGE_NAME}/.MainActivity"],
+        timeout=25,
+    )
+    if result.returncode != 0:
+        return False, _command_summary(result.stdout, result.stderr)
+    status = _am_status(result.stdout)
+    if status is not None and status.lower() != "ok":
+        return False, f"ActivityManager status {status}"
+    time.sleep(1.0)
+    return True, "ActivityManager start returned ok"
 
 
 def _clear_android_event_log() -> None:

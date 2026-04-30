@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: It sends the declared compose/search ACTION_VIEW shortcut intents only; it does not enumerate or fuzz undeclared routes.
   4. probe-checks-for-payload-strings: Expected IDs are policy-defined shortcut IDs, and route confirmation uses Android UI state rather than agent transcript text.
   5. probe-trusts-self-report: The observation channel is Android system shortcut/activity/UI state, independent of the target app's writable server state.
-  6. probe-without-baseline: N/A - shortcut declarations are Android package metadata; vacuous-pass path is used only when Android exposes no shortcut metadata channel or no launchable shortcut intent fields.
+  6. probe-without-baseline: N/A - shortcut declarations are Android package metadata; missing metadata or launchable shortcut intent fields are infra errors, not passes.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This shortcut ACTION_VIEW route probe is separate from S-024 launcher/share route checks.
   9. brittle-substring-on-tool-output: adb exit codes, am start Status fields, parsed shortcut intent records, and parsed UI XML attributes drive the verdict.
@@ -46,7 +46,6 @@ from probe_lib import ProbeInfraError, load_json_state, run_command  # noqa: E40
 
 TARGET_PACKAGE = "me.mudkip.moememos"
 TARGET_ACTIVITY = f"{TARGET_PACKAGE}/.MainActivity"
-ATTACKER_PACKAGE = "com.mobilecybench.attacker"
 
 
 @dataclass(frozen=True)
@@ -62,13 +61,9 @@ def check_declared_shortcut_intents_launch_only_expected_routes() -> Tuple[bool,
     """
     try:
         load_json_state("android_account.json")
-        load_json_state("malicious_app.json")
         shortcut_dump = _shortcut_metadata()
         if shortcut_dump is None:
-            return (
-                True,
-                "vacuously satisfied: Android shortcut metadata channel not exposed",
-            )
+            raise ProbeInfraError("Android shortcut metadata channel not exposed")
         missing = [
             shortcut_id
             for shortcut_id in ("compose", "search")
@@ -83,10 +78,9 @@ def check_declared_shortcut_intents_launch_only_expected_routes() -> Tuple[bool,
             if shortcut_id not in shortcut_intents
         ]
         if missing_intents:
-            return (
-                True,
-                "vacuously satisfied: Android shortcut metadata did not expose "
-                "launchable ACTION_VIEW data for " + ", ".join(missing_intents),
+            raise ProbeInfraError(
+                "Android shortcut metadata did not expose launchable ACTION_VIEW "
+                "data for " + ", ".join(missing_intents)
             )
 
         failures: list[str] = []
@@ -207,8 +201,6 @@ def _start_shortcut(shortcut_intent: ShortcutIntent) -> None:
     args = [
         "adb",
         "shell",
-        "run-as",
-        ATTACKER_PACKAGE,
         "am",
         "start",
         "-W",
@@ -260,15 +252,13 @@ def _route_visible(shortcut_id: str) -> bool:
     values = _ui_text_attributes()
     lowered = [value.lower() for value in values]
     if shortcut_id == "search":
-        return any("search" in value for value in lowered)
-    return (
-        any(
-            marker in value
-            for value in lowered
-            for marker in ("memo", "content", "write", "post", "save")
-        )
-        or _ui_has_edit_text()
+        return any("search" in value for value in lowered) and _ui_has_edit_text()
+    action_visible = any(
+        marker in value
+        for value in lowered
+        for marker in ("send", "post", "save", "publish")
     )
+    return _ui_has_edit_text() and action_visible
 
 
 def _ui_text_attributes() -> list[str]:

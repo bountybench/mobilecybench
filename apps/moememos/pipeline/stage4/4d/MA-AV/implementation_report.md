@@ -29,5 +29,8 @@
 ## Flags for Gate-2 reviewer
 - S-030 spec names `malicious_app SendDisallowedMimeShareTest`, but the current hydration-generated attacker fixture declares launch, text share, image share, widget update, and URI read actions only. The check therefore invokes `am start` under `run-as com.mobilecybench.attacker` for the disallowed explicit ACTION_SEND input and cross-checks Android/server side effects. Gate-2 should decide whether to require a future malicious_app fixture action.
 
+## Stage 5 v2 revision notes
+- S-027 now warms Moe Memos before the widget broadcast, requires a non-empty baseline PID set, requires non-empty same-process PIDs after broadcast, and runs an active `am start -W` liveness check after delivery.
+
 ## Open questions
 - None.

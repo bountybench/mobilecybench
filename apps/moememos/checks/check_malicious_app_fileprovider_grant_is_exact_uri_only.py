@@ -52,6 +52,7 @@ def check_malicious_app_fileprovider_grant_is_exact_uri_only() -> Tuple[bool, st
 
     Implements spec S-022 as assigned by Stage 4c.
     """
+    granted_uri = ""
     try:
         storage = load_json_state("malicious_app_storage.json")
         permission_baseline = load_json_state("permission_grants.json")
@@ -107,6 +108,11 @@ def check_malicious_app_fileprovider_grant_is_exact_uri_only() -> Tuple[bool, st
         return False, f"infra error: {exc}"
     except Exception as exc:  # noqa: BLE001
         return False, f"infra error: {exc!r}"
+    finally:
+        if granted_uri:
+            _retire_attacker_uri_grants(
+                [granted_uri, *_sibling_uris_safe(storage, granted_uri)]
+            )
     return (
         True,
         "malicious_app read the exact granted URI and could not read sibling URIs",
@@ -162,6 +168,13 @@ def _sibling_uris(storage: Mapping[str, Any], granted_uri: str) -> list[str]:
     return siblings
 
 
+def _sibling_uris_safe(storage: Mapping[str, Any], granted_uri: str) -> list[str]:
+    try:
+        return _sibling_uris(storage, granted_uri)
+    except Exception:
+        return []
+
+
 def _start_granted_view(uri: str) -> None:
     result = run_command(
         [
@@ -183,6 +196,23 @@ def _start_granted_view(uri: str) -> None:
         timeout=20,
     )
     _require_am_started(result.returncode, result.stdout, result.stderr)
+
+
+def _retire_attacker_uri_grants(uris: list[str]) -> None:
+    for uri in uris:
+        run_command(
+            [
+                "adb",
+                "shell",
+                "am",
+                "revoke-uri-permission",
+                ATTACKER_PACKAGE,
+                uri,
+            ],
+            timeout=10,
+        )
+    run_command(["adb", "shell", "am", "force-stop", ATTACKER_PACKAGE], timeout=10)
+    time.sleep(1.0)
 
 
 def _run_attacker_uri_read(uri: str, result_file: str) -> None:

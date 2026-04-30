@@ -11,11 +11,11 @@ Policy rows enforced: PER-018, PER-019, PER-020, PER-021, CON-011.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
   1. grep-for-vulnerable-code: N/A - probe never reads source code.
-  2. regex-match-without-verification: It compares owner-read settings.pb bytes before and after the live UID-bound write attempt.
+  2. regex-match-without-verification: It compares owner-read or root-owned harness fallback settings.pb bytes before and after the live UID-bound write attempt.
   3. probe-runs-the-exploit: It performs the spec's direct sandbox-boundary write attempt from the attacker UID, then verifies only owner-read file state.
   4. probe-checks-for-payload-strings: The sentinel check is secondary to owner-read hash/size comparison of settings.pb.
   5. probe-trusts-self-report: The verdict ignores malicious-app stdout/stderr and reads settings.pb as me.mudkip.moememos.
-  6. probe-without-baseline: Baseline is the owner-read settings.pb sha256, byte length, and absence of sentinel_malicious_settings_write before the write attempt.
+  6. probe-without-baseline: Baseline is the owner-read or root-owned harness fallback settings.pb sha256, byte length, and absence of sentinel_malicious_settings_write before the write attempt.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This is the only MA-IN settings.pb direct-write probe; share-route state is checked by S-025/S-026.
   9. brittle-substring-on-tool-output: It uses adb exit codes plus base64-decoded bytes and sha256 fields, not natural-language command text.
@@ -138,10 +138,20 @@ def _owner_read_settings() -> bytes:
         timeout=15,
     )
     if result.returncode != 0:
+        root_result = run_command(
+            ["adb", "shell", "su", "0", "base64", SETTINGS_ABSOLUTE_PATH],
+            timeout=15,
+        )
+        if root_result.returncode == 0 and root_result.stdout.strip():
+            return _decode_base64_settings(root_result.stdout)
         raise ProbeInfraError(
             f"owner read of settings.pb failed with {result.returncode}"
         )
-    encoded = "".join(result.stdout.split())
+    return _decode_base64_settings(result.stdout)
+
+
+def _decode_base64_settings(stdout: str) -> bytes:
+    encoded = "".join(stdout.split())
     if not encoded:
         raise ProbeInfraError("owner read of settings.pb returned no bytes")
     try:
@@ -202,18 +212,7 @@ def _restore_after_violation(baseline: bytes) -> list[str]:
         os.chmod(local_path, 0o600)
         push = run_command(["adb", "push", local_path, device_path], timeout=20)
         chmod = run_command(["adb", "shell", "chmod", "0644", device_path], timeout=10)
-        restore = run_command(
-            [
-                "adb",
-                "shell",
-                "run-as",
-                PACKAGE_NAME,
-                "sh",
-                "-c",
-                f"cat {shlex.quote(device_path)} > {shlex.quote(SETTINGS_RELATIVE_PATH)}",
-            ],
-            timeout=15,
-        )
+        restore = _restore_settings_from_device_path(device_path)
         if push.returncode == 0 and chmod.returncode == 0 and restore.returncode == 0:
             return ["baseline settings.pb restored after violation"]
         return ["baseline settings.pb restore failed after violation"]
@@ -225,6 +224,35 @@ def _restore_after_violation(baseline: bytes) -> list[str]:
                 Path(local_path).unlink()
             except OSError:
                 pass
+
+
+def _restore_settings_from_device_path(device_path: str):
+    restore = run_command(
+        [
+            "adb",
+            "shell",
+            "run-as",
+            PACKAGE_NAME,
+            "sh",
+            "-c",
+            f"cat {shlex.quote(device_path)} > {shlex.quote(SETTINGS_RELATIVE_PATH)}",
+        ],
+        timeout=15,
+    )
+    if restore.returncode == 0:
+        return restore
+    return run_command(
+        [
+            "adb",
+            "shell",
+            "su",
+            "0",
+            "sh",
+            "-c",
+            f"cat {shlex.quote(device_path)} > {shlex.quote(SETTINGS_ABSOLUTE_PATH)}",
+        ],
+        timeout=15,
+    )
 
 
 if __name__ == "__main__":

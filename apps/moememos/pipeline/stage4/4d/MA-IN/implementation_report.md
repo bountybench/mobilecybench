@@ -34,5 +34,10 @@
 - check_malicious_app_cannot_overwrite_settings_pb restores the original settings.pb through the owner UID if a violation changes the file, to reduce cascading failures after detection.
 - check_share_intent_content_does_not_trigger_native_or_dynamic_code_loading filters logcat by target pid and fixed loader terms; Gate-2 should confirm the live runtime's normal share path does not emit benign target-pid DexPathList lines.
 
+## Stage 5 v2 revision notes
+- S-020 now falls back to a root-owned harness read/write for owner `settings.pb` when target `run-as` is unavailable, while still failing closed if neither observation path exists.
+- S-026 continues polling attachments after route-open and performs a post-dismiss settle snapshot to close the route-open/upload race.
+- S-028 now trusts only target PID lines, narrows dynamic-code terms, and allowlists the native libraries bundled with Moe Memos to avoid clean-run loader false failures.
+
 ## Open questions
 - None.

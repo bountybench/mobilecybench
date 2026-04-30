@@ -58,7 +58,8 @@ def check_malicious_app_cannot_browse_fileprovider_without_grant() -> Tuple[bool
         _require_no_baseline_grant(permission_baseline)
         candidates = _no_grant_uri_candidates(storage)
         if not candidates:
-            return True, "vacuously satisfied: no hydrated FileProvider URI candidates"
+            return False, "infra error: no FileProvider URI candidates were built"
+        _retire_attacker_uri_grants(candidates)
 
         violations: list[str] = []
         denied = 0
@@ -151,6 +152,23 @@ def _run_attacker_uri_read(uri: str, result_file: str) -> None:
     status = _am_status(result.stdout)
     if status and status.lower() != "ok":
         raise ProbeInfraError(f"adb am start returned Status: {status}")
+
+
+def _retire_attacker_uri_grants(uris: list[str]) -> None:
+    for uri in uris:
+        run_command(
+            [
+                "adb",
+                "shell",
+                "am",
+                "revoke-uri-permission",
+                ATTACKER_PACKAGE,
+                uri,
+            ],
+            timeout=10,
+        )
+    run_command(["adb", "shell", "am", "force-stop", ATTACKER_PACKAGE], timeout=10)
+    time.sleep(1.0)
 
 
 def _am_status(stdout: str) -> str | None:

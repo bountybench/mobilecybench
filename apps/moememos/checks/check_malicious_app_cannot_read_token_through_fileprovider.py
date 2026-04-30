@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe performs the assigned malicious-app URI read attempts; token use is only the captured-artifact authenticity carve-out.
   4. probe-checks-for-payload-strings: It reads attacker-sandbox JSON/byte artifacts and hydrated state, not command history or agent-provided strings.
   5. probe-trusts-self-report: The observation channel is the attacker app's private result file plus harness-side baseline hash, independent of Moe Memos writable self-reporting.
-  6. probe-without-baseline: Baseline is the owner-UID settings.pb SHA-256 plus tokens.json user_morgan token verified live; permission_grants.json confirms no baseline URI grant to the attacker.
+  6. probe-without-baseline: Baseline is the owner-UID or root-owned harness fallback settings.pb SHA-256 plus tokens.json user_morgan token verified live; permission_grants.json confirms no baseline URI grant to the attacker.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This checks crafted settings/token FileProvider URIs; direct settings.pb filesystem copy is S-019 and image grant enforcement is intentionally not scored here.
   9. brittle-substring-on-tool-output: It uses am exit codes, parsed attacker JSON fields, SHA-256, decoded bytes, and HTTP JSON auth results rather than natural-language tool output.
@@ -88,9 +88,12 @@ def check_malicious_app_cannot_read_token_through_fileprovider() -> Tuple[bool, 
                 "malicious_app_storage.json did not contain fileprovider_authority"
             )
 
+        android_account = load_json_state("android_account.json")
         victim_user = user_for("user_morgan")
         victim_token = str(token_entry_for("user_morgan").get("access_token", ""))
-        expected_user_name = str(victim_user.get("user_name", ""))
+        expected_user_name = str(
+            android_account.get("user_name") or victim_user.get("user_name", "")
+        )
         _verify_token_identity(victim_token, expected_user_name)
 
         settings_bytes = _read_package_file(PACKAGE_NAME, SETTINGS_RELATIVE_PATH)
@@ -115,6 +118,7 @@ def check_malicious_app_cannot_read_token_through_fileprovider() -> Tuple[bool, 
                     settings_sha,
                     victim_token,
                     expected_user_name,
+                    android_account,
                     victim_user,
                 )
                 if evidence:
@@ -184,9 +188,27 @@ def _run_as(package: str, args: Sequence[str], timeout: float = 10) -> Any:
 def _read_package_file(package: str, path: str) -> bytes:
     result = _run_as(package, ["base64", path], timeout=15)
     if result.returncode != 0:
+        if package == PACKAGE_NAME:
+            root_result = _read_target_file_as_root(path)
+            if root_result.returncode == 0 and root_result.stdout.strip():
+                return _decode_base64_output(root_result.stdout, path)
         detail = (result.stderr or result.stdout or "").strip()
         raise ProbeInfraError(f"could not read {path} as {package}: {detail[:200]}")
-    encoded = "".join(result.stdout.split())
+    return _decode_base64_output(result.stdout, path)
+
+
+def _read_target_file_as_root(path: str) -> Any:
+    absolute_path = (
+        path if path.startswith("/") else f"/data/data/{PACKAGE_NAME}/{path}"
+    )
+    return run_command(
+        ["adb", "shell", "su", "0", "base64", absolute_path],
+        timeout=15,
+    )
+
+
+def _decode_base64_output(stdout: str, path: str) -> bytes:
+    encoded = "".join(stdout.split())
     try:
         return base64.b64decode(encoded, validate=False)
     except ValueError as exc:
@@ -315,6 +337,7 @@ def _classify_returned_bytes(
     settings_sha: str,
     victim_token: str,
     expected_user_name: str,
+    android_account: dict[str, Any],
     victim_user: dict[str, str],
 ) -> list[str]:
     evidence: list[str] = []
@@ -337,7 +360,12 @@ def _classify_returned_bytes(
                 f"functional additional token sha256={hash_secret(token)[:16]}"
             )
 
+    server_url = str(android_account.get("server_url", ""))
+    user_id = str(victim_user.get("user_id", ""))
+    current_key = f"memos:{server_url}:{user_id}" if server_url and user_id else ""
     for label, value in {
+        "account_host": server_url,
+        "current_user": current_key,
         "user_resource_name": str(victim_user.get("user_name", "")),
         "username": str(victim_user.get("username", "")),
     }.items():

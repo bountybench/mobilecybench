@@ -30,5 +30,10 @@
 - S-019 attempts to seed the draft sentinel through UI automation when available. If UI seeding is unavailable, the probe still enforces token/account/current-user confidentiality and reports draft leakage only when the seeded sentinel is present in copied bytes.
 - S-021 treats any non-empty stream from crafted settings/token FileProvider URIs as a failure unless it can decode and classify returned material more specifically; this is intentional because the spec's pass condition requires no bytes returned for those crafted URIs.
 
+## Stage 5 v2 revision notes
+- S-019 and S-021 now fall back to a root-owned harness read for owner `settings.pb` when target `run-as` is unavailable, while still failing closed if neither observation path exists.
+- S-019 now treats attacker copy failures that are not sandbox-denial shaped as infra errors instead of silent passes.
+- S-021 now checks account host and current-account markers in addition to token and user markers.
+
 ## Open questions
 - None.

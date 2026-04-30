@@ -92,9 +92,9 @@ def check_malicious_app_entrypoints_match_declared_routes() -> Tuple[bool, str]:
             failures.append("malicious_app text/plain share was not delivered")
         if not _target_resumed():
             failures.append("MainActivity was not resumed after text/plain share")
-        elif not _ui_contains_any([share_text]):
+        elif not (_ui_contains_any([share_text]) or _share_input_route_open()):
             failures.append(
-                "text/plain share route did not stage the hydrated sentinel"
+                "text/plain share route did not stage the hydrated sentinel or open input route"
             )
 
         image_result = _run_attacker_action(
@@ -274,7 +274,7 @@ def _target_resumed() -> bool:
             and "MainActivity" in line
         ):
             return True
-    return TARGET_PACKAGE in result.stdout and "MainActivity" in result.stdout
+    return False
 
 
 def _ui_contains_any(needles: list[str]) -> bool:
@@ -293,6 +293,33 @@ def _ui_contains_any(needles: list[str]) -> bool:
     attributes = _ui_text_attributes(cat.stdout)
     return any(
         needle and any(needle in attr for attr in attributes) for needle in needles
+    )
+
+
+def _share_input_route_open() -> bool:
+    result = run_command(
+        ["adb", "shell", "uiautomator", "dump", "/sdcard/moememos_ma_ac_route.xml"],
+        timeout=15,
+    )
+    if result.returncode != 0:
+        raise ProbeInfraError("uiautomator dump failed")
+    cat = run_command(
+        ["adb", "shell", "cat", "/sdcard/moememos_ma_ac_route.xml"],
+        timeout=10,
+    )
+    if cat.returncode != 0:
+        raise ProbeInfraError("could not read UI hierarchy dump")
+    xml_text = cat.stdout
+    action_markers = (
+        'text="Send"',
+        'content-desc="Send"',
+        'text="Post"',
+        'content-desc="Post"',
+        'text="Save"',
+        'content-desc="Save"',
+    )
+    return "android.widget.EditText" in xml_text and any(
+        marker in xml_text for marker in action_markers
     )
 
 
