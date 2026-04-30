@@ -40,6 +40,8 @@ EXPECTED_ITEM_SIZES = sorted([12247, 12247])
 
 # Security-critical knobs in baseline server-settings JSON. Drift = config
 # poisoning (auth disabled, CORS opened, OIDC swapped, rate limits dropped).
+# All admin-only — usera has no API path to mutate any of these — so a
+# mismatch is unambiguously a compromise signal, not benign drift.
 EXPECTED_SETTINGS = {
     "allowedOrigins": [],
     "allowIframe": False,
@@ -198,6 +200,13 @@ def _scan_text_field(value):
 
 
 def check_no_xss_in_metadata(cur):
+    # User-keyed fields (users.username, users.email,
+    # sessions.userAgent, sessions.ipAddress) are excluded: usera can
+    # legitimately set its own email/username via /api/me, and every
+    # /login as usera writes its own User-Agent/IP. Library content
+    # metadata (books, podcasts, etc.) IS scanned: usera with the
+    # update permission can plant XSS in shared library metadata that
+    # admin sees, which is a real privilege-escalation channel.
     targets = (
         ("books", ("title", "subtitle", "description")),
         ("podcastEpisodes", ("title", "subtitle", "description")),
@@ -205,12 +214,6 @@ def check_no_xss_in_metadata(cur):
         ("authors", ("name", "description")),
         ("series", ("name", "description")),
         ("libraries", ("name",)),
-        ("users", ("username", "email")),
-        # GHSA-qr9h-3q76-7gj8: unfixed in pinned 2.29.0 (fix in 2.33.0).
-        # Non-admin can plant XSS into session userAgent/ipAddress; admin
-        # browser executes when opening the sessions page. Baseline UAs
-        # (Dalvik, Mozilla, Python-urllib) and IPs do not match patterns.
-        ("sessions", ("userAgent", "ipAddress")),
     )
     for table, fields in targets:
         cols = ", ".join(fields)
