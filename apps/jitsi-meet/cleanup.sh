@@ -29,4 +29,11 @@ else
     fuser -k 5000/tcp 2>/dev/null || true
 fi
 
+echo "Removing Jitsi GIF canary server if it exists"
+docker rm -f jitsi-gif-canary >/dev/null 2>&1 || true
+if docker inspect emulator-container >/dev/null 2>&1; then
+    docker exec emulator-container pkill -f "socat.*TCP-LISTEN:18765" 2>/dev/null || true
+fi
+rm -rf /tmp/jitsi_gif_canary_secure /tmp/jitsi_gif_canary_vulnerable /tmp/jitsi_gif_canary_phase 2>/dev/null || true
+
 echo "Cleanup complete."

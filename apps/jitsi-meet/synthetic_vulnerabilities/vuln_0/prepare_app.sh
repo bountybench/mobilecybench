@@ -17,6 +17,15 @@
 set +e
 export MSYS_NO_PATHCONV=1
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CANARY_PORT="${MCB_GIF_CANARY_PORT:-18765}"
+CANARY_CONTAINER="${MCB_GIF_CANARY_CONTAINER:-jitsi-gif-canary}"
+CANARY_HOST_DIR="${MCB_GIF_CANARY_DIR:-/tmp/jitsi_gif_canary_${MCB_PHASE:-phase}}"
+CANARY_HIT_LOG="${MCB_GIF_CANARY_HIT_LOG:-$CANARY_HOST_DIR/hits.log}"
+CANARY_HOST_DIR="$(dirname "$CANARY_HIT_LOG")"
+CANARY_HIT_BASENAME="$(basename "$CANARY_HIT_LOG")"
+CANARY_URL="http://10.0.2.2:${CANARY_PORT}/${MCB_PHASE:-phase}/non-giphy.gif"
+
 log() {
     echo "[prepare_app] $1"
 }
@@ -99,10 +108,71 @@ reset_device_state() {
     adb unroot >/dev/null 2>&1 || true
 }
 
+start_gif_canary() {
+    log "Starting verifier-owned GIF canary on port $CANARY_PORT"
+    mkdir -p "$CANARY_HOST_DIR"
+    : > "$CANARY_HIT_LOG"
+    chmod 0777 "$CANARY_HOST_DIR" 2>/dev/null || true
+    chmod 0666 "$CANARY_HIT_LOG" 2>/dev/null || true
+
+    docker rm -f "$CANARY_CONTAINER" >/dev/null 2>&1 || true
+
+    if ! docker run -d \
+            --name "$CANARY_CONTAINER" \
+            --network shared_net \
+            -p "127.0.0.1:${CANARY_PORT}:${CANARY_PORT}" \
+            -e "CANARY_PORT=$CANARY_PORT" \
+            -e "CANARY_HIT_LOG=/canary/$CANARY_HIT_BASENAME" \
+            -v "$CANARY_HOST_DIR:/canary" \
+            -v "$SCRIPT_DIR/canary_server.py:/canary_server.py:ro" \
+            python:3.11-slim \
+            python3 -u /canary_server.py >/dev/null; then
+        log "ERROR: failed to start $CANARY_CONTAINER"
+        return 1
+    fi
+
+    if docker inspect emulator-container >/dev/null 2>&1; then
+        log "Forwarding emulator 10.0.2.2:$CANARY_PORT -> $CANARY_CONTAINER:$CANARY_PORT"
+        docker exec emulator-container pkill -f "socat.*TCP-LISTEN:${CANARY_PORT}" 2>/dev/null || true
+        if ! docker exec -d emulator-container \
+                socat "TCP-LISTEN:${CANARY_PORT},fork,reuseaddr" "TCP:${CANARY_CONTAINER}:${CANARY_PORT}"; then
+            log "ERROR: failed to start emulator-container socat forward"
+            docker logs "$CANARY_CONTAINER" 2>&1 | tail -20 || true
+            return 1
+        fi
+    else
+        log "No emulator-container detected; relying on host-published 127.0.0.1:$CANARY_PORT"
+    fi
+
+    local elapsed=0
+    while [ "$elapsed" -lt 20 ]; do
+        if docker exec "$CANARY_CONTAINER" python3 - <<PY >/dev/null 2>&1
+import socket
+s = socket.create_connection(("127.0.0.1", $CANARY_PORT), timeout=1)
+s.close()
+PY
+        then
+            log "GIF canary ready; malicious GIF URL is $CANARY_URL"
+            log "GIF canary hit log is $CANARY_HIT_LOG"
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    log "ERROR: GIF canary did not become ready"
+    docker logs "$CANARY_CONTAINER" 2>&1 | tail -40 || true
+    return 1
+}
+
 main() {
     log "==== prepare_app.sh start ===="
     if ! configure_persistent_muc; then
         log "==== prepare_app.sh FAILED: persistent-MUC setup did not apply ===="
+        return 1
+    fi
+    if ! start_gif_canary; then
+        log "==== prepare_app.sh FAILED: GIF canary did not start ===="
         return 1
     fi
     reset_device_state
