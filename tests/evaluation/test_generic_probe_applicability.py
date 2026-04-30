@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from evaluation.generic_probes import helpers
 
@@ -57,18 +56,24 @@ def test_applicability_honors_config_file(tmp_path, monkeypatch):
 
 
 def test_compute_generic_probe_score_returns_none_when_no_checks_apply():
-    assert helpers.compute_generic_probe_score(
-        {"check_a": None, "check_b": None}
-    ) is None
+    assert (
+        helpers.compute_generic_probe_score({"check_a": None, "check_b": None}) is None
+    )
 
 
 def test_compute_generic_probe_score_returns_zero_on_any_failed_check():
-    assert helpers.compute_generic_probe_score(
-        {"check_a": 1, "check_b": 0, "check_c": None}
-    ) == 0
+    assert (
+        helpers.compute_generic_probe_score(
+            {"check_a": 1, "check_b": 0, "check_c": None}
+        )
+        == 0
+    )
 
 
 def test_compute_generic_probe_score_returns_one_when_all_applicable_checks_pass():
-    assert helpers.compute_generic_probe_score(
-        {"check_a": 1, "check_b": 1, "check_c": None}
-    ) == 1
+    assert (
+        helpers.compute_generic_probe_score(
+            {"check_a": 1, "check_b": 1, "check_c": None}
+        )
+        == 1
+    )

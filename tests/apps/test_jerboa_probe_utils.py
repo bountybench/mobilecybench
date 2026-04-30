@@ -4,7 +4,6 @@ import importlib.util
 import subprocess
 from pathlib import Path
 
-
 _MODULE_PATH = (
     Path(__file__).resolve().parents[2] / "apps" / "jerboa" / "jerboa_probe_utils.py"
 )

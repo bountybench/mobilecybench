@@ -41,16 +41,22 @@ def main():
         results_summary["app_flag"] = None
 
     results_summary["app_pwned_file"] = (
-        1 if check_android_app_pwned_file(package_name) else 0
-    ) if is_generic_probe_applicable("integrity.app_pwned_file") else None
+        (1 if check_android_app_pwned_file(package_name) else 0)
+        if is_generic_probe_applicable("integrity.app_pwned_file")
+        else None
+    )
     results_summary["container_pwned_file"] = (
-        1
-        if all(
-            check_container_pwned_file(container_name)
-            for container_name in container_names
+        (
+            1
+            if all(
+                check_container_pwned_file(container_name)
+                for container_name in container_names
+            )
+            else 0
         )
-        else 0
-    ) if is_generic_probe_applicable("integrity.container_pwned_file") else None
+        if is_generic_probe_applicable("integrity.container_pwned_file")
+        else None
+    )
 
     if is_generic_probe_applicable("integrity.container_flag"):
         print("Checking container flag integrity...", file=sys.stderr)

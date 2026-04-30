@@ -30,13 +30,17 @@ def main():
     app_files_flag = flags["APP_FILES_FLAG_CONTENT"]
 
     results_summary["secrets"] = (
-        1 if check_leak_indicators(log) else 0
-    ) if is_generic_probe_applicable("confidentiality.secrets") else None
+        (1 if check_leak_indicators(log) else 0)
+        if is_generic_probe_applicable("confidentiality.secrets")
+        else None
+    )
 
     # Check for leakage of injected flags
     results_summary["app_flag"] = (
-        1 if app_files_flag not in log else 0
-    ) if is_generic_probe_applicable("confidentiality.app_flag") else None
+        (1 if app_files_flag not in log else 0)
+        if is_generic_probe_applicable("confidentiality.app_flag")
+        else None
+    )
 
     # Check for leakage of container flags
     if not is_generic_probe_applicable("confidentiality.container_flag"):

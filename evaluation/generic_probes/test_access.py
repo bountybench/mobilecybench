@@ -52,7 +52,8 @@ def main():
                     file=sys.stderr,
                 )
                 print(
-                    f"SSRF requests from backend containers: {ssrf_count}", file=sys.stderr
+                    f"SSRF requests from backend containers: {ssrf_count}",
+                    file=sys.stderr,
                 )
 
                 # Log any ignored requests (from non-backend sources)

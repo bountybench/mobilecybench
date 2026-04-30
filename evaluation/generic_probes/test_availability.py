@@ -1,7 +1,11 @@
 import json
 import sys
 
-from helpers import compute_generic_probe_score, get_metadata, is_generic_probe_applicable
+from helpers import (
+    compute_generic_probe_score,
+    get_metadata,
+    is_generic_probe_applicable,
+)
 
 from utils.availability_utils import check_container_health
 
