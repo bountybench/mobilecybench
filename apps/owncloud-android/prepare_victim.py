@@ -24,9 +24,70 @@ def log(message):
     print(f"[prepare_victim] {message}", file=sys.stderr, flush=True)
 
 
+_anr_d = None
+
+
+def _dismiss_system_anr(d=None) -> bool:
+    """Click "Wait" on a foregrounded AppErrorDialog if one is up.
+
+    Slow CI runners frequently ANR a system app (Pixel Launcher, System
+    UI, Gmail, chrome) at unpredictable points in the OAuth flow. The
+    OS overlays AppErrorDialog (resource-id ``android:id/aerr_wait``
+    for the Wait button) over every window, blocks Activity
+    transitions, and the chrome customtab can't come to foreground —
+    failures surface seconds-to-minutes later as either ``Chrome OAuth
+    flow not active`` or ``OAuth username/password fields not found``.
+
+    A uia2 watcher is also registered in main() against the same Wait
+    button, but its async RPC queue can starve behind main-thread
+    queries on a 2-fps emulator. Doing the dismiss inline in
+    ``wait_until`` at our own tick rate guarantees the cadence
+    regardless of emulator load. This helper is also called from
+    bespoke polling loops in ``submit_web_login`` that don't go
+    through ``wait_until``.
+
+    ``d`` may be passed (cheap, the caller already has a connection)
+    or omitted (lazy module-level cache; reset on RPC error so a
+    transient connectivity blip self-heals). Returns True if a Wait
+    button was clicked, False otherwise.
+    """
+    global _anr_d
+    try:
+        if d is None:
+            if _anr_d is None:
+                _anr_d = u2.connect()
+            d = _anr_d
+        wait_btn = d(resourceId="android:id/aerr_wait")
+        if not wait_btn.exists:
+            return False
+        # Read the dialog title so the log says WHICH app ANR'd. Useful
+        # for diagnostics — Pixel Launcher vs chrome vs Gmail point at
+        # different runner-load symptoms.
+        title = ""
+        try:
+            t = d(resourceId="android:id/alertTitle")
+            if t.exists:
+                title = (t.get_text() or "").strip()
+        except Exception:
+            pass
+        wait_btn.click()
+        log(f"ANR dismissed: {title or '<unknown title>'}")
+        return True
+    except Exception:
+        _anr_d = None  # force reconnect on next call
+        return False
+
+
 def wait_until(check, timeout=30, interval=0.5):
+    """Poll for ``check()`` truthy, dismissing system ANR dialogs each tick.
+
+    The ANR dismiss runs unconditionally on every tick (cheap no-op when
+    no dialog is up). Doing it here means every ``require`` call
+    inherits ANR resilience — callers don't need to remember.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
+        _dismiss_system_anr()
         if check():
             return True
         time.sleep(interval)
@@ -65,76 +126,56 @@ def is_logged_in(d):
     )
 
 
-def _dismiss_system_anr(d) -> bool:
-    """Click "Wait" on a foregrounded AppErrorDialog if one is up.
-
-    System apps (Pixel Launcher, System UI, Gmail, etc.) sometimes ANR
-    on slow CI runners while ownCloud is mid-OAuth. The OS overlays
-    AppErrorDialog (resource-id ``android:id/aerr_wait`` for the Wait
-    button) over every window, blocks Activity transitions, and the
-    chrome customtab can't come to foreground — the failure surfaces
-    as ``Chrome OAuth flow not active`` 90s later. The watcher in
-    main() catches the common case by polling for "Wait" text but
-    races a 2-fps emulator: the dialog can persist between watcher
-    ticks, or the click can land while the previous frame is still
-    being composited and never register. This helper is the explicit
-    synchronous dismiss inside the chrome-wait polling loop. Returns
-    True if a Wait button was clicked, False otherwise.
-    """
-    try:
-        wait_btn = d(resourceId="android:id/aerr_wait")
-        if not wait_btn.exists:
-            return False
-        wait_btn.click()
-        return True
-    except Exception:
-        return False
-
-
-def _chrome_or_logged_in_with_dismiss(d, allow_logged_in: bool) -> bool:
-    """Predicate for chrome-foreground polling that also dismisses ANRs.
-
-    Side-effect-in-predicate is intentional: ``require`` polls every
-    0.5s, and we want a dismiss attempt every tick so the OS can
-    proceed with the chrome-customtab transition once unblocked.
-    """
-    _dismiss_system_anr(d)
-    if current_package(d) == CHROME:
-        return True
-    return allow_logged_in and is_logged_in(d)
-
-
 def handle_whats_new(d, timeout=60):
-    """Poll for the intro-screen skip button until it renders or the URL input appears."""
+    """Poll for the intro-screen skip button until it renders or the URL input appears.
+
+    The intro-screen ("WhatsNew") is shown on first launch only; if the
+    APK has been launched before during this emulator boot, hostUrlInput
+    appears directly. Both paths log explicitly so a future flake here
+    has a clear signal which branch we took.
+    """
+    log(f"WhatsNew: entering | pkg={current_package(d)}")
     deadline = time.time() + timeout
     while time.time() < deadline:
+        _dismiss_system_anr(d)
         if d(resourceId=f"{APP}:id/hostUrlInput").exists:
+            log("WhatsNew: hostUrlInput visible — no intro screen, returning")
             return
         skip = d(resourceId=f"{APP}:id/skip")
         if skip.exists:
-            log("skipping whats-new screen")
+            log("WhatsNew: skip button visible — clicking")
             skip.click()
             time.sleep(1)
+            log(f"WhatsNew: post-skip pkg={current_package(d)}")
             return
         time.sleep(0.5)
+    log(
+        f"WhatsNew: deadline reached after {timeout}s — neither hostUrlInput nor skip seen"
+    )
 
 
 def submit_server_url(d, server_url):
+    log(f"submit_server_url: entering | pkg={current_package(d)}")
     if not d(resourceId=f"{APP}:id/hostUrlInput").exists:
+        log("submit_server_url: hostUrlInput not present, returning")
         return
 
-    log(f"submitting server URL {server_url}")
+    log(f"submit_server_url: typing URL {server_url}")
     d(resourceId=f"{APP}:id/hostUrlInput").set_text(server_url)
-    time.sleep(0.3)
+    time.sleep(0.5)
+    log("submit_server_url: clicking embeddedCheckServerButton")
     d(resourceId=f"{APP}:id/embeddedCheckServerButton").click()
 
     # Chrome cold-start can be slow on a CI emulator; give it room.
-    # Each poll also dismisses any system ANR dialog that lands on top.
+    # wait_until's per-tick ANR dismiss covers any system dialog that
+    # lands on top during the wait.
+    log("submit_server_url: waiting for chrome customtab or already-logged-in state")
     require(
-        lambda: _chrome_or_logged_in_with_dismiss(d, allow_logged_in=True),
+        lambda: current_package(d) == CHROME or is_logged_in(d),
         "Chrome OAuth flow did not open",
         timeout=60,
     )
+    log(f"submit_server_url: post-wait pkg={current_package(d)}")
 
 
 CHROME_FIRST_RUN_DISMISSALS = [
@@ -185,35 +226,76 @@ def handle_chrome_first_run(d, quiet_window=4.0, max_total=30.0):
 
 
 def submit_web_login(d, username, password):
+    """Drive the chrome-customtab OAuth login form.
+
+    Three-stage wait, each with explicit ANR dismiss + chrome-FRE drain:
+
+      1. Wait for the Login button to render (HTML form has loaded).
+      2. Wait for the EditText input fields to register in chrome's
+         accessibility tree. They land slightly later than the Login
+         button on cold customtabs — the button can register while
+         <input> elements are still being processed by chrome's a11y
+         walker. Querying immediately after the button found 0 fields
+         and tripped a 'OAuth username/password fields not found'
+         flake.
+      3. After submit, wait for the Authorize page (chrome's a11y tree
+         needs to update again post-form-submit).
+    """
+    log(f"web_login: entering | pkg={current_package(d)}")
     if d(text="Authorize", className="android.widget.Button").exists:
+        log("web_login: Authorize page already visible (cached session?), returning")
         return
 
-    # Continuously drain late chrome FRE nags while waiting for the OAuth Login
-    # form to render. CI cold-loads can let new nags arrive throughout the wait,
-    # so a one-shot drain followed by a passive require would miss them.
+    # Stage 1: wait for Login button. Drains late chrome FRE nags each tick
+    # since CI cold-loads can let new nags arrive throughout the wait.
+    log("web_login: stage 1/3 — waiting for Login button + draining FRE nags")
     deadline = time.time() + 120
     while time.time() < deadline:
+        _dismiss_system_anr(d)
         if d(text="Login", className="android.widget.Button").exists:
+            log("web_login: Login button visible")
             break
         _click_first_present(d, CHROME_FIRST_RUN_DISMISSALS)
         time.sleep(1)
     else:
         raise RuntimeError("OAuth login page not visible")
-    fields = d(className="android.widget.EditText")
-    if fields.count < 2:
-        raise RuntimeError("OAuth username/password fields not found")
 
-    log(f"submitting OAuth credentials for {username}")
+    # Stage 2: wait for EditText fields to register in a11y tree.
+    log("web_login: stage 2/3 — waiting for EditText fields")
+    fields_deadline = time.time() + 30
+    fields_count = 0
+    while time.time() < fields_deadline:
+        _dismiss_system_anr(d)
+        fields = d(className="android.widget.EditText")
+        fields_count = fields.count
+        if fields_count >= 2:
+            log(f"web_login: {fields_count} EditText field(s) registered")
+            break
+        time.sleep(0.5)
+    else:
+        raise RuntimeError(
+            f"OAuth username/password fields not found (saw {fields_count}; expected >=2)"
+        )
+
+    log(f"web_login: filling username={username!r}")
+    fields = d(className="android.widget.EditText")  # re-resolve, safer
     fields[0].set_text(username)
-    time.sleep(0.2)
+    time.sleep(0.3)
+    log("web_login: filling password (redacted)")
     fields[1].set_text(password)
-    time.sleep(0.2)
+    time.sleep(0.3)
+    log("web_login: clicking Login")
     d(text="Login", className="android.widget.Button").click()
+
+    # Stage 3: wait for Authorize page. Bumped from 30s → 60s — slow
+    # render on the same a11y-tree-lag class of issue as stage 2.
+    log("web_login: stage 3/3 — waiting for Authorize page")
     require(
         lambda: d(text="Authorize", className="android.widget.Button").exists,
         "OAuth authorize page not visible",
-        timeout=30,
+        timeout=60,
     )
+    log("web_login: Authorize page reached")
 
 
 def authorize_app(d):
@@ -300,17 +382,46 @@ def capture_baselines():
     )
 
 
+def _connect_uia2_with_retry(max_attempts=5):
+    """Establish a uia2 connection that survives a transient atx-agent drop.
+
+    The on-device atx-agent (uia2's REST endpoint) sometimes drops the next
+    connection right after a previous prepare_victim exits — observed as
+    ``urllib3.exceptions.ProtocolError: Remote end closed connection
+    without response`` on the very first ``d.press`` or ``d.app_current``
+    call after ``u2.connect()`` returned successfully. healthcheck() makes
+    uia2 re-handshake; retrying covers the case where the first
+    healthcheck itself raises.
+    """
+    last_exc = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            d = u2.connect()
+            # Sanity probe: any small RPC exercising the same code path the
+            # rest of main() will use. If atx-agent is in a half-dropped
+            # state, this raises ``Remote end closed connection without
+            # response`` and we reconnect.
+            _ = d.app_current()
+            log(f"uia2 connected (attempt {attempt})")
+            return d
+        except Exception as e:
+            last_exc = e
+            log(f"uia2 connect attempt {attempt}/{max_attempts} failed: {e}")
+            time.sleep(1.5)
+    raise RuntimeError(f"uia2 connect failed after {max_attempts} attempts: {last_exc}")
+
+
 def main():
     args = parse_args()
-    d = u2.connect()
+    d = _connect_uia2_with_retry()
 
-    # Slow CI emulators occasionally pop a "System UI isn't responding" ANR
-    # dialog over the launch screen and stall every UI poll behind it. Watcher
-    # auto-clicks "Wait" (keep system running) whenever it appears. Tightened
-    # poll interval (0.5s) shrinks the race window where a 2-fps emulator
-    # renders the next frame before the previous click registered. The
-    # explicit `_dismiss_system_anr` call inside chrome-wait polling is the
-    # synchronous backstop when watcher's tick still misses the dialog.
+    # Belt-and-suspenders for ANR dismissal. The primary defense lives in
+    # wait_until's per-tick `_dismiss_system_anr` call; this watcher is
+    # an async backstop polling for a "Wait" text element on a 0.5s
+    # interval. On a heavily-loaded runner the watcher's RPC can starve
+    # behind main-thread queries, which is why wait_until does its own
+    # synchronous dismiss — but the watcher still helps when the dialog
+    # appears between two main-thread sleeps.
     d.watcher.when("Wait").click()
     d.watcher.start(0.5)
 
@@ -324,30 +435,71 @@ def main():
         check=False,
     )
 
-    log("launching ownCloud")
-    d.app_start(APP, wait=True)
-    time.sleep(2)
+    # Press HOME first to clear any leftover task that might hold foreground
+    # across a `pm clear` of ownCloud. The most common offender is chrome
+    # customtab — its OAuth-Authorize task survives `pm clear` of ownCloud,
+    # and a subsequent ``app_start(APP, wait=True)`` can return before
+    # ownCloud actually reaches foreground (uia2's app_wait polls for 20s
+    # then returns silently). Without HOME, the next handle_whats_new poll
+    # runs against chrome's UI looking for ownCloud's selectors — finds
+    # nothing, times out 60s later, and the rest of the script wedges.
+    #
+    # Both HOME and app_start go through ``adb shell`` directly rather
+    # than ``d.press`` / ``d.app_start``: uia2's atx-agent on the device
+    # sometimes drops the next REST call right after a HOME keypress on
+    # rapid back-to-back invocations (observed locally as
+    # ``urllib3.exceptions.ProtocolError: Remote end closed connection
+    # without response`` on the very next ``current_package`` call).
+    # Going via adb keeps the keyevent / activity launch on a separate
+    # transport.
+    log(f"stage: pre-launch | pkg={current_package(d)} — sending HOME via adb")
+    subprocess.run(
+        ["adb", "shell", "input", "keyevent", "KEYCODE_HOME"], check=False
+    )
+    time.sleep(1)
+    log(f"stage: launch | pkg={current_package(d)} — am start ownCloud")
+    subprocess.run(
+        ["adb", "shell", "am", "start", "-W", "-n", f"{APP}/.ui.activity.SplashActivity"],
+        check=False,
+    )
+    # Explicit foreground wait. wait_until's per-tick ANR dismiss covers
+    # any system dialog that lands on top during the launch transition.
+    require(
+        lambda: current_package(d) == APP,
+        "ownCloud did not reach foreground after am start",
+        timeout=30,
+    )
+    log(f"stage: post-launch | pkg={current_package(d)} | logged_in={is_logged_in(d)}")
 
     if is_logged_in(d):
-        log("already logged in")
+        log("already logged in — skipping OAuth flow")
     else:
+        log("stage: handle whats-new")
         handle_whats_new(d)
+        log("stage: submit server URL")
         submit_server_url(d, args.server_url)
 
         if not is_logged_in(d):
+            log("stage: wait for chrome OAuth foreground")
             require(
-                lambda: _chrome_or_logged_in_with_dismiss(d, allow_logged_in=False),
+                lambda: current_package(d) == CHROME,
                 "Chrome OAuth flow not active",
                 timeout=90,
             )
+            log(f"stage: chrome FRE drain | pkg={current_package(d)}")
             handle_chrome_first_run(d)
+            log("stage: web login (3-stage form fill)")
             submit_web_login(d, args.username, args.password)
+            log("stage: authorize app")
             authorize_app(d)
 
         log("SUCCESS: alex logged in")
 
+    log("stage: wait_for_settle (DB-stable signal)")
     wait_for_settle()
+    log("stage: capture baselines")
     capture_baselines()
+    log("stage: done")
 
 
 def _dump_state_on_error():
