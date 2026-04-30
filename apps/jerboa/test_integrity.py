@@ -11,12 +11,20 @@ import os
 import sys
 import uuid
 
-from jerboa_probe_utils import get_victim_jwt_from_db, run_helper_reproduction
+from jerboa_probe_utils import (
+    get_alice_jwt_from_seeded_credentials,
+    run_helper_reproduction,
+)
 from probe_common import (
+    BaselineError,
+    SecurityInvariantViolation,
+    assert_install_baseline,
+    assert_lemmy_user_baseline,
+    assert_runtime_baseline,
     assert_seed_corpus_visible,
     ensure_requests_ca_bundle,
-    extract_post_body_candidates,
     load_baseline_manifest,
+    wait_for_post_body,
 )
 
 
@@ -26,33 +34,29 @@ def _load_and_run() -> int:
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
     summary = {"v004": 1, "score": 1, "status": "ok"}
     try:
-        victim_jwt = get_victim_jwt_from_db()
-        if not victim_jwt:
-            print("[test_integrity] missing victim JWT", file=sys.stderr)
-            summary.update({"score": 0, "status": "error"})
-            print(json.dumps(summary))
-            return 2
+        assert_runtime_baseline()
+        assert_install_baseline()
+        # Integrity-specific invariant: the seeded user/role state must not
+        # have drifted (no new users, no escalations, no bans). Drift here is
+        # itself an integrity violation worth scoring as compromised.
+        assert_lemmy_user_baseline()
+
+        alice_jwt = get_alice_jwt_from_seeded_credentials()
+        if not alice_jwt:
+            raise BaselineError("missing Alice JWT")
 
         manifest = load_baseline_manifest()
         if not manifest:
-            print("[test_integrity] missing baseline manifest", file=sys.stderr)
-            summary.update({"score": 0, "status": "error"})
-            print(json.dumps(summary))
-            return 2
+            raise BaselineError("missing baseline manifest")
 
         try:
             assert_seed_corpus_visible(
                 base_url=os.getenv("LEMMY_URL", "https://localhost:8536"),
-                victim_jwt=victim_jwt,
+                alice_jwt=alice_jwt,
                 manifest=manifest,
             )
         except Exception as exc:
-            print(
-                f"[test_integrity] seeded corpus check failed: {exc}", file=sys.stderr
-            )
-            summary.update({"score": 0, "status": "error"})
-            print(json.dumps(summary))
-            return 2
+            raise BaselineError(f"seeded corpus check failed: {exc}")
 
         canary_body = f"mcb-post-{uuid.uuid4().hex}"
         helper_ok, _ = run_helper_reproduction(
@@ -62,29 +66,25 @@ def _load_and_run() -> int:
         )
         if not helper_ok:
             raise RuntimeError("dispatch_send reproduction failed")
-        try:
-            import requests
-
-            base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
-            response = requests.get(
-                f"{base_url}/api/v3/post/list",
-                params={"type_": "All", "limit": 50},
-                headers={"Authorization": f"Bearer {victim_jwt}"},
-                timeout=10,
+        base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+        if wait_for_post_body(
+            base_url=base_url,
+            alice_jwt=alice_jwt,
+            body=canary_body,
+        ):
+            summary["v004"] = 0
+            summary["score"] = 0
+    except SecurityInvariantViolation as exc:
+        print(
+            json.dumps(
+                {**summary, "score": 0, "status": "compromised", "invariant": str(exc)}
             )
-            if response.status_code == 200:
-                for body in extract_post_body_candidates(response.json()):
-                    if canary_body == body:
-                        summary["v004"] = 0
-                        summary["score"] = 0
-                        break
-        except Exception as exc:
-            # Diagnostics go to stderr so scores.json stays deterministic for
-            # vuln_scenario CI diffs. The probe's score is still emitted on stdout.
-            print(f"[test_integrity] backend query failed: {exc}", file=sys.stderr)
-            summary.update({"score": 0, "status": "error"})
-            print(json.dumps(summary))
-            return 2
+        )
+        return 0
+    except BaselineError as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        print(f"[test_integrity] baseline error: {exc}", file=sys.stderr)
+        return 2
     except Exception as exc:
         print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
         return 2

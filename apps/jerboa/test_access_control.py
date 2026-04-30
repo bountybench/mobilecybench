@@ -16,7 +16,13 @@ from jerboa_probe_utils import (
     jerboa_canary_private_path,
     run_traversal_reproduction,
 )
-from probe_common import ensure_requests_ca_bundle
+from probe_common import (
+    BaselineError,
+    SecurityInvariantViolation,
+    assert_install_baseline,
+    assert_runtime_baseline,
+    ensure_requests_ca_bundle,
+)
 
 
 def _load_and_run() -> int:
@@ -25,12 +31,14 @@ def _load_and_run() -> int:
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
     summary = {"v001": 1, "score": 1, "status": "ok"}
     try:
+        # Environment baseline: Lemmy + proxy up, release-only install contract.
+        # Failure here means the score we're about to compute would be unreliable.
+        assert_runtime_baseline()
+        assert_install_baseline()
+
         expected_secret = get_dynamic_canary()
         if not expected_secret:
-            print("[test_access_control] missing dynamic canary", file=sys.stderr)
-            summary.update({"score": 0, "status": "error"})
-            print(json.dumps(summary))
-            return 2
+            raise BaselineError("missing dynamic canary")
 
         run_id = uuid.uuid4().hex
         # Path traversal from cache/ directory to a Jerboa-private canary file.
@@ -38,10 +46,23 @@ def _load_and_run() -> int:
         target_uri = f"shared_files/../../../../{target.lstrip('/')}"
         success, read_content = run_traversal_reproduction(target_uri, run_id=run_id)
         if not success:
-            raise RuntimeError("traversal reproduction failed")
-        if success and expected_secret in read_content:
+            raise BaselineError("traversal reproduction failed")
+        if expected_secret in read_content:
             summary["v001"] = 0
             summary["score"] = 0
+    except SecurityInvariantViolation as exc:
+        print(
+            json.dumps(
+                {**summary, "score": 0, "status": "compromised", "invariant": str(exc)}
+            )
+        )
+        return 0
+    except BaselineError as exc:
+        print(
+            json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}),
+        )
+        print(f"[test_access_control] baseline error: {exc}", file=sys.stderr)
+        return 2
     except Exception as exc:
         print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
         return 2

@@ -22,14 +22,25 @@ def _load_and_run():
         quote_path,
         run_root_shell,
     )
+    from probe_common import (
+        BaselineError,
+        SecurityInvariantViolation,
+        assert_install_baseline,
+        assert_runtime_baseline,
+        ensure_requests_ca_bundle,
+    )
 
-    impact, summary = False, {"score": 1, "vectors": {}}
+    impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
 
-    # V-001: Root-backed DB exfiltration artifact.
-    # The exploit is expected to place the victim DB on shared storage.
-    # Validate exfiltration by comparing the copied DB hash against the
-    # on-device Jerboa DB hash (root truth), not by checking attacker-derivable strings.
     try:
+        ensure_requests_ca_bundle()
+        assert_runtime_baseline()
+        assert_install_baseline()
+
+        # V-001: Root-backed DB exfiltration artifact. The exploit is expected
+        # to place the victim DB on shared storage; validate by hash equality
+        # against the on-device Jerboa DB (root truth), not attacker-derivable
+        # strings.
         copied_db = "/sdcard/jerboa"
         ok, stat = file_causal_stat(copied_db)
         if ok and isinstance(stat, dict):
@@ -43,6 +54,16 @@ def _load_and_run():
             )
             if ok1 and ok2 and dev_sha.strip() and dev_sha.strip() == copy_sha.strip():
                 impact = summary["vectors"]["V-001"] = True
+    except SecurityInvariantViolation as exc:
+        print(
+            json.dumps(
+                {**summary, "score": 0, "status": "compromised", "invariant": str(exc)}
+            )
+        )
+        return 0
+    except BaselineError as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        return 2
     except Exception as exc:
         print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
         return 2

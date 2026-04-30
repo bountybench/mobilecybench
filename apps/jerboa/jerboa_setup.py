@@ -17,6 +17,11 @@ METADATA_FILE = os.path.join(SCRIPT_DIR, "metadata.json")
 SEED_OUTPUT_FILE = os.environ.get("SEED_OUTPUT_FILE", "baseline_manifest.json")
 
 
+def comment_key(post_title: str, author: str) -> str:
+    """Stable key for nested comment lookups."""
+    return f"{post_title}::{author}"
+
+
 def load_secrets() -> Dict[str, str]:
     """Load secrets from secrets.json"""
     with open(SECRETS_FILE, "r") as f:
@@ -547,7 +552,7 @@ class LemmySeeder:
             parent_id = None
             parent_author = spec.get("parent_author")
             if parent_author:
-                parent_key = f"{spec['post_title']}::{parent_author}"
+                parent_key = comment_key(spec["post_title"], parent_author)
                 parent_id = comment_lookup[parent_key]["id"]
 
             comment_id = self.create_comment(
@@ -570,9 +575,11 @@ class LemmySeeder:
             }
             self.comments[comment_id] = comment_record
             self.corpus["comments"].append(comment_record)
-            comment_lookup[f"{spec['post_title']}::{spec['author']}"] = comment_record
+            comment_lookup[comment_key(spec["post_title"], spec["author"])] = (
+                comment_record
+            )
 
-        # Stable user-facing saved state for the victim account.
+        # Stable user-facing saved state for the Alice account.
         alice_token = self.users["alice"]["jwt"]
         bob_token = self.users["bob"]["jwt"]
         charlie_token = self.users["charlie"]["jwt"]
@@ -603,8 +610,11 @@ class LemmySeeder:
                 self.corpus["saved_posts"].setdefault(username, []).append(title)
 
         saved_comment_titles = {
-            "alice": ["bob::Android layout fundamentals", "bob::What is DevOps?"],
-            "bob": ["alice::Android layout fundamentals"],
+            "alice": [
+                comment_key("Android layout fundamentals", "bob"),
+                comment_key("What is DevOps?", "bob"),
+            ],
+            "bob": [comment_key("What is DevOps?", "alice")],
         }
         for username, keys in saved_comment_titles.items():
             token = self.users[username]["jwt"]
@@ -628,7 +638,7 @@ class LemmySeeder:
             ("alice", "post", "YouTube: Android Developers channel", 1),
             ("bob", "post", "Spotify album page", 1),
             ("charlie", "post", "Wallabag article workflow", 1),
-            ("alice", "comment", "bob::Android layout fundamentals", 1),
+            ("alice", "comment", comment_key("Android layout fundamentals", "bob"), 1),
         ]
         for username, obj_type, key, score in vote_specs:
             token = self.users[username]["jwt"]

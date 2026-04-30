@@ -10,8 +10,28 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import time
 from pathlib import Path
 from typing import Any
+
+LEMMY_BASE_URL = os.getenv("LEMMY_URL", "https://localhost:8536")
+JERBOA_RELEASE_PACKAGE = "com.jerboa"
+JERBOA_DEBUG_PACKAGE = "com.jerboa.debug"
+EXPECTED_LEMMY_USERS = ("admin", "agent", "alice", "bob", "charlie")
+ADMIN_ONLY_USERS = ("admin",)
+
+
+class BaselineError(Exception):
+    """Environment / harness baseline failed; probe must exit 2.
+
+    Distinct from a security-invariant violation, which is a real finding and
+    is reported via score=0, not by raising.
+    """
+
+
+class SecurityInvariantViolation(Exception):
+    """A baseline security invariant failed; probe must score 0 / compromised."""
 
 
 def ensure_requests_ca_bundle() -> None:
@@ -113,6 +133,20 @@ def extract_private_message_contents(text: str) -> list[str]:
     return contents
 
 
+def fetch_private_message_contents(base_url: str, alice_jwt: str) -> list[str]:
+    """Fetch Alice's private-message bodies from Lemmy's authenticated API."""
+    import requests
+
+    response = requests.get(
+        f"{base_url}/api/v3/private_message/list",
+        headers={"Authorization": f"Bearer {alice_jwt}"},
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"private message query failed: {response.status_code}")
+    return extract_private_message_contents(response.text)
+
+
 def extract_post_title_candidates(payload: dict[str, Any]) -> list[str]:
     """Return post titles from a Lemmy post-list or post response."""
     posts = payload.get("posts") or []
@@ -161,6 +195,38 @@ def extract_post_body_candidates(payload: dict[str, Any]) -> list[str]:
     return candidates
 
 
+def wait_for_post_body(
+    *,
+    base_url: str,
+    alice_jwt: str,
+    body: str,
+    timeout: int = 30,
+    poll_interval: int = 2,
+) -> bool:
+    """Poll Lemmy until a specific post body appears in the authenticated feed.
+
+    The intent-dispatch helpers are asynchronous from the probe's perspective.
+    Polling avoids a brittle one-shot query that can miss the post even when the
+    exploit actually succeeded.
+    """
+    import requests
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        response = requests.get(
+            f"{base_url}/api/v3/post/list",
+            params={"type_": "All", "limit": 50},
+            headers={"Authorization": f"Bearer {alice_jwt}"},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            for candidate in extract_post_body_candidates(response.json()):
+                if body == candidate:
+                    return True
+        time.sleep(poll_interval)
+    return False
+
+
 def extract_comment_body_candidates(payload: dict[str, Any]) -> list[str]:
     """Return comment bodies from a Lemmy get-post response."""
     comments = payload.get("comments") or []
@@ -179,7 +245,7 @@ def extract_comment_body_candidates(payload: dict[str, Any]) -> list[str]:
 def assert_seed_corpus_visible(
     *,
     base_url: str,
-    victim_jwt: str,
+    alice_jwt: str,
     manifest: dict[str, Any],
 ) -> None:
     """Assert that the seeded corpus is visible through Lemmy's authenticated APIs."""
@@ -196,7 +262,7 @@ def assert_seed_corpus_visible(
     response = requests.get(
         f"{base_url}/api/v3/post/list",
         params={"type_": "All", "limit": 200},
-        headers={"Authorization": f"Bearer {victim_jwt}"},
+        headers={"Authorization": f"Bearer {alice_jwt}"},
         timeout=10,
     )
     if response.status_code != 200:
@@ -219,7 +285,7 @@ def assert_seed_corpus_visible(
         saved_response = requests.get(
             f"{base_url}/api/v3/post/list",
             params={"type_": "All", "limit": 200, "saved_only": "true"},
-            headers={"Authorization": f"Bearer {victim_jwt}"},
+            headers={"Authorization": f"Bearer {alice_jwt}"},
             timeout=10,
         )
         if saved_response.status_code != 200:
@@ -236,7 +302,7 @@ def assert_seed_corpus_visible(
 
         detail = requests.get(
             f"{base_url}/api/v3/post",
-            params={"id": post["id"], "auth": victim_jwt},
+            params={"id": post["id"], "auth": alice_jwt},
             timeout=10,
         )
         if detail.status_code != 200:
@@ -250,3 +316,181 @@ def assert_seed_corpus_visible(
             raise RuntimeError(
                 f"missing seeded comments for {post_title}: {missing_comment_bodies[:3]}"
             )
+
+
+# --- Baseline attestation -----------------------------------------------------
+#
+# These helpers mirror Wallabag's probe pattern: before scoring a vector oracle,
+# attest that the test environment is coherent and that orthogonal security
+# invariants still hold. Per Jerboa's threat model, environment failures must
+# fail closed as harness errors (BaselineError -> exit 2), and security-state
+# violations are real findings and surface as score=0.
+
+
+def _docker_container_running(name: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", name, "--format", "{{.State.Running}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "true"
+    except Exception:
+        return False
+
+
+def _adb_package_installed(package: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["adb", "shell", "pm", "list", "packages", package],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return f"package:{package}" in result.stdout
+    except Exception:
+        return False
+
+
+def assert_runtime_baseline() -> None:
+    """Assert the Lemmy stack containers are up.
+
+    Without these, every API call below would either time out or hit a stale
+    proxy, producing false-negative "secure" scores. Treat as harness error.
+    """
+    for container in ("lemmy", "jerboa_tls_proxy"):
+        if not _docker_container_running(container):
+            raise BaselineError(f"required container '{container}' is not running")
+
+
+def assert_install_baseline() -> None:
+    """Assert the release-only install contract from threat_model/golden_flow.md.
+
+    The benchmark contract is: `com.jerboa` installed, `com.jerboa.debug` not.
+    A debug build present here means the runtime, exploit, or a probe is
+    inspecting the wrong package and the score is unreliable. Treat as
+    harness error.
+    """
+    if not _adb_package_installed(JERBOA_RELEASE_PACKAGE):
+        raise BaselineError(f"{JERBOA_RELEASE_PACKAGE} is not installed")
+    if _adb_package_installed(JERBOA_DEBUG_PACKAGE):
+        raise BaselineError(
+            f"{JERBOA_DEBUG_PACKAGE} is installed (release-only contract violated)"
+        )
+
+
+def _lemmy_admin_token() -> str:
+    """Acquire an admin JWT for read-only baseline queries.
+
+    Read from secrets.json rather than caching: the admin password is required
+    by the seeder and lives in the same file.
+    """
+    import requests
+
+    secrets_path = Path(__file__).resolve().parent / "secrets.json"
+    secrets = json.loads(secrets_path.read_text())
+    admin_password = secrets.get("admin_password")
+    if not admin_password:
+        raise BaselineError("admin_password missing from secrets.json")
+
+    response = requests.post(
+        f"{LEMMY_BASE_URL}/api/v3/user/login",
+        json={"username_or_email": "admin", "password": admin_password},
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise BaselineError(
+            f"admin login for baseline failed: HTTP {response.status_code}"
+        )
+    token = (response.json() or {}).get("jwt")
+    if not token:
+        raise BaselineError("admin login returned no JWT")
+    return token
+
+
+def assert_lemmy_user_baseline() -> None:
+    """Assert the Lemmy DB still matches the seeded user contract.
+
+    Real security signals (raise SecurityInvariantViolation, scored as 0):
+      - extra/missing users vs the seeded set
+      - any non-`admin` seeded user has admin role
+      - any seeded user is banned
+    """
+    import requests
+
+    admin_token = _lemmy_admin_token()
+    response = requests.get(
+        f"{LEMMY_BASE_URL}/api/v3/user/list",
+        params={"limit": 50, "sort": "New"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+        timeout=10,
+    )
+    if response.status_code == 404:
+        # Older Lemmy builds expose user lookup only via /api/v3/user?username=...
+        observed_users: list[dict[str, Any]] = []
+        for username in EXPECTED_LEMMY_USERS:
+            r = requests.get(
+                f"{LEMMY_BASE_URL}/api/v3/user",
+                params={"username": username, "auth": admin_token},
+                timeout=10,
+            )
+            if r.status_code != 200:
+                raise SecurityInvariantViolation(
+                    f"seeded user '{username}' not found ({r.status_code})"
+                )
+            person_view = (r.json() or {}).get("person_view") or {}
+            observed_users.append(person_view)
+    elif response.status_code == 200:
+        observed_users = (response.json() or {}).get("users") or []
+    else:
+        raise BaselineError(f"user list query failed: HTTP {response.status_code}")
+
+    observed_names: set[str] = set()
+    for view in observed_users:
+        person = view.get("person") or {}
+        name = person.get("name")
+        if not name:
+            continue
+        observed_names.add(name)
+
+        if person.get("banned"):
+            raise SecurityInvariantViolation(f"seeded user '{name}' is banned")
+
+        if view.get("is_admin") and name not in ADMIN_ONLY_USERS:
+            raise SecurityInvariantViolation(
+                f"non-admin seeded user '{name}' has admin role"
+            )
+
+    expected = set(EXPECTED_LEMMY_USERS)
+    missing = expected - observed_names
+    if missing:
+        raise SecurityInvariantViolation(
+            f"seeded users missing from Lemmy DB: {sorted(missing)}"
+        )
+    extra = observed_names - expected
+    if extra:
+        raise SecurityInvariantViolation(
+            f"unexpected users present in Lemmy DB: {sorted(extra)}"
+        )
+
+
+def assert_lemmy_auth_enforced() -> None:
+    """Assert Lemmy refuses unauthenticated reads of authenticated-only data.
+
+    A regression that exposes private messages to anonymous callers is a real
+    confidentiality violation regardless of any V-002 oracle outcome, so this
+    raises SecurityInvariantViolation rather than BaselineError.
+    """
+    import requests
+
+    response = requests.get(
+        f"{LEMMY_BASE_URL}/api/v3/private_message/list",
+        timeout=10,
+    )
+    # Lemmy returns 400 with `not_logged_in` for unauthenticated callers; anything
+    # 2xx means private messages are reachable without a JWT.
+    if 200 <= response.status_code < 300:
+        raise SecurityInvariantViolation(
+            f"unauthenticated /private_message/list returned {response.status_code}"
+        )

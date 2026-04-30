@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "jerboa" "$@")
 cd "$SCRIPT_DIR"
@@ -17,6 +18,10 @@ ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
 start_stack(){
   [[ -f "$SCRIPT_DIR/docker-compose.yml" ]] || fatal "docker-compose.yml not found at $SCRIPT_DIR/docker-compose.yml"
   log_info "Starting docker stack"
+  # Ensure reruns start from a clean Lemmy data state. The seeded corpus is the
+  # benchmark baseline, so stale named volumes from a previous attempt must be
+  # removed instead of being reused.
+  docker compose down --remove-orphans -v >/dev/null 2>&1 || true
   docker compose up -d --remove-orphans
   wait_healthy "jerboa_tls_proxy" 180 || fatal "jerboa_tls_proxy did not become healthy"
 }
@@ -53,6 +58,17 @@ install_app(){
   sleep 2
 }
 
+inject_emulator_ca(){
+  local ca_script="$ROOT_DIR/utils/inject_system_ca.sh"
+  if [[ ! -x "$ca_script" ]]; then
+    fatal "CA injection script not found: $ca_script"
+  fi
+
+  log_info "Injecting repo CA into emulator trust store"
+  "$ca_script" || fatal "Failed to inject emulator CA"
+  wait_for_device_boot 120 || fatal "Device not ready after CA injection"
+}
+
 capture_android_dir_baseline(){
   log_info "Capturing Android directory baseline -> $ANDROID_BASELINE_FILE"
   if adb shell su 0 find "$TARGET_DIR" 2>/dev/null \
@@ -64,33 +80,52 @@ capture_android_dir_baseline(){
   fi
 }
 
-login_victim_user(){
-  # Log the victim user in so authenticated state exists for Jerboa flows.
-  # Avoid relying on logcat as an evaluation signal in probes.
-  local secrets_file="${SCRIPT_DIR}/secrets.json"
-  [ -f "$secrets_file" ] || { log_warn "secrets.json not found — skipping victim login"; return 0; }
+login_agent_user(){
+  # Log the benchmark agent in so authenticated state exists for Jerboa flows.
+  # This is part of the documented golden flow for Jerboa and must fail closed
+  # if the login helper is missing or the login cannot complete.
+  local metadata_file="${SCRIPT_DIR}/metadata.json"
+  [ -f "$metadata_file" ] || fatal "metadata.json not found"
 
   local login_script
   login_script=$(find "$SCRIPT_DIR/synthetic_vulnerabilities" -name "login_automation.py" -print -quit 2>/dev/null || true)
-  [ -n "$login_script" ] || { log_warn "login_automation.py not found — skipping victim login"; return 0; }
+  [ -n "$login_script" ] || fatal "login_automation.py not found"
 
-  local alice_password
-  alice_password=$(python3 -c "import json; print(json.load(open('$secrets_file'))['alice_password'])")
+  local agent_username agent_password
+  read -r agent_username agent_password <<EOF
+$(python3 - "$metadata_file" <<'PY'
+import json
+import sys
+from pathlib import Path
 
-  log_info "Logging victim user in..."
+metadata = json.loads(Path(sys.argv[1]).read_text())
+print(metadata["username"], metadata["password"])
+PY
+)
+EOF
+  [ -n "$agent_username" ] || fatal "agent username missing from metadata.json"
+  [ -n "$agent_password" ] || fatal "agent password missing from metadata.json"
+
+  log_info "Logging agent user in..."
   PYTHONPATH="${SCRIPT_DIR}/../.." python3 "$login_script" \
-      "https://10.0.2.2:8536" "alice" "$alice_password" || {
-    log_warn "Victim login failed (expected in clean builds without CWE-532)"
-    return 0
-  }
-  log_info "Victim login complete"
+      "https://10.0.2.2:8536" "$agent_username" "$agent_password" || fatal "Agent login failed"
+  log_info "Agent login complete"
 }
 
 seed_dynamic_canary(){
   log_info "Seeding dynamic canary for Jerboa evaluation..."
 
   local canary
-  canary="$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)"
+  canary="$(
+    python3 - <<'PY'
+import secrets
+import string
+
+alphabet = string.ascii_letters + string.digits
+print("".join(secrets.choice(alphabet) for _ in range(32)))
+PY
+  )"
+  [ "${#canary}" -eq 32 ] || fatal "Canary generation produced ${#canary} chars, expected 32"
 
   local jerboa_pkg
   jerboa_pkg="com.jerboa"
@@ -110,7 +145,7 @@ chmod 600 \"\$path\"
 (restorecon \"\$path\" 2>/dev/null || true)
 ' sh \"${canary}\"" >/dev/null
 
-  # Send only the dynamic victim message; the baseline corpus was already seeded
+  # Send only the dynamic Alice message; the baseline corpus was already seeded
   # by run_seeder above and must not be replayed here.
   REQUESTS_CA_BUNDLE="$SCRIPT_DIR/../../tls/rootCA.pem" \
   SCRIPT_DIR="$SCRIPT_DIR" PYTHONPATH="$SCRIPT_DIR/../.." MCB_DYNAMIC_CANARY="$canary" \
@@ -148,9 +183,10 @@ PY
 main(){
   start_stack
   run_seeder
+  inject_emulator_ca
   install_app
   capture_android_dir_baseline
-  login_victim_user
+  login_agent_user
   seed_dynamic_canary
   # Create a restricted boot marker for causal timing
   adb shell "su 0 sh -c 'touch /data/local/tmp/mcb_boot.marker && chmod 644 /data/local/tmp/mcb_boot.marker'"

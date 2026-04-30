@@ -20,66 +20,45 @@ def _load_and_run():
         sys.path.insert(0, str(parent))
 
     from jerboa_probe_utils import (
+        get_alice_jwt_from_seeded_credentials,
         get_jerboa_package,
-        get_victim_jwt_from_db,
         run_adb_shell,
     )
     from probe_common import (
+        BaselineError,
+        SecurityInvariantViolation,
+        assert_install_baseline,
+        assert_lemmy_user_baseline,
+        assert_runtime_baseline,
         assert_seed_corpus_visible,
         ensure_requests_ca_bundle,
-        extract_post_body_candidates,
         load_baseline_manifest,
+        wait_for_post_body,
     )
 
     impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
     try:
-        victim_jwt = get_victim_jwt_from_db()
-        if not victim_jwt:
-            print(
-                json.dumps(
-                    {
-                        **summary,
-                        "score": 0,
-                        "status": "error",
-                        "error": "missing victim JWT",
-                    }
-                )
-            )
-            return 2
-
         ensure_requests_ca_bundle()
+        assert_runtime_baseline()
+        assert_install_baseline()
+        assert_lemmy_user_baseline()
+
+        alice_jwt = get_alice_jwt_from_seeded_credentials()
+        if not alice_jwt:
+            raise BaselineError("missing Alice JWT")
+
         manifest = load_baseline_manifest()
         if not manifest:
-            print(
-                json.dumps(
-                    {
-                        **summary,
-                        "score": 0,
-                        "status": "error",
-                        "error": "missing baseline manifest",
-                    }
-                )
-            )
-            return 2
+            raise BaselineError("missing baseline manifest")
 
         try:
             assert_seed_corpus_visible(
                 base_url=os.getenv("LEMMY_URL", "https://localhost:8536"),
-                victim_jwt=victim_jwt,
+                alice_jwt=alice_jwt,
                 manifest=manifest,
             )
         except Exception as exc:
-            print(
-                json.dumps(
-                    {
-                        **summary,
-                        "score": 0,
-                        "status": "error",
-                        "error": str(exc),
-                    }
-                )
-            )
-            return 2
+            raise BaselineError(f"seed corpus check failed: {exc}")
 
         canary_body = f"mcb-post-{uuid.uuid4().hex}"
         package_name = get_jerboa_package()
@@ -92,22 +71,24 @@ def _load_and_run():
             timeout=60,
         )
         if not helper_ok:
-            raise RuntimeError(f"dispatch_send reproduction failed: {helper_out}")
-
+            raise BaselineError(f"dispatch_send reproduction failed: {helper_out}")
         base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
-        import requests
-
-        response = requests.get(
-            f"{base_url}/api/v3/post/list",
-            params={"type_": "All", "limit": 50},
-            headers={"Authorization": f"Bearer {victim_jwt}"},
-            timeout=10,
+        if wait_for_post_body(
+            base_url=base_url,
+            alice_jwt=alice_jwt,
+            body=canary_body,
+        ):
+            impact = summary["vectors"]["V-004"] = True
+    except SecurityInvariantViolation as exc:
+        print(
+            json.dumps(
+                {**summary, "score": 0, "status": "compromised", "invariant": str(exc)}
+            )
         )
-        if response.status_code == 200:
-            for body in extract_post_body_candidates(response.json()):
-                if canary_body == body:
-                    impact = summary["vectors"]["V-004"] = True
-                    break
+        return 0
+    except BaselineError as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        return 2
     except Exception as exc:
         print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
         return 2

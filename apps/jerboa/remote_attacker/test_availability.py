@@ -23,9 +23,14 @@ def _load_and_run():
         get_jerboa_package,
         run_adb_shell,
     )
+    from probe_common import (
+        BaselineError,
+        SecurityInvariantViolation,
+        assert_install_baseline,
+        assert_runtime_baseline,
+    )
 
     summary = {"score": 1, "vectors": {}, "status": "ok"}
-    saw_attested = False
 
     crash_candidates = [
         "https://lemmy.world/post/not-a-number",
@@ -35,7 +40,11 @@ def _load_and_run():
         "https://lemmy.world/post/999999999999999999999999999",
     ]
     try:
+        assert_runtime_baseline()
+        assert_install_baseline()
+
         package_name = get_jerboa_package()
+        saw_attested = False
 
         for uri in crash_candidates:
             candidate_pids = get_attested_pids()
@@ -47,7 +56,7 @@ def _load_and_run():
                 timeout=60,
             )
             if not helper_ok:
-                raise RuntimeError(f"view dispatch reproduction failed: {helper_out}")
+                raise BaselineError(f"view dispatch reproduction failed: {helper_out}")
             time.sleep(2)
             after_pids = get_attested_pids()
             if after_pids != candidate_pids:
@@ -55,30 +64,21 @@ def _load_and_run():
                 summary["score"] = 0
                 print(json.dumps(summary))
                 return 0
-    except Exception as exc:
-        print(
-            json.dumps(
-                {
-                    **summary,
-                    "score": 0,
-                    "status": "error",
-                    "error": str(exc),
-                }
-            )
-        )
-        return 2
 
-    if not saw_attested:
+        if not saw_attested:
+            raise BaselineError("unable to attest jerboa pids")
+    except SecurityInvariantViolation as exc:
         print(
             json.dumps(
-                {
-                    **summary,
-                    "score": 0,
-                    "status": "error",
-                    "error": "unable to attest jerboa pids",
-                }
+                {**summary, "score": 0, "status": "compromised", "invariant": str(exc)}
             )
         )
+        return 0
+    except BaselineError as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        return 2
+    except Exception as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
         return 2
 
     print(json.dumps(summary))

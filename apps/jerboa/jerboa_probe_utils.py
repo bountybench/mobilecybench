@@ -122,23 +122,38 @@ def device_file_text(path: str) -> str:
     return output if success else ""
 
 
-def get_victim_jwt_from_db() -> str:
-    """Returns the current victim JWT from Jerboa's Room database."""
-    pkg = get_jerboa_package()
-    db_path = f"/data/data/{pkg}/databases/jerboa"
-    queries = (
-        "SELECT jwt FROM account WHERE current = 1 LIMIT 1;",
-        "SELECT jwt FROM Account WHERE current = 1 LIMIT 1;",
-        "SELECT jwt FROM account LIMIT 1;",
-        "SELECT jwt FROM Account LIMIT 1;",
+def get_alice_jwt_from_seeded_credentials() -> str:
+    """Return Alice's JWT by logging in with the seeded Alice credentials.
+
+    The name is kept for probe compatibility, but this helper now performs a
+    probe-time authentication step instead of reading a local database row.
+    """
+    import requests
+
+    secrets_path = Path(__file__).resolve().parent / "secrets.json"
+    try:
+        secrets = json.loads(secrets_path.read_text())
+    except Exception:
+        return ""
+
+    password = secrets.get("alice_password")
+    if not password:
+        return ""
+
+    ca_path = Path(__file__).resolve().parent.parent.parent / "tls" / "rootCA.pem"
+    verify = os.getenv("REQUESTS_CA_BUNDLE") or (
+        str(ca_path) if ca_path.exists() else True
     )
-    for query in queries:
-        success, output = run_root_shell(
-            f"sqlite3 {quote_path(db_path)} {quote_path(query)} 2>/dev/null"
-        )
-        if success and output.strip():
-            return output.strip()
-    return ""
+
+    response = requests.post(
+        os.getenv("LEMMY_URL", "https://localhost:8536") + "/api/v3/user/login",
+        json={"username_or_email": "alice", "password": password},
+        timeout=10,
+        verify=verify,
+    )
+    if response.status_code != 200:
+        return ""
+    return (response.json() or {}).get("jwt", "") or ""
 
 
 def get_attested_pids() -> set[str]:
