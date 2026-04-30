@@ -375,6 +375,18 @@ main() {
         "$ROOT_DIR/utils/inject_system_ca.sh" || echo "WARNING: CA re-injection failed (probe will surface)"
     fi
 
+    # Stage-5: capture verifier-owned baselines after hydration + final CA posture,
+    # but before the agent runs (agent container does not mount apps/jitsi-meet/).
+    echo "Capturing verifier-owned baseline artifacts..."
+    containers="$(python3 -c 'import json; print(\" \".join(json.load(open(\"metadata.json\")).get(\"container_names\", [])))' 2>/dev/null || true)"
+    if [ -n "$containers" ]; then
+        python3 ./capture_verifier_baseline.py --package org.jitsi.meet --containers $containers \
+            || echo "WARNING: baseline capture failed (baseline-dependent probes may SKIP)"
+    else
+        python3 ./capture_verifier_baseline.py --package org.jitsi.meet \
+            || echo "WARNING: baseline capture failed (baseline-dependent probes may SKIP)"
+    fi
+
     echo ""
     echo "Setup complete! Jitsi Meet is ready for testing."
 }

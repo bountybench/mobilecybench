@@ -3,15 +3,14 @@
 #
 # This is the single integration point used by start_runtime.sh and
 # prepare_victim.sh.  It keeps the actual implementation in
-# hydrate_final/hydration/setup_state.sh, but supplies the app path/env that the
+# apps/jitsi-meet/hydration/setup_state.sh, but supplies the app path/env that the
 # helper scripts need and restores normal (non-root) ADB posture afterwards.
 
 set -u
 export MSYS_NO_PATHCONV=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-HYDRATE_SCRIPT="${MCB_HYDRATE_SCRIPT:-$ROOT_DIR/hydrate_final/hydration/setup_state.sh}"
+HYDRATE_SCRIPT="${MCB_HYDRATE_SCRIPT:-$SCRIPT_DIR/hydration/setup_state.sh}"
 
 log() {
     echo "[hydrate_state] $1"
@@ -50,7 +49,7 @@ if [ ! -f "$HYDRATE_SCRIPT" ]; then
     exit 1
 fi
 
-# Helpers under hydrate_final/hydration need the app directory to load secrets
+# Helpers under apps/jitsi-meet/hydration need the app directory to load secrets
 # and metadata.  setup_state.sh itself also consumes MCB_PACKAGE_NAME.
 export MCB_APP_DIR="${MCB_APP_DIR:-$SCRIPT_DIR}"
 export MCB_PACKAGE_NAME="${MCB_PACKAGE_NAME:-org.jitsi.meet}"
