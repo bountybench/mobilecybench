@@ -14,6 +14,8 @@ SEED_OUTPUT=${SEED_OUTPUT:-$DEFAULT_OUTPUT}
 TARGET_PACKAGE="com.jerboa"
 TARGET_DIR="/data/data/${TARGET_PACKAGE}"
 ANDROID_BASELINE_FILE="${SCRIPT_DIR}/baseline_android_dir.txt"
+PROBE_AUTH_DEVICE_PATH="/data/local/tmp/.mcb_jerboa_probe_auth.json"
+BASELINE_FP_DEVICE_PATH="/data/local/tmp/.mcb_jerboa_baseline_fingerprint"
 
 start_stack(){
   [[ -f "$SCRIPT_DIR/docker-compose.yml" ]] || fatal "docker-compose.yml not found at $SCRIPT_DIR/docker-compose.yml"
@@ -211,6 +213,71 @@ seed_dynamic_canary(){
   retry 3 5 seed_dynamic_canary_once || fatal "Dynamic canary seeding failed after retries"
 }
 
+seed_probe_auth_cache_once(){
+  log_info "Caching probe auth and baseline fingerprint on device..."
+
+  local auth_tmp auth_host fp_tmp fp_host fingerprint
+  auth_tmp="$(mktemp)"
+  fp_tmp="$(mktemp)"
+
+  REQUESTS_CA_BUNDLE="$SCRIPT_DIR/../../tls/rootCA.pem" \
+  SCRIPT_DIR="$SCRIPT_DIR" PYTHONPATH="$SCRIPT_DIR/../.." AUTH_TMP="$auth_tmp" \
+    python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+from jerboa_setup import LemmySeeder
+
+script_dir = Path(os.environ["SCRIPT_DIR"])
+secrets = json.loads((script_dir / "secrets.json").read_text())
+seeder = LemmySeeder(os.getenv("LEMMY_URL", "https://localhost:8536"), secrets)
+admin_jwt = seeder.login_user("admin", secrets.get("admin_password", ""))
+alice_jwt = seeder.login_user("alice", secrets.get("alice_password", ""))
+if not admin_jwt or not alice_jwt:
+    raise RuntimeError("unable to obtain probe auth JWTs")
+Path(os.environ["AUTH_TMP"]).write_text(
+    json.dumps(
+        {
+            "admin_jwt": admin_jwt,
+            "alice_jwt": alice_jwt,
+        },
+        sort_keys=True,
+    ),
+    encoding="utf-8",
+)
+PY
+
+  auth_host="$auth_tmp"
+  if command -v cygpath >/dev/null 2>&1; then
+    auth_host="$(cygpath -w "$auth_tmp")"
+  fi
+  MSYS_NO_PATHCONV=1 adb push "$auth_host" /data/local/tmp/mcb_jerboa_probe_auth.json >/dev/null
+  adb shell "su 0 sh -c 'mv /data/local/tmp/mcb_jerboa_probe_auth.json \"$PROBE_AUTH_DEVICE_PATH\" && chmod 600 \"$PROBE_AUTH_DEVICE_PATH\"'" >/dev/null
+
+  fingerprint="$(
+    REQUESTS_CA_BUNDLE="$SCRIPT_DIR/../../tls/rootCA.pem" \
+    PYTHONPATH="$SCRIPT_DIR/../.." \
+      python3 "$SCRIPT_DIR/jerboa_state_fingerprint.py" fingerprint
+  )"
+  [ -n "$fingerprint" ] || fatal "Jerboa baseline fingerprint is empty"
+  printf '%s\n' "$fingerprint" > "$fp_tmp"
+
+  fp_host="$fp_tmp"
+  if command -v cygpath >/dev/null 2>&1; then
+    fp_host="$(cygpath -w "$fp_tmp")"
+  fi
+  MSYS_NO_PATHCONV=1 adb push "$fp_host" /data/local/tmp/mcb_jerboa_baseline_fingerprint >/dev/null
+  adb shell "su 0 sh -c 'mv /data/local/tmp/mcb_jerboa_baseline_fingerprint \"$BASELINE_FP_DEVICE_PATH\" && chmod 600 \"$BASELINE_FP_DEVICE_PATH\"'" >/dev/null
+
+  rm -f "$auth_tmp" "$fp_tmp"
+  log_info "Probe auth cache and baseline fingerprint stored"
+}
+
+seed_probe_auth_cache(){
+  retry 3 5 seed_probe_auth_cache_once || fatal "Probe auth cache seeding failed after retries"
+}
+
 main(){
   start_stack
   run_seeder
@@ -218,6 +285,7 @@ main(){
   install_app
   login_agent_user
   seed_dynamic_canary
+  seed_probe_auth_cache
   # Snapshot only after the full runtime baseline exists; earlier capture
   # misses legitimate login/canary state and is misleading.
   capture_android_dir_baseline

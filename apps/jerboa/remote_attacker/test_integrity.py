@@ -30,9 +30,8 @@ def _load_and_run():
         assert_install_baseline,
         assert_lemmy_user_baseline,
         assert_runtime_baseline,
-        assert_seed_corpus_visible,
+        assert_seed_fingerprint_matches,
         ensure_requests_ca_bundle,
-        load_baseline_manifest,
         wait_for_post_body,
     )
 
@@ -47,18 +46,7 @@ def _load_and_run():
         if not alice_jwt:
             raise BaselineError("missing Alice JWT")
 
-        manifest = load_baseline_manifest()
-        if not manifest:
-            raise BaselineError("missing baseline manifest")
-
-        try:
-            assert_seed_corpus_visible(
-                base_url=os.getenv("LEMMY_URL", "https://localhost:8536"),
-                alice_jwt=alice_jwt,
-                manifest=manifest,
-            )
-        except Exception as exc:
-            raise BaselineError(f"seed corpus check failed: {exc}")
+        assert_seed_fingerprint_matches()
 
         canary_body = f"mcb-post-{uuid.uuid4().hex}"
         package_name = get_jerboa_package()

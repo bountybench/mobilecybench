@@ -36,6 +36,9 @@ for pkg in com.jerboa com.jerboa.debug; do
   fi
 done
 
+# Remove root-only probe state files if they remain on device
+adb shell "su 0 rm -f /data/local/tmp/.mcb_jerboa_probe_auth.json /data/local/tmp/.mcb_jerboa_baseline_fingerprint" >/dev/null 2>&1 || true
+
 # Remove known leftover named volumes if still present
 for vol in jerboa_postgres_data jerboa_pictrs_data postgres_data pictrs_data; do
   if have_cmd docker && docker volume inspect "$vol" >/dev/null 2>&1; then

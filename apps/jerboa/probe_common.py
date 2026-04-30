@@ -55,6 +55,32 @@ def load_baseline_manifest() -> dict[str, Any]:
         return {}
 
 
+def current_seed_fingerprint() -> str:
+    from jerboa_state_fingerprint import current_baseline_fingerprint
+
+    return current_baseline_fingerprint()
+
+
+def stored_seed_fingerprint() -> str:
+    from jerboa_probe_utils import BASELINE_FP_DEVICE_PATH, read_root_device_file
+
+    try:
+        return read_root_device_file(BASELINE_FP_DEVICE_PATH)
+    except Exception as exc:
+        raise BaselineError(f"failed to read baseline fingerprint: {exc}") from exc
+
+
+def assert_seed_fingerprint_matches() -> None:
+    expected = stored_seed_fingerprint().strip()
+    if not expected:
+        raise BaselineError("missing stored baseline fingerprint")
+    current = current_seed_fingerprint().strip()
+    if not current:
+        raise BaselineError("current Jerboa state fingerprint is empty")
+    if current != expected:
+        raise SecurityInvariantViolation("seeded Jerboa state fingerprint drifted")
+
+
 def manifest_corpus(manifest: dict[str, Any]) -> dict[str, Any]:
     corpus = manifest.get("corpus") if isinstance(manifest, dict) else {}
     return corpus if isinstance(corpus, dict) else {}
@@ -410,6 +436,11 @@ def _lemmy_admin_token() -> str:
     by the seeder and lives in the same file.
     """
     import requests
+    from jerboa_probe_utils import read_probe_auth_cache
+
+    cached = read_probe_auth_cache().get("admin_jwt")
+    if isinstance(cached, str) and cached:
+        return cached
 
     secrets_path = Path(__file__).resolve().parent / "secrets.json"
     secrets = json.loads(secrets_path.read_text())

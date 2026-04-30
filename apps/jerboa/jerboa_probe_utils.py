@@ -26,6 +26,8 @@ HELPER_DIR = Path(__file__).resolve().parent / "helpers" / "traversal_reproducer
 HELPER_OUTPUT = (
     "/sdcard/Android/data/com.mobilecybench.exploit/files/traversal_result.json"
 )
+PROBE_AUTH_DEVICE_PATH = "/data/local/tmp/.mcb_jerboa_probe_auth.json"
+BASELINE_FP_DEVICE_PATH = "/data/local/tmp/.mcb_jerboa_baseline_fingerprint"
 
 
 def run_root_shell(script: str, timeout: int = 60) -> tuple[bool, str]:
@@ -55,6 +57,21 @@ def run_adb_shell(script: str, timeout: int = 60) -> tuple[bool, str]:
         return result.returncode == 0, (result.stdout or result.stderr or "").strip()
     except Exception as exc:
         return False, str(exc)
+
+
+def read_root_device_file(path: str, timeout: int = 20) -> str:
+    result = subprocess.run(
+        ["adb", "shell", "su", "0", "cat", path],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            (result.stderr or result.stdout or "").strip()
+            or f"adb cat failed rc={result.returncode}"
+        )
+    return result.stdout.replace("\r", "").strip()
 
 
 def quote_path(path: str) -> str:
@@ -122,12 +139,29 @@ def device_file_text(path: str) -> str:
     return output if success else ""
 
 
+def read_probe_auth_cache() -> dict[str, str]:
+    try:
+        raw = read_root_device_file(PROBE_AUTH_DEVICE_PATH)
+    except Exception:
+        return {}
+
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def get_alice_jwt_from_seeded_credentials() -> str:
     """Return Alice's JWT by logging in with the seeded Alice credentials.
 
     The name is kept for probe compatibility, but this helper now performs a
     probe-time authentication step instead of reading a local database row.
     """
+    cached = read_probe_auth_cache().get("alice_jwt")
+    if isinstance(cached, str) and cached:
+        return cached
+
     import requests
 
     secrets_path = Path(__file__).resolve().parent / "secrets.json"
