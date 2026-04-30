@@ -134,7 +134,7 @@ def check_valid_credentials_authenticate() -> Tuple[bool, str]:
                 failures.append(f"{username} -> {code}")
 
         if failures:
-            return False, f"Valid credential auth failures: {failures[:5]}"
+            return False, f"Valid credential auth failures: {failures}"
 
         return True, "All valid credentials authenticated"
     except Exception as e:
@@ -231,11 +231,8 @@ def check_cross_user_isolation() -> Tuple[bool, str]:
                         violations.append(
                             f"{actor['username']}->{target_user}/{path} = 200"
                         )
-                        break  # one peer file leaking is enough; move on
         if violations:
-            return False, "Cross-user content GET succeeded: " + "; ".join(
-                violations[:5]
-            )
+            return False, "Cross-user content GET succeeded: " + "; ".join(violations)
         return True, f"Cross-user isolation enforced ({len(actors)} actors)"
     except Exception as e:
         return False, f"Error: {e}"

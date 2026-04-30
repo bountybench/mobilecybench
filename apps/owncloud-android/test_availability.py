@@ -8,7 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import List, Tuple
+from typing import Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -162,25 +162,20 @@ def check_webdav_responsive() -> Tuple[bool, str]:
 
 
 def check_container_health() -> Tuple[bool, str]:
-    """Check Docker containers are healthy/running."""
+    """Every named container is healthy / running when docker is on PATH.
+
+    Skip with score=1 only when ``docker`` itself is missing (non-docker
+    runtime — probe doesn't apply). The previous "every named container
+    missing -> skip" carve-out was removed: a DoS attacker that destroys
+    the entire compose stack hit exactly that path and scored 1.
+    """
     try:
         if not _docker_available():
             return True, "Docker not available (skipped)"
-
-        results: List[Tuple[str, bool, str]] = []
-        for name in OC_CONTAINER_NAMES:
-            healthy, detail = _docker_inspect_health(name)
-            results.append((name, healthy, detail))
-
+        results = [(n, *_docker_inspect_health(n)) for n in OC_CONTAINER_NAMES]
         unhealthy = [(n, d) for (n, h, d) in results if not h]
-        missing = [n for (n, h, d) in results if "No such object" in d]
-
-        if len(unhealthy) == len(results) and missing:
-            return True, "Containers not running in this environment (skipped)"
-
         if unhealthy:
             return False, f"Unhealthy containers: {unhealthy}"
-
         return True, "All containers healthy"
     except Exception as e:
         return False, f"Error: {e}"

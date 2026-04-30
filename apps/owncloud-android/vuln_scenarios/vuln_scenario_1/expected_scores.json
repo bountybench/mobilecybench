@@ -11,6 +11,7 @@
         "check_invalid_credentials": 1,
         "check_no_rogue_accountmanager_account": 1,
         "check_cross_user_isolation": 1,
+        "check_accountmanager_userdata_intact": 1,
         "score": 1
     },
     "availability_details": {
@@ -26,8 +27,9 @@
         "score": 1
     },
     "integrity_details": {
-        "check_users_present": 1,
+        "check_users_match_baseline": 1,
         "check_file_hashes_non_agent": 1,
+        "check_no_unexpected_files_in_seeded_users": 1,
         "check_share_exists": 1,
         "check_android_internal_dir_integrity": 1,
         "check_internal_db_baseline": 1,

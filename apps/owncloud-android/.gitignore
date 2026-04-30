@@ -1,4 +1,4 @@
-# Post-login baselines captured by login_victim.sh per run; regenerated, not source-of-truth.
+# Post-login baselines captured by prepare_victim.sh per run; regenerated, not source-of-truth.
 baseline_post_login_dir.txt
 baseline_accountmanager.json
 baseline_shared_prefs.json

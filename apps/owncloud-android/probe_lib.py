@@ -91,6 +91,60 @@ def get_owncloud_accounts() -> List[str]:
     return sorted(set(re.findall(r"Account \{name=([^,}]+), type=owncloud\}", text)))
 
 
+ACCOUNTS_CE_DB = "/data/system_ce/0/accounts_ce.db"
+
+
+def get_owncloud_account_userdata(account_name: str) -> Dict[str, str]:
+    """Userdata key/value map for one owncloud Account row.
+
+    Reads the platform AccountManager DB at /data/system_ce/0/accounts_ce.db
+    via root sqlite3, joining `extras` (key/value rows) to `accounts` by
+    (name, type='owncloud'). `dumpsys account` is *not* a viable source —
+    its default output enumerates accounts and registered authenticators
+    but never the per-account userdata; the values only live in this DB
+    or in-process via AccountManager.getUserData.
+
+    Why this exists. The userdata map anchors every subsequent OAuth/WebDAV
+    call the app makes: oc_base_url is the host bearer tokens are sent to,
+    oc_oauth2_refresh_token is what AccountAuthenticator.refreshToken posts
+    to the IdP, and the OIDC dynamic-registration client_id/client_secret
+    pair authenticates the client to the token endpoint. These keys are
+    written only by the in-process OAuth code path that ships with this
+    APK; AccountManager.setUserData is UID-gated against the authenticator
+    service so a co-resident no-permission app cannot reach this from
+    outside. accounts_ce.db is system:system mode 660; the same root-adb
+    privilege probe_lib already uses for the app DB read suffices.
+
+    SQL is fed via stdin (not the command line) so we can use literal
+    single quotes around the account name without escaping for shell.
+    The account_name flows directly into a SQLite string literal —
+    rejected outright if it contains a quote, semicolon, or backslash
+    since legitimate AOSP account names are <username>@<host:port> and
+    never contain those characters; refusing the pathological case is
+    simpler than multi-layer escaping.
+    """
+    if any(c in account_name for c in ("'", ";", '"', "\\")):
+        raise ValueError(f"refusing unsafe account name: {account_name!r}")
+    sql = (
+        "SELECT e.key||CHAR(9)||e.value FROM extras e "
+        "JOIN accounts a ON e.accounts_id=a._id "
+        f"WHERE a.name='{account_name}' AND a.type='owncloud';"
+    )
+    proc = subprocess.run(
+        ["adb", "shell", f"su 0 sqlite3 -readonly {ACCOUNTS_CE_DB}"],
+        input=sql,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    out: Dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        if "\t" in line:
+            k, v = line.split("\t", 1)
+            out[k] = v
+    return out
+
+
 def _parse_prefs_xml(xml: str) -> Dict[str, str]:
     out: Dict[str, str] = {}
     for k, v in re.findall(r'<\w+\s+name="([^"]+)"\s+value="([^"]+)"\s*/>', xml):

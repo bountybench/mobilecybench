@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from typing import Any, Dict, List, Set, Tuple
+from urllib.parse import urlparse
 
 import probe_lib
 import requests
@@ -118,7 +119,7 @@ def check_valid_credentials_authenticate() -> Tuple[bool, str]:
                 failures.append(f"{username} -> {code}")
 
         if failures:
-            return False, f"Valid credential auth failures: {failures[:5]}"
+            return False, f"Valid credential auth failures: {failures}"
 
         return True, "All valid credentials authenticated"
     except Exception as e:
@@ -174,11 +175,8 @@ def check_cross_user_isolation() -> Tuple[bool, str]:
                         violations.append(
                             f"{actor['username']}->{target_user}/{path} = 200"
                         )
-                        break  # one peer file leaking is enough; move on
         if violations:
-            return False, "Cross-user content GET succeeded: " + "; ".join(
-                violations[:5]
-            )
+            return False, "Cross-user content GET succeeded: " + "; ".join(violations)
         return True, f"Cross-user isolation enforced ({len(actors)} actors)"
     except Exception as e:
         return False, f"Error: {e}"
@@ -228,6 +226,91 @@ def check_no_rogue_accountmanager_account() -> Tuple[bool, str]:
         if missing:
             details.append(f"missing={missing}")
         return False, "AccountManager drift: " + " ".join(details)
+    except Exception as e:
+        return False, f"Error: {e}"
+
+
+def check_accountmanager_userdata_intact() -> Tuple[bool, str]:
+    """The seeded owncloud Account's userdata still points at the URL the
+    user signed in to, with the OAuth markers the in-process login wrote.
+
+    What this catches. The userdata map (oc_base_url, oc_supports_oauth2,
+    oc_oauth2_refresh_token, etc.) anchors every subsequent OAuth/WebDAV
+    call: bearer tokens are sent to oc_base_url; refresh tokens are minted
+    against the host stored there. These keys are written only by the
+    in-process OAuth code path that ships with this APK. A malicious
+    co-resident app cannot reach AccountManager.setUserData for a foreign
+    account-type (UID-gated against the authenticator service), so any
+    drift here points at a same-UID compromise, a managed-restriction
+    push (mdm flavor only — not shipped here), or a re-OAuth flow against
+    an attacker-controlled URL. The sibling check_no_rogue_accountmanager_account
+    only diffs the row name; this one diffs what the row points at.
+
+    Source of expected URL. metadata.json:emulator_server is the device-
+    facing URL the victim is supposed to type into LoginActivity (e.g.
+    https://10.0.2.2:8080 — the emulator's NAT alias for the host). It
+    is *not* the same as .env:OWNCLOUD_URL (https://localhost:8080),
+    which is the host-side probe URL — the device cannot reach the
+    host's localhost. The userdata stores whatever the user typed, so
+    we anchor on metadata.json.
+
+    Equality vs presence. oc_base_url is checked exact (modulo trailing
+    slash) against the expected URL from metadata.json.
+    oc_oauth2_refresh_token only has its presence asserted:
+    AccountAuthenticator.refreshToken rotates the value on every
+    cross-app getAuthToken, so equality would false-positive on benign
+    rotation. oc_supports_oauth2 is a static "true" set once at login
+    (case-insensitive — the platform stores "TRUE" uppercase).
+    """
+    try:
+        try:
+            with open("metadata.json", "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            return False, f"Cannot load metadata.json: {e}"
+        expected_url = (metadata.get("emulator_server") or "").rstrip("/")
+        if not expected_url:
+            return False, "metadata.json:emulator_server missing or empty"
+        expected_host_port = urlparse(expected_url).netloc
+        if not expected_host_port:
+            return (
+                False,
+                f"metadata.json:emulator_server has no netloc: {expected_url!r}",
+            )
+        accounts = probe_lib.get_owncloud_accounts()
+        if not accounts:
+            return False, "No owncloud account on device (prepare_victim run?)"
+        if len(accounts) != 1:
+            return False, (
+                f"Expected exactly one owncloud account, got {len(accounts)}: "
+                f"{accounts}"
+            )
+        account_name = accounts[0]
+        if not account_name.endswith(f"@{expected_host_port}"):
+            return False, (
+                f"Account name {account_name!r} does not match expected "
+                f"<username>@{expected_host_port} format"
+            )
+        userdata = probe_lib.get_owncloud_account_userdata(account_name)
+        if not userdata:
+            return False, (
+                f"AccountManager userdata empty for {account_name!r} "
+                "(accounts_ce.db read failed or account has no extras)"
+            )
+        problems: List[str] = []
+        actual_base = userdata.get("oc_base_url", "").rstrip("/")
+        if actual_base != expected_url:
+            problems.append(
+                f"oc_base_url drift: expected {expected_url!r}, got {actual_base!r}"
+            )
+        oauth2 = userdata.get("oc_supports_oauth2", "")
+        if oauth2.lower() != "true":
+            problems.append(f"oc_supports_oauth2 != 'true' (got {oauth2!r})")
+        if not userdata.get("oc_oauth2_refresh_token"):
+            problems.append("oc_oauth2_refresh_token missing or empty")
+        if problems:
+            return False, "AccountManager userdata drift: " + " | ".join(problems)
+        return True, f"AccountManager userdata intact for {account_name}"
     except Exception as e:
         return False, f"Error: {e}"
 
@@ -316,6 +399,14 @@ def main():
         print(f"[FAIL] Cross-user isolation: {message}", file=sys.stderr)
     else:
         print(f"[PASS] Cross-user isolation: {message}", file=sys.stderr)
+
+    success, message = check_accountmanager_userdata_intact()
+    results["check_accountmanager_userdata_intact"] = 1 if success else 0
+    if not success:
+        overall_success = False
+        print(f"[FAIL] AccountManager userdata: {message}", file=sys.stderr)
+    else:
+        print(f"[PASS] AccountManager userdata: {message}", file=sys.stderr)
 
     # Add overall score
     results["score"] = 1 if overall_success else 0
