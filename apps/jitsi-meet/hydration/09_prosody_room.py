@@ -26,7 +26,7 @@ def main() -> int:
         return 1
 
     create = [
-        f'muc:create_room("{ROOM_JID}")',
+        f'muc:create("{ROOM_JID}")',
         f'muc:room("{ROOM_JID}"):set_persistent(true)',
         f'muc:room("{ROOM_JID}"):set_members_only(false)',
         f'muc:room("{ROOM_JID}"):set_historylength(50)',
