@@ -22,6 +22,10 @@ fi
 echo "Removing log files..."
 rm -f *.log
 
+echo "Removing synthetic vuln state..."
+rm -f synthetic_vulnerabilities/vuln_1/exploit_files/runtime_state.json
+rm -f /tmp/nextcloud-talk-synth-vuln_1.json
+
 echo "Taking down containers..."
 docker compose down -v 2>/dev/null || true
 
