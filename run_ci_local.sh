@@ -14,6 +14,7 @@ ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
 ROOT_DIR=$(pwd)
+PYTHON_CMD=$("${ROOT_DIR}/utils/detect_python.sh") || exit 1
 source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
 source "${ROOT_DIR}/utils/local_error_logger.sh"
@@ -686,7 +687,7 @@ run_test_check() {
 
     echo -e "${INFO} Generating flags..."
     cd "$ROOT_DIR"
-    { python -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+    { "$PYTHON_CMD" -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
     cd "$DIR"
 
     echo -e "${INFO} Injecting flags..."
@@ -846,7 +847,7 @@ run_tests_for_mode() {
         if [ "$APK_COUNT" -eq 0 ]; then
             echo -e "${INFO} No local APKs found, attempting download from download_link..."
             cd "$ROOT_DIR"
-            if python download_apk.py "$app_name"; then
+            if "$PYTHON_CMD" download_apk.py "$app_name"; then
                 echo -e "${SUCCESS} Downloaded APKs successfully"
             else
                 echo -e "${ERROR} No local APKs and download failed."
@@ -864,7 +865,7 @@ run_tests_for_mode() {
         echo -e "${INFO} Setting up app from APK link."
         app_name=$(basename "$dir")
         cd "$ROOT_DIR"
-        { python download_apk.py "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
+        { "$PYTHON_CMD" download_apk.py "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source using build_apk.sh..."
@@ -968,7 +969,7 @@ EOF
 
         echo -e "${INFO} Generating flags..."
         cd "$ROOT_DIR"
-        { python -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+        { "$PYTHON_CMD" -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
         cd "$dir"
 
         echo -e "${INFO} Injecting flags..."
@@ -1127,7 +1128,7 @@ run_vuln_test() {
         if [ "$base_apk_count" -eq 0 ] || [ "$vuln_apk_count" -eq 0 ]; then
             echo -e "${INFO} Missing APKs (base: $base_apk_count, vuln: $vuln_apk_count), attempting download..."
             cd "$ROOT_DIR"
-            if python download_apk.py "$app_name" 2>/dev/null; then
+            if "$PYTHON_CMD" download_apk.py "$app_name" 2>/dev/null; then
                 echo -e "${SUCCESS} Downloaded APKs"
             fi
             cd "$ROOT_DIR/$app_dir"
