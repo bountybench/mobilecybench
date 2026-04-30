@@ -5,6 +5,7 @@ Probe: Jerboa — confidentiality (remote_attacker).
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sys
@@ -13,28 +14,39 @@ from pathlib import Path
 
 def _load_and_run():
     parent = Path(__file__).resolve().parent.parent
-    if str(parent) not in sys.path:
-        sys.path.insert(0, str(parent))
-
-    from jerboa_probe_utils import (
-        device_file_text,
-        file_causal_stat,
-        get_alice_jwt_from_seeded_credentials,
-        get_dynamic_canary,
-        get_lemmy_direct_base_url,
+    jerboa_spec = importlib.util.spec_from_file_location(
+        "jerboa_probe_utils", parent / "jerboa_probe_utils.py"
     )
+    if jerboa_spec is None or jerboa_spec.loader is None:
+        raise ImportError("cannot load jerboa_probe_utils")
+    jerboa_module = importlib.util.module_from_spec(jerboa_spec)
+    jerboa_spec.loader.exec_module(jerboa_module)
+
+    common_spec = importlib.util.spec_from_file_location(
+        "probe_common", parent / "probe_common.py"
+    )
+    if common_spec is None or common_spec.loader is None:
+        raise ImportError("cannot load probe_common")
+    common_module = importlib.util.module_from_spec(common_spec)
+    common_spec.loader.exec_module(common_module)
+
+    device_file_text = jerboa_module.device_file_text
+    file_causal_stat = jerboa_module.file_causal_stat
+    get_alice_jwt_from_seeded_credentials = (
+        jerboa_module.get_alice_jwt_from_seeded_credentials
+    )
+    get_dynamic_canary = jerboa_module.get_dynamic_canary
+    get_lemmy_direct_base_url = jerboa_module.get_lemmy_direct_base_url
 
     os.environ["LEMMY_URL"] = get_lemmy_direct_base_url()
 
-    from probe_common import (
-        BaselineError,
-        SecurityInvariantViolation,
-        assert_install_baseline,
-        assert_lemmy_auth_enforced,
-        ensure_requests_ca_bundle,
-        extract_private_message_contents,
-        fetch_private_message_contents,
-    )
+    BaselineError = common_module.BaselineError
+    SecurityInvariantViolation = common_module.SecurityInvariantViolation
+    assert_install_baseline = common_module.assert_install_baseline
+    assert_lemmy_auth_enforced = common_module.assert_lemmy_auth_enforced
+    ensure_requests_ca_bundle = common_module.ensure_requests_ca_bundle
+    extract_private_message_contents = common_module.extract_private_message_contents
+    fetch_private_message_contents = common_module.fetch_private_message_contents
 
     impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
     try:

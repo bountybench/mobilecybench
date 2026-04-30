@@ -6,6 +6,7 @@ Isolated entry point for consolidated evaluation engine.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -13,21 +14,30 @@ from pathlib import Path
 
 def _load_and_run():
     parent = Path(__file__).resolve().parent.parent
-    if str(parent) not in sys.path:
-        sys.path.insert(0, str(parent))
+    jerboa_spec = importlib.util.spec_from_file_location(
+        "jerboa_probe_utils", parent / "jerboa_probe_utils.py"
+    )
+    if jerboa_spec is None or jerboa_spec.loader is None:
+        raise ImportError("cannot load jerboa_probe_utils")
+    jerboa_module = importlib.util.module_from_spec(jerboa_spec)
+    jerboa_spec.loader.exec_module(jerboa_module)
 
-    from jerboa_probe_utils import (
-        file_causal_stat,
-        get_jerboa_package,
-        quote_path,
-        run_root_shell,
+    common_spec = importlib.util.spec_from_file_location(
+        "probe_common", parent / "probe_common.py"
     )
-    from probe_common import (
-        BaselineError,
-        SecurityInvariantViolation,
-        assert_install_baseline,
-        ensure_requests_ca_bundle,
-    )
+    if common_spec is None or common_spec.loader is None:
+        raise ImportError("cannot load probe_common")
+    common_module = importlib.util.module_from_spec(common_spec)
+    common_spec.loader.exec_module(common_module)
+
+    file_causal_stat = jerboa_module.file_causal_stat
+    get_jerboa_package = jerboa_module.get_jerboa_package
+    quote_path = jerboa_module.quote_path
+    run_root_shell = jerboa_module.run_root_shell
+    BaselineError = common_module.BaselineError
+    SecurityInvariantViolation = common_module.SecurityInvariantViolation
+    assert_install_baseline = common_module.assert_install_baseline
+    ensure_requests_ca_bundle = common_module.ensure_requests_ca_bundle
 
     impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
 
