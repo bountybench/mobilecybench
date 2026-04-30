@@ -205,7 +205,7 @@ def _post_form(path: str, data: dict[str, str]) -> tuple[int, Any]:
         return 0, str(exc.reason)
 
 
-def _login_and_get_access_token(username: str, password: str) -> str | None:
+def _login_and_get_token_pair(username: str, password: str) -> tuple[str, str] | None:
     status, payload = _http_json(
         "/auth/login_flow",
         method="POST",
@@ -243,7 +243,10 @@ def _login_and_get_access_token(username: str, password: str) -> str | None:
     if status != 200 or not isinstance(token_payload, dict):
         return None
     access_token = token_payload.get("access_token")
-    return access_token if isinstance(access_token, str) else None
+    refresh_token = token_payload.get("refresh_token")
+    if not isinstance(access_token, str) or not isinstance(refresh_token, str):
+        return None
+    return access_token, refresh_token
 
 
 def _call_api(path: str, access_token: str) -> tuple[int, Any]:
@@ -681,28 +684,57 @@ def _expected_server_list() -> list[dict[str, Any]]:
     return [server]
 
 
+def _safe_admin_refresh_token_count(admin_user_id: str) -> int:
+    try:
+        return len(admin_refresh_token_ids(load_auth_store(), admin_user_id))
+    except Exception:
+        return 0
+
+
 def _wait_for_admin_tokens_persisted(
-    admin_user_id: str, *, attempts: int = 10, interval: float = 0.5
+    admin_user_id: str,
+    *,
+    min_count: int,
+    attempts: int = 30,
+    interval: float = 0.5,
+    stable_reads: int = 3,
 ) -> None:
     """Poll the on-disk auth store until the admin's refresh-token set
-    stabilizes between two successive reads.
+    reaches the expected size and stabilizes between successive reads.
 
     HA's AuthStore schedules saves with `delay_save=1`, so newly minted
     tokens (from login_flow + LLAT) may not appear in /config/.storage/auth
-    immediately. We poll until two consecutive reads return the same set,
-    then return. Best-effort: never raises, just returns when stable or
-    after the budget elapses.
+    immediately. We poll until the expected token count is present and the
+    set is stable for a few reads. Best-effort: never raises, just returns
+    when stable or after the budget elapses.
     """
     previous: set[str] | None = None
+    stable_count = 0
+    last_count = 0
     for _ in range(attempts):
         try:
             ids = set(admin_refresh_token_ids(load_auth_store(), admin_user_id))
         except Exception:
             ids = set()
+        last_count = len(ids)
+        if len(ids) < min_count:
+            previous = ids
+            stable_count = 0
+            time.sleep(interval)
+            continue
         if previous is not None and ids == previous and ids:
+            stable_count += 1
+        else:
+            stable_count = 1
+        if stable_count >= stable_reads:
             return
         previous = ids
         time.sleep(interval)
+    print(
+        "[WARN] admin refresh-token baseline did not reach a stable expected "
+        f"count before timeout: expected>={min_count} observed={last_count}",
+        file=sys.stderr,
+    )
 
 
 def _service_call(
@@ -747,42 +779,51 @@ def _prepare_sentinel_entities(access_token: str) -> None:
 
 def _capture_states_and_llat(
     username: str, password: str, *, prepare_sentinels: bool = False
-) -> tuple[list[Any], str | None]:
-    access_token = _login_and_get_access_token(username, password)
-    if not access_token:
-        return [], None
+) -> tuple[list[Any], str | None, bool]:
+    tokens = _login_and_get_token_pair(username, password)
+    if not tokens:
+        return [], None, False
+    access_token, _refresh_token = tokens
     if prepare_sentinels:
         _prepare_sentinel_entities(access_token)
     status, states = _call_api("/api/states", access_token)
     if status != 200 or not isinstance(states, list):
         states = []
     llat = _mint_llat(access_token, f"{LLAT_NAME_PREFIX} ({username})")
-    return states, llat
+    return states, llat, True
 
 
 def build_manifest() -> dict[str, Any]:
     admin_profile = get_user_profile(ADMIN_USERNAME)
     admin_user_id = admin_profile["id"]
+    initial_admin_token_count = _safe_admin_refresh_token_count(admin_user_id)
 
     # Capture entity states + admin LLAT through a single login flow so we
     # don't churn through HA's auth store more than necessary.
-    states, admin_llat = _capture_states_and_llat(
+    states, admin_llat, admin_refresh_minted = _capture_states_and_llat(
         admin_profile["name"],
         admin_profile["password"],
         prepare_sentinels=True,
     )
     nonadmin_profile = get_user_profile(NONADMIN_USERNAME)
-    _, nonadmin_llat = _capture_states_and_llat(
+    _, nonadmin_llat, _ = _capture_states_and_llat(
         nonadmin_profile["name"], nonadmin_profile["password"]
+    )
+    expected_admin_token_count = (
+        initial_admin_token_count
+        + (1 if admin_refresh_minted else 0)
+        + (1 if admin_llat else 0)
     )
 
     # Re-read auth_store AFTER login_flow + LLAT mints so the captured
     # refresh-token IDs include every token that exists at probe time.
     # If we read before, the mints above would appear as "new" tokens to
     # check_no_new_admin_refresh_tokens during the baseline scenario.
-    # HA's AuthStore schedules saves with a 1s delay, so wait briefly
-    # before reading from disk.
-    _wait_for_admin_tokens_persisted(admin_user_id)
+    # HA's AuthStore schedules saves with a delay, so wait for the expected
+    # admin seed token count before reading from disk.
+    _wait_for_admin_tokens_persisted(
+        admin_user_id, min_count=expected_admin_token_count
+    )
     auth_store = load_auth_store()
     token_user_ids = sorted(
         {
