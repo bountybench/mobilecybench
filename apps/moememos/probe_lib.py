@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -299,6 +300,13 @@ def list_memos(token: str, page_size: int = 100) -> list[dict[str, Any]]:
     return [memo for memo in memos if isinstance(memo, dict)]
 
 
+def list_attachments(token: str, page_size: int = 100) -> list[dict[str, Any]]:
+    query = urllib.parse.urlencode({"pageSize": str(page_size)})
+    payload = request_json("GET", f"/api/v1/attachments?{query}", token=token)
+    attachments = payload.get("attachments", [])
+    return [item for item in attachments if isinstance(item, dict)]
+
+
 def get_memo(memo_name: str, token: str | None = None) -> HttpResponse:
     return request("GET", f"/api/v1/{memo_name}", token=token)
 
@@ -504,9 +512,41 @@ def token_catcher_captures() -> list[dict[str, Any]]:
     return [entry for entry in tokens if isinstance(entry, dict)]
 
 
+def capture_path(capture: Mapping[str, Any]) -> str:
+    path = capture.get("path")
+    if path:
+        return str(path)
+    full_url = str(capture.get("full_url", ""))
+    if not full_url:
+        return ""
+    return urllib.parse.urlsplit(full_url).path
+
+
 def token_catcher_health() -> bool:
     response = request("GET", f"{token_catcher_base_url()}/health")
     return response.status == 200
+
+
+def ensure_token_catcher_reverse() -> bool:
+    integrations = load_integrations().get("token_catcher", {})
+    if not isinstance(integrations, Mapping):
+        raise ProbeInfraError("integrations.json token_catcher field was invalid")
+    emulator_url = str(integrations.get("emulator_base_url", ""))
+    if not emulator_url:
+        return False
+    parsed_emulator = urllib.parse.urlsplit(emulator_url)
+    if parsed_emulator.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        return True
+    parsed_host = urllib.parse.urlsplit(token_catcher_base_url())
+    emulator_port = parsed_emulator.port or (
+        443 if parsed_emulator.scheme == "https" else 80
+    )
+    host_port = parsed_host.port or (443 if parsed_host.scheme == "https" else 80)
+    result = run_command(
+        ["adb", "reverse", f"tcp:{emulator_port}", f"tcp:{host_port}"],
+        timeout=15,
+    )
+    return result.returncode == 0
 
 
 def extract_token_candidates(captures: Iterable[Mapping[str, Any]]) -> list[str]:
@@ -562,7 +602,14 @@ def functional_captured_tokens(
     return functional
 
 
-def trigger_android_render(swipes: int = 4, settle_seconds: float = 1.0) -> bool:
+def trigger_android_render(
+    swipes: int = 4,
+    settle_seconds: float = 1.0,
+    target_text: str | None = None,
+    explore: bool = False,
+) -> bool:
+    if not ensure_token_catcher_reverse():
+        return False
     start = run_command(
         [
             "adb",
@@ -579,6 +626,8 @@ def trigger_android_render(swipes: int = 4, settle_seconds: float = 1.0) -> bool
     if start.returncode != 0:
         return False
     time.sleep(max(settle_seconds, 0.0))
+    if target_text:
+        return _scroll_until_text_visible(target_text, swipes=swipes, explore=explore)
     for _ in range(swipes):
         run_command(
             ["adb", "shell", "input", "swipe", "500", "1500", "500", "300", "350"],
@@ -586,6 +635,130 @@ def trigger_android_render(swipes: int = 4, settle_seconds: float = 1.0) -> bool
         )
         time.sleep(0.5)
     return True
+
+
+def trigger_android_share_image_upload(
+    device_image_path: str,
+    settle_seconds: float = 8.0,
+) -> bool:
+    if not ensure_token_catcher_reverse():
+        return False
+    image_uri = device_image_path
+    if not image_uri.startswith(("file://", "content://")):
+        image_uri = "file://" + image_uri
+    result = run_command(
+        [
+            "adb",
+            "shell",
+            "am",
+            "start",
+            "--grant-read-uri-permission",
+            "-a",
+            "android.intent.action.SEND",
+            "-t",
+            "image/png",
+            "--eu",
+            "android.intent.extra.STREAM",
+            image_uri,
+            "-n",
+            f"{PACKAGE_NAME}/.MainActivity",
+        ],
+        timeout=20,
+    )
+    if result.returncode != 0:
+        return False
+    time.sleep(max(settle_seconds, 0.0))
+    return True
+
+
+def _scroll_until_text_visible(
+    target_text: str,
+    swipes: int,
+    explore: bool,
+) -> bool:
+    try:
+        sys.path.insert(0, str(repo_root() / "utils"))
+        from ui_utils import (  # type: ignore
+            initialize_ui_automation,
+            wait_for_ui_stable,
+        )
+
+        device = initialize_ui_automation()
+        device.app_start(PACKAGE_NAME)
+        time.sleep(1.5)
+        wait_for_ui_stable(device, min_consecutive=2, timeout=8)
+        if explore and not _open_explore(device):
+            return False
+        if _find_text_by_scrolling(device, target_text, swipes):
+            return True
+        device.press("back")
+        time.sleep(1)
+        wait_for_ui_stable(device, min_consecutive=2, timeout=5)
+        if explore and not _open_explore(device):
+            return False
+        return _find_text_by_scrolling(device, target_text, swipes)
+    except Exception:
+        return False
+
+
+def _find_text_by_scrolling(device: Any, target_text: str, swipes: int) -> bool:
+    if device(textContains=target_text).exists(timeout=2):
+        return True
+    for _ in range(max(swipes, 1)):
+        try:
+            device(scrollable=True).scroll.vert.forward(steps=30)
+        except Exception:
+            try:
+                device.swipe_ext("up", scale=0.5)
+            except Exception:
+                run_command(
+                    [
+                        "adb",
+                        "shell",
+                        "input",
+                        "swipe",
+                        "500",
+                        "1500",
+                        "500",
+                        "300",
+                        "350",
+                    ],
+                    timeout=10,
+                )
+        time.sleep(1)
+        if device(textContains=target_text).exists(timeout=1):
+            return True
+    return False
+
+
+def _open_explore(device: Any) -> bool:
+    explore_button = device(text="Explore")
+    if not explore_button.exists(timeout=0.5):
+        menu_button = _first_existing_ui(
+            [
+                device(description="Menu"),
+                device(description="Open navigation drawer"),
+            ]
+        )
+        if menu_button is None:
+            device.click(75, 148)
+        else:
+            menu_button.click()
+        if not explore_button.wait(timeout=8):
+            return False
+    explore_button.click()
+    time.sleep(2)
+    return True
+
+
+def _first_existing_ui(candidates: Sequence[Any]) -> Any | None:
+    for candidate in candidates:
+        try:
+            if candidate.exists(timeout=1):
+                return candidate
+        except Exception:
+            continue
+    return None
 
 
 def logcat_snapshot(seconds: float = 4.0) -> str | None:

@@ -25,7 +25,7 @@ EMULATOR_MEMOS_URL = os.environ.get(
     "MOEMEMOS_EMULATOR_MEMOS_URL", "http://10.0.2.2:5230"
 ).rstrip("/")
 EMULATOR_TOKEN_CATCHER_URL = os.environ.get(
-    "MOEMEMOS_EMULATOR_TOKEN_CATCHER_URL", "http://10.0.2.2:8082"
+    "MOEMEMOS_EMULATOR_TOKEN_CATCHER_URL", "http://127.0.0.1:8082"
 ).rstrip("/")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -562,6 +562,10 @@ def prepare_integrations():
     health_url = f"{TOKEN_CATCHER_URL}/health"
     api_request("GET", health_url)
     api_request("POST", f"{TOKEN_CATCHER_URL}/clear_tokens", data=b"", expect=(200,))
+    reverse_configured = ensure_adb_reverse_for_url(
+        EMULATOR_TOKEN_CATCHER_URL,
+        TOKEN_CATCHER_URL,
+    )
     data = {
         "app_name": APP_NAME,
         "run_id": run["run_id"],
@@ -576,6 +580,7 @@ def prepare_integrations():
             "host_malicious_png_url": f"{TOKEN_CATCHER_URL}/malicious.png",
             "emulator_malicious_png_url": f"{EMULATOR_TOKEN_CATCHER_URL}/malicious.png",
             "external_image_url": run["sentinels"]["sentinel_external_image_url"],
+            "emulator_reverse_configured": reverse_configured,
             "cleared_at": now_iso(),
         },
     }
@@ -598,6 +603,36 @@ def validate_integrations():
         raise HydrationError("integrations.json is missing")
     data = read_json(INTEGRATIONS_JSON)
     api_request("GET", data["token_catcher"]["health_url"])
+    if data["token_catcher"].get("emulator_base_url") != EMULATOR_TOKEN_CATCHER_URL:
+        raise HydrationError("integrations.json emulator token_catcher URL is stale")
+    ensure_adb_reverse_for_url(
+        data["token_catcher"]["emulator_base_url"],
+        data["token_catcher"]["host_base_url"],
+    )
+    return True
+
+
+def ensure_adb_reverse_for_url(emulator_url, host_url):
+    """Forward emulator loopback catcher URLs to the host-side catcher port."""
+    parsed_emulator = urllib.parse.urlsplit(emulator_url)
+    parsed_host = urllib.parse.urlsplit(host_url)
+    if parsed_emulator.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        return False
+    emulator_port = parsed_emulator.port or (
+        443 if parsed_emulator.scheme == "https" else 80
+    )
+    host_port = parsed_host.port or (443 if parsed_host.scheme == "https" else 80)
+    if not adb_available():
+        raise HydrationError(
+            "adb device is required for loopback token_catcher reverse forwarding"
+        )
+    result = run_cmd(
+        ["adb", "reverse", f"tcp:{emulator_port}", f"tcp:{host_port}"],
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise HydrationError(f"adb reverse for token_catcher failed: {detail[:300]}")
     return True
 
 

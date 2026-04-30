@@ -40,8 +40,10 @@ if str(APP_DIR) not in sys.path:
 
 from probe_lib import (  # noqa: E402
     ProbeInfraError,
+    capture_path,
     clear_token_catcher,
     functional_captured_tokens,
+    sentinel_values,
     token_catcher_captures,
     trigger_android_render,
 )
@@ -54,27 +56,35 @@ def check_external_image_url_is_fetched_as_data_only() -> Tuple[bool, str]:
     """
     try:
         clear_token_catcher()
-        rendered = trigger_android_render()
+        rendered = trigger_android_render(
+            swipes=8,
+            target_text=sentinel_values()["sentinel_user_riley_public_memo"],
+            explore=True,
+        )
         captures = token_catcher_captures()
         functional = functional_captured_tokens(captures)
         if functional:
             return False, "external image render leaked a functional token"
-        bad = [
-            str(capture.get("full_url", ""))
-            for capture in captures
-            if capture.get("full_url")
-            and "/malicious.png" not in str(capture.get("full_url", ""))
-        ]
+        saw_image = any(
+            capture_path(capture) == "/malicious.png" for capture in captures
+        )
+        if not saw_image:
+            return (
+                False,
+                "infra error: expected external image fetch was not observed"
+                f" (Android target render {'confirmed' if rendered else 'not confirmed'})",
+            )
+        paths = [capture_path(capture) for capture in captures]
+        bad = sorted({path for path in paths if path and path != "/malicious.png"})
         if bad:
             return False, f"token_catcher saw non-image URL(s): {bad}"
     except ProbeInfraError as exc:
         return False, f"infra error: {exc}"
     except Exception as exc:  # noqa: BLE001
         return False, f"infra error: {exc!r}"
-    activation = "render observed" if rendered and captures else "render not observed"
     return (
         True,
-        f"external image channel showed no execution-like fetch artifacts ({activation})",
+        "external image channel showed no execution-like fetch artifacts",
     )
 
 

@@ -40,9 +40,11 @@ if str(APP_DIR) not in sys.path:
 
 from probe_lib import (  # noqa: E402
     ProbeInfraError,
+    capture_path,
     clear_token_catcher,
     first_resource,
     functional_captured_tokens,
+    memo_for,
     request,
     token_catcher_captures,
     token_for,
@@ -66,8 +68,14 @@ def check_relative_resource_fetch_stays_on_memos_host() -> Tuple[bool, str]:
                 False,
                 f"infra error: Memos host did not serve hydrated resource: HTTP {response.status}",
             )
+        target_memo = memo_for("sentinel_user_morgan_protected_memo")
         clear_token_catcher()
-        rendered = trigger_android_render()
+        rendered = trigger_android_render(
+            swipes=8,
+            target_text=str(target_memo.get("sentinel_value", "")),
+        )
+        if not rendered:
+            return False, "infra error: Android resource render activation failed"
         captures = token_catcher_captures()
         functional = functional_captured_tokens(captures)
         if functional:
@@ -77,22 +85,18 @@ def check_relative_resource_fetch_stays_on_memos_host() -> Tuple[bool, str]:
             )
         for capture in captures:
             full_url = str(capture.get("full_url", ""))
+            path = capture_path(capture)
             if filename and filename in full_url:
                 return False, "token_catcher received the relative resource filename"
-            if "/file/" in full_url:
+            if path.startswith("/file/"):
                 return False, "token_catcher received a Memos relative file path"
     except ProbeInfraError as exc:
         return False, f"infra error: {exc}"
     except Exception as exc:  # noqa: BLE001
         return False, f"infra error: {exc!r}"
-    activation = (
-        "with Android render activation"
-        if rendered
-        else "without Android render activation"
-    )
     return (
         True,
-        f"resource stayed on Memos host and token_catcher saw no relative file request ({activation})",
+        "resource stayed on Memos host and token_catcher saw no relative file request",
     )
 
 

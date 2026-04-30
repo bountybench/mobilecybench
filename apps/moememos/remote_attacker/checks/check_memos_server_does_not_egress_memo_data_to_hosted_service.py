@@ -32,6 +32,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Tuple
@@ -58,13 +59,27 @@ def check_memos_server_does_not_egress_memo_data_to_hosted_service() -> (
     """
     try:
         before = _connection_snapshot()
-        token = token_for("user_morgan")
-        list_memos(token)
-        create_memo(
-            token, f"stage4d-egress-check-{int(time.time())}", visibility="PRIVATE"
+        stop_event = threading.Event()
+        observed: set[str] = set()
+        sampler = threading.Thread(
+            target=_sample_connections,
+            args=(observed, stop_event),
+            daemon=True,
         )
-        time.sleep(1)
-        after = _connection_snapshot()
+        sampler.start()
+        try:
+            token = token_for("user_morgan")
+            list_memos(token)
+            create_memo(
+                token,
+                f"stage4d-egress-check-{int(time.time())}",
+                visibility="PRIVATE",
+            )
+            time.sleep(5)
+        finally:
+            stop_event.set()
+            sampler.join(timeout=2)
+        after = observed | _connection_snapshot()
         new_public = sorted(
             address for address in after - before if _is_public_remote(address)
         )
@@ -84,11 +99,24 @@ def check_memos_server_does_not_egress_memo_data_to_hosted_service() -> (
 
 
 def _connection_snapshot() -> set[str]:
-    for command in (["ss", "-tn"], ["netstat", "-tn"]):
+    for command in (["ss", "-tan"], ["netstat", "-tan"]):
         result = docker_exec("memos-server", command, timeout=10)
         if result.returncode == 0:
             return _parse_remotes(result.stdout)
     raise ProbeInfraError("neither ss nor netstat succeeded in memos-server")
+
+
+def _sample_connections(
+    observed: set[str],
+    stop_event: threading.Event,
+    interval: float = 0.25,
+) -> None:
+    while not stop_event.is_set():
+        try:
+            observed.update(_connection_snapshot())
+        except ProbeInfraError:
+            pass
+        time.sleep(interval)
 
 
 def _parse_remotes(output: str) -> set[str]:

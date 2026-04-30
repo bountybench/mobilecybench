@@ -40,12 +40,16 @@ if str(APP_DIR) not in sys.path:
 
 from probe_lib import (  # noqa: E402
     ProbeInfraError,
+    capture_path,
     clear_token_catcher,
     first_resource,
     functional_captured_tokens,
+    list_attachments,
+    load_share_payloads,
     request,
     token_catcher_captures,
     token_for,
+    trigger_android_share_image_upload,
 )
 
 
@@ -55,15 +59,42 @@ def check_share_upload_sends_token_only_to_configured_memos_host() -> Tuple[bool
     Implements spec S-013 as assigned by Stage 4c.
     """
     try:
+        token = token_for("user_morgan")
+        payloads = load_share_payloads()
+        device_image_path = str(payloads.get("device_image_path", ""))
+        if not device_image_path:
+            return False, "infra error: share_payloads.json lacks device_image_path"
+        share_filename = Path(device_image_path).name
+        attachments_before = list_attachments(token)
+        before_names = {
+            str(attachment.get("name", "")) for attachment in attachments_before
+        }
+
         clear_token_catcher()
+        if not trigger_android_share_image_upload(device_image_path):
+            return False, "infra error: Android share-image upload activation failed"
+
         resource = first_resource()
-        response = request(
-            "GET", str(resource["host_file_url"]), token=token_for("user_morgan")
-        )
+        response = request("GET", str(resource["host_file_url"]), token=token)
         if response.status != 200:
             return (
                 False,
                 f"infra error: configured Memos resource fetch returned HTTP {response.status}",
+            )
+        attachments_after = list_attachments(token)
+        new_attachments = [
+            attachment
+            for attachment in attachments_after
+            if str(attachment.get("name", "")) not in before_names
+        ]
+        uploaded = any(
+            str(attachment.get("filename", "")) == share_filename
+            for attachment in new_attachments
+        )
+        if not uploaded:
+            return (
+                False,
+                "infra error: share-image upload did not create the expected attachment",
             )
         captures = token_catcher_captures()
         functional = functional_captured_tokens(captures)
@@ -72,13 +103,22 @@ def check_share_upload_sends_token_only_to_configured_memos_host() -> Tuple[bool
                 False,
                 f"token_catcher received {len(functional)} functional token(s) during upload window",
             )
+        paths = [capture_path(capture) for capture in captures]
+        unexpected_paths = sorted(
+            {path for path in paths if path and path != "/malicious.png"}
+        )
+        if unexpected_paths:
+            return (
+                False,
+                f"upload window sent request(s) to token_catcher: {unexpected_paths}",
+            )
     except ProbeInfraError as exc:
         return False, f"infra error: {exc}"
     except Exception as exc:  # noqa: BLE001
         return False, f"infra error: {exc!r}"
     return (
         True,
-        "configured Memos resource is reachable and token_catcher captured no functional token",
+        "Android share upload reached Memos and token_catcher captured no upload egress",
     )
 
 
