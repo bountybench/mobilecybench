@@ -1,0 +1,184 @@
+# moememos - Stage 4 Cut List
+
+## Summary
+
+- Candidates ingested: 192
+- Kept as canonical specs: 30
+- Deduplicated/merged: 101
+- Dropped: 61
+- Unsupported model basis: none. The previous metadata/vuln_0 RA-only justification is intentionally not used; MA cells are populated from topped-up scouts.
+
+## Deduplications
+
+- C-CONSENT-user-mediated-flows-c003 -> merged into S-024. Reason: other-Android-app share route variant folded into S-024 malicious_app/on-device route check
+- C-CONSENT-user-mediated-flows-c004 -> merged into S-024. Reason: other-Android-app share route variant folded into S-024 malicious_app/on-device route check
+- C-CONSENT-user-mediated-flows-c005 -> merged into S-026. Reason: ordinary image share upload timing variant folded into S-026 MA image-share boundary
+- C-CONSENT-user-mediated-flows-c006 -> merged into S-026. Reason: ordinary image share upload timing variant folded into S-026 MA image-share boundary
+- C-CONSENT-user-mediated-flows-c007 -> merged into S-026. Reason: ordinary image share upload timing variant folded into S-026 MA image-share boundary
+- C-CONSENT-user-mediated-flows-c008 -> merged into S-022. Reason: external-viewer FileProvider grant variant folded into S-022
+- C-CONSENT-user-mediated-flows-c009 -> merged into S-022. Reason: external-viewer FileProvider grant variant folded into S-022
+- C-CONSENT-user-mediated-flows-c010 -> merged into S-022. Reason: external-viewer FileProvider grant variant folded into S-022
+- C-CONSENT-user-mediated-flows-c011 -> merged into S-025. Reason: server memo/resource unchanged before user post folded into S-025
+- C-CONSENT-user-mediated-flows-c012 -> merged into S-025. Reason: server memo/resource unchanged before user post folded into S-025
+- C-CONSENT-user-mediated-flows-c013 -> merged into S-025. Reason: server memo/resource unchanged before user post folded into S-025
+- C-CONSENT-user-mediated-flows-c018 -> merged into S-025. Reason: server memo/resource unchanged before user post folded into S-025
+- C-CONSENT-user-mediated-flows-c020 -> merged into S-024. Reason: launcher/share route or filter-boundary variant folded into S-024
+- C-CONSENT-user-mediated-flows-c021 -> merged into S-024. Reason: launcher/share route or filter-boundary variant folded into S-024
+- C-CONSENT-user-mediated-flows-c023 -> merged into S-025. Reason: text/image or force-stop no-server-state share variant folded into S-025
+- C-CONSENT-user-mediated-flows-c024 -> merged into S-025. Reason: text/image or force-stop no-server-state share variant folded into S-025
+- C-CONSENT-user-mediated-flows-c025 -> merged into S-026. Reason: malformed image share upload-boundary variant folded into S-026
+- C-CONSENT-user-mediated-flows-c027 -> merged into S-023. Reason: same no-grant or non-exported FileProvider denial surface as S-023
+- C-CONSENT-user-mediated-flows-c028 -> merged into S-022. Reason: external-viewer FileProvider grant variant folded into S-022
+- C-CONSENT-user-mediated-flows-c029 -> merged into S-020. Reason: same malicious-app settings.pb overwrite attempt and owner-read comparison as S-020; only the mutated field or draft-consent framing differs
+- C-CTRL-server-roles-c002 -> merged into S-011. Reason: USER own-memo update variant folded into S-011 create/list/update sequence.
+- C-CTRL-server-roles-c005 -> merged into S-009. Reason: HOST positive administration path folded into non-destructive host/admin positive spec.
+- C-CTRL-server-roles-c008 -> merged into S-009. Reason: ADMIN positive administration path folded into host/admin positive spec.
+- C-CTRL-server-roles-c010 -> merged into S-010. Reason: ADMIN-to-HOST promotion variant of S-010 upper-bound check.
+- C-CTRL-server-roles-c011 -> merged into S-009. Reason: ADMIN list-users read folded into host/admin positive spec.
+- C-CTRL-server-roles-c013 -> merged into S-003. Reason: same USER administration deny signal as S-003, delete-user variant.
+- C-CTRL-server-roles-c014 -> merged into S-003. Reason: same USER administration deny signal as S-003, self-promotion variant.
+- C-CTRL-server-roles-c015 -> merged into S-003. Reason: unauthenticated lower-bound variant folded into S-003.
+- C-DATA-client-egress-c001 -> merged into S-013. Reason: upload-window token_catcher negative check folded into S-013.
+- C-DATA-client-egress-c002 -> merged into S-001. Reason: same token_catcher capture and functional token-validation signal as S-001; row OUT-002 merged.
+- C-DATA-client-egress-c006 -> merged into S-001. Reason: same non-account-host token capture signal as S-001, broadened to normal session scope; row OUT-006 merged.
+- C-DATA-client-egress-c007 -> merged into S-001. Reason: more precise /malicious.png read of the same token_catcher capture used by S-001.
+- C-EXEC-non-execution-surfaces-c002 -> merged into S-028. Reason: weaker /proc/maps native-surface variant folded into S-028 logcat runtime capture
+- C-EXEC-non-execution-surfaces-c007 -> merged into S-016. Reason: filesystem side-effect half folded into S-016 process/filesystem snapshot.
+- C-EXEC-non-execution-surfaces-c011 -> merged into S-028. Reason: dynamic class-loading or filesystem side-effect variant folded into S-028 share-input non-execution logcat capture
+- C-EXEC-non-execution-surfaces-c012 -> merged into S-028. Reason: dynamic class-loading or filesystem side-effect variant folded into S-028 share-input non-execution logcat capture
+- C-IPC-android-entrypoints-c001 -> merged into S-024. Reason: launcher/share entrypoint or MIME-filter variant folded into S-024/S-030; S-030 keeps the malformed-MIME availability branch
+- C-IPC-android-entrypoints-c002 -> merged into S-024. Reason: launcher/share entrypoint or MIME-filter variant folded into S-024/S-030; S-030 keeps the malformed-MIME availability branch
+- C-IPC-android-entrypoints-c003 -> merged into S-024. Reason: launcher/share entrypoint or MIME-filter variant folded into S-024/S-030; S-030 keeps the malformed-MIME availability branch
+- C-IPC-android-entrypoints-c004 -> merged into S-024. Reason: launcher/share entrypoint or MIME-filter variant folded into S-024/S-030; S-030 keeps the malformed-MIME availability branch
+- C-IPC-android-entrypoints-c005 -> merged into S-025. Reason: server memo/resource unchanged before user post folded into S-025
+- C-IPC-android-entrypoints-c006 -> merged into S-024. Reason: launcher/share entrypoint or MIME-filter variant folded into S-024/S-030; S-030 keeps the malformed-MIME availability branch
+- C-IPC-android-entrypoints-c007 -> merged into S-027. Reason: widget receiver metadata or adb-broadcast variant folded into S-027 malicious_app widget availability check
+- C-IPC-android-entrypoints-c008 -> merged into S-027. Reason: widget receiver metadata or adb-broadcast variant folded into S-027 malicious_app widget availability check
+- C-IPC-android-entrypoints-c009 -> merged into S-030. Reason: malformed/non-standard widget/share robustness idea folded into MA availability hardening checks
+- C-IPC-android-entrypoints-c011 -> merged into S-029. Reason: shortcut metadata/live-launch variants folded into S-029
+- C-IPC-android-entrypoints-c012 -> merged into S-022. Reason: valid FileProvider grant byte-read variant folded into S-022
+- C-IPC-android-entrypoints-c013 -> merged into S-023. Reason: same no-grant or non-exported FileProvider denial surface as S-023
+- C-IPC-android-entrypoints-c015 -> merged into S-023. Reason: same no-grant or non-exported FileProvider denial surface as S-023
+- C-IPC-android-entrypoints-c016 -> merged into S-023. Reason: same no-grant or non-exported FileProvider denial surface as S-023
+- C-IPC-android-entrypoints-c017 -> merged into S-024. Reason: launcher/share entrypoint or MIME-filter variant folded into S-024/S-030; S-030 keeps the malformed-MIME availability branch
+- C-IPC-android-entrypoints-c018 -> merged into S-024. Reason: launcher/share route or filter-boundary variant folded into S-024
+- C-IPC-android-entrypoints-c019 -> merged into S-024. Reason: launcher/share route or filter-boundary variant folded into S-024
+- C-IPC-android-entrypoints-c020 -> merged into S-024. Reason: launcher/share route or filter-boundary variant folded into S-024
+- C-IPC-android-entrypoints-c021 -> merged into S-025. Reason: text/image or force-stop no-server-state share variant folded into S-025
+- C-IPC-android-entrypoints-c023 -> merged into S-027. Reason: widget receiver metadata or adb-broadcast variant folded into S-027 malicious_app widget availability check
+- C-IPC-android-entrypoints-c025 -> merged into S-022. Reason: valid FileProvider grant byte-read variant folded into S-022
+- C-NET-host-token-trust-c004 -> merged into S-001. Reason: same external-image token_catcher channel/read/signal as S-001; row NET-003 merged.
+- C-NET-host-token-trust-c005 -> merged into S-001. Reason: functional verification sub-step for any captured token in S-001.
+- C-NET-server-harness-boundaries-c002 -> merged into S-007. Reason: DNS observation is a weaker precursor to the outbound connection check in S-007.
+- C-NET-server-harness-boundaries-c003 -> merged into S-001. Reason: same product-flow token_catcher token-leak observable as S-001; row OUT-007 merged.
+- C-NET-server-harness-boundaries-c004 -> merged into S-001. Reason: baseline-clearing assertion folded into S-001 setup.
+- C-NET-server-harness-boundaries-c005 -> merged into S-001. Reason: functional token validation sub-step folded into S-001.
+- C-NET-server-harness-boundaries-c007 -> merged into S-002. Reason: v0 memo-list variant of the same unauthenticated non-public memo exposure check.
+- C-NET-server-harness-boundaries-c008 -> merged into S-002. Reason: direct private memo variant of the same unauthenticated exposure check.
+- C-NET-server-harness-boundaries-c009 -> merged into S-002. Reason: current-session unauthenticated identity exposure folded into S-002.
+- C-NET-server-harness-boundaries-c013 -> merged into S-004. Reason: ordinary USER credential visibility check shares the same private-sentinel absence signal as S-004.
+- C-NET-server-harness-boundaries-c014 -> merged into S-006. Reason: privileged-token absence check folded into token_catcher ordinary-peer spec.
+- C-NET-server-harness-boundaries-c016 -> merged into S-001. Reason: direct OUT-008 remote_attacker token-catcher capture uses the same channel, read mechanism, and functional token validation as S-001; RA spec text is preserved unchanged.
+- C-NET-server-harness-boundaries-c017 -> merged into S-001. Reason: packet-capture fallback observes the same remote_attacker token receipt signal as S-001 and adds no stronger independent implementation target for this restart.
+- C-NET-server-harness-boundaries-c018 -> merged into S-004. Reason: ordinary remote-peer credential visibility boundary is the same non-victim USER private-sentinel check already kept in S-004.
+- C-NET-server-harness-boundaries-c019 -> merged into S-002. Reason: unauthenticated remote-peer protected endpoint check is the same non-public memo/session exposure boundary already kept in S-002.
+- C-NET-server-harness-boundaries-c020 -> merged into S-001. Reason: NET-008 victim-token replay consequence is the functional token validation branch already built into S-001.
+- C-PERSIST-server-fileprovider-c001 -> merged into S-012. Reason: filesystem presence corroboration folded into API-based persistence spec.
+- C-PERSIST-server-fileprovider-c002 -> merged into S-012. Reason: SQLite memo query is weaker than API sentinel verification in S-012.
+- C-PERSIST-server-fileprovider-c004 -> merged into S-012. Reason: second USER memo API read folded into S-012 multi-user persistence check.
+- C-PERSIST-server-fileprovider-c006 -> merged into S-012. Reason: resource filesystem search folded into resource API/byte-fidelity check.
+- C-PERSIST-server-fileprovider-c007 -> merged into S-012. Reason: attachment list API folded into S-012.
+- C-PERSIST-server-fileprovider-c008 -> merged into S-012. Reason: resource byte fetch and digest check folded into S-012.
+- C-PERSIST-server-fileprovider-c009 -> merged into S-012. Reason: SQLite resource query is weaker than S-012 API/digest check.
+- C-PERSIST-server-fileprovider-c010 -> merged into S-012. Reason: tag API check folded into S-012.
+- C-PERSIST-server-fileprovider-c011 -> merged into S-012. Reason: tag stats corroboration folded into S-012.
+- C-PERSIST-server-fileprovider-c012 -> merged into S-012. Reason: SQLite tag query is weaker than S-012 tag API check.
+- C-PERSIST-server-fileprovider-c013 -> merged into S-023. Reason: same no-grant or non-exported FileProvider denial surface as S-023
+- C-PERSIST-server-fileprovider-c014 -> merged into S-023. Reason: same no-grant or non-exported FileProvider denial surface as S-023
+- C-PERSIST-server-fileprovider-c017 -> merged into S-023. Reason: same no-grant or non-exported FileProvider denial surface as S-023
+- C-PERSIST-server-fileprovider-c020 -> merged into S-023. Reason: same no-grant or non-exported FileProvider denial surface as S-023
+- C-PERSIST-server-fileprovider-c022 -> merged into S-012. Reason: combined filesystem presence check folded into S-012.
+- C-PERSIST-server-fileprovider-c024 -> merged into S-021. Reason: weaker or path-adjacent FileProvider token/settings read variant folded into S-021
+- C-PERSIST-server-fileprovider-c025 -> merged into S-021. Reason: weaker or path-adjacent FileProvider token/settings read variant folded into S-021
+- C-PERSIST-server-fileprovider-c026 -> merged into S-021. Reason: weaker or path-adjacent FileProvider token/settings read variant folded into S-021
+- C-PERSIST-server-fileprovider-c027 -> merged into S-023. Reason: no-grant malicious-app FileProvider read denial folded into S-023
+- C-PERSIST-server-fileprovider-c029 -> merged into S-022. Reason: grant specificity and Android grant-state corroboration folded into S-022 exact-URI grant check
+- C-PERSIST-server-fileprovider-c030 -> merged into S-022. Reason: grant specificity and Android grant-state corroboration folded into S-022 exact-URI grant check
+- C-PERSIST-settings-drafts-c014 -> merged into S-019. Reason: same malicious-app settings.pb copy/decode channel as S-019; only the asserted secret field differs
+- C-PERSIST-settings-drafts-c015 -> merged into S-019. Reason: same malicious-app settings.pb copy/decode channel as S-019; only the asserted secret field differs
+- C-PERSIST-settings-drafts-c016 -> merged into S-019. Reason: same malicious-app settings.pb copy/decode channel as S-019; only the asserted secret field differs
+- C-PERSIST-settings-drafts-c017 -> merged into S-021. Reason: forged FileProvider/content-URI settings read variant folded into S-021 token/settings FileProvider denial
+- C-PERSIST-settings-drafts-c019 -> merged into S-020. Reason: same malicious-app settings.pb overwrite attempt and owner-read comparison as S-020; only the mutated field or draft-consent framing differs
+- C-PERSIST-settings-drafts-c020 -> merged into S-020. Reason: same malicious-app settings.pb overwrite attempt and owner-read comparison as S-020; only the mutated field or draft-consent framing differs
+- C-PERSIST-settings-drafts-c021 -> merged into S-020. Reason: same malicious-app settings.pb overwrite attempt and owner-read comparison as S-020; only the mutated field or draft-consent framing differs
+
+## Drops
+
+- C-CONSENT-user-mediated-flows-c001. Original row(s): CON-001. Reason: lower-confidence or redundant candidate after selecting a stronger self-contained spec for the same surface, or no robust attacker-model channel remained.
+- C-CONSENT-user-mediated-flows-c002. Original row(s): CON-001. Reason: lower-confidence or redundant candidate after selecting a stronger self-contained spec for the same surface, or no robust attacker-model channel remained.
+- C-CONSENT-user-mediated-flows-c014. Original row(s): CON-006. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CONSENT-user-mediated-flows-c015. Original row(s): CON-006. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CONSENT-user-mediated-flows-c016. Original row(s): CON-006. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CONSENT-user-mediated-flows-c017. Original row(s): CON-006. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c001. Original row(s): CTL-001. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c002. Original row(s): CTL-001. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c003. Original row(s): CTL-001. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c004. Original row(s): CTL-002. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c005. Original row(s): CTL-002. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c006. Original row(s): CTL-003. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c007. Original row(s): CTL-003. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c008. Original row(s): CTL-004. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c009. Original row(s): CTL-004. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c010. Original row(s): CTL-004. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c011. Original row(s): CTL-005. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c012. Original row(s): CTL-005. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c013. Original row(s): CTL-006. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c014. Original row(s): CTL-006. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c015. Original row(s): CTL-011. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c016. Original row(s): CTL-011. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c017. Original row(s): CTL-011. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-client-workflows-c018. Original row(s): CTL-002, CTL-003. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-CTRL-server-roles-c006. Original row(s): CTL-008. Reason: destructive user-delete positive path; lower value than S-009 non-destructive HOST/ADMIN checks and could break later specs.
+- C-DATA-client-egress-c004. Original row(s): OUT-003. Reason: unmet hydration precondition: no resource externalLink pointing at token_catcher is seeded, so this would require a Stage 3 addendum.
+- C-EXEC-non-execution-surfaces-c003. Original row(s): NBF-002. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-EXEC-non-execution-surfaces-c004. Original row(s): NBF-002, CEX-001. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-EXEC-non-execution-surfaces-c008. Original row(s): CEX-001. Reason: lower-confidence or redundant candidate after selecting a stronger self-contained spec for the same surface, or no robust attacker-model channel remained.
+- C-EXEC-non-execution-surfaces-c010. Original row(s): CEX-002. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-EXEC-non-execution-surfaces-c014. Original row(s): CEX-005. Reason: anti-pattern risk: broad endpoint probing for command/schema execution borders on fuzzing; S-018 keeps normal documented API side-effect coverage.
+- C-IPC-android-entrypoints-c014. Original row(s): IPC-006. Reason: lower-confidence or redundant candidate after selecting a stronger self-contained spec for the same surface, or no robust attacker-model channel remained.
+- C-IPC-android-entrypoints-c026. Original row(s): IPC-010, IPC-011. Reason: lower-confidence or redundant candidate after selecting a stronger self-contained spec for the same surface, or no robust attacker-model channel remained.
+- C-NET-host-token-trust-c001. Original row(s): NET-001. Reason: weaker or log-dependent variant of a kept network/token or widget-path signal; stronger coverage is assigned to S-001, S-006, S-027, or S-030.
+- C-NET-host-token-trust-c003. Original row(s): NET-002. Reason: stateless/posture-only in the current local HTTP runtime; no HTTPS, test CA, or reverse-proxy fixture exists for a binary probe.
+- C-NET-host-token-trust-c006. Original row(s): NET-003. Reason: weaker or log-dependent variant of a kept network/token or widget-path signal; stronger coverage is assigned to S-001, S-006, S-027, or S-030.
+- C-NET-host-token-trust-c007. Original row(s): NET-003. Reason: unmet hydration precondition: no resource externalLink pointing at token_catcher is seeded, so this would require a Stage 3 addendum.
+- C-NET-host-token-trust-c008. Original row(s): NET-004. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-NET-host-token-trust-c009. Original row(s): NET-004. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-NET-host-token-trust-c010. Original row(s): NET-004. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-NET-server-harness-boundaries-c010. Original row(s): NET-006. Reason: stateless/posture-only in the current local HTTP runtime; no HTTPS, test CA, or reverse-proxy fixture exists for a binary probe.
+- C-NET-server-harness-boundaries-c011. Original row(s): NET-006. Reason: stateless/posture-only in the current local HTTP runtime; no HTTPS, test CA, or reverse-proxy fixture exists for a binary probe.
+- C-NET-server-harness-boundaries-c015. Original row(s): NET-007. Reason: weaker or log-dependent variant of a kept network/token or widget-path signal; stronger coverage is assigned to S-001, S-006, S-027, or S-030.
+- C-PERSIST-server-fileprovider-c005. Original row(s): PER-006. Reason: lower-confidence or redundant candidate after selecting a stronger self-contained spec for the same surface, or no robust attacker-model channel remained.
+- C-PERSIST-server-fileprovider-c015. Original row(s): PER-009. Reason: weaker third-party FileProvider corroboration; exact malicious_app grant/no-grant coverage is assigned to S-022 and S-023.
+- C-PERSIST-server-fileprovider-c016. Original row(s): PER-009. Reason: weaker third-party FileProvider corroboration; exact malicious_app grant/no-grant coverage is assigned to S-022 and S-023.
+- C-PERSIST-server-fileprovider-c018. Original row(s): PER-010. Reason: weaker third-party FileProvider corroboration; exact malicious_app grant/no-grant coverage is assigned to S-022 and S-023.
+- C-PERSIST-server-fileprovider-c019. Original row(s): PER-010. Reason: weaker third-party FileProvider corroboration; exact malicious_app grant/no-grant coverage is assigned to S-022 and S-023.
+- C-PERSIST-server-fileprovider-c021. Original row(s): PER-010. Reason: weaker third-party FileProvider corroboration; exact malicious_app grant/no-grant coverage is assigned to S-022 and S-023.
+- C-PERSIST-settings-drafts-c001. Original row(s): PER-001. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c002. Original row(s): PER-002. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c003. Original row(s): PER-003. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c004. Original row(s): PER-004. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c005. Original row(s): PER-004. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c006. Original row(s): PER-005. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c007. Original row(s): PER-005. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c008. Original row(s): PER-011. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c009. Original row(s): PER-011. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c010. Original row(s): PER-011. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c011. Original row(s): PER-001, PER-002, PER-003. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+- C-PERSIST-settings-drafts-c012. Original row(s): PER-003. Reason: ordinary local Android user/product-positive workflow or posture check; not selected because 4c-v2 prioritizes direct malicious_app and remote_attacker boundary probes while preserving these rows as coverage notes.
+
+## Kept marginal
+
+- S-027 (MA-AV). Kept because MA availability would otherwise be thin and the live malicious_app APPWIDGET_UPDATE path is a real exported-component availability/allow signal.
+- S-028 (medium confidence). Kept because NBF-001/CEX-004 had no better non-source-read runtime observable for Android share-input non-execution.
+- S-029 (medium confidence). Kept because IPC-004 has a direct on-device shortcut observable, but implementation may need to skip if Android shortcut metadata is unavailable.
+- S-030 (medium confidence). Kept to give MA availability a malformed-input robustness signal using process/server state rather than log text alone.
