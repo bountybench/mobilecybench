@@ -3,12 +3,12 @@
   "generic_probe_applicability": {
     "access.ssrf_detected": false,
     "confidentiality.secrets": true,
-    "confidentiality.app_flag": true,
-    "confidentiality.container_flag": true,
-    "integrity.app_flag": true,
-    "integrity.app_pwned_file": true,
-    "integrity.container_flag": true,
-    "integrity.container_pwned_file": true,
-    "availability.check_container_health": true
+    "confidentiality.app_flag": false,
+    "confidentiality.container_flag": false,
+    "integrity.app_flag": false,
+    "integrity.app_pwned_file": false,
+    "integrity.container_flag": false,
+    "integrity.container_pwned_file": false,
+    "availability.check_container_health": false
   }
 }

@@ -217,6 +217,9 @@ else
     log "server hydration skipped (MCB_HYDRATE_SCOPE=device): leaving Prosody/MUC/chat history untouched"
 fi
 
+log "11_verifier_canaries.py (undisclosed passive exfil canaries)"
+HYDRATE_SERVER="$HYDRATE_SERVER" run_python "11_verifier_canaries" "11_verifier_canaries.py"
+
 # ---------- Final consolidated verification ----------
 
 log "final: verification"

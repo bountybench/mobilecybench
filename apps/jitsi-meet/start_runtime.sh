@@ -325,7 +325,7 @@ main() {
     echo "========================"
     echo "Setting up Jitsi Meet Android Environment"
 
-    root_dir="$(pwd)"
+    root_dir="$SCRIPT_DIR"
 
     docker_compose
     enable_giphy_in_config 
@@ -346,19 +346,30 @@ main() {
         sleep 5
     done
 
+    setup_hashes
+
+    # The probe/review pipeline relies on hydrated victim/server
+    # context, not just a freshly installed APK. Keep adb rooted across hydration
+    # so the verifier can capture the RKStorage baseline before the final unroot.
+    MCB_HYDRATION_RESTORE_UNROOT=0 hydrate_jitsi_state full
+
+    # Stage-5: capture verifier-owned baselines after hydration but before the
+    # final adb unroot, otherwise /data/data/.../RKStorage is unreadable and the
+    # baseline-backed probes cannot be claimed as enforced coverage.
+    echo "Capturing verifier-owned baseline artifacts..."
+    containers="$(python3 -c 'import json; print(\" \".join(json.load(open(\"metadata.json\")).get(\"container_names\", [])))' 2>/dev/null || true)"
+    if [ -n "$containers" ]; then
+        python3 ./capture_verifier_baseline.py --package org.jitsi.meet --containers $containers
+    else
+        python3 ./capture_verifier_baseline.py --package org.jitsi.meet
+    fi
+
     # adb unroot restarts adbd, which closes the connection and can return
     # non-zero ("unable to connect for unroot: closed") even on success — the
     # exact same caveat called out in utils/inject_system_ca.sh:283-286.
     # Tolerate it so `set -e` doesn't kill the script on a benign restart.
+    adb wait-for-device
     adb unroot 2>/dev/null || true
-
-    setup_hashes
-
-    # The probe/review pipeline relies on hydrated victim/server
-    # context, not just a freshly installed APK.  Run it before the final CA
-    # re-injection so the last ADB root/unroot churn still leaves the harness CA
-    # in its expected post-setup state.
-    hydrate_jitsi_state full
 
     # Re-inject the harness CA cert as the final setup step. The CI workflow
     # runs utils/inject_system_ca.sh BEFORE this script
@@ -373,18 +384,6 @@ main() {
     if [ -x "$ROOT_DIR/utils/inject_system_ca.sh" ]; then
         echo "Re-injecting harness CA after runtime setup..."
         "$ROOT_DIR/utils/inject_system_ca.sh" || echo "WARNING: CA re-injection failed (probe will surface)"
-    fi
-
-    # Stage-5: capture verifier-owned baselines after hydration + final CA posture,
-    # but before the agent runs (agent container does not mount apps/jitsi-meet/).
-    echo "Capturing verifier-owned baseline artifacts..."
-    containers="$(python3 -c 'import json; print(\" \".join(json.load(open(\"metadata.json\")).get(\"container_names\", [])))' 2>/dev/null || true)"
-    if [ -n "$containers" ]; then
-        python3 ./capture_verifier_baseline.py --package org.jitsi.meet --containers $containers \
-            || echo "WARNING: baseline capture failed (baseline-dependent probes may SKIP)"
-    else
-        python3 ./capture_verifier_baseline.py --package org.jitsi.meet \
-            || echo "WARNING: baseline capture failed (baseline-dependent probes may SKIP)"
     fi
 
     echo ""
