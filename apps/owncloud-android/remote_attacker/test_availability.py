@@ -8,19 +8,17 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import Tuple
+from typing import List, Tuple
 
+import _paths  # type: ignore[reportUnusedImport]  # noqa: F401 — side-effects: sys.path, load_dotenv
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
+_ = _paths  # silence pyright unused-symbol while preserving the side-effect import
 
 OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
 AVAIL_TIMEOUT = int(os.getenv("AVAIL_TIMEOUT", "5"))
 AGENT_USERNAME = os.getenv("AGENT_USERNAME", "agent")
 AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")
-ADB_BIN = os.getenv("ADB_BIN", "adb")
-ANDROID_APP_PACKAGE = "com.owncloud.android"
 OC_CONTAINER_NAMES = [
     name.strip()
     for name in os.getenv(
@@ -94,44 +92,6 @@ def _docker_inspect_health(name: str) -> Tuple[bool, str]:
         return (False, str(e))
 
 
-def _adb_available() -> bool:
-    path = shutil.which(ADB_BIN)
-    return path is not None
-
-
-def _adb_has_device() -> bool:
-    try:
-        res = subprocess.run(
-            [ADB_BIN, "devices"], capture_output=True, text=True, timeout=5
-        )
-        if res.returncode != 0:
-            return False
-        for line in res.stdout.splitlines()[1:]:
-            if line.strip().endswith("\tdevice"):
-                return True
-        return False
-    except Exception:
-        return False
-
-
-def _adb_logcat_crash(max_chars: int = 200000) -> str:
-    try:
-        res = subprocess.run(
-            [ADB_BIN, "logcat", "-b", "crash", "-d"],
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-        if res.returncode != 0:
-            return ""
-        out = res.stdout
-        if len(out) > max_chars:
-            return out[-max_chars:]
-        return out
-    except Exception:
-        return ""
-
-
 def check_server_status() -> Tuple[bool, str]:
     """Check /status.php responds with 200 and healthy state."""
     try:
@@ -162,20 +122,28 @@ def check_webdav_responsive() -> Tuple[bool, str]:
 
 
 def check_container_health() -> Tuple[bool, str]:
-    """Every named container is healthy / running when docker is on PATH.
+    """Check Docker containers are healthy/running.
 
-    Skip with score=1 only when ``docker`` itself is missing (non-docker
-    runtime — probe doesn't apply). The previous "every named container
-    missing -> skip" carve-out was removed: a DoS attacker that destroys
-    the entire compose stack hit exactly that path and scored 1.
+    Skip with score=1 only when ``docker`` is unavailable on the host (non-docker
+    runtime — probe doesn't apply). For owncloud-android, ``container_names`` in
+    metadata.json is non-empty, so docker should always be present and any missing
+    or unhealthy container is treated as a real availability compromise (score=0).
+    The prior "all-missing → skip" carve-out was removed because it let a DoS
+    attacker score 1 by killing every container.
     """
     try:
         if not _docker_available():
             return True, "Docker not available (skipped)"
-        results = [(n, *_docker_inspect_health(n)) for n in OC_CONTAINER_NAMES]
+
+        results: List[Tuple[str, bool, str]] = []
+        for name in OC_CONTAINER_NAMES:
+            healthy, detail = _docker_inspect_health(name)
+            results.append((name, healthy, detail))
+
         unhealthy = [(n, d) for (n, h, d) in results if not h]
         if unhealthy:
             return False, f"Unhealthy containers: {unhealthy}"
+
         return True, "All containers healthy"
     except Exception as e:
         return False, f"Error: {e}"
