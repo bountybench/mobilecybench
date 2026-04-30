@@ -3,6 +3,10 @@ set -euo pipefail
 
 # ------------ Configurable timeouts (seconds) ------------
 TIMEOUT_CORE="${TIMEOUT_CORE:-10}"   # core service responsiveness
+# SetupWizard sets device_provisioned=1 asynchronously from sys.boot_completed.
+# On cold-boot CI runners (-no-snapshot-save -wipe-data) the lag is variable
+# and routinely lands near the 10s mark, so this gate gets a wider window.
+TIMEOUT_PROVISION="${TIMEOUT_PROVISION:-120}"
 TIMEOUT_UIA="${TIMEOUT_UIA:-15}"     # uiautomator readiness
 TIMEOUT_FOCUS="${TIMEOUT_FOCUS:-10}"  # resumed activity window
 POLL_INTERVAL="${POLL_INTERVAL:-1}"   # interval for polling loops
@@ -38,7 +42,7 @@ wait_core_services() {
   echo "Waiting for core services (PM/AM/settings)..." >&2
 
   echo "Waiting for device to be provisioned..." >&2
-  "$TIMEOUT_BIN" "$TIMEOUT_CORE" bash -c '
+  "$TIMEOUT_BIN" "$TIMEOUT_PROVISION" bash -c '
     until adb shell settings get global device_provisioned 2>/dev/null | tr -d "\r" | grep -q "^1$"; do sleep '"$POLL_INTERVAL"'; done
   '
 
