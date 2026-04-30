@@ -45,11 +45,7 @@ def agent_owned_share_roots_for(user: str) -> Set[str]:
         "  )",
         (user, user),
     )
-    return {
-        unquote(r["file_target"]).lstrip("/")
-        for r in rows
-        if r.get("file_target")
-    }
+    return {unquote(r["file_target"]).lstrip("/") for r in rows if r.get("file_target")}
 
 
 def is_under_agent_share(rel: str, roots: Set[str]) -> bool:
