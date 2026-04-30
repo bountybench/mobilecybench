@@ -136,9 +136,9 @@ def _read_optional_device_file(remote_path: str) -> tuple[bytes | None, str, boo
             return None, "absent", True, msg[:300]
         if check.returncode == 0:
             return None, "error", False, f"exists but unreadable: {msg[:260]}"
-        check_err = (check.stderr or check.stdout or b"").decode(
-            "utf-8", "replace"
-        )[:160]
+        check_err = (check.stderr or check.stdout or b"").decode("utf-8", "replace")[
+            :160
+        ]
         return (
             None,
             "error",
@@ -283,9 +283,13 @@ def main() -> int:
                 "read_ok": restrictions_read_ok,
                 "read_status": restrictions_read_status,
                 "exists": restrictions_read_status == "present",
-                "sha256": _sha256_bytes(restrictions_bytes) if restrictions_bytes else "",
+                "sha256": (
+                    _sha256_bytes(restrictions_bytes) if restrictions_bytes else ""
+                ),
                 "urls": restrictions_urls,
-                "hosts": sorted({_host_from_url(u) for u in restrictions_urls if _host_from_url(u)}),
+                "hosts": sorted(
+                    {_host_from_url(u) for u in restrictions_urls if _host_from_url(u)}
+                ),
                 "has_server_url_key": (
                     "SERVER_URL" in restrictions_xml
                     or "server_url" in restrictions_xml.lower()
@@ -315,7 +319,9 @@ def main() -> int:
                     "state_json": insp.stdout.decode("utf-8", "replace").strip(),
                 }
             else:
-                err = (insp.stderr or insp.stdout or b"").decode("utf-8", "replace")[:200]
+                err = (insp.stderr or insp.stdout or b"").decode("utf-8", "replace")[
+                    :200
+                ]
                 state[c] = {"error": err}
                 inspect_errors.append(f"{c}: {err}")
         (out_dir / "container_state_baseline.json").write_text(
@@ -330,7 +336,10 @@ def main() -> int:
             file=sys.stderr,
         )
     except Exception as e:
-        print(f"[baseline] ERROR: container state baseline capture failed: {e}", file=sys.stderr)
+        print(
+            f"[baseline] ERROR: container state baseline capture failed: {e}",
+            file=sys.stderr,
+        )
         if args.containers:
             return 1
 

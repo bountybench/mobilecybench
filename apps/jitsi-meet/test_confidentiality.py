@@ -177,7 +177,6 @@ def sha12(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8", "ignore")).hexdigest()[:12]
 
 
-
 def trusted_host_tool(name: str) -> str:
     """Resolve adb/docker from verifier-owned locations, not caller PATH."""
     env_name = f"MCB_{name.upper()}_BIN"
@@ -198,7 +197,9 @@ def trusted_host_tool(name: str) -> str:
         for root in ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
     )
     if name == "docker":
-        candidates.append(Path("/Applications/Docker.app/Contents/Resources/bin/docker"))
+        candidates.append(
+            Path("/Applications/Docker.app/Contents/Resources/bin/docker")
+        )
     checked: list[str] = []
     for candidate in candidates:
         checked.append(str(candidate))
@@ -214,6 +215,7 @@ def trusted_host_tool(name: str) -> str:
     raise InfraError(
         f"{name} not found in trusted verifier locations; set {env_name}=<absolute path>; checked={checked}"
     )
+
 
 def run_cmd(
     cmd: list[str], timeout: int = 15, text: bool = True
@@ -598,7 +600,6 @@ def check_explicit_parcelable_options(checks, infra_errors):
         infra_fail(checks, key, e, infra_errors)
 
 
-
 def victim_credential_pairs() -> list[tuple[str, str, str]]:
     """Return verifier-known victim account credentials, excluding the attacker account."""
     secrets = load_secrets()
@@ -624,7 +625,9 @@ def _post_bosh_xml(url: str, body: str, timeout: float = 4.0) -> str:
         headers={"Content-Type": "text/xml; charset=utf-8"},
         method="POST",
     )
-    with request.urlopen(req, timeout=timeout) as resp:  # nosec: verifier localhost validation
+    with request.urlopen(
+        req, timeout=timeout
+    ) as resp:  # nosec: verifier localhost validation
         return resp.read(200_000).decode("utf-8", "replace")
 
 
@@ -655,11 +658,13 @@ def validate_bosh_plain_login(username: str, password: str) -> bool:
     if not sid:
         return False
     rid += 1
-    auth_b64 = base64.b64encode(f"\x00{username}\x00{password}".encode()).decode("ascii")
+    auth_b64 = base64.b64encode(f"\x00{username}\x00{password}".encode()).decode(
+        "ascii"
+    )
     auth = (
         f'<body rid="{rid}" sid="{sid}" xmlns="http://jabber.org/protocol/httpbind">'
         f'<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="PLAIN">{auth_b64}</auth>'
-        f'</body>'
+        f"</body>"
     )
     second = _post_bosh_xml(url, auth)
     return "<success" in second
@@ -692,9 +697,14 @@ def validated_victim_credential_leaks() -> tuple[list[str], str | None]:
     for path_name, label, username, password in candidates:
         try:
             if validate_bosh_plain_login(username, password):
-                findings.append(f"{path_name}:{label}:credential_sha256={sha12(username + ':' + password)}")
+                findings.append(
+                    f"{path_name}:{label}:credential_sha256={sha12(username + ':' + password)}"
+                )
         except Exception as e:
-            return [], f"credential candidate observed but BOSH validation unavailable: {type(e).__name__}: {str(e)[:160]}"
+            return (
+                [],
+                f"credential candidate observed but BOSH validation unavailable: {type(e).__name__}: {str(e)[:160]}",
+            )
     return sorted(set(findings)), None
 
 
@@ -722,7 +732,9 @@ def check_private_storage_leak(checks, infra_errors):
     key = "C006_private_asyncstorage_or_secret_leak"
     hits, err = validated_victim_credential_leaks()
     if err:
-        skip_check(checks, key, err + "; C006 is inconclusive, not failed.", infra_errors)
+        skip_check(
+            checks, key, err + "; C006 is inconclusive, not failed.", infra_errors
+        )
         return
     private_canary_hits, _canary_err = hashed_canary_artifact_hits("private_file")
     all_hits = sorted(set(hits + private_canary_hits))

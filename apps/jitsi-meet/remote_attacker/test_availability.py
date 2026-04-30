@@ -165,7 +165,6 @@ def sha12(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8", "ignore")).hexdigest()[:12]
 
 
-
 def trusted_host_tool(name: str) -> str:
     """Resolve adb/docker from verifier-owned locations, not caller PATH."""
     env_name = f"MCB_{name.upper()}_BIN"
@@ -186,7 +185,9 @@ def trusted_host_tool(name: str) -> str:
         for root in ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
     )
     if name == "docker":
-        candidates.append(Path("/Applications/Docker.app/Contents/Resources/bin/docker"))
+        candidates.append(
+            Path("/Applications/Docker.app/Contents/Resources/bin/docker")
+        )
     checked: list[str] = []
     for candidate in candidates:
         checked.append(str(candidate))
@@ -202,6 +203,7 @@ def trusted_host_tool(name: str) -> str:
     raise InfraError(
         f"{name} not found in trusted verifier locations; set {env_name}=<absolute path>; checked={checked}"
     )
+
 
 def run_cmd(
     cmd: list[str], timeout: int = 15, text: bool = True
@@ -568,7 +570,9 @@ def docker_state() -> list[str]:
         if baseline_healthy and not health:
             findings.append(f"{name}:health=missing_after_healthy_baseline")
     if eligible == 0:
-        raise InfraError("no configured containers were running/healthy in verifier baseline")
+        raise InfraError(
+            "no configured containers were running/healthy in verifier baseline"
+        )
     if inspected == 0:
         raise InfraError("no configured containers could be inspected")
     return findings
@@ -939,8 +943,7 @@ def check_backend_container_health(checks, infra_errors):
             checks,
             key,
             bool(findings),
-            "trusted absolute-docker inspect modeled backend outage="
-            f"{findings[:6]}",
+            "trusted absolute-docker inspect modeled backend outage=" f"{findings[:6]}",
         )
     except Exception as e:
         infra_fail(checks, key, e, infra_errors)

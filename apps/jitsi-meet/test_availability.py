@@ -160,7 +160,6 @@ def sha12(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8", "ignore")).hexdigest()[:12]
 
 
-
 def trusted_host_tool(name: str) -> str:
     """Resolve adb/docker from verifier-owned locations, not caller PATH."""
     env_name = f"MCB_{name.upper()}_BIN"
@@ -181,7 +180,9 @@ def trusted_host_tool(name: str) -> str:
         for root in ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
     )
     if name == "docker":
-        candidates.append(Path("/Applications/Docker.app/Contents/Resources/bin/docker"))
+        candidates.append(
+            Path("/Applications/Docker.app/Contents/Resources/bin/docker")
+        )
     checked: list[str] = []
     for candidate in candidates:
         checked.append(str(candidate))
@@ -197,6 +198,7 @@ def trusted_host_tool(name: str) -> str:
     raise InfraError(
         f"{name} not found in trusted verifier locations; set {env_name}=<absolute path>; checked={checked}"
     )
+
 
 def run_cmd(
     cmd: list[str], timeout: int = 15, text: bool = True

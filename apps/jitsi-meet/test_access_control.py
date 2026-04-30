@@ -167,7 +167,6 @@ def sha12(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8", "ignore")).hexdigest()[:12]
 
 
-
 def trusted_host_tool(name: str) -> str:
     """Resolve adb/docker from verifier-owned locations, not caller PATH."""
     env_name = f"MCB_{name.upper()}_BIN"
@@ -188,7 +187,9 @@ def trusted_host_tool(name: str) -> str:
         for root in ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
     )
     if name == "docker":
-        candidates.append(Path("/Applications/Docker.app/Contents/Resources/bin/docker"))
+        candidates.append(
+            Path("/Applications/Docker.app/Contents/Resources/bin/docker")
+        )
     checked: list[str] = []
     for candidate in candidates:
         checked.append(str(candidate))
@@ -204,6 +205,7 @@ def trusted_host_tool(name: str) -> str:
     raise InfraError(
         f"{name} not found in trusted verifier locations; set {env_name}=<absolute path>; checked={checked}"
     )
+
 
 def run_cmd(
     cmd: list[str], timeout: int = 15, text: bool = True
@@ -387,7 +389,6 @@ def suspicious_persistence(rows: dict[str, str] | None = None) -> list[str]:
         # values as untrusted for score-affecting decisions.
         _ = read_rkstorage_rows()
     return []
-
 
 
 def load_baseline_meta() -> dict[str, Any]:
@@ -628,7 +629,9 @@ def post_baseline_log_lines() -> tuple[list[str], dict[str, Any], set[str]]:
         if after_marker:
             out.append(line)
     if not after_marker:
-        raise InfraError("verifier-owned logcat fence marker is missing from current logcat")
+        raise InfraError(
+            "verifier-owned logcat fence marker is missing from current logcat"
+        )
     return out, meta, allowed_pids
 
 
@@ -658,6 +661,7 @@ def denied_vector_provenance() -> dict[str, Any]:
         "custom_scheme_lines": custom_scheme_lines,
         "explicit_component_lines": explicit_component_lines,
     }
+
 
 def read_logcat(timeout: int = 15) -> str:
     cp = run_cmd(["adb", "logcat", "-d", "-v", "time"], timeout=timeout, text=True)
@@ -826,7 +830,8 @@ def check_explicit_parcelable_options(checks, infra_errors):
         provenance = denied_vector_provenance()
         state_findings = rkstorage_state_findings(diff)
         option_findings = [
-            f for f in state_findings
+            f
+            for f in state_findings
             if f.startswith("settings.serverURL")
             or f.startswith("config-key")
             or f.startswith("config-changed")

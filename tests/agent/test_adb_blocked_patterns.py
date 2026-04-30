@@ -105,7 +105,7 @@ class TestCheckShellScriptContent:
         script = (
             "cat > /tmp/jitsi_restrictions.xml <<'EOF'\n"
             "<restrictions>\n"
-            "  <restriction key=\"SERVER_URL\" type=\"string\" value=\"https://attacker.example\"/>\n"
+            '  <restriction key="SERVER_URL" type="string" value="https://attacker.example"/>\n'
             "</restrictions>\n"
             "EOF\n"
             "adb push /tmp/jitsi_restrictions.xml /data/local/tmp/jitsi_restrictions.xml\n"
@@ -115,7 +115,9 @@ class TestCheckShellScriptContent:
         assert not allowed
         assert len(violations) == 1
         assert violations[0]["line_number"] == 7
-        assert violations[0]["matched_pattern"] == r"\bcmd\s+user\s+set-app-restrictions\b"
+        assert (
+            violations[0]["matched_pattern"] == r"\bcmd\s+user\s+set-app-restrictions\b"
+        )
 
     # -- Should be ALLOWED in scripts (false-positive regression tests) ---
 
