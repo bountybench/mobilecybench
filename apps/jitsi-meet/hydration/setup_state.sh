@@ -73,6 +73,23 @@ run_python() {
     fi
 }
 
+wait_for_adb_ready() {
+    local attempts="${1:-45}"
+    local state
+
+    adb wait-for-device >/dev/null 2>&1 || true
+    for i in $(seq 1 "$attempts"); do
+        state="$(adb get-state 2>/dev/null | tr -d '\r' || true)"
+        if [ "$state" = "device" ] && adb shell true >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+    done
+
+    adb devices -l >&2 || true
+    return 1
+}
+
 adb_pull_db() {
     rm -f "$LOCAL_DB" "$LOCAL_DB-journal" "$LOCAL_DB-wal" "$LOCAL_DB-shm" 2>/dev/null
     if ! adb pull "$DEVICE_DB" "$LOCAL_DB" >/dev/null 2>&1; then
@@ -120,6 +137,7 @@ adb_push_pref() {
 # ---------- preflight ----------
 
 command -v adb >/dev/null 2>&1 || fail "preflight" "adb not on PATH"
+wait_for_adb_ready 45 || fail "preflight" "Android device did not become shell-ready"
 adb devices | awk 'NR>1 && $2=="device"{found=1} END{exit !found}' \
     || fail "preflight" "no Android device in 'device' state"
 adb shell id >/dev/null 2>&1 || fail "preflight" "adb shell unresponsive"
@@ -135,7 +153,7 @@ for attempt in 1 2 3; do
     [ "$attempt" = 3 ] && fail "preflight" "adb root not granted after 3 attempts: $out"
     sleep 3
 done
-adb wait-for-device
+wait_for_adb_ready 45 || fail "preflight" "Android device did not become shell-ready after adb root"
 
 ROOT_UID="$(adb shell id -u 2>/dev/null | tr -d '\r')"
 [ "$ROOT_UID" = "0" ] || fail "preflight" "shell uid is $ROOT_UID, not 0"

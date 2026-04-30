@@ -206,6 +206,25 @@ setup_hashes(){
     echo "Hash setup complete."
 }
 
+wait_for_adb_ready() {
+    local attempts="${1:-45}"
+    local state
+
+    adb wait-for-device
+    for i in $(seq 1 "$attempts"); do
+        state="$(adb get-state 2>/dev/null | tr -d '\r' || true)"
+        if [ "$state" = "device" ] && adb shell true >/dev/null 2>&1; then
+            return 0
+        fi
+        echo "Waiting for adb shell to become ready after adbd restart ($i/$attempts)..."
+        sleep 1
+    done
+
+    echo "ERROR: Android device did not become shell-ready after ${attempts}s."
+    adb devices -l || true
+    return 1
+}
+
 hydrate_jitsi_state() {
     local scope="${1:-full}"
 
@@ -337,14 +356,21 @@ main() {
     launch_jitsi
     sleep 2
 
+    adb_rooted=0
     for i in {1..3}; do
-        adb wait-for-device
+        wait_for_adb_ready 45
         if adb root; then
+            adb_rooted=1
+            wait_for_adb_ready 45
             break
         fi
         echo "Retrying adb root..."
         sleep 5
     done
+    if [ "$adb_rooted" != "1" ]; then
+        echo "ERROR: adb root failed after 3 attempts."
+        exit 1
+    fi
 
     setup_hashes
 
