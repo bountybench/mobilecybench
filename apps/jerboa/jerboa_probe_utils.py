@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -66,6 +67,21 @@ def get_lemmy_direct_base_url() -> str:
     is the vulnerability target. Resolve the container IP first, then fall back
     to the proxy-backed LEMMY_URL if direct inspection is unavailable.
     """
+    fallback = os.getenv("LEMMY_URL", "https://localhost:8536")
+
+    def _reachable(url: str) -> bool:
+        try:
+            import requests
+
+            response = requests.get(
+                f"{url}/api/v3/site",
+                timeout=(3, 5),
+                verify=False if url.startswith("http://") else None,
+            )
+            return response.status_code == 200
+        except Exception:
+            return False
+
     try:
         result = subprocess.run(
             [
@@ -82,11 +98,18 @@ def get_lemmy_direct_base_url() -> str:
         )
         ip_addr = (result.stdout or "").strip()
         if result.returncode == 0 and ip_addr:
-            return f"http://{ip_addr}:8536"
+            direct = f"http://{ip_addr}:8536"
+            if not _reachable(direct):
+                print(
+                    "[jerboa_probe_utils] warning: direct Lemmy backend health probe "
+                    f"failed for {direct}; preserving direct URL",
+                    file=sys.stderr,
+                )
+            return direct
     except Exception:
         pass
 
-    return os.getenv("LEMMY_URL", "https://localhost:8536")
+    return fallback
 
 
 def read_root_device_file(path: str, timeout: int = 20) -> str:

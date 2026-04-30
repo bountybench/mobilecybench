@@ -111,9 +111,8 @@ login_agent_user_once(){
   local metadata_file="${SCRIPT_DIR}/metadata.json"
   [ -f "$metadata_file" ] || fatal "metadata.json not found"
 
-  local login_script
-  login_script=$(find "$SCRIPT_DIR/synthetic_vulnerabilities" -name "login_automation.py" -print -quit 2>/dev/null || true)
-  [ -n "$login_script" ] || fatal "login_automation.py not found"
+  local login_script="$SCRIPT_DIR/helpers/login_automation.py"
+  [ -f "$login_script" ] || fatal "login_automation.py not found at $login_script"
 
   local agent_username agent_password emulator_server
   read -r agent_username agent_password emulator_server <<EOF

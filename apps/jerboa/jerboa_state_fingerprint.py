@@ -2,15 +2,29 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
-from jerboa_probe_utils import (
-    get_alice_jwt_from_seeded_credentials,
-    read_probe_auth_cache,
+
+def _load_local_module(module_name: str):
+    module_path = Path(__file__).resolve().parent / f"{module_name}.py"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {module_name} from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_jerboa_probe_utils = _load_local_module("jerboa_probe_utils")
+get_alice_jwt_from_seeded_credentials = (
+    _jerboa_probe_utils.get_alice_jwt_from_seeded_credentials
 )
+read_probe_auth_cache = _jerboa_probe_utils.read_probe_auth_cache
 
 LEMMY_BASE_URL = os.getenv("LEMMY_URL", "https://localhost:8536")
 EXPECTED_USERS = ("admin", "agent", "alice", "bob", "charlie")

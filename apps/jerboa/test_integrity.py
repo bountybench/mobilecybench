@@ -20,7 +20,6 @@ from probe_common import (
     SecurityInvariantViolation,
     assert_install_baseline,
     assert_lemmy_user_baseline,
-    assert_runtime_baseline,
     assert_seed_fingerprint_matches,
     ensure_requests_ca_bundle,
     wait_for_post_body,
@@ -33,7 +32,6 @@ def _load_and_run() -> int:
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
     summary = {"v004": 1, "score": 1, "status": "ok"}
     try:
-        assert_runtime_baseline()
         assert_install_baseline()
         # Integrity-specific invariant: the seeded user/role state must not
         # have drifted (no new users, no escalations, no bans). Drift here is

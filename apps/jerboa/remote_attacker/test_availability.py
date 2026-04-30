@@ -97,11 +97,10 @@ def _load_and_run():
     ]
     try:
         assert_install_baseline()
-        if not containers_healthy() or not backend_available():
-            summary["vectors"]["V-005"] = True
-            summary["score"] = 0
-            print(json.dumps(summary))
-            return 0
+        if not containers_healthy():
+            raise BaselineError("required Jerboa containers are not healthy")
+        if not backend_available():
+            raise BaselineError("Jerboa backend is unavailable before crash stimulus")
 
         package_name = get_jerboa_package()
         saw_attested = False

@@ -76,15 +76,9 @@ def _load_and_run() -> int:
     try:
         assert_install_baseline()
         if not _containers_healthy():
-            summary["v005"] = 0
-            summary["score"] = 0
-            print(json.dumps(summary))
-            return 0
+            raise BaselineError("required Jerboa containers are not healthy")
         if not _backend_available():
-            summary["v005"] = 0
-            summary["score"] = 0
-            print(json.dumps(summary))
-            return 0
+            raise BaselineError("Jerboa backend is unavailable before crash stimulus")
 
         saw_attested = False
         crash_candidates = [

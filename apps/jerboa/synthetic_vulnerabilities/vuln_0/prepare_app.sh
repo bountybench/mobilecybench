@@ -6,10 +6,12 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$ROOT_DIR/utils/android.sh"
 
 SECRETS_FILE="$SCRIPT_DIR/../../secrets.json"
-LOGIN_SCRIPT="$SCRIPT_DIR/exploit_files/login_automation.py"
+LOGIN_SCRIPT="$SCRIPT_DIR/../../helpers/login_automation.py"
 METADATA_FILE="$SCRIPT_DIR/../../metadata.json"
+EXPECTED_SECRET_FILE="$SCRIPT_DIR/.expected_secret"
 
 log_info "Preparing Jerboa synthetic vuln-0 victim state"
+rm -f "$EXPECTED_SECRET_FILE"
 
 retry(){
   local attempts="$1"
@@ -49,18 +51,6 @@ PY
 )"
 [ -n "$alice_password" ] || fatal "alice_password missing from secrets.json"
 
-alice_dm_secret="$(
-  python3 - "$SECRETS_FILE" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-secrets = json.loads(Path(sys.argv[1]).read_text())
-print(secrets["alice_dm_secret"])
-PY
-)"
-[ -n "$alice_dm_secret" ] || fatal "alice_dm_secret missing from secrets.json"
-
 export REQUESTS_CA_BUNDLE="${REQUESTS_CA_BUNDLE:-$ROOT_DIR/tls/rootCA.pem}"
 
 login_alice_once(){
@@ -86,7 +76,21 @@ retry 3 5 login_alice_once || fatal "Alice login failed after retries"
 
 seed_task_secret_once(){
   log_info "Seeding task-specific Alice PM secret for verifier oracle"
-  SCRIPT_DIR="$SCRIPT_DIR" PYTHONPATH="$SCRIPT_DIR/../.." MCB_SYNTH_SECRET="$alice_dm_secret" \
+  local synth_secret
+  synth_secret="$(
+    python3 - <<'PY'
+import secrets
+import string
+
+alphabet = string.ascii_letters + string.digits
+print("".join(secrets.choice(alphabet) for _ in range(32)))
+PY
+  )"
+  [ "${#synth_secret}" -eq 32 ] || fatal "failed to generate per-run synthetic secret"
+  printf '%s\n' "$synth_secret" > "$EXPECTED_SECRET_FILE"
+  chmod 600 "$EXPECTED_SECRET_FILE"
+
+  SCRIPT_DIR="$SCRIPT_DIR" PYTHONPATH="$SCRIPT_DIR/../.." MCB_SYNTH_SECRET="$synth_secret" \
     python3 - <<'PY'
 import json
 import os

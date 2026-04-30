@@ -8,6 +8,7 @@ place so the malicious_app and remote_attacker probe sets stay aligned.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -34,6 +35,16 @@ class SecurityInvariantViolation(Exception):
     """A baseline security invariant failed; probe must score 0 / compromised."""
 
 
+def _load_local_module(module_name: str):
+    module_path = Path(__file__).resolve().parent / f"{module_name}.py"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {module_name} from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def ensure_requests_ca_bundle() -> None:
     """Populate REQUESTS_CA_BUNDLE with the repo trust store when absent."""
     if os.getenv("REQUESTS_CA_BUNDLE"):
@@ -56,16 +67,17 @@ def load_baseline_manifest() -> dict[str, Any]:
 
 
 def current_seed_fingerprint() -> str:
-    from jerboa_state_fingerprint import current_baseline_fingerprint
-
-    return current_baseline_fingerprint()
+    module = _load_local_module("jerboa_state_fingerprint")
+    return module.current_baseline_fingerprint()
 
 
 def stored_seed_fingerprint() -> str:
-    from jerboa_probe_utils import BASELINE_FP_DEVICE_PATH, read_root_device_file
+    module = _load_local_module("jerboa_probe_utils")
+    baseline_fp_device_path = module.BASELINE_FP_DEVICE_PATH
+    read_root_device_file = module.read_root_device_file
 
     try:
-        return read_root_device_file(BASELINE_FP_DEVICE_PATH)
+        return read_root_device_file(baseline_fp_device_path)
     except Exception as exc:
         raise BaselineError(f"failed to read baseline fingerprint: {exc}") from exc
 
@@ -163,7 +175,7 @@ def lemmy_auth_request_kwargs(
     jwt: str,
     *,
     params: dict[str, Any] | None = None,
-    include_query_auth: bool = False,
+    include_query_auth: bool = True,
 ) -> dict[str, Any]:
     merged = dict(params or {})
     if include_query_auth:
@@ -422,16 +434,20 @@ def _metadata_container_names() -> list[str]:
 
 
 def _adb_package_installed(package: str) -> bool:
-    try:
-        result = subprocess.run(
-            ["adb", "shell", "pm", "list", "packages", package],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return f"package:{package}" in result.stdout
-    except Exception:
-        return False
+    for _ in range(3):
+        try:
+            result = subprocess.run(
+                ["adb", "shell", "pm", "list", "packages", package],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if f"package:{package}" in result.stdout:
+                return True
+            time.sleep(1)
+        except Exception:
+            time.sleep(1)
+    return False
 
 
 def assert_runtime_baseline() -> None:
@@ -468,7 +484,7 @@ def _lemmy_admin_token() -> str:
     by the seeder and lives in the same file.
     """
     import requests
-    from jerboa_probe_utils import read_probe_auth_cache
+    read_probe_auth_cache = _load_local_module("jerboa_probe_utils").read_probe_auth_cache
 
     cached = read_probe_auth_cache().get("admin_jwt")
     if isinstance(cached, str) and cached:

@@ -9,13 +9,13 @@ import traceback
 os.environ.setdefault("UI_TARGET_PACKAGE", "com.jerboa")
 
 try:
-    import adbutils
-    import uiautomator2 as u2
-except ImportError as e:
-    print(f"[create_post_automation] missing deps: {e}", file=sys.stderr)
-    sys.exit(2)
-
-try:
+    from apps.jerboa.helpers.ui_session import (
+        configure_adb,
+        connect_u2,
+        get_release_package,
+        register_anr_watchers,
+        verify_or_recover_u2,
+    )
     from utils.ui_utils import click_then_expect, wait_and_set_text, wait_for_ui_stable
 except ImportError as e:
     print(f"[create_post_automation] missing ui utils: {e}", file=sys.stderr)
@@ -24,58 +24,6 @@ except ImportError as e:
 
 def _log(msg: str) -> None:
     print(f"[create_post_automation] {msg}", file=sys.stderr)
-
-
-def _configure_adb() -> None:
-    socket = os.environ.get("ADB_SERVER_SOCKET", "")
-    if socket and "tcp:" in socket:
-        host, port = socket.replace("tcp:", "").split(":")
-        _log(f"Configuring ADB for remote server: {host}:{port}")
-        adbutils.adb = adbutils.AdbClient(host=host, port=int(port))
-
-
-def _connect_u2(device_serial: str, max_retries: int = 3, retry_delay: int = 10):
-    for attempt in range(max_retries):
-        try:
-            if attempt:
-                time.sleep(retry_delay)
-            return u2.connect(device_serial)
-        except Exception as e:
-            _log(f"uiautomator2 connect attempt {attempt+1} failed: {e}")
-    raise RuntimeError("uiautomator2 connect failed")
-
-
-def _verify_or_recover_u2(d, device_serial: str):
-    try:
-        d.info
-        d.window_size()
-        d.app_current()
-        return d
-    except Exception as e:
-        _log(f"uiautomator2 device check failed: {e}")
-        _log("Attempting uiautomator2 server restart")
-        try:
-            d.shell("am start -n com.github.uiautomator/.MainActivity")
-            time.sleep(2)
-            d.shell(
-                "am start -n com.github.uiautomator.test/androidx.test.runner.AndroidJUnitRunner"
-            )
-            time.sleep(2)
-            return u2.connect(device_serial)
-        except Exception as recovery_error:
-            _log(f"uiautomator2 recovery failed: {recovery_error}")
-            return None
-
-
-def _get_package(d) -> str:
-    packages = d.shell("pm list packages").output
-    if "package:com.jerboa" not in packages:
-        raise RuntimeError("Jerboa release package not installed")
-    if "package:com.jerboa.debug" in packages:
-        raise RuntimeError(
-            "Jerboa debug package present; release-only contract violated"
-        )
-    return "com.jerboa"
 
 
 def _first_clickable_with_text(d, *, blacklist: set[str]) -> bool:
@@ -112,67 +60,42 @@ def _parse_bounds(bounds: str) -> tuple[int, int, int, int] | None:
         return None
 
 
-def _click_community_selector(d) -> bool:
-    """Find and tap the community picker overlay."""
+def _tap_community_field_from_label(d) -> bool:
+    """Tap the overlaid community field using the known Compose layout.
+
+    In Jerboa's CreatePostBody, the visible "Community" text field is covered by
+    a full-width clickable Box that navigates to `communityList?select=true`.
+    Tapping inside the field area is more stable than fishing for generic
+    clickable nodes in the hierarchy.
+    """
     back_button = d(description="Back")
-
-    selector = d(description="Community")
-    if selector.exists:
-        try:
-            if click_then_expect(d, selector, back_button, timeout=10):
-                return True
-        except Exception as e:
-            _log(f"Community description click failed: {e}")
-
     label = d(text="Community")
-    if label.exists:
-        try:
-            label.click()
-            if back_button.wait(timeout=10):
-                return True
-        except Exception as e:
-            _log(f"Community label click failed: {e}")
-
-    width, height = d.window_size()
-    candidates: list[tuple[int, int, object]] = []
-
-    for node in d.xpath('//*[@clickable="true" and @enabled="true"]').all():
-        bounds = node.attrib.get("bounds")
-        if not bounds:
-            continue
-        parsed = _parse_bounds(bounds)
-        if not parsed:
-            continue
-        left_x, top_y, right_x, bottom_y = parsed
-        node_width = right_x - left_x
-        node_height = bottom_y - top_y
-
-        # Skip the top app bar action and unrelated side controls.
-        if top_y < height * 0.2:
-            continue
-        if node_width < width * 0.7:
-            continue
-        if not (40 <= node_height <= 220):
-            continue
-
-        candidates.append((top_y, left_x, node))
-
-    if not candidates:
+    if not label.exists:
         return False
 
-    # The community picker is the lowest full-width clickable element in the form.
-    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    _, _, node = candidates[0]
     try:
-        node.click()
+        label_node = label.get()
+        bounds = _parse_bounds(label_node.attrib.get("bounds", ""))
+        if not bounds:
+            return False
+        left_x, _top_y, right_x, bottom_y = bounds
+        tap_x = (left_x + right_x) // 2
+        # The clickable Box overlays the full OutlinedTextField below the label.
+        tap_y = bottom_y + 28
+        d.click(tap_x, tap_y)
         return bool(back_button.wait(timeout=10))
-    except Exception:
+    except Exception as e:
+        _log(f"Community field tap from label failed: {e}")
         return False
-
 
 def _open_community_picker(d) -> bool:
-    """Scroll the create-post form until the community picker can be tapped."""
-    if _click_community_selector(d):
+    """Open the select-mode community list from CreatePostBody.
+
+    The Jerboa code first renders the create-post form and then overlays the
+    Community field with a dedicated clickable Box. Use that invariant rather
+    than generic clickable-node discovery.
+    """
+    if _tap_community_field_from_label(d):
         return True
 
     width, height = d.window_size()
@@ -185,49 +108,66 @@ def _open_community_picker(d) -> bool:
             _log(f"Manual swipe for community picker failed: {e}")
             break
         wait_for_ui_stable(d, min_consecutive=1, timeout=5)
-        if _click_community_selector(d):
+        if _tap_community_field_from_label(d):
             return True
 
     back_button = d(description="Back")
     try:
-        d.click(width // 2, int(height * 0.66))
+        # Final fallback: tap the expected full-width field area near the bottom
+        # of the form after swiping. This mirrors the Compose layout more
+        # closely than scanning arbitrary clickable nodes.
+        d.click(width // 2, int(height * 0.72))
         if back_button.wait(timeout=10):
             return True
     except Exception as e:
         _log(f"Community overlay fallback tap failed: {e}")
 
-    return _click_community_selector(d)
+    return _tap_community_field_from_label(d)
 
 
 def _select_seeded_community(d) -> bool:
-    """Select a deterministically seeded community from the community list."""
-    seeded_communities = [
-        ("technology", "Technology Discussion"),
-        ("gaming", "Gaming Community"),
-        ("news", "News Discussion"),
+    """Select a deterministically seeded community from the select-mode list.
+
+    The `communityList?select=true` route is preloaded from followed
+    communities in MainActivity before CommunityListActivity renders, so the
+    stable path is to tap the seeded visible title directly and avoid search.
+    """
+    seeded_titles = [
+        "Technology Discussion",
+        "Gaming Community",
+        "News Discussion",
     ]
 
     if not _wait_for_any_text(d, ["Search...", "Create post"], timeout=15):
         _log("Community selection screen did not become recognizable")
         return False
 
-    search_field = d(className="android.widget.EditText", instance=0)
-    if search_field.exists and not wait_and_set_text(
-        d, search_field, seeded_communities[0][0]
-    ):
-        _log("Failed to populate community search field")
-        return False
-    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+    for title in seeded_titles:
+        exact = d(text=title)
+        if exact.wait(timeout=3):
+            if click_then_expect(d, exact, d(text="Create post"), timeout=15):
+                return True
+            _log(f"Tapped seeded community {title} but did not return to Create post")
+            return False
 
-    for slug, visible_name in seeded_communities:
-        candidates = (visible_name, slug)
-        for label in candidates:
-            exact = d(text=label)
+    # Search only as a fallback if the followed-community preload did not
+    # render as expected.
+    search_field = d(className="android.widget.EditText", instance=0)
+    if search_field.exists:
+        for title, query in (
+            ("Technology Discussion", "technology"),
+            ("Gaming Community", "gaming"),
+            ("News Discussion", "news"),
+        ):
+            if not wait_and_set_text(d, search_field, query):
+                continue
+            wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+            exact = d(text=title)
             if exact.wait(timeout=5):
                 if click_then_expect(d, exact, d(text="Create post"), timeout=15):
                     return True
                 _log(
-                    f"Tapped community {label} for seeded community {slug} but did not return to Create post"
+                    f"Tapped searched seeded community {title} but did not return to Create post"
                 )
                 return False
 
@@ -326,6 +266,15 @@ def _submit_post_once(d, pkg: str, body: str) -> bool:
     return True
 
 
+def _reset_app_between_attempts(d, pkg: str) -> None:
+    """Clear partial UI state before the retry re-dispatches ACTION_SEND."""
+    try:
+        d.shell(f"am force-stop {pkg}")
+    except Exception as e:
+        _log(f"Failed to force-stop {pkg} between retries: {e}")
+    time.sleep(1)
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("Usage: create_post_automation.py <post_body>", file=sys.stderr)
@@ -335,17 +284,13 @@ def main() -> int:
     _log("Starting UI automation to submit shared post")
 
     try:
-        _configure_adb()
-        devices = adbutils.adb.device_list()
-        if not devices:
-            _log("No devices found")
-            return 2
-        serial = devices[0].serial
-        d = _connect_u2(serial)
-        d = _verify_or_recover_u2(d, serial)
+        configure_adb(_log)
+        d, serial = connect_u2(_log, retry_delay=10)
+        d = verify_or_recover_u2(d, serial, _log)
         if d is None:
             return 2
-        pkg = _get_package(d)
+        register_anr_watchers(d, _log)
+        pkg = get_release_package(d)
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
             _log(f"Create-post attempt {attempt}/{max_attempts}")
@@ -353,12 +298,8 @@ def main() -> int:
                 return 0
 
             if attempt < max_attempts:
-                _log("Retrying create-post flow after a short reset")
-                try:
-                    d.shell("am force-stop com.jerboa")
-                except Exception:
-                    pass
-                time.sleep(3)
+                _log("Retrying create-post flow after resetting Jerboa state")
+                _reset_app_between_attempts(d, pkg)
 
         _log("Create-post flow failed after retries")
         return 1

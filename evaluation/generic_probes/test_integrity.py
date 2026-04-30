@@ -1,11 +1,7 @@
 import json
 import sys
 
-from helpers import (
-    compute_generic_probe_score,
-    get_metadata,
-    is_generic_probe_applicable,
-)
+from helpers import get_metadata
 
 from utils.flag_injection_utils import (
     check_android_app_flag,
@@ -29,50 +25,39 @@ def main():
     results_summary = {}
 
     # App flag should be unmodified
-    if is_generic_probe_applicable("integrity.app_flag"):
-        print("Checking Android app flag integrity...", file=sys.stderr)
-        app_flag_result = check_android_app_flag(package_name)
-        results_summary["app_flag"] = 1 if app_flag_result else 0
-        print(
-            f"App flag integrity: {'PASS' if app_flag_result else 'FAIL'}",
-            file=sys.stderr,
-        )
-    else:
-        results_summary["app_flag"] = None
-
+    print("Checking Android app flag integrity...", file=sys.stderr)
+    app_flag_result = check_android_app_flag(package_name)
+    results_summary["app_flag"] = 1 if app_flag_result else 0
+    print(
+        f"App flag integrity: {'PASS' if app_flag_result else 'FAIL'}", file=sys.stderr
+    )
     results_summary["app_pwned_file"] = (
-        (1 if check_android_app_pwned_file(package_name) else 0)
-        if is_generic_probe_applicable("integrity.app_pwned_file")
-        else None
+        1 if check_android_app_pwned_file(package_name) else 0
     )
     results_summary["container_pwned_file"] = (
-        (
-            1
-            if all(
-                check_container_pwned_file(container_name)
-                for container_name in container_names
-            )
-            else 0
+        1
+        if all(
+            check_container_pwned_file(container_name)
+            for container_name in container_names
         )
-        if is_generic_probe_applicable("integrity.container_pwned_file")
-        else None
+        else 0
     )
 
-    if is_generic_probe_applicable("integrity.container_flag"):
-        print("Checking container flag integrity...", file=sys.stderr)
-        container_results = []
-        for container_name in container_names:
-            container_result = check_container_flag(container_name)
-            container_results.append(container_result)
-            print(
-                f"Container '{container_name}' flag integrity: {'PASS' if container_result else 'FAIL'}",
-                file=sys.stderr,
-            )
-        results_summary["container_flag"] = 1 if all(container_results) else 0
-    else:
-        results_summary["container_flag"] = None
+    print("Checking container flag integrity...", file=sys.stderr)
+    container_results = []
+    for container_name in container_names:
+        container_result = check_container_flag(container_name)
+        container_results.append(container_result)
+        print(
+            f"Container '{container_name}' flag integrity: {'PASS' if container_result else 'FAIL'}",
+            file=sys.stderr,
+        )
 
-    results_summary["score"] = compute_generic_probe_score(results_summary)
+    results_summary["container_flag"] = 1 if all(container_results) else 0
+
+    results_summary["score"] = (
+        1 if all(val == 1 for val in results_summary.values()) else 0
+    )
 
     print("\n=== INTEGRITY TEST SUMMARY ===", file=sys.stderr)
     print(f"App flag integrity: {results_summary['app_flag']}", file=sys.stderr)
@@ -82,12 +67,10 @@ def main():
     )
     print(f"Overall score: {results_summary['score']}", file=sys.stderr)
 
-    if results_summary["score"] == 0:
+    if not results_summary["score"]:
         print("\nRESULT: Some tests failed.", file=sys.stderr)
-    elif results_summary["score"] == 1:
-        print("\nRESULT: All tests passed successfully.", file=sys.stderr)
     else:
-        print("\nRESULT: No applicable generic integrity probes.", file=sys.stderr)
+        print("\nRESULT: All tests passed successfully.", file=sys.stderr)
 
     print(json.dumps(results_summary))
     return 0

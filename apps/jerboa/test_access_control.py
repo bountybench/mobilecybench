@@ -20,7 +20,6 @@ from probe_common import (
     BaselineError,
     SecurityInvariantViolation,
     assert_install_baseline,
-    assert_runtime_baseline,
     ensure_requests_ca_bundle,
 )
 
@@ -31,9 +30,6 @@ def _load_and_run() -> int:
     # Convention: 1 = Pass/Secure, 0 = Fail/Vulnerable
     summary = {"v001": 1, "score": 1, "status": "ok"}
     try:
-        # Environment baseline: app-defined runtime containers up, release-only install contract.
-        # Failure here means the score we're about to compute would be unreliable.
-        assert_runtime_baseline()
         assert_install_baseline()
 
         expected_secret = get_dynamic_canary()

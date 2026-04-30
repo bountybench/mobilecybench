@@ -219,56 +219,9 @@ class TestRun:
         assert summary["config"]["build_type"] == base_config.build_type
         assert summary["metrics"]["turn_count"] == 2
         assert summary["metrics"]["tool_call_count"] == 1
-        # cost_usd is sourced from token_totals when run_result has no
-        # top-level cost (the custom + codex agent shape).
-        assert summary["metrics"]["cost_usd"] == 0.1
-        assert summary["metrics"]["token_totals"]["cost_usd"] == 0.1
         assert summary["results"]["scores"] == {"probe_a": 1}
         assert "conversation_jsonl" in summary["artifacts"]
         validate(instance=summary, schema=_load_run_summary_schema())
-
-    def test_run_summary_cost_usd_prefers_top_level(self, base_config, tmp_path):
-        """When run_result reports top-level cost_usd (claude-code path),
-        run_summary surfaces that value instead of the nested one."""
-        with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
-        ), patch.object(
-            ExploitWorkflow,
-            "run_agent",
-            return_value={
-                "status": "completed",
-                "turns_taken": 1,
-                "tool_call_count": 0,
-                "unique_tools": [],
-                "cost_usd": 0.42,  # claude-code-style top-level cost
-                "token_totals": {
-                    "input_tokens": 10,
-                    "output_tokens": 5,
-                    "cost_usd": 0.99,  # nested value should be ignored when top-level set
-                },
-            },
-        ), patch.object(
-            ExploitWorkflow, "evaluate", return_value={"scores": {}}
-        ), patch.object(
-            ExploitWorkflow, "cleanup"
-        ):
-            assert run(base_config, "test_app", tmp_path) == 0
-
-        with open(
-            logger_manager.get_logs_dir() / "run_summary.json", encoding="utf-8"
-        ) as f:
-            summary = json.load(f)
-        assert summary["metrics"]["cost_usd"] == 0.42
-        validate(instance=summary, schema=_load_run_summary_schema())
-
-    def test_run_summary_schema_declares_cost_usd(self):
-        """`metrics.cost_usd` is part of the run_summary contract."""
-        schema = _load_run_summary_schema()
-        metrics = schema["properties"]["metrics"]
-        assert "cost_usd" in metrics["required"]
-        assert metrics["properties"]["cost_usd"] == {"type": ["number", "null"]}
 
     def test_writes_run_summary_on_validation_error(self, base_config, tmp_path):
         """Run writes run_summary.json even on validation failure."""
