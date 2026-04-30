@@ -105,10 +105,11 @@ def anonymous_protected_endpoints_reject():
             allow_redirects=False,
         )
         if 200 <= resp.status_code < 300:
-            # OCS v1 may return 200 with a non-100 statuscode on auth failure.
+            # OCS wraps auth failures in HTTP 200; only meta.statuscode 100 (v1)
+            # or 200 (v2) means the request was actually served.
             try:
                 meta_code = resp.json().get("ocs", {}).get("meta", {}).get("statuscode")
-                if meta_code is not None and meta_code != 100:
+                if meta_code is not None and meta_code not in (100, 200):
                     continue
             except ValueError:
                 pass
