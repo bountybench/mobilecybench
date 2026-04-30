@@ -429,7 +429,7 @@ def docker_state() -> list[str]:
         )
         if status != "running":
             findings.append(f'{name}:status={status or "unknown"}')
-        if health and health != "healthy":
+        if health == "unhealthy":
             findings.append(f"{name}:health={health}")
     if inspected == 0:
         raise InfraError("no configured containers could be inspected")
@@ -840,6 +840,7 @@ def check_room_lobby_recording_disruption(checks, infra_errors):
 CHECK_FUNCS = [
     check_forced_hangup,
     check_media_call_disruption,
+    check_backend_container_health,
 ]
 
 
