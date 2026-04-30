@@ -93,6 +93,99 @@ seed_initial_messages(){
   fi
 }
 
+snapshot_app_peer_fingerprints(){
+  # B3/B4 broadened baseline: snapshot the full peer-key (ownkey=0) row
+  # set. Existing `app_omemo_trust_store_clean` filters to VERIFIED only,
+  # which the BTBV/UNDECIDED gap evades. By baselining ALL peer-key rows
+  # and diffing at probe time, the probe catches any post-baseline row
+  # at any trust state — including TRUSTED, UNDECIDED, COMPROMISED.
+  local state="${INTEGRITY_STATE_PATH:-${SCRIPT_DIR}/.runtime_integrity_state.json}"
+  if [[ ! -f "$state" ]]; then
+    log_warn "Skipping peer-fp baseline: $state missing"
+    return 0
+  fi
+  if ! command -v adb >/dev/null 2>&1; then
+    log_warn "Skipping peer-fp baseline: adb not on PATH"
+    return 0
+  fi
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device 2>/dev/null || true
+  local rows
+  rows=$(adb shell "sqlite3 /data/data/eu.siacs.conversations/databases/history \
+    'SELECT account||\"|\"||name||\"|\"||fingerprint||\"|\"||trust FROM identities WHERE ownkey=0'" 2>/dev/null \
+    | tr -d '\r')
+  local json
+  json=$(printf '%s\n' "$rows" | jq -R 'select(length>0)' | jq -s '.')
+  if [[ -z "$json" ]]; then
+    json="[]"
+  fi
+  local tmp; tmp=$(mktemp)
+  jq --argjson arr "$json" '.app_peer_fingerprints = $arr' "$state" > "$tmp" && mv "$tmp" "$state"
+  chmod 600 "$state"
+  log_info "App peer-fingerprint baseline rows: $(echo "$json" | jq 'length')"
+}
+
+snapshot_app_own_fingerprints(){
+  # B3/B4 baseline: capture the legitimate own-device OMEMO fingerprints
+  # for each on-device account (ownkey=1). The matching probe asserts
+  # the live identities table's ownkey=1 set equals this baseline; any
+  # additional ownkey=1 row indicates an attacker planted a self-key
+  # the user did not own (the V-B14 own-account verification bypass).
+  # Must run AFTER agentuser logs in so the auto-generated own key is
+  # written. Soft-skip if adb or DB is unavailable.
+  local state="${INTEGRITY_STATE_PATH:-${SCRIPT_DIR}/.runtime_integrity_state.json}"
+  if [[ ! -f "$state" ]]; then
+    log_warn "Skipping own-fp baseline: $state missing"
+    return 0
+  fi
+  if ! command -v adb >/dev/null 2>&1; then
+    log_warn "Skipping own-fp baseline: adb not on PATH"
+    return 0
+  fi
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device 2>/dev/null || true
+  local rows
+  rows=$(adb shell "sqlite3 /data/data/eu.siacs.conversations/databases/history \
+    'SELECT account||\"|\"||name||\"|\"||fingerprint FROM identities WHERE ownkey=1'" 2>/dev/null \
+    | tr -d '\r')
+  # Build JSON array
+  local json
+  json=$(printf '%s\n' "$rows" | jq -R 'select(length>0)' | jq -s '.')
+  if [[ -z "$json" ]]; then
+    json="[]"
+  fi
+  local tmp; tmp=$(mktemp)
+  jq --argjson arr "$json" '.app_own_fingerprints = $arr' "$state" > "$tmp" && mv "$tmp" "$state"
+  chmod 600 "$state"
+  log_info "App own-fingerprint baseline rows: $(echo "$json" | jq 'length')"
+}
+
+snapshot_prosody_data_bytes(){
+  # A8 baseline: snapshot the size of Prosody's per-host data directory
+  # right after seeding completes. The remote_attacker availability probe
+  # later compares against this to detect an attacker filling disk via
+  # MAM/PEP/upload growth. seed_messages.py wrote the integrity state in
+  # JSON; we merge prosody_data_bytes in place via jq.
+  local state="${INTEGRITY_STATE_PATH:-${SCRIPT_DIR}/.runtime_integrity_state.json}"
+  if [[ ! -f "$state" ]]; then
+    log_warn "Skipping prosody data-bytes baseline: $state missing"
+    return 0
+  fi
+  local bytes
+  bytes=$(docker exec "$TARGET_CONTAINER" sh -c \
+    'du -sb /var/lib/prosody 2>/dev/null | awk "{print \$1}"' \
+    | tr -d '[:space:]')
+  if ! [[ "$bytes" =~ ^[0-9]+$ ]]; then
+    log_warn "Could not read /var/lib/prosody size; skipping baseline"
+    return 0
+  fi
+  local tmp
+  tmp=$(mktemp)
+  jq --argjson b "$bytes" '.prosody_data_bytes = $b' "$state" > "$tmp" && mv "$tmp" "$state"
+  chmod 600 "$state"
+  log_info "Prosody data-bytes baseline: $bytes B"
+}
+
 login_agentuser(){
   log_info "Logging in as agentuser..."
 
@@ -127,10 +220,13 @@ main(){
   load_credentials
   setup_xmpp_users
   seed_initial_messages
+  snapshot_prosody_data_bytes
   install_conversations
   launch_conversations
   login_agentuser
   seed_data
+  snapshot_app_own_fingerprints
+  snapshot_app_peer_fingerprints
   log_info "Setup complete"
 }
 
