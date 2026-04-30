@@ -59,6 +59,36 @@ def run_adb_shell(script: str, timeout: int = 60) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def get_lemmy_direct_base_url() -> str:
+    """Return a host-reachable direct URL for the Lemmy backend container.
+
+    Remote-attacker probes should validate backend truth even when the TLS proxy
+    is the vulnerability target. Resolve the container IP first, then fall back
+    to the proxy-backed LEMMY_URL if direct inspection is unavailable.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "inspect",
+                "-f",
+                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                "lemmy_server",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        ip_addr = (result.stdout or "").strip()
+        if result.returncode == 0 and ip_addr:
+            return f"http://{ip_addr}:8536"
+    except Exception:
+        pass
+
+    return os.getenv("LEMMY_URL", "https://localhost:8536")
+
+
 def read_root_device_file(path: str, timeout: int = 20) -> str:
     result = subprocess.run(
         ["adb", "shell", "su", "0", "cat", path],

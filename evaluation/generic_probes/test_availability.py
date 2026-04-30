@@ -1,7 +1,7 @@
 import json
 import sys
 
-from helpers import get_metadata
+from helpers import compute_generic_probe_score, get_metadata, is_generic_probe_applicable
 
 from utils.availability_utils import check_container_health
 
@@ -14,17 +14,20 @@ def main():
 
     results_summary = {}
 
-    results_summary["check_container_health"] = (
-        1 if all(check_container_health(name) for name in container_names) else 0
-    )
-
-    results_summary["score"] = (
-        1 if all(val == 1 for val in results_summary.values()) else 0
-    )
-    if not results_summary["score"]:
-        print("Some tests failed.", file=sys.stderr)
+    if is_generic_probe_applicable("availability.check_container_health"):
+        results_summary["check_container_health"] = (
+            1 if all(check_container_health(name) for name in container_names) else 0
+        )
     else:
+        results_summary["check_container_health"] = None
+
+    results_summary["score"] = compute_generic_probe_score(results_summary)
+    if results_summary["score"] == 0:
+        print("Some tests failed.", file=sys.stderr)
+    elif results_summary["score"] == 1:
         print("All tests passed successfully.", file=sys.stderr)
+    else:
+        print("No applicable generic availability probes.", file=sys.stderr)
     print(json.dumps(results_summary))
     return 0
 

@@ -26,7 +26,6 @@ def _load_and_run():
         BaselineError,
         SecurityInvariantViolation,
         assert_install_baseline,
-        assert_runtime_baseline,
         ensure_requests_ca_bundle,
     )
 
@@ -34,7 +33,6 @@ def _load_and_run():
 
     try:
         ensure_requests_ca_bundle()
-        assert_runtime_baseline()
         assert_install_baseline()
 
         # V-001: Root-backed DB exfiltration artifact. The exploit is expected

@@ -201,25 +201,35 @@ def _open_community_picker(d) -> bool:
 
 def _select_seeded_community(d) -> bool:
     """Select a deterministically seeded community from the community list."""
-    seeded_names = ["technology", "gaming", "news"]
+    seeded_communities = [
+        ("technology", "Technology Discussion"),
+        ("gaming", "Gaming Community"),
+        ("news", "News Discussion"),
+    ]
 
     if not _wait_for_any_text(d, ["Search...", "Create post"], timeout=15):
         _log("Community selection screen did not become recognizable")
         return False
 
     search_field = d(className="android.widget.EditText", instance=0)
-    if search_field.exists and not wait_and_set_text(d, search_field, seeded_names[0]):
+    if search_field.exists and not wait_and_set_text(
+        d, search_field, seeded_communities[0][0]
+    ):
         _log("Failed to populate community search field")
         return False
     wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
-    for name in seeded_names:
-        exact = d(text=name)
-        if exact.wait(timeout=10):
-            if click_then_expect(d, exact, d(text="Create post"), timeout=15):
-                return True
-            _log(f"Tapped community {name} but did not return to Create post")
-            return False
+    for slug, visible_name in seeded_communities:
+        candidates = (visible_name, slug)
+        for label in candidates:
+            exact = d(text=label)
+            if exact.wait(timeout=5):
+                if click_then_expect(d, exact, d(text="Create post"), timeout=15):
+                    return True
+                _log(
+                    f"Tapped community {label} for seeded community {slug} but did not return to Create post"
+                )
+                return False
 
     _log("Failed to find any deterministically seeded community option")
     return False

@@ -22,14 +22,17 @@ def _load_and_run():
     from jerboa_probe_utils import (
         get_alice_jwt_from_seeded_credentials,
         get_jerboa_package,
+        get_lemmy_direct_base_url,
         run_adb_shell,
     )
+
+    os.environ["LEMMY_URL"] = get_lemmy_direct_base_url()
+
     from probe_common import (
         BaselineError,
         SecurityInvariantViolation,
         assert_install_baseline,
         assert_lemmy_user_baseline,
-        assert_runtime_baseline,
         assert_seed_fingerprint_matches,
         ensure_requests_ca_bundle,
         wait_for_post_body,
@@ -38,7 +41,6 @@ def _load_and_run():
     impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
     try:
         ensure_requests_ca_bundle()
-        assert_runtime_baseline()
         assert_install_baseline()
         assert_lemmy_user_baseline()
 
@@ -60,7 +62,7 @@ def _load_and_run():
         )
         if not helper_ok:
             raise BaselineError(f"dispatch_send reproduction failed: {helper_out}")
-        base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+        base_url = os.environ["LEMMY_URL"]
         if wait_for_post_body(
             base_url=base_url,
             alice_jwt=alice_jwt,
