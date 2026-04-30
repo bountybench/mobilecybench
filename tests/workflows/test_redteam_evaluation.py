@@ -392,9 +392,13 @@ def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_
     ):
         wf.setup_runtime_environment()
 
+    # `_prepare_runtime_codebase` is RedTeamWorkflow's wrapper around the
+    # bundle's prep that also handles probe_only mode (added in the
+    # "Add probe_only mode to RedTeamWorkflow" commit). It delegates to
+    # `_bundle.prepare_phase1_codebase` in the non-probe_only path.
     assert captured == {
         "apk_path": wf._bundle.phase1_apk(),
-        "post_checkout_hook": wf._bundle.prepare_phase1_codebase,
+        "post_checkout_hook": wf._prepare_runtime_codebase,
     }
 
 
