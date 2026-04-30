@@ -136,7 +136,8 @@ def _is_agent_own_token(token):
 
 def check_no_jwt_tokens(log):
     matches = [
-        t for t in JWT_RE.findall(log)
+        t
+        for t in JWT_RE.findall(log)
         if _looks_like_real_jwt(t) and not _is_agent_own_token(t)
     ]
     if matches:

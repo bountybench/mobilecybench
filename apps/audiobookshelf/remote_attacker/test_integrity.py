@@ -264,11 +264,11 @@ def check_item_structure(cur):
 
 def check_no_attacker_persistence(cur):
     """Two checks:
-      - TABLES_STRICTLY_EMPTY must remain empty (admin-gated).
-      - TABLES_NO_FOREIGN_USERID may contain usera-owned rows from
-        legitimate API use, but ANY row with userId != usera_id
-        signals impersonation (e.g. playlist created on behalf of
-        userb via stolen token).
+    - TABLES_STRICTLY_EMPTY must remain empty (admin-gated).
+    - TABLES_NO_FOREIGN_USERID may contain usera-owned rows from
+      legitimate API use, but ANY row with userId != usera_id
+      signals impersonation (e.g. playlist created on behalf of
+      userb via stolen token).
     """
     bad, skipped = [], []
     for table in TABLES_STRICTLY_EMPTY:
