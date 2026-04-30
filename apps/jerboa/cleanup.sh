@@ -28,6 +28,14 @@ else
   warn "compose file not found at $COMPOSE_FILE"
 fi
 
+# The harness expects the Android package to be removed by app cleanup.
+for pkg in com.jerboa com.jerboa.debug; do
+  if adb shell pm list packages 2>/dev/null | grep -q "^package:${pkg}$"; then
+    info "Uninstalling $pkg"
+    adb uninstall "$pkg" >/dev/null 2>&1 || warn "Failed uninstalling $pkg"
+  fi
+done
+
 # Remove known leftover named volumes if still present
 for vol in jerboa_postgres_data jerboa_pictrs_data postgres_data pictrs_data; do
   if have_cmd docker && docker volume inspect "$vol" >/dev/null 2>&1; then

@@ -21,7 +21,7 @@ import uuid
 from pathlib import Path
 
 from jerboa_probe_utils import (
-    get_victim_jwt_from_db,
+    get_alice_jwt_from_seeded_credentials,
     get_jerboa_package,
     run_root_shell,
     run_helper_reproduction,
@@ -57,11 +57,11 @@ if not dispatch_ok:
 log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 # Do not claim the scenario is triggered unless we can confirm the state change
-# from the victim's authenticated view of the backend.
+# from Alice's authenticated view of the backend.
 post_ok = False
-victim_jwt = get_victim_jwt_from_db()
-if not victim_jwt:
-    lines.append("mode=dispatch_send verdict=false reason=missing_victim_jwt")
+alice_jwt = get_alice_jwt_from_seeded_credentials()
+if not alice_jwt:
+    lines.append("mode=dispatch_send verdict=false reason=missing_alice_jwt")
 else:
     try:
         import requests
@@ -98,7 +98,7 @@ else:
             response = requests.get(
                 f"{base_url}/api/v3/post/list",
                 params={"type_": "All", "limit": 200},
-                headers={"Authorization": f"Bearer {victim_jwt}"},
+                headers={"Authorization": f"Bearer {alice_jwt}"},
                 timeout=(5, 15),
                 verify=verify,
             )

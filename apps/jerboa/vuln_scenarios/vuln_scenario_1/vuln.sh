@@ -38,16 +38,16 @@ main() {
   adb shell am start -n "${package_name}/.MainActivity" >/dev/null 2>&1 || true
   sleep 2
 
-  # Read the current victim JWT directly from the on-device DB (probe-side privileged read).
-  # Avoids logcat dependence entirely.
+  # Acquire Alice's JWT at probe time using the seeded Alice credentials.
+  # Avoids any dependency on a pre-established runtime login.
   alice_jwt="$(PYTHONPATH="$SCRIPT_DIR/../.." python3 - <<'PY'
-from jerboa_probe_utils import get_victim_jwt_from_db
+from jerboa_probe_utils import get_alice_jwt_from_seeded_credentials
 
-print(get_victim_jwt_from_db())
+print(get_alice_jwt_from_seeded_credentials())
 PY
 )"
   if [[ -z "${alice_jwt:-}" ]]; then
-    log "No victim JWT found in DB"
+    log "No Alice JWT could be obtained"
     exit 1
   fi
 
