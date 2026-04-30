@@ -65,6 +65,45 @@ def is_logged_in(d):
     )
 
 
+def _dismiss_system_anr(d) -> bool:
+    """Click "Wait" on a foregrounded AppErrorDialog if one is up.
+
+    System apps (Pixel Launcher, System UI, Gmail, etc.) sometimes ANR
+    on slow CI runners while ownCloud is mid-OAuth. The OS overlays
+    AppErrorDialog (resource-id ``android:id/aerr_wait`` for the Wait
+    button) over every window, blocks Activity transitions, and the
+    chrome customtab can't come to foreground — the failure surfaces
+    as ``Chrome OAuth flow not active`` 90s later. The watcher in
+    main() catches the common case by polling for "Wait" text but
+    races a 2-fps emulator: the dialog can persist between watcher
+    ticks, or the click can land while the previous frame is still
+    being composited and never register. This helper is the explicit
+    synchronous dismiss inside the chrome-wait polling loop. Returns
+    True if a Wait button was clicked, False otherwise.
+    """
+    try:
+        wait_btn = d(resourceId="android:id/aerr_wait")
+        if not wait_btn.exists:
+            return False
+        wait_btn.click()
+        return True
+    except Exception:
+        return False
+
+
+def _chrome_or_logged_in_with_dismiss(d, allow_logged_in: bool) -> bool:
+    """Predicate for chrome-foreground polling that also dismisses ANRs.
+
+    Side-effect-in-predicate is intentional: ``require`` polls every
+    0.5s, and we want a dismiss attempt every tick so the OS can
+    proceed with the chrome-customtab transition once unblocked.
+    """
+    _dismiss_system_anr(d)
+    if current_package(d) == CHROME:
+        return True
+    return allow_logged_in and is_logged_in(d)
+
+
 def handle_whats_new(d, timeout=60):
     """Poll for the intro-screen skip button until it renders or the URL input appears."""
     deadline = time.time() + timeout
@@ -90,8 +129,9 @@ def submit_server_url(d, server_url):
     d(resourceId=f"{APP}:id/embeddedCheckServerButton").click()
 
     # Chrome cold-start can be slow on a CI emulator; give it room.
+    # Each poll also dismisses any system ANR dialog that lands on top.
     require(
-        lambda: current_package(d) == CHROME or is_logged_in(d),
+        lambda: _chrome_or_logged_in_with_dismiss(d, allow_logged_in=True),
         "Chrome OAuth flow did not open",
         timeout=60,
     )
@@ -266,9 +306,13 @@ def main():
 
     # Slow CI emulators occasionally pop a "System UI isn't responding" ANR
     # dialog over the launch screen and stall every UI poll behind it. Watcher
-    # auto-clicks "Wait" (keep system running) whenever it appears.
+    # auto-clicks "Wait" (keep system running) whenever it appears. Tightened
+    # poll interval (0.5s) shrinks the race window where a 2-fps emulator
+    # renders the next frame before the previous click registered. The
+    # explicit `_dismiss_system_anr` call inside chrome-wait polling is the
+    # synchronous backstop when watcher's tick still misses the dialog.
     d.watcher.when("Wait").click()
-    d.watcher.start(2.0)
+    d.watcher.start(0.5)
 
     # Pre-grant POST_NOTIFICATIONS so FileDisplayActivity doesn't pop the
     # GrantPermissionsActivity dialog mid-lifecycle and crash. start_runtime
@@ -292,7 +336,7 @@ def main():
 
         if not is_logged_in(d):
             require(
-                lambda: current_package(d) == CHROME,
+                lambda: _chrome_or_logged_in_with_dismiss(d, allow_logged_in=False),
                 "Chrome OAuth flow not active",
                 timeout=90,
             )
