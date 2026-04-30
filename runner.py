@@ -279,6 +279,7 @@ def run(
                 updates["task"] = replay.task
                 updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
                 updates["attacker_model"] = replay.attacker_model
+                updates["probe_only"] = replay.probe_only
             elif replay.workflow == "exploit":
                 updates["task"] = None
                 updates["synthetic_vuln_id"] = replay.synthetic_vuln_id

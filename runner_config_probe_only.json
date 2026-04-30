@@ -14,7 +14,7 @@
   "workflow": "redteam",
   "attacker_model": "malicious_app",
   "probe_only": true,
-  "no_codebase": false,
+  "no_codebase": true,
   "task": null,
   "synthetic_vuln_id": null,
   "custom_system_prompt": null,

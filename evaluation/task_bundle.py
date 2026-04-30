@@ -226,7 +226,13 @@ class ProbeOnlyBundle:
         return self.phase1_apk()
 
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
-        """Hard reset to baseline: no patch ever applies."""
+        """Hard reset to baseline if a codebase exists; no-op otherwise.
+
+        Public APK-only apps may not ship apps/<app>/codebase. probe_only
+        mode is intentionally permissive: nothing to clean, nothing to do.
+        """
+        if not codebase_dir.exists():
+            return
         from utils.git_utils import git_restore_clean
 
         git_restore_clean(codebase_dir)

@@ -199,6 +199,15 @@ def test_probe_only_prepare_codebase_hard_resets(git_repo):
     assert (repo / "hello.txt").read_text() == "clean\n"
 
 
+def test_probe_only_prepare_codebase_noop_when_missing(tmp_path):
+    """APK-only public apps may have no apps/<app>/codebase — must not crash."""
+    bundle = ProbeOnlyBundle(project_root=tmp_path, app_name="x")
+    missing = tmp_path / "apps" / "x" / "codebase"
+    assert not missing.exists()
+    bundle.prepare_phase1_codebase(missing)  # no-op
+    bundle.prepare_phase2_codebase(missing)  # no-op
+
+
 def test_resolve_bundle_returns_probe_only_when_flag_set():
     bundle = resolve_bundle(_config(probe_only=True), Path("/p"), "app")
     assert isinstance(bundle, ProbeOnlyBundle)
