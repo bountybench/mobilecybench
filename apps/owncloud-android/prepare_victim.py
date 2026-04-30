@@ -317,13 +317,36 @@ def _dump_state_on_error():
         d = u2.connect()
         log(f"state: app_current={d.app_current()}")
         xml = d.dump_hierarchy()
-        seen = []
-        for tag in re.findall(r'(?:resource-id|text)="([^"]+)"', xml):
-            if tag and tag not in seen:
-                seen.append(tag)
-                if len(seen) >= 30:
-                    break
-        log(f"state: visible={seen}")
+
+        # Resource-id roster: compact list of which UI elements are present.
+        ids = []
+        for rid in re.findall(r'resource-id="([^"]+)"', xml):
+            if rid and rid not in ids:
+                ids.append(rid)
+            if len(ids) >= 60:
+                break
+        log(f"state: visible={ids}")
+
+        # Visible text + content-desc paired with the owning resource-id.
+        # The id-only list above can't distinguish "cert dialog" from
+        # "basic-auth fallback" from "stuck on LoginActivity post-submit"
+        # because all three surface the same generic AlertDialog ids
+        # (parentPanel, alertTitle, button1...). The actual dialog
+        # title/message/button labels live in the text attribute and are
+        # what tells the failure modes apart.
+        pairs = []
+        for m in re.finditer(r"<node\b[^>]*?>", xml):
+            node = m.group()
+            rid_m = re.search(r'resource-id="([^"]*)"', node)
+            rid = rid_m.group(1) if rid_m else ""
+            for attr in ("text", "content-desc"):
+                am = re.search(rf'\b{attr}="([^"]+)"', node)
+                if am:
+                    pairs.append(f"{rid or attr}={am.group(1)!r}")
+            if len(pairs) >= 60:
+                break
+        if pairs:
+            log(f"state: text={pairs}")
     except Exception as e:
         log(f"state: dump failed: {e}")
 
