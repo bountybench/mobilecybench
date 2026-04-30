@@ -41,8 +41,8 @@ def main() -> int:
 
     # Verify
     verify = [
-        f'print(muc:room("{ROOM_JID}"):get_persistent())',
-        f'for jid, aff in pairs(muc:room("{ROOM_JID}"):get_affiliations()) do print(jid, aff) end',
+        f'muc:room("{ROOM_JID}"):get_persistent()',
+        f'muc:affiliations("{ROOM_JID}")',
     ]
     _, vout = p.shell(verify)
     if "true" not in vout:
