@@ -316,21 +316,24 @@ class RedTeamWorkflow(Workflow):
     def validate_arguments(self) -> None:
         super().validate_arguments()
 
-        task_metadata_path = self._bundle.task_dir / "metadata.json"
-        required_files = [
-            self._bundle.patch,
-            self._bundle.task_dir / "verify_files" / "verify_exploit.sh",
-            task_metadata_path,
-        ]
-        for required in required_files:
-            if not required.exists():
-                raise ValueError(f"Task file not found: {required}")
+        # probe_only has no task: no patch, no verifier, no task metadata.
+        # App metadata (package_name, etc.) comes from apps/<app>/metadata.json
+        # via super(); per-app probes still validate via self._ops.validate().
+        if not self.config.probe_only:
+            task_metadata_path = self._bundle.task_dir / "metadata.json"
+            required_files = [
+                self._bundle.patch,
+                self._bundle.task_dir / "verify_files" / "verify_exploit.sh",
+                task_metadata_path,
+            ]
+            for required in required_files:
+                if not required.exists():
+                    raise ValueError(f"Task file not found: {required}")
 
-        task_metadata = json.loads(task_metadata_path.read_text())
-
-        task_package_name = task_metadata.get("runtime", {}).get("package_name")
-        if task_package_name:
-            self.metadata["package_name"] = task_package_name
+            task_metadata = json.loads(task_metadata_path.read_text())
+            task_package_name = task_metadata.get("runtime", {}).get("package_name")
+            if task_package_name:
+                self.metadata["package_name"] = task_package_name
 
         if self._ops.uses_generic_probes:
             from evaluation.generic_probe_config import load_generic_probe_config
@@ -346,33 +349,6 @@ class RedTeamWorkflow(Workflow):
     # ------------------------------------------------------------------
     # Runtime setup
     # ------------------------------------------------------------------
-
-    def _runtime_apk(self) -> Path:
-        """APK to install on the emulator and surface to the agent.
-
-        Default = bundle's phase-1 APK (vulnerable for synthetic, original
-        for zeroday). In probe_only mode we want a clean run: pin the
-        synthetic bundle to its clean APK (phase2). For zeroday the phase-1
-        APK is already the vanilla baseline, so it doubles as the clean
-        APK.
-        """
-        if self.config.probe_only and self._bundle.kind == "synthetic":
-            return self._bundle.phase2_apk()
-        return self._bundle.phase1_apk()
-
-    def _prepare_runtime_codebase(self, codebase_dir: Path) -> None:
-        """Codebase prep for phase-1 / single-pass runs.
-
-        Default = bundle's phase-1 codebase prep (applies vuln patch for
-        synthetic; no-op restore for zeroday). In probe_only mode we hard
-        reset to the baseline so no vuln patch is ever applied.
-        """
-        if self.config.probe_only:
-            from utils.git_utils import git_restore_clean
-
-            git_restore_clean(codebase_dir)
-            return
-        self._bundle.prepare_phase1_codebase(codebase_dir)
 
     def setup_runtime_environment(self) -> None:
         from agent.agent_container import setup_agent_environment
@@ -413,29 +389,28 @@ class RedTeamWorkflow(Workflow):
 
         inject_system_ca(self.project_root)
 
-        # Install the runtime APK so the agent's observations match the
-        # source tree it analyzes. _runtime_apk() returns the clean APK in
-        # probe_only mode, otherwise the bundle's phase-1 APK.
+        # Install the bundle's phase-1 APK so the agent's runtime
+        # observations match the source tree it analyzes. ProbeOnlyBundle's
+        # phase-1 APK is the clean default build.
         install_app_and_setup_backend(
             self.app_dir,
             self.emulator,
             self.project_root,
-            apk_path=self._runtime_apk(),
+            apk_path=self._bundle.phase1_apk(),
             inject_flags=False,
             build_command_timeout=self.config.build_command_timeout,
         )
 
-        # For synthetic bundles the patch is applied on top of the checked-out
-        # baseline commit INSIDE _setup_agent_codebase so the snapshot the
-        # agent gets matches the Phase 1 target. For zeroday the hook is a
-        # no-op (baseline is already vulnerable). evaluate() will re-apply
-        # this later against apps/<app>/codebase for the replay codebase-dir.
-        # When no_codebase=True the agent container only sees the APK. The
-        # bundle's phase-1 APK is authoritative (vulnerable for synthetic,
-        # original for zeroday) — pass it explicitly so redteam runs don't
-        # fall back to the agent_container derivation, which would stage the
-        # clean APK for a synthetic bundle.
-        runtime_apk = self._runtime_apk() if self.config.no_codebase else None
+        # Phase-1 codebase prep applied on top of the checked-out baseline
+        # so the snapshot the agent gets matches the Phase 1 target:
+        #   synthetic: applies vulnerability.patch
+        #   zeroday:   no-op (baseline is already vulnerable)
+        #   probe_only: git_restore_clean (no patch)
+        # evaluate() re-applies this later against apps/<app>/codebase.
+        # When no_codebase=True the agent container only sees the APK; we
+        # pass phase-1 APK explicitly so redteam runs don't fall back to
+        # agent_container's clean-APK derivation.
+        runtime_apk = self._bundle.phase1_apk() if self.config.no_codebase else None
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
@@ -443,7 +418,7 @@ class RedTeamWorkflow(Workflow):
             workflow=self.config.workflow,
             agent_mode=self.config.agent_mode,
             no_codebase=self.config.no_codebase,
-            post_checkout_hook=self._prepare_runtime_codebase,
+            post_checkout_hook=self._bundle.prepare_phase1_codebase,
             apk_path=runtime_apk,
         )
 
@@ -515,17 +490,24 @@ class RedTeamWorkflow(Workflow):
     def _evaluate_phase(
         self, label: str, phase_result: PhaseResult, replays_dir: Path, tag: str
     ) -> dict:
-        """Run verifier then probes for a completed phase replay."""
+        """Run verifier then probes for a completed phase replay.
+
+        probe_only mode has no verify_exploit.sh — verifier is skipped and
+        verifier_exit is recorded as None (not a vulnerable signal).
+        """
         from evaluation.unified_metrics import normalize_probe_results
 
-        verifier_exit = self._run_verifier(
-            replays_dir / f"verify_{tag}",
-            replay_dir=(
-                phase_result.evidence_log_path.parent
-                if phase_result.evidence_log_path is not None
-                else None
-            ),
-        )
+        if self.config.probe_only:
+            verifier_exit = None
+        else:
+            verifier_exit = self._run_verifier(
+                replays_dir / f"verify_{tag}",
+                replay_dir=(
+                    phase_result.evidence_log_path.parent
+                    if phase_result.evidence_log_path is not None
+                    else None
+                ),
+            )
 
         probe_dir = self._ops.probe_dir(self.app_dir)
         probe_app = replays_dir / f"probe_app_{tag}.json"
@@ -603,9 +585,8 @@ class RedTeamWorkflow(Workflow):
                 )
 
         # ---- Phase 1: Original (vulnerable) app ----
-        # In probe_only mode, "phase 1" is actually the clean app: the
-        # workflow restores the codebase to baseline and installs the clean
-        # APK rather than the vulnerable one.
+        # ProbeOnlyBundle: phase 1 is the clean app (no patch, clean APK)
+        # and phase 2 is skipped via the probe_only short-circuit below.
         phase1_label = (
             "clean app" if self.config.probe_only else "original app (vulnerable)"
         )
@@ -613,13 +594,13 @@ class RedTeamWorkflow(Workflow):
             f"[phase 1{'/1' if self.config.probe_only else '/2'}] {phase1_label}"
         )
         codebase_dir = self.app_dir / "codebase"
-        self._prepare_runtime_codebase(codebase_dir)
+        self._bundle.prepare_phase1_codebase(codebase_dir)
         phase1_result = self._ops.run_phase(
             self,
             replays_dir / "phase1_original",
             **self._ops.get_phase_kwargs(
                 agent_exploit_dir,
-                self._runtime_apk(),
+                self._bundle.phase1_apk(),
                 needs_flags=needs_flags,
                 needs_ssrf=needs_ssrf,
             ),
@@ -871,7 +852,11 @@ class RedTeamWorkflow(Workflow):
         the exploit, for both attacker models. Use it for vuln-specific setup
         (seeding a row only this exploit reads, etc.). For app-wide victim
         identity setup, use _run_prepare_victim instead.
+
+        No-op in probe_only mode: there is no per-task hook without a task.
         """
+        if self.config.probe_only:
+            return
         self._run_setup_hook(
             hook=self._bundle.task_dir / "prepare_app.sh",
             label="prepare_app",

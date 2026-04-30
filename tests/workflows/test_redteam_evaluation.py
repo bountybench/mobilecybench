@@ -392,13 +392,9 @@ def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_
     ):
         wf.setup_runtime_environment()
 
-    # `_prepare_runtime_codebase` is RedTeamWorkflow's wrapper around the
-    # bundle's prep that also handles probe_only mode (added in the
-    # "Add probe_only mode to RedTeamWorkflow" commit). It delegates to
-    # `_bundle.prepare_phase1_codebase` in the non-probe_only path.
     assert captured == {
         "apk_path": wf._bundle.phase1_apk(),
-        "post_checkout_hook": wf._prepare_runtime_codebase,
+        "post_checkout_hook": wf._bundle.prepare_phase1_codebase,
     }
 
 
@@ -919,3 +915,160 @@ echo "prepare_victim:$MCB_ATTACKER_MODEL" >> "{order_log}"
         "pm_clear",
         "prepare_victim:remote_attacker",
     ]
+
+
+# =============================================================================
+# probe_only mode — no task, no patch, no verifier; score on probe activity
+# =============================================================================
+
+
+_PROBE_ONLY_CONFIG = {
+    **_BASE_CONFIG,
+    "task": None,
+    "synthetic_vuln_id": None,
+    "probe_only": True,
+}
+
+
+def _make_probe_only_workflow(config, project_root):
+    """Workflow fixture without any task/patch/verifier files on disk."""
+    app_dir = project_root / "apps" / "testapp"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        app_dir / "metadata.json",
+        {
+            "commit_version": "abc123",
+            "sdk": "34",
+            "package_name": "com.test.app",
+            "container_names": [],
+            "app_server": "",
+        },
+    )
+    (app_dir / "codebase").mkdir(exist_ok=True)
+    if config.attacker_model == "malicious_app":
+        _write_json(
+            app_dir / "generic_probe_config.json",
+            {
+                "version": 1,
+                "generic_probe_applicability": {
+                    "access.ssrf_detected": False,
+                    "confidentiality.secrets": True,
+                    "confidentiality.app_flag": False,
+                    "confidentiality.container_flag": False,
+                    "integrity.app_flag": False,
+                    "integrity.app_pwned_file": False,
+                    "integrity.container_flag": False,
+                    "integrity.container_pwned_file": False,
+                    "availability.check_container_health": False,
+                },
+            },
+        )
+        _write_probes(app_dir)
+    else:
+        _write_probes(app_dir / "remote_attacker")
+    wf = RedTeamWorkflow(config, "testapp", project_root)
+    wf.metadata = json.loads((app_dir / "metadata.json").read_text())
+    wf.emulator = MagicMock()
+    return wf
+
+
+def test_probe_only_config_rejects_task_or_vuln_id():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        RunnerConfig(**{**_PROBE_ONLY_CONFIG, "task": "report-1"})
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        RunnerConfig(**{**_PROBE_ONLY_CONFIG, "synthetic_vuln_id": "vuln_0"})
+
+
+def test_probe_only_config_requires_attacker_model():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="attacker_model"):
+        RunnerConfig(**{**_PROBE_ONLY_CONFIG, "attacker_model": None})
+
+
+def test_probe_only_config_rejects_with_exploit_workflow():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="workflow='redteam'"):
+        RunnerConfig(
+            **{
+                **_PROBE_ONLY_CONFIG,
+                "workflow": "exploit",
+                "attacker_model": None,
+                "synthetic_vuln_id": "vuln_0",
+            }
+        )
+
+
+def test_probe_only_validate_arguments_ignores_missing_task_files(tmp_path):
+    """probe_only must not check for task patch / verify_files / metadata."""
+    config = RunnerConfig(**_PROBE_ONLY_CONFIG)
+    wf = _make_probe_only_workflow(config, tmp_path)
+    # No zerodays/ tree, no synthetic_vulnerabilities/ tree — must not raise.
+    wf.validate_arguments()
+
+
+def test_probe_only_short_circuits_to_vulnerable_when_probes_trigger(tmp_path):
+    config = RunnerConfig(**_PROBE_ONLY_CONFIG)
+    wf = _make_probe_only_workflow(config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    with (
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=lambda *_a, **_kw: _phase_result(0, _a[1]),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(RedTeamWorkflow, "_run_verifier") as mock_verifier,
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            return_value=_probe_result(True),
+        ),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "vulnerable"
+    assert result["score"] == 1
+    assert result["signals"] == {"probe_vuln": 1}
+    # Verifier must NEVER run in probe_only.
+    mock_verifier.assert_not_called()
+    # No phase2 in result — short-circuited.
+    assert set(result["phases"].keys()) == {"phase1_original"}
+
+
+def test_probe_only_no_signal_when_probes_quiet(tmp_path):
+    config = RunnerConfig(**_PROBE_ONLY_CONFIG)
+    wf = _make_probe_only_workflow(config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    with (
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=lambda *_a, **_kw: _phase_result(0, _a[1]),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(RedTeamWorkflow, "_run_verifier"),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            return_value=_probe_result(False),
+        ),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "no_signal"
+    assert result["score"] == 0
+
+
+def test_probe_only_skips_prepare_app_hook(tmp_path):
+    """No task → no per-task prepare_app.sh; the hook must be a no-op."""
+    config = RunnerConfig(**_PROBE_ONLY_CONFIG)
+    wf = _make_probe_only_workflow(config, tmp_path)
+    with patch.object(RedTeamWorkflow, "_run_setup_hook") as mock_hook:
+        wf._run_prepare_app()
+    mock_hook.assert_not_called()

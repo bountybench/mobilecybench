@@ -124,15 +124,34 @@ class RunnerConfig(BaseModel):
 
         - exploit: requires synthetic_vuln_id.
         - redteam: requires exactly one of task (zeroday) or synthetic_vuln_id
-          (synthetic). replay_run bypasses validation.
+          (synthetic). probe_only=True takes neither and requires attacker_model.
+          replay_run bypasses validation.
         """
         if self.replay_run:
             return self
         if self.workflow == "exploit":
+            if self.probe_only:
+                raise ValueError("probe_only requires workflow='redteam'")
             if not self.synthetic_vuln_id:
                 raise ValueError("workflow='exploit' requires synthetic_vuln_id")
             return self
         if self.workflow == "redteam":
+            if self.probe_only:
+                if self.task or self.synthetic_vuln_id:
+                    raise ValueError(
+                        "probe_only is mutually exclusive with task / "
+                        "synthetic_vuln_id; got "
+                        f"task={self.task!r}, "
+                        f"synthetic_vuln_id={self.synthetic_vuln_id!r}"
+                    )
+                if self.gold_run:
+                    raise ValueError("probe_only is incompatible with gold_run")
+                if not self.attacker_model:
+                    raise ValueError(
+                        "probe_only requires attacker_model "
+                        "('malicious_app' or 'remote_attacker') in runner_config"
+                    )
+                return self
             if bool(self.task) == bool(self.synthetic_vuln_id):
                 raise ValueError(
                     "workflow='redteam' requires exactly one of task "

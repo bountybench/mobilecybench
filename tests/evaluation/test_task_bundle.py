@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from evaluation.task_bundle import (
+    ProbeOnlyBundle,
     SyntheticBundle,
     TaskBundle,
     ZerodayBundle,
@@ -15,7 +16,7 @@ from evaluation.task_bundle import (
 
 
 def _config(**kwargs):
-    values = {"task": None, "synthetic_vuln_id": None}
+    values = {"task": None, "synthetic_vuln_id": None, "probe_only": False}
     values.update(kwargs)
     return SimpleNamespace(**values)
 
@@ -160,3 +161,56 @@ def test_zeroday_validate_build_artifacts_requires_hardened_apk(tmp_path):
     (tmp_path / "apps" / "x" / "apk" / "x.apk").touch()
     with pytest.raises(FileNotFoundError, match="hardened"):
         bundle.validate_build_artifacts(tmp_path / "apps" / "x")
+
+
+# -----------------------------------------------------------------------------
+# ProbeOnlyBundle: no-task bundle for real-zeroday hunts on a clean public app
+# -----------------------------------------------------------------------------
+
+
+def test_probe_only_bundle_paths():
+    bundle = ProbeOnlyBundle(project_root=Path("/root"), app_name="myapp")
+    assert isinstance(bundle, TaskBundle)
+    assert bundle.kind == "probe_only"
+    # phase1 == phase2 == clean default APK; no patched build exists.
+    assert bundle.phase1_apk() == Path("/root/apps/myapp/apk/myapp.apk")
+    assert bundle.phase2_apk() == bundle.phase1_apk()
+
+
+def test_probe_only_validate_build_artifacts_requires_only_clean_apk(tmp_path):
+    bundle = ProbeOnlyBundle(project_root=tmp_path, app_name="x")
+    with pytest.raises(FileNotFoundError):
+        bundle.validate_build_artifacts(tmp_path / "apps" / "x")
+    apk_dir = tmp_path / "apps" / "x" / "apk"
+    apk_dir.mkdir(parents=True)
+    (apk_dir / "x.apk").touch()
+    bundle.validate_build_artifacts(tmp_path / "apps" / "x")
+
+
+def test_probe_only_prepare_codebase_hard_resets(git_repo):
+    """probe_only must NEVER apply a patch — both phase preps just clean."""
+    repo, _patch = git_repo
+    bundle = ProbeOnlyBundle(project_root=repo.parent, app_name=repo.name)
+    (repo / "hello.txt").write_text("dirty\n")
+    bundle.prepare_phase1_codebase(repo)
+    assert (repo / "hello.txt").read_text() == "clean\n"
+    (repo / "hello.txt").write_text("dirty again\n")
+    bundle.prepare_phase2_codebase(repo)
+    assert (repo / "hello.txt").read_text() == "clean\n"
+
+
+def test_resolve_bundle_returns_probe_only_when_flag_set():
+    bundle = resolve_bundle(_config(probe_only=True), Path("/p"), "app")
+    assert isinstance(bundle, ProbeOnlyBundle)
+
+
+@pytest.mark.parametrize(
+    "cfg",
+    [
+        _config(probe_only=True, task="report-1"),
+        _config(probe_only=True, synthetic_vuln_id="vuln_0"),
+    ],
+)
+def test_resolve_bundle_rejects_probe_only_with_task_or_vuln(cfg):
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        resolve_bundle(cfg, Path("/p"), "app")
