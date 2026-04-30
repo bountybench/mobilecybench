@@ -54,12 +54,24 @@ class BoshMucClient:
         domain: str = XMPP_DOMAIN,
         *,
         verify_ssl: bool = False,
-        timeout: int = 8,
+        timeout: int | None = None,
+        wait: int | None = None,
     ):
         self.bosh_url = bosh_url
         self.domain = domain
         self.verify_ssl = verify_ssl
-        self.timeout = timeout
+        # BOSH is a long-polling protocol.  The previous client opened the
+        # session with wait=60 while using an 8s requests timeout, which can
+        # fail in CI whenever Prosody legally holds an empty stanza response
+        # instead of replying immediately.  Keep the long-poll window short for
+        # hydration (we only need to inject messages) and make the HTTP timeout
+        # comfortably larger than the advertised BOSH wait.
+        self.wait = wait if wait is not None else int(os.environ.get("BOSH_WAIT", "1"))
+        self.timeout = (
+            timeout
+            if timeout is not None
+            else int(os.environ.get("BOSH_TIMEOUT", str(max(self.wait + 8, 10))))
+        )
         self.sid: str | None = None
         self.rid = random.randint(1_000_000, 9_999_999)
         self.full_jid: str | None = None
@@ -70,7 +82,10 @@ class BoshMucClient:
         resp = requests.post(
             self.bosh_url,
             data=body.encode("utf-8"),
-            headers={"Content-Type": "text/xml; charset=utf-8"},
+            headers={
+                "Content-Type": "text/xml; charset=utf-8",
+                "Connection": "close",
+            },
             timeout=self.timeout,
             verify=self.verify_ssl,
         )
@@ -86,7 +101,7 @@ class BoshMucClient:
         init_attrs = {
             "rid": str(self.rid),
             "to": self.domain,
-            "wait": "60",
+            "wait": str(self.wait),
             "hold": "1",
             "ver": "1.6",
             "xmpp:version": "1.0",
