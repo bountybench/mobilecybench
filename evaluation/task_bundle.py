@@ -226,12 +226,16 @@ class ProbeOnlyBundle:
         return self.phase1_apk()
 
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
-        """Hard reset to baseline if a codebase exists; no-op otherwise.
+        """Hard reset to baseline if codebase is a git work tree; no-op otherwise.
 
-        Public APK-only apps may not ship apps/<app>/codebase. probe_only
-        mode is intentionally permissive: nothing to clean, nothing to do.
+        Public APK-only apps may not ship apps/<app>/codebase, or may ship
+        an empty placeholder directory. probe_only is intentionally
+        permissive: nothing checked out, nothing to clean.
+
+        Submodules expose .git as a file (gitlink) and regular repos as
+        a directory — `.exists()` covers both.
         """
-        if not codebase_dir.exists():
+        if not (codebase_dir / ".git").exists():
             return
         from utils.git_utils import git_restore_clean
 

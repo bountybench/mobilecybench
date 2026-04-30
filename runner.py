@@ -273,6 +273,10 @@ def run(
             )
             if replay.workflow:
                 updates["workflow"] = replay.workflow
+            # Replay must restore the original run's setup shape; an
+            # APK-only run replayed under a default codebase config would
+            # otherwise re-stage source.
+            updates["no_codebase"] = replay.no_codebase
             if replay.workflow == "redteam":
                 # Clear the opposite selector so legacy config defaults do not
                 # violate the TaskBundle XOR contract during replay.

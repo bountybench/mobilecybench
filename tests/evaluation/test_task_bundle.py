@@ -208,6 +208,16 @@ def test_probe_only_prepare_codebase_noop_when_missing(tmp_path):
     bundle.prepare_phase2_codebase(missing)  # no-op
 
 
+def test_probe_only_prepare_codebase_noop_when_empty_placeholder(tmp_path):
+    """Empty/non-git apps/<app>/codebase placeholders must not crash."""
+    bundle = ProbeOnlyBundle(project_root=tmp_path, app_name="x")
+    placeholder = tmp_path / "apps" / "x" / "codebase"
+    placeholder.mkdir(parents=True)
+    assert placeholder.exists() and not (placeholder / ".git").exists()
+    bundle.prepare_phase1_codebase(placeholder)  # no-op (no .git)
+    bundle.prepare_phase2_codebase(placeholder)  # no-op
+
+
 def test_resolve_bundle_returns_probe_only_when_flag_set():
     bundle = resolve_bundle(_config(probe_only=True), Path("/p"), "app")
     assert isinstance(bundle, ProbeOnlyBundle)

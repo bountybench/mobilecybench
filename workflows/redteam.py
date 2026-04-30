@@ -815,6 +815,7 @@ class RedTeamWorkflow(Workflow):
             "attacker_model": self._attacker_model,
             "task": self.config.task,
             "synthetic_vuln_id": self.config.synthetic_vuln_id,
+            "probe_only": self.config.probe_only,
             "status": status,
             "score": score,
             "scores": {},

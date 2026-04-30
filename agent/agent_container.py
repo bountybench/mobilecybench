@@ -15,7 +15,6 @@ from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
     git_setup_dev_branch,
-    git_submodule_update,
     initialize_git_repository,
     onerror,
     prepare_git_directory,
@@ -340,10 +339,22 @@ class AgentEnvironment:
             logger.info(f"Removing existing staging directory at {staging_dir}")
             shutil.rmtree(staging_dir, onerror=onerror)
 
-        # Check if original_codebase is empty, if so use git_submodule_update
+        # Check if original_codebase is empty, if so use ensure_app_submodule
+        # (skips gracefully for closed-source apps without a registered
+        # submodule). If still empty after init, fail with an actionable
+        # message instead of a confusing git error inside _setup_agent_codebase.
         if not original_codebase.exists() or not any(original_codebase.iterdir()):
             logger.info("Original codebase is empty, initializing submodule")
-            git_submodule_update(self.app_dir)
+            from utils.git_utils import ensure_app_submodule
+
+            ensure_app_submodule(self.app_dir.parent.parent, self.app_dir.name)
+            if not original_codebase.exists() or not any(original_codebase.iterdir()):
+                raise FileNotFoundError(
+                    f"Cannot stage agent codebase: {original_codebase} is empty "
+                    f"and no submodule is registered for {self.app_dir.name}. "
+                    f"For closed-source / public APK apps set no_codebase=true "
+                    f"in runner_config."
+                )
 
         # Create staging directory
         logger.info(f"Creating staging directory at {staging_dir}")
