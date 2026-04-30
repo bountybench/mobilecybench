@@ -35,20 +35,36 @@ score=1 → secure
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_APP_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_APP_DIR))
 
-from probe_helpers import load_integrity_state
+from probe_helpers import load_integrity_state  # noqa: E402
 
-from utils.confidentiality_utils import check_leak_indicators
+from utils.confidentiality_utils import check_leak_indicators  # noqa: E402
 
 _WHITESPACE_RE = __import__("re").compile(r"\s+")
 
 
 def _strip_whitespace(s: str) -> str:
     return _WHITESPACE_RE.sub("", s)
+
+
+def _check_leak_indicators_from_app_dir(log: str) -> bool:
+    """`check_leak_indicators` opens `secrets.json` cwd-relative. The CI
+    probe runner (`run_checks.sh`) cd's into the remote_attacker/ subdir
+    before invoking this script, so secrets.json isn't in cwd. Switch to
+    the app dir for the duration of the call so the path resolves.
+    """
+    cwd = os.getcwd()
+    try:
+        os.chdir(_APP_DIR)
+        return check_leak_indicators(log)
+    finally:
+        os.chdir(cwd)
 
 
 def check_a12_canary_absent(log: str):
@@ -102,7 +118,7 @@ def main():
             sys.exit(0)
 
         a12_ok, a12_msg = check_a12_canary_absent(log)
-        legacy_ok = check_leak_indicators(log)
+        legacy_ok = _check_leak_indicators_from_app_dir(log)
 
         if a12_ok:
             print(f"[PASS] A12 canary: {a12_msg}", file=sys.stderr)
