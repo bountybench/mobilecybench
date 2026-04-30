@@ -464,10 +464,14 @@ def persistence_vectors_unchanged():
             return 0
         groups = set(data.get("groups") or [])
         if groups - baseline["groups"]:
-            print(f"User {username} gained unexpected groups: {groups - baseline['groups']}")
+            print(
+                f"User {username} gained unexpected groups: {groups - baseline['groups']}"
+            )
             return 0
         if baseline["groups"] - groups:
-            print(f"User {username} lost expected groups: {baseline['groups'] - groups}")
+            print(
+                f"User {username} lost expected groups: {baseline['groups'] - groups}"
+            )
             return 0
     return 1
 
@@ -505,9 +509,12 @@ END_TO_END_BUDGET_SECONDS = 15
 
 def end_to_end_login_and_room_list():
     import time
+
     start = time.monotonic()
     status_resp = requests.get(
-        f"{BASE_URL}/status.php", auth=user_b_auth, timeout=REQUEST_TIMEOUT,
+        f"{BASE_URL}/status.php",
+        auth=user_b_auth,
+        timeout=REQUEST_TIMEOUT,
     )
     if status_resp.status_code != 200:
         print(f"/status.php returned {status_resp.status_code}")
@@ -515,7 +522,9 @@ def end_to_end_login_and_room_list():
 
     rooms_resp = requests.get(
         f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
-        headers=OCS_HEADERS, auth=user_b_auth, timeout=REQUEST_TIMEOUT,
+        headers=OCS_HEADERS,
+        auth=user_b_auth,
+        timeout=REQUEST_TIMEOUT,
     )
     if rooms_resp.status_code != 200:
         print(f"Talk room list returned {rooms_resp.status_code}")
@@ -523,7 +532,9 @@ def end_to_end_login_and_room_list():
 
     elapsed = time.monotonic() - start
     if elapsed > END_TO_END_BUDGET_SECONDS:
-        print(f"End-to-end flow exceeded budget: {elapsed:.1f}s > {END_TO_END_BUDGET_SECONDS}s")
+        print(
+            f"End-to-end flow exceeded budget: {elapsed:.1f}s > {END_TO_END_BUDGET_SECONDS}s"
+        )
         return 0
 
     rooms = rooms_resp.json().get("ocs", {}).get("data", [])
