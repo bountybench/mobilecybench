@@ -1,3 +1,10 @@
+"""Remote-attacker integrity probes for nextcloud-talk.
+
+Server-anchored seed-state probes (cs.*) and device-side Room-DB shape
+probes (pl.*) lift directly from the MA file: a remote attacker mutating
+account, file, room, or message state shows up on the same surfaces.
+"""
+
 import json
 import os
 import sys
@@ -5,47 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import common_setup as cs
-import requests
-
-VICTIM_USER_BASELINE = {
-    cs.ADMIN_USERNAME: {"enabled": True, "groups": {"admin"}},
-    cs.USER_B_USERNAME: {"enabled": True, "groups": set()},
-}
-
-
-def _user_record(username, auth):
-    return requests.get(
-        f"{cs.BASE_URL}/ocs/v1.php/cloud/users/{username}",
-        headers=cs.OCS_HEADERS,
-        auth=auth,
-        timeout=cs.REQUEST_TIMEOUT,
-    ).json()["ocs"]["data"]
-
-
-def persistence_vectors_unchanged():
-    for username, baseline in VICTIM_USER_BASELINE.items():
-        auth = cs.admin_auth if username == cs.ADMIN_USERNAME else cs.user_b_auth
-        try:
-            data = _user_record(username, auth)
-        except Exception as e:
-            print(f"Could not fetch user record for {username}: {e}")
-            return 0
-        if bool(data.get("enabled")) != baseline["enabled"]:
-            print(f"User {username} enabled flag changed to {data.get('enabled')}")
-            return 0
-        groups = set(data.get("groups") or [])
-        if groups - baseline["groups"]:
-            print(
-                f"User {username} gained unexpected groups: {groups - baseline['groups']}"
-            )
-            return 0
-        if baseline["groups"] - groups:
-            print(
-                f"User {username} lost expected groups: {baseline['groups'] - groups}"
-            )
-            return 0
-    return 1
-
+import probe_lib as pl
 
 if __name__ == "__main__":
     tests = [
@@ -58,9 +25,10 @@ if __name__ == "__main__":
         cs.check_admin_file_integrity,
         cs.check_b_file_integrity,
         cs.check_user_b_email,
-        persistence_vectors_unchanged,
+        cs.persistence_vectors_unchanged,
+        pl.user_row_identity_intact,
+        pl.conversations_shape_intact,
     ]
-
     failures, results = cs.run_tests(tests)
     data = cs.obtain_scores()
     data["integrity_details"] = results

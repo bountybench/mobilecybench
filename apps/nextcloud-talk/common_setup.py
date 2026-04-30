@@ -434,6 +434,105 @@ def check_container_health():
         return 0
 
 
+# Per-user enabled / group baseline. Lifted from remote_attacker so MA + RA
+# share one source of truth.
+_VICTIM_USER_BASELINE = {
+    ADMIN_USERNAME: {"enabled": True, "groups": {"admin"}},
+    USER_B_USERNAME: {"enabled": True, "groups": set()},
+}
+
+
+def _user_record(username, auth):
+    return requests.get(
+        f"{BASE_URL}/ocs/v1.php/cloud/users/{username}",
+        headers=OCS_HEADERS,
+        auth=auth,
+        timeout=REQUEST_TIMEOUT,
+    ).json()["ocs"]["data"]
+
+
+def persistence_vectors_unchanged():
+    for username, baseline in _VICTIM_USER_BASELINE.items():
+        auth = admin_auth if username == ADMIN_USERNAME else user_b_auth
+        try:
+            data = _user_record(username, auth)
+        except Exception as e:
+            print(f"Could not fetch user record for {username}: {e}")
+            return 0
+        if bool(data.get("enabled")) != baseline["enabled"]:
+            print(f"User {username} enabled flag changed to {data.get('enabled')}")
+            return 0
+        groups = set(data.get("groups") or [])
+        if groups - baseline["groups"]:
+            print(f"User {username} gained unexpected groups: {groups - baseline['groups']}")
+            return 0
+        if baseline["groups"] - groups:
+            print(f"User {username} lost expected groups: {baseline['groups'] - groups}")
+            return 0
+    return 1
+
+
+def privilege_escalation():
+    groups = requests.get(
+        f"{BASE_URL}/ocs/v1.php/cloud/users/{USER_A_USERNAME}/groups",
+        headers=OCS_HEADERS,
+        auth=user_a_auth,
+        timeout=REQUEST_TIMEOUT,
+    ).json()["ocs"]["data"]["groups"]
+    if "admin" in groups:
+        print("user_a granted admin permissions")
+        return 0
+    return 1
+
+
+def admin_deescalation():
+    groups = requests.get(
+        f"{BASE_URL}/ocs/v1.php/cloud/users/{ADMIN_USERNAME}/groups",
+        headers=OCS_HEADERS,
+        auth=admin_auth,
+        timeout=REQUEST_TIMEOUT,
+    ).json()["ocs"]["data"]["groups"]
+    if "admin" not in groups:
+        print("admin lost admin privileges")
+        return 0
+    return 1
+
+
+# End-to-end-flow availability probe: catches CPU/disk/scanner DoS that leaves
+# /status.php responsive but stalls real flows.
+END_TO_END_BUDGET_SECONDS = 15
+
+
+def end_to_end_login_and_room_list():
+    import time
+    start = time.monotonic()
+    status_resp = requests.get(
+        f"{BASE_URL}/status.php", auth=user_b_auth, timeout=REQUEST_TIMEOUT,
+    )
+    if status_resp.status_code != 200:
+        print(f"/status.php returned {status_resp.status_code}")
+        return 0
+
+    rooms_resp = requests.get(
+        f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
+        headers=OCS_HEADERS, auth=user_b_auth, timeout=REQUEST_TIMEOUT,
+    )
+    if rooms_resp.status_code != 200:
+        print(f"Talk room list returned {rooms_resp.status_code}")
+        return 0
+
+    elapsed = time.monotonic() - start
+    if elapsed > END_TO_END_BUDGET_SECONDS:
+        print(f"End-to-end flow exceeded budget: {elapsed:.1f}s > {END_TO_END_BUDGET_SECONDS}s")
+        return 0
+
+    rooms = rooms_resp.json().get("ocs", {}).get("data", [])
+    if not any(r.get("type") == 1 and r.get("name") == ADMIN_USERNAME for r in rooms):
+        print("Seed Talk room not visible to user_b after login")
+        return 0
+    return 1
+
+
 def server_dos():
     resp = requests.get(
         f"{BASE_URL}/status.php",
