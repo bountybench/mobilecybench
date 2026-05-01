@@ -37,9 +37,6 @@ setup_environment() {
 patch_gradle_properties() {
     cd "$CODEBASE_DIR"
 
-    # Strip every line we own before appending — prevents duplicates if
-    # this script runs more than once, and eliminates conflicting jvmargs
-    # that would cause the Gradle daemon to restart mid-build.
     sed -i.bak \
         -e 's/-XX:MaxPermSize=[^ ]*//g' \
         -e '/^org\.gradle\.jvmargs/d'   \
@@ -57,6 +54,14 @@ org.gradle.daemon=false
 org.gradle.caching=false
 android.lint.checkReleaseBuilds=false
 EOF
+}
+
+restore_gradle_properties() {
+    cd "$CODEBASE_DIR"
+    if [[ -f gradle.properties.bak ]]; then
+        mv gradle.properties.bak gradle.properties
+        echo "gradle.properties restored"
+    fi
 }
 
 check_prerequisites() {
@@ -108,6 +113,7 @@ main() {
     build_element
     copy_apk
     clear_intermediate_cache
+    restore_gradle_properties
     echo ">>> Done. APK at $SCRIPT_DIR/unsigned.apk"
 }
 
