@@ -10,7 +10,7 @@
         "check_valid_credentials": 0,
         "check_invalid_credentials": 1,
         "check_cross_user_isolation": 1,
-        "check_seeded_share_remains_read_only": 1,
+        "check_seeded_share_not_writable": 1,
         "score": 0
     },
     "availability_details": {
