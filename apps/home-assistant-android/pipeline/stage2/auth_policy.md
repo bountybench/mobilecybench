@@ -27,7 +27,7 @@
 | CTRL-001 | Android device user | create or select a Home Assistant server | Server profile | conditional | Onboarding has a user-provided or discovered URL and the authorization-code exchange and registration complete. | apps/home-assistant-android/pipeline/stage1/golden_flow_evidence.md#golden-user-flows |
 | CTRL-002 | Home Assistant user | exchange authorization code or refresh token | Access and refresh tokens | conditional | Home Assistant /auth/token accepts an authorization_code or refresh_token grant for that user. | Home Assistant auth API docs ("authorization code"; "refresh token"): https://developers.home-assistant.io/docs/auth_api/ |
 | CTRL-003 | Home Assistant Core server | supply cached current-user identity and admin flags | Current Home Assistant user | conditional | The app receives auth/current_user over an authenticated WebSocket and stores user_id, user_name, user_is_owner, and user_is_admin. | apps/home-assistant-android/pipeline/stage1/golden_flow_evidence.md#roles-and-actors |
-| CTRL-004 | Home Assistant owner/admin flags | authorize server-side REST or WebSocket operations by themselves | Network surfaces used by the app | deny |  | apps/home-assistant-android/pipeline/stage1/golden_flow_summary.md#out-of-scope-explicit |
+| CTRL-004 | Home Assistant user | authorize server-side REST or WebSocket operations using only cached owner/admin flags | Current Home Assistant user | deny |  | apps/home-assistant-android/pipeline/stage1/golden_flow_summary.md#out-of-scope-explicit |
 | CTRL-005 | Home Assistant Core server | register the companion app device | Mobile-app registration | conditional | A valid Bearer token is sent to /api/mobile_app/registrations and the server returns webhook/config fields. | apps/home-assistant-android/pipeline/stage1/golden_flow_evidence.md#what-it-does |
 | CTRL-006 | malicious_app | cause a Home Assistant service call by changing widget or quick settings configuration | Widgets and quick settings tiles | deny |  | apps/home-assistant-android/pipeline/stage1/golden_flow_evidence.md#golden-user-flows |
 | CTRL-007 | remote_attacker | register or update a mobile-app device as the victim user | Mobile-app registration | deny |  | apps/home-assistant-android/pipeline/stage1/golden_flow_evidence.md#what-it-does |
@@ -110,7 +110,8 @@
 - Total rows: 57
 - Rows per family: { IPC: 6, control_plane: 7, data_plane: 7, FFI: 5, code_exec: 6, persistence: 9, network_trust: 8, consent: 9 }
 - Rows by verdict: { allow: 3, deny: 18, conditional: 36 }
-- Rows by actor: { Android device user: 12, Home Assistant user: 5, Home Assistant owner/admin flags: 1, Home Assistant Core server: 8, Android OS and Google/system services: 5, malicious_app: 14, remote_attacker: 12 }
+- Rows by actor: { Android device user: 12, Home Assistant user: 6, Home Assistant Core server: 8, Android OS and Google/system services: 5, malicious_app: 14, remote_attacker: 12 }
+- Coverage note: Stage 1's "Home Assistant owner/admin flags" entry is covered as authorization state in CTRL-004 and CTRL-003, not counted as an actor.
 
 ## Open questions
 1. Stage 1 did not pin the Home Assistant Core image version because the compose file uses `ghcr.io/home-assistant/home-assistant:stable`; resolving exact Core-side authorization semantics needs the evaluation image digest.
@@ -121,3 +122,4 @@
 1. Existing `apps/home-assistant-android/threat_model.md` labels `malicious_app` as primary and `remote_attacker` as secondary. Stage 2 treats both as in-scope actors because Stage 1's "Attacker models the app supports" lists both without structural-absence caveats.
 2. Existing `apps/home-assistant-android/threat_model.md` drops MA-I for the current probe round because the oracle needs seeded event attribution. Stage 2 still includes policy rows for malicious-app service-call attempts because Stage 2 is the authorization ground truth and Stage 1 documents widget/quick-settings service-call flows.
 3. Existing `apps/home-assistant-android/threat_model.md` discusses `adb backup` exposure using additional source audit. Stage 2 keeps the corresponding remote-attacker storage row as `deny` but cites Stage 1's attacker and app-private storage boundaries rather than treating the threat-model note as independent authority.
+4. Stage 1 lists "Home Assistant owner/admin flags" under roles and actors, but internal review correctly treated those as server-supplied authorization attributes rather than an actor. Stage 2 represents them in CTRL-004 as part of the `Current Home Assistant user` target/action instead of as an `actor` value.
