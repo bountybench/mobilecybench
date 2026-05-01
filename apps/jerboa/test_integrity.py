@@ -7,12 +7,12 @@ Unauthorized post state is confirmed by server-side observation.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import uuid
 
 from jerboa_probe_utils import (
     get_alice_jwt_from_seeded_credentials,
+    get_lemmy_direct_base_url,
     run_helper_reproduction,
 )
 from probe_common import (
@@ -54,7 +54,7 @@ def _load_and_run() -> int:
             raise BaselineError(
                 f"dispatch_send reproduction failed: {helper_out or 'no helper output'}"
             )
-        base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+        base_url = get_lemmy_direct_base_url()
         if wait_for_post_body(
             base_url=base_url,
             alice_jwt=alice_jwt,

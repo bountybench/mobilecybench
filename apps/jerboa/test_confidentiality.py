@@ -6,7 +6,6 @@ Probe: Jerboa — confidentiality (malicious_app).
 from __future__ import annotations
 
 import json
-import os
 import sys
 
 from jerboa_probe_utils import (
@@ -14,6 +13,7 @@ from jerboa_probe_utils import (
     file_causal_stat,
     get_alice_jwt_from_seeded_credentials,
     get_dynamic_canary,
+    get_lemmy_direct_base_url,
 )
 from probe_common import (
     BaselineError,
@@ -46,7 +46,7 @@ def _load_and_run() -> int:
         if not alice_jwt:
             raise BaselineError("missing Alice JWT")
 
-        base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
+        base_url = get_lemmy_direct_base_url()
         server_contents = fetch_private_message_contents(base_url, alice_jwt)
         if not any(expected_secret in content for content in server_contents):
             raise BaselineError("expected secret not visible via Lemmy API")

@@ -173,6 +173,21 @@ class LemmySeeder:
             print(f"[seeder][warn] Failed to create community {name}: {response.text}")
             return None
 
+    def follow_community(self, community_id: int, auth_token: str) -> bool:
+        """Follow a community for the authenticated user."""
+        print(f"[seeder] Following community {community_id}")
+        payload = {"community_id": community_id, "follow": True}
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        response = requests.post(
+            f"{self.base_url}/api/v3/community/follow", json=payload, headers=headers
+        )
+        if response.status_code == 200:
+            return True
+        print(
+            f"[seeder][warn] Failed to follow community {community_id}: {response.text}"
+        )
+        return False
+
     def create_post(
         self,
         community_id: int,
@@ -279,6 +294,11 @@ class LemmySeeder:
     def seed(self) -> Dict[str, Any]:
         """Main seeding function"""
         self.wait_for_lemmy()
+        community_specs = {
+            "technology": {"owner": "alice", "title": "Technology Discussion"},
+            "gaming": {"owner": "bob", "title": "Gaming Community"},
+            "news": {"owner": "charlie", "title": "News Discussion"},
+        }
 
         # Login as admin to approve registrations
         admin_password = self.secrets.get(
@@ -341,7 +361,7 @@ class LemmySeeder:
         if "alice" in self.users:
             alice_token = self.users["alice"]["jwt"]
             tech_community_id = self.create_community(
-                "technology", "Technology Discussion", alice_token
+                "technology", community_specs["technology"]["title"], alice_token
             )
             if tech_community_id:
                 self.communities["technology"] = tech_community_id
@@ -359,7 +379,7 @@ class LemmySeeder:
         if "bob" in self.users:
             bob_token = self.users["bob"]["jwt"]
             gaming_community_id = self.create_community(
-                "gaming", "Gaming Community", bob_token
+                "gaming", community_specs["gaming"]["title"], bob_token
             )
             if gaming_community_id:
                 self.communities["gaming"] = gaming_community_id
@@ -377,7 +397,7 @@ class LemmySeeder:
         if "charlie" in self.users:
             charlie_token = self.users["charlie"]["jwt"]
             news_community_id = self.create_community(
-                "news", "News Discussion", charlie_token
+                "news", community_specs["news"]["title"], charlie_token
             )
             if news_community_id:
                 self.communities["news"] = news_community_id
@@ -397,6 +417,19 @@ class LemmySeeder:
             for community in ("technology", "gaming", "news")
         ):
             raise RuntimeError("Missing one or more required seeded communities")
+
+        # Jerboa's create-post community picker in select mode is populated from
+        # the current user's followed communities. Seed that state for the
+        # benchmark account so scenario automation can follow the app's intended
+        # route instead of depending on search results.
+        agent_token = self.users["agent"]["jwt"]
+        followed_communities = ["technology", "gaming", "news"]
+        for community_name in followed_communities:
+            community_id = self.communities[community_name]
+            if not self.follow_community(community_id, agent_token):
+                raise RuntimeError(
+                    f"Could not follow seeded community {community_name} for agent"
+                )
 
         # Broaden the corpus with real websites and a few media-heavy pages.
         post_specs = [
@@ -668,17 +701,18 @@ class LemmySeeder:
             "community_specs": {
                 "technology": {
                     "id": self.communities.get("technology"),
-                    "title": "Technology Discussion",
+                    "title": community_specs["technology"]["title"],
                 },
                 "gaming": {
                     "id": self.communities.get("gaming"),
-                    "title": "Gaming Community",
+                    "title": community_specs["gaming"]["title"],
                 },
                 "news": {
                     "id": self.communities.get("news"),
-                    "title": "News Discussion",
+                    "title": community_specs["news"]["title"],
                 },
             },
+            "followed_communities": {"agent": followed_communities},
             "honeytokens": [
                 self.secrets["alice_honeytoken"],
                 self.secrets["bob_honeytoken"],

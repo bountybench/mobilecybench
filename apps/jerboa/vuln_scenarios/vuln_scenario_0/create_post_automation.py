@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sys
@@ -10,15 +11,31 @@ from pathlib import Path
 
 os.environ.setdefault("UI_TARGET_PACKAGE", "com.jerboa")
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {name} from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 try:
-    from apps.jerboa.helpers.ui_session import (
-        configure_adb,
-        connect_u2,
-        get_release_package,
-        register_anr_watchers,
-        verify_or_recover_u2,
+    ui_session = _load_module(
+        "jerboa_ui_session", REPO_ROOT / "apps" / "jerboa" / "helpers" / "ui_session.py"
     )
-    from utils.ui_utils import click_then_expect, wait_and_set_text, wait_for_ui_stable
+    ui_utils = _load_module("ui_utils", REPO_ROOT / "utils" / "ui_utils.py")
+    configure_adb = ui_session.configure_adb
+    connect_u2 = ui_session.connect_u2
+    get_release_package = ui_session.get_release_package
+    register_anr_watchers = ui_session.register_anr_watchers
+    verify_or_recover_u2 = ui_session.verify_or_recover_u2
+    click_then_expect = ui_utils.click_then_expect
+    wait_and_set_text = ui_utils.wait_and_set_text
+    wait_for_ui_stable = ui_utils.wait_for_ui_stable
 except ImportError as e:
     print(f"[create_post_automation] missing ui utils: {e}", file=sys.stderr)
     sys.exit(2)
@@ -76,6 +93,20 @@ def _load_seeded_community_specs() -> list[tuple[str, str]]:
     return list(DEFAULT_SEEDED_COMMUNITIES)
 
 
+def _overlay_height_px(d) -> int:
+    try:
+        density_out = d.shell("wm density").output
+        for line in density_out.splitlines():
+            if ":" not in line:
+                continue
+            value = line.split(":", 1)[1].strip()
+            if value.isdigit():
+                return max(48, round(60 * int(value) / 160))
+    except Exception:
+        pass
+    return 120
+
+
 def _tap_community_field_from_label(d) -> bool:
     """Tap the overlaid community field using the known Compose layout.
 
@@ -90,7 +121,19 @@ def _tap_community_field_from_label(d) -> bool:
         return False
 
     try:
-        return click_then_expect(d, label, back_button, timeout=10)
+        if click_then_expect(d, label, back_button, timeout=10):
+            return True
+
+        label_node = label.get()
+        bounds = _parse_bounds(label_node.attrib.get("bounds", ""))
+        if not bounds:
+            return False
+
+        left_x, _top_y, right_x, bottom_y = bounds
+        tap_x = (left_x + right_x) // 2
+        tap_y = bottom_y + (_overlay_height_px(d) // 2)
+        d.click(tap_x, tap_y)
+        return bool(back_button.wait(timeout=10))
     except Exception as e:
         _log(f"Community field tap from label failed: {e}")
         return False
@@ -134,9 +177,14 @@ def _select_seeded_community(d) -> bool:
         _log("Community selection screen did not become recognizable")
         return False
 
-    # Search is the primary path. The benchmark account is not guaranteed to
-    # follow the seeded communities, so the preloaded followed-community list
-    # may be empty even when runtime seeding is healthy.
+    for title, _query in seeded_communities:
+        exact = d(text=title)
+        if exact.wait(timeout=3):
+            if click_then_expect(d, exact, d(text="Create post"), timeout=15):
+                return True
+            _log(f"Tapped seeded community {title} but did not return to Create post")
+            return False
+
     search_field = d(className="android.widget.EditText", instance=0)
     if search_field.exists:
         for title, query in seeded_communities:
@@ -151,14 +199,6 @@ def _select_seeded_community(d) -> bool:
                     f"Tapped searched seeded community {title} but did not return to Create post"
                 )
                 return False
-
-    for title, _query in seeded_communities:
-        exact = d(text=title)
-        if exact.wait(timeout=3):
-            if click_then_expect(d, exact, d(text="Create post"), timeout=15):
-                return True
-            _log(f"Tapped seeded community {title} but did not return to Create post")
-            return False
 
     _log("Failed to find any deterministically seeded community option")
     return False

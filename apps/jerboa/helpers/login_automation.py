@@ -109,7 +109,6 @@ def login_jerboa(instance_url, username, password):
     package_name = get_release_package(d)
     log(f"Using package: {package_name}")
 
-    d.shell(f"pm clear {package_name}")
     log("Launching Jerboa...")
     d.shell(f"am start -n {package_name}/com.jerboa.MainActivity")
 
