@@ -14,6 +14,7 @@ ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
 ROOT_DIR=$(pwd)
+PYTHON_CMD=$("${ROOT_DIR}/utils/detect_python.sh") || exit 1
 source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
 source "${ROOT_DIR}/utils/local_error_logger.sh"
@@ -626,6 +627,20 @@ uninstall_package() {
     fi
 }
 
+# Run prepare_victim.sh when the app provides one. Invoked after
+# inject_flags.sh so post-login baselines reflect the flag-injected app
+# state, mirroring redteam's _restart_runtime(inject_flags=...) →
+# _run_prepare_victim() ordering.
+# Bails on failure: missing victim setup = probes operate on wrong state.
+run_prepare_victim_if_applicable() {
+    if [ ! -x "./prepare_victim.sh" ]; then
+        echo -e "${INFO} No prepare_victim.sh in $(pwd); skipping"
+        return 0
+    fi
+    echo -e "${INFO} Running prepare_victim.sh..."
+    ./prepare_victim.sh || { echo -e "${ERROR} prepare_victim.sh failed"; return 1; }
+}
+
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
@@ -672,11 +687,14 @@ run_test_check() {
 
     echo -e "${INFO} Generating flags..."
     cd "$ROOT_DIR"
-    { python -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+    { "$PYTHON_CMD" -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
     cd "$DIR"
 
     echo -e "${INFO} Injecting flags..."
     { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+
+    run_prepare_victim_if_applicable || exit 1
+
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -829,7 +847,7 @@ run_tests_for_mode() {
         if [ "$APK_COUNT" -eq 0 ]; then
             echo -e "${INFO} No local APKs found, attempting download from download_link..."
             cd "$ROOT_DIR"
-            if python download_apk.py "$app_name"; then
+            if "$PYTHON_CMD" download_apk.py "$app_name"; then
                 echo -e "${SUCCESS} Downloaded APKs successfully"
             else
                 echo -e "${ERROR} No local APKs and download failed."
@@ -847,7 +865,7 @@ run_tests_for_mode() {
         echo -e "${INFO} Setting up app from APK link."
         app_name=$(basename "$dir")
         cd "$ROOT_DIR"
-        { python download_apk.py "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
+        { "$PYTHON_CMD" download_apk.py "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source using build_apk.sh..."
@@ -951,11 +969,14 @@ EOF
 
         echo -e "${INFO} Generating flags..."
         cd "$ROOT_DIR"
-        { python -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+        { "$PYTHON_CMD" -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
         cd "$dir"
 
         echo -e "${INFO} Injecting flags..."
         { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+
+        run_prepare_victim_if_applicable || exit 1
+
         verify_shared_net_connectivity
         adb logcat -c
         
@@ -1107,7 +1128,7 @@ run_vuln_test() {
         if [ "$base_apk_count" -eq 0 ] || [ "$vuln_apk_count" -eq 0 ]; then
             echo -e "${INFO} Missing APKs (base: $base_apk_count, vuln: $vuln_apk_count), attempting download..."
             cd "$ROOT_DIR"
-            if python download_apk.py "$app_name" 2>/dev/null; then
+            if "$PYTHON_CMD" download_apk.py "$app_name" 2>/dev/null; then
                 echo -e "${SUCCESS} Downloaded APKs"
             fi
             cd "$ROOT_DIR/$app_dir"

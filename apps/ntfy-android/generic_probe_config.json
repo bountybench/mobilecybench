@@ -9,6 +9,6 @@
     "integrity.app_pwned_file": false,
     "integrity.container_flag": false,
     "integrity.container_pwned_file": false,
-    "availability.check_container_health": false
+    "availability.check_container_health": true
   }
 }

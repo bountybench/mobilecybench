@@ -11,6 +11,7 @@ __pycache__/
 .reports/
 logs/
 scores.json
+scores_remote_attacker.json
 redteam_scores.json
 generic_scores.json
 baseline.json

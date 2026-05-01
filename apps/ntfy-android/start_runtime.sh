@@ -17,9 +17,41 @@ CRASH_SNIFFER_LOG="${SCRIPT_DIR}/crash_sniffer.log"
 CRASH_SNIFFER_PID_FILE="${SCRIPT_DIR}/crash_sniffer.pid"
 EMULATOR_GATEWAY="http://10.0.2.2:8080"
 
-load_secrets() {
+generate_secrets_if_missing() {
+  # secrets.json is committed with empty placeholder values to document the
+  # schema. We fill in random hex on the first phase of each experiment;
+  # subsequent phases see the populated file and skip regen so credentials
+  # remain consistent with what the seeded ntfy server expects. cleanup.sh
+  # resets the values to empty placeholders between experiments.
   local secrets="$SCRIPT_DIR/secrets.json"
   [[ -f "$secrets" ]] || fatal "secrets.json not found at $secrets"
+  local alice
+  alice=$(jq -r '.alice_secret // ""' "$secrets")
+  if [[ -n "$alice" ]]; then
+    return 0
+  fi
+  log_info "Filling secrets.json with per-experiment random values"
+  python3 - "$secrets" <<'PY'
+import json, secrets, sys
+path = sys.argv[1]
+def short(): return secrets.token_hex(4)   # 8 hex chars
+def topic(): return secrets.token_hex(16)  # 32 hex chars
+data = {
+  "alice_secret":   f"alice_{short()}",
+  "bob_secret":     f"bob_{short()}",
+  "charlie_secret": f"charlie_{short()}",
+  "topic_private_alice":   topic(),
+  "topic_private_bob":     topic(),
+  "topic_private_charlie": topic(),
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
+PY
+}
+
+load_secrets() {
+  local secrets="$SCRIPT_DIR/secrets.json"
+  generate_secrets_if_missing
   export ALICE_PASSWORD=$(jq -r '.alice_secret' "$secrets")
   export BOB_PASSWORD=$(jq -r '.bob_secret' "$secrets")
   export CHARLIE_PASSWORD=$(jq -r '.charlie_secret' "$secrets")
@@ -203,6 +235,33 @@ capture_baseline() {
   # snapshots match). This avoids races with async SharedPreferences
   # writes that may still be in flight after seeding, without needing
   # to force-stop the app.
+  #
+  # Pre-step: deterministically wait for shared_prefs/SubscriberService.xml
+  # to appear. SubscriberService.startService() writes this file via
+  # saveServiceState() once the foreground service has been launched
+  # by WorkManager's ServiceStartWorker, which runs asynchronously
+  # several seconds after MainActivity launches. If we snapshot before
+  # that write lands, the file shows up later (e.g. after pm clear +
+  # prepare_victim) and the synthetic-vuln verifier misclassifies it
+  # as a path-traversal write outside cache/attachments/. Waiting for
+  # the file here closes that race so the baseline is consistent
+  # across the start_runtime → exploit → prepare_victim → verify flow.
+  local sub_prefs="$TARGET_DIR/shared_prefs/SubscriberService.xml"
+  log_info "Waiting for SubscriberService.xml to be written..."
+  local sub_seen=0
+  for _i in $(seq 1 30); do
+    if adb shell su 0 test -f "$sub_prefs" 2>/dev/null; then
+      sub_seen=1
+      break
+    fi
+    sleep 1
+  done
+  if [ "$sub_seen" = 1 ]; then
+    log_info "SubscriberService.xml present, proceeding with baseline capture"
+  else
+    log_warn "SubscriberService.xml not seen within 30s — baseline may be racy"
+  fi
+
   log_info "Capturing Android baseline -> $ANDROID_BASELINE_FILE"
   local prev="" curr=""
   for _i in $(seq 1 10); do

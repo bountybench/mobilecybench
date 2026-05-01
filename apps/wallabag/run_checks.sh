@@ -15,38 +15,36 @@ echo "=== RUNNING WALLABAG APP-SPECIFIC CHECKS ==="
 
 echo "TESTING ACCESS CONTROL..."
 {
-    access_output=$($PYTHON test_access_control.py | tail -1)
+    access_full="$($PYTHON test_access_control.py)"
     access_exit=$?
+    access_output="$(printf '%s\n' "$access_full" | tail -1)"
 }
 access_output=${access_output:-"{}"}
 echo
 
 echo "TESTING AVAILABILITY..."
 {
-    availability_output=$($PYTHON test_availability.py | tail -1) 
+    availability_full="$($PYTHON test_availability.py)"
     availability_exit=$?
+    availability_output="$(printf '%s\n' "$availability_full" | tail -1)"
 }
 availability_output=${availability_output:-"{}"}
 echo
 
 echo "TESTING CONFIDENTIALITY..."
-if [ -z "$exploit_log" ]; then
-    echo "[INFO] No log provided."
-    confidentiality_exit=0
-    confidentiality_output='{"score": 1, "status": "no_log", "leaked_files": []}'
-else
-    {
-        confidentiality_output=$($PYTHON test_confidentiality.py "$exploit_log" | tail -1)
-        confidentiality_exit=$?
-    }
-    confidentiality_output=${confidentiality_output:-"{}"}
-fi
+{
+    confidentiality_full="$($PYTHON test_confidentiality.py)"
+    confidentiality_exit=$?
+    confidentiality_output="$(printf '%s\n' "$confidentiality_full" | tail -1)"
+}
+confidentiality_output=${confidentiality_output:-"{}"}
 echo
 
 echo "TESTING INTEGRITY..."
 {
-    integrity_output=$($PYTHON test_integrity.py | tail -1) 
+    integrity_full="$($PYTHON test_integrity.py)"
     integrity_exit=$?
+    integrity_output="$(printf '%s\n' "$integrity_full" | tail -1)"
 }
 integrity_output=${integrity_output:-"{}"}
 echo
@@ -105,7 +103,7 @@ json_output=$(cat <<EOF
 EOF
 )
 
-echo "$json_output" | jq . > /dev/null || echo "⚠️ Final JSON for app-specific scores is invalid!"
+echo "$json_output" | jq . > /dev/null || echo "WARN: Final JSON for app-specific scores is invalid!"
 echo "$json_output" > scores.json
 echo "App-specific scores saved to scores.json"
 
@@ -115,16 +113,18 @@ echo "=== RUNNING GENERIC PROBES ==="
 
 echo "TESTING GENERIC ACCESS..."
 {
-    gen_access_output=$($PYTHON ../../evaluation/generic_probes/test_access.py | tail -1)
+    gen_access_full="$($PYTHON ../../evaluation/generic_probes/test_access.py)"
     gen_access_exit=$?
+    gen_access_output="$(printf '%s\n' "$gen_access_full" | tail -1)"
 }
 gen_access_output=${gen_access_output:-"{}"}
 echo
 
 echo "TESTING GENERIC AVAILABILITY..."
 {
-    gen_availability_output=$($PYTHON ../../evaluation/generic_probes/test_availability.py | tail -1)
+    gen_availability_full="$($PYTHON ../../evaluation/generic_probes/test_availability.py)"
     gen_availability_exit=$?
+    gen_availability_output="$(printf '%s\n' "$gen_availability_full" | tail -1)"
 }
 gen_availability_output=${gen_availability_output:-"{}"}
 echo
@@ -142,8 +142,9 @@ else
         abs_exploit_log="$(pwd)/$exploit_log"
     fi
     {
-        gen_confidentiality_output=$($PYTHON ../../evaluation/generic_probes/test_confidentiality.py "$abs_exploit_log" | tail -1)
+        gen_confidentiality_full="$($PYTHON ../../evaluation/generic_probes/test_confidentiality.py "$abs_exploit_log")"
         gen_confidentiality_exit=$?
+        gen_confidentiality_output="$(printf '%s\n' "$gen_confidentiality_full" | tail -1)"
     }
     gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
 fi
@@ -151,8 +152,9 @@ echo
 
 echo "TESTING GENERIC INTEGRITY..."
 {
-    gen_integrity_output=$($PYTHON ../../evaluation/generic_probes/test_integrity.py | tail -1)
+    gen_integrity_full="$($PYTHON ../../evaluation/generic_probes/test_integrity.py)"
     gen_integrity_exit=$?
+    gen_integrity_output="$(printf '%s\n' "$gen_integrity_full" | tail -1)"
 }
 gen_integrity_output=${gen_integrity_output:-"{}"}
 echo
@@ -209,11 +211,11 @@ gen_json_output=$(cat <<EOF
 EOF
 )
 
-echo "$gen_json_output" | jq . > /dev/null || echo "⚠️ Final JSON for generic scores is invalid!"
+echo "$gen_json_output" | jq . > /dev/null || echo "WARN: Final JSON for generic scores is invalid!"
 echo "$gen_json_output" > generic_scores.json
 echo "Generic scores saved to generic_scores.json"
 
 echo
 echo "=== WALLABAG CHECKS COMPLETED ==="
-echo "✅ App-specific scores: scores.json"
-echo "✅ Generic probe scores: generic_scores.json"
+echo "OK: App-specific scores: scores.json"
+echo "OK: Generic probe scores: generic_scores.json"

@@ -56,12 +56,45 @@ authentication_setup_for_exploit(){
     cp "$CONFIG_FILE" /tmp/prosody.cfg.lua
     cp "$JITSI_CONFIG_FILE" /tmp/jitsi-meet.cfg.lua
 
-    # Edit in /tmp
-    sed -i 's|default "1"|default "0"|g' /tmp/prosody.cfg.lua
-    sed -i 's|authentication = "internal_hashed"|authentication = "anonymous"|g' /tmp/prosody.cfg.lua
+    # Apply the prosody config rewrites in Python so the script works on macOS
+    # BSD sed too.
+    python3 - <<'PYEOF'
+import re
+from pathlib import Path
 
-    sed -i '/Component "muc.meet.jitsi" "muc"/,/modules_enabled = {/s/modules_enabled = {/modules_enabled = {\n        "muc_lobby_rooms";/' /tmp/jitsi-meet.cfg.lua
-    sed -i '/Component "muc.meet.jitsi" "muc"/a\    lobby_muc = "lobby.meet.jitsi"\n    main_muc = "muc.meet.jitsi"' /tmp/jitsi-meet.cfg.lua
+prosody = Path('/tmp/prosody.cfg.lua')
+text = prosody.read_text()
+text = text.replace('default "1"', 'default "0"')
+text = text.replace(
+    'authentication = "internal_hashed"',
+    'authentication = "anonymous"',
+)
+prosody.write_text(text)
+
+jitsi = Path('/tmp/jitsi-meet.cfg.lua')
+text = jitsi.read_text()
+
+# Inject "muc_lobby_rooms" into the modules_enabled block of the
+# muc.meet.jitsi muc component (first occurrence only — same as the
+# original sed range).
+text = re.sub(
+    r'(Component "muc\.meet\.jitsi" "muc"[\s\S]*?modules_enabled = \{)',
+    r'\1\n        "muc_lobby_rooms";',
+    text,
+    count=1,
+)
+
+# Append lobby_muc / main_muc bindings immediately after the Component line.
+text = text.replace(
+    'Component "muc.meet.jitsi" "muc"',
+    'Component "muc.meet.jitsi" "muc"\n'
+    '    lobby_muc = "lobby.meet.jitsi"\n'
+    '    main_muc = "muc.meet.jitsi"',
+    1,
+)
+
+jitsi.write_text(text)
+PYEOF
 
     # Copy back
     docker cp /tmp/prosody.cfg.lua "$PROSODY_CONTAINER":/config/prosody.cfg.lua
@@ -295,9 +328,28 @@ main() {
         sleep 5
     done
 
-    adb unroot
+    # adb unroot restarts adbd, which closes the connection and can return
+    # non-zero ("unable to connect for unroot: closed") even on success — the
+    # exact same caveat called out in utils/inject_system_ca.sh:283-286.
+    # Tolerate it so `set -e` doesn't kill the script on a benign restart.
+    adb unroot 2>/dev/null || true
 
     setup_hashes
+
+    # Re-inject the harness CA cert as the final setup step. The CI workflow
+    # runs utils/inject_system_ca.sh BEFORE this script
+    # (.github/workflows/ci.yml:1445), but the prosody container restart and
+    # the adb root/unroot cycle above can drop the user-store copy at
+    # /data/misc/user/0/cacerts-added/. The integrity probe in
+    # apps/jitsi-meet/test_integrity.py:181 (check_user_ca_store) asserts
+    # the cert is still there at probe time. inject_system_ca.sh is
+    # idempotent (utils/inject_system_ca.sh:202-211 skips when the cert is
+    # already present and visible), so calling it again here just enforces
+    # the post-condition without redoing the namespace work.
+    if [ -x "$ROOT_DIR/utils/inject_system_ca.sh" ]; then
+        echo "Re-injecting harness CA after runtime setup..."
+        "$ROOT_DIR/utils/inject_system_ca.sh" || echo "WARNING: CA re-injection failed (probe will surface)"
+    fi
 
     echo ""
     echo "Setup complete! Jitsi Meet is ready for testing."

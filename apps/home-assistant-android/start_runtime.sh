@@ -69,6 +69,7 @@ main() {
     docker compose up --build -d
 
     wait_for_container_healthy
+    python3 seed_baseline.py
     install_home_assistant
     launch_home_assistant
     sleep 5
