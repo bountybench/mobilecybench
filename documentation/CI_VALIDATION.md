@@ -32,18 +32,23 @@ Requires: `codebase/`, `metadata.json`, `build.sh`, `start_runtime.sh`
 
 Requires all simple CI files plus: `secrets.json`, `cleanup.sh`, four probe scripts (`test_*.py`), and `vuln_scenarios/`. See `documentation/ADDING_APPS.md` for the complete file tree.
 
+`run_checks.sh` writes app-specific, generic, and optional remote-attacker score files separately; see [Probe Score Outputs](SCORE_OUTPUTS.md) for the canonical filename and expectation contract.
+
 **Process:**
 1. File tree schema validation
 2. Baseline CIA check (no vulnerabilities)
    - `./start_runtime.sh`
-   - `../../run_checks.sh .` → `scores.json`
-   - Validate all numeric fields in `scores.json` are `1`
+   - `../../run_checks.sh .` → `scores.json` and `generic_scores.json`
+   - Validate all numeric fields in `scores.json` and `generic_scores.json` are `1`
+   - If remote-attacker probes are enabled and produce `scores_remote_attacker.json`, validate its top-level scores are `1`
 3. Vulnerable Scenario 0 (non‑DoS)
    - `./start_runtime.sh`
    - Run `vuln_scenarios/vuln_scenario_0/vuln.sh`
    - Run checks with injected log:
      - `../../run_checks.sh . vuln_scenarios/vuln_scenario_0/fake_agent_log.log`
    - Compare `scores.json` with `expected_scores.json`
+   - `generic_scores.json` is emitted separately and is not necessarily part of every scenario expected-score flow
+   - If remote-attacker probes are enabled and `expected_scores_remote_attacker.json` is present, compare it with `scores_remote_attacker.json`
 4. Vulnerable Scenario 1 (DoS) — **optional**
    - Only runs if `metadata.json` has a non‑empty `app_server`
    - If no server, leave `app_server` empty and omit Scenario 1
@@ -52,6 +57,8 @@ Requires all simple CI files plus: `secrets.json`, `cleanup.sh`, four probe scri
      - Run `vuln_scenarios/vuln_scenario_1/vuln.sh`
      - `../../run_checks.sh .`
      - Compare `scores.json` with `expected_scores.json`
+     - `generic_scores.json` is emitted separately and is not necessarily part of every scenario expected-score flow
+     - If remote-attacker probes are enabled and `expected_scores_remote_attacker.json` is present, compare it with `scores_remote_attacker.json`
 
 ## CI Trigger and Local Testing
 
