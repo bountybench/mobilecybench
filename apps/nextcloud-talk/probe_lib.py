@@ -294,10 +294,13 @@ def talk_filtered_logcat() -> str:
     if not cs.adb_device_available():
         return ""
     pid = cs.talk_pid()
-    args = ["logcat", "-d"]
-    if pid:
-        args.append(f"--pid={pid}")
-    rc, out = _adb(args, timeout=15)
+    if pid is None:
+        # No Talk process to filter on — anything in the buffer is from
+        # another process and not Talk-attributable. Returning "" prevents
+        # the availability outage from cross-contaminating confidentiality
+        # probes; talk_pid_alive surfaces the outage on its own dimension.
+        return ""
+    rc, out = _adb(["logcat", "-d", f"--pid={pid}"], timeout=15)
     return out if rc == 0 else ""
 
 
@@ -329,7 +332,13 @@ def webdav_list_files(owner: str, auth: tuple[str, str]) -> list[dict]:
         )
         if resp.status_code not in (207, 200):
             continue
-        root = ET.fromstring(resp.text)
+        try:
+            root = ET.fromstring(resp.text)
+        except ET.ParseError:
+            # Non-XML 200/207 (e.g. proxy error page) — cannot evaluate
+            # this response. Skip rather than letting ParseError escape
+            # to the outer Exception catch and FP as a leak.
+            continue
         ns = {"d": "DAV:"}
         for item in root.findall("d:response", ns):
             href = item.findtext("d:href", namespaces=ns) or ""
