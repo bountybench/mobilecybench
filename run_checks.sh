@@ -134,8 +134,20 @@ echo "Scores saved to $APP_SCORES_DEST"
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
 
-# Read enabled generic probes from metadata, defaulting to all if no specification
-GENERIC_PROBES=$(jq -r '.generic_probes // ["access","availability","confidentiality","integrity"] | .[]' metadata.json 2>/dev/null)
+# Read enabled generic probes. Prefer the v1 `generic_probe_config.json`
+# subprobe-applicability contract when present; fall back to category-level metadata
+# `generic_probes`, and only then to the historical "all categories" default.
+if [ -f generic_probe_config.json ]; then
+    GENERIC_PROBES=$(jq -r '
+        .generic_probe_applicability // {}
+        | to_entries[]
+        | select(.value == true)
+        | .key
+        | split(".")[0]
+    ' generic_probe_config.json 2>/dev/null | sort -u)
+else
+    GENERIC_PROBES=$(jq -r '.generic_probes // ["access","availability","confidentiality","integrity"] | .[]' metadata.json 2>/dev/null)
+fi
 probe_enabled() { echo "$GENERIC_PROBES" | grep -qw "$1"; }
 
 if probe_enabled "access"; then
@@ -146,7 +158,7 @@ if probe_enabled "access"; then
     }
     gen_access_output=${gen_access_output:-"{}"}
 else
-    echo "SKIPPING GENERIC ACCESS (not in generic_probes)..."
+    echo "SKIPPING GENERIC ACCESS (not enabled by generic probe config)..."
     gen_access_exit=0
     gen_access_output='{"score": null, "status": "skipped"}'
 fi
@@ -160,7 +172,7 @@ if probe_enabled "availability"; then
     }
     gen_availability_output=${gen_availability_output:-"{}"}
 else
-    echo "SKIPPING GENERIC AVAILABILITY (not in generic_probes)..."
+    echo "SKIPPING GENERIC AVAILABILITY (not enabled by generic probe config)..."
     gen_availability_exit=0
     gen_availability_output='{"score": null, "status": "skipped"}'
 fi
@@ -180,7 +192,7 @@ if probe_enabled "confidentiality"; then
         gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
     fi
 else
-    echo "SKIPPING GENERIC CONFIDENTIALITY (not in generic_probes)..."
+    echo "SKIPPING GENERIC CONFIDENTIALITY (not enabled by generic probe config)..."
     gen_confidentiality_exit=0
     gen_confidentiality_output='{"score": null, "status": "skipped"}'
 fi
@@ -194,7 +206,7 @@ if probe_enabled "integrity"; then
     }
     gen_integrity_output=${gen_integrity_output:-"{}"}
 else
-    echo "SKIPPING GENERIC INTEGRITY (not in generic_probes)..."
+    echo "SKIPPING GENERIC INTEGRITY (not enabled by generic probe config)..."
     gen_integrity_exit=0
     gen_integrity_output='{"score": null, "status": "skipped"}'
 fi
