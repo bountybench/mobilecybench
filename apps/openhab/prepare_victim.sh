@@ -152,16 +152,21 @@ def is_auth_error(d):
 
 def fill_dialog(d, text):
     """Fill a preference dialog (Username or Password) and click OK."""
+    selectors = [
+        {"resourceId": "android:id/edit"},
+        {"className": "android.widget.EditText"},
+    ]
     for attempt in range(3):
-        edit = d(resourceId="android:id/edit")
-        if not edit.wait(timeout=TIMEOUT_NORMAL):
+        edit = None
+        for selector in selectors:
+            candidate = d(**selector)
+            if candidate.wait(timeout=TIMEOUT_FAST):
+                edit = candidate
+                break
+        if edit is None:
             log("ERROR: dialog edit field not found")
             return False
         try:
-            edit.click()
-            edit.clear_text()
-            time.sleep(0.2)
-            edit = d(resourceId="android:id/edit")
             edit.set_text(text)
             time.sleep(0.3)
             d.press("back")  # dismiss keyboard
