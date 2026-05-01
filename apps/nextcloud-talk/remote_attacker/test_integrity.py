@@ -1,15 +1,19 @@
-"""Malicious-app integrity probes for nextcloud-talk.
+"""Remote-attacker integrity probes for nextcloud-talk.
 
-Server-anchored seed-state probes (cs.*) plus device-side Room-DB shape
-invariants (pl.*). Probe definitions live in ``probe_lib`` (shared with
-the RA test file).
+Server-anchored seed-state invariants only. Device-side Room-DB shape
+probes (User row, Conversations) are MA-only: the RA harness flow does
+``pm clear`` between exploit and probes, wiping Talk's data dir, so
+device-side state is freshly re-hydrated by ``prepare_victim.sh`` and
+does not witness the exploit.
 """
 
 import json
+import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import common_setup as cs
-import probe_lib as pl
 
 if __name__ == "__main__":
     tests = [
@@ -23,10 +27,7 @@ if __name__ == "__main__":
         cs.check_b_file_integrity,
         cs.check_user_b_email,
         cs.persistence_vectors_unchanged,
-        pl.user_row_identity_intact,
-        pl.conversations_shape_intact,
     ]
-
     failures, results = cs.run_tests(tests)
     data = cs.obtain_scores()
     data["integrity_details"] = results

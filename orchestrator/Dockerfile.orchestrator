@@ -25,6 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     bc \
     apktool \
+    # SQLCipher CLI — apps/nextcloud-talk probe_lib.py decrypts the Room DB
+    # to read User.token / row state for confidentiality + integrity probes.
+    sqlcipher \
     # Networking and system tools
     openssl \
     iproute2 \

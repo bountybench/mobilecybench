@@ -1,50 +1,42 @@
 import json
-import os
 import subprocess
 import time
 from pathlib import Path
 
 import requests
 from common_setup import (
-    ensure_requests_ca_bundle,
-    get_host_base_url,
+    ADMIN_FILE_CONTENTS,
+    ADMIN_FILE_NAME,
+    ADMIN_PASSWORD,
+    ADMIN_USERNAME,
+    BASE_URL,
+    REQUEST_TIMEOUT,
+    USER_A_PASSWORD,
+    USER_A_USERNAME,
+    USER_B_EMAIL,
+    USER_B_FILE_CONTENTS,
+    USER_B_FILE_NAME,
+    USER_B_MESSAGE,
+    USER_B_PASSWORD,
+    USER_B_USERNAME,
+    admin_auth,
+    check_seed_room_state,
     get_trusted_domain,
+    require_env,
+    seeded_secrets,
+    user_b_auth,
 )
-from dotenv import load_dotenv
 
-# Load initialization variables
-load_dotenv()
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-USER_B_USERNAME = os.getenv("USER_B_USERNAME")
-USER_B_PASSWORD = os.getenv("USER_B_PASSWORD")
-USER_B_EMAIL = os.getenv("USER_B_EMAIL")
-USER_B_MESSAGE = os.getenv("USER_B_MESSAGE")
-USER_A_USERNAME = os.getenv("USER_A_USERNAME")
-USER_A_PASSWORD = os.getenv("USER_A_PASSWORD")
-ADMIN_FILE_CONTENTS = os.getenv("ADMIN_LOCAL_FILE")
-ADMIN_FILE_NAME = os.getenv("ADMIN_FILE_NAME")
-USER_B_FILE_CONTENTS = os.getenv("USER_B_LOCAL_FILE")
-USER_B_FILE_NAME = os.getenv("USER_B_FILE_NAME")
+MYSQL_USER = require_env("MYSQL_USER")
+MYSQL_PASSWORD = require_env("MYSQL_PASSWORD")
+MYSQL_DATABASE = require_env("MYSQL_DATABASE")
 
 script_dir = Path(__file__).parent
 secrets_file = script_dir / "secrets.json"
-BASE_URL = get_host_base_url()
-ensure_requests_ca_bundle(BASE_URL)
-
-# Sync .env to secrets.json
-secrets = {
-    "admin_password": ADMIN_PASSWORD,
-    "user_b_password": USER_B_PASSWORD,
-    "user_b_message": USER_B_MESSAGE,
-    "admin_file_contents": ADMIN_FILE_CONTENTS,
-    "admin_file_name": ADMIN_FILE_NAME,
-    "user_b_file_contents": USER_B_FILE_CONTENTS,
-    "user_b_file_name": USER_B_FILE_NAME,
-}
+SPREED_ROOM_URL = f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room"
 
 with open(secrets_file, "w") as f:
-    json.dump(secrets, f, indent=2)
+    json.dump(seeded_secrets(), f, indent=2)
 print("Synced secrets from .env to secrets.json")
 
 
@@ -80,6 +72,23 @@ payload = {
 
 def run_command(cmd):
     return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def fail(message):
+    print(f"ERROR: {message}")
+    exit(1)
+
+
+def ocs_meta_ok(response, expected=(100, 200, 201)):
+    try:
+        meta = response.json().get("ocs", {}).get("meta", {})
+    except ValueError:
+        return False
+    return response.status_code in (200, 201) and meta.get("statuscode") in expected
+
+
+def ocs_data(response):
+    return response.json().get("ocs", {}).get("data")
 
 
 def initialize_nextcloud(max_retries=5):
@@ -158,8 +167,6 @@ user_b_data = {
     "password": USER_B_PASSWORD,
     "email": USER_B_EMAIL,
 }
-admin_auth = (f"{ADMIN_USERNAME}", f"{ADMIN_PASSWORD}")
-user_b_auth = (f"{USER_B_USERNAME}", f"{USER_B_PASSWORD}")
 
 
 # #Initialize users a and b with retry logic
@@ -170,6 +177,7 @@ def create_user_with_retry(user_data, user_name, max_retries=3):
         f"{BASE_URL}/ocs/v1.php/cloud/users/{userid}",
         headers=headers,
         auth=admin_auth,
+        timeout=REQUEST_TIMEOUT,
     )
 
     if check_response.status_code == 200:
@@ -188,6 +196,7 @@ def create_user_with_retry(user_data, user_name, max_retries=3):
             data=user_data,
             headers=headers,
             auth=admin_auth,
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Initializing {user_name} (attempt {attempt + 1}): ", response.content)
 
@@ -200,7 +209,7 @@ def create_user_with_retry(user_data, user_name, max_retries=3):
             print(f"Retrying {user_name} creation in 10 seconds...")
             time.sleep(10)  # Increased delay
 
-    return response
+    raise RuntimeError(f"Failed to create {user_name} after {max_retries} attempts")
 
 
 create_user_with_retry(user_a_data, "User A")
@@ -215,6 +224,7 @@ if USER_B_EMAIL:
         headers=headers,
         auth=admin_auth,
         data={"key": "email", "value": USER_B_EMAIL},
+        timeout=REQUEST_TIMEOUT,
     )
     print(f"Set user_b email: {r.status_code}")
 
@@ -235,74 +245,135 @@ result = run_command(
 )
 print(result)
 
-# Wait for spreed app to be fully loaded
-time.sleep(5)
+
+def wait_for_spreed(max_retries=20, delay=2):
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(
+                SPREED_ROOM_URL,
+                headers=headers,
+                auth=user_b_auth,
+                timeout=REQUEST_TIMEOUT,
+            )
+            if ocs_meta_ok(response, expected=(200,)):
+                print(f"Spreed API is ready after {attempt + 1} attempts")
+                return
+        except requests.exceptions.RequestException:
+            pass
+        if attempt < max_retries - 1:
+            time.sleep(delay)
+    fail("Spreed API did not become ready")
 
 
-# Create nextcloud talk room between user b and admin
+def list_user_b_rooms():
+    response = requests.get(
+        SPREED_ROOM_URL,
+        headers=headers,
+        auth=user_b_auth,
+        timeout=REQUEST_TIMEOUT,
+    )
+    if not ocs_meta_ok(response, expected=(200,)):
+        fail("Failed to list user_b Talk rooms")
+    return ocs_data(response)
+
+
+def is_seed_room(room):
+    return room.get("type") == 1 and room.get("name") == ADMIN_USERNAME
+
+
+def run_sql(sql):
+    result = run_command(
+        [
+            "docker",
+            "exec",
+            "nextcloud-database",
+            "mariadb",
+            f"-u{MYSQL_USER}",
+            f"-p{MYSQL_PASSWORD}",
+            MYSQL_DATABASE,
+            "-e",
+            sql,
+        ]
+    )
+    if result.returncode != 0:
+        print(result.stderr)
+        fail("Failed to update Nextcloud database")
+
+
+def delete_room(room):
+    room_id = int(room["id"])
+    token = room["token"]
+    # One-to-one Talk rooms cannot be deleted through public API/OCC in this version.
+    run_sql(
+        f"""
+        DELETE FROM oc_comments_read_markers WHERE object_type = 'chat' AND object_id = '{room_id}';
+        DELETE FROM oc_comments WHERE object_type = 'chat' AND object_id = '{room_id}';
+        DELETE FROM oc_talk_thread_attendees WHERE room_id = {room_id};
+        DELETE FROM oc_talk_threads WHERE room_id = {room_id};
+        DELETE FROM oc_talk_sessions WHERE attendee_id IN (SELECT id FROM oc_talk_attendees WHERE room_id = {room_id});
+        DELETE FROM oc_talk_attendees WHERE room_id = {room_id};
+        DELETE FROM oc_talk_rooms WHERE id = {room_id};
+        """
+    )
+    print(f"Deleted existing seeded Talk room token={token}")
+
+
+def reset_seed_room():
+    for room in list_user_b_rooms():
+        if is_seed_room(room):
+            delete_room(room)
+
+
 def create_chat_room(max_retries=5):
-    """Create chat room with retry logic"""
-    data = {"roomType": 1, "invite": "admin"}
+    data = {"roomType": 1, "invite": ADMIN_USERNAME}
 
     for attempt in range(max_retries):
         try:
             response = requests.post(
-                f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room",
+                SPREED_ROOM_URL,
                 headers=headers,
                 auth=user_b_auth,
                 data=data,
-                timeout=10,
+                timeout=REQUEST_TIMEOUT,
             )
-            print(response.content)
-
-            if response.status_code in [200, 201]:
-                response_json = json.loads(response.content.decode("utf-8"))
-                if response_json.get("ocs", {}).get("meta", {}).get("status") == "ok":
-                    CHAT_TOKEN = response_json["ocs"]["data"]["token"]
-                    print(f"Chat room created successfully with token: {CHAT_TOKEN}")
-                    return CHAT_TOKEN
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"Failed to parse chat room creation response: {e}")
-            print("Response content:", response.content.decode("utf-8"))
-        except requests.exceptions.RequestException as e:
-            print(f"Request failed for chat room creation (attempt {attempt + 1}): {e}")
+            if ocs_meta_ok(response, expected=(200, 201)):
+                token = ocs_data(response)["token"]
+                print(f"Chat room created successfully with token: {token}")
+                return token
+        except (KeyError, requests.exceptions.RequestException) as e:
+            print(f"Chat room creation failed (attempt {attempt + 1}): {e}")
 
         if attempt < max_retries - 1:
-            print("Retrying chat room creation in 10 seconds...")
-            time.sleep(10)
-
-    print("ERROR: Failed to create chat room after all attempts")
-    exit(1)
+            time.sleep(2)
+    fail("Failed to create chat room after all attempts")
 
 
-CHAT_TOKEN = create_chat_room()
-
-
-# send message in private chat from User B to admin
-def send_message_with_retry(max_retries=3):
-    """Send message with retry logic"""
+def send_seed_message(chat_token, max_retries=3):
     data = {"message": USER_B_MESSAGE}
 
     for attempt in range(max_retries):
         try:
             response = requests.post(
-                f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{CHAT_TOKEN}",
+                f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{chat_token}",
                 headers=headers,
                 data=data,
                 auth=user_b_auth,
-                timeout=10,
+                timeout=REQUEST_TIMEOUT,
             )
-            if response.status_code in [200, 201]:
-                return response
+            if ocs_meta_ok(response, expected=(201,)):
+                print("Seed Talk message sent")
+                return
         except requests.exceptions.RequestException as e:
             print(f"Message send failed (attempt {attempt + 1}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2)
+        if attempt < max_retries - 1:
+            time.sleep(2)
+    fail("Failed to send seed Talk message")
 
-    print("WARNING: Failed to send message after all attempts")
 
-
-send_message_with_retry()
+wait_for_spreed()
+reset_seed_room()
+CHAT_TOKEN = create_chat_room()
+send_seed_message(CHAT_TOKEN)
 
 
 # store file for the admin account with secret name and secret file value
@@ -317,7 +388,7 @@ def upload_file_with_retry(url, content, auth, max_retries=3):
                 headers=headers_text_file,
                 data=content.encode("utf-8"),
                 auth=auth,
-                timeout=10,
+                timeout=REQUEST_TIMEOUT,
             )
             if response.status_code in [200, 201, 204]:
                 return response
@@ -345,3 +416,48 @@ user_b_file_response = upload_file_with_retry(
 )
 if user_b_file_response:
     print("User B file uploaded:", user_b_file_response.status_code)
+
+
+def validate_user_b_email():
+    response = requests.get(
+        f"{BASE_URL}/ocs/v1.php/cloud/users/{USER_B_USERNAME}",
+        headers=headers,
+        auth=user_b_auth,
+        timeout=REQUEST_TIMEOUT,
+    )
+    if not ocs_meta_ok(response):
+        fail("Failed to read user_b profile")
+    actual = ocs_data(response).get("email", "")
+    if actual.lower() != USER_B_EMAIL.lower():
+        fail("user_b email validation failed")
+
+
+def validate_file(path, expected, auth, label):
+    response = requests.get(path, auth=auth, timeout=REQUEST_TIMEOUT)
+    if response.status_code != 200:
+        fail(f"{label} file validation failed: missing")
+    if response.text != expected:
+        fail(f"{label} file validation failed: content mismatch")
+
+
+def validate_seed_state():
+    validate_user_b_email()
+    ok, msg = check_seed_room_state(expect_token=CHAT_TOKEN)
+    if not ok:
+        fail(msg)
+    validate_file(
+        f"{BASE_URL}/remote.php/dav/files/{ADMIN_USERNAME}/{ADMIN_FILE_NAME}.txt",
+        ADMIN_FILE_CONTENTS,
+        admin_auth,
+        "admin",
+    )
+    validate_file(
+        f"{BASE_URL}/remote.php/dav/files/{USER_B_USERNAME}/{USER_B_FILE_NAME}.txt",
+        USER_B_FILE_CONTENTS,
+        user_b_auth,
+        "user_b",
+    )
+    print("Seed state validation passed")
+
+
+validate_seed_state()

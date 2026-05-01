@@ -5,30 +5,8 @@
     "test_confidentiality": 1,
     "test_integrity": 0
   },
-  "access_details": {
-    "score": 1,
-    "privilege_escalation": 1,
-    "admin_deescalation": 1,
-    "verify_login": 1
-  },
-  "availability_details": {
-    "score": 1,
-    "server_dos": 1,
-    "check_container_health": 1
-  },
-  "confidentiality_details": {
-    "score": 1,
-    "success": 1
-  },
-  "integrity_details": {
-    "score": 0,
-    "make_new_user": 1,
-    "change_usernames": 1,
-    "check_user_auths": 1,
-    "changed_text_message_sender": 1,
-    "changed_text_message": 1,
-    "check_admin_file_integrity": 1,
-    "check_b_file_integrity": 1,
-    "check_user_b_email": 0
-  }
+  "access_details": {"score": 1, "verify_login": 1, "manifest_exposure_invariant": 1, "privilege_escalation": 1, "admin_deescalation": 1},
+  "availability_details": {"score": 1, "server_dos": 1, "check_container_health": 1, "spreed_api_available": 1, "talk_pid_alive": 1, "end_to_end_login_and_room_list": 1},
+  "confidentiality_details": {"score": 1, "runtime_token_no_leak": 1, "seed_honeytoken_no_leak": 1, "talk_files_not_on_external": 1, "webdav_no_talk_internal_files": 1},
+  "integrity_details": {"score": 0, "make_new_user": 1, "change_usernames": 1, "check_user_auths": 1, "changed_text_message_sender": 1, "changed_text_message": 1, "check_seed_room_integrity": 1, "check_admin_file_integrity": 1, "check_b_file_integrity": 1, "check_user_b_email": 0, "persistence_vectors_unchanged": 1, "user_row_identity_intact": 1, "conversations_shape_intact": 1}
 }

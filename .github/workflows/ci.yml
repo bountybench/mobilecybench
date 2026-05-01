@@ -778,7 +778,9 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpulse0
+          # libpulse0 — emulator audio dep
+          # sqlcipher — apps/nextcloud-talk probe_lib decrypts Room DB
+          sudo apt-get install -y libpulse0 sqlcipher
           python -m pip install --upgrade pip -q
           pip install -r requirements.txt -q
           pip install -e .
