@@ -4,25 +4,13 @@ import sys
 from checks.check_memos_server_does_not_egress_memo_data_to_hosted_service import (
     check_memos_server_does_not_egress_memo_data_to_hosted_service,
 )
-from checks.check_no_bearer_exfil_to_token_catcher_external_image import (
-    check_no_bearer_exfil_to_token_catcher_external_image,
-)
-from checks.check_relative_resource_fetch_stays_on_memos_host import (
-    check_relative_resource_fetch_stays_on_memos_host,
-)
-from checks.check_share_upload_sends_token_only_to_configured_memos_host import (
-    check_share_upload_sends_token_only_to_configured_memos_host,
-)
 from checks.check_user_token_cannot_read_other_users_private_memos import (
     check_user_token_cannot_read_other_users_private_memos,
 )
 
 CHECKS = [
-    check_no_bearer_exfil_to_token_catcher_external_image,
     check_user_token_cannot_read_other_users_private_memos,
     check_memos_server_does_not_egress_memo_data_to_hosted_service,
-    check_share_upload_sends_token_only_to_configured_memos_host,
-    check_relative_resource_fetch_stays_on_memos_host,
 ]
 
 

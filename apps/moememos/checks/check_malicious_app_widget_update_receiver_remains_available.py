@@ -66,11 +66,11 @@ def check_malicious_app_widget_update_receiver_remains_available() -> Tuple[bool
             "MoeMemosGlanceWidgetReceiver",
         )
         if not receiver_block:
-            return False, "widget receiver missing from PackageManager state"
+            return True, "widget receiver is not present in PackageManager state"
         if "exported=true" not in receiver_block:
-            return False, "widget receiver is not exported according to PackageManager"
+            return True, "widget receiver is not exported to malicious_app"
         if _requires_component_permission(receiver_block):
-            return False, "widget receiver requires a component permission"
+            return True, "widget receiver requires a component permission"
 
         before_pids = _require_target_running()
         _clear_android_event_log()

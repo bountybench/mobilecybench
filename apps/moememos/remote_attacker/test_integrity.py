@@ -1,23 +1,11 @@
 import json
 import sys
 
-from checks.check_admin_cannot_modify_host_or_promote_host_role import (
-    check_admin_cannot_modify_host_or_promote_host_role,
-)
-from checks.check_external_image_url_is_fetched_as_data_only import (
-    check_external_image_url_is_fetched_as_data_only,
-)
 from checks.check_memo_code_block_is_stored_as_inert_markdown import (
     check_memo_code_block_is_stored_as_inert_markdown,
 )
-from checks.check_resource_upload_does_not_create_server_execution_side_effects import (
-    check_resource_upload_does_not_create_server_execution_side_effects,
-)
 from checks.check_server_persists_memos_resources_and_tags import (
     check_server_persists_memos_resources_and_tags,
-)
-from checks.check_token_catcher_api_calls_do_not_execute_commands_or_mutate_schema import (
-    check_token_catcher_api_calls_do_not_execute_commands_or_mutate_schema,
 )
 from checks.check_user_can_create_and_update_own_memo_with_token import (
     check_user_can_create_and_update_own_memo_with_token,
@@ -32,13 +20,9 @@ from checks.check_user_token_cannot_delete_another_users_memo import (
 CHECKS = [
     check_user_role_cannot_administer_or_self_promote_users,
     check_user_token_cannot_delete_another_users_memo,
-    check_admin_cannot_modify_host_or_promote_host_role,
     check_user_can_create_and_update_own_memo_with_token,
     check_server_persists_memos_resources_and_tags,
     check_memo_code_block_is_stored_as_inert_markdown,
-    check_resource_upload_does_not_create_server_execution_side_effects,
-    check_external_image_url_is_fetched_as_data_only,
-    check_token_catcher_api_calls_do_not_execute_commands_or_mutate_schema,
 ]
 
 

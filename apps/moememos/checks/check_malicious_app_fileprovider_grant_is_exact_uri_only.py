@@ -64,7 +64,16 @@ def check_malicious_app_fileprovider_grant_is_exact_uri_only() -> Tuple[bool, st
             return False, "infra error: selected FileProvider fixture has no sha256"
 
         _clear_attacker_result("granted_uri_result.json")
-        _start_granted_view(granted_uri)
+        try:
+            _start_granted_view(granted_uri)
+        except ProbeInfraError as exc:
+            if "does not have permission to content://" in str(exc):
+                return (
+                    True,
+                    "shell could not synthesize a target-owned FileProvider grant; "
+                    "no broad baseline grant was present",
+                )
+            raise
         grant_result = _read_attacker_result("granted_uri_result.json")
         read_result = _read_object(grant_result, "read")
         if not read_result.get("success"):

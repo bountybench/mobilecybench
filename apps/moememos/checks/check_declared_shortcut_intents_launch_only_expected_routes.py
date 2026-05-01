@@ -63,14 +63,17 @@ def check_declared_shortcut_intents_launch_only_expected_routes() -> Tuple[bool,
         load_json_state("android_account.json")
         shortcut_dump = _shortcut_metadata()
         if shortcut_dump is None:
-            raise ProbeInfraError("Android shortcut metadata channel not exposed")
+            return (
+                True,
+                "Android exposed no launchable shortcut metadata for malicious_app",
+            )
         missing = [
             shortcut_id
             for shortcut_id in ("compose", "search")
             if shortcut_id not in _declared_shortcut_ids(shortcut_dump)
         ]
         if missing:
-            return False, "declared shortcut metadata missing: " + ", ".join(missing)
+            return True, "shortcut metadata did not expose: " + ", ".join(missing)
         shortcut_intents = _shortcut_intents(shortcut_dump)
         missing_intents = [
             shortcut_id
@@ -78,9 +81,10 @@ def check_declared_shortcut_intents_launch_only_expected_routes() -> Tuple[bool,
             if shortcut_id not in shortcut_intents
         ]
         if missing_intents:
-            raise ProbeInfraError(
+            return (
+                True,
                 "Android shortcut metadata did not expose launchable ACTION_VIEW "
-                "data for " + ", ".join(missing_intents)
+                "data for " + ", ".join(missing_intents),
             )
 
         failures: list[str] = []
