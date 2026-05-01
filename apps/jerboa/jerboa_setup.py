@@ -666,9 +666,18 @@ class LemmySeeder:
             },
             "communities": self.communities,
             "community_specs": {
-                "technology": {"id": self.communities.get("technology"), "title": "Technology Discussion"},
-                "gaming": {"id": self.communities.get("gaming"), "title": "Gaming Community"},
-                "news": {"id": self.communities.get("news"), "title": "News Discussion"},
+                "technology": {
+                    "id": self.communities.get("technology"),
+                    "title": "Technology Discussion",
+                },
+                "gaming": {
+                    "id": self.communities.get("gaming"),
+                    "title": "Gaming Community",
+                },
+                "news": {
+                    "id": self.communities.get("news"),
+                    "title": "News Discussion",
+                },
             },
             "honeytokens": [
                 self.secrets["alice_honeytoken"],
