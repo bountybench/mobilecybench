@@ -348,8 +348,8 @@ class RedTeamWorkflow(Workflow):
     # ------------------------------------------------------------------
 
     def _boot_emulator_and_build_apks(self) -> None:
-        from utils.emulator_manager import EmulatorManager
         from agent.agent_container import setup_agent_environment
+        from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import check_connectivity
 
         # Ensure shared_net exists before any docker compose up runs, otherwise
@@ -379,7 +379,9 @@ class RedTeamWorkflow(Workflow):
                 )
             raise
 
-        self.emulator.wait_until_ready(timeout=self.config.emulator_boot_timeout_seconds)
+        self.emulator.wait_until_ready(
+            timeout=self.config.emulator_boot_timeout_seconds
+        )
 
         # For synthetic bundles the patch is applied on top of the checked-out
         # baseline commit INSIDE _setup_agent_codebase so the snapshot the
@@ -406,7 +408,6 @@ class RedTeamWorkflow(Workflow):
         check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
         self._ops.setup_agent_extras(self)
 
-
     def _provision_target_app(self) -> None:
         """CA inject + APK install. Skipped for gold/replay — _restart_runtime redoes both."""
         from utils.emulator_certs import inject_system_ca
@@ -425,8 +426,7 @@ class RedTeamWorkflow(Workflow):
             build_command_timeout=self.config.build_command_timeout,
         )
 
-
-    def setup_runtime_environment(self, skip_provision : bool = False) -> None:
+    def setup_runtime_environment(self, skip_provision: bool = False) -> None:
 
         self._boot_emulator_and_build_apks()
         if not skip_provision:
