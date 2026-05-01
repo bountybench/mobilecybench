@@ -18,8 +18,8 @@ Shall-nots enforced:
             URLs / hosts shall appear that weren't in baseline.
     I-MA-3 (was C009): any persistent same-process control mutation that
             survives into RKStorage. Implemented as a strict subset of
-            I-MA-1 (settings.serverURL change OR added off-host config-key
-            OR changed config-key for a baseline host).
+            I-MA-1 (settings.serverURL change OR added config-key/changed
+            config value that points off the baseline hosts).
 
 What this detects:
     The malicious_app induced the Jitsi client to write attacker-controlled

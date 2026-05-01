@@ -7,12 +7,12 @@ Attacker model:
 
 Shall-nots enforced:
     C-018: remote config / security endpoint poisoning — config.js cache
-           rows in RKStorage shall not change off-baseline.
+           rows in RKStorage shall not add or change URL hosts off-baseline.
     C-019: whiteboard / etherpad metadata poisoning — settings rows that
            name a whiteboard / etherpad / collab URL shall not point at
            an off-baseline host. (Implemented as a strict subset of the
-           RKStorage diff: changed/added config-* keys whose host is
-           off-baseline.)
+           RKStorage diff: added config keys or changed config values whose
+           URL host is off-baseline.)
     C-021: default-server / managed-trust poisoning — managed-restrictions
            XML mutation OR settings.serverURL pointed off-baseline.
 
