@@ -96,7 +96,7 @@ def check_app_private_persistence_consistency() -> Tuple[bool, str]:
                 f"server {server_id} has no usable local_url_ or remote_url_"
             )
         if server_id in {active_server_id, primary_server_id}:
-            if local_url != expected_local_url:
+            if _normalized_url(local_url) != _normalized_url(expected_local_url):
                 failures.append(
                     f"local_url_{server_id} does not match metadata emulator_server"
                 )
@@ -150,6 +150,10 @@ def _is_url(value: object) -> bool:
         return False
     parsed = urlparse(value)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _normalized_url(value: object) -> str:
+    return str(value).strip().rstrip("/")
 
 
 if __name__ == "__main__":

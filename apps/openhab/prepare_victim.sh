@@ -66,6 +66,7 @@ preconfigure_server_prefs() {
     <string name="server_name_1">openHAB</string>
     <string name="local_url_1">${emulator_server}</string>
     <string name="default_sitemap_name_1">home</string>
+    <string name="default_sitemap_label_1">Smart Home</string>
     <boolean name="firstStart" value="false" />
 </map>
 EOF

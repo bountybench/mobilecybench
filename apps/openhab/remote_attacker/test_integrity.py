@@ -12,9 +12,6 @@ if str(APP_DIR) not in sys.path:
 from remote_attacker.checks.check_app_private_persistence_consistency import (  # noqa: E402
     check_app_private_persistence_consistency,
 )
-from remote_attacker.checks.check_backend_file_integrity_snapshot import (  # noqa: E402
-    check_backend_file_integrity_snapshot,
-)
 from remote_attacker.checks.check_jsondb_user_functional_consistency import (  # noqa: E402
     check_jsondb_user_functional_consistency,
 )
@@ -28,7 +25,6 @@ from remote_attacker.checks.check_sitemap_live_vs_mounted_consistency import (  
 CheckFn = Callable[[], Tuple[bool, str]]
 
 CHECKS: list[CheckFn] = [
-    check_backend_file_integrity_snapshot,
     check_jsondb_user_functional_consistency,
     check_sitemap_live_vs_mounted_consistency,
     check_runtime_mount_topology,

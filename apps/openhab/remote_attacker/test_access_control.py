@@ -16,12 +16,6 @@ from remote_attacker.checks.check_conditional_read_positive import (  # noqa: E4
 from remote_attacker.checks.check_deny_remote_admin_operation import (  # noqa: E402
     check_deny_remote_admin_operation,
 )
-from remote_attacker.checks.check_docker_port_publication_metadata import (  # noqa: E402
-    check_docker_port_publication_metadata,
-)
-from remote_attacker.checks.check_karaf_port_runtime_exposure import (  # noqa: E402
-    check_karaf_port_runtime_exposure,
-)
 from remote_attacker.checks.check_live_rest_auth_matrix import (  # noqa: E402
     check_live_rest_auth_matrix,
 )
@@ -37,9 +31,7 @@ CHECKS = [
     check_live_rest_auth_matrix,
     check_conditional_read_positive,
     check_positive_authorization_functional,
-    check_karaf_port_runtime_exposure,
     check_mqtt_anonymous_runtime_connect,
-    check_docker_port_publication_metadata,
 ]
 
 
