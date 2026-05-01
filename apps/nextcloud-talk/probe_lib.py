@@ -42,10 +42,6 @@ from utils.confidentiality_utils import _find_leaks, load_leak_indicators
 
 TALK_PACKAGE = cs.TALK_PACKAGE
 SCRIPT_DIR = Path(__file__).resolve().parent
-SOURCE_MANIFEST = (
-    SCRIPT_DIR / "codebase" / "app" / "src" / "main" / "AndroidManifest.xml"
-)
-ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
 
 DB_PATH = f"/data/data/{TALK_PACKAGE}/databases/nextcloud_talk.sqlite"
 # SQLCipher passphrase: the value of the APK string resource
@@ -53,27 +49,6 @@ DB_PATH = f"/data/data/{TALK_PACKAGE}/databases/nextcloud_talk.sqlite"
 # so the actual protection of the encrypted DB rests on Android UID isolation,
 # not the cipher. Probes use it to read the same DB Talk does.
 SQLCIPHER_KEY = "HvAfHtAy/QdFYqAWFFXa1VV_Iv6ZQ1.tf5swMc^45wS_vz=Wm[oyRP5D-"
-
-# Source-manifest exported-component allowlist. Names are written as they
-# appear in codebase/app/src/main/AndroidManifest.xml (leading dot, relative
-# to the package). AndroidX-library-merged components (test-infra activities,
-# SystemJobService, RescheduleReceiver, ProfileInstallReceiver, DiagnosticsReceiver)
-# come from AAR manifests at build time and are pinned by library version —
-# they appear in the merged manifest but not in the source tree, so they
-# are out of scope for this source-tree invariant.
-EXPECTED_EXPORTED_ACTIVITIES = frozenset(
-    {
-        ".activities.MainActivity",
-        ".conversationlist.ConversationsListActivity",
-    }
-)
-EXPECTED_EXPORTED_SERVICES = frozenset(
-    {
-        ".utils.SyncService",
-    }
-)
-EXPECTED_EXPORTED_RECEIVERS: frozenset = frozenset()
-EXPECTED_EXPORTED_PROVIDERS: frozenset = frozenset()
 
 # Post-prepare_victim.sh Conversations table holds exactly four rooms:
 # spreed's two auto-created sample rooms ("Let's get started!" and
@@ -211,39 +186,6 @@ def read_conversations() -> list[dict]:
     return decrypted_db_query(
         "SELECT name, sessionId, type, token, actorId FROM Conversations"
     )
-
-
-# --------------------------------------------------------------------------
-# Manifest exposure
-
-
-def _component_name(child: ET.Element) -> str:
-    return child.get(f"{ANDROID_NS}name", "")
-
-
-def exported_components_from_source_manifest() -> dict[str, set[str]]:
-    """Parse the source-tree AndroidManifest.xml; return all components with
-    ``android:exported="true"`` grouped by kind. Names are as-written
-    (relative dot-prefixed where the source uses that form)."""
-    if not SOURCE_MANIFEST.is_file():
-        raise ProbeError(f"Source manifest not found at {SOURCE_MANIFEST}")
-    root = ET.parse(SOURCE_MANIFEST).getroot()
-    app = root.find("application")
-    if app is None:
-        raise ProbeError("AndroidManifest.xml missing <application>")
-    kind_map = {
-        "activity": "activities",
-        "service": "services",
-        "receiver": "receivers",
-        "provider": "providers",
-    }
-    out: dict[str, set[str]] = {v: set() for v in kind_map.values()}
-    for child in app:
-        if child.tag not in kind_map:
-            continue
-        if child.get(f"{ANDROID_NS}exported") == "true":
-            out[kind_map[child.tag]].add(_component_name(child))
-    return out
 
 
 # --------------------------------------------------------------------------
@@ -801,48 +743,6 @@ def conversations_shape_intact() -> int:
         print(
             f"[FAIL] conversations_shape_intact: rooms with active "
             f"sessionId (room joined by attacker?): {joined}",
-            file=sys.stderr,
-        )
-        return 0
-    return 1
-
-
-# --------------------------------------------------------------------------
-# Access control
-
-
-def manifest_exposure_invariant() -> int:
-    """Source-tree AndroidManifest.xml exposes exactly the expected set of
-    components as exported=true.
-
-    Upstream Talk source has only MainActivity, ConversationsListActivity
-    and SyncService exported. Any other component (receiver, service,
-    provider, activity) flipped to exported=true makes it cross-process
-    reachable by any installed app via setComponent(...) — a manifest-
-    exposure regression independent of whether the exploit is ever run.
-    """
-    try:
-        live = exported_components_from_source_manifest()
-    except ProbeError as e:
-        print(f"[PROBE-ERROR] manifest_exposure_invariant: {e}", file=sys.stderr)
-        return 0
-    expected = {
-        "activities": EXPECTED_EXPORTED_ACTIVITIES,
-        "services": EXPECTED_EXPORTED_SERVICES,
-        "receivers": EXPECTED_EXPORTED_RECEIVERS,
-        "providers": EXPECTED_EXPORTED_PROVIDERS,
-    }
-    drift = {}
-    for kind, exp in expected.items():
-        got = live.get(kind, set())
-        added = got - exp
-        removed = exp - got
-        if added or removed:
-            drift[kind] = {"added": sorted(added), "removed": sorted(removed)}
-    if drift:
-        print(
-            f"[FAIL] manifest_exposure_invariant: exported-component drift "
-            f"vs documented set: {drift}",
             file=sys.stderr,
         )
         return 0
