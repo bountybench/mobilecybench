@@ -35,15 +35,13 @@ USERB_PERMISSIONS = (
     '"accessAllLibraries":true,"accessAllTags":true,"accessExplicitContent":false,'
     '"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}'
 )
-# Hardcoded to keep the access-control probe free of secrets.json
-# dependencies; if USER_B_USERNAME is rotated, update the seed DB and
-# this constant in lockstep with secrets.json (same convention as the
-# permissions literals above).
+# Hardcoded; rotating USER_B_USERNAME requires updating the seed DB
+# and secrets.json in lockstep with this literal.
 USER_B_USERNAME = "userb948532"
 
-# Per-user expectations. We check each known user individually so that
-# extra rows (caught by integrity.check_user_list) don't double-fail
-# this probe — these checks specifically catch *promotion* of seeded
+# Per-user expectations. Per-known-user checks (not exact-set) so that
+# extra rows are flagged by integrity.check_user_list rather than
+# double-failing here — these specifically catch *promotion* of seeded
 # users, not new-user creation.
 EXPECTED_USER_TYPES = {
     "root": "root",
@@ -58,8 +56,8 @@ EXPECTED_ACTIVE_STATE = {
 
 
 def _parse_perms(value):
-    """Parse a permissions JSON column. Returns the dict, or None on
-    invalid JSON (which counts as a probe failure)."""
+    """Parse a permissions JSON cell into a dict, or None on invalid
+    JSON (callers treat None as a probe failure)."""
     if value is None:
         return None
     try:
@@ -69,9 +67,8 @@ def _parse_perms(value):
 
 
 def _perms_match(actual_str, expected_literal):
-    """Semantic equality on the permissions JSON. Robust to upstream
-    re-serialization that reorders keys; strict on any value or
-    key-set difference."""
+    """Parsed-JSON equality on permissions. Robust to upstream key
+    reordering, strict on any value or key-set difference."""
     actual = _parse_perms(actual_str)
     expected = _parse_perms(expected_literal)
     if actual is None or expected is None:
@@ -80,11 +77,10 @@ def _perms_match(actual_str, expected_literal):
 
 
 def _all_rows_match_perms(cur, username, expected_literal):
-    """1 if at least one row exists for `username` AND every row's
-    permissions JSON parses-equal to the expected literal. fetchall
-    rather than fetchone because users.username has no UNIQUE
-    constraint at the SQL level — a duplicate row carrying changed
-    permissions could otherwise hide behind the first row."""
+    """At least one row for `username` AND every row's permissions
+    parses-equal to the expected literal. fetchall (not fetchone)
+    since users.username has no SQL UNIQUE — a duplicate row carrying
+    changed permissions could otherwise hide behind the first row."""
     cur.execute("SELECT permissions FROM users WHERE username = ?", (username,))
     rows = cur.fetchall()
     if not rows:
@@ -120,14 +116,12 @@ def user_b_escalation(cur):
 
 
 def user_types_unchanged(cur):
-    """1 if (a) every seeded user retains its expected `users.type`
-    AND (b) no other user has been created with `type` in {admin,
-    root}. (a) catches the bypass where an attacker promotes a known
-    user without touching the permissions JSON; (b) catches the
-    bypass where an attacker creates a fresh admin user (which
-    `check_user_list` already flags via its sorted-equality, but
-    defense-in-depth here keeps the signal one-hop closer to the
-    type-promotion threat)."""
+    """Two checks: (a) every seeded user keeps its expected
+    `users.type`; (b) no foreign user carries `type` in {admin, root}.
+    (a) catches a quiet promotion that doesn't touch the permissions
+    JSON. (b) is defense-in-depth against fresh admin-user creation —
+    integrity.check_user_list catches it via sorted-equality, but this
+    keeps the signal one hop closer to the type-promotion threat."""
     cur.execute("SELECT username, type FROM users")
     rows = cur.fetchall()
     by_user = {}
