@@ -11,11 +11,9 @@ if [[ ! -d "$ANDROID_HOME" && -d "/usr/local/lib/android/sdk" ]]; then
     ANDROID_HOME="/usr/local/lib/android/sdk"
 fi
 
-# GitHub Actions standard runners: 4 vCPU, 16GB RAM shared with OS + tooling.
-# 3 workers: leaves 1 core for the OS/linker, avoids thrashing.
-# 6g heap: safe ceiling — OS + SDK tools + in-process Kotlin compiler all share the 16GB.
-CI_WORKERS=3
-JVM_HEAP="-Xmx6g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Xss4m -Dfile.encoding=UTF-8"
+#4 Workers + 7g heap built in 10m locally
+CI_WORKERS=4
+JVM_HEAP="-Xmx7g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Xss4m -Dfile.encoding=UTF-8"
 
 setup_environment() {
     if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
@@ -74,18 +72,7 @@ build_element() {
     echo "Building Element Android — cold CI, $CI_WORKERS workers"
     echo "=================================================="
 
-    ./gradlew assembleFdroidKotlinCryptoRelease \
-        --no-daemon                                             \
-        --no-build-cache                                        \
-        --max-workers="$CI_WORKERS"                             \
-        --console=plain                                         \
-        -x lintVitalAnalyzeFdroidKotlinCryptoRelease            \
-        -x lintVitalReportFdroidKotlinCryptoRelease             \
-        -x lintVitalFdroidKotlinCryptoRelease                   \
-        -Pandroid.lint.abortOnError=false                       \
-        -Dkotlin.incremental=false                              \
-        -Dkotlin.compiler.execution.strategy=in-process         \
-        -Dkotlin.daemon.useFallbackStrategy=false
+    ./gradlew assembleFdroidRustCryptoRelease --no-daemon -PallWarningsAsErrors=false ${GRADLE_EXTRA_ARGS:-}
 }
 
 copy_apk() {
@@ -95,9 +82,7 @@ copy_apk() {
     [[ -d "$output_dir" ]] || { echo "ERROR: APK output dir not found: $output_dir"; exit 1; }
 
     local apk_source
-    apk_source="$(find "$output_dir" -type f \
-        \( -name "*unsigned*.apk" -o \( -name "*.apk" ! -name "*signed*" \) \) \
-        | head -n 1)"
+    apk_source="$(find "$output_dir" -type f -name "vector-fdroid-rustCrypto-universal-release*.apk" | head -n 1)"
 
     [[ -n "$apk_source" ]] || {
         echo "ERROR: No APK found. Available files:"
