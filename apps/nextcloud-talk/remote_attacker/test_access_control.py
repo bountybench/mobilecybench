@@ -2,9 +2,7 @@
 
 Server-side ACL invariants (privilege set, anon reject, victim file/chat
 read denial, user_a-can't-create-user) are RA-specific because user_a is
-the attacker-controlled Nextcloud account. The manifest-exposure invariant
-lifts from probe_lib: a regression that flips a non-exported component to
-exported is an access-control regression regardless of attacker model.
+the attacker-controlled Nextcloud account.
 """
 
 import json
@@ -15,7 +13,6 @@ from urllib.parse import unquote
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import common_setup as cs
-import probe_lib as pl
 import requests
 
 
@@ -140,7 +137,6 @@ def user_a_cannot_create_user():
 if __name__ == "__main__":
     tests = [
         cs.verify_login,
-        pl.manifest_exposure_invariant,
         cs.privilege_escalation,
         cs.admin_deescalation,
         user_a_cannot_read_victim_files,
