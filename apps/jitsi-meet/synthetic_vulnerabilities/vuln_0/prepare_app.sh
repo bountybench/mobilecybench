@@ -224,6 +224,19 @@ reset_device_state() {
     log "Clearing logcat ring buffer..."
     adb shell logcat -c 2>/dev/null || true
 
+    # The clear above also wipes the verifier-owned fence marker that
+    # capture_verifier_baseline.py emitted from start_runtime.sh. Without a
+    # re-emit, every fence-backed probe (denied_vector_provenance, C007, C012)
+    # raises InfraError and the new launch-provenance coverage is dead. Run
+    # the shared helper so phase isolation is preserved while probes can
+    # still locate the baseline boundary in current logcat.
+    local app_dir="${MCB_APP_DIR:-$SCRIPT_DIR/../..}"
+    if [ -x "$app_dir/reemit_logcat_fence.sh" ]; then
+        bash "$app_dir/reemit_logcat_fence.sh" || true
+    else
+        log "WARNING: $app_dir/reemit_logcat_fence.sh not found; fence-backed probes will SKIP"
+    fi
+
     log "Clearing Jitsi image cache (best-effort, requires root)..."
     adb root >/dev/null 2>&1 || true
     adb wait-for-device >/dev/null 2>&1 || true
