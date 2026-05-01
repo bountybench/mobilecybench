@@ -327,7 +327,7 @@ def run(
         _log_experiment_config(config, app_name, workflow)
 
         logger.info("Setting up runtime environment...")
-        workflow.setup_runtime_environment()
+        workflow.setup_runtime_environment(skip_provision=bool(exploit_source))
         logger.info("Runtime environment ready")
 
         if exploit_source:
