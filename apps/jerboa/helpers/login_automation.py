@@ -80,6 +80,81 @@ def find_field(d, selectors, timeout=2):
         time.sleep(0.5)
 
 
+def reset_app_task(d, package_name):
+    """Reset Jerboa's foreground task without wiping app-private files/state."""
+    d.shell(f"am force-stop {package_name}")
+    time.sleep(1)
+
+
+def wait_for_entry_state(d, timeout=30):
+    """
+    Wait for a real interactive Jerboa entry state after launch.
+
+    The Compose splash screen is stable enough to satisfy hierarchy-dump checks,
+    but it is not actionable. Jerboa then routes to Home, where automation can
+    see a changelog dialog (`Done`) or the home drawer icon (`Menu`). We also
+    accept landing directly on the login form if the UI stack is already there.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if d(text="Done").exists:
+            return "done"
+        if d(description="Menu").exists:
+            return "menu"
+        if d(text="Login").exists and d(textContains="assword").exists:
+            return "login"
+        if d(description="Logo").exists:
+            time.sleep(0.5)
+            continue
+        time.sleep(0.5)
+    return None
+
+
+def open_add_account_mode(d):
+    """
+    Open Jerboa's drawer add-account mode.
+
+    Codebase contract:
+    - anonymous state exposes "Anonymous", which toggles add-account mode
+    - logged-in drawer state renders a full-width clickable DrawerHeader above
+      the first main drawer item; tapping that header toggles add-account mode
+    """
+    add_account = d(text="Add Account")
+    if not add_account.exists:
+        add_account = d(text="Add account")
+    if add_account.exists:
+        return add_account
+
+    anonymous = d(text="Anonymous")
+    if anonymous.exists:
+        if click_then_expect(d, anonymous, add_account, timeout=10):
+            return add_account
+        return None
+
+    for drawer_item_text in ("Subscribed", "Local", "All", "Profile", "Inbox", "Settings"):
+        drawer_item = d(text=drawer_item_text)
+        if not drawer_item.exists:
+            continue
+        bounds = drawer_item.info.get("bounds", {})
+        top = bounds.get("top")
+        left = bounds.get("left")
+        right = bounds.get("right")
+        if top is None or left is None or right is None:
+            continue
+        # DrawerHeader is a full-width clickable box directly above the first
+        # main drawer item in Home.kt, so tapping midway between screen top and
+        # that first item opens add-account mode without relying on account-name
+        # text that Jerboa does not render as a drawer action.
+        x = (left + right) // 2
+        y = max(48, top // 2)
+        d.click(x, y)
+        if add_account.wait(timeout=5):
+            return add_account
+        break
+
+    return None
+
+
 def login_jerboa(instance_url, username, password):
     """
     Automate login to the Jerboa app.
@@ -109,6 +184,8 @@ def login_jerboa(instance_url, username, password):
     package_name = get_release_package(d)
     log(f"Using package: {package_name}")
 
+    reset_app_task(d, package_name)
+
     log("Launching Jerboa...")
     d.shell(f"am start -n {package_name}/com.jerboa.MainActivity")
 
@@ -131,32 +208,46 @@ def login_jerboa(instance_url, username, password):
     except Exception:
         pass
 
-    # --- Dismiss changelog if present ---
+    # --- Resolve the first actionable state ---
     done_button = d(text="Done")
     menu_icon = d(description="Menu")
-
-    if done_button.wait(timeout=5):
+    entry_state = wait_for_entry_state(d, timeout=20)
+    if entry_state == "done":
         log("Dismissing changelog...")
         if not click_then_expect(d, done_button, menu_icon, timeout=10):
             log("Error: Failed to dismiss changelog")
             return False
-    elif not menu_icon.wait(timeout=10):
+    elif entry_state == "menu":
+        pass
+    elif entry_state == "login":
+        menu_icon = None
+    else:
         log("Error: Menu icon not found")
         return False
 
-    # --- Navigate to Add account ---
-    anonymous = d(text="Anonymous")
-    if not click_then_expect(d, menu_icon, anonymous, timeout=10):
-        log("Error: Menu click failed or 'Anonymous' not found")
-        return False
+    # --- Navigate to the login form when starting from Home ---
+    if menu_icon is not None:
+        anonymous = d(text="Anonymous")
+        if not click_then_expect(
+            d,
+            menu_icon,
+            lambda: anonymous.exists
+            or d(text="Add Account").exists
+            or d(text="Add account").exists
+            or d(text="Local").exists
+            or d(text="All").exists
+            or d(text="Profile").exists,
+            timeout=10,
+        ):
+            log("Error: Menu click failed or drawer did not open")
+            return False
 
-    add_account = d(text="Add account")
-    if not click_then_expect(d, anonymous, add_account, timeout=10):
-        log("Error: 'Add account' not found")
-        return False
-
-    log("Clicking 'Add account'...")
-    add_account.click()
+        add_account = open_add_account_mode(d)
+        if add_account is None:
+            log("Error: Drawer opened but 'Add Account' could not be reached")
+            return False
+        log("Clicking 'Add Account'...")
+        add_account.click()
     instance_field = find_field(
         d,
         [
