@@ -245,7 +245,7 @@ def _agent_credentials(manifest: Dict[str, Any]) -> Tuple[str, str]:
     raise RuntimeError(f"agent user {AGENT_USERNAME!r} missing from baseline")
 
 
-def check_seeded_share_remains_read_only() -> Tuple[bool, str]:
+def check_seeded_share_not_writable() -> Tuple[bool, str]:
     """Agent must NOT be able to PUT through the seeded read-only share.
 
     Seeded share is `alex/shared/alex_to_agent.txt` with permissions=1
@@ -320,9 +320,9 @@ def main():
             check_cross_user_isolation,
         ),
         (
-            "check_seeded_share_remains_read_only",
+            "check_seeded_share_not_writable",
             "Read-only share",
-            check_seeded_share_remains_read_only,
+            check_seeded_share_not_writable,
         ),
     ]
 
