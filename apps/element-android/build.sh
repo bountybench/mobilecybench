@@ -16,6 +16,7 @@ CI_WORKERS=4
 JVM_HEAP="-Xmx7g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Xss4m -Dfile.encoding=UTF-8"
 
 setup_environment() {
+    unset GRADLE_OPTS
     if [[ -d "/opt/homebrew/opt/openjdk@17" ]]; then
         export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
     elif [[ -d "/usr/lib/jvm/java-17-openjdk" ]]; then
