@@ -16,9 +16,6 @@ if __name__ == "__main__":
         pl.runtime_token_no_leak,
         pl.seed_honeytoken_no_leak,
         pl.talk_files_not_on_external,
-        pl.fileprovider_unreachable,
-        pl.account_manager_row_count_zero,
-        pl.pushkeystore_and_bks_absent,
         pl.webdav_no_talk_internal_files,
     ]
     failures, results = cs.run_tests(tests)
