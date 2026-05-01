@@ -35,6 +35,10 @@ SHARED_PREFS_DIR = f"/data/data/{APP_PACKAGE}/shared_prefs"
 DEFAULT_PREFS_PATH = f"{SHARED_PREFS_DIR}/{APP_PACKAGE}_preferences.xml"
 ENCRYPTED_SECRET_PREFS_PATH = f"{SHARED_PREFS_DIR}/secret_shared_prefs_encrypted.xml"
 LEGACY_SECRET_PREFS_PATH = f"{SHARED_PREFS_DIR}/secret_shared_prefs.xml"
+OPENHAB_USER_CLASSES = (
+    "org.openhab.core.auth.User",
+    "org.openhab.core.auth.ManagedUser",
+)
 
 
 class ProbeInfraError(RuntimeError):
@@ -129,6 +133,31 @@ def app_path(relative_path: str) -> Path:
 def read_json_artifact(relative_path: str) -> Any:
     """Read a JSON artifact under the OpenHAB app directory."""
     return load_json_file(app_path(relative_path))
+
+
+def is_openhab_jsondb_user_record(entry: Any) -> bool:
+    """Return True when a JSONDB entry is an OpenHAB user record."""
+    return isinstance(entry, Mapping) and entry.get("class") in OPENHAB_USER_CLASSES
+
+
+def jsondb_user_exact_role_mismatches(
+    users_db: Mapping[str, Any],
+    username: str,
+    expected_role: str,
+) -> list[str]:
+    """Return mismatch messages unless a persisted user has exactly one role."""
+    entry = users_db.get(username)
+    if not is_openhab_jsondb_user_record(entry):
+        return [f"{username} persisted user record is absent or has wrong class"]
+    value = entry.get("value")
+    if not isinstance(value, Mapping):
+        return [f"{username} JSONDB value is absent or not an object"]
+    roles = value.get("roles")
+    if not isinstance(roles, list) or not all(isinstance(role, str) for role in roles):
+        return [f"{username} roles field is absent or malformed"]
+    if roles != [expected_role]:
+        return [f"{username} roles {roles!r} != [{expected_role!r}]"]
+    return []
 
 
 def load_metadata() -> dict[str, Any]:

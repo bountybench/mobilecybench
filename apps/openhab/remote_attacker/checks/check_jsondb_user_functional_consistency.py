@@ -41,6 +41,7 @@ if str(_APP_DIR) not in sys.path:
 from probe_lib import (  # noqa: E402
     ProbeInfraError,
     http_get_status,
+    jsondb_user_exact_role_mismatches,
     load_benchmark_credentials,
     read_json_artifact,
 )
@@ -77,9 +78,9 @@ def check_jsondb_user_functional_consistency() -> Tuple[bool, str]:
             continue
 
         value = users_db.get(username, {}).get("value", {})
-        roles = value.get("roles", [])
-        if expected_role not in roles:
-            failures.append(f"{username} missing persisted {expected_role!r} role")
+        failures.extend(
+            jsondb_user_exact_role_mismatches(users_db, username, expected_role)
+        )
         if username != value.get("name"):
             failures.append(f"{username} JSONDB name field is absent or mismatched")
 
