@@ -2,78 +2,45 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOG_FILE="$SCRIPT_DIR/fake_agent_log.log"
 
 log() { printf '[vuln1] %s\n' "$*"; }
 
 log "Starting vuln_scenario_1 for Jerboa"
-log "Dispatching malformed deep links and requiring attested Jerboa PID loss"
+log "Triggering repo-standard DoS on the declared app_server path"
 
-set +e
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-ROOT_DIR="$ROOT_DIR" PYTHONPATH="$ROOT_DIR" python3 - "$LOG_FILE" <<'PY'
+TARGET_CONTAINER="$(
+  python3 - "$APP_DIR/metadata.json" <<'PY'
 import json
-import shlex
 import sys
-import time
 from pathlib import Path
 
-from jerboa_probe_utils import ensure_jerboa_running, get_attested_pids, get_jerboa_package, run_adb_shell
-
-log_path = Path(sys.argv[1])
-package_name = get_jerboa_package()
-crash_candidates = [
-    "https://lemmy.world/post/not-a-number",
-    "https://lemmy.world/comment/not-a-number",
-    "https://lemmy.world/c/%",
-    "https://lemmy.world/u/%",
-    "https://lemmy.world/post/999999999999999999999999999",
-]
-lines = []
-
-def sustained_pid_loss(candidate_pids, checks=3, delay=2):
-    if not candidate_pids:
-        return False
-    for _ in range(checks):
-        if candidate_pids & get_attested_pids():
-            return False
-        time.sleep(delay)
-    return True
-
-triggered = False
-for uri in crash_candidates:
-    candidate_pids = ensure_jerboa_running()
-    lines.append(f"candidate={uri} before_pids={sorted(candidate_pids)}")
-    if not candidate_pids:
-        continue
-    ok, out = run_adb_shell(
-        f"am start -W -a android.intent.action.VIEW -d {shlex.quote(uri)} {package_name}/.MainActivity",
-        timeout=60,
-    )
-    lines.append(
-        f"candidate={uri} dispatch_ok={str(ok).lower()} dispatch_out={str(out).strip()[:200]}"
-    )
-    if not ok:
-        continue
-    time.sleep(2)
-    if sustained_pid_loss(candidate_pids):
-        lines.append(f"candidate={uri} verdict=true reason=sustained_pid_loss")
-        triggered = True
-        break
-    lines.append(f"candidate={uri} verdict=false reason=no_pid_loss")
-
-log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-raise SystemExit(0 if triggered else 1)
+metadata = json.loads(Path(sys.argv[1]).read_text())
+app_server = (metadata.get("app_server") or "").strip()
+if not app_server:
+    raise SystemExit(1)
+host = app_server.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+if not host:
+    raise SystemExit(1)
+print(host)
 PY
-rc=$?
-set -e
+)"
+[ -n "$TARGET_CONTAINER" ] || {
+  log "Could not derive DoS target from metadata.json app_server"
+  exit 1
+}
 
-if [[ $rc -ne 0 ]]; then
-  log "Scenario trigger failed (exit=$rc). Diagnostics:"
-  if [[ -f "$LOG_FILE" ]]; then
-    sed -n '1,200p' "$LOG_FILE" || true
-  fi
-  exit "$rc"
-fi
+{
+  echo "scenario=dos_proxy_shutdown"
+  echo "target_container=$TARGET_CONTAINER"
+  docker inspect "$TARGET_CONTAINER" --format 'before_state={{.State.Status}} before_health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}'
+} >"$LOG_FILE"
+
+docker stop "$TARGET_CONTAINER" >/dev/null
+
+{
+  docker inspect "$TARGET_CONTAINER" --format 'after_state={{.State.Status}} after_health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}'
+} >>"$LOG_FILE"
 
 log "vuln_scenario_1 completed"

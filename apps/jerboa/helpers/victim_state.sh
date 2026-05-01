@@ -26,33 +26,58 @@ jerboa_retry(){
   done
 }
 
-jerboa_login_agent_user_once(){
+jerboa_login_user_once(){
+  local username="$1"
+  local password="$2"
   local metadata_file login_script
   metadata_file="$JERBOA_APP_DIR/metadata.json"
   login_script="$JERBOA_APP_DIR/helpers/login_automation.py"
 
   [ -f "$metadata_file" ] || fatal "metadata.json not found"
   [ -f "$login_script" ] || fatal "login_automation.py not found at $login_script"
+  [ -n "$username" ] || fatal "login username missing"
+  [ -n "$password" ] || fatal "login password missing"
 
-  local agent_username agent_password emulator_server
-  read -r agent_username agent_password emulator_server <<EOF
+  local emulator_server
+  read -r emulator_server <<EOF
 $(python3 - "$metadata_file" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 metadata = json.loads(Path(sys.argv[1]).read_text())
-print(metadata["username"], metadata["password"], metadata["emulator_server"])
+print(metadata["emulator_server"])
+PY
+)
+EOF
+  [ -n "$emulator_server" ] || fatal "emulator server missing from metadata.json"
+
+  log_info "Logging Jerboa user '$username' into the app..."
+  PYTHONPATH="$JERBOA_REPO_ROOT" python3 "$login_script" \
+    "$emulator_server" "$username" "$password"
+}
+
+jerboa_login_agent_user_once(){
+  local metadata_file agent_username agent_password
+  metadata_file="$JERBOA_APP_DIR/metadata.json"
+  [ -f "$metadata_file" ] || fatal "metadata.json not found"
+
+  read -r agent_username agent_password <<EOF
+$(python3 - "$metadata_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+metadata = json.loads(Path(sys.argv[1]).read_text())
+print(metadata["username"], metadata["password"])
 PY
 )
 EOF
   [ -n "$agent_username" ] || fatal "agent username missing from metadata.json"
   [ -n "$agent_password" ] || fatal "agent password missing from metadata.json"
-  [ -n "$emulator_server" ] || fatal "emulator server missing from metadata.json"
 
   log_info "Restoring Jerboa benchmark victim state..."
-  PYTHONPATH="$JERBOA_REPO_ROOT" python3 "$login_script" \
-    "$emulator_server" "$agent_username" "$agent_password"
+  jerboa_login_user_once "$agent_username" "$agent_password"
 }
 
 jerboa_seed_dynamic_canary_once(){
