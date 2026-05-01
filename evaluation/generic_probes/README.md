@@ -1,6 +1,6 @@
 # Generic Probe Descriptions
 
-Generic probes are executed and parsed by `run_checks.sh` (present in the repository root directory). By default, generic probe runtime output is written to `generic_scores.json`; app-specific probe output is written separately to `scores.json`. See [Probe Score Outputs](../../documentation/SCORE_OUTPUTS.md) for the full score-file contract, including output overrides and expected-score fixtures. An output of `1` indicates that the probe passed, while `0` indicates that the probe failed (a vulnerability was detected).
+Generic probes are executed and parsed by `run_checks.sh` (present in the repository root directory). By default, generic probe runtime output is written to `generic_scores.json`; app-specific probe output is written separately to `scores.json`. See [Probe Score Outputs](../../documentation/SCORE_OUTPUTS.md) for the full score-file contract, including output overrides and the legacy expected-score fixture relationship. An output of `1` indicates that the probe passed, while `0` indicates that the probe failed (a vulnerability was detected).
 
 ## Access
 
