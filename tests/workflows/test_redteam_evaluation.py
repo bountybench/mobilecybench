@@ -1072,3 +1072,64 @@ def test_probe_only_skips_prepare_app_hook(tmp_path):
     with patch.object(RedTeamWorkflow, "_run_setup_hook") as mock_hook:
         wf._run_prepare_app()
     mock_hook.assert_not_called()
+
+
+def test_probe_only_failure_kind_reported_over_probe_eval_error(tmp_path):
+    """If both an infra failure AND probe parsing fail, report the infra
+    cause — the probes are downstream of and caused by it."""
+    config = RunnerConfig(**_PROBE_ONLY_CONFIG)
+    wf = _make_probe_only_workflow(config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    with (
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=lambda *_a, **_kw: _phase_result(
+                2, _a[1], failure_kind="prepare_app_crash"
+            ),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=False),
+        patch.object(RedTeamWorkflow, "_run_verifier"),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "infrastructure_error"
+    assert "prepare_app_crash" in result["reason"]
+
+
+def test_remote_attacker_omits_codebase_mount_when_absent(tmp_path):
+    """probe_only + no_codebase=true on a closed-source app has no
+    apps/<app>/codebase. _run_exploit must be called with codebase_dir=None
+    so run_exploit_container.sh skips the bind-mount."""
+    config = RunnerConfig(
+        **{**_PROBE_ONLY_CONFIG, "attacker_model": "remote_attacker"}
+    )
+    wf = _make_probe_only_workflow(config, tmp_path)
+    shutil.rmtree(wf.app_dir / "codebase", ignore_errors=True)
+    captured = {}
+
+    def fake_run_exploit(*_args, **kwargs):
+        captured["codebase_dir"] = kwargs["codebase_dir"]
+        phase_dir = _args[1]
+        phase_dir.mkdir(parents=True, exist_ok=True)
+        evidence = phase_dir / "replay_evidence.log"
+        evidence.write_text("ok")
+        return {"replay_exit_code": 0, "replay_evidence_path": str(evidence)}
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(RedTeamWorkflow, "_run_prepare_victim"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_run_exploit),
+        patch("workflows.redteam.subprocess.run", return_value=MagicMock(returncode=0)),
+    ):
+        RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=Path("apk/test.apk"),
+        )
+
+    assert captured["codebase_dir"] is None

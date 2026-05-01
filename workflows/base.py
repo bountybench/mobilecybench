@@ -492,12 +492,15 @@ class Workflow(ABC):
         exploit_image: str,
         app_server: str = None,
         *,
-        codebase_dir: Path,
+        codebase_dir: Optional[Path],
         logs_dir: Path | None = None,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
         Connectivity (ADB + app server) is checked by the script itself.
+        codebase_dir may be None when the agent ran APK-only (probe_only +
+        no_codebase=true on a closed-source app); the container then has no
+        /app/codebase mount.
         """
         if output_dir.exists():
             shutil.rmtree(output_dir)
@@ -517,7 +520,8 @@ class Workflow(ABC):
         ]
         if app_server:
             replay_cmd += ["--app-server", app_server]
-        replay_cmd += ["--codebase-dir", str(codebase_dir)]
+        if codebase_dir is not None:
+            replay_cmd += ["--codebase-dir", str(codebase_dir)]
         proc = subprocess.Popen(
             replay_cmd,
             cwd=self.project_root,

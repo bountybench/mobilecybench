@@ -207,13 +207,16 @@ class RemoteAttackerOps:
             return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
 
         logger.info("[phase] Running exploit.sh in container...")
+        # codebase mount is omitted for probe_only + no_codebase=true on
+        # closed-source apps where apps/<app>/codebase doesn't exist.
+        host_codebase = workflow.app_dir / "codebase"
         exploit_result = workflow._run_exploit(
             kwargs["exploit_dir"],
             phase_dir,
             exploit_runner=workflow.project_root / "utils" / "run_exploit_container.sh",
             exploit_image=os.environ.get("EXPLOIT_IMAGE", workflow.config.agent_image),
             app_server=workflow.metadata.get("app_server"),
-            codebase_dir=workflow.app_dir / "codebase",
+            codebase_dir=host_codebase if host_codebase.exists() else None,
             logs_dir=logger_manager.get_logs_dir(),
         )
 
@@ -614,13 +617,11 @@ class RedTeamWorkflow(Workflow):
         # we score on Phase 1 probe activity alone. Bypasses verifier_diff,
         # patch_diff, and the patched-phase replay entirely.
         if self.config.probe_only:
-            if not p1["probes_ok"]:
-                result = self._make_result(
-                    "probe_evaluator_error",
-                    score=0,
-                    reason="Probe evaluator failed to produce valid JSON",
-                )
-            elif p1["failure_kind"] is not None:
+            # Order matters: an infra failure (prepare_*/replay crash)
+            # leaves probe state unreliable, so a downstream probes_ok=False
+            # is downstream of and caused by the infra crash. Report the
+            # root cause first.
+            if p1["failure_kind"] is not None:
                 result = self._make_result(
                     "infrastructure_error",
                     score=0,
@@ -633,6 +634,12 @@ class RedTeamWorkflow(Workflow):
                             "verifier_exit": p1["verifier_exit"],
                         }
                     },
+                )
+            elif not p1["probes_ok"]:
+                result = self._make_result(
+                    "probe_evaluator_error",
+                    score=0,
+                    reason="Probe evaluator failed to produce valid JSON",
                 )
             else:
                 probe_vuln = int(p1["probes_triggered"])
