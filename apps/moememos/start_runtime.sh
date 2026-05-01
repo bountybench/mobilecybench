@@ -33,6 +33,24 @@ wait_for_health() {
   done
 }
 
+enable_adb_root() {
+  log_info "Enabling adb root for MoeMemos app-private hydration"
+  wait_for_device_boot 120 || fatal "Device not ready for adb root"
+
+  local root_output
+  if ! root_output=$(adb root 2>&1); then
+    fatal "adb root is required for MoeMemos hydration but failed: $root_output"
+  fi
+  adb wait-for-device
+  wait_for_device_boot 120 || fatal "Device not ready after adb root"
+
+  local adb_uid
+  adb_uid=$(adb shell id 2>/dev/null | tr -d '\r' || true)
+  if [[ "$adb_uid" != uid=0* ]]; then
+    fatal "adb root is required for MoeMemos hydration; current adb shell identity: ${adb_uid:-unknown}"
+  fi
+}
+
 install_app() {
   log_info "Installing MoeMemos"
   adb uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
@@ -71,6 +89,7 @@ main() {
   log_info "Starting MoeMemos setup"
   start_stack
   wait_for_health
+  enable_adb_root
   install_app
   configure_exploit_host_ip
   run_hydration

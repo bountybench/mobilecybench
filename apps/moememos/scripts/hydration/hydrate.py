@@ -1743,6 +1743,11 @@ def device_sha256(path, run_as_package=None):
         args.extend(["run-as", run_as_package])
     args.extend(["sha256sum", path])
     result = run_cmd(args, check=False)
+    if result.returncode != 0 and run_as_package == PACKAGE_NAME:
+        result = root_cmd(
+            ["sha256sum", target_private_absolute_path(path)],
+            check=False,
+        )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()
         raise HydrationError(f"could not hash device path {path}: {detail[:300]}")
@@ -1758,6 +1763,50 @@ def ensure_device_dir(path):
 
 def push_file_to_device(host_path, device_path):
     run_cmd(["adb", "push", str(host_path), device_path])
+
+
+def root_cmd(args, check=True):
+    result = run_cmd(["adb", "shell", *args], check=False)
+    if result.returncode != 0:
+        result = run_cmd(["adb", "shell", "su", "0", *args], check=False)
+    if check and result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise HydrationError(
+            f"root adb command failed ({' '.join(args)}): {detail[:300]}"
+        )
+    return result
+
+
+def target_private_absolute_path(relative_path):
+    if relative_path.startswith("/"):
+        return relative_path
+    return f"/data/data/{PACKAGE_NAME}/{relative_path.lstrip('/')}"
+
+
+def target_package_uid():
+    result = root_cmd(["stat", "-c", "%u", f"/data/data/{PACKAGE_NAME}"])
+    lines = [
+        line.strip() for line in (result.stdout or "").splitlines() if line.strip()
+    ]
+    uid = lines[-1] if lines else ""
+    if not uid.isdigit():
+        raise HydrationError(f"could not determine {PACKAGE_NAME} uid")
+    return uid
+
+
+def ensure_target_private_dirs(relative_dirs, uid):
+    for relative_dir in relative_dirs:
+        absolute_dir = target_private_absolute_path(relative_dir)
+        root_cmd(["mkdir", "-p", absolute_dir])
+        root_cmd(["chown", f"{uid}:{uid}", absolute_dir])
+        root_cmd(["chmod", "700", absolute_dir])
+
+
+def copy_to_target_private(source_path, relative_path, uid):
+    absolute_path = target_private_absolute_path(relative_path)
+    root_cmd(["cp", source_path, absolute_path])
+    root_cmd(["chown", f"{uid}:{uid}", absolute_path])
+    root_cmd(["chmod", "600", absolute_path])
 
 
 def seed_malicious_app_storage():
@@ -1861,18 +1910,14 @@ def seed_malicious_app_storage():
     for item in device_shared + target_external:
         push_file_to_device(item["host_path"], item["device_path"])
 
-    run_cmd(
+    target_uid = target_package_uid()
+    ensure_target_private_dirs(
         [
-            "adb",
-            "shell",
-            "run-as",
-            PACKAGE_NAME,
-            "mkdir",
-            "-p",
             "files/images",
             "cache/images",
             "cache/image_cache",
-        ]
+        ],
+        target_uid,
     )
     staging_files = [
         {
@@ -1906,16 +1951,10 @@ def seed_malicious_app_storage():
     ]
     for item in staging_files:
         push_file_to_device(item["host_path"], item["external_path"])
-        run_cmd(
-            [
-                "adb",
-                "shell",
-                "run-as",
-                PACKAGE_NAME,
-                "cp",
-                item["external_path"],
-                item["relative_path"],
-            ]
+        copy_to_target_private(
+            item["external_path"],
+            item["relative_path"],
+            target_uid,
         )
 
     def host_entry(item):
@@ -2110,15 +2149,13 @@ def unhydrate():
                             )
                 for item in data.get("fileprovider_fixtures", []):
                     if item.get("app_private_relative_path"):
-                        run_cmd(
+                        root_cmd(
                             [
-                                "adb",
-                                "shell",
-                                "run-as",
-                                PACKAGE_NAME,
                                 "rm",
                                 "-f",
-                                item["app_private_relative_path"],
+                                target_private_absolute_path(
+                                    item["app_private_relative_path"]
+                                ),
                             ],
                             check=False,
                         )
