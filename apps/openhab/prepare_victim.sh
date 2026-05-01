@@ -183,6 +183,49 @@ def fill_dialog(d, text):
     return False
 
 
+def click_preference_row(d, label):
+    pref = d(text=label)
+    if not pref.wait(timeout=TIMEOUT_FAST):
+        log(f"ERROR: {label} preference not found")
+        return False
+    try:
+        bounds = pref.info.get("bounds", {})
+        if not bounds or bounds.get("bottom", 0) <= bounds.get("top", 0):
+            raise ValueError("preference bounds unavailable")
+        y = (bounds.get("top", 0) + bounds.get("bottom", 0)) // 2
+        width, _height = d.window_size()
+        d.click(width // 2, y)
+    except Exception:
+        pref.click()
+    time.sleep(0.5)
+    return True
+
+
+def close_dialog_if_present(d):
+    if (
+        d(resourceId="android:id/button1").exists
+        or d(resourceId="android:id/edit").exists
+        or d(className="android.widget.EditText").exists
+    ):
+        d.press("back")
+        time.sleep(0.5)
+
+
+def set_text_preference(d, label, value):
+    for attempt in range(4):
+        if attempt:
+            log(f"Retrying {label.lower()} dialog ({attempt + 1}/4)...")
+            close_dialog_if_present(d)
+            wait_stable(d, timeout=TIMEOUT_FAST)
+        if not click_preference_row(d, label):
+            return False
+        if fill_dialog(d, value):
+            wait_stable(d, timeout=TIMEOUT_FAST)
+            return True
+    log(f"ERROR: failed to set {label.lower()} after retries")
+    return False
+
+
 def navigate_to_local_settings(d):
     """From main screen, navigate: Side menu -> Settings -> Server openHAB -> Local."""
     # Open side menu
@@ -237,27 +280,13 @@ def navigate_to_local_settings(d):
 
 def set_credentials(d):
     """On the Local connection screen, set username and password."""
-    # Click Username
     log(f"Setting username: {USERNAME}")
-    username_pref = d(text="Username")
-    if not username_pref.wait(timeout=TIMEOUT_FAST):
-        log("ERROR: Username preference not found")
+    if not set_text_preference(d, "Username", USERNAME):
         return False
-    username_pref.click()
-    if not fill_dialog(d, USERNAME):
-        return False
-    wait_stable(d, timeout=TIMEOUT_FAST)
 
-    # Click Password
     log("Setting password...")
-    password_pref = d(text="Password")
-    if not password_pref.wait(timeout=TIMEOUT_FAST):
-        log("ERROR: Password preference not found")
+    if not set_text_preference(d, "Password", PASSWORD):
         return False
-    password_pref.click()
-    if not fill_dialog(d, PASSWORD):
-        return False
-    wait_stable(d, timeout=TIMEOUT_FAST)
 
     return True
 
