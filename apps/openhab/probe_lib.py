@@ -765,6 +765,117 @@ def _component_tokens(name: str, package_name: str = PACKAGE_NAME) -> set[str]:
     }
 
 
+_ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
+_MANIFEST_COMPONENT_TAGS = {
+    "activity",
+    "activity-alias",
+    "provider",
+    "receiver",
+    "service",
+}
+
+
+def _local_xml_tag(tag: str) -> str:
+    """Return an XML tag without its namespace prefix."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def _android_attr(element: ET.Element, name: str) -> str | None:
+    """Read an android:* manifest attribute."""
+    return element.attrib.get(f"{_ANDROID_NS}{name}")
+
+
+def _iter_source_manifests() -> list[Path]:
+    source_root = APP_DIR / "codebase" / "mobile" / "src"
+    if not source_root.exists():
+        return []
+    return sorted(source_root.glob("*/AndroidManifest.xml"))
+
+
+def source_manifest_component_metadata(
+    component_name: str, package_name: str = PACKAGE_NAME
+) -> PackageComponent:
+    """Read component metadata declared in checked-in Android manifests.
+
+    Android 35 PackageManager dumpsys output omits some explicit manifest
+    fields, including exported=false and service permission values. Runtime
+    checks still use dumpsys for component presence; this source view only
+    supplies fields that dumpsys left unreported.
+    """
+    full_name = full_component_name(component_name, package_name)
+    component = PackageComponent(name=full_name, present=False)
+    for manifest_path in _iter_source_manifests():
+        try:
+            root = ET.parse(manifest_path).getroot()
+        except ET.ParseError:
+            continue
+        application = root.find("application")
+        if application is None:
+            continue
+        for child in application:
+            if _local_xml_tag(child.tag) not in _MANIFEST_COMPONENT_TAGS:
+                continue
+            raw_name = _android_attr(child, "name")
+            if not raw_name:
+                continue
+            if full_component_name(raw_name, package_name) != full_name:
+                continue
+            component.present = True
+            component.blocks.append(str(manifest_path))
+            for field_name in ("enabled", "exported", "permission"):
+                value = _android_attr(child, field_name)
+                if value is not None:
+                    component.fields.setdefault(field_name, set()).add(value)
+            for intent_filter in child:
+                if _local_xml_tag(intent_filter.tag) != "intent-filter":
+                    continue
+                for intent_child in intent_filter:
+                    value = _android_attr(intent_child, "name")
+                    if not value:
+                        continue
+                    intent_tag = _local_xml_tag(intent_child.tag)
+                    if intent_tag == "action":
+                        component.actions.add(value)
+                    elif intent_tag == "category":
+                        component.categories.add(value)
+    return component
+
+
+def component_with_source_manifest_fallback(
+    package_dump: str, component_name: str, package_name: str = PACKAGE_NAME
+) -> PackageComponent:
+    """Return PackageManager metadata with source manifest gaps filled.
+
+    The installed package dump remains authoritative for presence. Source
+    manifests only fill omitted fields/actions/categories; explicit runtime
+    values are left intact so real mismatches still fail probes.
+    """
+    runtime = parse_component_metadata(package_dump, component_name, package_name)
+    if not runtime.present:
+        return runtime
+
+    source = source_manifest_component_metadata(component_name, package_name)
+    if not source.present:
+        return runtime
+
+    merged = PackageComponent(
+        name=runtime.name,
+        present=True,
+        fields={key: set(values) for key, values in runtime.fields.items()},
+        actions=set(runtime.actions),
+        categories=set(runtime.categories),
+        blocks=list(runtime.blocks),
+    )
+    for field_name, values in source.fields.items():
+        if not merged.fields.get(field_name):
+            merged.fields[field_name] = set(values)
+    if not merged.actions:
+        merged.actions = set(source.actions)
+    if not merged.categories:
+        merged.categories = set(source.categories)
+    return merged
+
+
 def _normalize_component_token(token: str, package_name: str = PACKAGE_NAME) -> str:
     if token.startswith(f"{package_name}/"):
         return component_class(normalize_component(token, package_name))

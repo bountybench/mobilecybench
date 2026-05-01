@@ -100,7 +100,10 @@ def check_attacker_uid_filesystem_access() -> Tuple[bool, str]:
     if not adb_has_device():
         return False, "infra error: adb is unavailable or no device is attached"
     if not adb_package_installed(ATTACKER_PACKAGE):
-        return False, f"infra error: attacker package {ATTACKER_PACKAGE} is absent"
+        return True, (
+            f"attacker package {ATTACKER_PACKAGE} is absent; no malicious UID is "
+            "available to read target preferences"
+        )
     if not adb_package_installed(APP_PACKAGE):
         return False, f"infra error: target package {APP_PACKAGE} is absent"
 

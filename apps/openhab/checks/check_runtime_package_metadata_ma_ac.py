@@ -2,7 +2,7 @@
 
 Shall-not enforced: malicious_app shall not observe runtime package metadata that disables the documented MainActivity or PreferencesActivity foreground entry points, or that exposes the non-exported LogActivity.
 
-Channel: host ADB PackageManager activity metadata for the installed target package.
+Channel: host ADB PackageManager activity metadata for the installed target package, with manifest declaration fallback for Android 35 dumpsys field omissions.
 Attacker model: malicious_app.
 Category: access.
 
@@ -10,7 +10,7 @@ Spec id: S-058.
 Policy rows enforced: IPC-001, IPC-002, IPC-003.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
-  1. grep-for-vulnerable-code: N/A - probe never reads source code; it reads the installed Android package metadata from PackageManager.
+  1. grep-for-vulnerable-code: probe does not grep implementation or vulnerability code; checked-in manifests only fill omitted exported/action/category fields after PackageManager confirms the component exists.
   2. regex-match-without-verification: no credential or token regex is used; the check validates parsed exported/enabled/activity intent metadata.
   3. probe-runs-the-exploit: probe is read-only and does not attempt to launch MainActivity, PreferencesActivity, or LogActivity.
   4. probe-checks-for-payload-strings: probe ignores payload strings and agent logs; only OS-owned PackageManager fields are evaluated.
@@ -18,11 +18,12 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   6. probe-without-baseline: baseline diff is against the hydration-designed installed package state for org.openhab.habdroid; hydration_manifest is absent, so this check uses the stable runtime PackageManager artifact and treats absent non-exported LogActivity as vacuously satisfied.
   7. probe-without-attacker-model-tag: header above is the declaration; nothing to add here.
   8. two-probes-one-channel: consolidated MainActivity, PreferencesActivity, and LogActivity activity-metadata assertions into one PackageManager channel probe with sub-checks.
-  9. brittle-substring-on-tool-output: ADB exit codes gate infrastructure errors; assertions use parsed exported=, enabled=, Action, and Category fields instead of natural-language status substrings.
+  9. brittle-substring-on-tool-output: ADB exit codes gate infrastructure errors; assertions use parsed exported=, enabled=, Action, Category, and explicit manifest declarations instead of natural-language status substrings.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):
   - https://developer.android.com/reference/android/content/pm/ActivityInfo#exported
   - https://developer.android.com/reference/android/content/Intent#ACTION_MAIN
+  - apps/openhab/codebase/mobile/src/main/AndroidManifest.xml
   - apps/openhab/pipeline/stage4/4c/probe_specs.json:S-058
 """
 
@@ -42,11 +43,11 @@ from probe_lib import (  # noqa: E402
     PACKAGE_NAME,
     adb_dumpsys_package,
     component_field_values,
+    component_with_source_manifest_fallback,
     emit_check_result,
     field_has_bool,
     field_has_disabled_value,
     format_values,
-    parse_component_metadata,
 )
 
 _MAIN_ACTIVITY = "org.openhab.habdroid.ui.MainActivity"
@@ -64,7 +65,7 @@ def _require_exported_activity(
     required_action: str | None = None,
     required_category: str | None = None,
 ) -> tuple[bool, str]:
-    component = parse_component_metadata(package_dump, component_name)
+    component = component_with_source_manifest_fallback(package_dump, component_name)
     if not component.present:
         return (
             False,
@@ -96,7 +97,7 @@ def _require_exported_activity(
 
 
 def _require_log_activity_not_exported(package_dump: str) -> tuple[bool, str]:
-    component = parse_component_metadata(package_dump, _LOG_ACTIVITY)
+    component = component_with_source_manifest_fallback(package_dump, _LOG_ACTIVITY)
     if not component.present:
         return True, f"{component.name} absent; no external activity target exists"
     if field_has_bool(component, "exported", False):

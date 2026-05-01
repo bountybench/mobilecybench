@@ -60,6 +60,10 @@ from probe_lib import (  # noqa: E402
 )
 
 
+def _normalized_url(value: Any) -> str:
+    return str(value).strip().rstrip("/")
+
+
 def _check_default_config(prefs: Mapping[str, Any]) -> tuple[bool, str]:
     ids = configured_server_ids(prefs)
     if not ids:
@@ -82,7 +86,8 @@ def _check_default_config(prefs: Mapping[str, Any]) -> tuple[bool, str]:
 
     metadata = load_json_file(APP_DIR / "metadata.json")
     expected_url = metadata.get("emulator_server")
-    if expected_url and prefs.get(f"local_url_{active_id}") != expected_url:
+    actual_url = prefs.get(f"local_url_{active_id}")
+    if expected_url and _normalized_url(actual_url) != _normalized_url(expected_url):
         return False, (
             f"local_url_{active_id} does not match metadata.json emulator_server"
         )

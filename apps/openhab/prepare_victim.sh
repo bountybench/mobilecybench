@@ -9,6 +9,81 @@ USERNAME="${1:-$(jq -r '.adminuser_username' "$SCRIPT_DIR/secrets.json")}"
 PASSWORD="${2:-$(jq -r '.adminuser_password' "$SCRIPT_DIR/secrets.json")}"
 PACKAGE="org.openhab.habdroid"
 
+preconfigure_server_prefs() {
+  local metadata_file="$SCRIPT_DIR/metadata.json"
+  local emulator_server
+  emulator_server="$(jq -r '.emulator_server // empty' "$metadata_file" 2>/dev/null || true)"
+  if [ -z "$emulator_server" ]; then
+    log_warn "No emulator_server in metadata.json; skipping app preference preconfiguration"
+    return 0
+  fi
+
+  if ! adb shell pm list packages 2>/dev/null | grep -q "^package:${PACKAGE}$"; then
+    log_warn "App $PACKAGE not installed; skipping app preference preconfiguration"
+    return 0
+  fi
+
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1
+  sleep 2
+
+  local app_uid=""
+  local attempt
+  for attempt in 1 2 3; do
+    app_uid="$(
+      adb shell dumpsys package "$PACKAGE" 2>/dev/null \
+        | sed -n 's/.*userId=\([0-9][0-9]*\).*/\1/p' \
+        | head -n 1
+    )"
+    [ -n "$app_uid" ] && break
+    app_uid="$(
+      adb shell dumpsys package "$PACKAGE" 2>/dev/null \
+        | sed -n 's/.*uid=\([0-9][0-9]*\).*/\1/p' \
+        | head -n 1
+    )"
+    [ -n "$app_uid" ] && break
+    sleep 2
+  done
+
+  if [ -z "$app_uid" ]; then
+    log_warn "Could not determine app UID; skipping app preference preconfiguration"
+    adb unroot >/dev/null 2>&1 || true
+    adb wait-for-device >/dev/null 2>&1
+    return 0
+  fi
+
+  local prefs_path="/data/data/${PACKAGE}/shared_prefs/${PACKAGE}_preferences.xml"
+  local tmp_prefs
+  tmp_prefs="$(mktemp)"
+  cat >"$tmp_prefs" <<EOF
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <set name="server_ids">
+        <string>1</string>
+    </set>
+    <int name="active_server_id" value="1" />
+    <int name="primary_server_id" value="1" />
+    <string name="server_name_1">openHAB</string>
+    <string name="local_url_1">${emulator_server}</string>
+    <string name="default_sitemap_name_1">home</string>
+    <boolean name="firstStart" value="false" />
+</map>
+EOF
+
+  adb shell mkdir -p "$(dirname "$prefs_path")" >/dev/null 2>&1 || true
+  adb push "$tmp_prefs" "$prefs_path" >/dev/null
+  adb shell chown "${app_uid}:${app_uid}" "$prefs_path" >/dev/null 2>&1 || true
+  adb shell chmod 600 "$prefs_path" >/dev/null 2>&1 || true
+  rm -f "$tmp_prefs"
+
+  adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+  adb unroot >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1
+  log_info "App preferences preconfigured with server URL: $emulator_server"
+}
+
+preconfigure_server_prefs
+
 log_info "Logging in victim account ($USERNAME) via UI automation..."
 
 # Pre-grant permissions to avoid system dialogs
