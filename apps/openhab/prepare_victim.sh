@@ -152,20 +152,29 @@ def is_auth_error(d):
 
 def fill_dialog(d, text):
     """Fill a preference dialog (Username or Password) and click OK."""
-    edit = d(resourceId="android:id/edit")
-    if not edit.wait(timeout=TIMEOUT_NORMAL):
-        log("ERROR: dialog edit field not found")
-        return False
-    edit.clear_text()
-    edit.set_text(text)
-    time.sleep(0.3)
-    d.press("back")  # dismiss keyboard
-    time.sleep(0.3)
-    ok = d(resourceId="android:id/button1")
-    if ok.exists:
-        ok.click()
-        time.sleep(0.5)
-        return True
+    for attempt in range(3):
+        edit = d(resourceId="android:id/edit")
+        if not edit.wait(timeout=TIMEOUT_NORMAL):
+            log("ERROR: dialog edit field not found")
+            return False
+        try:
+            edit.click()
+            edit.clear_text()
+            time.sleep(0.2)
+            edit = d(resourceId="android:id/edit")
+            edit.set_text(text)
+            time.sleep(0.3)
+            d.press("back")  # dismiss keyboard
+            time.sleep(0.3)
+            ok = d(resourceId="android:id/button1")
+            if ok.exists:
+                ok.click()
+                time.sleep(0.5)
+                return True
+            log("WARNING: dialog OK button not found")
+        except Exception as exc:
+            log(f"WARNING: dialog fill attempt {attempt + 1}/3 failed: {exc}")
+            time.sleep(0.5)
     return False
 
 
