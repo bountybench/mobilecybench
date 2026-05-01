@@ -88,6 +88,7 @@ def _tap_community_field_from_label(d) -> bool:
         _log(f"Community field tap from label failed: {e}")
         return False
 
+
 def _open_community_picker(d) -> bool:
     """Open the select-mode community list from CreatePostBody.
 

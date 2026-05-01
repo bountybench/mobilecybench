@@ -42,7 +42,9 @@ def connect_u2(log, *, max_retries: int = 3, retry_delay: int = 30):
             last_error = exc
             log(f"Attempt {attempt + 1} failed: {exc}")
 
-    raise RuntimeError(f"Failed to connect after {max_retries} attempts") from last_error
+    raise RuntimeError(
+        f"Failed to connect after {max_retries} attempts"
+    ) from last_error
 
 
 def verify_or_recover_u2(d, device_serial: str, log):
@@ -94,5 +96,7 @@ def get_release_package(d) -> str:
     if f"package:{JERBOA_RELEASE_PACKAGE}" not in packages:
         raise RuntimeError("Jerboa release package not installed")
     if f"package:{JERBOA_DEBUG_PACKAGE}" in packages:
-        raise RuntimeError("Jerboa debug package present; release-only contract violated")
+        raise RuntimeError(
+            "Jerboa debug package present; release-only contract violated"
+        )
     return JERBOA_RELEASE_PACKAGE

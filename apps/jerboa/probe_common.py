@@ -484,7 +484,10 @@ def _lemmy_admin_token() -> str:
     by the seeder and lives in the same file.
     """
     import requests
-    read_probe_auth_cache = _load_local_module("jerboa_probe_utils").read_probe_auth_cache
+
+    read_probe_auth_cache = _load_local_module(
+        "jerboa_probe_utils"
+    ).read_probe_auth_cache
 
     cached = read_probe_auth_cache().get("admin_jwt")
     if isinstance(cached, str) and cached:
