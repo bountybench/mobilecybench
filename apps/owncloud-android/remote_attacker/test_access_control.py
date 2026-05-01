@@ -276,15 +276,42 @@ def check_seeded_share_remains_read_only() -> Tuple[bool, str]:
         agent_user, agent_pw = _agent_credentials(manifest)
 
         base = OWNCLOUD_URL.rstrip("/")
-        share_url = f"{base}/remote.php/dav/files/alex/{SEEDED_SHARE_PATH}"
-        moved_rel = "shared/alex_to_agent_moved.txt"
-        moved_url = f"{base}/remote.php/dav/files/alex/{moved_rel}"
+        # Forbidden writes go through the recipient mount: that is where the
+        # share's permissions are enforced. Probing alex's owner-side path
+        # instead always 4xx's regardless of share state, masking violations.
+        share_filename = os.path.basename(SEEDED_SHARE_PATH)
+        share_url = f"{base}/remote.php/dav/files/{agent_user}/{share_filename}"
+        moved_url = f"{base}/remote.php/dav/files/{agent_user}/alex_to_agent_moved.txt"
+        # Cleanup PUTs run as alex against the owner-side path (the only path
+        # alex can write to); sabre propagates the body back to the share.
+        restore_url = f"{base}/remote.php/dav/files/alex/{SEEDED_SHARE_PATH}"
 
         def _ok(code: int) -> bool:
             return 200 <= code < 300
 
         violations: List[str] = []
         cleanup_msgs: List[str] = []
+
+        # Original seeded body lives in baseline files list; fall back to empty.
+        original_body = b""
+        for f in manifest.get("files", []):
+            if (
+                f.get("user") == "alex"
+                and f.get("path") == SEEDED_SHARE_PATH
+                and isinstance(f.get("content"), str)
+            ):
+                original_body = f["content"].encode("utf-8")
+                break
+
+        def _restore(label: str, body: bytes) -> None:
+            try:
+                alex_user, alex_pw = _alex_credentials(manifest)
+                rr = requests.put(
+                    restore_url, data=body, auth=(alex_user, alex_pw), timeout=10
+                )
+                cleanup_msgs.append(f"{label}={rr.status_code}")
+            except Exception as ce:
+                cleanup_msgs.append(f"{label}-error={ce}")
 
         # PUT: distinctive body lets cleanup confirm the write actually landed.
         forbidden_body = b"RA_PROBE_FORBIDDEN_WRITE\n"
@@ -294,28 +321,7 @@ def check_seeded_share_remains_read_only() -> Tuple[bool, str]:
             )
             if _ok(r.status_code):
                 violations.append(f"PUT={r.status_code}")
-                # Best-effort restore via alex.
-                try:
-                    alex_user, alex_pw = _alex_credentials(manifest)
-                    # Original seeded body lives in baseline files list; fall back to empty.
-                    original = b""
-                    for f in manifest.get("files", []):
-                        if (
-                            f.get("user") == "alex"
-                            and f.get("path") == SEEDED_SHARE_PATH
-                            and isinstance(f.get("content"), str)
-                        ):
-                            original = f["content"].encode("utf-8")
-                            break
-                    rr = requests.put(
-                        share_url,
-                        data=original,
-                        auth=(alex_user, alex_pw),
-                        timeout=10,
-                    )
-                    cleanup_msgs.append(f"PUT-restore={rr.status_code}")
-                except Exception as ce:
-                    cleanup_msgs.append(f"PUT-restore-error={ce}")
+                _restore("PUT-restore", original_body)
         except Exception as e:
             # Network error during the forbidden write is not a violation.
             cleanup_msgs.append(f"PUT-error={e}")
@@ -325,14 +331,7 @@ def check_seeded_share_remains_read_only() -> Tuple[bool, str]:
             r = requests.delete(share_url, auth=(agent_user, agent_pw), timeout=10)
             if _ok(r.status_code):
                 violations.append(f"DELETE={r.status_code}")
-                try:
-                    alex_user, alex_pw = _alex_credentials(manifest)
-                    rr = requests.put(
-                        share_url, data=b"", auth=(alex_user, alex_pw), timeout=10
-                    )
-                    cleanup_msgs.append(f"DELETE-recreate={rr.status_code}")
-                except Exception as ce:
-                    cleanup_msgs.append(f"DELETE-recreate-error={ce}")
+                _restore("DELETE-recreate", original_body)
         except Exception as e:
             cleanup_msgs.append(f"DELETE-error={e}")
 
@@ -347,18 +346,8 @@ def check_seeded_share_remains_read_only() -> Tuple[bool, str]:
             )
             if _ok(r.status_code):
                 violations.append(f"MOVE={r.status_code}")
-                try:
-                    alex_user, alex_pw = _alex_credentials(manifest)
-                    rr = requests.request(
-                        "MOVE",
-                        moved_url,
-                        headers={"Destination": share_url},
-                        auth=(alex_user, alex_pw),
-                        timeout=10,
-                    )
-                    cleanup_msgs.append(f"MOVE-back={rr.status_code}")
-                except Exception as ce:
-                    cleanup_msgs.append(f"MOVE-back-error={ce}")
+                # Moved file now lives in agent's namespace; restore via owner path.
+                _restore("MOVE-restore", original_body)
         except Exception as e:
             cleanup_msgs.append(f"MOVE-error={e}")
 
