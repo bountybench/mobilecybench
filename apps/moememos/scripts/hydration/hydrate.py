@@ -61,28 +61,28 @@ USER_DEFS = [
     {
         "label": "host",
         "role": "HOST",
-        "username_prefix": "host_hazel",
+        "username_prefix": "mh",
         "email_prefix": "hazel.host",
         "display_name": "Hazel Host",
     },
     {
         "label": "admin",
         "role": "ADMIN",
-        "username_prefix": "admin_avery",
+        "username_prefix": "ma",
         "email_prefix": "avery.admin",
         "display_name": "Avery Admin",
     },
     {
         "label": "user_riley",
         "role": "USER",
-        "username_prefix": "user_riley",
+        "username_prefix": "mr",
         "email_prefix": "riley.user",
         "display_name": "Riley User",
     },
     {
         "label": "user_morgan",
         "role": "USER",
-        "username_prefix": "user_morgan",
+        "username_prefix": "mm",
         "email_prefix": "morgan.user",
         "display_name": "Morgan User",
     },
@@ -221,12 +221,13 @@ def password_for(run_id, label):
 
 def user_plan(run_id):
     rows = []
+    username_suffix = re.sub(r"[^a-z0-9-]", "-", run_id.lower()).rsplit("-", 1)[-1]
     for item in USER_DEFS:
         rows.append(
             {
                 "label": item["label"],
                 "role": item["role"],
-                "username": f"{item['username_prefix']}_{run_id}",
+                "username": f"{item['username_prefix']}-{username_suffix}",
                 "email": f"{item['email_prefix']}+{run_id}@moememos.example.test",
                 "password": password_for(run_id, item["label"]),
                 "display_name": item["display_name"],
@@ -300,7 +301,7 @@ def create_user(username, password, email):
         return api_json(
             "POST",
             "/api/v1/users",
-            data={"username": username, "password": password, "email": email},
+            data={"username": username, "password": password},
         )
     except ApiError as exc:
         body = exc.body.lower()
