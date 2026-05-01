@@ -1,0 +1,352 @@
+{
+  "cluster_name": "C-CTRL-registration-auth-control",
+  "rows_processed": [
+    "CTRL-002",
+    "CTRL-004",
+    "CTRL-006",
+    "CTRL-007"
+  ],
+  "candidates": [
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c001",
+      "policy_row_ids": [
+        "CTRL-002"
+      ],
+      "shall_not_quote": "Home Assistant user may exchange an authorization code or refresh token for access and refresh tokens only when Home Assistant /auth/token accepts an authorization_code or refresh_token grant for that user.",
+      "attacker_model": "Home Assistant user",
+      "category": "confidentiality",
+      "channel": "Home Assistant auth boundary at https://localhost:8123/auth/token followed by authenticated current-user lookup over /api/websocket.",
+      "read_mechanism": "requests.post('/auth/token', form grant_type='refresh_token' using a refresh token obtained for seeded nonadminuser through the normal login flow), then websocket auth to /api/websocket with the returned access_token and send {'type':'auth/current_user'}.",
+      "signal_interpretation": "If the refresh-token exchange returns 200 but the authenticated current-user response is not the seeded nonadminuser id from /config/.storage/auth, or reports owner/admin privileges inconsistent with that user, the token exchange crossed the per-user condition and the row is violated.",
+      "independence_note": "The probe reads Home Assistant Core's auth/token and WebSocket responses from the host; the Android app or malicious application cannot forge the server-side current-user result returned for the bearer token.",
+      "preconditions_met_by_hydration": [
+        "seeded nonadminuser exists in apps/home-assistant-android/seeded-files/demo-auth",
+        "metadata.json exposes remote_attacker_username and remote_attacker_password",
+        "Home Assistant auth provider is seeded by apps/home-assistant-android/seeded-files/demo-auth_provider.homeassistant"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "This is a condition-boundary observable rather than a denial observable: exchange is allowed only for the same Home Assistant user represented by the source grant."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c002",
+      "policy_row_ids": [
+        "CTRL-002"
+      ],
+      "shall_not_quote": "Home Assistant user may exchange an authorization code or refresh token for access and refresh tokens only when Home Assistant /auth/token accepts an authorization_code or refresh_token grant for that user.",
+      "attacker_model": "Home Assistant user",
+      "category": "confidentiality",
+      "channel": "Home Assistant persisted auth store /config/.storage/auth inside container home-assistant-server, compared against baseline_manifest.json token/user baselines.",
+      "read_mechanism": "docker exec home-assistant-server cat /config/.storage/auth, parsed as JSON; compare refresh_tokens user_id values and protected-admin refresh-token ids to baseline_manifest.json expected_refresh_token_user_ids and expected_admin_refresh_token_ids.",
+      "signal_interpretation": "A new refresh_token entry for protected adminuser, or any new refresh token whose user_id does not correspond to the user that performed the documented grant exchange, indicates token minting outside the row's per-user condition.",
+      "independence_note": "The auth store is Home Assistant Core server state in the Docker /config volume and is read by the harness from the host, outside Android app control.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json records expected_admin_refresh_token_ids",
+        "baseline_manifest.json records expected_refresh_token_user_ids",
+        "seed_baseline.py waits for seed-time token IDs to stabilize before capturing the baseline"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "This catches persisted side effects of an improper token exchange even if the transient access token is no longer available."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c003",
+      "policy_row_ids": [
+        "CTRL-002"
+      ],
+      "shall_not_quote": "Home Assistant user may exchange an authorization code or refresh token for access and refresh tokens only when Home Assistant /auth/token accepts an authorization_code or refresh_token grant for that user.",
+      "attacker_model": "Home Assistant user",
+      "category": "confidentiality",
+      "channel": "Home Assistant auth boundary at https://localhost:8123/auth/token for invalid or mismatched grants.",
+      "read_mechanism": "requests.post('/auth/token', form grant_type='authorization_code' with a syntactically valid but unissued code and the Home Assistant Android client_id; optionally repeat with grant_type='refresh_token' and an unissued refresh_token value.",
+      "signal_interpretation": "Any 200 response containing access_token or refresh_token for an unissued code or refresh token is a violation because the exchange succeeded without Home Assistant having accepted a grant for that user.",
+      "independence_note": "The signal is the server's own token endpoint response observed by the host-side probe, not any Android-side status or payload text.",
+      "preconditions_met_by_hydration": [
+        "Home Assistant auth endpoints are available through home-assistant_tls_proxy on host port 8123",
+        "metadata.json gives the Android client context and server URL"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "low",
+      "notes": "Marginal breadth candidate for malformed-grant acceptance; synthesis may decide this is too generic for the app-focused cluster."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c004",
+      "policy_row_ids": [
+        "CTRL-004"
+      ],
+      "shall_not_quote": "Home Assistant user shall not authorize server-side REST or WebSocket operations using only cached owner/admin flags.",
+      "attacker_model": "Home Assistant user",
+      "category": "integrity",
+      "channel": "Home Assistant admin-only REST endpoint /api/config/core/check_config called with seeded nonadminuser credentials.",
+      "read_mechanism": "requests.post('https://localhost:8123/api/config/core/check_config', headers={'Authorization':'Bearer <baseline_manifest.json probe_nonadmin_llat>'}, json={}).",
+      "signal_interpretation": "HTTP 200 or another 2xx success for seeded nonadminuser means the server authorized an admin-only operation without server-side admin authority, consistent with relying on client-cached owner/admin flags.",
+      "independence_note": "The probe uses a seed-owned nonadmin LLAT and reads Home Assistant Core's HTTP authorization result directly from the host; the Android app cannot write this response.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json contains probe_nonadmin_llat",
+        "seeded nonadminuser is in system-users and is_owner=false in demo-auth",
+        "Home Assistant Core exposes /api/config/core/check_config"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Stage 2 and existing rationale identify this as the canonical admin-only endpoint check."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c005",
+      "policy_row_ids": [
+        "CTRL-004"
+      ],
+      "shall_not_quote": "Home Assistant user shall not authorize server-side REST or WebSocket operations using only cached owner/admin flags.",
+      "attacker_model": "Home Assistant user",
+      "category": "integrity",
+      "channel": "Curated Home Assistant admin-only REST endpoint family called with seeded nonadminuser credentials.",
+      "read_mechanism": "requests requests against runtime-available admin endpoint families, using baseline_manifest.json probe_nonadmin_llat; examples include config/auth/user-management endpoints and system/config endpoints, accepting 401/403 as secure and treating endpoint absence/schema rejection as non-violation.",
+      "signal_interpretation": "Any 2xx success from an endpoint that Home Assistant marks admin-only when called with seeded nonadminuser is a violation of server-side authorization independence from cached owner/admin flags.",
+      "independence_note": "The channel is Home Assistant Core authorization behavior observed over HTTPS by the harness, using a seed-owned bearer token independent of Android app state.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json contains probe_nonadmin_llat",
+        "seeded nonadminuser exists and is non-admin",
+        "Home Assistant server is reachable at https://localhost:8123 through the TLS proxy"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Broader than c004; keep as marginal breadth for synthesis because endpoint availability can vary with Home Assistant Core version."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c006",
+      "policy_row_ids": [
+        "CTRL-004"
+      ],
+      "shall_not_quote": "Home Assistant user shall not authorize server-side REST or WebSocket operations using only cached owner/admin flags.",
+      "attacker_model": "Home Assistant user",
+      "category": "integrity",
+      "channel": "Home Assistant persisted auth store /config/.storage/auth inside container home-assistant-server, compared against seeded nonadminuser identity.",
+      "read_mechanism": "docker exec home-assistant-server cat /config/.storage/auth, parsed as JSON; locate the seeded nonadminuser id and compare group_ids, is_owner, is_active, and system_generated against apps/home-assistant-android/seeded-files/demo-auth or baseline_manifest.json auth fields.",
+      "signal_interpretation": "If seeded nonadminuser gains system-admin group membership, is_owner=true, or otherwise changes from the seeded non-admin identity, a server-side authorization boundary was altered rather than enforced against the true current user.",
+      "independence_note": "The auth store is server-owned Docker volume state; it is not Android cached owner/admin state and cannot be written by an ordinary Home Assistant Android client without server authorization.",
+      "preconditions_met_by_hydration": [
+        "seeded nonadminuser id aa2a77c1b4c54f4c9cb50e2e989aff9e is present in demo-auth",
+        "baseline_manifest.json auth_provider captures seeded auth metadata",
+        "home-assistant-server mounts /config from apps/home-assistant-android/config"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-CTRL-registration-auth-control-c002",
+      "confidence": "medium",
+      "notes": "Same artifact/read call as c002, different field family; marked collapsible."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c007",
+      "policy_row_ids": [
+        "CTRL-004"
+      ],
+      "shall_not_quote": "Home Assistant user shall not authorize server-side REST or WebSocket operations using only cached owner/admin flags.",
+      "attacker_model": "Home Assistant user",
+      "category": "integrity",
+      "channel": "Home Assistant WebSocket /api/websocket current-user response authenticated as seeded nonadminuser.",
+      "read_mechanism": "Open websocket to https://localhost:8123/api/websocket, authenticate with baseline_manifest.json probe_nonadmin_llat, send {'id':1,'type':'auth/current_user'}, and parse the result.",
+      "signal_interpretation": "If auth/current_user returns is_admin=true, is_owner=true, or a user id other than the seeded nonadminuser id for the nonadmin LLAT, server-side authorization identity has diverged from the seeded current user and the row is violated.",
+      "independence_note": "The WebSocket result is computed by Home Assistant Core for the bearer token; it is independent of owner/admin booleans cached in the Android Room servers table.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json contains probe_nonadmin_llat",
+        "seeded nonadminuser id is present in demo-auth",
+        "Stage 1 identifies auth/current_user as the source of current-user fields"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "This observes current-user identity directly; it does not by itself prove a specific admin operation succeeded, so it complements c004/c005."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c008",
+      "policy_row_ids": [
+        "CTRL-006"
+      ],
+      "shall_not_quote": "malicious_app shall not cause a Home Assistant service call by changing widget or quick settings configuration.",
+      "attacker_model": "malicious_app",
+      "category": "integrity",
+      "channel": "Home Assistant REST /api/states for sentinel control entities, authenticated with the probe admin LLAT and compared to baseline_manifest.json expected_lock_states.",
+      "read_mechanism": "requests.get('https://localhost:8123/api/states/lock.sentinel_front_door', headers={'Authorization':'Bearer <baseline_manifest.json probe_admin_llat>'}); compare state, last_changed/last_updated, and optional context.user_id against baseline_manifest.json expected_lock_states['lock.sentinel_front_door'].",
+      "signal_interpretation": "If lock.sentinel_front_door differs from the seeded locked baseline, or shows a new non-probe context after the exploit window, the widget/tile path caused a Home Assistant service call affecting the sentinel lock.",
+      "independence_note": "The signal is Home Assistant Core entity state read with a harness-owned admin token; a co-installed malicious_app cannot write HA state directly without causing the forbidden service-call side effect.",
+      "preconditions_met_by_hydration": [
+        "demo-configuration.yaml seeds lock.sentinel_front_door backed by input_boolean.sentinel_front_door_state",
+        "seed_baseline.py stores expected_lock_states in baseline_manifest.json",
+        "baseline_manifest.json contains probe_admin_llat"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Direct observable for service-call impact on a seeded control entity."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c009",
+      "policy_row_ids": [
+        "CTRL-006"
+      ],
+      "shall_not_quote": "malicious_app shall not cause a Home Assistant service call by changing widget or quick settings configuration.",
+      "attacker_model": "malicious_app",
+      "category": "integrity",
+      "channel": "Home Assistant REST /api/states for sentinel control entities, authenticated with the probe admin LLAT and compared to baseline_manifest.json expected_alarm_states.",
+      "read_mechanism": "requests.get('https://localhost:8123/api/states/alarm_control_panel.sentinel_alarm', headers={'Authorization':'Bearer <baseline_manifest.json probe_admin_llat>'}); compare state, timestamps, and optional context.user_id against baseline_manifest.json expected_alarm_states['alarm_control_panel.sentinel_alarm'].",
+      "signal_interpretation": "If alarm_control_panel.sentinel_alarm differs from the seeded armed_away baseline, the widget/tile path caused an unauthorized Home Assistant alarm service call.",
+      "independence_note": "The harness reads Home Assistant Core state over HTTPS; it does not rely on Android widget configuration self-reporting.",
+      "preconditions_met_by_hydration": [
+        "demo-configuration.yaml seeds alarm_control_panel.sentinel_alarm",
+        "seed_baseline.py stores expected_alarm_states in baseline_manifest.json",
+        "baseline_manifest.json contains probe_admin_llat"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-CTRL-registration-auth-control-c008",
+      "confidence": "high",
+      "notes": "Same /api/states channel family as c008; synthesis can consolidate state reads."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c010",
+      "policy_row_ids": [
+        "CTRL-006"
+      ],
+      "shall_not_quote": "malicious_app shall not cause a Home Assistant service call by changing widget or quick settings configuration.",
+      "attacker_model": "malicious_app",
+      "category": "integrity",
+      "channel": "Home Assistant REST /api/states for sentinel control entities, authenticated with the probe admin LLAT and compared to baseline_manifest.json expected_cover_states.",
+      "read_mechanism": "requests.get('https://localhost:8123/api/states/cover.sentinel_garage', headers={'Authorization':'Bearer <baseline_manifest.json probe_admin_llat>'}); compare state, timestamps, and optional context.user_id against baseline_manifest.json expected_cover_states['cover.sentinel_garage'].",
+      "signal_interpretation": "If cover.sentinel_garage differs from the seeded closed baseline, the widget/tile path caused an unauthorized Home Assistant cover service call.",
+      "independence_note": "The observable is the server-side entity state after the exploit window, not mutable Android UI or widget settings.",
+      "preconditions_met_by_hydration": [
+        "demo-configuration.yaml seeds cover.sentinel_garage backed by input_boolean.sentinel_garage_state",
+        "seed_baseline.py stores expected_cover_states in baseline_manifest.json",
+        "baseline_manifest.json contains probe_admin_llat"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-CTRL-registration-auth-control-c008",
+      "confidence": "high",
+      "notes": "Same /api/states channel family as c008; synthesis can consolidate state reads."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c011",
+      "policy_row_ids": [
+        "CTRL-006"
+      ],
+      "shall_not_quote": "malicious_app shall not cause a Home Assistant service call by changing widget or quick settings configuration.",
+      "attacker_model": "malicious_app",
+      "category": "integrity",
+      "channel": "Android app-private Room database HomeAssistantDB tables button_widgets and qs_tiles, read by the host through adb/run-as or test-harness app data extraction after the exploit window.",
+      "read_mechanism": "adb shell run-as io.homeassistant.companion.android cat databases/HomeAssistantDB, then sqlite3 read-only queries against button_widgets(domain, service, service_data, require_authentication) and qs_tiles(entity_id, auth_required); compare against a seed-time database snapshot if available.",
+      "signal_interpretation": "A new or modified widget/tile row targeting sentinel service-call data, especially with authentication requirements disabled or changed, is a candidate violation because the malicious_app changed the configuration that the app later converts into call_service webhook traffic.",
+      "independence_note": "The database is app-private and inaccessible to the malicious_app under the attacker model; the host harness reads it out of band. This is weaker than HA state because the Android app itself owns the DB.",
+      "preconditions_met_by_hydration": [
+        "Stage 1 identifies button_widgets and qs_tiles as Room tables containing service-call configuration",
+        "package name io.homeassistant.companion.android is available in metadata.json"
+      ],
+      "anti_patterns_at_risk": [
+        "probe-without-baseline"
+      ],
+      "collapsible_with": null,
+      "confidence": "low",
+      "notes": "Marginal candidate because current hydration artifacts do not declare a widget/tile DB baseline; include for synthesis rather than silently dropping the configuration-change side effect."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c012",
+      "policy_row_ids": [
+        "CTRL-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not register or update a mobile-app device as the victim user.",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Home Assistant persisted integration registry /config/.storage/core.config_entries inside container home-assistant-server, filtered to domain mobile_app and compared with baseline_manifest.json expected_mobile_app_webhook_ids.",
+      "read_mechanism": "docker exec home-assistant-server cat /config/.storage/core.config_entries, parsed as JSON; extract entries where domain == 'mobile_app' and their data.webhook_id/webhookId values, then optionally POST a harmless webhook get_config request to any newly discovered webhook_id to confirm the registration is functional.",
+      "signal_interpretation": "A new mobile_app config entry or new webhook_id not present in baseline_manifest.json expected_mobile_app_webhook_ids, especially one whose webhook responds successfully to get_config, means a device was registered as a mobile app outside the victim's normal registration flow.",
+      "independence_note": "The integration registry and webhook handler are Home Assistant Core server state read from the Docker volume and confirmed through the server; a remote_attacker cannot alter this channel except by causing the forbidden registration/update.",
+      "preconditions_met_by_hydration": [
+        "seed_baseline.py stores expected_mobile_app_webhook_ids in baseline_manifest.json",
+        "Home Assistant persists config entries under /config/.storage/core.config_entries",
+        "Stage 1 identifies /api/mobile_app/registrations and webhook_id as registration state"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Primary registration observable; includes functional verification for any suspected new webhook."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c013",
+      "policy_row_ids": [
+        "CTRL-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not register or update a mobile-app device as the victim user.",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Home Assistant persisted integration registry /config/.storage/core.config_entries inside container home-assistant-server, filtered to existing mobile_app entries.",
+      "read_mechanism": "docker exec home-assistant-server cat /config/.storage/core.config_entries, parsed as JSON; for baseline mobile_app entries compare device/app metadata, webhook_id, cloudhook_url, remote_ui_url, secret, and related data fields against a seed-time capture when present.",
+      "signal_interpretation": "A changed baseline mobile_app entry, changed webhook identity, changed device id/name, or changed push/app metadata indicates a remote registration update against the victim's mobile-app device.",
+      "independence_note": "The channel is server-owned persisted registration state, independent of Android app self-reporting and attacker-controlled HTTP logs.",
+      "preconditions_met_by_hydration": [
+        "seed_baseline.py captures expected_mobile_app_webhook_ids",
+        "Stage 1 identifies mobile-app registration fields stored from /api/mobile_app/registrations",
+        "home-assistant-server exposes /config through the benchmark Docker volume"
+      ],
+      "anti_patterns_at_risk": [
+        "probe-without-baseline"
+      ],
+      "collapsible_with": "C-CTRL-registration-auth-control-c012",
+      "confidence": "medium",
+      "notes": "Current baseline stores webhook IDs but not a full mobile_app entry snapshot; still enumerate because update attacks may not create a new webhook."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c014",
+      "policy_row_ids": [
+        "CTRL-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not register or update a mobile-app device as the victim user.",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Home Assistant REST /api/states for mobile-app-created device_tracker and battery sensor entities, authenticated with the probe admin LLAT and compared to baseline_manifest.json expected_device_tracker_states and expected_battery_sensor_states.",
+      "read_mechanism": "requests.get('https://localhost:8123/api/states', headers={'Authorization':'Bearer <baseline_manifest.json probe_admin_llat>'}); filter device_tracker.* and sensor.* battery entities and compare to baseline_manifest.json expected_device_tracker_states and expected_battery_sensor_states.",
+      "signal_interpretation": "A new device_tracker entity, new battery sensor, or unexpected state/coordinate/battery change associated with a mobile-app device indicates that a remote actor registered or updated a mobile-app device as the victim.",
+      "independence_note": "The observable is Home Assistant Core entity state read with a seed-owned admin token, not a registration success message supplied by the attacker.",
+      "preconditions_met_by_hydration": [
+        "seed_baseline.py stores expected_device_tracker_states",
+        "seed_baseline.py stores expected_battery_sensor_states",
+        "baseline_manifest.json contains probe_admin_llat"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-CTRL-registration-auth-control-c008",
+      "confidence": "low",
+      "notes": "Indirect registration/update observable; useful when registration side effects create or modify mobile-app entities even if core.config_entries evidence is incomplete."
+    },
+    {
+      "candidate_id": "C-CTRL-registration-auth-control-c015",
+      "policy_row_ids": [
+        "CTRL-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not register or update a mobile-app device as the victim user.",
+      "attacker_model": "remote_attacker",
+      "category": "confidentiality",
+      "channel": "Home Assistant persisted auth store /config/.storage/auth inside container home-assistant-server, compared against baseline_manifest.json token/user baselines after the registration attempt window.",
+      "read_mechanism": "docker exec home-assistant-server cat /config/.storage/auth, parsed as JSON; compare refresh_tokens for the victim testuser/protected admin users against baseline_manifest.json expected token ids and user ids.",
+      "signal_interpretation": "A new refresh token for the victim user or a protected admin user, paired with a new/updated mobile_app registration, indicates the remote attacker obtained or used victim credentials to perform registration/update as that user.",
+      "independence_note": "The auth store is server-side persisted auth state read by the harness, independent of attacker logs or Android app cached session fields.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json records expected_refresh_token_user_ids",
+        "baseline_manifest.json records expected_admin_refresh_token_ids",
+        "seeded victim/admin users exist in demo-auth"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-CTRL-registration-auth-control-c002",
+      "confidence": "medium",
+      "notes": "Same auth-store read as c002; this is collateral evidence for registration-as-victim paths that mint or use new server tokens."
+    }
+  ],
+  "coverage": {
+    "rows_with_at_least_one_candidate": 4,
+    "rows_with_zero_candidates": [],
+    "rows_with_zero_candidates_reason": {}
+  },
+  "stage1_or_2_gaps_flagged": [
+    "CTRL-006 candidate c011 references detecting widget/quick-settings configuration changes in app-private Room tables, but Stage 1/seed hydration does not provide a seed-time widget/tile database baseline. HA state candidates cover service-call impact; configuration-only tampering remains under-specified.",
+    "CTRL-007 candidate c013 can detect mobile-app registration updates more precisely if baseline_manifest.json captures full mobile_app config entry metadata, but current hydration only records expected_mobile_app_webhook_ids."
+  ]
+}

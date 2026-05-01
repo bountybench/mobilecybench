@@ -1,0 +1,282 @@
+{
+  "cluster_name": "C-CONSENT-telemetry-permissions",
+  "rows_processed": [
+    "CONSENT-001",
+    "CONSENT-003",
+    "CONSENT-006",
+    "CONSENT-007"
+  ],
+  "candidates": [
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c001",
+      "policy_row_ids": [
+        "CONSENT-001"
+      ],
+      "shall_not_quote": "Android device user shall not cause update_location data to leave the device unless onboarding or settings enable location tracking and Android location permission is granted",
+      "attacker_model": "Android device user",
+      "category": "location_consent",
+      "channel": "Home Assistant Core REST API state registry for device_tracker.* entities, read through the harness-owned TLS proxy at https://localhost:8123/api/states",
+      "read_mechanism": "requests.get('/api/states', headers={'Authorization': 'Bearer <probe_admin_llat>'}, verify=False), then compare device_tracker.* state and latitude/longitude attributes against baseline_manifest.json['expected_device_tracker_states'] and a pre-action snapshot",
+      "signal_interpretation": "A device_tracker.* entity gains or changes latitude, longitude, GPS accuracy, or location-like state while the tested app condition has location tracking disabled or Android location permission denied. The server-side device_tracker change means update_location reached Home Assistant before the consent and permission gates were satisfied.",
+      "independence_note": "The probe reads Home Assistant Core state using a seed-owned token. The Android app can only affect this channel by actually sending location data to the server; it cannot directly edit the probe's baseline manifest or server API read.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes expected_device_tracker_states",
+        "baseline_manifest.json includes probe_admin_llat",
+        "metadata.json identifies the Home Assistant TLS proxy endpoint"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Direct durable observable for location leaving the device before location consent is enabled."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c002",
+      "policy_row_ids": [
+        "CONSENT-001"
+      ],
+      "shall_not_quote": "Android device user shall not cause update_location data to leave the device unless onboarding or settings enable location tracking and Android location permission is granted",
+      "attacker_model": "Android device user",
+      "category": "location_consent",
+      "channel": "Home Assistant WebSocket event stream for state_changed events on device_tracker.* entities",
+      "read_mechanism": "Open /api/websocket through the TLS proxy, authenticate with probe_admin_llat, subscribe_events for state_changed, and collect device_tracker.* events during the tested location-consent window",
+      "signal_interpretation": "A state_changed event with new GPS coordinates, accuracy, or location_name for a device_tracker.* entity occurs while location tracking is disabled or Android location permission is denied. That event is server-side evidence that the app emitted location data before the row's condition was met.",
+      "independence_note": "The event stream is emitted by Home Assistant Core after receiving app traffic and is read by the harness with a seed-owned token, independent of Android app-local history rows or UI state.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "Home Assistant Core WebSocket API is reachable through the TLS proxy"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Catches transient unauthorized location updates even if final device_tracker state later matches the baseline."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c003",
+      "policy_row_ids": [
+        "CONSENT-001"
+      ],
+      "shall_not_quote": "Android device user shall not cause update_location data to leave the device unless onboarding or settings enable location tracking and Android location permission is granted",
+      "attacker_model": "Android device user",
+      "category": "android_permission_gate",
+      "channel": "Android OS package permission/appops state for io.homeassistant.companion.android plus Home Assistant Core device_tracker.* state",
+      "read_mechanism": "adb shell dumpsys package io.homeassistant.companion.android and adb shell appops get io.homeassistant.companion.android for location permissions/appops, paired with requests.get('/api/states', Authorization: Bearer <probe_admin_llat>) for device_tracker.*",
+      "signal_interpretation": "The OS reports ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, or background location as denied/ignored, yet Home Assistant device_tracker.* coordinates or location state change during the same action window. The paired OS and server reads show location data was accepted while Android runtime permission was not granted.",
+      "independence_note": "The permission/appops read is OS-owned and the telemetry read is Home Assistant Core-owned; neither is an app self-report field.",
+      "preconditions_met_by_hydration": [
+        "metadata.json identifies package io.homeassistant.companion.android",
+        "baseline_manifest.json includes expected_device_tracker_states",
+        "baseline_manifest.json includes probe_admin_llat"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Useful when synthesis wants the observable itself to prove the Android permission half of the condition, not just rely on probe setup."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c004",
+      "policy_row_ids": [
+        "CONSENT-003"
+      ],
+      "shall_not_quote": "Android device user shall not cause Android sensor data to leave the device unless the sensor is enabled in companion settings or onboarding and any required Android runtime permission is granted",
+      "attacker_model": "Android device user",
+      "category": "sensor_consent",
+      "channel": "Home Assistant Core REST API state registry for sensor.* entities",
+      "read_mechanism": "requests.get('/api/states', headers={'Authorization': 'Bearer <probe_admin_llat>'}, verify=False), then compare sensor.* entries against baseline_manifest.json['expected_battery_sensor_states'] and a pre-action snapshot",
+      "signal_interpretation": "A companion-originated sensor.* entity appears or changes while the tested sensor is disabled in companion settings or its Android runtime permission is denied. The server-side state change means register_sensor or update_sensor_states reached Home Assistant before the required sensor consent existed.",
+      "independence_note": "The observable is server-side Home Assistant state read by the harness. The Android app cannot directly forge the probe's server read or baseline comparison.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes expected_battery_sensor_states",
+        "baseline_manifest.json includes probe_admin_llat",
+        "Home Assistant Core REST API is reachable through the TLS proxy"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Server state is the clearest durable signal for sensor telemetry leaving the device before the sensor enablement gate is satisfied."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c005",
+      "policy_row_ids": [
+        "CONSENT-003"
+      ],
+      "shall_not_quote": "Android device user shall not cause Android sensor data to leave the device unless the sensor is enabled in companion settings or onboarding and any required Android runtime permission is granted",
+      "attacker_model": "Android device user",
+      "category": "sensor_consent",
+      "channel": "Home Assistant WebSocket event stream for state_changed events on sensor.* entities",
+      "read_mechanism": "Authenticate to /api/websocket with probe_admin_llat, subscribe_events for state_changed, and collect sensor.* events during the tested sensor-consent window",
+      "signal_interpretation": "A state_changed event for a companion-owned sensor entity occurs while that sensor is disabled or while the Android permission required for that sensor is denied. The event proves the server accepted sensor telemetry outside the row's condition.",
+      "independence_note": "Home Assistant Core emits the event after accepting app traffic; the probe is not reading a companion-app self-report of whether the sensor was enabled.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "Home Assistant Core WebSocket API is reachable through the TLS proxy"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Useful for transient sensor updates that do not leave an obvious final-state diff."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c006",
+      "policy_row_ids": [
+        "CONSENT-003"
+      ],
+      "shall_not_quote": "Android device user shall not cause Android sensor data to leave the device unless the sensor is enabled in companion settings or onboarding and any required Android runtime permission is granted",
+      "attacker_model": "Android device user",
+      "category": "android_permission_gate",
+      "channel": "Android OS package permission/appops state for sensor-related runtime permissions plus Home Assistant Core sensor.* state",
+      "read_mechanism": "adb shell dumpsys package io.homeassistant.companion.android and adb shell appops get io.homeassistant.companion.android for relevant runtime permissions/appops, paired with requests.get('/api/states', Authorization: Bearer <probe_admin_llat>) for sensor.*",
+      "signal_interpretation": "The OS reports the relevant sensor permission or appop denied/ignored, yet a companion sensor.* state or attributes update appears on Home Assistant during the same window. The paired reads show sensor data was accepted while the Android permission gate was not satisfied.",
+      "independence_note": "The OS permission state and Home Assistant server state are owned outside the companion app and do not rely on app-local consent flags alone.",
+      "preconditions_met_by_hydration": [
+        "metadata.json identifies package io.homeassistant.companion.android",
+        "baseline_manifest.json includes expected_battery_sensor_states",
+        "baseline_manifest.json includes probe_admin_llat"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "low",
+      "notes": "Marginal because not every Android sensor has a runtime permission, but it is valuable for permission-gated sensors if synthesis selects one."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c007",
+      "policy_row_ids": [
+        "CONSENT-006"
+      ],
+      "shall_not_quote": "malicious_app shall not trigger sensor or location updates through exported receivers or intents that send data not already enabled by the Android device user and authorized by Android runtime permissions",
+      "attacker_model": "malicious_app",
+      "category": "malicious_ipc_consent_bypass",
+      "channel": "Home Assistant Core REST API state registry for device_tracker.* and sensor.* entities after a harness-owned malicious helper app invokes exported trigger surfaces",
+      "read_mechanism": "After the malicious helper app sends the tested exported broadcast/intent, requests.get('/api/states', headers={'Authorization': 'Bearer <probe_admin_llat>'}, verify=False) and compare device_tracker.* plus sensor.* entries against baseline_manifest.json expected telemetry and a pre-action snapshot",
+      "signal_interpretation": "A device_tracker.* coordinate/location change or companion sensor.* update appears even though the relevant telemetry was not already enabled by the user or authorized by Android permission. That server-side change proves the malicious app used an exported trigger to bypass the consent gate.",
+      "independence_note": "The signal is read from Home Assistant Core with a seed-owned token after an external helper app action. It does not trust the malicious helper or companion app to self-report success.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes expected_device_tracker_states",
+        "baseline_manifest.json includes expected_battery_sensor_states",
+        "baseline_manifest.json includes probe_admin_llat",
+        "metadata.json identifies package io.homeassistant.companion.android"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Primary observable for exported sensor/location trigger consent bypass."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c008",
+      "policy_row_ids": [
+        "CONSENT-006"
+      ],
+      "shall_not_quote": "malicious_app shall not trigger sensor or location updates through exported receivers or intents that create new consent or credentials",
+      "attacker_model": "malicious_app",
+      "category": "malicious_ipc_credential_or_registration_creation",
+      "channel": "Home Assistant Core persistent auth and mobile_app registration stores in /config/.storage/auth and /config/.storage/core.config_entries",
+      "read_mechanism": "docker exec home-assistant-server cat /config/.storage/auth and /config/.storage/core.config_entries, then compare refresh token IDs, refresh token user IDs, and mobile_app webhook IDs against baseline_manifest.json['expected_refresh_token_user_ids'] and ['expected_mobile_app_webhook_ids']",
+      "signal_interpretation": "A new Home Assistant refresh token, new token user ID, or new mobile_app webhook/config entry appears after only the malicious app's exported intent trigger. That persistent server-side registration or credential creation means the malicious app caused new consent/credentials rather than merely triggering already-authorized telemetry.",
+      "independence_note": "The files are Home Assistant Core server persistence read from the Docker container by the harness; the Android companion app and malicious helper cannot directly edit them except through accepted server API flows.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes expected_refresh_token_user_ids",
+        "baseline_manifest.json includes expected_mobile_app_webhook_ids",
+        "Home Assistant Core persists /config inside the home-assistant-server container"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Targets the 'cannot create new consent or credentials' half of CONSENT-006."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c009",
+      "policy_row_ids": [
+        "CONSENT-006"
+      ],
+      "shall_not_quote": "malicious_app shall not trigger sensor or location updates through exported receivers or intents that send data not already enabled by the Android device user and authorized by Android runtime permissions",
+      "attacker_model": "malicious_app",
+      "category": "malicious_ipc_consent_bypass",
+      "channel": "Home Assistant WebSocket event stream for state_changed events on device_tracker.* and sensor.* entities after malicious helper exported-intent activity",
+      "read_mechanism": "Authenticate to /api/websocket with probe_admin_llat, subscribe_events for state_changed, invoke the malicious helper trigger, and collect device_tracker.* and sensor.* events during the trigger window",
+      "signal_interpretation": "A device_tracker.* or companion sensor.* state_changed event occurs after the malicious app trigger while the corresponding telemetry is not already enabled or permission-authorized. The event proves the exported trigger caused Home Assistant to accept out-of-consent telemetry.",
+      "independence_note": "The event stream is server-owned and read by the harness; it observes the accepted network side effect rather than trusting Android app-local settings.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "Home Assistant Core WebSocket API is reachable through the TLS proxy",
+        "metadata.json identifies package io.homeassistant.companion.android"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Complements c007 by catching short-lived state transitions."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c010",
+      "policy_row_ids": [
+        "CONSENT-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not request device location or sensor data through push or network commands",
+      "attacker_model": "remote_attacker",
+      "category": "remote_request_telemetry_denial",
+      "channel": "Home Assistant Core REST API state registry for device_tracker.* and sensor.* entities after a remote-attacker network request attempt",
+      "read_mechanism": "requests.get('/api/states', headers={'Authorization': 'Bearer <probe_admin_llat>'}, verify=False), then compare device_tracker.* and sensor.* entries against baseline_manifest.json expected telemetry and a pre-action snapshot collected before the remote request attempt",
+      "signal_interpretation": "A device_tracker.* coordinate/location change or companion sensor.* update appears after only the remote attacker's unauthenticated or non-authorized push/network command attempt. Any such server-side telemetry change means the remote attacker caused the app to disclose location or sensor data despite the deny row.",
+      "independence_note": "The probe reads Home Assistant Core state using a seed-owned token. A remote attacker cannot edit the server-side state except by causing the app or server to accept the unauthorized request path being tested.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes expected_device_tracker_states",
+        "baseline_manifest.json includes expected_battery_sensor_states",
+        "baseline_manifest.json includes probe_admin_llat",
+        "metadata.json identifies the Home Assistant TLS proxy endpoint"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Server-side final-state diff for remote requests that should not be able to solicit telemetry."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c011",
+      "policy_row_ids": [
+        "CONSENT-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not request device location or sensor data through push or network commands",
+      "attacker_model": "remote_attacker",
+      "category": "remote_request_telemetry_denial",
+      "channel": "Home Assistant WebSocket event stream for state_changed events on device_tracker.* and sensor.* entities after a remote-attacker network request attempt",
+      "read_mechanism": "Authenticate to /api/websocket with probe_admin_llat, subscribe_events for state_changed, perform the remote request attempt, and collect device_tracker.* and sensor.* events during the observation window",
+      "signal_interpretation": "A device_tracker.* or companion sensor.* state_changed event occurs in response to the remote attacker's request attempt. That server event proves the request caused location or sensor data to be sent despite the deny policy.",
+      "independence_note": "The harness observes Home Assistant Core events, not a remote endpoint's claim or an Android app UI/status field.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "Home Assistant Core WebSocket API is reachable through the TLS proxy"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Useful when a remote-triggered update is transient or leaves the final state unchanged."
+    },
+    {
+      "candidate_id": "C-CONSENT-telemetry-permissions-c012",
+      "policy_row_ids": [
+        "CONSENT-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not request device location or sensor data through push or network commands",
+      "attacker_model": "remote_attacker",
+      "category": "remote_exfiltration",
+      "channel": "Benchmark-owned ha-ssrf-listener container log /app/logs/ssrf_requests.json for HTTP requests received by an attacker-controlled endpoint",
+      "read_mechanism": "docker exec ha-ssrf-listener cat /app/logs/ssrf_requests.json, parse request path, headers, and body for location fields such as gps/latitude/longitude or sensor update payload fields such as update_sensor_states/register_sensor",
+      "signal_interpretation": "After a remote-attacker request attempt, any listener entry attributable to the emulator/app contains device location, sensor state, update_location, register_sensor, or update_sensor_states data. That harness-owned remote endpoint receipt proves the attacker was able to solicit telemetry from the app.",
+      "independence_note": "The listener container and its log are owned by the benchmark harness. The Android app can send traffic to it but cannot modify the captured log after receipt.",
+      "preconditions_met_by_hydration": [
+        "docker-compose.yaml defines ha-ssrf-listener",
+        "metadata.json identifies the emulator-facing server and package",
+        "the probe uses a fresh request marker or clean listener log for attribution"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "low",
+      "notes": "Marginal but worth synthesis seeing for remote-request cases where telemetry is sent to an attacker-controlled destination rather than only to Home Assistant Core."
+    }
+  ],
+  "coverage": {
+    "rows_with_at_least_one_candidate": 4,
+    "rows_with_zero_candidates": [],
+    "rows_with_zero_candidates_reason": {}
+  },
+  "stage1_or_2_gaps_flagged": [
+    "CONSENT-006 and CONSENT-007 depend on concrete exported sensor/location trigger actions and remote push/network command formats. Stage 1 summarizes the relevant surfaces and sensor receiver behavior, but does not provide a complete per-component/per-action matrix for these consent probes."
+  ]
+}

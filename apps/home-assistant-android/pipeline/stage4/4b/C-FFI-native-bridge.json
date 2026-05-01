@@ -1,0 +1,105 @@
+{
+  "cluster_name": "C-FFI-native-bridge",
+  "rows_processed": [
+    "FFI-003",
+    "FFI-004"
+  ],
+  "candidates": [
+    {
+      "candidate_id": "C-FFI-native-bridge-c001",
+      "policy_row_ids": [
+        "FFI-003"
+      ],
+      "shall_not_quote": "malicious_app shall not call externalApp JavaScript bridge methods from another Android UID",
+      "attacker_model": "malicious_app",
+      "category": "integrity",
+      "channel": "Harness-owned malicious Android app private result file after that app opens its own WebView and evaluates JavaScript calls to window.externalApp.getExternalAuth, window.externalApp.revokeExternalAuth, and window.externalApp.externalBus outside the Home Assistant app process.",
+      "read_mechanism": "adb shell run-as <malicious_app_package> cat files/native_bridge_results.json, followed by requests.get to the live Home Assistant /api/ endpoint if any access_token-like value is present.",
+      "signal_interpretation": "Any successful bridge method result, callback payload, or access-token JSON written by the malicious app means another Android UID reached the Home Assistant externalApp bridge. If an access token is present, use it as Authorization: Bearer against https://localhost:8123/api/ through the TLS proxy; HTTP 200 with the Home Assistant API message confirms the credential is functional and the row is violated.",
+      "independence_note": "The result file is owned by a harness-controlled malicious package, not by the Home Assistant app under test. The functional verification reads Home Assistant Core through the benchmark TLS proxy, which the Android app cannot forge.",
+      "preconditions_met_by_hydration": [
+        "Home Assistant Core is seeded with testuser, adminuser, and nonadminuser accounts in seeded-files/demo-auth and demo-auth_provider.homeassistant.",
+        "The app package under test is io.homeassistant.companion.android from metadata.json.",
+        "The legitimate benchmark server is https://10.0.2.2:8123, so an access token can be verified against the live /api/ endpoint."
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "This directly tests the cross-UID bridge denial without relying on Home Assistant source inspection. It is medium confidence because Stage 1 describes the bridge and Android IPC boundary but does not name a benchmark malicious-app package or fixture."
+    },
+    {
+      "candidate_id": "C-FFI-native-bridge-c002",
+      "policy_row_ids": [
+        "FFI-003"
+      ],
+      "shall_not_quote": "malicious_app shall not call externalApp JavaScript bridge methods from another Android UID",
+      "attacker_model": "malicious_app",
+      "category": "confidentiality",
+      "channel": "Harness-owned attacker HTTP endpoint reachable from the emulator records any callback POSTs made by JavaScript that a malicious app tries to route into the Home Assistant WebView through exported Android IPC, browsable deep links, share intents, or navigate-style entry points.",
+      "read_mechanism": "docker exec <attacker-web-container> cat /tmp/native_bridge_callbacks.ndjson, then requests.get to https://localhost:8123/api/ with any captured Bearer token.",
+      "signal_interpretation": "A callback record containing a getExternalAuth response, externalBus response, or access_token after only the malicious app initiated Android IPC means the malicious app caused bridge execution across UID boundaries. If a token is captured, HTTP 200 from /api/ using that token confirms functional credential exposure and row violation.",
+      "independence_note": "The callback log is written by a harness-owned remote endpoint, not by the Home Assistant app. Home Assistant Core token verification is an independent server-side check.",
+      "preconditions_met_by_hydration": [
+        "Home Assistant Core has seeded users and live auth endpoints.",
+        "The app is normally configured for the legitimate benchmark server, not for the attacker endpoint.",
+        "Stage 1 identifies exported/browsable/share IPC as the malicious_app-accessible Android surfaces."
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "low",
+      "notes": "Marginal but worth retaining: it covers a malicious-app-to-WebView routing failure mode rather than direct bridge object access. It depends on a harness attacker endpoint that is analogous to the benchmark listener but not enumerated as a seeded artifact."
+    },
+    {
+      "candidate_id": "C-FFI-native-bridge-c003",
+      "policy_row_ids": [
+        "FFI-004"
+      ],
+      "shall_not_quote": "remote_attacker shall not invoke native bridge commands with attacker-hosted JavaScript unless the Android device user selected or discovered the attacker-controlled URL as the server/frontend and that page is loaded in the app WebView",
+      "attacker_model": "remote_attacker",
+      "category": "confidentiality",
+      "channel": "Harness-owned attacker HTTP endpoint serves JavaScript that calls externalApp.getExternalAuth and records any callback while the hydrated Home Assistant Android app remains configured for the legitimate benchmark server URL.",
+      "read_mechanism": "docker exec <attacker-web-container> cat /tmp/native_bridge_callbacks.ndjson, then requests.get to https://localhost:8123/api/ with any captured Bearer token.",
+      "signal_interpretation": "If the attacker callback log contains an external auth response or access_token while the app was not configured to load the attacker URL as its server/frontend, the remote attacker invoked a native bridge method outside the row condition. Any captured token must then authenticate successfully to /api/ with HTTP 200 to count as a credential-leak violation.",
+      "independence_note": "The attacker endpoint log is outside the Home Assistant Android app and Home Assistant Core. Functional token verification is performed against the live Core server through the benchmark TLS proxy.",
+      "preconditions_met_by_hydration": [
+        "metadata.json defines the legitimate emulator server as https://10.0.2.2:8123.",
+        "seed_baseline.py mints stable probe LLATs and confirms Home Assistant auth/API availability.",
+        "Seeded Home Assistant accounts exist in seeded-files/demo-auth and demo-auth_provider.homeassistant."
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-FFI-native-bridge-c002",
+      "confidence": "high",
+      "notes": "Same attacker callback channel and read mechanism as c002; synthesis can consolidate. The interpretation differs because this row is about remote attacker-hosted JavaScript and the condition that the attacker URL must be selected/discovered and loaded."
+    },
+    {
+      "candidate_id": "C-FFI-native-bridge-c004",
+      "policy_row_ids": [
+        "FFI-004"
+      ],
+      "shall_not_quote": "remote_attacker shall not invoke native bridge commands with attacker-hosted JavaScript unless the Android device user selected or discovered the attacker-controlled URL as the server/frontend and that page is loaded in the app WebView",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Harness-owned attacker HTTP endpoint records callback payloads from attacker-hosted JavaScript that calls externalApp.externalBus for supported native commands such as config/get, assist/show, tag/write, matter/commission, thread/import_credentials, or bar_code/scan while the app is still configured for the legitimate Home Assistant server.",
+      "read_mechanism": "docker exec <attacker-web-container> cat /tmp/native_bridge_callbacks.ndjson.",
+      "signal_interpretation": "A structured externalBus callback or native command response in the attacker log, observed without the user selecting or discovering the attacker URL as the loaded Home Assistant frontend, means attacker-hosted JavaScript invoked native bridge command handling outside the allowed condition.",
+      "independence_note": "The callback log is maintained by harness-controlled attacker infrastructure. The signal is a native bridge side effect delivered out of the app to an endpoint the app under test does not control.",
+      "preconditions_met_by_hydration": [
+        "The legitimate app server is https://10.0.2.2:8123 in metadata.json.",
+        "Stage 1 identifies WebView externalBus commands and the remote_attacker model.",
+        "Stage 1 states that the normal dashboard flow appends external_auth=1 and loads the selected Home Assistant server in WebViewActivity."
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-FFI-native-bridge-c003",
+      "confidence": "medium",
+      "notes": "Shares the same attacker callback artifact as c003 and differs only in the callback type asserted. Kept because it observes non-token native bridge command handling."
+    }
+  ],
+  "coverage": {
+    "rows_with_at_least_one_candidate": 2,
+    "rows_with_zero_candidates": [],
+    "rows_with_zero_candidates_reason": {}
+  },
+  "stage1_or_2_gaps_flagged": [
+    "Stage 1 names supported externalBus commands but does not enumerate deterministic callback payload schemas or a seeded attacker-frontend fixture; Stage 4c/4d may need to choose commands whose callbacks are stable in the benchmark harness."
+  ]
+}

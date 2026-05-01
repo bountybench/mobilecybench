@@ -1,0 +1,283 @@
+{
+  "cluster_name": "C-NET-selected-server-trust",
+  "rows_processed": [
+    "NET-002",
+    "NET-003",
+    "NET-006",
+    "NET-007",
+    "NET-008"
+  ],
+  "candidates": [
+    {
+      "candidate_id": "C-NET-selected-server-trust-c001",
+      "policy_row_ids": [
+        "NET-002"
+      ],
+      "shall_not_quote": "remote_attacker shall not impersonate an HTTPS Home Assistant endpoint without a trusted certificate.",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Harness-owned attacker HTTPS endpoint with an untrusted/self-signed certificate, standing in for the selected Home Assistant URL during an onboarding or dashboard network flow.",
+      "read_mechanism": "Read the attacker endpoint's access log or captured request log after the app attempts to load the HTTPS server URL.",
+      "signal_interpretation": "Any completed HTTP request such as GET /auth/authorize, POST /auth/token, GET /api/websocket, POST /api/mobile_app/registrations, or WebView document request in the attacker HTTPS server log means the app accepted the untrusted certificate and let the remote attacker impersonate Home Assistant. TLS ClientHello or connection failure without an HTTP request is not a violation.",
+      "independence_note": "The HTTPS endpoint and its logs are owned by the test harness/remote attacker, not by the Android app or Home Assistant Core.",
+      "preconditions_met_by_hydration": [
+        "metadata.json defines the normal server as https://10.0.2.2:8123 through home-assistant_tls_proxy",
+        "Stage 1 records that the app uses platform TLS trust for selected HTTPS URLs",
+        "remote_attacker starts without control of the trusted CA store"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Direct runtime signal for untrusted-cert acceptance."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c002",
+      "policy_row_ids": [
+        "NET-002"
+      ],
+      "shall_not_quote": "remote_attacker shall not impersonate an HTTPS Home Assistant endpoint without a trusted certificate.",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Packet capture on the attacker-controlled HTTPS listener interface while the listener presents an untrusted certificate.",
+      "read_mechanism": "tcpdump/pcap read by the harness, decoded only far enough to distinguish TLS handshake failure from completed application-data exchange that reaches the attacker HTTP server.",
+      "signal_interpretation": "A completed TLS session followed by decrypted HTTP request records at the attacker listener is a violation; an attempted connection that terminates during certificate validation is secure. If the listener cannot decrypt because the handshake was not completed with its certificate, this candidate produces no violation.",
+      "independence_note": "The pcap is captured outside the Android process on an attacker/harness interface and cannot be forged by app self-reporting.",
+      "preconditions_met_by_hydration": [
+        "network_security_config trusts system/user CAs but the remote attacker has no CA-store control",
+        "Home Assistant app network flows use OkHttp/WebView/WebSocket over the selected URL"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-NET-selected-server-trust-c001",
+      "confidence": "medium",
+      "notes": "Same trust-boundary scenario as c001; marked collapsible because it observes the same attacker endpoint acceptance."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c003",
+      "policy_row_ids": [
+        "NET-003"
+      ],
+      "shall_not_quote": "remote_attacker shall not receive plaintext HTTP app traffic unless the Android device user selected or discovery returned an HTTP URL and cleartext is permitted.",
+      "attacker_model": "remote_attacker",
+      "category": "confidentiality",
+      "channel": "Harness-owned plaintext HTTP server pretending to be a Home Assistant base URL, with full request logs for path, headers, and body.",
+      "read_mechanism": "Read the attacker HTTP server request log after a run whose selected/baseline server URL is expected to remain https://10.0.2.2:8123.",
+      "signal_interpretation": "Any cleartext app request to the attacker HTTP server while the selected server condition is not HTTP is a violation. Logged onboarding, REST, WebSocket-upgrade, webhook, or WebView requests show plaintext traffic reached the remote attacker outside the row's condition.",
+      "independence_note": "The HTTP server log is attacker/harness-owned and independent of Android app state.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json expected_server_list records https://10.0.2.2:8123",
+        "metadata.json records app_server home-assistant_tls_proxy:443",
+        "Stage 1 records that cleartext is permitted by network_security_config only when the selected/discovered URL is HTTP"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Condition-boundary observable: plaintext is expected only if the selected server URL itself is HTTP."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c004",
+      "policy_row_ids": [
+        "NET-003"
+      ],
+      "shall_not_quote": "remote_attacker shall not receive plaintext HTTP app traffic unless the Android device user selected or discovery returned an HTTP URL and cleartext is permitted.",
+      "attacker_model": "remote_attacker",
+      "category": "confidentiality",
+      "channel": "Packet capture on the host/shared network path for cleartext HTTP requests from the emulator/device to non-Home-Assistant destinations.",
+      "read_mechanism": "tcpdump/pcap read by the harness, filtered for HTTP request lines, Authorization headers, WebSocket upgrade headers, and JSON bodies sent to attacker-controlled hosts.",
+      "signal_interpretation": "Any plaintext HTTP request from the app to a remote-attacker host when the baseline selected server is HTTPS proves the row was violated. If Authorization or access_token material appears, functionally verify by using the bearer value against https://localhost:8123/api/states and treating a 200 response as confirmed credential impact.",
+      "independence_note": "Network capture is taken outside the Android app and outside Home Assistant Core; token functionality is verified against Core directly through the TLS proxy.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json expected_server_list records the HTTPS benchmark server",
+        "Home Assistant Core is reachable through home-assistant_tls_proxy on host port 8123",
+        "baseline_manifest.json contains probe tokens for comparison but does not need to trust app self-report"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Broader than c003 and useful if the cleartext destination is not the primary fake server."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c005",
+      "policy_row_ids": [
+        "NET-006"
+      ],
+      "shall_not_quote": "remote_attacker shall not call mobile-app webhooks without possessing the registered /api/webhook/{webhook_id} or cloudhook URL.",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Home Assistant TLS proxy endpoint /api/webhook/{candidate_id} for unregistered, random, or malformed webhook IDs, plus Home Assistant state before/after through the admin probe LLAT.",
+      "read_mechanism": "requests.post('https://localhost:8123/api/webhook/<unregistered-id>', json=<harmless mobile_app-style request>), then requests.get('/api/states') with baseline_manifest.json probe_admin_llat to check for side effects.",
+      "signal_interpretation": "A 2xx success for an unregistered webhook ID, or a state/event side effect attributable to the unregistered webhook request, means a remote attacker without webhook possession could call mobile-app webhooks. 404/401/403 with no state change is secure.",
+      "independence_note": "The probe reads Core's HTTP result and server state from the host through the TLS proxy; the Android app cannot forge Core's response or the harness-selected random webhook ID.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json contains probe_admin_llat",
+        "baseline_manifest.json contains expected_mobile_app_webhook_ids so the probe can avoid accidentally using a real webhook",
+        "Home Assistant webhook endpoint is reachable at https://localhost:8123/api/webhook/"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Canonical outside-condition check for webhook possession."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c006",
+      "policy_row_ids": [
+        "NET-006"
+      ],
+      "shall_not_quote": "remote_attacker shall not call mobile-app webhooks without possessing the registered /api/webhook/{webhook_id} or cloudhook URL.",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Home Assistant persisted mobile_app config entries in /config/.storage/core.config_entries compared with baseline_manifest.json expected_mobile_app_webhook_ids.",
+      "read_mechanism": "docker exec home-assistant-server cat /config/.storage/core.config_entries, parse JSON entries where domain == 'mobile_app', and compare webhook_id values to the baseline list.",
+      "signal_interpretation": "A new or changed mobile_app webhook_id after the remote-attacker window indicates the attacker may have gained a webhook URL/identity rather than being denied without possession. Confirm functional impact by POSTing a harmless request to the new webhook ID and requiring a Core response consistent with a registered mobile_app webhook.",
+      "independence_note": "The config entry store is Home Assistant Core server state in the Docker /config volume, read by the host outside Android app control.",
+      "preconditions_met_by_hydration": [
+        "seed_baseline.py records expected_mobile_app_webhook_ids from /config/.storage/core.config_entries",
+        "home-assistant-server mounts apps/home-assistant-android/config at /config"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "This is a possession-source observable rather than the webhook call result itself."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c007",
+      "policy_row_ids": [
+        "NET-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not connect directly to home-assistant-server on the internal Docker network.",
+      "attacker_model": "remote_attacker",
+      "category": "confidentiality",
+      "channel": "A harness-controlled remote-attacker container or host process that is not attached to Docker private_net attempts TCP/HTTP/WebSocket access to home-assistant-server:8123.",
+      "read_mechanism": "Run a network client from a non-private_net context and read the connection result for nc/curl/websocket handshake to home-assistant-server:8123.",
+      "signal_interpretation": "Successful DNS resolution plus TCP connection, HTTP status, or WebSocket greeting from home-assistant-server:8123 is a violation of Docker network isolation. Name resolution failure, route failure, or connection refusal from outside private_net is secure.",
+      "independence_note": "The client is a harness-owned remote-attacker vantage point outside the internal Docker network; the Android app cannot fake the kernel/network result.",
+      "preconditions_met_by_hydration": [
+        "docker-compose.yaml places home-assistant-server only on private_net",
+        "home-assistant_tls_proxy is the expected shared_net-facing service",
+        "metadata.json names home-assistant-server and home-assistant_tls_proxy containers"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Direct reachability check for the denial row."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c008",
+      "policy_row_ids": [
+        "NET-007"
+      ],
+      "shall_not_quote": "remote_attacker shall not connect directly to home-assistant-server on the internal Docker network.",
+      "attacker_model": "remote_attacker",
+      "category": "confidentiality",
+      "channel": "Docker network membership metadata for the app's private_net and shared_net networks.",
+      "read_mechanism": "docker network inspect for the Compose-created private_net and external shared_net, parsed as structured JSON container membership.",
+      "signal_interpretation": "Any remote-attacker, listener, emulator-bridge, or non-proxy harness container attached to the same private_net as home-assistant-server is a violation because it can bypass the TLS proxy and connect directly to Core. Expected secure state is home-assistant-server on private_net with only home-assistant_tls_proxy bridging to shared_net.",
+      "independence_note": "Docker network metadata is read by the host from the container runtime, not from the Android app or Home Assistant Core.",
+      "preconditions_met_by_hydration": [
+        "docker-compose.yaml declares private_net as internal",
+        "docker-compose.yaml attaches home-assistant-server only to private_net",
+        "docker-compose.yaml attaches home-assistant_tls_proxy to private_net and shared_net"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Static topology signal that complements c007's runtime reachability check."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c009",
+      "policy_row_ids": [
+        "NET-008"
+      ],
+      "shall_not_quote": "Home Assistant Core server must accept REST requests through the TLS proxy or selected server URL only when the request satisfies the Bearer-token contract.",
+      "attacker_model": "Home Assistant Core server",
+      "category": "availability",
+      "channel": "Home Assistant REST API through https://localhost:8123/api/states at the TLS proxy boundary.",
+      "read_mechanism": "requests.get('/api/states') through https://localhost:8123 with baseline_manifest.json probe_admin_llat, then repeat without Authorization and with an invalid Bearer token.",
+      "signal_interpretation": "A valid admin LLAT receiving non-2xx shows Core failed to accept a contract-satisfying REST request through the proxy. A missing or invalid bearer receiving 2xx shows Core accepted a request that did not satisfy the Bearer-token contract.",
+      "independence_note": "The channel is the server's HTTPS response through the harness-owned TLS proxy; the Android app cannot forge it.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json contains probe_admin_llat",
+        "home-assistant_tls_proxy listens on host port 8123 and forwards to home-assistant-server:8123",
+        "metadata.json records emulator_server https://10.0.2.2:8123"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Covers the REST portion of the conditional row."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c010",
+      "policy_row_ids": [
+        "NET-008"
+      ],
+      "shall_not_quote": "Home Assistant Core server must accept WebSocket requests through the TLS proxy or selected server URL only when the request satisfies the access-token auth contract.",
+      "attacker_model": "Home Assistant Core server",
+      "category": "availability",
+      "channel": "Home Assistant WebSocket API /api/websocket through https://localhost:8123 at the TLS proxy boundary.",
+      "read_mechanism": "Open a WebSocket to /api/websocket through the TLS proxy, read auth_required, send {'type':'auth','access_token': <probe_admin_llat>}, then repeat with an invalid access_token.",
+      "signal_interpretation": "No auth_ok for the valid LLAT is a failure to accept a contract-satisfying WebSocket request. auth_ok for the invalid token means Core accepted a WebSocket request that failed the token contract.",
+      "independence_note": "The WebSocket result is emitted by Home Assistant Core over the proxy and read by the harness; it is independent of Android app state.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json contains probe_admin_llat",
+        "Stage 1 records /api/websocket as the app's authenticated WebSocket surface",
+        "home-assistant_tls_proxy forwards TLS traffic to home-assistant-server"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Covers the WebSocket portion of the conditional row."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c011",
+      "policy_row_ids": [
+        "NET-008"
+      ],
+      "shall_not_quote": "Home Assistant Core server must accept app registration through the TLS proxy or selected server URL only when the request satisfies the Bearer-token registration contract.",
+      "attacker_model": "Home Assistant Core server",
+      "category": "integrity",
+      "channel": "Home Assistant mobile app registration endpoint /api/mobile_app/registrations through https://localhost:8123, plus Core config-entry diff.",
+      "read_mechanism": "requests.post('/api/mobile_app/registrations') with a valid probe LLAT and minimal companion registration payload, repeat without/with invalid bearer, then read /config/.storage/core.config_entries from home-assistant-server.",
+      "signal_interpretation": "A valid Bearer request rejected by Core is a failure to accept a contract-satisfying registration. A missing/invalid Bearer request returning success or creating a new mobile_app config entry means Core accepted registration without the required Bearer contract.",
+      "independence_note": "The HTTP response and persisted Core config entries are server-side artifacts read by the harness outside Android app control.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json contains probe_admin_llat and expected_mobile_app_webhook_ids",
+        "Stage 1 records /api/mobile_app/registrations as the app registration endpoint",
+        "home-assistant-server persists /config/.storage/core.config_entries"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "May create a legitimate extra registration in the positive-control branch; synthesis can decide whether to keep this in an isolated probe."
+    },
+    {
+      "candidate_id": "C-NET-selected-server-trust-c012",
+      "policy_row_ids": [
+        "NET-008"
+      ],
+      "shall_not_quote": "Home Assistant Core server must accept mobile-app webhook requests through the TLS proxy or selected server URL only when the request satisfies the webhook-identity contract.",
+      "attacker_model": "Home Assistant Core server",
+      "category": "availability",
+      "channel": "Home Assistant mobile-app webhook endpoint /api/webhook/{webhook_id} through https://localhost:8123, using baseline expected webhook IDs and an unregistered control ID.",
+      "read_mechanism": "requests.post('/api/webhook/<expected_mobile_app_webhook_id>') with a harmless webhook request, then requests.post('/api/webhook/<unregistered-id>') with the same shape; optionally read /api/states with probe_admin_llat for side effects.",
+      "signal_interpretation": "A registered baseline webhook ID that is rejected indicates Core failed to accept a request satisfying the webhook-identity condition. An unregistered webhook ID accepted with success or side effects indicates Core accepted a request that did not satisfy the condition.",
+      "independence_note": "The probe uses baseline server-side webhook IDs captured at seed time and reads Core's response/state through the TLS proxy, outside Android app control.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json contains expected_mobile_app_webhook_ids",
+        "baseline_manifest.json contains probe_admin_llat for optional state reads",
+        "Stage 1 records mobile-app webhooks as unauthenticated requests authorized by webhook URL possession"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-NET-selected-server-trust-c005",
+      "confidence": "medium",
+      "notes": "Shares the unregistered-webhook read path with c005; marked collapsible."
+    }
+  ],
+  "coverage": {
+    "rows_with_at_least_one_candidate": 5,
+    "rows_with_zero_candidates": [],
+    "rows_with_zero_candidates_reason": {}
+  },
+  "stage1_or_2_gaps_flagged": [
+    "NET-003: hydration records the expected benchmark server URL in baseline_manifest.json expected_server_list, but not a direct app Room selected-server snapshot; a stronger plaintext-outside-condition probe would compare network traffic against the app's actual selected URL row.",
+    "NET-006/NET-008: Stage 1 cites Home Assistant mobile-app webhook docs and Android call sites but did not inspect Home Assistant Core webhook handler semantics; webhook candidates therefore pair HTTP results with state/config-entry side effects where possible."
+  ]
+}

@@ -1,0 +1,260 @@
+{
+  "cluster_name": "C-CONSENT-user-feature-gates",
+  "rows_processed": [
+    "CONSENT-002",
+    "CONSENT-004",
+    "CONSENT-009"
+  ],
+  "candidates": [
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c001",
+      "policy_row_ids": [
+        "CONSENT-002"
+      ],
+      "shall_not_quote": "Android device user shall not produce notification history or notification events unless onboarding/OS notification permission and push/WebSocket notification settings permit delivery.",
+      "attacker_model": "Android device user",
+      "category": "notification_consent",
+      "channel": "Home Assistant Core WebSocket event stream for mobile_app_notification_received, mobile_app_notification_action, and mobile_app_notification_cleared events.",
+      "read_mechanism": "Authenticate to https://localhost:8123/api/websocket with baseline_manifest.json probe_admin_llat, subscribe_events for mobile_app_notification_* event types, and filter events by baseline_manifest.json notification_sentinel_uuid or a probe-owned notification tag.",
+      "signal_interpretation": "A mobile_app_notification_received, mobile_app_notification_action, or mobile_app_notification_cleared event carrying the sentinel appears while OS notification permission, app notifications, or companion push/WebSocket notification settings are disabled. That server-side event means notification events were produced before the row's consent condition was met.",
+      "independence_note": "The event stream is emitted by Home Assistant Core and read by the harness with a seed-owned token; it is independent of Android app UI state or app-private notification history.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "baseline_manifest.json includes notification_sentinel_uuid",
+        "the companion app is registered with Home Assistant mobile_app during the benchmark flow"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Direct observable for the notification-events half of CONSENT-002."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c002",
+      "policy_row_ids": [
+        "CONSENT-002"
+      ],
+      "shall_not_quote": "Android device user shall not produce notification history or notification events unless onboarding/OS notification permission and push/WebSocket notification settings permit delivery.",
+      "attacker_model": "Android device user",
+      "category": "notification_consent",
+      "channel": "Android system notification manager state for package io.homeassistant.companion.android.",
+      "read_mechanism": "Use adb shell appops get io.homeassistant.companion.android POST_NOTIFICATION, adb shell dumpsys package io.homeassistant.companion.android for runtime permission state, and adb shell dumpsys notification --noredact to inspect active/enqueued notification records and package channel importance.",
+      "signal_interpretation": "A Home Assistant Android notification record containing the probe notification tag/sentinel is active or enqueued while POST_NOTIFICATIONS/app notification delivery is denied, or while the relevant channel is disabled according to dumpsys/appops. That means notification delivery occurred before OS/app notification consent permitted it.",
+      "independence_note": "Android system services maintain appops, permission grants, notification records, and channel state; the Home Assistant app can request notifications but cannot forge the harness's ADB read of system state.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json records expected_notification_channels when available",
+        "metadata.json identifies package io.homeassistant.companion.android",
+        "baseline_manifest.json includes notification_sentinel_uuid for probe-owned notification correlation"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Best OS-level observable for notification delivery consent."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c003",
+      "policy_row_ids": [
+        "CONSENT-002"
+      ],
+      "shall_not_quote": "Android device user shall not produce notification history or notification events unless onboarding/OS notification permission and push/WebSocket notification settings permit delivery.",
+      "attacker_model": "Android device user",
+      "category": "notification_consent",
+      "channel": "Android Room database HomeAssistantDB table notification_history inside io.homeassistant.companion.android app-private storage.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android sqlite3 databases/HomeAssistantDB 'select id, message, data, source, server_id from notification_history' before and after the notification test window, paired with appops/dumpsys reads proving notification consent/settings were disabled.",
+      "signal_interpretation": "A new notification_history row whose message or data contains the probe sentinel appears while OS notification permission or companion notification delivery settings are disabled. The row proves notification history was produced outside the consent condition.",
+      "independence_note": "This reads the target app-private history rather than an app self-report; confidence is lower because the app writes this database, so it should be paired with independent appops or server-event observations.",
+      "preconditions_met_by_hydration": [
+        "Stage 1 identifies notification_history as a Room table",
+        "metadata.json identifies the Android package",
+        "baseline_manifest.json includes notification_sentinel_uuid"
+      ],
+      "anti_patterns_at_risk": [
+        "target-state-read"
+      ],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Kept because notification history itself is one of the row targets."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c004",
+      "policy_row_ids": [
+        "CONSENT-002"
+      ],
+      "shall_not_quote": "Android device user shall not produce notification history or notification events unless onboarding/OS notification permission and push/WebSocket notification settings permit delivery.",
+      "attacker_model": "Android device user",
+      "category": "notification_consent",
+      "channel": "Home Assistant Core REST API state for baseline_manifest.json notification_sentinel_entity_id, when that entity exists.",
+      "read_mechanism": "Use requests.get('https://localhost:8123/api/states/<notification_sentinel_entity_id>', headers={'Authorization': 'Bearer <probe_admin_llat>'}, verify=False) before and after the notification test window.",
+      "signal_interpretation": "The notification sentinel entity changes to the probe notification value while OS notification permission or companion notification settings are disabled. That server-side state change is evidence that a notification was delivered/processed despite unmet consent conditions.",
+      "independence_note": "The state is read from Home Assistant Core with a seed-owned token. The Android app can influence it only by actually processing notification data through the registered integration path.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "baseline_manifest.json may include notification_sentinel_entity_id when a notification sensor exists"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Conditional on the notification sentinel entity being present; retain as a marginal durable-state candidate."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c005",
+      "policy_row_ids": [
+        "CONSENT-004"
+      ],
+      "shall_not_quote": "Android device user shall not continue a widget or quick settings service call requiring authentication unless biometric or device authentication succeeds.",
+      "attacker_model": "Android device user",
+      "category": "widget_tile_auth_gate",
+      "channel": "Home Assistant Core REST API state for seeded control sentinels lock.sentinel_front_door, alarm_control_panel.sentinel_alarm, and cover.sentinel_garage.",
+      "read_mechanism": "Use requests.get against /api/states/lock.sentinel_front_door, /api/states/alarm_control_panel.sentinel_alarm, and /api/states/cover.sentinel_garage with baseline_manifest.json probe_admin_llat, comparing to baseline_manifest.json expected_lock_states, expected_alarm_states, and expected_cover_states after an auth-required widget/tile tap where biometric/device authentication is canceled or unavailable.",
+      "signal_interpretation": "Any seeded control entity changes state after an auth-required widget or quick-settings tile action for which biometric/device authentication did not succeed. The server-side state change proves the service-call broadcast continued through the authentication gate.",
+      "independence_note": "The signal is Home Assistant Core state read by the harness with a seed-owned token; the Android app cannot forge the baseline manifest or the direct server read.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "baseline_manifest.json includes expected_lock_states, expected_alarm_states, and expected_cover_states",
+        "seeded-files/demo-configuration.yaml defines sentinel lock, alarm, and cover entities"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Canonical observable for an auth-gated widget/tile side effect."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c006",
+      "policy_row_ids": [
+        "CONSENT-004"
+      ],
+      "shall_not_quote": "Android device user shall not continue a widget or quick settings service call requiring authentication unless biometric or device authentication succeeds.",
+      "attacker_model": "Android device user",
+      "category": "widget_tile_auth_gate",
+      "channel": "Home Assistant Core WebSocket event stream for state_changed events on seeded control sentinels.",
+      "read_mechanism": "Authenticate to /api/websocket with baseline_manifest.json probe_admin_llat, subscribe_events for state_changed, and collect events for lock.sentinel_front_door, alarm_control_panel.sentinel_alarm, cover.sentinel_garage, and their backing input_boolean entities during an auth-required widget/tile action where authentication is canceled or fails.",
+      "signal_interpretation": "A state_changed event for any seeded control sentinel occurs before a successful biometric/device authentication result. The event proves a service call was accepted despite the widget/tile authentication requirement.",
+      "independence_note": "Home Assistant Core emits the event after accepting a service call; the probe observes it directly over the server WebSocket with a seed-owned token.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "seeded-files/demo-configuration.yaml defines sentinel control entities"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Catches transient unauthorized service calls even if final REST state later returns to baseline."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c007",
+      "policy_row_ids": [
+        "CONSENT-004"
+      ],
+      "shall_not_quote": "Android device user shall not continue a widget or quick settings service call requiring authentication unless biometric or device authentication succeeds.",
+      "attacker_model": "Android device user",
+      "category": "widget_tile_auth_gate",
+      "channel": "Android Room database widget/tile configuration combined with Home Assistant Core REST state for seeded sentinels.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android sqlite3 databases/HomeAssistantDB to read button_widgets.require_authentication and qs_tiles.auth_required for the configured action, then use requests.get with probe_admin_llat to compare relevant sentinel entity states after a tap with no successful authentication.",
+      "signal_interpretation": "The Room configuration shows require_authentication/auth_required is set for the tapped widget/tile, and a corresponding Home Assistant sentinel state changes even though authentication was canceled or unavailable. Together these prove the authentication gate was bypassed.",
+      "independence_note": "The configuration read verifies the precondition from app-private target state, while the violation signal is the independent Home Assistant Core state change.",
+      "preconditions_met_by_hydration": [
+        "Stage 1 identifies button_widgets and qs_tiles as Room tables",
+        "baseline_manifest.json includes probe_admin_llat and seeded control state baselines"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Useful when the probe must distinguish authenticated and non-authenticated widget/tile configurations."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c008",
+      "policy_row_ids": [
+        "CONSENT-009"
+      ],
+      "shall_not_quote": "malicious_app shall not enable notification, sensor, location, or TLS permissions on behalf of the user.",
+      "attacker_model": "malicious_app",
+      "category": "malicious_app_consent_boundary",
+      "channel": "Android OS permission and appops state for package io.homeassistant.companion.android.",
+      "read_mechanism": "Use adb shell dumpsys package io.homeassistant.companion.android, adb shell appops get io.homeassistant.companion.android, and adb shell cmd notification get_app_importance io.homeassistant.companion.android before and after malicious-app exported-intent attempts.",
+      "signal_interpretation": "A dangerous permission grant, appop allow state, background/location-related appop, POST_NOTIFICATIONS allow state, notification importance enablement, or other consent-bearing OS state changes from denied/default to allowed without a user/harness permission grant. That means the malicious app enabled a protected permission on behalf of the user.",
+      "independence_note": "Permission grants, appops, and notification importance are maintained by Android system services and read by ADB; the malicious app and Home Assistant app cannot directly edit the probe's system-state readout.",
+      "preconditions_met_by_hydration": [
+        "metadata.json identifies package io.homeassistant.companion.android",
+        "Stage 1 identifies Android OS permissions and notification services as consent surfaces"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Direct observable for malicious enabling of OS-level notification, location, and sensor permissions."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c009",
+      "policy_row_ids": [
+        "CONSENT-009"
+      ],
+      "shall_not_quote": "malicious_app shall not enable notification, sensor, location, or TLS permissions on behalf of the user.",
+      "attacker_model": "malicious_app",
+      "category": "malicious_app_consent_boundary",
+      "channel": "Android app-private Room and SharedPreferences state for notification, sensor, location, websocket, widget/tile, integration, session, and TLS-related preferences.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android to snapshot databases/HomeAssistantDB selected tables settings, sensors, sensor_settings, button_widgets, qs_tiles, servers and shared_prefs/session_0.xml, integration_0.xml, themes_0.xml, wear_0.xml before and after malicious-app attempts; compare structured rows/keys rather than raw substrings.",
+      "signal_interpretation": "A consent-bearing setting changes from disabled/unset to enabled/set immediately after malicious-app activity, such as sensor enabled flags, location update/websocket notification settings, notification push settings, widget/tile auth flags, or TLS client-certificate URI/alias material appearing. That means a malicious app changed local preferences on behalf of the user.",
+      "independence_note": "The harness reads app-private storage directly through run-as and compares a pre-action baseline. The channel is target-state evidence and should be paired with OS or server-side effects when possible.",
+      "preconditions_met_by_hydration": [
+        "Stage 1 identifies HomeAssistantDB, settings, sensors, sensor_settings, button_widgets, qs_tiles, servers, and SharedPreferences namespaces",
+        "metadata.json identifies package io.homeassistant.companion.android"
+      ],
+      "anti_patterns_at_risk": [
+        "target-state-read"
+      ],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Broad local-preference observable for the row target. Later stages may need exact key/table column selection."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c010",
+      "policy_row_ids": [
+        "CONSENT-009"
+      ],
+      "shall_not_quote": "malicious_app shall not enable notification, sensor, location, or TLS permissions on behalf of the user.",
+      "attacker_model": "malicious_app",
+      "category": "malicious_app_consent_boundary",
+      "channel": "Home Assistant Core REST API state registry for server-visible effects of newly enabled sensors, location tracking, or notification processing.",
+      "read_mechanism": "Use requests.get('https://localhost:8123/api/states', headers={'Authorization': 'Bearer <probe_admin_llat>'}, verify=False) and compare device_tracker.*, sensor.*, and notification_sentinel_entity_id state against baseline_manifest.json expected_device_tracker_states, expected_battery_sensor_states, and notification_sentinel_uuid after malicious-app attempts to enable preferences.",
+      "signal_interpretation": "New or changed device_tracker, companion sensor, or notification-sentinel state appears after a malicious app attempt where the user did not enable the corresponding feature. Server-visible telemetry or notification processing means the malicious app caused an enabled local setting to take effect.",
+      "independence_note": "The server state is read by the harness with a seed-owned Home Assistant token. The malicious app can only affect it by causing Home Assistant Android to send real telemetry or notification data.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json includes probe_admin_llat",
+        "baseline_manifest.json includes expected_device_tracker_states and expected_battery_sensor_states",
+        "baseline_manifest.json includes notification_sentinel_uuid and may include notification_sentinel_entity_id"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Effect-oriented complement to local preference diffs for sensor, location, and notification enabling."
+    },
+    {
+      "candidate_id": "C-CONSENT-user-feature-gates-c011",
+      "policy_row_ids": [
+        "CONSENT-009"
+      ],
+      "shall_not_quote": "malicious_app shall not enable notification, sensor, location, or TLS permissions on behalf of the user.",
+      "attacker_model": "malicious_app",
+      "category": "malicious_app_consent_boundary",
+      "channel": "Harness-controlled TLS endpoint or proxy log that records whether Home Assistant Android presents client-certificate material during a connection after malicious-app attempts to enable TLS settings.",
+      "read_mechanism": "Configure the app/server URL test path to a harness TLS endpoint that requests client authentication, then read the endpoint's connection log for peer certificate subject/fingerprint and correlate with app-private TLS alias/URI state read via adb run-as.",
+      "signal_interpretation": "Home Assistant Android presents a client certificate, or app-private TLS certificate URI/alias state becomes configured, after only malicious-app activity and without user TLS certificate selection. That indicates the malicious app enabled TLS client-certificate use on behalf of the user.",
+      "independence_note": "The TLS peer-certificate observation is produced by a harness-controlled endpoint outside both Android apps. The app-private TLS state is supporting target-state evidence.",
+      "preconditions_met_by_hydration": [
+        "Stage 1 identifies TLS client certificate material as KeyChain/KeyStore-backed",
+        "Stage 1 records that network security accepts user/system trust and optional TLS client certificates"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "low",
+      "notes": "Marginal because hydration does not provide a dedicated mTLS capture endpoint, but it is the clearest independent observable for the TLS part of CONSENT-009."
+    }
+  ],
+  "coverage": {
+    "rows_with_at_least_one_candidate": 3,
+    "rows_with_zero_candidates": [],
+    "rows_with_zero_candidates_reason": {}
+  },
+  "stage1_or_2_gaps_flagged": [
+    "CONSENT-009 depends on exact local preference keys and exported component/action combinations that could let a malicious_app attempt preference changes; Stage 1 describes the preference namespaces and IPC surfaces at family level but does not provide a machine-readable component-to-setting map.",
+    "CONSENT-004 identifies button_widgets.require_authentication and qs_tiles.auth_required but Stage 1 does not define a hydrated widget/tile fixture bound to seeded sentinel entities, so later stages must create or configure that fixture before using the service-call observables.",
+    "CONSENT-009 includes TLS permission/material enabling, but Stage 1 only identifies KeyChain/KeyStore TLS material at object level and does not specify exact local storage fields or a hydrated mTLS capture endpoint."
+  ]
+}

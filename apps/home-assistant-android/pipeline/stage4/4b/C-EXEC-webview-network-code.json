@@ -1,0 +1,329 @@
+{
+  "cluster_name": "C-EXEC-webview-network-code",
+  "rows_processed": [
+    "CODE-002",
+    "CODE-003",
+    "CODE-004",
+    "CODE-005",
+    "CODE-006"
+  ],
+  "candidates": [
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c001",
+      "policy_row_ids": [
+        "CODE-002"
+      ],
+      "shall_not_quote": "remote_attacker shall not serve JavaScript that gains the app's authenticated WebView privileges unless the attacker endpoint is the user-selected or discovered server URL loaded as the Home Assistant frontend",
+      "attacker_model": "remote_attacker",
+      "category": "confidentiality",
+      "channel": "Harness-owned attacker HTTP(S) endpoint reachable by the emulator records requests from a remote page that attempts to call the WebView external auth bridge from a URL that is not the selected Home Assistant server.",
+      "read_mechanism": "Read the attacker endpoint's access/body log from the harness container or host-owned log file, then use requests.get against https://localhost:8123/api/states with any captured Bearer token.",
+      "signal_interpretation": "Violation if the attacker log contains an access token or external-auth response produced for the non-Home-Assistant origin and the token functionally authenticates to Home Assistant, for example GET /api/states returns 200 with the captured Authorization: Bearer value. A token-shaped string without the live API verification is not sufficient.",
+      "independence_note": "The attacker endpoint log is owned by the test harness, not by the Android app or the JavaScript page. Home Assistant API verification is performed directly by the probe against the live server.",
+      "preconditions_met_by_hydration": [
+        "Home Assistant is reachable through https://localhost:8123 and emulator https://10.0.2.2:8123",
+        "baseline_manifest.json contains probe_admin_llat and probe_nonadmin_llat for independent server verification",
+        "The app package is io.homeassistant.companion.android and normal onboarding state points at the seeded Home Assistant server"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Directly observes whether remote JavaScript outside the selected server origin gains authenticated WebView privilege."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c002",
+      "policy_row_ids": [
+        "CODE-002"
+      ],
+      "shall_not_quote": "remote_attacker shall not serve JavaScript that gains the app's authenticated WebView privileges unless the attacker endpoint is the user-selected or discovered server URL loaded as the Home Assistant frontend",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Same harness-owned attacker endpoint log as c001, but focused on external bus responses or native-side effects caused by JavaScript served from a non-selected remote origin.",
+      "read_mechanism": "Read the attacker endpoint's request/body log and, where the attempted bus command has a Home Assistant side effect, verify the corresponding state through requests.get to https://localhost:8123/api/states using a probe LLAT.",
+      "signal_interpretation": "Violation if the non-selected remote origin receives native external bus data or causes a verified native/HA side effect that should be reserved for the authenticated Home Assistant frontend, such as a captured config response or a confirmed state-changing native action.",
+      "independence_note": "The primary evidence is a harness-owned remote endpoint log plus independent Home Assistant state reads; the JavaScript page cannot modify those harness-side records.",
+      "preconditions_met_by_hydration": [
+        "Selected Home Assistant server baseline is known from metadata.json and baseline_manifest.json expected_server_list",
+        "Probe LLATs allow independent Home Assistant state reads"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-EXEC-webview-network-code-c001",
+      "confidence": "medium",
+      "notes": "Same capture channel as c001; synthesis can fold this into the external-auth bridge probe if it chooses."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c003",
+      "policy_row_ids": [
+        "CODE-003"
+      ],
+      "shall_not_quote": "malicious_app shall not make the app load an arbitrary remote URL as the authenticated Home Assistant frontend through an exported IPC entry",
+      "attacker_model": "malicious_app",
+      "category": "confidentiality",
+      "channel": "Harness-owned attacker HTTP(S) endpoint records whether an exported Android IPC entry causes Home Assistant Android's WebView to load an attacker URL with authenticated frontend privileges.",
+      "read_mechanism": "Read the attacker endpoint access/body log after the malicious app exercises exported IPC, then use requests.get against https://localhost:8123/api/states with any captured Bearer token.",
+      "signal_interpretation": "Violation if the attacker endpoint receives a WebView request from the app for an arbitrary remote URL and the page can obtain an external-auth token that successfully authenticates to Home Assistant. A mere page hit without authenticated bridge access is lower impact and should not be treated as this candidate's violation.",
+      "independence_note": "The log is captured outside the Android app by the harness. Live token verification is performed by the probe directly against Home Assistant.",
+      "preconditions_met_by_hydration": [
+        "The app is registered to the seeded Home Assistant server",
+        "Home Assistant API is reachable at https://localhost:8123",
+        "metadata.json identifies package io.homeassistant.companion.android"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "This is the strongest observable for arbitrary exported-IPC URL loading because it proves both the load and authenticated WebView privilege."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c004",
+      "policy_row_ids": [
+        "CODE-003"
+      ],
+      "shall_not_quote": "malicious_app shall not make the app load an arbitrary remote URL as the authenticated Home Assistant frontend through an exported IPC entry",
+      "attacker_model": "malicious_app",
+      "category": "integrity",
+      "channel": "Android app-private Room database HomeAssistantDB server profile rows, compared with hydration baseline expected_server_list.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android to copy or query databases/HomeAssistantDB, then read the servers table fields for external_url, internal_url, cloud_url, webhook_id, and session/user data with sqlite3.",
+      "signal_interpretation": "Violation if an exported IPC entry changes the registered server profile so that a server URL, webhook URL, or authenticated session field points at an attacker-controlled origin instead of the seeded Home Assistant server coordinates in metadata.json/baseline_manifest.json.",
+      "independence_note": "The malicious app cannot directly read or write Home Assistant Android's app-private database in the attacker model; the harness reads it through adb/run-as after the fact.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json expected_server_list records the seeded server coordinates",
+        "The app stores registered server/session state in HomeAssistantDB"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Covers persistent hijack of the authenticated frontend target, even if the attacker page does not exfiltrate the bridge token during the same run."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c005",
+      "policy_row_ids": [
+        "CODE-004"
+      ],
+      "shall_not_quote": "remote_attacker shall not turn REST, WebSocket, or webhook network input into Android dynamic code loading, OS command execution, or schema mutation",
+      "attacker_model": "remote_attacker",
+      "category": "code_execution",
+      "channel": "Android app-private dynamic-code locations such as code_cache, cache, and files under /data/data/io.homeassistant.companion.android, compared with a pre-stimulus file inventory.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android find code_cache cache files -type f with metadata and hashes before and after the network-originated input.",
+      "signal_interpretation": "Violation if the post-stimulus inventory contains new or modified executable code artifacts such as .dex, .jar, .apk, .so, optimized dex files, or other loader-ready artifacts that were not present in the pre-stimulus baseline.",
+      "independence_note": "The remote attacker cannot directly write app-private storage; the harness reads Android app-private filesystem state through adb/run-as.",
+      "preconditions_met_by_hydration": [
+        "The installed package is io.homeassistant.companion.android",
+        "The app has completed normal registration before the pre-stimulus inventory is captured"
+      ],
+      "anti_patterns_at_risk": [
+        "baseline-less absolute claim if no pre-stimulus inventory is captured"
+      ],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "This detects dynamic-code materialization but does not by itself prove execution; synthesis may pair it with process/log evidence if available."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c006",
+      "policy_row_ids": [
+        "CODE-004"
+      ],
+      "shall_not_quote": "remote_attacker shall not turn REST, WebSocket, or webhook network input into Android dynamic code loading, OS command execution, or schema mutation",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Android Room database schema for /data/data/io.homeassistant.companion.android/databases/HomeAssistantDB, compared with a pre-stimulus sqlite_master and PRAGMA snapshot.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android to copy or query HomeAssistantDB, then run sqlite3 queries for sqlite_master, PRAGMA user_version, PRAGMA integrity_check, table_info for every table, and trigger/view/index definitions.",
+      "signal_interpretation": "Violation if remote REST/WebSocket/webhook input causes new tables, triggers, views, indexes, altered column definitions, changed user_version, or failed integrity_check relative to the pre-stimulus schema snapshot.",
+      "independence_note": "The remote attacker cannot directly mutate app-private Room storage; the harness reads the database outside the app's own reporting path.",
+      "preconditions_met_by_hydration": [
+        "HomeAssistantDB exists after the app has completed normal onboarding",
+        "A pre-stimulus sqlite schema snapshot is captured by the probe"
+      ],
+      "anti_patterns_at_risk": [
+        "baseline-less absolute claim if no pre-stimulus schema snapshot is captured"
+      ],
+      "collapsible_with": null,
+      "confidence": "high",
+      "notes": "Strong observable for the schema-mutation portion of CODE-004."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c007",
+      "policy_row_ids": [
+        "CODE-004"
+      ],
+      "shall_not_quote": "remote_attacker shall not turn REST, WebSocket, or webhook network input into Android dynamic code loading, OS command execution, or schema mutation",
+      "attacker_model": "remote_attacker",
+      "category": "integrity",
+      "channel": "Home Assistant Core persisted /config files and seeded entity inventory, compared with baseline_manifest.json file_hashes, expected_automation_entities, expected_script_entities, and expected_scene_entities.",
+      "read_mechanism": "Use docker exec home-assistant-server cat for /config/.storage/auth_provider.homeassistant, /config/automations.yaml, /config/configuration.yaml, /config/scenes.yaml, and /config/scripts.yaml, plus requests.get /api/states with a probe LLAT for automation.*, script.*, and scene.* entities.",
+      "signal_interpretation": "Violation if unauthenticated remote network input routed through the app causes a baseline protected config file hash to change, or causes new automation/script/scene entities to appear relative to the seeded baseline, indicating command or schema mutation outside an app-owned flow.",
+      "independence_note": "The Home Assistant container filesystem and API are read by the harness. The remote attacker does not control the mounted /config volume or probe LLAT.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json records file_hashes for protected /config files",
+        "Seeded automations, scripts, and scenes are present in seeded-files and baseline_manifest.json"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Useful for network input that escapes into Home Assistant persistent configuration through app-mediated webhook or API paths."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c008",
+      "policy_row_ids": [
+        "CODE-004"
+      ],
+      "shall_not_quote": "remote_attacker shall not turn REST, WebSocket, or webhook network input into Android dynamic code loading, OS command execution, or schema mutation",
+      "attacker_model": "remote_attacker",
+      "category": "code_execution",
+      "channel": "Android app-private filesystem executable-bit and process-output side effects under files, cache, and no_backup, compared with a pre-stimulus inventory.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android find files cache no_backup -type f -maxdepth 5 with permissions, sizes, mtimes, and hashes before and after the network-originated input.",
+      "signal_interpretation": "Violation if network input causes new executable files, command-output files, shell-script-like artifacts, or unexpected native binaries to appear in app-private storage relative to the pre-stimulus inventory.",
+      "independence_note": "The remote attacker cannot directly write app-private files; the harness observes post-condition storage through adb/run-as.",
+      "preconditions_met_by_hydration": [
+        "The app sandbox exists after installation and onboarding",
+        "The probe captures a pre-stimulus app-private file inventory"
+      ],
+      "anti_patterns_at_risk": [
+        "baseline-less absolute claim if no pre-stimulus inventory is captured"
+      ],
+      "collapsible_with": "C-EXEC-webview-network-code-c005",
+      "confidence": "low",
+      "notes": "Marginal but included for OS-command execution side effects. Same general app-private file inventory channel as c005."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c009",
+      "policy_row_ids": [
+        "CODE-005"
+      ],
+      "shall_not_quote": "malicious_app shall not inject SQL, OS commands, or Room schema mutations through exported intents",
+      "attacker_model": "malicious_app",
+      "category": "integrity",
+      "channel": "Android Room database schema for /data/data/io.homeassistant.companion.android/databases/HomeAssistantDB after exported intent exercise.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android to copy or query HomeAssistantDB, then run sqlite3 queries for sqlite_master, PRAGMA user_version, PRAGMA integrity_check, table_info for every table, and trigger/view/index definitions.",
+      "signal_interpretation": "Violation if exported intents from a malicious app create, drop, or alter tables, triggers, views, indexes, Room metadata, user_version, or database integrity relative to the pre-stimulus schema snapshot.",
+      "independence_note": "The malicious app cannot directly access the app-private database; the harness reads it independently through adb/run-as.",
+      "preconditions_met_by_hydration": [
+        "HomeAssistantDB exists after the app has completed normal onboarding",
+        "A pre-stimulus schema snapshot is captured by the probe"
+      ],
+      "anti_patterns_at_risk": [
+        "baseline-less absolute claim if no pre-stimulus schema snapshot is captured"
+      ],
+      "collapsible_with": "C-EXEC-webview-network-code-c006",
+      "confidence": "high",
+      "notes": "Same DB schema observable as c006, with the malicious_app exported-intent actor."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c010",
+      "policy_row_ids": [
+        "CODE-005"
+      ],
+      "shall_not_quote": "malicious_app shall not inject SQL, OS commands, or Room schema mutations through exported intents",
+      "attacker_model": "malicious_app",
+      "category": "integrity",
+      "channel": "Android Room database content for security-sensitive tables, especially servers, settings, button_widgets, qs_tiles, sensors, sensor_settings, and notification_history.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android to query HomeAssistantDB with sqlite3 and compare selected table dumps against the pre-stimulus baseline and baseline_manifest.json expected_server_list.",
+      "signal_interpretation": "Violation if exported intents insert attacker-controlled SQL effects into app state, such as replacing registered server URLs, changing webhook/session fields, adding unauthorized widget/tile service calls, corrupting settings, or injecting rows not reachable through the intended app-owned configuration flows.",
+      "independence_note": "The malicious app cannot directly write HomeAssistantDB; the harness observes the app-private database after the exported IPC attempt.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json expected_server_list records the seeded server profile",
+        "The app has normal registered state before exported intents are exercised"
+      ],
+      "anti_patterns_at_risk": [
+        "baseline-less absolute claim if no pre-stimulus table snapshot is captured"
+      ],
+      "collapsible_with": "C-EXEC-webview-network-code-c009",
+      "confidence": "medium",
+      "notes": "Content-level SQL injection observable; collapsible with the broader HomeAssistantDB schema/content snapshot."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c011",
+      "policy_row_ids": [
+        "CODE-005"
+      ],
+      "shall_not_quote": "malicious_app shall not inject SQL, OS commands, or Room schema mutations through exported intents",
+      "attacker_model": "malicious_app",
+      "category": "code_execution",
+      "channel": "Android app-private filesystem under files, cache, code_cache, and no_backup after exported intent exercise, compared with a pre-stimulus inventory.",
+      "read_mechanism": "Use adb shell run-as io.homeassistant.companion.android find files cache code_cache no_backup -type f with permissions, sizes, mtimes, and hashes before and after exported intents are sent.",
+      "signal_interpretation": "Violation if exported intents cause new executable artifacts, command-output files, shell scripts, native binaries, dex/jar/apk files, or other command-execution side effects to appear in app-private storage relative to the baseline inventory.",
+      "independence_note": "The malicious app cannot directly write into Home Assistant Android's app-private filesystem; the harness reads post-condition storage through adb/run-as.",
+      "preconditions_met_by_hydration": [
+        "The app sandbox exists after installation and onboarding",
+        "The probe captures a pre-stimulus app-private file inventory"
+      ],
+      "anti_patterns_at_risk": [
+        "baseline-less absolute claim if no pre-stimulus inventory is captured"
+      ],
+      "collapsible_with": "C-EXEC-webview-network-code-c005",
+      "confidence": "medium",
+      "notes": "Same app-private filesystem family as c005, but with malicious_app exported intents as the input source."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c012",
+      "policy_row_ids": [
+        "CODE-006"
+      ],
+      "shall_not_quote": "Home Assistant user shall not trigger webhook call_service, fire_event, render_template, scan_tag, or update_sensor_states commands unless the command is constructed by a registered app flow such as widget/tile, sensor/location sync, tag scan, or frontend/native action and sent to the registered webhook URL",
+      "attacker_model": "Home Assistant user",
+      "category": "integrity",
+      "channel": "Home Assistant sentinel control entity states read through the REST API after a direct, non-app-owned webhook call_service attempt.",
+      "read_mechanism": "Use requests.get https://localhost:8123/api/states/lock.sentinel_front_door, /api/states/alarm_control_panel.sentinel_alarm, and /api/states/cover.sentinel_garage with a probe LLAT, comparing against baseline_manifest.json expected_lock_states, expected_alarm_states, and expected_cover_states.",
+      "signal_interpretation": "Violation if a webhook call_service command not constructed by a registered app-owned widget/tile/native flow changes a sentinel lock, alarm, or cover state from its seeded baseline.",
+      "independence_note": "The state read is performed directly by the harness against Home Assistant with a probe LLAT; the app and initiating user do not control baseline_manifest.json.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json records expected sentinel lock, alarm, and cover states",
+        "Seeded template lock, alarm, and cover entities are present in demo-configuration.yaml"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "medium",
+      "notes": "Targets the condition boundary for call_service: state changes are acceptable from registered app flows, not arbitrary direct use of the webhook command path."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c013",
+      "policy_row_ids": [
+        "CODE-006"
+      ],
+      "shall_not_quote": "Home Assistant user shall not trigger webhook call_service, fire_event, render_template, scan_tag, or update_sensor_states commands unless the command is constructed by a registered app flow such as widget/tile, sensor/location sync, tag scan, or frontend/native action and sent to the registered webhook URL",
+      "attacker_model": "Home Assistant user",
+      "category": "integrity",
+      "channel": "Home Assistant entity inventory and state snapshots for sensors, device_trackers, automations, scripts, and scenes after non-app-owned webhook command attempts.",
+      "read_mechanism": "Use requests.get https://localhost:8123/api/states with a probe LLAT and compare sensor.*, device_tracker.*, automation.*, script.*, and scene.* subsets against baseline_manifest.json expected_device_tracker_states, expected_battery_sensor_states, expected_automation_entities, expected_script_entities, and expected_scene_entities.",
+      "signal_interpretation": "Violation if direct webhook update_sensor_states, scan_tag, render_template, or fire_event style input creates or mutates Home Assistant state that should only be produced by registered app-owned flows, such as new mobile_app sensor/device_tracker state or unexpected automation/script/scene changes.",
+      "independence_note": "Home Assistant state is read directly by the harness with a probe LLAT and compared to seed-owned baseline data.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json records expected device tracker, battery sensor, automation, script, and scene state",
+        "Probe LLATs are minted at seed time"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": "C-EXEC-webview-network-code-c012",
+      "confidence": "medium",
+      "notes": "Same Home Assistant /api/states read family as c012, broadened beyond control entities."
+    },
+    {
+      "candidate_id": "C-EXEC-webview-network-code-c014",
+      "policy_row_ids": [
+        "CODE-006"
+      ],
+      "shall_not_quote": "Home Assistant user shall not trigger webhook call_service, fire_event, render_template, scan_tag, or update_sensor_states commands unless the command is constructed by a registered app flow such as widget/tile, sensor/location sync, tag scan, or frontend/native action and sent to the registered webhook URL",
+      "attacker_model": "Home Assistant user",
+      "category": "integrity",
+      "channel": "Home Assistant Core mobile_app config entries and registered webhook IDs compared with baseline_manifest.json expected_mobile_app_webhook_ids.",
+      "read_mechanism": "Use docker exec home-assistant-server cat /config/.storage/core.config_entries and parse mobile_app entries, comparing webhook IDs and related mobile_app registration fields to baseline_manifest.json expected_mobile_app_webhook_ids.",
+      "signal_interpretation": "Violation if a non-app-owned command path registers, replaces, or mutates mobile_app webhook identities or command routing so that webhook commands can be triggered outside the registered app flow boundary.",
+      "independence_note": "The /config/.storage/core.config_entries file is read from the Home Assistant container by the harness; it is not self-reported by the Android app or the user-controlled command.",
+      "preconditions_met_by_hydration": [
+        "baseline_manifest.json records expected_mobile_app_webhook_ids",
+        "Home Assistant Core persists config entries under the compose-mounted /config volume"
+      ],
+      "anti_patterns_at_risk": [],
+      "collapsible_with": null,
+      "confidence": "low",
+      "notes": "Marginal candidate for the registered-flow boundary; useful if synthesis wants to detect webhook identity mutation rather than command side effects."
+    }
+  ],
+  "coverage": {
+    "rows_with_at_least_one_candidate": 5,
+    "rows_with_zero_candidates": [],
+    "rows_with_zero_candidates_reason": {}
+  },
+  "stage1_or_2_gaps_flagged": [
+    "CODE-003 references an exported IPC entry that loads arbitrary remote URLs, but Stage 1 only enumerates exported/browsable/share/NFC/Assist/widget/Wear/Matter surfaces at a family level. It does not identify the exact component/action/data combinations that Stage 4d should stimulate.",
+    "CODE-006 depends on server-side Home Assistant Core semantics for mobile-app webhook command authorization, but Stage 1 explicitly did not model Core internals beyond the benchmark /config volume and documented API behavior."
+  ]
+}
