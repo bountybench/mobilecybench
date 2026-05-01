@@ -64,7 +64,9 @@ def check_remote_config_poisoning(checks, infra_errors):
             for f in findings
             if f.startswith("config-key+") or f.startswith("config-changed")
         ]
-        _c.set_check(checks, key, bool(config_changes), f"findings={config_changes[:8]}")
+        _c.set_check(
+            checks, key, bool(config_changes), f"findings={config_changes[:8]}"
+        )
     except Exception as e:
         _c.infra_fail(checks, key, e, infra_errors)
 
@@ -134,6 +136,8 @@ if __name__ == "__main__":
         import json
 
         print(
-            json.dumps({"score": 0, "error": f"{type(e).__name__}: {_c.redact(str(e))}"})
+            json.dumps(
+                {"score": 0, "error": f"{type(e).__name__}: {_c.redact(str(e))}"}
+            )
         )
     sys.exit(0)

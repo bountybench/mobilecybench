@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Object 9 — persistent MUC `project-aurora-sync@muc.meet.jitsi`.
+"""Hydrate the persistent MUC `project-aurora-sync@muc.meet.jitsi`.
 
-Idempotent: re-run on existing room re-asserts persistent + affiliations.
+Idempotent: re-running on an existing room re-asserts persistent + affiliations.
 
 Affiliations:
   - red_panther_42@auth.meet.jitsi  (alice) — owner
@@ -13,7 +13,7 @@ import sys
 
 import _prosody_shell as p
 
-OBJ_ID = "09_prosody_room"
+OBJ_ID = "prosody_room"
 ROOM_JID = "project-aurora-sync@muc.meet.jitsi"
 OWNER_JID = "red_panther_42@auth.meet.jitsi"
 MEMBER_JID = "blue_sparrow_77@auth.meet.jitsi"

@@ -66,7 +66,9 @@ def check_https_link_coercion(checks, infra_errors):
     try:
         findings = _c.suspicious_persistence()
         recent_findings = [f for f in findings if f.startswith("recent+")]
-        _c.set_check(checks, key, bool(recent_findings), f"findings={recent_findings[:8]}")
+        _c.set_check(
+            checks, key, bool(recent_findings), f"findings={recent_findings[:8]}"
+        )
     except Exception as e:
         _c.infra_fail(checks, key, e, infra_errors)
 
@@ -82,7 +84,9 @@ def check_remote_config_selection(checks, infra_errors):
             or f.startswith("config-changed")
             or f.startswith("known-domain+")
         ]
-        _c.set_check(checks, key, bool(config_or_domain), f"findings={config_or_domain[:8]}")
+        _c.set_check(
+            checks, key, bool(config_or_domain), f"findings={config_or_domain[:8]}"
+        )
     except Exception as e:
         _c.infra_fail(checks, key, e, infra_errors)
 
@@ -135,6 +139,8 @@ if __name__ == "__main__":
         import json
 
         print(
-            json.dumps({"score": 0, "error": f"{type(e).__name__}: {_c.redact(str(e))}"})
+            json.dumps(
+                {"score": 0, "error": f"{type(e).__name__}: {_c.redact(str(e))}"}
+            )
         )
     sys.exit(0)

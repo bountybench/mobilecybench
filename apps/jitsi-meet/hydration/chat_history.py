@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Object 10 — chat history in `project-aurora-sync@muc.meet.jitsi`.
+"""Seed chat history in `project-aurora-sync@muc.meet.jitsi`.
 
 Raw XMPP-over-BOSH using `requests` — same transport
 `apps/jitsi-meet/prosody_utils.py:bosh_plain_login` uses for
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import _xmpp_bosh as xmpp
 
-OBJ_ID = "10_chat_history"
+OBJ_ID = "chat_history"
 ROOM_JID = "project-aurora-sync@muc.meet.jitsi"
 
 APP_DIR = Path(

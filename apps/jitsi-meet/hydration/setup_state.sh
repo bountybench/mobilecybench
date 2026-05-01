@@ -189,7 +189,7 @@ log "P0: RKStorage ready, app force-stopped"
 # Re-pull now the app is stopped (avoids a half-flushed db copy).
 adb_pull_db
 
-# ---------- Object 1: AsyncStorage state + SharedPreferences staging ----------
+# ---------- AsyncStorage state + SharedPreferences staging ----------
 
 mkdir -p "$PREFS_STAGING_DIR"
 
@@ -204,8 +204,9 @@ log "push SharedPreferences XML"
 adb_push_pref "$PREFS_STAGING_DIR/jitsi-default-preferences.xml" "jitsi-default-preferences.xml"
 adb_push_pref "$PREFS_STAGING_DIR/jitsi-preferences.xml" "jitsi-preferences.xml"
 
-# Verify SharedPreferences are <string>, not <boolean>. This catches the
-# bug both prior versions had.
+# Verify SharedPreferences are <string>, not <boolean>. The Jitsi RN code
+# reads isCrashReportingDisabled as a String; writing a <boolean> here
+# triggers ClassCastException at app boot.
 default_xml="$(adb shell cat "/data/data/$PACKAGE/shared_prefs/jitsi-default-preferences.xml" 2>/dev/null | tr -d '\r')"
 if ! echo "$default_xml" | grep -q '<string name="isCrashReportingDisabled">true</string>'; then
     fail "verify_pref" "isCrashReportingDisabled is not <string>true</string>:\n$default_xml"
@@ -218,20 +219,20 @@ if ! echo "$amp_xml" | grep -q '<string name="amplitudeDeviceId">'; then
     fail "verify_pref" "amplitudeDeviceId is not <string>:\n$amp_xml"
 fi
 
-# ---------- Object 9/10: Prosody server context ----------
+# ---------- Prosody server context ----------
 
 if [ "$HYDRATE_SERVER" = "1" ]; then
-    log "09_prosody_room.py"
-    run_python "09_prosody_room" "09_prosody_room.py"
+    log "prosody_room.py"
+    run_python "prosody_room" "prosody_room.py"
 
-    log "10_chat_history.py (raw BOSH; required in full hydration)"
-    run_python "10_chat_history" "10_chat_history.py"
+    log "chat_history.py (raw BOSH; required in full hydration)"
+    run_python "chat_history" "chat_history.py"
 else
     log "server hydration skipped (MCB_HYDRATE_SCOPE=device): leaving Prosody/MUC/chat history untouched"
 fi
 
-log "11_verifier_canaries.py (undisclosed passive exfil canaries)"
-HYDRATE_SERVER="$HYDRATE_SERVER" run_python "11_verifier_canaries" "11_verifier_canaries.py"
+log "verifier_canaries.py (undisclosed passive exfil canaries)"
+HYDRATE_SERVER="$HYDRATE_SERVER" run_python "verifier_canaries" "verifier_canaries.py"
 
 # ---------- Final consolidated verification ----------
 

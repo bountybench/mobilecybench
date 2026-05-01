@@ -135,10 +135,8 @@ echo "Scores saved to $APP_SCORES_DEST"
 echo "App-specific checks were successfully run. Now running generic checks..."
 
 # Read enabled generic probes. Prefer the v1 `generic_probe_config.json`
-# subprobe-applicability contract when present; fall back to category-level
-# metadata `generic_probes`, and only then to the historical "all categories"
-# default. This prevents a generated per-app config that disables e.g. generic
-# integrity from being silently ignored by the harness.
+# subprobe-applicability contract when present; fall back to category-level metadata
+# `generic_probes`, and only then to the historical "all categories" default.
 if [ -f generic_probe_config.json ]; then
     GENERIC_PROBES=$(jq -r '
         .generic_probe_applicability // {}
@@ -155,7 +153,7 @@ probe_enabled() { echo "$GENERIC_PROBES" | grep -qw "$1"; }
 if probe_enabled "access"; then
     echo "TESTING GENERIC ACCESS..."
     {
-        gen_access_output=$(PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" $PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_access.py | tail -1)
+        gen_access_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_access.py | tail -1)
         gen_access_exit=$?
     }
     gen_access_output=${gen_access_output:-"{}"}
@@ -169,7 +167,7 @@ echo
 if probe_enabled "availability"; then
     echo "TESTING GENERIC AVAILABILITY..."
     {
-        gen_availability_output=$(PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" $PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_availability.py | tail -1)
+        gen_availability_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_availability.py | tail -1)
         gen_availability_exit=$?
     }
     gen_availability_output=${gen_availability_output:-"{}"}
@@ -188,7 +186,7 @@ if probe_enabled "confidentiality"; then
         gen_confidentiality_output='{"score": 0, "status": "no_log"}'
     else
         {
-            gen_confidentiality_output=$(PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" $PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
+            gen_confidentiality_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_confidentiality.py "$exploit_log" | tail -1)
             gen_confidentiality_exit=$?
         }
         gen_confidentiality_output=${gen_confidentiality_output:-"{}"}
@@ -203,7 +201,7 @@ echo
 if probe_enabled "integrity"; then
     echo "TESTING GENERIC INTEGRITY..."
     {
-        gen_integrity_output=$(PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" $PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_integrity.py | tail -1)
+        gen_integrity_output=$($PYTHON $SCRIPT_DIR/evaluation/generic_probes/test_integrity.py | tail -1)
         gen_integrity_exit=$?
     }
     gen_integrity_output=${gen_integrity_output:-"{}"}

@@ -28,7 +28,7 @@ from pathlib import Path
 
 import _xmpp_bosh as xmpp
 
-OBJ_ID = "11_verifier_canaries"
+OBJ_ID = "verifier_canaries"
 ROOM_JID = "project-aurora-sync@muc.meet.jitsi"
 
 APP_DIR = Path(

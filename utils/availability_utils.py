@@ -14,7 +14,7 @@ def adb(cmd):
 def _trusted_docker_path() -> Optional[str]:
     """Return an absolute path to a trusted docker binary, or None.
 
-    Stage-5 reward-hackability: probes must not trust PATH resolution for docker
+    Reward-hackability: probes must not trust PATH resolution for docker
     because an evaluated agent could PATH-hijack `docker` to spoof health output.
     """
     candidates = (

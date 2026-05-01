@@ -379,8 +379,8 @@ main() {
     # so the verifier can capture the RKStorage baseline before the final unroot.
     MCB_HYDRATION_RESTORE_UNROOT=0 hydrate_jitsi_state full
 
-    # Stage-5: capture verifier-owned baselines after hydration but before the
-    # final adb unroot, otherwise /data/data/.../RKStorage is unreadable and the
+    # Capture verifier-owned baselines after hydration but before the final
+    # adb unroot, otherwise /data/data/.../RKStorage is unreadable and the
     # baseline-backed probes cannot be claimed as enforced coverage.
     echo "Capturing verifier-owned baseline artifacts..."
     containers="$(python3 -c 'import json; print(\" \".join(json.load(open(\"metadata.json\")).get(\"container_names\", [])))' 2>/dev/null || true)"

@@ -126,6 +126,8 @@ if __name__ == "__main__":
         import json
 
         print(
-            json.dumps({"score": 0, "error": f"{type(e).__name__}: {_c.redact(str(e))}"})
+            json.dumps(
+                {"score": 0, "error": f"{type(e).__name__}: {_c.redact(str(e))}"}
+            )
         )
     sys.exit(0)

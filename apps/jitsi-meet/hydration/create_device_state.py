@@ -62,7 +62,7 @@ def build_settings(args: argparse.Namespace) -> dict:
         "email": args.email,
         "avatarURL": args.avatar_url,
         "serverURL": args.server_url,
-        "disableCrashReporting": True,  # mirrored into SharedPrefs (Object 2)
+        "disableCrashReporting": True,  # also mirrored into SharedPrefs
         "disableSelfView": False,
         "localFlipX": True,
         "maxStageParticipants": 1,

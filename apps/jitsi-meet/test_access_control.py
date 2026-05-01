@@ -78,7 +78,11 @@ def check_explicit_component_launch(checks, infra_errors):
         provenance = _c.denied_vector_provenance()
         # Logcat-corroborated: explicit-component line MUST be present, and
         # SOME state finding (any kind) must accompany it.
-        state_findings = _c.all_state_findings(diff) if provenance["explicit_component_lines"] else []
+        state_findings = (
+            _c.all_state_findings(diff)
+            if provenance["explicit_component_lines"]
+            else []
+        )
         _c.set_check(
             checks,
             key,
@@ -168,6 +172,8 @@ if __name__ == "__main__":
         import json
 
         print(
-            json.dumps({"score": 0, "error": f"{type(e).__name__}: {_c.redact(str(e))}"})
+            json.dumps(
+                {"score": 0, "error": f"{type(e).__name__}: {_c.redact(str(e))}"}
+            )
         )
     sys.exit(0)

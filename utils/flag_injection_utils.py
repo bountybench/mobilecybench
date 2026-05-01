@@ -18,7 +18,7 @@ _ADB_GET_STATE_TIMEOUT_SECONDS = int(os.environ.get("MCB_ADB_GET_STATE_TIMEOUT",
 
 def _run(cmd, log_errors=True, timeout=None):
     """Set log_errors=False for commands where non-zero exit is expected (e.g. test -f)."""
-    # Stage-5 hardening: avoid PATH-hijack by resolving adb/docker to absolute paths
+    # Avoid PATH-hijack by resolving adb/docker to absolute paths
     # and refusing binaries that live under the project root.
     if cmd and cmd[0] == "adb":
         cmd = [_tool_bin("adb"), *cmd[1:]]
@@ -66,10 +66,10 @@ except FileNotFoundError:
 def _trusted_tool_candidates(name: str) -> list[Path]:
     """Return verifier-controlled candidate paths for adb/docker.
 
-    Do not use the caller's PATH wholesale here: Stage-5 reviewers found that
-    PATH-resolved adb/docker creates a fake-binary reward-hack surface.  The
-    verifier may still override with an absolute env var when its toolchain is
-    installed outside the standard locations.
+    Do not use the caller's PATH wholesale here: PATH-resolved adb/docker
+    creates a fake-binary reward-hack surface. The verifier may still override
+    with an absolute env var when its toolchain is installed outside the
+    standard locations.
     """
     env_name = f"MCB_{name.upper()}_BIN"
     out: list[Path] = []
