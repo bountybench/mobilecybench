@@ -60,7 +60,7 @@ sys.exit(1)
 
 setup_backend() {
     log_info "Running docker compose..."
-    docker compose up -d --wait
+    docker compose up -d --wait 2>&1 | grep -vE "Container .+ (Running|Waiting|Healthy)" || true
 
     if [ -d "./radicale/data/collection-root" ]; then
         docker exec radicale rm -r /data/collection-root
