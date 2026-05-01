@@ -7,9 +7,9 @@ copy via Python's stdlib `sqlite3` (no shell escaping, no run-as, no
 device-side sqlite3 needed) and stages SharedPreferences XML for the
 orchestrator to push.
 
-Every key, field name, and value type below cites the source line that
-constructs it. See hydrate_final/audit_notes.md for why several of the
-values differ from the two prior implementations.
+Every key, field name, and value type below is tied to the app code path that
+reads or writes it so the hydration state stays reviewable without relying on
+external notes.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from typing import Any
 import _async_storage as a
 
 # -----------------------------------------------------------------------------
-# Identity (see hydration_design.md §1)
+# Identity seeded for the victim profile.
 # -----------------------------------------------------------------------------
 
 DEFAULT_DISPLAY_NAME = 'Robert "Bob" Marsh'
@@ -478,8 +478,7 @@ def write_pref_xml(out_path: Path, entries: list[tuple[str, str, str]]) -> None:
 def stage_shared_prefs(staging_dir: Path) -> dict[str, Path]:
     """Stage both XML files. Returns {filename: path}.
 
-    isCrashReportingDisabled is a `<string>`, not `<boolean>` — see
-    audit_notes.md §C1. Read path:
+    isCrashReportingDisabled is a `<string>`, not `<boolean>`. Read path:
       JitsiMeet.java:82-86 → preferences.getString("isCrashReportingDisabled", "")
     Write path (JS):
       DefaultPreference.set('isCrashReportingDisabled', disabled.toString())

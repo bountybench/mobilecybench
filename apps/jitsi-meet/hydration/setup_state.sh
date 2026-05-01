@@ -1,23 +1,18 @@
 #!/bin/bash
-# Jitsi Meet final hydration orchestrator.
+# Jitsi Meet hydration orchestrator.
 #
-# Reconciles two prior implementations against the source tree:
-#   - hydrate_2/  (this implementer's earlier pass)
-#   - hydration/  (other implementer's pass)
-# See hydrate_final/audit_notes.md for every disagreement and resolution.
-#
-# Highlights of the corrections this version makes over both priors:
+# Hydrates verifier-owned victim state directly from the app and Prosody
+# storage contracts. Highlights:
 #   - SharedPreferences `isCrashReportingDisabled` is `<string>`, not
-#     `<boolean>`. Both priors had this wrong; the boolean form crashes
-#     with ClassCastException at app boot.
+#     `<boolean>`; the boolean form crashes with ClassCastException at app boot.
 #   - polls-history meeting key is the bare lowercased room name
 #     (project-aurora-sync), not a host-prefixed compound.
 #   - features/recent-list URLs are all lowercase per
 #     getURLWithoutParamsNormalized.
 #   - config.js cache key has the trailing slash from baseURL.
 #   - Identity is two-layered with explicit codename mapping (Bob ==
-#     blue_sparrow_77); we do NOT add new Prosody users (the other
-#     implementer's mira/leo/nina would have been dead state).
+#     blue_sparrow_77); hydration reuses seeded Prosody users rather than
+#     adding unreachable accounts.
 #   - Legacy `displayname` and `email` direct AsyncStorage keys are
 #     seeded.
 #   - msAuthState content is seeded (filter allows it).

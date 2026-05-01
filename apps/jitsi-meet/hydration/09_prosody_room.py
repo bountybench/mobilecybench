@@ -5,8 +5,7 @@ Idempotent: re-run on existing room re-asserts persistent + affiliations.
 
 Affiliations:
   - red_panther_42@auth.meet.jitsi  (alice) — owner
-  - blue_sparrow_77@auth.meet.jitsi (bob)   — member  (per the codename mapping
-    in hydration_design.md §1; bob is the device victim)
+  - blue_sparrow_77@auth.meet.jitsi (bob)   — member and device victim
 """
 from __future__ import annotations
 

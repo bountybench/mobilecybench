@@ -20,7 +20,7 @@ What this detects:
 What this does NOT detect:
     Slow / flaky media that still passes the basic liveness check; lobby
     lockouts that don't otherwise impair availability (no verifier-owned
-    lifecycle channel — see C024 SKIP).
+    lifecycle channel yet).
 
 Reward-hackability mitigations:
     Each signal is independent: container status, BOSH probe, and pidof

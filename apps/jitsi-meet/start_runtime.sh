@@ -397,16 +397,12 @@ main() {
     adb wait-for-device
     adb unroot 2>/dev/null || true
 
-    # Re-inject the harness CA cert as the final setup step. The CI workflow
-    # runs utils/inject_system_ca.sh BEFORE this script
-    # (.github/workflows/ci.yml:1445), but the prosody container restart and
-    # the adb root/unroot cycle above can drop the user-store copy at
-    # /data/misc/user/0/cacerts-added/. The integrity probe in
-    # apps/jitsi-meet/test_integrity.py:181 (check_user_ca_store) asserts
-    # the cert is still there at probe time. inject_system_ca.sh is
-    # idempotent (utils/inject_system_ca.sh:202-211 skips when the cert is
-    # already present and visible), so calling it again here just enforces
-    # the post-condition without redoing the namespace work.
+    # Re-inject the harness CA cert as the final setup step. CI performs an
+    # initial CA injection before app startup, but the Prosody restart and the
+    # adb root/unroot cycle above can drop the user-store copy at
+    # /data/misc/user/0/cacerts-added/. inject_system_ca.sh is idempotent, so
+    # calling it again here enforces the post-condition without redoing work
+    # when the cert is already present.
     if [ -x "$ROOT_DIR/utils/inject_system_ca.sh" ]; then
         echo "Re-injecting harness CA after runtime setup..."
         "$ROOT_DIR/utils/inject_system_ca.sh" || echo "WARNING: CA re-injection failed (probe will surface)"

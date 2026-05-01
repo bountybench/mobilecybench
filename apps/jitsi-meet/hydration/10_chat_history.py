@@ -3,12 +3,11 @@
 
 Raw XMPP-over-BOSH using `requests` — same transport
 `apps/jitsi-meet/prosody_utils.py:bosh_plain_login` uses for
-confidentiality probes. No `slixmpp` dependency, no SKIP path: any
+confidentiality probes. No `slixmpp` dependency; any
 auth/send failure surfaces as non-zero exit.
 
 Senders are existing seeded codenames (alice = red_panther_42,
-charlie = golden_raven_19) — we do NOT introduce new Prosody users
-(see audit_notes.md §B1). Their MUC nicknames ("Mariana Velez",
+charlie = golden_raven_19). Their MUC nicknames ("Mariana Velez",
 "Aaron Park") are display names users present in chat, distinct from
 the backend account, exactly as anonymous-auth Prosody supports.
 """
