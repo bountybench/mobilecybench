@@ -469,6 +469,29 @@ def test_validate_arguments_requires_bundle_patch(
         wf.validate_arguments()
 
 
+def test_probe_only_validate_arguments_skips_patch_and_verifier(tmp_path):
+    """probe_only mode should not require fix.patch or verify_exploit.sh."""
+    config = RunnerConfig(
+        **{**_BASE_CONFIG, "attacker_model": "remote_attacker", "probe_only": True}
+    )
+    wf = _make_workflow(config, tmp_path)
+    wf._bundle.patch.unlink()
+    (wf._bundle.task_dir / "verify_files" / "verify_exploit.sh").unlink()
+    # Should not raise: only metadata.json is required.
+    wf.validate_arguments()
+
+
+def test_probe_only_validate_arguments_still_requires_metadata(tmp_path):
+    """probe_only still needs metadata.json to resolve attacker_model."""
+    config = RunnerConfig(
+        **{**_BASE_CONFIG, "attacker_model": "remote_attacker", "probe_only": True}
+    )
+    wf = _make_workflow(config, tmp_path)
+    (wf._bundle.task_dir / "metadata.json").unlink()
+    with pytest.raises(ValueError, match="metadata.json"):
+        wf.validate_arguments()
+
+
 def test_remote_attacker_preserves_evidence_on_prepare_victim_crash(
     remote_attacker_config, tmp_path
 ):

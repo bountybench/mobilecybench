@@ -317,11 +317,17 @@ class RedTeamWorkflow(Workflow):
         super().validate_arguments()
 
         task_metadata_path = self._bundle.task_dir / "metadata.json"
-        required_files = [
-            self._bundle.patch,
-            self._bundle.task_dir / "verify_files" / "verify_exploit.sh",
-            task_metadata_path,
-        ]
+        # probe_only runs against a single APK with no fix/vulnerability
+        # patch and no verifier; only the metadata.json is required so we
+        # can still resolve attacker_model + probe dir.
+        if self.config.probe_only:
+            required_files = [task_metadata_path]
+        else:
+            required_files = [
+                self._bundle.patch,
+                self._bundle.task_dir / "verify_files" / "verify_exploit.sh",
+                task_metadata_path,
+            ]
         for required in required_files:
             if not required.exists():
                 raise ValueError(f"Task file not found: {required}")
@@ -397,8 +403,20 @@ class RedTeamWorkflow(Workflow):
 
         self.setup_apks()
 
+        # probe_only runs only install the runtime APK (clean for synthetic,
+        # original for zeroday) and never replay a patched phase, so we
+        # only validate that single APK rather than the bundle's two-APK
+        # set (which would require a hardened/clean APK that may not exist
+        # for public-app tasks).
         try:
-            self._bundle.validate_build_artifacts(self.app_dir)
+            if self.config.probe_only:
+                runtime_apk = self._runtime_apk()
+                if not runtime_apk.exists():
+                    raise FileNotFoundError(
+                        f"Runtime APK not found for probe_only run: {runtime_apk}"
+                    )
+            else:
+                self._bundle.validate_build_artifacts(self.app_dir)
         except FileNotFoundError as e:
             if self.config.build_type == "skip-apk":
                 raise FileNotFoundError(
@@ -518,14 +536,20 @@ class RedTeamWorkflow(Workflow):
         """Run verifier then probes for a completed phase replay."""
         from evaluation.unified_metrics import normalize_probe_results
 
-        verifier_exit = self._run_verifier(
-            replays_dir / f"verify_{tag}",
-            replay_dir=(
-                phase_result.evidence_log_path.parent
-                if phase_result.evidence_log_path is not None
-                else None
-            ),
-        )
+        # Skip the verifier in probe_only mode: it depends on
+        # task/verify_files/verify_exploit.sh, which may not exist for
+        # public-APK tasks, and its result is unused by probe_only scoring.
+        if self.config.probe_only:
+            verifier_exit = None
+        else:
+            verifier_exit = self._run_verifier(
+                replays_dir / f"verify_{tag}",
+                replay_dir=(
+                    phase_result.evidence_log_path.parent
+                    if phase_result.evidence_log_path is not None
+                    else None
+                ),
+            )
 
         probe_dir = self._ops.probe_dir(self.app_dir)
         probe_app = replays_dir / f"probe_app_{tag}.json"
