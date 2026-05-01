@@ -96,7 +96,7 @@ The authoritative result file is `apps/<app>/redteam_scores.json`.
 | `probe_results` | Normalized probe output per phase |
 | `reason` | One-line human-readable summary |
 
-Per-run logs live under `logs/experiment_<uuid>/`; phase artifacts land in `logs/experiment_<uuid>/replays/`. Phase-level probe artifacts use `probe_app_<phase>.json` for app-specific or attacker-model probe output and `probe_generic_<phase>.json` for generic probe output when generic probes apply. These are explicit red-team output paths rather than the default `run_checks.sh` filenames; see [Probe Score Outputs](SCORE_OUTPUTS.md).
+Per-run logs live under `logs/experiment_<uuid>/`; phase artifacts land in `logs/experiment_<uuid>/replays/`. Phase-level probe artifacts use explicit red-team paths: `probe_app_<phase>.json` for app-specific or attacker-model probe output and `probe_generic_<phase>.json` for generic probe output when generic probes apply.
 
 Gold runs are namespaced separately under `logs/gold/experiment_<uuid>_gold/` and do not update the `logs/latest` symlink.
 
