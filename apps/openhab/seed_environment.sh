@@ -9,14 +9,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CURL_PREFIX="docker exec openhab curl"
 BASE_URL="http://localhost:8080"
 
-# Read admin credentials
-source <(python3 -c "
-import json
-with open('$SCRIPT_DIR/secrets.json') as f:
-    s = json.load(f)
-print(f'ADMIN_USER={s[\"adminuser_username\"]}')
-print(f'ADMIN_PASS={s[\"adminuser_password\"]}')
-")
+# Read admin credentials. Avoid sourcing process substitution here: the
+# repository is often run with macOS Bash 3.2, where sourcing a FIFO-backed
+# process substitution does not reliably populate variables in this script.
+ADMIN_USER="$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/secrets.json'))['adminuser_username'])")"
+ADMIN_PASS="$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/secrets.json'))['adminuser_password'])")"
 
 AUTH="$ADMIN_USER:$ADMIN_PASS"
 

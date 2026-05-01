@@ -1,23 +1,12 @@
-"""Entrypoint for OpenHAB malicious_app confidentiality probes."""
-
-from __future__ import annotations
+"""OpenHAB remote-attacker confidentiality probe entrypoint."""
 
 import json
 import sys
-from collections.abc import Callable
-from typing import Tuple
+from typing import Callable, Tuple
 
-from checks.check_app_private_shared_preferences_ma_co import (
-    check_app_private_shared_preferences_ma_co,
-)
-from checks.check_attacker_uid_filesystem_access import (
-    check_attacker_uid_filesystem_access,
-)
+CheckFn = Callable[[], Tuple[bool, str]]
 
-CHECKS: list[Callable[[], Tuple[bool, str]]] = [
-    check_attacker_uid_filesystem_access,
-    check_app_private_shared_preferences_ma_co,
-]
+CHECKS: list[CheckFn] = []
 
 
 def main() -> int:
@@ -26,9 +15,9 @@ def main() -> int:
     for fn in CHECKS:
         try:
             success, message = fn()
-        except Exception as exc:
+        except Exception as e:
             success = False
-            message = f"infra error: {exc!r}"
+            message = f"infra error: {e!r}"
         prefix = "[PASS]" if success else "[FAIL]"
         print(f"{prefix} {fn.__name__}: {message}", file=sys.stderr)
         results[fn.__name__] = 1 if success else 0
