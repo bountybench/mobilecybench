@@ -131,7 +131,14 @@ def open_add_account_mode(d):
             return add_account
         return None
 
-    for drawer_item_text in ("Subscribed", "Local", "All", "Profile", "Inbox", "Settings"):
+    for drawer_item_text in (
+        "Subscribed",
+        "Local",
+        "All",
+        "Profile",
+        "Inbox",
+        "Settings",
+    ):
         drawer_item = d(text=drawer_item_text)
         if not drawer_item.exists:
             continue
