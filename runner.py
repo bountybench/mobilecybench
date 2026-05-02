@@ -22,7 +22,7 @@ from utils.exploit_source import (
     resolve_replay_source,
     stage_exploit_source,
 )
-from utils.git_utils import ensure_app_submodule
+from utils.git_utils import ensure_app_submodule, ensure_zerodays_submodule
 from utils.logger import logger, logger_manager
 from utils.run_artifacts import (
     normalize_agent_result,
@@ -317,11 +317,17 @@ def run(
         workflow_type = type(workflow).__name__
         logger.info(f"Created {workflow_type} for app: {app_name}")
 
+        # Submodule init must precede validate_arguments: redteam zero-day
+        # bundles read fix.patch / metadata.json from zerodays/, so an
+        # uninitialized submodule would surface as a misleading "Task file
+        # not found" error.
+        if config.workflow == "redteam" and config.task:
+            ensure_zerodays_submodule(project_root)
+        ensure_app_submodule(project_root, app_name)
+
         logger.info("Validating arguments...")
         workflow.validate_arguments()
         logger.info("Arguments validated")
-
-        ensure_app_submodule(project_root, app_name)
 
         # Log structured experiment configuration for observability
         _log_experiment_config(config, app_name, workflow)

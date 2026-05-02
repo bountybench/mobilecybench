@@ -324,7 +324,10 @@ class RedTeamWorkflow(Workflow):
         ]
         for required in required_files:
             if not required.exists():
-                raise ValueError(f"Task file not found: {required}")
+                hint = ""
+                if "zerodays" in required.parts:
+                    hint = " (zerodays submodule may be uninitialized — try `git submodule update --init zerodays`)"
+                raise ValueError(f"Task file not found: {required}{hint}")
 
         task_metadata = json.loads(task_metadata_path.read_text())
 
