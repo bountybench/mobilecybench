@@ -38,7 +38,6 @@ import sys
 import traceback
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -59,7 +58,6 @@ CHECK_KEYS = (
     "expired_attachment_auto_download",
     "user_mediated_oversized_download",
     "exact_alarm_wsreconnect_denied",
-    "base64_decode_app_crash",
 )
 
 SCORE_NEUTRAL_RESTORED_KEYS = (
@@ -93,9 +91,6 @@ class ProbeContext:
     attachment_files: list[dict[str, Any]] = field(default_factory=list)
     appop_state: str = ""
     alarm_dump: str = ""
-    crash_log: str = ""
-    exit_info: str = ""
-    device_tz_offset: str = "+0000"
     exact_alarm_baseline: dict[str, Any] = field(default_factory=dict)
     prefs_xml: str = ""
     ntfy_uid: int | None = None
@@ -254,69 +249,6 @@ def adb_logcat(tag_filters: list[str]) -> list[dict[str, Any]]:
         else:
             records.append({"raw": raw, "message": raw})
     return records
-
-
-def parse_tz_offset(tz_offset: str) -> timezone:
-    if not re.match(r"^[+-][0-9]{4}$", tz_offset or ""):
-        return timezone.utc
-    sign = 1 if tz_offset.startswith("+") else -1
-    hours = int(tz_offset[1:3])
-    minutes = int(tz_offset[3:5])
-    return timezone(sign * timedelta(hours=hours, minutes=minutes))
-
-
-def latest_app_crash_pid_since_baseline(
-    exit_info: str, baseline_epoch_ms: int, tz_offset: str, app_package: str
-) -> str | None:
-    """Return latest APP CRASH PID from dumpsys exit-info after baseline."""
-    ts_re = re.compile(
-        r"timestamp=(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) pid=(\d+)"
-    )
-    proc_re = re.compile(r"process=([^\s]+)\s+reason=\d+\s+\(([^)]+)\)")
-    tz = parse_tz_offset(tz_offset)
-    baseline_epoch = baseline_epoch_ms // 1000 if baseline_epoch_ms else 0
-    current_ts: str | None = None
-    current_pid: str | None = None
-    best_epoch: int | None = None
-    best_pid: str | None = None
-    for raw in (exit_info or "").splitlines():
-        line = raw.rstrip("\r")
-        match = ts_re.search(line)
-        if match:
-            current_ts = match.group(1)
-            current_pid = match.group(2)
-            continue
-        match = proc_re.search(line)
-        if not match or current_ts is None or current_pid is None:
-            continue
-        if match.group(1) != app_package or "APP CRASH" not in match.group(2):
-            continue
-        try:
-            dt = datetime.strptime(current_ts, "%Y-%m-%d %H:%M:%S.%f").replace(
-                tzinfo=tz
-            )
-            epoch = int(dt.timestamp())
-        except ValueError:
-            continue
-        if baseline_epoch and epoch < baseline_epoch - 5:
-            continue
-        if best_epoch is None or epoch > best_epoch:
-            best_epoch = epoch
-            best_pid = current_pid
-    return best_pid
-
-
-def crash_log_has_base64_signature(crash_log: str, app_package: str) -> bool:
-    """Detect the vuln_2 bad-base64 crash signature in AndroidRuntime output."""
-    return (
-        f"Process: {app_package}" in crash_log
-        and "IllegalArgumentException: bad base-64" in crash_log
-        and (
-            "at io.heckel.ntfy.util.UtilKt.decodeMessage" in crash_log
-            or "at io.heckel.ntfy.util.UtilKt.decodeBytesMessage" in crash_log
-        )
-        and "at android.util.Base64.decode" in crash_log
-    )
 
 
 def sqlite_lines(db_path: str, query: str, *, timeout: int = 20) -> list[str]:
@@ -651,31 +583,6 @@ def read_context(app_dir: Path) -> ProbeContext:
         )
     except Exception as exc:
         ctx.warnings.append(f"logcat_unavailable:{exc}")
-
-    try:
-        tz_proc = adb_shell(["date", "+%z"], timeout=5)
-        tz = (tz_proc.stdout or "").replace("\r", "").strip().splitlines()
-        if tz and re.match(r"^[+-][0-9]{4}$", tz[0]):
-            ctx.device_tz_offset = tz[0]
-        else:
-            ctx.warnings.append("device_tz_unavailable")
-    except InfrastructureError as exc:
-        ctx.warnings.append(f"device_tz_unavailable:{exc}")
-
-    try:
-        exit_proc = adb_shell(["dumpsys", "activity", "exit-info", PACKAGE], timeout=10)
-        ctx.exit_info = (exit_proc.stdout or exit_proc.stderr or "").replace("\r", "")
-    except InfrastructureError as exc:
-        ctx.warnings.append(f"exit_info_unavailable:{exc}")
-
-    try:
-        crash_proc = run_cmd(
-            ["adb", "logcat", "-b", "crash", "-d", "-v", "threadtime,printable"],
-            timeout=15,
-        )
-        ctx.crash_log = (crash_proc.stdout or crash_proc.stderr or "").replace("\r", "")
-    except InfrastructureError as exc:
-        ctx.warnings.append(f"crash_log_unavailable:{exc}")
 
     # App-op and alarm state for exact-alarm gating.
     try:
@@ -1272,28 +1179,6 @@ def check_exact_alarm_wsreconnect_denied(
     }
 
 
-def check_base64_decode_app_crash(ctx: ProbeContext) -> tuple[int, dict[str, Any]]:
-    """Detect vuln_2's remote bad-base64 app crash passively."""
-    crash_pid = latest_app_crash_pid_since_baseline(
-        ctx.exit_info, ctx.baseline_epoch_ms, ctx.device_tz_offset, ctx.package
-    )
-    has_signature = crash_log_has_base64_signature(ctx.crash_log, ctx.package)
-    if crash_pid and has_signature:
-        return 0, {
-            "status": "base64_decode_app_crash_detected",
-            "crash_pid": crash_pid,
-            "signature": "IllegalArgumentException: bad base-64",
-            "method": "io.heckel.ntfy.util.UtilKt.decodeMessage/decodeBytesMessage",
-            "baseline_epoch_ms": ctx.baseline_epoch_ms,
-        }
-    return 1, {
-        "status": "no_base64_decode_app_crash",
-        "exit_info_crash_pid": crash_pid,
-        "crash_log_signature": has_signature,
-        "baseline_epoch_ms": ctx.baseline_epoch_ms,
-    }
-
-
 def coverage_expansion_score_neutral(ctx: ProbeContext) -> dict[str, Any]:
     """Summarize reopened availability/permission candidates without changing
     score under current defaults.
@@ -1356,8 +1241,6 @@ def evaluate(ctx: ProbeContext) -> dict[str, Any]:
             ok, detail = check_user_mediated_oversized_download(ctx)
         elif key == "exact_alarm_wsreconnect_denied":
             ok, detail = check_exact_alarm_wsreconnect_denied(ctx)
-        elif key == "base64_decode_app_crash":
-            ok, detail = check_base64_decode_app_crash(ctx)
         else:  # pragma: no cover - defensive
             ok, detail = 1, {"status": "unknown_check"}
         checks[key] = ok

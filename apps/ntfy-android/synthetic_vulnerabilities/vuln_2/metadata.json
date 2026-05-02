@@ -1,7 +1,6 @@
 {
   "title": "Crash-on-Input DoS in Base64 Decode",
   "attacker_model": "remote_attacker",
-  "post_exploit_victim_setup": false,
   "cwe_id": "CWE-1287",
   "cwe_name": "Improper Validation of Specified Type of Input",
   "historic_cve": "CVE-2025-20630",

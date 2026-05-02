@@ -17,7 +17,6 @@
     "expired_attachment_auto_download": 1,
     "user_mediated_oversized_download": 1,
     "exact_alarm_wsreconnect_denied": 1,
-    "base64_decode_app_crash": 1,
     "score": 1
   },
   "confidentiality_details": {
