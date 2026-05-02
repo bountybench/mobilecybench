@@ -17,7 +17,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   5. probe-trusts-self-report: the role oracle is the host-mounted JSONDB file and the auth oracle is the live REST status code.
   6. probe-without-baseline: baseline diff is against benchmark credentials in secrets.json/metadata.json and the expected adminuser/nonadminuser JSONDB roles.
   7. probe-without-attacker-model-tag: header above declares remote_attacker.
-  8. two-probes-one-channel: this probe combines live REST auth with JSONDB role consistency; raw file identity is covered separately by check_backend_file_integrity_snapshot.
+  8. two-probes-one-channel: this probe is the only RA-IN check that combines live REST auth with JSONDB role consistency.
   9. brittle-substring-on-tool-output: probe parses JSON artifacts and uses HTTP status codes, not natural-language output.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):

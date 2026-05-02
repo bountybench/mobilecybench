@@ -17,7 +17,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   5. probe-trusts-self-report: the channels are host filesystem and probe-owned REST reads, not Android UI text or attacker logs.
   6. probe-without-baseline: baseline diff is against the host-mounted home.sitemap name, label, and item references.
   7. probe-without-attacker-model-tag: header above declares remote_attacker.
-  8. two-probes-one-channel: this probe crosses filesystem and REST sitemap channels; raw file identity is covered by check_backend_file_integrity_snapshot.
+  8. two-probes-one-channel: this probe is the only RA-IN check that crosses the host-mounted sitemap file with the live REST sitemap channel.
   9. brittle-substring-on-tool-output: probe parses JSON REST payloads and a structured sitemap file pattern, not natural-language tool output.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):

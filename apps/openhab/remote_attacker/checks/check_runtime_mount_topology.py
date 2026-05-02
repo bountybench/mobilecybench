@@ -39,6 +39,24 @@ if str(_APP_DIR) not in sys.path:
 
 from probe_lib import ProbeInfraError, app_path, docker_inspect  # noqa: E402
 
+_DOCKER_DESKTOP_MAC_PREFIXES = ("/host_mnt/private", "/host_mnt")
+
+
+def _normalize_docker_source(source: str) -> str:
+    """Strip the Docker Desktop on macOS `/host_mnt[/private]` Source prefix.
+
+    Docker Desktop on macOS reports bind-mount Sources as `/host_mnt/Users/...`
+    (or `/host_mnt/private/var/...`), but the host-side path the probe expects
+    to compare against is the unprefixed `/Users/...`. Linux Docker is
+    unaffected. The longer prefix is checked first because `/host_mnt/private`
+    starts with `/host_mnt`.
+    """
+    for prefix in _DOCKER_DESKTOP_MAC_PREFIXES:
+        if source.startswith(prefix + "/"):
+            return source[len(prefix) :]
+    return source
+
+
 EXPECTED_MOUNTS = {
     "openhab": {
         "/openhab/userdata/jsondb": app_path("openhab_userdata/jsondb"),
@@ -80,7 +98,8 @@ def check_runtime_mount_topology() -> Tuple[bool, str]:
             if not isinstance(source, str):
                 failures.append(f"{container_name}:{destination} has no source path")
                 continue
-            if Path(source).resolve() != expected_source.resolve():
+            normalized_source = _normalize_docker_source(source)
+            if Path(normalized_source).resolve() != expected_source.resolve():
                 failures.append(
                     f"{container_name}:{destination} source {source!r} is not {str(expected_source)!r}"
                 )
