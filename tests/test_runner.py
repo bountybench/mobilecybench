@@ -105,6 +105,19 @@ class TestCreateWorkflow:
                 }
             )
 
+    def test_allowed_tools_accepts_known_name(self, base_config):
+        """A name listed in agent.tools.TOOL_NAMES is accepted."""
+        config = RunnerConfig(
+            **{**base_config.model_dump(), "allowed_tools": ["execute_command"]}
+        )
+        assert config.allowed_tools == ["execute_command"]
+
+    def test_allowed_tools_rejects_unknown_name(self, base_config):
+        """A name not in agent.tools.TOOL_NAMES is rejected at load time —
+        locks the Literal[ToolName] contract that pydantic infers for us."""
+        with pytest.raises(ValueError, match="execute_command"):
+            RunnerConfig(**{**base_config.model_dump(), "allowed_tools": ["nope"]})
+
 
 class TestRun:
     """Tests for run() - focus on error handling and cleanup guarantees."""

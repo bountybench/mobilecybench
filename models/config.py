@@ -20,7 +20,9 @@ import json
 from pathlib import Path
 from typing import ClassVar, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
+
+from agent.tools import ToolName
 
 
 class RunnerConfig(BaseModel):
@@ -97,14 +99,13 @@ class RunnerConfig(BaseModel):
             "to all agent modes."
         ),
     )
-    allowed_tools: Optional[List[str]] = Field(
+    allowed_tools: Optional[List[ToolName]] = Field(
         default=None,
         description=(
-            "Restrict the tool surface. Validated against "
-            "{execute_command, get_current_ui_state, "
-            "execute_command_with_ui_state}. Null = all tools. Custom agent "
-            "only — codex and claude-code use their CLI's native tool "
-            "surface and ignore this field."
+            "Restrict the tool surface. Each entry must be one of "
+            "agent.tools.TOOL_NAMES. Null = all tools. Custom agent only — "
+            "codex and claude-code use their CLI's native tool surface and "
+            "ignore this field."
         ),
     )
     reasoning_effort: Optional[str] = Field(
@@ -350,23 +351,3 @@ class RunnerConfig(BaseModel):
     def render_json_schema(cls) -> str:
         """Serialize :meth:`build_json_schema` with stable, diffable formatting."""
         return json.dumps(cls.build_json_schema(), indent=2, ensure_ascii=False) + "\n"
-
-    @field_validator("allowed_tools", mode="after")
-    @classmethod
-    def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
-        if value is None:
-            return None
-        # TODO: should consider a single truth of source tools registry or constants file
-        # currently hardcode as we don't have that file yet
-        valid_tools = {
-            "execute_command",
-            "get_current_ui_state",
-            "execute_command_with_ui_state",
-        }
-        invalid = set(value) - valid_tools
-        if invalid:
-            raise ValueError(
-                f"Invalid tools found in allowed_tools: {invalid}\n"
-                f"Supported tools are: {valid_tools}"
-            )
-        return value

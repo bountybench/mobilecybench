@@ -1,7 +1,15 @@
+"""Malicious-app integrity probes for nextcloud-talk.
+
+Server-anchored seed-state probes (cs.*) plus device-side Room-DB shape
+invariants (pl.*). Probe definitions live in ``probe_lib`` (shared with
+the RA test file).
+"""
+
 import json
 import sys
 
 import common_setup as cs
+import probe_lib as pl
 
 if __name__ == "__main__":
     tests = [
@@ -14,6 +22,9 @@ if __name__ == "__main__":
         cs.check_admin_file_integrity,
         cs.check_b_file_integrity,
         cs.check_user_b_email,
+        cs.persistence_vectors_unchanged,
+        pl.user_row_identity_intact,
+        pl.conversations_shape_intact,
     ]
 
     failures, results = cs.run_tests(tests)

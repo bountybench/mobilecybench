@@ -72,6 +72,11 @@
       "anyOf": [
         {
           "items": {
+            "enum": [
+              "execute_command",
+              "get_current_ui_state",
+              "execute_command_with_ui_state"
+            ],
             "type": "string"
           },
           "type": "array"
@@ -81,7 +86,7 @@
         }
       ],
       "default": null,
-      "description": "Restrict the tool surface. Validated against {execute_command, get_current_ui_state, execute_command_with_ui_state}. Null = all tools. Custom agent only — codex and claude-code use their CLI's native tool surface and ignore this field.",
+      "description": "Restrict the tool surface. Each entry must be one of agent.tools.TOOL_NAMES. Null = all tools. Custom agent only — codex and claude-code use their CLI's native tool surface and ignore this field.",
       "title": "Allowed Tools"
     },
     "reasoning_effort": {

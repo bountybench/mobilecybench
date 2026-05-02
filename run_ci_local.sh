@@ -120,6 +120,12 @@ verify_shared_net_connectivity() {
     fi
 }
 
+compare_expected_score_subset() {
+    local expected_json="$1"
+    local actual_json="$2"
+    python3 "$ROOT_DIR/scripts/compare_score_subset.py" "$expected_json" "$actual_json"
+}
+
 # Start SSRF listener container
 start_ssrf_listener() {
     echo -e "${INFO} Starting SSRF listener container..."
@@ -736,12 +742,13 @@ run_test_check() {
         fi
 
         # Compare remote_attacker scores when both file and expectation exist.
-        # Opt-in: scenarios without an expected_scores_remote_attacker.json
-        # remain MA-only.
+        # The expected fixture is a stable subset of the actual score file:
+        # score-affecting probe keys must match exactly, while dynamic
+        # diagnostic details may be present only in the actual output.
         ra_expected="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores_remote_attacker.json"
         ra_actual="scores_remote_attacker.json"
         if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
-            if diff <(jq -S . "$ra_expected") <(jq -S . "$ra_actual") >/dev/null; then
+            if compare_expected_score_subset "$ra_expected" "$ra_actual"; then
                 echo -e "${SUCCESS} remote_attacker scores match"
             else
                 echo -e "${ERROR} remote_attacker scores do not match"
@@ -814,8 +821,10 @@ run_tests_for_mode() {
     
     cd "$ROOT_DIR/$dir"
     
-    # Skip this step if you want to persist your apk
-    checkout_commit "$dir"
+    # Reset the app submodule to the commit declared by this app's metadata.
+    # The previous argument here was the app directory, which was then treated
+    # as a commit and made `git checkout apps/<app>` fail under normal probe CI.
+    checkout_commit
     
     # Check if test_X.py exists to determine test strategy and required scripts
     if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
