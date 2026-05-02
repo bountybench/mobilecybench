@@ -43,6 +43,11 @@ HYDRATION_SCRIPT="$SCRIPT_DIR/hydrate_device_state.py"
 HYDRATION_LOG="$SCRIPT_DIR/prepare_victim_hydration_run.log"
 HYDRATION_MANIFEST="$SCRIPT_DIR/prepare_victim_hydration_state.json"
 ANDROID_DEVICE_EPOCH_BASELINE_FILE="$SCRIPT_DIR/device_epoch_baseline.txt"
+# Sidecar baseline pinned BEFORE pm clear / re-baseline. Crash-evidence
+# verifiers (e.g. vuln_2) need a baseline that pre-dates the post-exploit
+# reset, since the reset bumps the main baseline past the exploit-time crash
+# entry in `dumpsys exit-info`.
+ANDROID_DEVICE_EPOCH_BASELINE_PRE_RESET_FILE="$SCRIPT_DIR/device_epoch_baseline_pre_reset.txt"
 
 wait_for_adb_device() {
     local context="${1:-adb operation}"
@@ -64,6 +69,13 @@ wait_for_adb_device() {
 
 capture_device_epoch_baseline() {
     wait_for_adb_device "device epoch baseline"
+    # Preserve the pre-reset baseline (captured by start_runtime.sh) so
+    # crash-evidence verifiers can still locate the exploit-time crash entry
+    # after pm clear bumps the main baseline forward.
+    if [ -f "$ANDROID_DEVICE_EPOCH_BASELINE_FILE" ]; then
+        cp "$ANDROID_DEVICE_EPOCH_BASELINE_FILE" "$ANDROID_DEVICE_EPOCH_BASELINE_PRE_RESET_FILE"
+        log_info "prepare_victim: pinned pre-reset baseline -> $ANDROID_DEVICE_EPOCH_BASELINE_PRE_RESET_FILE ($(cat "$ANDROID_DEVICE_EPOCH_BASELINE_PRE_RESET_FILE"))"
+    fi
     log_info "prepare_victim: capturing device epoch baseline -> $ANDROID_DEVICE_EPOCH_BASELINE_FILE"
     local device_epoch=""
     for _i in $(seq 1 15); do
