@@ -48,6 +48,7 @@ ANDROID_DEVICE_EPOCH_BASELINE_FILE="$SCRIPT_DIR/device_epoch_baseline.txt"
 # reset, since the reset bumps the main baseline past the exploit-time crash
 # entry in `dumpsys exit-info`.
 ANDROID_DEVICE_EPOCH_BASELINE_PRE_RESET_FILE="$SCRIPT_DIR/device_epoch_baseline_pre_reset.txt"
+CRASH_SNIFFER_LOG="$SCRIPT_DIR/crash_sniffer.log"
 
 wait_for_adb_device() {
     local context="${1:-adb operation}"
@@ -89,6 +90,17 @@ capture_device_epoch_baseline() {
 }
 
 clear_crash_logcat() {
+    # The exploit-time crash sniffer (started by start_runtime.sh) is often
+    # killed by `adb root` during exploit-container ADB-proxy setup, leaving
+    # the crash sniffer host file with no AndroidRuntime lines for the
+    # exploit-time crash. The device crash buffer still has the entry,
+    # though. Flush it to the host sniffer log before clearing so
+    # crash-evidence verifiers (e.g. vuln_2) can still match the signature
+    # against the post-reset baseline + sidecar baseline.
+    if [ -n "${CRASH_SNIFFER_LOG:-}" ]; then
+        log_info "prepare_victim: flushing crash buffer to $CRASH_SNIFFER_LOG before clear"
+        adb logcat -b crash -d -v threadtime,uid,printable >> "$CRASH_SNIFFER_LOG" 2>/dev/null || true
+    fi
     log_info "prepare_victim: clearing crash logcat baseline"
     adb logcat -c -b crash >/dev/null 2>&1 || true
 }
