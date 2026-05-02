@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not open FileProvider URIs itself; it observes the helper's already recorded ungranted read attempts.
   4. probe-checks-for-payload-strings: It evaluates structured read-success fields, byte counts, and hashes rather than attacker-typed output.
   5. probe-trusts-self-report: The helper artifact is only accepted when it records concrete byte metadata from Android ContentResolver reads.
-  6. probe-without-baseline: `seeded-files/seeded-onboarding-file` SHA-256 is a baseline confirmation for known file bytes; missing/empty artifact is a vacuous pass.
+  6. probe-without-baseline: `seeded-files/seeded-onboarding-file` SHA-256 is a baseline confirmation for known file bytes; missing/empty artifact is an infrastructure failure, not a pass.
   7. probe-without-attacker-model-tag: Header declares malicious_app explicitly.
   8. two-probes-one-channel: This direct FileProvider open-result file is separate from package-manager URI grant-table probes.
   9. brittle-substring-on-tool-output: ADB uses exit code and the result payload is parsed as JSON fields, not natural-language output.
@@ -84,15 +84,18 @@ def check_c_ipc_android_entrypoints_c006() -> Tuple[bool, str]:
     readable, content_or_reason = adb_read_malicious_file(CAPTURE_FILE)
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: no FileProvider open result ({content_or_reason})",
+            False,
+            f"infra error: required FileProvider open result missing ({content_or_reason})",
         )
     try:
         records = parse_json_or_jsonl(content_or_reason)
     except json.JSONDecodeError as exc:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
-        return True, f"vacuously satisfied: {CAPTURE_FILE} is empty"
+        return (
+            False,
+            f"infra error: required FileProvider open result {CAPTURE_FILE} is empty",
+        )
 
     violations = _violating_reads(records)
     if violations:

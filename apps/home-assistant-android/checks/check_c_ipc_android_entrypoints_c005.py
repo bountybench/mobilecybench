@@ -106,8 +106,8 @@ def check_c_ipc_android_entrypoints_c005() -> Tuple[bool, str]:
             return False, f"infra error: {PACKAGE_NAME} is not installed"
         if not adb_app_installed(MALICIOUS_APP_PACKAGE):
             return (
-                True,
-                f"vacuously satisfied: malicious package {MALICIOUS_APP_PACKAGE} not installed",
+                False,
+                f"infra error: malicious package {MALICIOUS_APP_PACKAGE} not installed",
             )
         dump = _activity_service_dump()
     except FileNotFoundError as exc:

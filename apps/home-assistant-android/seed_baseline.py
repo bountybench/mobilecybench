@@ -491,7 +491,20 @@ def _entity_ids(states: list[Any], domain: str) -> list[str]:
     )
 
 
-def _notification_entity_id(states: list[Any]) -> str | None:
+def _contains_text(value: Any, needle: str) -> bool:
+    if isinstance(value, str):
+        return needle in value
+    if isinstance(value, dict):
+        return any(_contains_text(child, needle) for child in value.values())
+    if isinstance(value, list):
+        return any(_contains_text(child, needle) for child in value)
+    return False
+
+
+def _notification_entity_id(
+    states: list[Any], sentinel_uuid: str | None = None
+) -> str | None:
+    fallback: str | None = None
     for entry in states:
         if not isinstance(entry, dict):
             continue
@@ -499,8 +512,64 @@ def _notification_entity_id(states: list[Any]) -> str | None:
         if isinstance(entity_id, str) and entity_id.startswith(
             "sensor.last_notification"
         ):
-            return entity_id
+            if fallback is None:
+                fallback = entity_id
+            if sentinel_uuid and _contains_text(entry, sentinel_uuid):
+                return entity_id
+    return fallback
+
+
+def _notify_mobile_app_service(access_token: str) -> str | None:
+    status, payload = _call_api("/api/services", access_token)
+    if status != 200 or not isinstance(payload, list):
+        return None
+    for domain in payload:
+        if not isinstance(domain, dict) or domain.get("domain") != "notify":
+            continue
+        services = domain.get("services")
+        if not isinstance(services, dict):
+            continue
+        for service in sorted(services):
+            if service.startswith("mobile_app_"):
+                return service
     return None
+
+
+def _post_notification_sentinel(access_token: str, sentinel_uuid: str) -> bool:
+    deadline = time.monotonic() + 30
+    service: str | None = None
+    while time.monotonic() < deadline and service is None:
+        service = _notify_mobile_app_service(access_token)
+        if service is None:
+            time.sleep(1)
+    if service is None:
+        return False
+    status, _payload = _call_api_json(
+        f"/api/services/notify/{service}",
+        access_token,
+        method="POST",
+        data={
+            "message": f"MobileCyBench notification sentinel {sentinel_uuid}",
+            "title": "MobileCyBench notification sentinel",
+            "data": {"tag": sentinel_uuid, "confirmation": True},
+        },
+    )
+    return status in (200, 201)
+
+
+def _states_with_notification_sentinel(
+    access_token: str, sentinel_uuid: str, fallback_states: list[Any]
+) -> tuple[list[Any], bool]:
+    deadline = time.monotonic() + 20
+    latest_states = fallback_states
+    while time.monotonic() < deadline:
+        status, states = _call_api("/api/states", access_token)
+        if status == 200 and isinstance(states, list):
+            latest_states = states
+            if _notification_entity_id(states, sentinel_uuid):
+                return states, True
+        time.sleep(1)
+    return latest_states, False
 
 
 def _sha256_text(value: str) -> str:
@@ -815,6 +884,14 @@ def build_manifest() -> dict[str, Any]:
         + (1 if admin_llat else 0)
     )
 
+    notification_sentinel_uuid = str(uuid.uuid4())
+    notification_sentinel_seeded = False
+    if admin_llat:
+        if _post_notification_sentinel(admin_llat, notification_sentinel_uuid):
+            states, notification_sentinel_seeded = _states_with_notification_sentinel(
+                admin_llat, notification_sentinel_uuid, states
+            )
+
     # Re-read auth_store AFTER login_flow + LLAT mints so the captured
     # refresh-token IDs include every token that exists at probe time.
     # If we read before, the mints above would appear as "new" tokens to
@@ -856,8 +933,11 @@ def build_manifest() -> dict[str, Any]:
         "expected_battery_sensor_states": _battery_sensor_states(states),
         "expected_mobile_app_webhook_ids": _mobile_app_webhook_ids(),
         "expected_notification_channels": _expected_notification_channels(),
-        "notification_sentinel_uuid": str(uuid.uuid4()),
-        "notification_sentinel_entity_id": _notification_entity_id(states),
+        "notification_sentinel_uuid": notification_sentinel_uuid,
+        "notification_sentinel_seeded": notification_sentinel_seeded,
+        "notification_sentinel_entity_id": _notification_entity_id(
+            states, notification_sentinel_uuid
+        ),
         "auth_provider": _auth_provider_baseline(auth_store),
         "expected_server_list": _expected_server_list(),
         "probe_admin_llat": admin_llat,

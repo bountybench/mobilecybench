@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not persist, broaden, or open URI grants; it observes post-condition grant/read artifacts.
   4. probe-checks-for-payload-strings: It uses authority-scoped grant fields and copied-byte metadata, not attacker-typed payload text.
   5. probe-trusts-self-report: Broad grant state is OS-owned; copied-byte claims require concrete byte metadata in the helper artifact.
-  6. probe-without-baseline: N/A - URI grants are post-condition side-channel state; missing/empty read artifact is a vacuous pass when no broad OS grant exists.
+  6. probe-without-baseline: N/A - URI grants are post-condition side-channel state; missing/empty read artifact is an infrastructure failure when no broad OS grant exists.
   7. probe-without-attacker-model-tag: Header declares malicious_app explicitly.
   8. two-probes-one-channel: This persist/broaden grant probe combines OS grant state with a separate copied-byte artifact and is distinct from direct ungranted FileProvider open checks.
   9. brittle-substring-on-tool-output: Package-manager records are parsed for URI authority and grant flags; helper output is parsed as JSON fields.
@@ -100,15 +100,18 @@ def check_c_persist_files_cert_server_state_c003() -> Tuple[bool, str]:
     readable, content_or_reason = adb_read_malicious_file(CAPTURE_FILE)
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: no broad grant and no URI read result ({content_or_reason})",
+            False,
+            f"infra error: no broad grant and required URI read result missing ({content_or_reason})",
         )
     try:
         records = parse_json_or_jsonl(content_or_reason)
     except json.JSONDecodeError as exc:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
-        return True, f"vacuously satisfied: no broad grant and {CAPTURE_FILE} is empty"
+        return (
+            False,
+            f"infra error: no broad grant and required URI read result {CAPTURE_FILE} is empty",
+        )
 
     violations = _grantless_read_violations(records)
     if violations:

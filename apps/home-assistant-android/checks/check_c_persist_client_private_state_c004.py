@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not open victim SharedPreferences itself; it observes already recorded helper results.
   4. probe-checks-for-payload-strings: SharedPreferences XML is parsed structurally for entries and token candidates are live-verified.
   5. probe-trusts-self-report: A read violation requires copied XML/byte metadata, and HA Core independently verifies credentials.
-  6. probe-without-baseline: The protected namespaces named in the shall-not are the seed-time boundary; missing/empty helper artifact is a vacuous pass.
+  6. probe-without-baseline: The protected namespaces named in the shall-not are the seed-time boundary; missing/empty helper artifact is an infrastructure failure, not a pass.
   7. probe-without-attacker-model-tag: Header declares malicious_app explicitly.
   8. two-probes-one-channel: This SharedPreferences result file is distinct from Room database and FileProvider channels.
   9. brittle-substring-on-tool-output: ADB uses exit code and XML/JSON fields are parsed structurally.
@@ -83,15 +83,18 @@ def check_c_persist_client_private_state_c004() -> Tuple[bool, str]:
     readable, content_or_reason = adb_read_malicious_file(CAPTURE_FILE)
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: no SharedPreferences read result ({content_or_reason})",
+            False,
+            f"infra error: required SharedPreferences read result missing ({content_or_reason})",
         )
     try:
         records = parse_json_or_jsonl(content_or_reason)
     except json.JSONDecodeError as exc:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
-        return True, f"vacuously satisfied: {CAPTURE_FILE} is empty"
+        return (
+            False,
+            f"infra error: required SharedPreferences read result {CAPTURE_FILE} is empty",
+        )
 
     exposures = verify_credential_candidates(extract_credential_candidates(records))
     violations = _prefs_read_violations(records)

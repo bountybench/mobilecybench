@@ -193,8 +193,8 @@ def check_c_exec_webview_network_code_c004() -> Tuple[bool, str]:
 
     if not rows:
         return (
-            True,
-            "vacuously satisfied: HomeAssistantDB has no registered server rows",
+            False,
+            "infra error: HomeAssistantDB has no registered server rows",
         )
 
     unexpected = _unexpected_url_values(rows, allowed_values)

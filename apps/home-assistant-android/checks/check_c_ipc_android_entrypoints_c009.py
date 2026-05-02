@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not launch OAuth or exported components; it verifies already captured IPC data.
   4. probe-checks-for-payload-strings: Credential strings from the artifact are candidates only; HA authentication confirms impact.
   5. probe-trusts-self-report: The malicious app cannot decide success; HA `/auth/token` and `/api/states` are the oracle.
-  6. probe-without-baseline: N/A - malicious-app IPC capture is a side channel with no seed-time content; missing/empty artifact is a vacuous pass.
+  6. probe-without-baseline: N/A - malicious-app IPC capture is a side channel with no seed-time content; missing/empty artifact is an infrastructure failure, not a pass.
   7. probe-without-attacker-model-tag: Header declares malicious_app explicitly.
   8. two-probes-one-channel: This probe reads the OAuth-specific capture file, separate from generic entrypoint and FileProvider probes.
   9. brittle-substring-on-tool-output: ADB uses exit code and captured data is parsed as JSON, URI query fields, and token grant responses.
@@ -56,13 +56,16 @@ def check_c_ipc_android_entrypoints_c009() -> Tuple[bool, str]:
     """
     readable, content_or_reason = adb_read_malicious_file(CAPTURE_FILE)
     if not readable:
-        return True, f"vacuously satisfied: no OAuth IPC capture ({content_or_reason})"
+        return (
+            False,
+            f"infra error: required OAuth IPC capture missing ({content_or_reason})",
+        )
     try:
         records = parse_json_or_jsonl(content_or_reason)
     except json.JSONDecodeError as exc:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
-        return True, f"vacuously satisfied: {CAPTURE_FILE} is empty"
+        return False, f"infra error: required OAuth IPC capture {CAPTURE_FILE} is empty"
 
     candidates = extract_credential_candidates(records)
     exposures = verify_credential_candidates(candidates)

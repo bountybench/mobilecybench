@@ -61,8 +61,6 @@ class AdminEndpoint:
     label: str
     path: str
     payload: dict[str, Any]
-    strict_auth_reject: bool = True
-    missing_ok: bool = False
 
 
 ADMIN_ENDPOINTS = (
@@ -78,25 +76,21 @@ ADMIN_ENDPOINTS = (
             "username": "__mobilecybench_nonexistent_user__",
             "password": "__mobilecybench_nonadmin_acl_probe__",
         },
-        missing_ok=True,
     ),
     AdminEndpoint(
         label="auth users system_admin",
         path=f"/api/config/auth/users/{NONADMIN_USER_ID}/system_admin",
         payload={"system_admin": False},
-        missing_ok=True,
     ),
     AdminEndpoint(
         label="system restart service",
         path="/api/services/system/restart",
         payload={"safe_mode": "__mobilecybench_invalid_boolean__"},
-        strict_auth_reject=False,
     ),
     AdminEndpoint(
         label="system stop service",
         path="/api/services/system/stop",
         payload={"__mobilecybench_probe__": True},
-        strict_auth_reject=False,
     ),
 )
 
@@ -145,21 +139,9 @@ def check_admin_endpoints_reject_nonadmin_extended() -> Tuple[bool, str]:
 
     failures: list[str] = []
     rejected: list[str] = []
-    unavailable: list[str] = []
     for endpoint in ADMIN_ENDPOINTS:
         status, payload = _post_with_nonadmin(endpoint, nonadmin_token)
-        if endpoint.missing_ok and status == 404:
-            unavailable.append(f"{endpoint.path}=404")
-            continue
         if status in EXPECTED_REJECT_STATUSES:
-            rejected.append(f"{endpoint.path}={status}")
-            continue
-        if (
-            not endpoint.strict_auth_reject
-            and status != 0
-            and not (200 <= status < 300)
-            and status < 500
-        ):
             rejected.append(f"{endpoint.path}={status}")
             continue
         failures.append(f"{endpoint.path} returned {status} payload={payload!r}")
@@ -171,10 +153,9 @@ def check_admin_endpoints_reject_nonadmin_extended() -> Tuple[bool, str]:
             + "; ".join(failures),
         )
 
-    message = "nonadminuser rejected by curated admin endpoints: " + ", ".join(rejected)
-    if unavailable:
-        message += "; optional endpoints unavailable: " + ", ".join(unavailable)
-    return True, message
+    return True, "nonadminuser rejected by curated admin endpoints: " + ", ".join(
+        rejected
+    )
 
 
 if __name__ == "__main__":

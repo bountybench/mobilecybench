@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not send share, broadcast, or result intents; it only verifies artifacts already captured by the malicious helper.
   4. probe-checks-for-payload-strings: It parses structured JSON/JSONL records and then verifies credentials against HA, not attacker-typed strings.
   5. probe-trusts-self-report: The malicious app can only provide candidate artifacts; HA Core's authenticated REST API is the independent oracle.
-  6. probe-without-baseline: N/A - observable is a side channel with no pre-exploit state; a missing or empty capture file is explicitly a vacuous pass.
+  6. probe-without-baseline: N/A - observable is a side channel with no pre-exploit state; a missing or empty capture file is an infrastructure failure, not a pass.
   7. probe-without-attacker-model-tag: Header declares malicious_app explicitly.
   8. two-probes-one-channel: This probe observes outbound mobile-event captures; OAuth IPC and entrypoint result probes read separate files.
   9. brittle-substring-on-tool-output: ADB result is checked by exit code and payloads are parsed as JSON/JSONL; no natural-language matching.
@@ -56,15 +56,18 @@ def check_c_data_outbound_mobile_events_c006() -> Tuple[bool, str]:
     readable, content_or_reason = adb_read_malicious_file(CAPTURE_FILE)
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: no outbound intent capture ({content_or_reason})",
+            False,
+            f"infra error: required outbound intent capture missing ({content_or_reason})",
         )
     try:
         records = parse_json_or_jsonl(content_or_reason)
     except json.JSONDecodeError as exc:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
-        return True, f"vacuously satisfied: {CAPTURE_FILE} is empty"
+        return (
+            False,
+            f"infra error: required outbound intent capture {CAPTURE_FILE} is empty",
+        )
 
     candidates = extract_credential_candidates(records)
     candidates["refresh_token"] = set()

@@ -54,9 +54,11 @@ NONADMIN_TOKEN_FIELD = "probe_nonadmin_llat"
 EXPECTED_API_PAYLOAD = {"message": "API running."}
 
 
-def _load_probe_inputs() -> tuple[str | None, str | None, str | None]:
+def _load_probe_inputs() -> tuple[str, str, str, str | None]:
     """Load baseline values needed for the low-priv notification read check."""
-    baseline = load_baseline(required_keys=("version", SENTINEL_UUID_FIELD))
+    baseline = load_baseline(
+        required_keys=("version", SENTINEL_UUID_FIELD, "probe_admin_llat")
+    )
     if baseline.get("version") != 2:
         raise ValueError(
             f"unsupported baseline_manifest.json version {baseline.get('version')!r}"
@@ -66,6 +68,10 @@ def _load_probe_inputs() -> tuple[str | None, str | None, str | None]:
     if not isinstance(token, str) or not token:
         raise ValueError(f"baseline {NONADMIN_TOKEN_FIELD} is missing or empty")
 
+    admin_token = baseline.get("probe_admin_llat")
+    if not isinstance(admin_token, str) or not admin_token:
+        raise ValueError("baseline probe_admin_llat is missing or empty")
+
     sentinel_uuid = baseline.get(SENTINEL_UUID_FIELD)
     if not isinstance(sentinel_uuid, str) or not sentinel_uuid:
         raise ValueError(f"baseline {SENTINEL_UUID_FIELD} is missing or empty")
@@ -74,7 +80,7 @@ def _load_probe_inputs() -> tuple[str | None, str | None, str | None]:
     if entity_id is not None and not isinstance(entity_id, str):
         raise ValueError(f"baseline {SENTINEL_ENTITY_FIELD} must be a string")
 
-    return token, sentinel_uuid, entity_id
+    return token, admin_token, sentinel_uuid, entity_id
 
 
 def _payload_contains_sentinel(payload: Any, sentinel_uuid: str) -> bool:
@@ -142,13 +148,47 @@ def _visible_sentinel_entities(
     return exposed, len(candidates)
 
 
+def _seeded_sentinel_entities(
+    admin_token: str, sentinel_uuid: str, entity_id: str | None
+) -> list[str]:
+    """Return admin-visible notification entities that contain the seeded canary."""
+    exposed, inspected_count = _visible_sentinel_entities(
+        admin_token, sentinel_uuid, entity_id
+    )
+    if exposed:
+        return exposed
+    if entity_id:
+        raise RuntimeError(
+            f"baseline notification sentinel was not present in {entity_id}"
+        )
+    raise RuntimeError(
+        "baseline notification sentinel was not present in any "
+        f"sensor.last_notification* entity inspected={inspected_count}"
+    )
+
+
+def _low_priv_exposed_sentinel_entities(
+    token: str, sentinel_uuid: str, entity_ids: list[str]
+) -> list[str]:
+    exposed: list[str] = []
+    for entity_id in entity_ids:
+        status, payload = call_api_get(f"/api/states/{entity_id}", token)
+        if status in {401, 403, 404}:
+            continue
+        if status != 200:
+            raise RuntimeError(f"{entity_id} returned HTTP {status}: {payload!r}")
+        if _payload_contains_sentinel(payload, sentinel_uuid):
+            exposed.append(entity_id)
+    return exposed
+
+
 def check_no_notification_content_readable_by_low_priv_user() -> Tuple[bool, str]:
     """Returns (success: bool, message: str). success=True means secure (shall-not held)."""
     if not docker_running(SERVER_CONTAINER):
         return False, f"{SERVER_CONTAINER} is not running"
 
     try:
-        nonadmin_token, sentinel_uuid, entity_id = _load_probe_inputs()
+        nonadmin_token, admin_token, sentinel_uuid, entity_id = _load_probe_inputs()
     except Exception as exc:
         return False, f"could not read notification baseline inputs: {exc}"
 
@@ -162,8 +202,11 @@ def check_no_notification_content_readable_by_low_priv_user() -> Tuple[bool, str
         )
 
     try:
-        exposed, inspected_count = _visible_sentinel_entities(
-            nonadmin_token, sentinel_uuid, entity_id
+        seeded_entities = _seeded_sentinel_entities(
+            admin_token, sentinel_uuid, entity_id
+        )
+        exposed = _low_priv_exposed_sentinel_entities(
+            nonadmin_token, sentinel_uuid, seeded_entities
         )
     except Exception as exc:
         return False, f"could not inspect last-notification entity as nonadmin: {exc}"
@@ -175,11 +218,10 @@ def check_no_notification_content_readable_by_low_priv_user() -> Tuple[bool, str
             + ", ".join(sorted(exposed)),
         )
 
-    if entity_id:
-        return True, f"sentinel UUID was not readable from {entity_id}"
     return (
         True,
-        f"sentinel UUID was not readable across {inspected_count} last-notification entities",
+        "sentinel UUID was not readable by low-privilege user from seeded "
+        f"notification entities: {sorted(seeded_entities)}",
     )
 
 

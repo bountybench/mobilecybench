@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The malicious app harness performs bindService attempts; this probe only reads the already-recorded callback results.
   4. probe-checks-for-payload-strings: It does not trust transcript strings; it requires harness-owned JSON records with protected-service metadata.
   5. probe-trusts-self-report: The record is produced by the separate malicious app UID and cross-checked for protected permission metadata before a violation is counted.
-  6. probe-without-baseline: N/A - observable is a side-channel result file with no pre-exploit state. Vacuous pass paths: malicious package or result file absent means the harness did not exercise this channel.
+  6. probe-without-baseline: N/A - observable is a side-channel result file with no pre-exploit state. Missing malicious package or result file is an infrastructure failure, not a pass.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This check reads callback results from protected_service_bind_results.json; c005 reads ActivityManager service-binding state.
   9. brittle-substring-on-tool-output: ADB success is exit-code based and result parsing uses JSON booleans/fields, not natural-language output.
@@ -108,8 +108,8 @@ def check_c_ipc_android_entrypoints_c004() -> Tuple[bool, str]:
             return False, "infra error: no adb device available"
         if not adb_app_installed(MALICIOUS_APP_PACKAGE):
             return (
-                True,
-                f"vacuously satisfied: malicious package {MALICIOUS_APP_PACKAGE} not installed",
+                False,
+                f"infra error: malicious package {MALICIOUS_APP_PACKAGE} not installed",
             )
         payload = _read_result_json()
     except FileNotFoundError as exc:
@@ -120,11 +120,19 @@ def check_c_ipc_android_entrypoints_c004() -> Tuple[bool, str]:
         return False, f"infra error: {RESULT_PATH} is not valid JSON: {exc}"
 
     if payload is None:
-        return True, f"vacuously satisfied: {RESULT_PATH} not present"
+        return (
+            False,
+            f"infra error: required service-bind result {RESULT_PATH} not present",
+        )
 
     protected_records = [
         record for record in _records(payload) if _is_protected(record)
     ]
+    if not protected_records:
+        return (
+            False,
+            f"infra error: {RESULT_PATH} contains no protected service attempts",
+        )
     violations = [record for record in protected_records if _delivered_binder(record)]
     if violations:
         services = [

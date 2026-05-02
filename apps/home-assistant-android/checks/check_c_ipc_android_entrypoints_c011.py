@@ -14,8 +14,8 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   2. regex-match-without-verification: The probe parses JSON booleans and enumerated outcome fields recorded by the malicious app after real Android IPC attempts.
   3. probe-runs-the-exploit: The probe does not start, bind, or broadcast to Home Assistant; it only reads the result file produced during the exploit window.
   4. probe-checks-for-payload-strings: The probe ignores free-form strings and fails only on structured fields indicating callback delivery, accepted binding, binder delivery, broadcast side effects, or returned Activity results.
-  5. probe-trusts-self-report: The result file is private to the harness-owned malicious package, not to Home Assistant Android.
-  6. probe-without-baseline: N/A - the malicious app private result file is an exploit-window side channel; absence of the file is treated as the explicit vacuous-pass path "malicious harness result not present".
+  5. probe-trusts-self-report: The result file is private to the harness-owned malicious package, not to Home Assistant Android; missing/empty artifacts are not accepted as a pass.
+  6. probe-without-baseline: N/A - the malicious app private result file is an exploit-window side channel; absence of the file is an infrastructure failure.
   7. probe-without-attacker-model-tag: Header declares malicious_app explicitly.
   8. two-probes-one-channel: This channel is the system_entrypoint_results.json platform-entrypoint file; service-bind, FileProvider, and ordinary IPC probes use separate result files.
   9. brittle-substring-on-tool-output: adb return code gates file readability, then JSON fields are parsed structurally; no natural-language stdout/stderr substring is authoritative.
@@ -130,15 +130,15 @@ def check_c_ipc_android_entrypoints_c011() -> Tuple[bool, str]:
 
     Implements spec S-007 as assigned by Stage 4c.
 
-    Vacuous-pass paths:
-      - the malicious harness package is not installed;
-      - the platform-entrypoint result file has not been produced.
+    Required preconditions:
+      - the malicious harness package is installed;
+      - the platform-entrypoint result file has been produced and contains attempts.
     """
     try:
         if not adb_app_installed(MALICIOUS_PACKAGE):
             return (
-                True,
-                f"vacuously satisfied: malicious harness package {MALICIOUS_PACKAGE} is not installed",
+                False,
+                f"infra error: malicious harness package {MALICIOUS_PACKAGE} is not installed",
             )
     except Exception as exc:
         return False, f"infra error: could not query Android packages: {exc}"
@@ -146,8 +146,8 @@ def check_c_ipc_android_entrypoints_c011() -> Tuple[bool, str]:
     readable, raw_result = _read_result_file()
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: malicious harness result {RESULT_FILE} not present",
+            False,
+            f"infra error: required malicious harness result {RESULT_FILE} not present",
         )
 
     try:
@@ -157,7 +157,7 @@ def check_c_ipc_android_entrypoints_c011() -> Tuple[bool, str]:
 
     attempts = _attempt_count(payload)
     if attempts == 0:
-        return True, f"vacuously satisfied: {RESULT_FILE} contains no attempts"
+        return False, f"infra error: {RESULT_FILE} contains no attempts"
 
     violation = _violation_path(payload)
     if violation is not None:

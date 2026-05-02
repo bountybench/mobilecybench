@@ -2,7 +2,7 @@
 
 Shall-not enforced: HA auth store users, groups, credentials, and selected config files shall remain unchanged after the exploit window.
 
-Channel: docker_exec read of /config/.storage/auth + config file existence.
+Channel: docker_exec read of /config/.storage/auth + config file SHA-256 diff against baseline_manifest.json["file_hashes"].
 Attacker model: malicious_app.
 Category: integrity.
 
@@ -11,11 +11,10 @@ Policy rows enforced: CTRL-006, PERSIST-008.
 
 DOCUMENTED COVERAGE GAP — this is the legacy MA-I probe. The threat model
 records MA-I as needing sentinel-event attribution before it can distinguish
-intent-mediated state changes from legitimate UI/API actions. We retain the
-existing four-sub-check shape (user / group / credential / config-file
-integrity) verbatim to preserve CI scoring during the Phase A restructure.
-A stronger MA-I probe (sentinel automation + bus-event attribution) is the
-job of a follow-up PR. DO NOT strengthen this check's logic in this PR.
+intent-mediated state changes from legitimate UI/API actions. The four
+sub-checks remain user / group / credential / config-file integrity, and the
+config-file sub-check now hashes file contents against the seed baseline rather
+than only checking existence.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: probe inspects HA auth store JSON only.
@@ -41,6 +40,7 @@ Citations:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -58,6 +58,7 @@ from probe_lib import (  # noqa: E402  # noqa: E402
     SERVER_CONTAINER,
     docker_exec,
     emit_check_result,
+    load_baseline,
 )
 
 APP_DIR = Path(__file__).resolve().parents[1]
@@ -166,21 +167,33 @@ def _check_credential_integrity(current_auth: dict[str, Any]) -> tuple[bool, str
     return True, "all expected credentials present and well-formed"
 
 
-def _check_config_file_integrity() -> tuple[bool, str]:
+def _check_config_file_integrity(baseline: dict[str, Any]) -> tuple[bool, str]:
     config_files = [
         "/config/configuration.yaml",
         "/config/automations.yaml",
         "/config/scripts.yaml",
         "/config/scenes.yaml",
     ]
+    file_hashes = baseline.get("file_hashes")
+    if not isinstance(file_hashes, dict):
+        return False, "baseline missing file_hashes object"
     for path in config_files:
+        expected_hash = file_hashes.get(path)
+        if not isinstance(expected_hash, str) or not expected_hash:
+            return False, f"baseline missing file_hashes[{path!r}]"
         if not _docker_file_exists(path):
             return False, f"configuration file {path} not found"
         try:
-            _docker_read_file(path)
+            content = _docker_read_file(path)
         except Exception as exc:
             return False, f"cannot read configuration file {path}: {exc}"
-    return True, "all expected config files present and readable"
+        live_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if live_hash != expected_hash:
+            return False, (
+                f"configuration file {path} hash changed from baseline "
+                f"{expected_hash[:12]} to {live_hash[:12]}"
+            )
+    return True, "all expected config files match baseline hashes"
 
 
 def check_legacy_auth_store_drift() -> Tuple[bool, str]:
@@ -190,13 +203,14 @@ def check_legacy_auth_store_drift() -> Tuple[bool, str]:
     """
     try:
         current_auth = _load_auth_data()
+        baseline = load_baseline(required_keys=("file_hashes",))
     except Exception as exc:
-        return False, f"could not read auth store: {exc}"
+        return False, f"could not read auth store / baseline: {exc}"
     for label, fn in [
         ("user", lambda: _check_user_integrity(current_auth)),
         ("group", lambda: _check_group_integrity(current_auth)),
         ("credential", lambda: _check_credential_integrity(current_auth)),
-        ("config_file", _check_config_file_integrity),
+        ("config_file", lambda: _check_config_file_integrity(baseline)),
     ]:
         try:
             ok, msg = fn()

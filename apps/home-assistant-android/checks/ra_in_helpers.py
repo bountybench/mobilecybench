@@ -10,6 +10,7 @@ import subprocess
 import time
 import urllib.parse
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,7 @@ PROTECTED_CONFIG_PATHS = (
 )
 DB_PATH = "databases/HomeAssistantDB"
 SNAPSHOT_ROOT = Path("/tmp/mobilecybench_home_assistant_android")
+BASELINE_MANIFEST_PATH = Path(__file__).resolve().parents[1] / "baseline_manifest.json"
 COORDINATE_EPSILON = 0.000001
 
 
@@ -229,13 +231,56 @@ def _event_entity_id(message: dict[str, Any]) -> str | None:
     return entity_id if isinstance(entity_id, str) else None
 
 
+def _entity_matches_watch(
+    entity_id: str, prefixes: tuple[str, ...], entity_ids: tuple[str, ...]
+) -> bool:
+    return entity_id in entity_ids or (
+        bool(prefixes) and entity_id.startswith(prefixes)
+    )
+
+
+def _logbook_start_iso() -> str:
+    """Use the baseline manifest write time as the durable lookback boundary."""
+    timestamp = BASELINE_MANIFEST_PATH.stat().st_mtime
+    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+
+
+def _logbook_state_changed_entities(
+    token: str, prefixes: tuple[str, ...], entity_ids: tuple[str, ...]
+) -> list[str]:
+    start = urllib.parse.quote(_logbook_start_iso(), safe=":-+")
+    query = urllib.parse.urlencode({"end_time": datetime.now(timezone.utc).isoformat()})
+    status, payload = call_api_get(f"/api/logbook/{start}?{query}", token)
+    if status != 200 or not isinstance(payload, list):
+        raise RuntimeError(f"/api/logbook returned status={status} payload={payload!r}")
+    seen: list[str] = []
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if isinstance(entity_id, str) and _entity_matches_watch(
+            entity_id, prefixes, entity_ids
+        ):
+            seen.append(entity_id)
+    return sorted(set(seen))
+
+
 def observe_state_changed_events(
-    prefixes: tuple[str, ...], *, seconds: int = 5
+    prefixes: tuple[str, ...], *, seconds: int = 5, entity_ids: tuple[str, ...] = ()
 ) -> tuple[bool, str]:
-    """Pass iff no state_changed events for prefixes arrive during the window."""
+    """Pass iff logbook and live window show no watched state_changed events."""
     require_server_running()
     baseline = load_v2_baseline(("probe_admin_llat",))
     token = admin_access_token(baseline)
+
+    historical = _logbook_state_changed_entities(token, prefixes, entity_ids)
+    if historical:
+        return (
+            False,
+            "observed historical telemetry state_changed event(s) since baseline: "
+            + ", ".join(historical),
+        )
+
     sock: BufferedSocket | None = None
     seen: list[str] = []
     try:
@@ -250,14 +295,15 @@ def observe_state_changed_events(
             except socket.timeout:
                 continue
             entity_id = _event_entity_id(message)
-            if entity_id and entity_id.startswith(prefixes):
+            if entity_id and _entity_matches_watch(entity_id, prefixes, entity_ids):
                 seen.append(entity_id)
     finally:
         if sock is not None:
             sock.close()
     if seen:
         return False, "observed telemetry state_changed event(s): " + ", ".join(seen)
-    return True, f"no telemetry state_changed events observed for {prefixes}"
+    watched = entity_ids or prefixes
+    return True, f"no historical or live state_changed events observed for {watched}"
 
 
 def _tokens_from_value(value: Any) -> dict[str, set[str]]:

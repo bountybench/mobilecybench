@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "app_name": "home-assistant-android",
+  "source_of_truth": [
+    "apps/home-assistant-android/start_runtime.sh",
+    "apps/home-assistant-android/seed_baseline.py",
+    "apps/home-assistant-android/seeded-files/"
+  ],
+  "runtime_artifacts": {
+    "baseline_manifest": "apps/home-assistant-android/baseline_manifest.json",
+    "packet_capture_env": "HA_PROBE_PACKET_CAPTURE",
+    "packet_capture_required_for": [
+      "check_c_net_selected_server_trust_c004"
+    ],
+    "ssrf_listener_log": "/app/logs/ssrf_requests.json",
+    "attacker_callback_logs": [
+      "/tmp/native_bridge_callbacks.ndjson"
+    ],
+    "malicious_app_required_files": [
+      "files/captured_intents.jsonl",
+      "files/fileprovider_open_results.json",
+      "files/ipc_entrypoint_results.json",
+      "files/native_bridge_results.json",
+      "files/oauth_ipc_capture.json",
+      "files/persist_download_fileprovider_read_result.json",
+      "files/persist_prefs_read_result.json",
+      "files/persist_room_read_result.json",
+      "files/persist_uri_grant_result.json",
+      "files/protected_service_bind_results.json",
+      "files/system_entrypoint_results.json"
+    ]
+  },
+  "seeded_canaries": {
+    "notification_sentinel_uuid": {
+      "baseline_key": "notification_sentinel_uuid",
+      "entity_key": "notification_sentinel_entity_id",
+      "seeded_flag": "notification_sentinel_seeded",
+      "hydration": "seed_baseline.py posts a notify.mobile_app_* notification with the UUID, waits for sensor.last_notification* to expose it to the admin observer, then captures notification channels."
+    },
+    "notification_channels": {
+      "baseline_key": "expected_notification_channels",
+      "hydration": "seed_baseline.py captures Android notification channels after the sentinel notification attempts to force lazy channel registration."
+    },
+    "ha_logbook": {
+      "boundary": "baseline_manifest.json file mtime",
+      "required_for": [
+        "check_c_consent_telemetry_permissions_c002",
+        "check_c_consent_telemetry_permissions_c005",
+        "check_c_consent_telemetry_permissions_c011",
+        "check_c_consent_user_feature_gates_c006",
+        "check_c_data_outbound_mobile_events_c002",
+        "check_c_data_outbound_mobile_events_c004"
+      ]
+    }
+  },
+  "precondition_policy": {
+    "missing_required_artifact": "fail",
+    "empty_required_artifact": "fail",
+    "missing_notification_sentinel": "fail",
+    "empty_notification_channel_baseline": "fail",
+    "missing_packet_capture": "fail"
+  }
+}

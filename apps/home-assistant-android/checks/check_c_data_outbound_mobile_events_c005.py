@@ -138,9 +138,9 @@ def check_c_data_outbound_mobile_events_c005() -> Tuple[bool, str]:
 
     Implements spec S-006 as assigned by Stage 4c.
 
-    Vacuous-pass paths:
-      - no notify.mobile_app_* service is registered, so the mobile notification
-        event precondition is absent.
+    Required precondition:
+      - a notify.mobile_app_* service is registered so the negative event
+        contract can be exercised.
     """
     try:
         baseline = load_baseline(
@@ -165,7 +165,7 @@ def check_c_data_outbound_mobile_events_c005() -> Tuple[bool, str]:
     except RuntimeError as exc:
         return False, f"infra error: {exc}"
     if service is None:
-        return True, "vacuously satisfied: no notify.mobile_app_* service registered"
+        return False, "infra error: no notify.mobile_app_* service registered"
 
     tag = f"mcb-ma-av-c005-{tag_seed}"
     sock: BufferedSocket | None = None

@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not open files or FileProvider URIs; it observes already recorded helper results.
   4. probe-checks-for-payload-strings: It uses structured read-success, path/URI, byte count, and SHA-256 fields rather than typed payload strings.
   5. probe-trusts-self-report: The helper result must include concrete copied-byte metadata; public Downloads exceptions are evaluated from structured fields.
-  6. probe-without-baseline: The protected baseline is metadata.json package_name plus FileProvider/app-private path contracts; missing/empty helper artifact is a vacuous pass.
+  6. probe-without-baseline: The protected baseline is metadata.json package_name plus FileProvider/app-private path contracts; missing/empty helper artifact is an infrastructure failure, not a pass.
   7. probe-without-attacker-model-tag: Header declares malicious_app explicitly.
   8. two-probes-one-channel: This direct file/read-result artifact is separate from URI grant-table probes.
   9. brittle-substring-on-tool-output: ADB uses exit code and result payloads are parsed as JSON fields, not natural-language output.
@@ -87,15 +87,18 @@ def check_c_persist_files_cert_server_state_c001() -> Tuple[bool, str]:
     readable, content_or_reason = adb_read_malicious_file(CAPTURE_FILE)
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: no file-boundary read result ({content_or_reason})",
+            False,
+            f"infra error: required file-boundary read result missing ({content_or_reason})",
         )
     try:
         records = parse_json_or_jsonl(content_or_reason)
     except json.JSONDecodeError as exc:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
-        return True, f"vacuously satisfied: {CAPTURE_FILE} is empty"
+        return (
+            False,
+            f"infra error: required file-boundary read result {CAPTURE_FILE} is empty",
+        )
 
     violations = _violating_reads(records)
     if violations:

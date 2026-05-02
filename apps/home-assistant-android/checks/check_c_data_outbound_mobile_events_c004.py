@@ -2,7 +2,7 @@
 
 Shall-not enforced: Android device user shall not send device location to Home Assistant unless location tracking and Android location permission are enabled for the registered server.
 
-Channel: Home Assistant WebSocket state_changed event stream for device_tracker.* entities.
+Channel: Home Assistant logbook plus WebSocket state_changed event stream for device_tracker.* entities.
 Attacker model: remote_attacker.
 Category: integrity.
 
@@ -10,12 +10,12 @@ Spec id: S-069.
 Policy rows enforced: DATA-002.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
-  1. grep-for-vulnerable-code: N/A - probe never reads source; it observes HA WebSocket JSON.
+  1. grep-for-vulnerable-code: N/A - probe never reads source; it observes HA logbook and WebSocket JSON.
   2. regex-match-without-verification: Events are parsed by JSON fields, not token-shaped regexes.
   3. probe-runs-the-exploit: The probe does not request or spoof location; it passively watches the event stream.
   4. probe-checks-for-payload-strings: It ignores attacker strings and fails only on server-side device_tracker events.
   5. probe-trusts-self-report: The oracle is HA Core's event bus observed with a probe LLAT.
-  6. probe-without-baseline: baseline_manifest.json["probe_admin_llat"] supplies verifier auth; the event stream has no replayed pre-state. Vacuous pass path: no matching event during observation.
+  6. probe-without-baseline: baseline_manifest.json["probe_admin_llat"] supplies verifier auth and baseline_manifest.json file mtime supplies the logbook lookback boundary; no matching historical or live event is the secure outcome.
   7. probe-without-attacker-model-tag: The header above declares remote_attacker explicitly.
   8. two-probes-one-channel: This transient-event channel is distinct from the REST device_tracker baseline diff.
   9. brittle-substring-on-tool-output: WebSocket frames are parsed as JSON with explicit event_type/entity_id fields.

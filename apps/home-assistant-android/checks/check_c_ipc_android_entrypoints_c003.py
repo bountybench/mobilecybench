@@ -59,8 +59,8 @@ def check_c_ipc_android_entrypoints_c003() -> Tuple[bool, str]:
         return False, f"infra error: could not read package-manager state: {exc}"
     if not dumpsys:
         return (
-            True,
-            f"vacuously satisfied: no package-manager state for {MALICIOUS_PACKAGE}",
+            False,
+            f"infra error: no package-manager state for {MALICIOUS_PACKAGE}",
         )
     grants = parse_provider_grants(dumpsys, FILE_PROVIDER_AUTHORITY)
     broad = broad_provider_grants(grants)

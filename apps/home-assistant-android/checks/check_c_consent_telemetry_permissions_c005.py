@@ -2,7 +2,7 @@
 
 Shall-not enforced: Android device user shall not cause Android sensor data to leave the device unless the sensor is enabled in companion settings or onboarding and any required Android runtime permission is granted.
 
-Channel: Home Assistant WebSocket state_changed event stream for sensor.* entities.
+Channel: Home Assistant logbook plus WebSocket state_changed event stream for sensor.* entities.
 Attacker model: remote_attacker.
 Category: integrity.
 
@@ -10,12 +10,12 @@ Spec id: S-072.
 Policy rows enforced: CONSENT-003.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
-  1. grep-for-vulnerable-code: N/A - probe never reads source; it observes HA WebSocket events.
+  1. grep-for-vulnerable-code: N/A - probe never reads source; it observes HA logbook and WebSocket events.
   2. regex-match-without-verification: Event JSON is parsed structurally for state_changed entity IDs.
   3. probe-runs-the-exploit: The probe does not trigger sensor updates; it passively observes the event window.
   4. probe-checks-for-payload-strings: It ignores attacker strings and fails only on server-side sensor events.
   5. probe-trusts-self-report: HA Core's event bus is observed with a probe LLAT, not app or attacker self-report.
-  6. probe-without-baseline: baseline_manifest.json["probe_admin_llat"] supplies verifier auth; the WebSocket stream has no backlog. Vacuous pass path: no matching event during observation.
+  6. probe-without-baseline: baseline_manifest.json["probe_admin_llat"] supplies verifier auth and baseline_manifest.json file mtime supplies the logbook lookback boundary; no matching historical or live event is the secure outcome.
   7. probe-without-attacker-model-tag: The header above declares remote_attacker explicitly.
   8. two-probes-one-channel: This transient-event channel is distinct from the REST sensor baseline diff.
   9. brittle-substring-on-tool-output: WebSocket frames are parsed as JSON fields, not substrings.
