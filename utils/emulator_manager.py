@@ -206,7 +206,6 @@ class SystemImage(Enum):
 class EmulatorManager:
     """
     AVD naming convention: MobileCybenchEmulatorAPI{sdk_version}_{system_image_type} - this is consistent with our orchestrator docker image.
-    Previous name: MobileCybenchEmu for host. This should be deprecated moving forward. Haven't done this yet - breaks local ci / not important for now.
     """
 
     def __init__(

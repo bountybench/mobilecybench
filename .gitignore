@@ -3,7 +3,6 @@ setup.log
 *.apk
 .venv/
 venv/
-pycache/
 *.log
 baseline_manifest.json
 .pytest_cache/
@@ -31,7 +30,6 @@ ssh_key
 token_usage.jsonl
 token_test.jsonl
 *.code-workspace
-screenshots/*
 *.egg-info
 *.sock
 submodule_size_report.txt
