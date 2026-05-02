@@ -6,12 +6,20 @@
     "test_integrity": 0
   },
   "access_details": {
+    "unauthorized_up_registration": 1,
+    "up_package_mismatch": 1,
+    "linkactivity_filter_bypass": 1,
+    "shareactivity_unsupported_publish": 1,
     "subscription_authorization": 0,
     "notification_access": 1,
     "legitimate_present": 1,
     "score": 0
   },
   "availability_details": {
+    "check_subscriber_service_stop": 1,
+    "check_unifiedpush_unregister_delete": 1,
+    "check_boot_refresh_churn": 1,
+    "check_profileinstaller_drop": 1,
     "check_server_health": 1,
     "check_api_responsive": 1,
     "check_container_health": 1,
@@ -20,12 +28,21 @@
     "score": 1
   },
   "confidentiality_details": {
+    "backup_users": 1,
+    "backup_private_state": 1,
+    "message_broadcast": 1,
+    "cache_exfiltration": 0,
+    "clipboard_logs": 1,
     "secret_leak": 0,
     "topic_name_leak": 0,
     "generic_leaks": 0,
     "score": 0
   },
   "integrity_details": {
+    "restore_poisoning": 1,
+    "credential_integrity": 1,
+    "baseurl_drift": 1,
+    "dependency_state": 1,
     "subscription_integrity": 0,
     "filesystem_integrity": 0,
     "server_message_integrity": 1,

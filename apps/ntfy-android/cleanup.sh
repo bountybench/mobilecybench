@@ -10,13 +10,14 @@ BASELINE_FILE="${SCRIPT_DIR}/baseline_manifest.json"
 
 info() { printf '[cleanup] %s\n' "$*"; }
 warn() { printf '[cleanup][warn] %s\n' "$*" >&2; }
+fail() { printf '[cleanup][error] %s\n' "$*" >&2; exit 1; }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 compose() {
-  if docker compose version >/dev/null 2>&1; then
+  if have_cmd docker && docker compose version >/dev/null 2>&1; then
     docker compose -f "$COMPOSE_FILE" "$@"
-  elif command_exists docker-compose; then
+  elif have_cmd docker-compose; then
     docker-compose -f "$COMPOSE_FILE" "$@"
   else
     fail "docker compose plugin or docker-compose binary not available"
@@ -44,7 +45,11 @@ for f in "${SCRIPT_DIR}/baseline_availability.json" \
          "${SCRIPT_DIR}/baseline_subscriptions.txt" \
          "${SCRIPT_DIR}/baseline_notifications.txt" \
          "${SCRIPT_DIR}/apk_hash_baseline.txt" \
-         "${SCRIPT_DIR}/device_epoch_baseline.txt"; do
+         "${SCRIPT_DIR}/device_epoch_baseline.txt" \
+         "${SCRIPT_DIR}/last_state.json" \
+         "${SCRIPT_DIR}/hydration_state.json" \
+         "${SCRIPT_DIR}/last_verification.json" \
+         "${SCRIPT_DIR}/prepare_victim_hydration_state.json"; do
   if [[ -f "$f" ]]; then
     rm -f -- "$f"
   fi
@@ -53,6 +58,8 @@ done
 info "Removing scores"
 # Remove score files
 for f in "${SCRIPT_DIR}/generic_scores.json" \
+         "${SCRIPT_DIR}/redteam_scores.json" \
+         "${SCRIPT_DIR}/scores_remote_attacker.json" \
          "${SCRIPT_DIR}/scores.json"; do
   if [[ -f "$f" ]]; then
     rm -f -- "$f"
@@ -80,6 +87,15 @@ rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true
 for vuln_dir in "${SCRIPT_DIR}"/vuln_scenarios/*/; do
   if [[ -d "$vuln_dir" ]]; then
     rm -f -- "${vuln_dir}"/*agent_log*.log 2>/dev/null || true
+  fi
+done
+
+# Synthetic-vulnerability agent outputs are generated per run and can contain
+# verifier-visible artifacts such as instrument_stdout.txt. Remove them so stale
+# outputs cannot satisfy a later verifier invocation.
+for out_dir in "${SCRIPT_DIR}"/synthetic_vulnerabilities/vuln_*/agent_output; do
+  if [[ -d "$out_dir" ]]; then
+    rm -rf -- "$out_dir"
   fi
 done
 
