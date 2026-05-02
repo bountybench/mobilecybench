@@ -162,14 +162,14 @@ def open_add_account_mode(d):
     return None
 
 
-def login_jerboa(instance_url, username, password):
+def login_jerboa(instance_host, username, password):
     """
     Automate login to the Jerboa app.
 
     Uses resourceId-based selectors, keyboard dismissal, and screen-change
     verification for robustness on emulators.
     """
-    log(f"Starting login — Instance: {instance_url}, Username: {username}")
+    log(f"Starting login — Instance: {instance_host}, Username: {username}")
 
     # --- Device connection ---
     try:
@@ -271,7 +271,7 @@ def login_jerboa(instance_url, username, password):
 
     # --- Fill login form ---
     log("Filling instance field...")
-    clear_and_type(d, instance_field, instance_url)
+    clear_and_type(d, instance_field, instance_host)
 
     username_field = find_field(
         d,
@@ -333,16 +333,14 @@ def login_jerboa(instance_url, username, password):
     log("Clicking 'Login'...")
 
     def login_succeeded():
-        # Require BOTH conditions to avoid false positives:
-        # - password field gone: login form has closed (not just showing spinner)
-        # - username present: logged in successfully (not an error state)
-        # d(text="Local") and d(text=username) both exist while the spinner is
-        # showing because the form fields are still on screen. Checking that the
-        # password field is gone ensures the form has actually been dismissed.
+        # Jerboa navigates to Home on successful login. The stable UI contract
+        # there is the top app bar's "Menu" icon, while the login form fields
+        # disappear. Do not rely on raw username text, which is not the home
+        # screen contract and may render as a formatted drawer header label.
         try:
             password_gone = not d(textContains="assword").exists
-            username_present = d(text=username).exists
-            return password_gone and username_present
+            menu_visible = d(description="Menu").exists
+            return password_gone and menu_visible
         except Exception:
             return False
 
@@ -358,7 +356,9 @@ def login_jerboa(instance_url, username, password):
     except Exception as e:
         log(f"Warning: click_then_expect failed: {e}")
 
-    log("Error: Login did not complete — username not found in UI after login click")
+    log(
+        "Error: Login did not complete — home screen contract not observed after login click"
+    )
     return False
 
 

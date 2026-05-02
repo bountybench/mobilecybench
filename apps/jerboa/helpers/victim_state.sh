@@ -38,23 +38,30 @@ jerboa_login_user_once(){
   [ -n "$username" ] || fatal "login username missing"
   [ -n "$password" ] || fatal "login password missing"
 
-  local emulator_server
-  read -r emulator_server <<EOF
+  local emulator_server emulator_instance
+  read -r emulator_server emulator_instance <<EOF
 $(python3 - "$metadata_file" <<'PY'
 import json
 import sys
+from urllib.parse import urlparse
 from pathlib import Path
 
 metadata = json.loads(Path(sys.argv[1]).read_text())
-print(metadata["emulator_server"])
+server = metadata["emulator_server"]
+parsed = urlparse(server if "://" in server else f"https://{server}")
+host = parsed.hostname or ""
+port = parsed.port
+instance = host if not port else f"{host}:{port}"
+print(server, instance)
 PY
 )
 EOF
   [ -n "$emulator_server" ] || fatal "emulator server missing from metadata.json"
+  [ -n "$emulator_instance" ] || fatal "could not derive Jerboa instance host from metadata.json"
 
   log_info "Logging Jerboa user '$username' into the app..."
   PYTHONPATH="$JERBOA_REPO_ROOT" python3 "$login_script" \
-    "$emulator_server" "$username" "$password"
+    "$emulator_instance" "$username" "$password"
 }
 
 jerboa_login_agent_user_once(){
