@@ -171,6 +171,7 @@ class Workflow(ABC):
                 no_codebase=self.config.no_codebase,
                 allow_unregistered_models=self.config.allow_unregistered_models,
                 vuln_id=self.config.synthetic_vuln_id or "vuln_0",
+                probe_only=self.config.probe_only,
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 

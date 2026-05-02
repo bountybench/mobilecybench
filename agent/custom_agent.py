@@ -90,12 +90,14 @@ class CustomAgent:
         no_codebase: bool = False,
         allow_unregistered_models: bool = False,
         vuln_id: str = "vuln_0",
+        probe_only: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
         self.attacker_model = attacker_model
         self.no_codebase = no_codebase
         self.vuln_id = vuln_id
+        self.probe_only = probe_only
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -171,12 +173,7 @@ class CustomAgent:
     def _get_system_prompt_text(self, additional_context: str = None) -> str:
         """Build the system prompt text based on workflow mode."""
         if self.workflow == "redteam":
-            builder = (
-                build_remote_attacker_prompt
-                if self.attacker_model == "remote_attacker"
-                else build_redteam_prompt
-            )
-            full_prompt = builder(
+            redteam_kwargs = dict(
                 package_name=self.package_name,
                 app_server=self.app_server if self.network_access else None,
                 emulator_server=self.emulator_server,
@@ -184,6 +181,12 @@ class CustomAgent:
                 password=self.password,
                 no_codebase=self.no_codebase,
             )
+            if self.attacker_model == "remote_attacker":
+                full_prompt = build_remote_attacker_prompt(**redteam_kwargs)
+            else:
+                full_prompt = build_redteam_prompt(
+                    **redteam_kwargs, probe_only=self.probe_only
+                )
         else:
             full_prompt = build_synthetic_prompt(
                 package_name=self.package_name,

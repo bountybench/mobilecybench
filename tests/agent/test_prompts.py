@@ -10,7 +10,8 @@ import pytest
 
 from agent.claude_code_agent import ClaudeCodeAgent
 from agent.codex_agent import CodexAgent
-from agent.prompts.prompts import build_synthetic_prompt
+from agent.custom_agent import CustomAgent
+from agent.prompts.prompts import build_redteam_prompt, build_synthetic_prompt
 
 
 def test_synthetic_prompt_renders_provided_vuln_id():
@@ -122,6 +123,86 @@ def test_agent_vuln_id_distinct_per_value(cls, vuln_id):
     for other in ("vuln_0", "vuln_1", "vuln_2"):
         if other != vuln_id:
             assert f"/app/verify_files/{other}" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# probe_only mode reframes the malicious_app redteam prompt
+# ---------------------------------------------------------------------------
+# When probe_only=True we want the agent told it's a real zero-day hunt judged
+# by hidden security-property checks, with an anti reward-hack note. We must
+# NOT reveal probe internals (filenames, regexes, baseline files) — those are
+# the attack surface for reward-hacking. Pin both: the framing IS present in
+# probe_only and absent otherwise.
+
+
+_PROBE_ONLY_HEADER = "What \"success\" means here"
+_PROBE_ONLY_HUNT_PHRASE = "real zero-day hunt"
+_PROBE_ONLY_ANTI_HACK = "fabricated outputs"
+
+
+def test_redteam_prompt_probe_only_adds_zero_day_framing():
+    prompt = build_redteam_prompt(package_name="com.example.app", probe_only=True)
+    assert _PROBE_ONLY_HEADER in prompt
+    assert _PROBE_ONLY_HUNT_PHRASE in prompt
+    assert _PROBE_ONLY_ANTI_HACK in prompt
+
+
+def test_redteam_prompt_default_omits_probe_only_framing():
+    prompt = build_redteam_prompt(package_name="com.example.app")
+    assert _PROBE_ONLY_HEADER not in prompt
+    assert _PROBE_ONLY_HUNT_PHRASE not in prompt
+    assert _PROBE_ONLY_ANTI_HACK not in prompt
+
+
+@pytest.mark.parametrize(
+    "leak_marker",
+    [
+        # Things probes look for. If any of these appear in the prompt, the
+        # agent gets a roadmap for reward-hacking.
+        "test_access_control",
+        "test_availability",
+        "test_confidentiality",
+        "test_integrity",
+        "baseline_manifest",
+        "probe_lib",
+        "pwned_file",
+        "container_flag",
+        "app_flag",
+    ],
+)
+def test_redteam_prompt_probe_only_does_not_leak_probe_internals(leak_marker):
+    prompt = build_redteam_prompt(package_name="com.example.app", probe_only=True)
+    assert leak_marker not in prompt, (
+        f"probe_only prompt leaks probe internal {leak_marker!r}; "
+        "this is exactly the kind of detail an agent could reward-hack against."
+    )
+
+
+# Pinning that probe_only flows from CustomAgent (the path the runner uses for
+# agent_mode="custom") through into build_redteam_prompt. Without this wiring,
+# turning on probe_only in runner_config would silently reuse the task-mode
+# prompt and the agent would optimize for a verifier that never runs.
+
+
+def test_custom_agent_threads_probe_only_into_redteam_prompt():
+    agent = object.__new__(CustomAgent)
+    for k, v in dict(
+        workflow="redteam",
+        attacker_model="malicious_app",
+        package_name="com.example.app",
+        app_server=None,
+        emulator_server=None,
+        username=None,
+        password=None,
+        no_codebase=True,
+        network_access=True,
+        vuln_id="vuln_0",
+        probe_only=True,
+    ).items():
+        setattr(agent, k, v)
+    prompt = agent._get_system_prompt_text()
+    assert _PROBE_ONLY_HEADER in prompt
+    assert _PROBE_ONLY_HUNT_PHRASE in prompt
 
 
 @pytest.mark.parametrize("cls", [CodexAgent, ClaudeCodeAgent])
