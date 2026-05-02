@@ -717,7 +717,7 @@ def compromise_findings(diff: dict[str, Any]) -> list[str]:
 
 
 def all_state_findings(diff: dict[str, Any]) -> list[str]:
-    """Unfiltered diff dump for logcat-corroborated checks (e.g. C001)."""
+    """Unfiltered diff dump for logcat-corroborated checks (e.g. AC-MA-1)."""
     findings: list[str] = []
     findings.extend(
         f"recent+:{url}" for url in diff.get("added_recent_conferences", [])[:12]

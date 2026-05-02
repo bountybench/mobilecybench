@@ -226,7 +226,7 @@ reset_device_state() {
 
     # The clear above also wipes the verifier-owned fence marker that
     # capture_verifier_baseline.py emitted from start_runtime.sh. Without a
-    # re-emit, every fence-backed probe (denied_vector_provenance, C007, C012)
+    # re-emit, every fence-backed probe (denied_vector_provenance, I-MA-1, AC-RA-1)
     # raises InfraError and the new launch-provenance coverage is dead. Run
     # the shared helper so phase isolation is preserved while probes can
     # still locate the baseline boundary in current logcat.

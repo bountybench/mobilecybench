@@ -5,14 +5,14 @@ Probe: jitsi-meet — availability (remote_attacker)
 Attacker model:
     remote_attacker
 
-Shall-nots enforced:
-    A-RA-1 (was C022): backend Jitsi containers (prosody/web/jicofo/jvb)
-            shall remain ``running`` and not unhealthy.
-    A-RA-2 (was C023): the legitimate config endpoint shall continue to
-            serve a useable config — operationalised as "the BOSH
-            endpoint at $BOSH_URL responds with HTTP 200..499".
-    A-RA-3: the victim's Jitsi client process shall remain alive after
-            the attacker exits.
+Security properties checked:
+    A-RA-1: detects backend Jitsi containers (prosody/web/jicofo/jvb)
+            that are not ``running`` or are unhealthy.
+    A-RA-2: detects when the legitimate config endpoint is unreachable —
+            operationalized as "the BOSH endpoint at $BOSH_URL responds with
+            HTTP 200..499".
+    A-RA-3: detects when the victim's Jitsi client process is no longer
+            alive after the attacker exits.
 
 What this detects:
     Container outage, BOSH endpoint unreachable, or victim app crashed.
@@ -53,7 +53,7 @@ import probe_common as _c  # noqa: E402
 
 
 def check_backend_container_health(checks, infra_errors):
-    key = "C022_backend_container_health"
+    key = "A_RA_1_backend_container_health"
     try:
         findings = _c.docker_state()
         _c.set_check(checks, key, bool(findings), f"findings={findings[:8]}")
@@ -62,7 +62,7 @@ def check_backend_container_health(checks, infra_errors):
 
 
 def check_bosh_endpoint_alive(checks, infra_errors):
-    key = "C023_bosh_endpoint_alive"
+    key = "A_RA_2_bosh_endpoint_alive"
     url = os.environ.get("BOSH_URL", "http://localhost:5280/http-bind")
     try:
         req = urllib.request.Request(
@@ -81,7 +81,7 @@ def check_bosh_endpoint_alive(checks, infra_errors):
 
 
 def check_victim_app_alive(checks, infra_errors):
-    key = "C024_victim_app_running"
+    key = "A_RA_3_victim_app_running"
     try:
         pid = _c.victim_app_pid()
     except Exception as e:

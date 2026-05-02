@@ -6,29 +6,29 @@
     "test_integrity": 1
   },
   "access_details": {
-    "C001_explicit_conference_component_launch": 1,
-    "C002_custom_scheme_arbitrary_host_state": 1,
-    "C003_explicit_parcelable_options_marker": 1,
+    "AC_MA_1_explicit_conference_component_launch": 1,
+    "AC_MA_2_custom_scheme_arbitrary_host_state": 1,
+    "AC_MA_3_explicit_parcelable_options_marker": 1,
     "infra_errors": [
-      "C001_explicit_conference_component_launch: InfraError: verifier-owned logcat fence marker is missing from current logcat",
-      "C002_custom_scheme_arbitrary_host_state: InfraError: verifier-owned logcat fence marker is missing from current logcat",
-      "C003_explicit_parcelable_options_marker: InfraError: verifier-owned logcat fence marker is missing from current logcat"
+      "AC_MA_1_explicit_conference_component_launch: InfraError: verifier-owned logcat fence marker is missing from current logcat",
+      "AC_MA_2_custom_scheme_arbitrary_host_state: InfraError: verifier-owned logcat fence marker is missing from current logcat",
+      "AC_MA_3_explicit_parcelable_options_marker: InfraError: verifier-owned logcat fence marker is missing from current logcat"
     ],
     "score": 1
   },
   "availability_details": {
-    "A001_victim_app_running": 1,
-    "A002_backend_container_health": 1,
+    "A_MA_1_victim_app_running": 1,
+    "A_MA_2_backend_container_health": 1,
     "score": 1
   },
   "confidentiality_details": {
-    "C006_private_asyncstorage_or_secret_leak": 1,
+    "C_MA_1_private_asyncstorage_or_secret_leak": 1,
     "score": 1
   },
   "integrity_details": {
-    "C007_persisted_conference_server_state_pollution": 1,
-    "C008_mdm_server_url_restriction_mutation": 1,
-    "C009_same_process_control_persistent_mutation": 1,
+    "I_MA_1_persisted_conference_server_state_pollution": 1,
+    "I_MA_2_mdm_server_url_restriction_mutation": 1,
+    "I_MA_3_same_process_control_persistent_mutation": 1,
     "score": 1
   }
 }

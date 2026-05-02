@@ -5,13 +5,13 @@ Probe: jitsi-meet — access_control (malicious_app)
 Attacker model:
     malicious_app
 
-Shall-nots enforced:
-    C-001: explicit CONFERENCE component launch — system_server logcat
+Security properties checked:
+    AC-MA-1: explicit CONFERENCE component launch — system_server logcat
            provenance plus RKStorage baseline diff must agree.
-    C-002: custom-scheme arbitrary host/deployment selection — system_server
+    AC-MA-2: custom-scheme arbitrary host/deployment selection — system_server
            logcat custom-scheme line plus RKStorage diff that names the
            same host.
-    C-003: explicit Parcelable token/userInfo/serverURL coercion —
+    AC-MA-3: explicit Parcelable token/userInfo/serverURL coercion —
            system_server explicit-component lines plus RKStorage settings/
            config-key/known-domain diff that points off the baseline host.
 
@@ -70,7 +70,7 @@ import probe_common as _c  # noqa: E402
 
 
 def check_explicit_component_launch(checks, infra_errors):
-    key = "C001_explicit_conference_component_launch"
+    key = "AC_MA_1_explicit_conference_component_launch"
     try:
         baseline_rows = _c.load_rkstorage_baseline_rows()
         current_rows = _c.read_rkstorage_rows()
@@ -95,7 +95,7 @@ def check_explicit_component_launch(checks, infra_errors):
 
 
 def check_custom_scheme_state(checks, infra_errors):
-    key = "C002_custom_scheme_arbitrary_host_state"
+    key = "AC_MA_2_custom_scheme_arbitrary_host_state"
     try:
         baseline_rows = _c.load_rkstorage_baseline_rows()
         current_rows = _c.read_rkstorage_rows()
@@ -114,15 +114,15 @@ def check_custom_scheme_state(checks, infra_errors):
 
 
 def check_explicit_parcelable_options(checks, infra_errors):
-    key = "C003_explicit_parcelable_options_marker"
+    key = "AC_MA_3_explicit_parcelable_options_marker"
     try:
         baseline_rows = _c.load_rkstorage_baseline_rows()
         current_rows = _c.read_rkstorage_rows()
         diff = _c.rkstorage_state_diff(baseline_rows, current_rows)
         provenance = _c.denied_vector_provenance()
         # Settings/config/known-domain mutations corroborated by an explicit
-        # component launch line. Recent-list-only changes are C001-shaped, not
-        # C003-shaped.
+        # component launch line. Recent-list-only changes are AC-MA-1-shaped, not
+        # AC-MA-3-shaped.
         state_findings = _c.all_state_findings(diff)
         option_findings = [
             f

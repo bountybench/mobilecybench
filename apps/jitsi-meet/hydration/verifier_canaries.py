@@ -144,7 +144,7 @@ def main() -> int:
         # remote-attacker harness has pm-cleared the Android app.  That pass must
         # not append server/MUC history, but it also must not erase the
         # verifier-owned MUC canary hash that was created during full hydration.
-        # Preserve the previous hash so C-016 still enforces the remote MUC
+        # Preserve the previous hash so C-RA-2 still enforces the remote MUC
         # confidentiality canary against passive artifacts collected later.
         prior = previous.get("muc_history") if isinstance(previous, dict) else None
         if isinstance(prior, dict) and prior.get("sha256"):

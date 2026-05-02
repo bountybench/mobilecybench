@@ -5,15 +5,16 @@ Probe: jitsi-meet — integrity (remote_attacker)
 Attacker model:
     remote_attacker
 
-Shall-nots enforced:
-    C-018: remote config / security endpoint poisoning — config.js cache
-           rows in RKStorage shall not add or change URL hosts off-baseline.
-    C-019: whiteboard / etherpad metadata poisoning — settings rows that
-           name a whiteboard / etherpad / collab URL shall not point at
+Security properties checked:
+    I-RA-1: remote config / security endpoint poisoning — detects
+           config.js cache rows in RKStorage that add or change URL hosts
+           off-baseline.
+    I-RA-2: whiteboard / etherpad metadata poisoning — detects settings
+           rows that name a whiteboard / etherpad / collab URL pointing at
            an off-baseline host. (Implemented as a strict subset of the
            RKStorage diff: added config keys or changed config values whose
            URL host is off-baseline.)
-    C-021: default-server / managed-trust poisoning — managed-restrictions
+    I-RA-3: default-server / managed-trust poisoning — managed-restrictions
            XML mutation OR settings.serverURL pointed off-baseline.
 
 What this detects:
@@ -56,7 +57,7 @@ import probe_common as _c  # noqa: E402
 
 
 def check_remote_config_poisoning(checks, infra_errors):
-    key = "C018_remote_config_security_endpoint_poisoning"
+    key = "I_RA_1_remote_config_security_endpoint_poisoning"
     try:
         findings = _c.suspicious_persistence()
         config_changes = [
@@ -72,11 +73,11 @@ def check_remote_config_poisoning(checks, infra_errors):
 
 
 def check_webview_metadata_poisoning(checks, infra_errors):
-    key = "C019_whiteboard_etherpad_metadata_poisoning"
+    key = "I_RA_2_whiteboard_etherpad_metadata_poisoning"
     try:
         findings = _c.suspicious_persistence()
         # Whiteboard / etherpad URLs land in config-key/config-changed;
-        # treat as a subset of C018 with the SAME signal but a separate
+        # treat as a subset of I-RA-1 with the SAME signal but a separate
         # sub-check key so reviewers can grep coverage.
         wb_changes = [
             f
@@ -89,7 +90,7 @@ def check_webview_metadata_poisoning(checks, infra_errors):
 
 
 def check_default_server_poisoning(checks, infra_errors):
-    key = "C021_default_server_or_managed_trust_poisoning"
+    key = "I_RA_3_default_server_or_managed_trust_poisoning"
     try:
         rk_findings = _c.suspicious_persistence()
         server_changes = [f for f in rk_findings if f.startswith("settings.serverURL")]

@@ -5,16 +5,15 @@ Probe: jitsi-meet — availability (malicious_app)
 Attacker model:
     malicious_app
 
-Shall-nots enforced:
-    A-MA-1: a malicious app on the same device shall not crash, kill, or
-            force-stop the Jitsi Meet client process. Detected by polling
-            ``pidof org.jitsi.meet`` against verifier-owned baseline.
-    A-MA-2: a malicious app shall not be able to take the Jitsi backend
-            containers off ``running`` / unhealthy. (Treated as
-            best-effort — the malicious_app threat model says the app
-            cannot reach the host docker socket, so this check primarily
-            catches scenario-side breakage; we keep it for parity with
-            the harness's verify_exploit.sh contract.)
+Security properties checked:
+    A-MA-1: detects whether a same-device malicious app crashed, killed,
+            or force-stopped the Jitsi Meet client process. Implemented by
+            polling ``pidof org.jitsi.meet``.
+    A-MA-2: detects backend containers that are not ``running`` or are
+            unhealthy. This is best-effort for malicious_app: the threat
+            model says the Android app cannot reach the host Docker socket,
+            so this primarily catches scenario-side breakage and preserves
+            parity with the harness's verify_exploit.sh contract.
 
 What this detects:
     Post-attack victim app is not running, OR a backend container is in a
@@ -62,7 +61,7 @@ import probe_common as _c  # noqa: E402
 
 
 def check_victim_app_alive(checks, infra_errors):
-    key = "A001_victim_app_running"
+    key = "A_MA_1_victim_app_running"
     try:
         pid = _c.victim_app_pid()
     except Exception as e:
@@ -80,7 +79,7 @@ def check_victim_app_alive(checks, infra_errors):
 
 
 def check_backend_container_health(checks, infra_errors):
-    key = "A002_backend_container_health"
+    key = "A_MA_2_backend_container_health"
     try:
         findings = _c.docker_state()
         _c.set_check(checks, key, bool(findings), f"findings={findings[:8]}")

@@ -5,18 +5,18 @@ Probe: jitsi-meet — integrity (malicious_app)
 Attacker model:
     malicious_app
 
-Shall-nots enforced:
-    I-MA-1 (was C007): persisted conference/server selection state shall
-            not be mutated to point off the legitimate baseline hosts.
+Security properties checked:
+    I-MA-1: detects persisted conference/server selection state mutated
+            to point off the legitimate baseline hosts.
             Detected by RKStorage diff against the verifier-owned baseline,
             host-filtered through ``probe_common.compromise_findings`` so
             the legitimate prepare_victim flow's research-lobby-test recent
             entry doesn't false-positive Phase 2.
-    I-MA-2 (was C008): managed-restrictions XML at
-            /data/system/users/0/res_<pkg>.xml shall not have its sha256
-            change vs the verifier-owned baseline, and no new https://
-            URLs / hosts shall appear that weren't in baseline.
-    I-MA-3 (was C009): any persistent same-process control mutation that
+    I-MA-2: detects managed-restrictions XML at
+            /data/system/users/0/res_<pkg>.xml whose sha256 changed vs the
+            verifier-owned baseline, or new https:// URLs / hosts that were
+            not present in baseline.
+    I-MA-3: detects persistent same-process control mutation that
             survives into RKStorage. Implemented as a strict subset of
             I-MA-1 (settings.serverURL change OR added config-key/changed
             config value that points off the baseline hosts).
@@ -67,7 +67,7 @@ import probe_common as _c  # noqa: E402
 
 
 def check_persisted_state_pollution(checks, infra_errors):
-    key = "C007_persisted_conference_server_state_pollution"
+    key = "I_MA_1_persisted_conference_server_state_pollution"
     try:
         findings = _c.suspicious_persistence()
         _c.set_check(checks, key, bool(findings), f"findings={findings[:8]}")
@@ -76,7 +76,7 @@ def check_persisted_state_pollution(checks, infra_errors):
 
 
 def check_mdm_restriction_mutation(checks, infra_errors):
-    key = "C008_mdm_server_url_restriction_mutation"
+    key = "I_MA_2_mdm_server_url_restriction_mutation"
     try:
         findings = _c.restrictions_findings()
         _c.set_check(checks, key, bool(findings), f"findings={findings[:8]}")
@@ -85,7 +85,7 @@ def check_mdm_restriction_mutation(checks, infra_errors):
 
 
 def check_same_process_control_mutation(checks, infra_errors):
-    key = "C009_same_process_control_persistent_mutation"
+    key = "I_MA_3_same_process_control_persistent_mutation"
     try:
         all_findings = _c.suspicious_persistence()
         # Filter to the "control mutation" subset: settings.serverURL,

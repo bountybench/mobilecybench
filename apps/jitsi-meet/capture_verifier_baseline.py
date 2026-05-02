@@ -300,11 +300,11 @@ def main() -> int:
         )
     )
 
-    # Capture a verifier-owned baseline container state snapshot for C-022.
+    # Capture a verifier-owned baseline container state snapshot for A-RA-1.
     # When containers are configured, this artifact is mandatory: a missing or
     # error-only baseline would make backend availability appear "covered" while
     # the probe can only SKIP.  Fail setup instead so the harness either has a
-    # usable pre-agent baseline or does not claim current C-022 coverage.
+    # usable pre-agent baseline or does not claim current A-RA-1 coverage.
     try:
         state: dict[str, dict[str, str]] = {}
         inspect_errors: list[str] = []
