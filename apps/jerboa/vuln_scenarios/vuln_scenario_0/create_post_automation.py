@@ -112,30 +112,51 @@ def _tap_community_field_from_label(d) -> bool:
 
     In Jerboa's CreatePostBody, the visible "Community" text field is covered by
     a full-width clickable Box that navigates to `communityList?select=true`.
-    Tapping inside the field area is more stable than fishing for generic
-    clickable nodes in the hierarchy.
+    Tapping by coordinates inside that overlay is more stable than clicking the
+    text label node itself, which is not the actual control.
     """
     back_button = d(description="Back")
     label = d(text="Community")
-    if not label.exists:
-        return False
+    width, height = d.window_size()
 
     try:
-        if click_then_expect(d, label, back_button, timeout=10):
-            return True
+        # Source-backed primary anchor: the community field has a trailing
+        # dropdown icon with contentDescription "TODO", while the submit icon
+        # uses the same content description but lives in the top app bar.
+        # Prefer a visible TODO icon below the app bar and tap its center; the
+        # full-width overlay should intercept that coordinate.
+        candidates: list[tuple[int, tuple[int, int, int, int]]] = []
+        for node in d.xpath('//*[@content-desc="TODO"]').all():
+            bounds = _parse_bounds(node.attrib.get("bounds", ""))
+            if not bounds:
+                continue
+            left_x, top_y, right_x, bottom_y = bounds
+            if top_y <= height * 0.2:
+                continue
+            candidates.append((top_y, (left_x, top_y, right_x, bottom_y)))
+
+        if candidates:
+            _top_y, (left_x, top_y, right_x, bottom_y) = min(
+                candidates, key=lambda item: item[0]
+            )
+            d.click((left_x + right_x) // 2, (top_y + bottom_y) // 2)
+            return bool(back_button.wait(timeout=10))
+
+        if not label.exists:
+            return False
 
         label_node = label.get()
         bounds = _parse_bounds(label_node.attrib.get("bounds", ""))
         if not bounds:
             return False
 
-        left_x, _top_y, right_x, bottom_y = bounds
-        tap_x = (left_x + right_x) // 2
-        tap_y = bottom_y + (_overlay_height_px(d) // 2)
+        _left_x, top_y, _right_x, bottom_y = bounds
+        tap_x = width // 2
+        tap_y = (top_y + bottom_y) // 2
         d.click(tap_x, tap_y)
         return bool(back_button.wait(timeout=10))
     except Exception as e:
-        _log(f"Community field tap from label failed: {e}")
+        _log(f"Community field tap failed: {e}")
         return False
 
 
@@ -177,14 +198,6 @@ def _select_seeded_community(d) -> bool:
         _log("Community selection screen did not become recognizable")
         return False
 
-    for title, _query in seeded_communities:
-        exact = d(text=title)
-        if exact.wait(timeout=3):
-            if click_then_expect(d, exact, d(text="Create post"), timeout=15):
-                return True
-            _log(f"Tapped seeded community {title} but did not return to Create post")
-            return False
-
     search_field = d(className="android.widget.EditText", instance=0)
     if search_field.exists:
         for title, query in seeded_communities:
@@ -199,6 +212,14 @@ def _select_seeded_community(d) -> bool:
                     f"Tapped searched seeded community {title} but did not return to Create post"
                 )
                 return False
+
+    for title, _query in seeded_communities:
+        exact = d(text=title)
+        if exact.wait(timeout=3):
+            if click_then_expect(d, exact, d(text="Create post"), timeout=15):
+                return True
+            _log(f"Tapped seeded community {title} but did not return to Create post")
+            return False
 
     _log("Failed to find any deterministically seeded community option")
     return False
