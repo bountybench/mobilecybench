@@ -1099,15 +1099,9 @@ def test_probe_only_failure_kind_reported_over_probe_eval_error(tmp_path):
     assert "prepare_app_crash" in result["reason"]
 
 
-def test_remote_attacker_omits_codebase_mount_when_absent(tmp_path):
-    """probe_only + no_codebase=true on a closed-source app has no
-    apps/<app>/codebase. _run_exploit must be called with codebase_dir=None
-    so run_exploit_container.sh skips the bind-mount."""
-    config = RunnerConfig(
-        **{**_PROBE_ONLY_CONFIG, "attacker_model": "remote_attacker"}
-    )
-    wf = _make_probe_only_workflow(config, tmp_path)
-    shutil.rmtree(wf.app_dir / "codebase", ignore_errors=True)
+def _capture_remote_codebase_mount(wf, tmp_path):
+    """Drive RemoteAttackerOps.run_phase and return the codebase_dir
+    that was passed to _run_exploit."""
     captured = {}
 
     def fake_run_exploit(*_args, **kwargs):
@@ -1131,5 +1125,120 @@ def test_remote_attacker_omits_codebase_mount_when_absent(tmp_path):
             exploit_dir=tmp_path,
             target_apk=Path("apk/test.apk"),
         )
+    return captured["codebase_dir"]
 
-    assert captured["codebase_dir"] is None
+
+def test_remote_attacker_omits_codebase_mount_when_absent(tmp_path):
+    """Closed-source / public-app mode has no apps/<app>/codebase on disk.
+    _run_exploit must be called with codebase_dir=None so
+    run_exploit_container.sh skips the bind-mount."""
+    config = RunnerConfig(
+        **{**_PROBE_ONLY_CONFIG, "attacker_model": "remote_attacker"}
+    )
+    wf = _make_probe_only_workflow(config, tmp_path)
+    shutil.rmtree(wf.app_dir / "codebase", ignore_errors=True)
+    assert _capture_remote_codebase_mount(wf, tmp_path) is None
+
+
+def test_remote_attacker_omits_codebase_mount_when_no_codebase_true(tmp_path):
+    """When no_codebase=true the agent never saw /app/codebase during dev,
+    so the exploit replay must not see it either — even if apps/<app>/codebase
+    exists on the host (e.g. an open-source app run in APK-only mode).
+    Otherwise the replay environment has more than the agent did, and an
+    exploit that reads source at runtime would silently work in eval but
+    couldn't have been authored by the live agent."""
+    config = RunnerConfig(
+        **{
+            **_PROBE_ONLY_CONFIG,
+            "attacker_model": "remote_attacker",
+            "no_codebase": True,
+        }
+    )
+    wf = _make_probe_only_workflow(config, tmp_path)
+    # _make_probe_only_workflow creates apps/testapp/codebase on disk; leave it.
+    assert (wf.app_dir / "codebase").exists()
+    assert _capture_remote_codebase_mount(wf, tmp_path) is None
+
+
+def test_remote_attacker_mounts_codebase_when_no_codebase_false(tmp_path):
+    """Sanity check the inverse: open-source mode (no_codebase=false) with a
+    codebase on disk MUST mount it. Without this, the fix above could
+    over-suppress and break the open-source path."""
+    config = RunnerConfig(
+        **{
+            **_PROBE_ONLY_CONFIG,
+            "attacker_model": "remote_attacker",
+            "no_codebase": False,
+        }
+    )
+    wf = _make_probe_only_workflow(config, tmp_path)
+    assert _capture_remote_codebase_mount(wf, tmp_path) == wf.app_dir / "codebase"
+
+
+def test_probe_only_remote_post_exploit_victim_crash_does_not_mask_probes(tmp_path):
+    """A real DoS / client-crash exploit can knock prepare_victim over after
+    it has already perturbed the app — probes should still be the source of
+    truth. remote_attacker runs prepare_victim POST-exploit, so a crash there
+    is part of the exploit's downstream impact, not an infrastructure fault.
+    Pin: probes_triggered=True + failure_kind=prepare_victim_crash → vulnerable."""
+    config = RunnerConfig(
+        **{**_PROBE_ONLY_CONFIG, "attacker_model": "remote_attacker"}
+    )
+    wf = _make_probe_only_workflow(config, tmp_path)
+    _write_agent_artifact("remote_attacker")
+
+    with (
+        patch.object(
+            RemoteAttackerOps,
+            "run_phase",
+            side_effect=lambda *_a, **_kw: _phase_result(
+                0, _a[1], failure_kind="prepare_victim_crash"
+            ),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(RedTeamWorkflow, "_run_verifier"),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            return_value=_probe_result(True),
+        ),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "vulnerable"
+    assert result["score"] == 1
+    # The crash is still surfaced for debugging — we just don't let it win.
+    assert (
+        result["phases"]["phase1_original"]["failure_kind"] == "prepare_victim_crash"
+    )
+
+
+def test_probe_only_malicious_app_pre_exploit_victim_crash_is_infra_error(tmp_path):
+    """malicious_app runs prepare_victim BEFORE the exploit, so a crash
+    there means the exploit never ran — probes are unreliable. The same
+    failure_kind that was 'real signal' for remote_attacker is 'infra
+    fault' here. Pin the asymmetry so a future refactor can't collapse them."""
+    config = RunnerConfig(**_PROBE_ONLY_CONFIG)
+    wf = _make_probe_only_workflow(config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    with (
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=lambda *_a, **_kw: _phase_result(
+                2, _a[1], failure_kind="prepare_victim_crash"
+            ),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(RedTeamWorkflow, "_run_verifier"),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            return_value=_probe_result(True),
+        ),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "infrastructure_error"
+    assert "prepare_victim_crash" in result["reason"]
