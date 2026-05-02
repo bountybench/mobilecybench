@@ -637,7 +637,7 @@ class Workflow(ABC):
                     logger.error(f"Invalid JSON in {path}")
                     return False
             else:
-                logger.warning(f"Expected score file not produced: {path}")
+                logger.warning(f"Score output file not produced: {path}")
 
         return True
 
