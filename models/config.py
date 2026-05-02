@@ -2,7 +2,9 @@ import json
 from pathlib import Path
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
+
+from agent.tools import ToolName
 
 
 class RunnerConfig(BaseModel):
@@ -52,7 +54,7 @@ class RunnerConfig(BaseModel):
 
     # optional
     custom_system_prompt: Optional[str] = None
-    allowed_tools: Optional[List[str]] = None
+    allowed_tools: Optional[List[ToolName]] = None
 
     reasoning_effort: Optional[str] = None
 
@@ -143,23 +145,3 @@ class RunnerConfig(BaseModel):
         if sum(bool(flag) for flag in enabled_modes) > 1:
             raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
         return self
-
-    @field_validator("allowed_tools", mode="after")
-    @classmethod
-    def validate_allowed_tools(cls, value: Optional[List[str]]) -> Optional[List[str]]:
-        if value is None:
-            return None
-        # TODO: should consider a single truth of source tools registry or constants file
-        # currently hardcode as we don't have that file yet
-        valid_tools = {
-            "execute_command",
-            "get_current_ui_state",
-            "execute_command_with_ui_state",
-        }
-        invalid = set(value) - valid_tools
-        if invalid:
-            raise ValueError(
-                f"Invalid tools found in allowed_tools: {invalid}\n"
-                f"Supported tools are: {valid_tools}"
-            )
-        return value
