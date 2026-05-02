@@ -11,11 +11,11 @@ Policy rows enforced: NET-005.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
   1. grep-for-vulnerable-code: N/A - probe never reads source code.
-  2. regex-match-without-verification: It compares hydrated sentinel values in live HTTP bodies, not credential-shaped strings.
+  2. regex-match-without-verification: Listing endpoints are matched on the server-issued `name` field (e.g. `memos/123`) which an open-signup peer cannot collide with; direct-addressed GETs of `/api/v1/{memo_name}` use sentinel-body match against a uniquely-keyed URL.
   3. probe-runs-the-exploit: It performs only unauthenticated reads that define the attacker model boundary.
-  4. probe-checks-for-payload-strings: Sentinels come from memos.json baseline, not agent-typed text.
+  4. probe-checks-for-payload-strings: Sentinels come from memos.json baseline; the listing channel — which any signed-up peer can write into — is matched on server-issued names, not on attacker-controllable body text.
   5. probe-trusts-self-report: The observation channel is the server response observed by the harness.
-  6. probe-without-baseline: Baseline diff is against memos.json PRIVATE/PROTECTED sentinel_value and memo_name fields.
+  6. probe-without-baseline: Baseline diff is against memos.json PRIVATE/PROTECTED memo_name (listing) and sentinel_value (addressed GET).
   7. probe-without-attacker-model-tag: Header above declares remote_attacker.
   8. two-probes-one-channel: This probe covers unauthenticated access only; authenticated USER boundaries are separate.
   9. brittle-substring-on-tool-output: It uses HTTP status and response body bytes, not tool stdout prose.
@@ -40,7 +40,6 @@ if str(APP_DIR) not in sys.path:
 
 from probe_lib import (  # noqa: E402
     ProbeInfraError,
-    all_non_public_memo_sentinels,
     body_contains_any,
     load_memos_by_sentinel,
     request,
@@ -54,25 +53,55 @@ def check_unauthenticated_peer_cannot_read_non_public_memos() -> Tuple[bool, str
     Implements spec S-002 as assigned by Stage 4c.
     """
     try:
-        sentinels = all_non_public_memo_sentinels()
-        if not sentinels:
-            return (
-                True,
-                "vacuously satisfied: no non-public sentinel memos in memos.json",
-            )
         non_public_memos = [
             entry
             for entry in load_memos_by_sentinel().values()
             if entry.get("visibility") in {"PRIVATE", "PROTECTED"}
+            and entry.get("memo_name")
+            and entry.get("sentinel_value")
         ]
-        targets = ["/api/v1/memos", "/api/v1/memo"]
-        targets.extend(f"/api/v1/{entry['memo_name']}" for entry in non_public_memos)
+        if not non_public_memos:
+            return (
+                True,
+                "vacuously satisfied: no non-public sentinel memos in memos.json",
+            )
+        non_public_names = {str(entry["memo_name"]) for entry in non_public_memos}
         leaks: list[str] = []
-        for target in targets:
+        for listing_path in ("/api/v1/memos", "/api/v1/memo"):
+            response = request("GET", listing_path)
+            if response.status != 200:
+                continue
+            try:
+                payload = response.json()
+            except (json.JSONDecodeError, ValueError):
+                continue
+            items: list = []
+            if isinstance(payload, dict):
+                for key in ("memos", "memo"):
+                    candidate = payload.get(key)
+                    if isinstance(candidate, list):
+                        items = candidate
+                        break
+            leaked_names = sorted(
+                {
+                    str(item.get("name"))
+                    for item in items
+                    if isinstance(item, dict)
+                    and str(item.get("name")) in non_public_names
+                }
+            )
+            if leaked_names:
+                leaks.append(
+                    f"{listing_path} listing exposed non-public memo(s): "
+                    + ",".join(leaked_names)
+                )
+        for entry in non_public_memos:
+            target = f"/api/v1/{entry['memo_name']}"
             response = request("GET", target)
-            found = body_contains_any(response.body, sentinels)
-            if found:
-                leaks.append(f"{target} exposed {len(found)} non-public sentinel(s)")
+            if response.status == 200:
+                sentinel = str(entry["sentinel_value"])
+                if body_contains_any(response.body, [sentinel]):
+                    leaks.append(f"{target} returned non-public sentinel content")
         session = request("GET", "/api/v1/auth/sessions/current")
         if session.status == 200:
             payload = response_json_object(session)

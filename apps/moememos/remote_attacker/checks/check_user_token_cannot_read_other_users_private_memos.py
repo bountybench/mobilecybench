@@ -11,11 +11,11 @@ Policy rows enforced: CTL-007, NET-007.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
   1. grep-for-vulnerable-code: N/A - probe never reads source code.
-  2. regex-match-without-verification: user_riley token is validated by current-session identity before boundary checks.
+  2. regex-match-without-verification: The listing leak signal compares the server-issued `name` field against user_morgan's baseline memo_name; user_riley's listing also includes PUBLIC memos any signed-up peer can write, so substring-against-listing-body is unsafe and is not used.
   3. probe-runs-the-exploit: It performs authorized USER reads only and does not reproduce a leak.
-  4. probe-checks-for-payload-strings: The forbidden sentinel comes from memos.json hydration baseline.
+  4. probe-checks-for-payload-strings: The forbidden sentinel is checked only on the direct-addressed GET of `/api/v1/{morgan_memo_name}` whose URL is uniquely keyed; the listing path uses structured `name` matching and ignores attacker-controllable body text.
   5. probe-trusts-self-report: The harness observes Memos API responses directly.
-  6. probe-without-baseline: Baseline is memos.json user_morgan PRIVATE sentinel_value and memo_name.
+  6. probe-without-baseline: Baseline is memos.json user_morgan PRIVATE memo_name (listing) and sentinel_value (addressed GET).
   7. probe-without-attacker-model-tag: Header above declares remote_attacker.
   8. two-probes-one-channel: This checks authenticated cross-user memo reads; unauthenticated reads are S-002.
   9. brittle-substring-on-tool-output: It uses HTTP status and response bytes from urllib, not CLI text.
@@ -64,14 +64,24 @@ def check_user_token_cannot_read_other_users_private_memos() -> Tuple[bool, str]
                 "infra error: user_riley token did not authenticate as user_riley",
             )
         target = memo_for("sentinel_user_morgan_private_memo")
+        target_name = str(target["memo_name"])
         sentinel = str(target["sentinel_value"])
-        listed = json.dumps(list_memos(token), sort_keys=True)
-        leaks = body_contains_any(listed, [sentinel])
-        direct = get_memo(str(target["memo_name"]), token=token)
-        if direct.status == 200:
-            leaks.extend(body_contains_any(direct.body, [sentinel]))
+        listed = list_memos(token)
+        leaks: list[str] = []
+        if any(
+            isinstance(item, dict) and str(item.get("name")) == target_name
+            for item in listed
+        ):
+            leaks.append(
+                f"user_riley listing exposed user_morgan PRIVATE memo {target_name}"
+            )
+        direct = get_memo(target_name, token=token)
+        if direct.status == 200 and body_contains_any(direct.body, [sentinel]):
+            leaks.append(
+                f"user_riley GET /api/v1/{target_name} returned user_morgan sentinel"
+            )
         if leaks:
-            return False, "user_riley token read user_morgan PRIVATE memo sentinel"
+            return False, "; ".join(leaks)
     except ProbeInfraError as exc:
         return False, f"infra error: {exc}"
     except Exception as exc:  # noqa: BLE001
