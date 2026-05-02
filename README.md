@@ -28,7 +28,7 @@ pip install -r requirements.txt
 bash setup.sh --init-submodules
 ```
 
-`--init-submodules` initializes all app codebases plus the `zerodays/` task bundle. Drop it if you only need the runtime and will init submodules on demand (`runner.py` auto-inits the codebase for the app you run).
+`--init-submodules` initializes all app codebases plus the `zerodays/` task bundle. This recursively clones ~30 app codebases (multiple GB, several minutes); drop the flag if you only need the runtime and will init submodules on demand (`runner.py` auto-inits the codebase for the app you run).
 
 To verify your environment without spending tokens, run against the bundled dry-run config — it launches an interactive Kali shell instead of invoking the agent:
 
