@@ -1,11 +1,13 @@
-"""Check: HA's documented admin-only endpoint rejects a low-priv nonadminuser.
+"""Probe: Home Assistant Android - access (remote_attacker) - check_admin_only_endpoints_reject_nonadmin.
 
-Shall-not enforced: RA-I — "A low-privileged authenticated remote user shall
-not be able to escalate privileges, change another user's group membership, or
-call admin-only HA service endpoints."
+Shall-not enforced: HA's documented admin-only endpoint shall reject a low-privilege nonadmin user.
+
 Channel: HA REST POST /api/config/core/check_config with a nonadmin bearer.
 Attacker model: remote_attacker.
-Category: access (RA-I sub-check; legacy probe placed it under RA-C entrypoint).
+Category: access.
+
+Spec id: S-041.
+Policy rows enforced: CTRL-002, CTRL-004, NET-005.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: probe issues an HTTP call; it never reads HA

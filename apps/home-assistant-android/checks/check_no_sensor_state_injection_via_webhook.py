@@ -1,10 +1,13 @@
-"""Check: Battery sensor state was not poisoned during the exploit window.
+"""Probe: Home Assistant Android - integrity (remote_attacker) - check_no_sensor_state_injection_via_webhook.
 
-Shall-not enforced: "A webhook POST with a known webhook_id shall not cause HA to store attacker-chosen sensor values".
-Threat-model context: RA-I - "A low-privileged authenticated remote user shall not be able to escalate privileges, change another user's group membership, or call admin-only HA service endpoints."
+Shall-not enforced: A webhook POST with a known webhook_id shall not cause HA to store attacker-chosen sensor values.
+
 Channel: passive /api/states/<battery_sensor_entity_id> JSON field comparison against baseline_manifest.json["expected_battery_sensor_states"] after the exploit window.
 Attacker model: remote_attacker.
 Category: integrity.
+
+Spec id: S-081.
+Policy rows enforced: DATA-001, CODE-006, NET-006, CONSENT-003, CONSENT-007.
 
 Anti-pattern declarations (all 9 mandatory):
   1. grep-for-vulnerable-code: N/A - probe never reads source; it reads the seed baseline and live REST state.

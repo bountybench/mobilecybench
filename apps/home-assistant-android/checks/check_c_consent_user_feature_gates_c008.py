@@ -11,11 +11,11 @@ Policy rows enforced: CONSENT-009.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
   1. grep-for-vulnerable-code: N/A - probe never reads source code; it reads Android OS state via ADB.
-  2. regex-match-without-verification: Parsed permission/appop/importance fields are compared to a pre-stimulus snapshot.
+  2. regex-match-without-verification: Parsed permission/appop/importance fields are compared to a required pre-stimulus snapshot.
   3. probe-runs-the-exploit: The probe does not grant permissions or send exported intents; it only observes OS state.
   4. probe-checks-for-payload-strings: The probe ignores attacker strings and only compares OS-maintained state fields.
   5. probe-trusts-self-report: Android package manager, appops, and notification services are independent of attacker app output.
-  6. probe-without-baseline: /tmp/mobilecybench_home_assistant_android/c008_os_consent_snapshot.json stores the pre-stimulus OS consent snapshot captured on first run.
+  6. probe-without-baseline: /tmp/mobilecybench_home_assistant_android/c008_os_consent_snapshot.json must exist before the exploit window as the OS consent snapshot; missing snapshot is an infrastructure error, not a pass.
   7. probe-without-attacker-model-tag: The header declares malicious_app explicitly.
   8. two-probes-one-channel: This probe observes Android OS consent state; server-visible telemetry probes observe HA REST state.
   9. brittle-substring-on-tool-output: ADB exit codes are checked first and key/value permission/appops records are parsed into sets and integers.
@@ -135,11 +135,6 @@ def _capture_os_consent_snapshot() -> dict[str, Any]:
     }
 
 
-def _write_snapshot(snapshot: dict[str, Any]) -> None:
-    SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT_PATH.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
-
-
 def _compare_snapshots(baseline: dict[str, Any], live: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     for key in ("granted_permissions", "allowed_appops"):
@@ -165,19 +160,16 @@ def check_c_consent_user_feature_gates_c008() -> Tuple[bool, str]:
     """Returns (success, message). success=True means secure (shall-not held).
 
     Implements spec S-025 as assigned by Stage 4c.
-    Vacuous-pass paths: if the pre-stimulus OS consent snapshot does not yet
-    exist, this probe captures it and returns secure for the initialization run.
+    Precondition: the pre-stimulus OS consent snapshot must already exist from
+    the hydration/pre-stimulus phase. Missing snapshot is an infrastructure
+    error.
     """
     try:
         live = _capture_os_consent_snapshot()
     except Exception as exc:
         return False, f"infra error: {exc}"
     if not SNAPSHOT_PATH.exists():
-        try:
-            _write_snapshot(live)
-        except Exception as exc:
-            return False, f"infra error: could not write OS consent snapshot: {exc}"
-        return True, f"vacuously satisfied: initialized {SNAPSHOT_PATH}"
+        return False, f"infra error: missing pre-stimulus snapshot {SNAPSHOT_PATH}"
     try:
         baseline = json.loads(SNAPSHOT_PATH.read_text())
     except Exception as exc:

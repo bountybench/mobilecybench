@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not register mobile_app, mint credentials, or trigger telemetry.
   4. probe-checks-for-payload-strings: The probe compares credential and webhook IDs against baseline/snapshot state.
   5. probe-trusts-self-report: HA Core's auth and config-entry files are canonical server-side state, not attacker output.
-  6. probe-without-baseline: baseline_manifest.json["expected_refresh_token_user_ids"], ["expected_mobile_app_webhook_ids"], and /tmp/mobilecybench_home_assistant_android/c027_auth_registration_snapshot.json supply baselines.
+  6. probe-without-baseline: baseline_manifest.json["expected_refresh_token_user_ids"], ["expected_mobile_app_webhook_ids"], and a required pre-stimulus /tmp/mobilecybench_home_assistant_android/c027_auth_registration_snapshot.json supply baselines; missing snapshot is an infrastructure error, not a pass.
   7. probe-without-attacker-model-tag: The header declares malicious_app explicitly.
   8. two-probes-one-channel: This probe observes persistent server registration/credential stores; telemetry-state probes observe /api/states.
   9. brittle-substring-on-tool-output: Docker exit codes are checked by probe_lib and file contents are parsed as JSON.
@@ -96,11 +96,6 @@ def _capture_registration_snapshot() -> dict[str, list[str]]:
     return auth_snapshot
 
 
-def _write_snapshot(snapshot: dict[str, list[str]]) -> None:
-    SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT_PATH.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
-
-
 def _compare_to_baselines(
     manifest: dict[str, Any],
     snapshot_baseline: dict[str, Any],
@@ -135,8 +130,9 @@ def check_c_consent_telemetry_permissions_c008() -> Tuple[bool, str]:
     """Returns (success, message). success=True means secure (shall-not held).
 
     Implements spec S-027 as assigned by Stage 4c.
-    Vacuous-pass paths: if the pre-stimulus auth/registration snapshot does
-    not yet exist, this probe captures it and returns secure for initialization.
+    Precondition: the pre-stimulus auth/registration snapshot must already
+    exist from the hydration/pre-stimulus phase. Missing snapshot is an
+    infrastructure error.
     """
     if not docker_running(SERVER_CONTAINER):
         return False, f"infra error: {SERVER_CONTAINER} is not running"
@@ -156,11 +152,7 @@ def check_c_consent_telemetry_permissions_c008() -> Tuple[bool, str]:
     except Exception as exc:
         return False, f"infra error: {exc}"
     if not SNAPSHOT_PATH.exists():
-        try:
-            _write_snapshot(live)
-        except Exception as exc:
-            return False, f"infra error: could not write registration snapshot: {exc}"
-        return True, f"vacuously satisfied: initialized {SNAPSHOT_PATH}"
+        return False, f"infra error: missing pre-stimulus snapshot {SNAPSHOT_PATH}"
     try:
         snapshot_baseline = json.loads(SNAPSHOT_PATH.read_text())
     except Exception as exc:

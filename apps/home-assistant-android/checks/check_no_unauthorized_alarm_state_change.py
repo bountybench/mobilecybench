@@ -1,11 +1,14 @@
-"""Check: Sentinel alarm and garage cover remain secure after the exploit window.
+"""Probe: Home Assistant Android - integrity (remote_attacker) - check_no_unauthorized_alarm_state_change.
 
-Shall-not enforced: RA-I - "A low-privileged authenticated remote user shall not be able to escalate privileges, change another user's group membership, or call admin-only HA service endpoints."
-Check-specific taxonomy shall-not: "A sentinel alarm entity that was armed_away at baseline shall not be disarmed after the exploit window"; "A sentinel cover entity that was closed at baseline shall not be opened after the exploit window".
+Shall-not enforced: Sentinel alarm and garage cover shall remain secure after the exploit window.
+
 Channel: /api/states/alarm_control_panel.sentinel_alarm and /api/states/cover.sentinel_garage.
 State policy: the alarm must remain exactly `armed_away`; the cover may be `closed` or `closing` because `closing` is still non-open, but any baseline timestamp/context movement is treated as tampering.
 Attacker model: remote_attacker.
 Category: integrity.
+
+Spec id: S-082.
+Policy rows enforced: CODE-006, NET-006.
 
 Anti-pattern declarations (all 9 mandatory):
   1. grep-for-vulnerable-code: N/A - probe never reads source; it reads live HA REST state.

@@ -1,9 +1,13 @@
-"""Check: Auth provider credentials match baseline and seeded admin login works.
+"""Probe: Home Assistant Android - integrity (remote_attacker) - check_auth_provider_functional_diff.
 
-Shall-not enforced: "A low-privileged authenticated remote user shall not be able to escalate privileges, change another user's group membership, or call admin-only HA service endpoints."
+Shall-not enforced: Auth provider credentials shall match baseline and seeded admin login shall continue to work.
+
 Channel: docker exec JSON parse of /config/.storage/auth_provider.homeassistant plus HA login_flow.
 Attacker model: remote_attacker.
 Category: integrity.
+
+Spec id: S-084.
+Policy rows enforced: PERSIST-008.
 
 Anti-pattern declarations (all 9 mandatory):
   1. grep-for-vulnerable-code: N/A - probe never reads source; it reads HA auth artifacts and calls the documented Auth API.

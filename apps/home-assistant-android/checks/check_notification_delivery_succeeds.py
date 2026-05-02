@@ -1,13 +1,13 @@
-"""Check: A confirmation-notify round trip produces `mobile_app_notification_received`.
+"""Probe: Home Assistant Android - availability (malicious_app) - check_notification_delivery_succeeds.
 
-Shall-not enforced: MA-A — "A co-installed app shall not be able to silence or
-block HA push notifications delivered to the companion app via
-`notify.mobile_app_*`."
+Shall-not enforced: A confirmation notification round trip shall produce mobile_app_notification_received when notification delivery is permitted.
+
 Channel: HA WebSocket event bus subscription to `mobile_app_notification_received`.
-Attacker model: malicious_app (the legacy probe records this as a malicious-app
-availability assertion; it is ALSO exercised at the remote_attacker entrypoint
-because notification suppression can also follow a remote-driven shutdown).
+Attacker model: malicious_app.
 Category: availability.
+
+Spec id: S-009.
+Policy rows enforced: IPC-005, DATA-003, DATA-004, DATA-007, NET-005, CONSENT-002.
 
 Behaviour preserved verbatim from the legacy `test_availability.py`:
 - If no `notify.mobile_app_*` service is registered, the probe is *vacuously

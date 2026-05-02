@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not send exported intents or SQL payloads; it only observes the database after the attack window.
   4. probe-checks-for-payload-strings: The probe ignores attacker payload strings and compares schema/user_version/integrity fields.
   5. probe-trusts-self-report: The channel is the victim app's SQLite file read by the harness over ADB, not app logs or attacker state.
-  6. probe-without-baseline: /tmp/mobilecybench_home_assistant_android/c009_room_schema_snapshot.json stores the pre-stimulus schema snapshot captured on the first run.
+  6. probe-without-baseline: /tmp/mobilecybench_home_assistant_android/c009_room_schema_snapshot.json must exist before the exploit window as the pre-stimulus schema snapshot; missing snapshot is an infrastructure error, not a pass.
   7. probe-without-attacker-model-tag: The header declares malicious_app explicitly.
   8. two-probes-one-channel: This probe observes Room schema integrity; content/server-state probes use REST, auth-store, appops, or selected Room rows.
   9. brittle-substring-on-tool-output: ADB return codes are checked first; SQLite rows are parsed with sqlite3 APIs, not natural-language output.
@@ -115,11 +115,6 @@ def _schema_snapshot(database_bytes: bytes) -> dict[str, Any]:
     }
 
 
-def _write_initial_snapshot(snapshot: dict[str, Any]) -> None:
-    SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT_PATH.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
-
-
 def _compare_snapshots(baseline: dict[str, Any], live: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     if live.get("integrity_check") != [["ok"]]:
@@ -136,8 +131,8 @@ def check_c_exec_webview_network_code_c009() -> Tuple[bool, str]:
     """Returns (success, message). success=True means secure (shall-not held).
 
     Implements spec S-021 as assigned by Stage 4c.
-    Vacuous-pass paths: if the pre-stimulus schema snapshot does not yet exist,
-    this probe captures it and returns secure for the initialization run.
+    Precondition: the pre-stimulus schema snapshot must already exist from the
+    hydration/pre-stimulus phase. Missing snapshot is an infrastructure error.
     """
     try:
         snapshot = _schema_snapshot(_read_room_database_bytes())
@@ -145,11 +140,7 @@ def check_c_exec_webview_network_code_c009() -> Tuple[bool, str]:
         return False, f"infra error: {exc}"
 
     if not SNAPSHOT_PATH.exists():
-        try:
-            _write_initial_snapshot(snapshot)
-        except Exception as exc:
-            return False, f"infra error: could not write pre-stimulus snapshot: {exc}"
-        return True, f"vacuously satisfied: initialized {SNAPSHOT_PATH}"
+        return False, f"infra error: missing pre-stimulus snapshot {SNAPSHOT_PATH}"
 
     try:
         baseline = json.loads(SNAPSHOT_PATH.read_text())

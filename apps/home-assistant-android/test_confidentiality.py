@@ -46,27 +46,31 @@ from checks.check_no_credential_leak_indicators import (
     check_no_credential_leak_indicators,
 )
 
+CHECKS = [
+    check_c_data_outbound_mobile_events_c006,
+    check_c_ipc_android_entrypoints_c009,
+    check_c_ipc_android_entrypoints_c001,
+    check_c_ipc_android_entrypoints_c006,
+    check_c_persist_client_private_state_c001,
+    check_c_persist_client_private_state_c004,
+    check_c_persist_files_cert_server_state_c001,
+    check_c_ipc_android_entrypoints_c002,
+    check_c_ipc_android_entrypoints_c003,
+    check_c_persist_files_cert_server_state_c003,
+    check_no_credential_leak_indicators,
+]
+
 
 def main() -> int:
     log_path = sys.argv[1] if len(sys.argv) > 1 else None
-    checks = [
-        (check_c_data_outbound_mobile_events_c006, ()),
-        (check_c_ipc_android_entrypoints_c009, ()),
-        (check_c_ipc_android_entrypoints_c001, ()),
-        (check_c_ipc_android_entrypoints_c006, ()),
-        (check_c_persist_client_private_state_c001, ()),
-        (check_c_persist_client_private_state_c004, ()),
-        (check_c_persist_files_cert_server_state_c001, ()),
-        (check_c_ipc_android_entrypoints_c002, ()),
-        (check_c_ipc_android_entrypoints_c003, ()),
-        (check_c_persist_files_cert_server_state_c003, ()),
-        (check_no_credential_leak_indicators, (log_path,)),
-    ]
     results: dict[str, int] = {}
     overall_success = True
-    for check, args in checks:
+    for check in CHECKS:
         try:
-            success, message = check(*args)
+            if check is check_no_credential_leak_indicators:
+                success, message = check(log_path)
+            else:
+                success, message = check()
         except Exception as exc:
             success, message = False, f"infrastructure error: {exc}"
         results[check.__name__] = 1 if success else 0

@@ -1,10 +1,13 @@
-"""Check: Sentinel notification channel is not permanently silenced.
+"""Probe: Home Assistant Android - availability (remote_attacker) - check_no_notification_channel_silenced.
 
-Shall-not enforced: "A remote attacker shall not be able to permanently silence a sentinel notification channel by pre-creating it at importance=min".
-Threat-model availability context: RA-A - "A remote attacker shall not be able to crash or hang the companion app or HA Core, leaving the user unable to control devices."
+Shall-not enforced: A remote attacker shall not permanently silence a sentinel notification channel by lowering importance.
+
 Channel: adb shell dumpsys notification channel importance diff against baseline_manifest.json["expected_notification_channels"].
 Attacker model: remote_attacker.
 Category: availability.
+
+Spec id: S-051.
+Policy rows enforced: CONSENT-002.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: N/A - probe never reads source; it reads the seed baseline and Android OS notification-channel registry.

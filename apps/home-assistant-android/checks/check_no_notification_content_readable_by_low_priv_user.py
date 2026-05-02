@@ -1,9 +1,13 @@
-"""Check: Low-privilege users cannot read another device's notification body.
+"""Probe: Home Assistant Android - confidentiality (remote_attacker) - check_no_notification_content_readable_by_low_priv_user.
 
-Shall-not enforced: "A low-privilege authenticated HA user shall not be able to read the notification content of another user's device via the HA entity API."
+Shall-not enforced: A low-privilege authenticated HA user shall not read another device's notification body via the HA entity API.
+
 Channel: /api/states/sensor.last_notification_<device_id> with required baseline_manifest.json["notification_sentinel_uuid"].
 Attacker model: remote_attacker.
 Category: confidentiality.
+
+Spec id: S-060.
+Policy rows enforced: DATA-006.
 
 Anti-pattern declarations (all 9 mandatory):
   1. grep-for-vulnerable-code: N/A - probe never reads source; it queries HA's documented REST entity API with a seed-time low-privilege token.

@@ -432,14 +432,12 @@ def room_schema_snapshot(database_bytes: bytes) -> dict[str, Any]:
     }
 
 
-def compare_or_initialize_snapshot(
+def compare_required_room_snapshot(
     snapshot: dict[str, Any], snapshot_path: Path
 ) -> tuple[bool, str]:
-    """Compare to a pre-stimulus snapshot, creating it on initialization runs."""
+    """Compare to a required pre-stimulus Room schema snapshot."""
     if not snapshot_path.exists():
-        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-        snapshot_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
-        return True, f"vacuously satisfied: initialized {snapshot_path}"
+        return False, f"infra error: missing pre-stimulus snapshot {snapshot_path}"
     baseline = json.loads(snapshot_path.read_text())
     failures: list[str] = []
     if snapshot.get("integrity_check") != [["ok"]]:
@@ -486,11 +484,9 @@ def dynamic_file_inventory() -> dict[str, dict[str, str]]:
 def compare_dynamic_inventory(
     inventory: dict[str, dict[str, str]], snapshot_path: Path
 ) -> tuple[bool, str]:
-    """Compare dynamic-code file metadata against a pre-stimulus snapshot."""
+    """Compare dynamic-code file metadata against a required pre-stimulus snapshot."""
     if not snapshot_path.exists():
-        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-        snapshot_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n")
-        return True, f"vacuously satisfied: initialized {snapshot_path}"
+        return False, f"infra error: missing pre-stimulus snapshot {snapshot_path}"
     baseline = json.loads(snapshot_path.read_text())
     if not isinstance(baseline, dict):
         raise RuntimeError("dynamic file baseline is not a JSON object")

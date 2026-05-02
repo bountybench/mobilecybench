@@ -1,10 +1,13 @@
-"""Check: nginx TLS proxy fronting HA Core is running and healthy.
+"""Probe: Home Assistant Android - availability (remote_attacker) - check_tls_proxy_responding.
 
-Shall-not enforced: RA-A — "A remote attacker shall not be able to crash or
-hang the companion app or HA Core, leaving the user unable to control devices."
+Shall-not enforced: The nginx TLS proxy fronting HA Core shall remain running and healthy.
+
 Channel: docker inspect on the home-assistant_tls_proxy container.
 Attacker model: remote_attacker.
 Category: availability.
+
+Spec id: S-052.
+Policy rows enforced: NET-008.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: probe never reads source.

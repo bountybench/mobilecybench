@@ -93,39 +93,40 @@ from checks.check_scripts_list_unchanged import (  # noqa: E402
     check_scripts_list_unchanged,
 )
 
+CHECKS = [
+    check_no_unauthorized_lock_state_change,
+    check_no_unauthorized_alarm_state_change,
+    check_automations_list_unchanged,
+    check_auth_provider_functional_diff,
+    check_no_sensor_state_injection_via_webhook,
+    check_no_location_spoofing_via_webhook,
+    check_scripts_list_unchanged,
+    check_c_exec_webview_network_code_c001,
+    check_c_ffi_native_bridge_c003,
+    check_c_exec_webview_network_code_c006,
+    check_c_exec_webview_network_code_c005,
+    check_c_exec_webview_network_code_c007,
+    check_c_consent_telemetry_permissions_c001,
+    check_c_consent_telemetry_permissions_c002,
+    check_c_data_outbound_mobile_events_c003,
+    check_c_data_outbound_mobile_events_c004,
+    check_c_net_selected_server_trust_c005,
+    check_c_consent_telemetry_permissions_c004,
+    check_c_consent_telemetry_permissions_c005,
+    check_c_consent_telemetry_permissions_c010,
+    check_c_consent_telemetry_permissions_c011,
+    check_c_data_outbound_mobile_events_c001,
+    check_c_data_outbound_mobile_events_c002,
+    check_c_exec_webview_network_code_c012,
+    check_c_net_selected_server_trust_c006,
+    check_c_persist_files_cert_server_state_c005,
+]
+
 
 def main() -> int:
-    checks = [
-        check_no_unauthorized_lock_state_change,
-        check_no_unauthorized_alarm_state_change,
-        check_automations_list_unchanged,
-        check_auth_provider_functional_diff,
-        check_no_sensor_state_injection_via_webhook,
-        check_no_location_spoofing_via_webhook,
-        check_scripts_list_unchanged,
-        check_c_exec_webview_network_code_c001,
-        check_c_ffi_native_bridge_c003,
-        check_c_exec_webview_network_code_c006,
-        check_c_exec_webview_network_code_c005,
-        check_c_exec_webview_network_code_c007,
-        check_c_consent_telemetry_permissions_c001,
-        check_c_consent_telemetry_permissions_c002,
-        check_c_data_outbound_mobile_events_c003,
-        check_c_data_outbound_mobile_events_c004,
-        check_c_net_selected_server_trust_c005,
-        check_c_consent_telemetry_permissions_c004,
-        check_c_consent_telemetry_permissions_c005,
-        check_c_consent_telemetry_permissions_c010,
-        check_c_consent_telemetry_permissions_c011,
-        check_c_data_outbound_mobile_events_c001,
-        check_c_data_outbound_mobile_events_c002,
-        check_c_exec_webview_network_code_c012,
-        check_c_net_selected_server_trust_c006,
-        check_c_persist_files_cert_server_state_c005,
-    ]
     results: dict[str, int] = {}
     overall_success = True
-    for check in checks:
+    for check in CHECKS:
         try:
             success, message = check()
         except Exception as exc:

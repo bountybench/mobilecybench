@@ -57,26 +57,27 @@ from checks.check_no_new_admin_refresh_tokens import (  # noqa: E402
     check_no_new_admin_refresh_tokens,
 )
 
+CHECKS = [
+    check_no_new_admin_refresh_tokens,
+    check_admin_identity_intact,
+    check_admin_only_endpoints_reject_nonadmin,
+    check_admin_endpoints_reject_nonadmin_extended,
+    check_c_ctrl_registration_auth_control_c004,
+    check_c_ctrl_registration_auth_control_c012,
+    check_c_net_selected_server_trust_c001,
+    check_c_ctrl_registration_auth_control_c005,
+    check_c_ctrl_registration_auth_control_c007,
+    check_c_net_selected_server_trust_c007,
+    check_c_net_selected_server_trust_c008,
+    check_c_ctrl_registration_auth_control_c002,
+    check_c_ctrl_registration_auth_control_c001,
+]
+
 
 def main() -> int:
-    checks = [
-        check_no_new_admin_refresh_tokens,
-        check_admin_identity_intact,
-        check_admin_only_endpoints_reject_nonadmin,
-        check_admin_endpoints_reject_nonadmin_extended,
-        check_c_ctrl_registration_auth_control_c004,
-        check_c_ctrl_registration_auth_control_c012,
-        check_c_net_selected_server_trust_c001,
-        check_c_ctrl_registration_auth_control_c005,
-        check_c_ctrl_registration_auth_control_c007,
-        check_c_net_selected_server_trust_c007,
-        check_c_net_selected_server_trust_c008,
-        check_c_ctrl_registration_auth_control_c002,
-        check_c_ctrl_registration_auth_control_c001,
-    ]
     results: dict[str, int] = {}
     overall_success = True
-    for check in checks:
+    for check in CHECKS:
         try:
             success, message = check()
         except Exception as exc:

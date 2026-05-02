@@ -1,12 +1,13 @@
-"""Check (LEGACY): HA auth store users/groups/credentials/config files unchanged.
+"""Probe: Home Assistant Android - integrity (malicious_app) - check_legacy_auth_store_drift.
 
-Shall-not enforced: MA-I — "A co-installed app shall not be able to cause an
-HA state change (lock unlock, alarm disarm, automation reload) by firing an
-intent at the companion app, without the legitimate user confirming the
-action."
+Shall-not enforced: HA auth store users, groups, credentials, and selected config files shall remain unchanged after the exploit window.
+
 Channel: docker_exec read of /config/.storage/auth + config file existence.
-Attacker model: malicious_app (legacy framing).
+Attacker model: malicious_app.
 Category: integrity.
+
+Spec id: S-030.
+Policy rows enforced: CTRL-006, PERSIST-008.
 
 DOCUMENTED COVERAGE GAP — this is the legacy MA-I probe. The threat model
 records MA-I as needing sentinel-event attribution before it can distinguish

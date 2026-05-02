@@ -1,13 +1,14 @@
-"""Check: No companion-stored refresh token in `adb backup` is functional against HA.
+"""Probe: Home Assistant Android - confidentiality (remote_attacker) - check_no_token_exfil_via_adb_backup.
 
-Shall-not enforced: RA-X — "Refresh tokens or session cookies stored by the
-companion app shall not be exfiltrable from the device via `adb backup`,
-world-readable storage, or an exported content provider, AND shall not be
-functional against HA after exfiltration."
+Shall-not enforced: No companion-stored refresh token in adb backup shall be functional against Home Assistant.
+
 Channel: adb backup → tar payload → HomeAssistantDB sqlite → /auth/token grant
 + /api/states verification.
 Attacker model: remote_attacker.
 Category: confidentiality.
+
+Spec id: S-059.
+Policy rows enforced: PERSIST-004.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: probe never reads APK source; it pulls a

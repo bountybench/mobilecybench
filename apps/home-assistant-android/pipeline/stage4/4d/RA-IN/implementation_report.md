@@ -41,5 +41,5 @@
 - Deferred. apps/home-assistant-android/start_runtime.sh is runnable, but apps/home-assistant-android/scripts/hydration/run_all.sh is not runnable/present at the expected Stage 4d path, so the full cleanup/start/hydrate/baseline RA-IN run was not executed here.
 
 ## Notes for Gate-2 reviewer
-- The Room schema and dynamic-code checks initialize pre-stimulus snapshots under /tmp/mobilecybench_home_assistant_android on first run, matching the pattern used by existing schema probes.
+- The Room schema and dynamic-code checks require pre-stimulus snapshots under /tmp/mobilecybench_home_assistant_android before the exploit-window check run; missing snapshots are infrastructure errors rather than first-run baselines.
 - WebSocket telemetry checks observe a short verifier window and pass vacuously when no matching state_changed event arrives.

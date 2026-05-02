@@ -1,9 +1,13 @@
-"""Check: Sentinel lock remains locked after the exploit window.
+"""Probe: Home Assistant Android - integrity (remote_attacker) - check_no_unauthorized_lock_state_change.
 
-Shall-not enforced: "A sentinel lock entity that was locked at baseline shall not be in an unlocked state after the exploit window".
+Shall-not enforced: The sentinel lock shall remain locked after the exploit window.
+
 Channel: /api/states/lock.sentinel_front_door.
 Attacker model: remote_attacker.
 Category: integrity.
+
+Spec id: S-083.
+Policy rows enforced: CODE-006, NET-006.
 
 Anti-pattern declarations (all 9 mandatory):
   1. grep-for-vulnerable-code: N/A - probe never reads source; it reads live HA REST state.

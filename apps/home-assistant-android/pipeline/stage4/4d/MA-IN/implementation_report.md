@@ -29,5 +29,5 @@
 - No running HA Docker containers were visible, and no ADB devices were visible.
 
 ## Gate-2 notes
-- Snapshot-backed probes initialize their pre-stimulus snapshots under /tmp/mobilecybench_home_assistant_android/ on first run and compare on subsequent runs.
+- Snapshot-backed probes now require their pre-stimulus snapshots under /tmp/mobilecybench_home_assistant_android/ to exist before the exploit-window check run; a missing snapshot is reported as an infrastructure error rather than created as a pass.
 - check_c_consent_user_feature_gates_c006 is an event-window probe; it can only observe state_changed events while it is running.

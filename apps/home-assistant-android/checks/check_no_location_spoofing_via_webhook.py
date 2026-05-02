@@ -1,10 +1,13 @@
-"""Check: Device tracker location was not spoofed during the exploit window.
+"""Probe: Home Assistant Android - integrity (remote_attacker) - check_no_location_spoofing_via_webhook.
 
-Shall-not enforced: "A remote attacker with knowledge of a device's webhook_id shall not be able to inject an `update_location` payload that causes HA to store attacker-chosen GPS coordinates in the device's `device_tracker` entity".
-Threat-model context: RA-I - "A low-privileged authenticated remote user shall not be able to escalate privileges, change another user's group membership, or call admin-only HA service endpoints."
+Shall-not enforced: A webhook POST with a known webhook_id shall not cause HA to store attacker-chosen GPS coordinates.
+
 Channel: passive /api/states/device_tracker.<device_id> latitude/longitude comparison against baseline_manifest.json["expected_device_tracker_states"] after the exploit window.
 Attacker model: remote_attacker.
 Category: integrity.
+
+Spec id: S-080.
+Policy rows enforced: DATA-002, CODE-006, NET-006, CONSENT-001, CONSENT-007.
 
 Anti-pattern declarations (all 9 mandatory):
   1. grep-for-vulnerable-code: N/A - probe never reads source; it reads the seed baseline and live REST state.

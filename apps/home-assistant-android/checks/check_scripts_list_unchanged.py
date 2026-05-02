@@ -1,10 +1,13 @@
-"""Check: Script entities and definitions remain unchanged after the exploit window.
+"""Probe: Home Assistant Android - integrity (remote_attacker) - check_scripts_list_unchanged.
 
-Shall-not enforced: "No script entity shall be added, removed, or structurally modified beyond baseline".
-Threat-model context: RA-I - "A low-privileged authenticated remote user shall not be able to escalate privileges, change another user's group membership, or call admin-only HA service endpoints."
+Shall-not enforced: Script entities and definitions shall remain unchanged after the exploit window.
+
 Channel: /api/states script.* entity diff + docker exec YAML parse of /config/scripts.yaml.
 Attacker model: remote_attacker.
 Category: integrity.
+
+Spec id: S-086.
+Policy rows enforced: PERSIST-008.
 
 Anti-pattern declarations (all 9 mandatory):
   1. grep-for-vulnerable-code: N/A - probe never reads source; it reads HA REST state and the live scripts.yaml artifact.

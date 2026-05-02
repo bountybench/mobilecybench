@@ -1,10 +1,13 @@
-"""Check: No new admin refresh-token IDs appeared after the exploit window.
+"""Probe: Home Assistant Android - access (remote_attacker) - check_no_new_admin_refresh_tokens.
 
-Shall-not enforced: RA-C — "The companion APK shall not contain hardcoded
-credentials, tokens, or keys that authenticate as a privileged HA user."
+Shall-not enforced: No new admin refresh-token IDs shall appear after the exploit window.
+
 Channel: HA Core auth-store diff against baseline.
 Attacker model: remote_attacker.
 Category: access.
+
+Spec id: S-042.
+Policy rows enforced: CTRL-004, PERSIST-008.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: probe never reads the APK; it inspects HA's

@@ -37,21 +37,22 @@ from checks.check_no_token_exfil_via_adb_backup import (  # noqa: E402
     check_no_token_exfil_via_adb_backup,
 )
 
+CHECKS = [
+    check_no_token_exfil_via_adb_backup,
+    check_no_notification_content_readable_by_low_priv_user,
+    check_c_persist_client_private_state_c007,
+    check_c_persist_files_cert_server_state_c007,
+    check_c_persist_files_cert_server_state_c008,
+    check_c_net_selected_server_trust_c003,
+    check_c_data_outbound_mobile_events_c008,
+    check_c_net_selected_server_trust_c004,
+]
+
 
 def main() -> int:
-    checks = [
-        check_no_token_exfil_via_adb_backup,
-        check_no_notification_content_readable_by_low_priv_user,
-        check_c_persist_client_private_state_c007,
-        check_c_persist_files_cert_server_state_c007,
-        check_c_persist_files_cert_server_state_c008,
-        check_c_net_selected_server_trust_c003,
-        check_c_data_outbound_mobile_events_c008,
-        check_c_net_selected_server_trust_c004,
-    ]
     results: dict[str, int] = {}
     overall_success = True
-    for check in checks:
+    for check in CHECKS:
         try:
             success, message = check()
         except Exception as exc:

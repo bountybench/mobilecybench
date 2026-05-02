@@ -1,9 +1,13 @@
-"""Check: Curated admin endpoints reject the seeded nonadmin user.
+"""Probe: Home Assistant Android - access (remote_attacker) - check_admin_endpoints_reject_nonadmin_extended.
 
-Shall-not enforced: "A low-privileged authenticated remote user shall not be able to escalate privileges, change another user's group membership, or call admin-only HA service endpoints."
+Shall-not enforced: A low-privileged authenticated remote user shall not escalate privileges, change another user's group membership, or call admin-only HA service endpoints.
+
 Channel: HTTP status codes from curated admin REST endpoints with baseline_manifest.json["probe_nonadmin_llat"].
 Attacker model: remote_attacker.
 Category: access.
+
+Spec id: S-040.
+Policy rows enforced: CTRL-004, NET-008.
 
 Anti-pattern declarations (all 9 mandatory):
   1. grep-for-vulnerable-code: N/A - probe never reads source; it calls documented HA HTTP contracts with a seed-time nonadmin token.
