@@ -316,6 +316,11 @@ class RedTeamWorkflow(Workflow):
     def validate_arguments(self) -> None:
         super().validate_arguments()
 
+        if self._bundle.kind == "zeroday":
+            from evaluation.task_bundle import assert_zerodays_initialized
+
+            assert_zerodays_initialized(self.project_root)
+
         task_metadata_path = self._bundle.task_dir / "metadata.json"
         required_files = [
             self._bundle.patch,
