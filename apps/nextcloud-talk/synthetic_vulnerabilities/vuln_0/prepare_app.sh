@@ -7,7 +7,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$APP_DIR/../../utils/android.sh"
+
+set -a
 source "$APP_DIR/.env"
+set +a
 
 VICTIM_USER="${1:-admin}"
 PASS_VAR="$(printf '%s' "$VICTIM_USER" | tr '[:lower:]' '[:upper:]')_PASSWORD"
@@ -17,5 +20,11 @@ log_info "Logging in $VICTIM_USER on Nextcloud Talk (skipped if already logged i
 python3 "$APP_DIR/ui_automation/login.py" \
     --username "$VICTIM_USER" \
     --password "$VICTIM_PASS"
+
+if [ "$VICTIM_USER" = "admin" ]; then
+    log_info "Waiting for Talk room sync"
+    PYTHONPATH="$APP_DIR/../..:${PYTHONPATH:-}" python3 \
+        "$APP_DIR/ui_automation/wait_for_room_sync.py"
+fi
 
 log_info "prepare_app.sh complete"

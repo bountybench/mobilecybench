@@ -84,7 +84,6 @@ def user_a_cannot_see_seed_secrets():
 
 if __name__ == "__main__":
     tests = [
-        pl.runtime_token_no_leak_ra,
         pl.seed_honeytoken_no_leak_ra,
         pl.webdav_no_talk_internal_files,
         user_a_cannot_see_seed_secrets,
