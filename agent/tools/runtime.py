@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from pydantic import BaseModel, ValidationError
 
 from agent.backend.docker_ops import execute_command_internal, get_ui_state
+from agent.tools import TOOL_NAMES
 from agent.tools.schemas import ExecuteCommand, ExecuteCommandWithUI, GetUIState
 from utils.logger import logger
 
@@ -30,6 +31,10 @@ class ToolRuntime:
                 self._execute_command_with_ui_state,
             ),
         }
+        assert set(full_registry) == set(TOOL_NAMES), (
+            "ToolRuntime.registry drifted from agent.tools.TOOL_NAMES; "
+            "update one or the other to match."
+        )
         if allowed_tools is None:
             self.registry = full_registry
         else:
