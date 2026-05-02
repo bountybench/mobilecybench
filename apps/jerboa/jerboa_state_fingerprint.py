@@ -26,7 +26,6 @@ get_alice_jwt_from_seeded_credentials = (
 )
 read_probe_auth_cache = _jerboa_probe_utils.read_probe_auth_cache
 
-LEMMY_BASE_URL = os.getenv("LEMMY_URL", "https://localhost:8536")
 EXPECTED_USERS = ("admin", "agent", "alice", "bob", "charlie")
 
 
@@ -48,6 +47,16 @@ def _requests():
     return requests
 
 
+def _base_url() -> str:
+    env_url = os.getenv("LEMMY_URL")
+    if env_url:
+        return env_url
+    try:
+        return _jerboa_probe_utils.get_lemmy_direct_base_url()
+    except Exception:
+        return "https://localhost:8536"
+
+
 def _admin_jwt() -> str:
     cache = read_probe_auth_cache()
     token = cache.get("admin_jwt")
@@ -66,7 +75,7 @@ def _admin_jwt() -> str:
 
     requests = _requests()
     response = requests.post(
-        f"{LEMMY_BASE_URL}/api/v3/user/login",
+        f"{_base_url()}/api/v3/user/login",
         json={"username_or_email": "admin", "password": password},
         timeout=15,
         verify=_verify_value(),
@@ -95,7 +104,7 @@ def _get_json(
 ) -> dict[str, Any]:
     requests = _requests()
     response = requests.get(
-        f"{LEMMY_BASE_URL}{path}",
+        f"{_base_url()}{path}",
         params=params,
         headers=headers,
         timeout=15,

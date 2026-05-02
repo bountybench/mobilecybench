@@ -88,7 +88,12 @@ else:
         lines.append(f"mode=dispatch_send ui_submit_exit={ui_run.returncode}")
         if ui_run.returncode != 0:
             lines.append("mode=dispatch_send verdict=false reason=ui_submit_failed")
-            lines.append(f"mode=dispatch_send ui_submit_stderr={ui_run.stderr.strip()[:400]}")
+            stderr_text = (ui_run.stderr or "").strip()
+            stdout_text = (ui_run.stdout or "").strip()
+            if stderr_text:
+                lines.append(f"mode=dispatch_send ui_submit_stderr={stderr_text}")
+            if stdout_text:
+                lines.append(f"mode=dispatch_send ui_submit_stdout={stdout_text}")
             log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             raise SystemExit(2 if ui_run.returncode == 2 else 1)
 
