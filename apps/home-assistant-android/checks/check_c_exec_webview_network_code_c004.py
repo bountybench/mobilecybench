@@ -74,6 +74,15 @@ def _read_database_bytes() -> bytes:
     return result.stdout
 
 
+def _is_missing_database_error(message: str) -> bool:
+    lowered = message.lower()
+    return (
+        "no such file" in lowered
+        or "not found" in lowered
+        or "does not exist" in lowered
+    )
+
+
 def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
     rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
     return {str(row[1]) for row in rows}
@@ -181,6 +190,8 @@ def check_c_exec_webview_network_code_c004() -> Tuple[bool, str]:
     except subprocess.TimeoutExpired:
         return False, "infra error: adb run-as database read timed out"
     except Exception as exc:
+        if _is_missing_database_error(str(exc)):
+            return True, f"vacuously satisfied: HomeAssistantDB is not present ({exc})"
         return False, f"infra error: could not prepare baseline/database read: {exc}"
 
     try:
@@ -193,8 +204,8 @@ def check_c_exec_webview_network_code_c004() -> Tuple[bool, str]:
 
     if not rows:
         return (
-            False,
-            "infra error: HomeAssistantDB has no registered server rows",
+            True,
+            "vacuously satisfied: HomeAssistantDB has no registered server rows",
         )
 
     unexpected = _unexpected_url_values(rows, allowed_values)

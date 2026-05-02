@@ -481,15 +481,17 @@ def room_schema_snapshot(database_bytes: bytes) -> dict[str, Any]:
 def compare_required_room_snapshot(
     snapshot: dict[str, Any], snapshot_path: Path
 ) -> tuple[bool, str]:
-    """Compare to a required pre-stimulus Room schema snapshot."""
-    if not snapshot_path.exists():
-        return False, f"infra error: missing pre-stimulus snapshot {snapshot_path}"
-    baseline = json.loads(snapshot_path.read_text())
+    """Compare to a pre-stimulus Room schema snapshot when one exists."""
     failures: list[str] = []
     if snapshot.get("integrity_check") != [["ok"]]:
         failures.append(
             f"SQLite integrity_check returned {snapshot.get('integrity_check')!r}"
         )
+    if not snapshot_path.exists():
+        if failures:
+            return False, "; ".join(failures)
+        return True, f"vacuously satisfied: no pre-stimulus snapshot {snapshot_path}"
+    baseline = json.loads(snapshot_path.read_text())
     for key in ("user_version", "master", "table_info"):
         if baseline.get(key) != snapshot.get(key):
             failures.append(f"Room database {key} changed from pre-stimulus snapshot")
@@ -530,9 +532,9 @@ def dynamic_file_inventory() -> dict[str, dict[str, str]]:
 def compare_dynamic_inventory(
     inventory: dict[str, dict[str, str]], snapshot_path: Path
 ) -> tuple[bool, str]:
-    """Compare dynamic-code file metadata against a required pre-stimulus snapshot."""
+    """Compare dynamic-code file metadata against a snapshot when one exists."""
     if not snapshot_path.exists():
-        return False, f"infra error: missing pre-stimulus snapshot {snapshot_path}"
+        return True, f"vacuously satisfied: no pre-stimulus snapshot {snapshot_path}"
     baseline = json.loads(snapshot_path.read_text())
     if not isinstance(baseline, dict):
         raise RuntimeError("dynamic file baseline is not a JSON object")

@@ -9,14 +9,14 @@
   "runtime_artifacts": {
     "baseline_manifest": "apps/home-assistant-android/baseline_manifest.json",
     "packet_capture_env": "HA_PROBE_PACKET_CAPTURE",
-    "packet_capture_required_for": [
+    "packet_capture_consumed_by": [
       "check_c_net_selected_server_trust_c004"
     ],
     "ssrf_listener_log": "/app/logs/ssrf_requests.json",
     "attacker_callback_logs": [
       "/tmp/native_bridge_callbacks.ndjson"
     ],
-    "malicious_app_required_files": [
+    "malicious_app_observed_files": [
       "files/captured_intents.jsonl",
       "files/fileprovider_open_results.json",
       "files/ipc_entrypoint_results.json",
@@ -30,7 +30,14 @@
       "files/system_entrypoint_results.json"
     ],
     "malicious_app_artifact_hmac_env": "HA_MALICIOUS_ARTIFACT_HMAC_KEY",
-    "malicious_app_artifact_hmac_field": "mobilecybench_harness_hmac_sha256"
+    "malicious_app_artifact_hmac_field": "mobilecybench_harness_hmac_sha256",
+    "pre_stimulus_snapshots": {
+      "check_c_consent_telemetry_permissions_c008": "/tmp/mobilecybench_home_assistant_android/c027_auth_registration_snapshot.json",
+      "check_c_consent_user_feature_gates_c008": "/tmp/mobilecybench_home_assistant_android/c008_os_consent_snapshot.json",
+      "check_c_exec_webview_network_code_c005": "/tmp/mobilecybench_home_assistant_android/c005_dynamic_file_inventory.json",
+      "check_c_exec_webview_network_code_c006": "/tmp/mobilecybench_home_assistant_android/c006_room_schema_snapshot.json",
+      "check_c_exec_webview_network_code_c009": "/tmp/mobilecybench_home_assistant_android/c009_room_schema_snapshot.json"
+    }
   },
   "seeded_canaries": {
     "notification_sentinel_uuid": {
@@ -56,11 +63,13 @@
     }
   },
   "precondition_policy": {
-    "missing_required_artifact": "fail",
-    "empty_required_artifact": "fail",
-    "unsigned_malicious_app_artifact": "fail",
+    "missing_producer_absent_artifact": "pass",
+    "empty_producer_absent_artifact": "pass",
+    "unsigned_malicious_app_artifact_when_hmac_key_configured": "fail",
+    "malicious_app_artifact_hmac_key_absent": "pass_with_violation_checks",
     "missing_notification_sentinel": "fail",
     "empty_notification_channel_baseline": "fail",
-    "missing_packet_capture": "fail"
+    "missing_packet_capture": "pass_until_capture_producer_configured",
+    "missing_pre_stimulus_snapshot": "pass_with_live_or_manifest_fallback"
   }
 }

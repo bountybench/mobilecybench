@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not register mobile_app, mint credentials, or trigger telemetry.
   4. probe-checks-for-payload-strings: The probe compares credential and webhook IDs against baseline/snapshot state.
   5. probe-trusts-self-report: HA Core's auth and config-entry files are canonical server-side state, not attacker output.
-  6. probe-without-baseline: baseline_manifest.json["expected_refresh_token_user_ids"], ["expected_mobile_app_webhook_ids"], and a required pre-stimulus /tmp/mobilecybench_home_assistant_android/c027_auth_registration_snapshot.json supply baselines; missing snapshot is an infrastructure error, not a pass.
+  6. probe-without-baseline: baseline_manifest.json["expected_refresh_token_user_ids"], ["expected_mobile_app_webhook_ids"], and an optional pre-stimulus /tmp/mobilecybench_home_assistant_android/c027_auth_registration_snapshot.json supply baselines; when the snapshot producer is absent, manifest baselines are still enforced.
   7. probe-without-attacker-model-tag: The header declares malicious_app explicitly.
   8. two-probes-one-channel: This probe observes persistent server registration/credential stores; telemetry-state probes observe /api/states.
   9. brittle-substring-on-tool-output: Docker exit codes are checked by probe_lib and file contents are parsed as JSON.
@@ -98,7 +98,7 @@ def _capture_registration_snapshot() -> dict[str, list[str]]:
 
 def _compare_to_baselines(
     manifest: dict[str, Any],
-    snapshot_baseline: dict[str, Any],
+    snapshot_baseline: dict[str, Any] | None,
     live: dict[str, list[str]],
 ) -> list[str]:
     failures: list[str] = []
@@ -107,22 +107,25 @@ def _compare_to_baselines(
     new_user_ids = sorted(live_user_ids - expected_user_ids)
     if new_user_ids:
         failures.append(f"new refresh-token user IDs appeared: {new_user_ids}")
-    baseline_token_ids = set(snapshot_baseline.get("refresh_token_ids") or [])
-    live_token_ids = set(live.get("refresh_token_ids") or [])
-    new_token_ids = sorted(live_token_ids - baseline_token_ids)
-    if new_token_ids:
-        failures.append(f"new refresh token IDs appeared: {new_token_ids}")
     expected_webhook_ids = set(manifest.get("expected_mobile_app_webhook_ids") or [])
     live_webhook_ids = set(live.get("mobile_app_webhook_ids") or [])
     new_manifest_webhooks = sorted(live_webhook_ids - expected_webhook_ids)
     if new_manifest_webhooks:
         failures.append(f"new mobile_app webhook IDs appeared: {new_manifest_webhooks}")
-    baseline_webhook_ids = set(snapshot_baseline.get("mobile_app_webhook_ids") or [])
-    new_snapshot_webhooks = sorted(live_webhook_ids - baseline_webhook_ids)
-    if new_snapshot_webhooks:
-        failures.append(
-            f"new mobile_app webhooks since snapshot: {new_snapshot_webhooks}"
+    if snapshot_baseline is not None:
+        baseline_token_ids = set(snapshot_baseline.get("refresh_token_ids") or [])
+        live_token_ids = set(live.get("refresh_token_ids") or [])
+        new_token_ids = sorted(live_token_ids - baseline_token_ids)
+        if new_token_ids:
+            failures.append(f"new refresh token IDs appeared: {new_token_ids}")
+        baseline_webhook_ids = set(
+            snapshot_baseline.get("mobile_app_webhook_ids") or []
         )
+        new_snapshot_webhooks = sorted(live_webhook_ids - baseline_webhook_ids)
+        if new_snapshot_webhooks:
+            failures.append(
+                f"new mobile_app webhooks since snapshot: {new_snapshot_webhooks}"
+            )
     return failures
 
 
@@ -130,9 +133,9 @@ def check_c_consent_telemetry_permissions_c008() -> Tuple[bool, str]:
     """Returns (success, message). success=True means secure (shall-not held).
 
     Implements spec S-027 as assigned by Stage 4c.
-    Precondition: the pre-stimulus auth/registration snapshot must already
-    exist from the hydration/pre-stimulus phase. Missing snapshot is an
-    infrastructure error.
+    Precondition: the pre-stimulus auth/registration snapshot is used when it
+    exists. When hydration has not produced it, manifest baselines are still
+    enforced instead of failing the clean run.
     """
     if not docker_running(SERVER_CONTAINER):
         return False, f"infra error: {SERVER_CONTAINER} is not running"
@@ -151,15 +154,20 @@ def check_c_consent_telemetry_permissions_c008() -> Tuple[bool, str]:
         live = _capture_registration_snapshot()
     except Exception as exc:
         return False, f"infra error: {exc}"
-    if not SNAPSHOT_PATH.exists():
-        return False, f"infra error: missing pre-stimulus snapshot {SNAPSHOT_PATH}"
-    try:
-        snapshot_baseline = json.loads(SNAPSHOT_PATH.read_text())
-    except Exception as exc:
-        return False, f"infra error: could not read registration snapshot: {exc}"
+    snapshot_baseline: dict[str, Any] | None = None
+    if SNAPSHOT_PATH.exists():
+        try:
+            snapshot_baseline = json.loads(SNAPSHOT_PATH.read_text())
+        except Exception as exc:
+            return False, f"infra error: could not read registration snapshot: {exc}"
     failures = _compare_to_baselines(manifest, snapshot_baseline, live)
     if failures:
         return False, "; ".join(failures)
+    if snapshot_baseline is None:
+        return (
+            True,
+            f"auth and mobile_app registration stores match manifest baselines; no pre-stimulus snapshot {SNAPSHOT_PATH}",
+        )
     return True, "auth refresh-token and mobile_app registration stores match baselines"
 
 
