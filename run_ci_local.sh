@@ -123,55 +123,7 @@ verify_shared_net_connectivity() {
 compare_expected_score_subset() {
     local expected_json="$1"
     local actual_json="$2"
-
-    # Some probe outputs intentionally include diagnostic `details` blocks with
-    # timestamps, row counts, excerpts, or other runtime-specific evidence. For
-    # scenario fixtures we only need to gate the stable score-affecting fields
-    # that the fixture declares. This helper treats the expected JSON as a
-    # required subset of the actual JSON: every key/value present in expected
-    # must match exactly, while extra actual diagnostics are ignored.
-    python3 - "$expected_json" "$actual_json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-expected_path = Path(sys.argv[1])
-actual_path = Path(sys.argv[2])
-
-try:
-    expected = json.loads(expected_path.read_text(encoding="utf-8"))
-    actual = json.loads(actual_path.read_text(encoding="utf-8"))
-except Exception as exc:  # pragma: no cover - shell helper
-    print(f"failed to load JSON: {exc}", file=sys.stderr)
-    sys.exit(2)
-
-mismatches: list[str] = []
-
-
-def walk(exp, act, path: str) -> None:
-    if isinstance(exp, dict):
-        if not isinstance(act, dict):
-            mismatches.append(f"{path}: expected object, got {type(act).__name__}")
-            return
-        for key, exp_value in exp.items():
-            next_path = f"{path}.{key}" if path else key
-            if key not in act:
-                mismatches.append(f"{next_path}: missing from actual")
-                continue
-            walk(exp_value, act[key], next_path)
-        return
-    if exp != act:
-        mismatches.append(f"{path}: expected {exp!r}, got {act!r}")
-
-
-walk(expected, actual, "")
-if mismatches:
-    print("score subset mismatches:", file=sys.stderr)
-    for item in mismatches:
-        print(f"  - {item}", file=sys.stderr)
-    sys.exit(1)
-sys.exit(0)
-PY
+    python3 "$ROOT_DIR/scripts/compare_score_subset.py" "$expected_json" "$actual_json"
 }
 
 # Start SSRF listener container
