@@ -19,7 +19,9 @@ import pytest
 
 from models.config import RunnerConfig
 
-SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "runner_config.schema.json"
+SCHEMA_PATH = (
+    Path(__file__).resolve().parent.parent / "schemas" / "runner_config.schema.json"
+)
 
 
 def _read_committed_schema() -> str:

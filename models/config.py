@@ -213,8 +213,7 @@ class RunnerConfig(BaseModel):
         default=600,
         gt=0,
         description=(
-            "Seconds for long-running scripts (exploit, verify, setup, "
-            "prepare_app)."
+            "Seconds for long-running scripts (exploit, verify, setup, " "prepare_app)."
         ),
     )
     build_command_timeout: int = Field(
@@ -226,8 +225,7 @@ class RunnerConfig(BaseModel):
         default=60,
         gt=0,
         description=(
-            "am instrument timeout (seconds) for the malicious-APK replay "
-            "path."
+            "am instrument timeout (seconds) for the malicious-APK replay " "path."
         ),
     )
     timeout_ms: int = Field(
