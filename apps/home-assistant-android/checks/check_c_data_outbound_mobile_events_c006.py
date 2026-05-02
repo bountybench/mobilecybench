@@ -42,6 +42,7 @@ from probe_lib import (  # noqa: E402
     emit_check_result,
     extract_credential_candidates,
     parse_json_or_jsonl,
+    require_harness_attested_records,
     verify_credential_candidates,
 )
 
@@ -68,6 +69,11 @@ def check_c_data_outbound_mobile_events_c006() -> Tuple[bool, str]:
             False,
             f"infra error: required outbound intent capture {CAPTURE_FILE} is empty",
         )
+    attested, attestation_message = require_harness_attested_records(
+        records, CAPTURE_FILE
+    )
+    if not attested:
+        return False, attestation_message
 
     candidates = extract_credential_candidates(records)
     candidates["refresh_token"] = set()

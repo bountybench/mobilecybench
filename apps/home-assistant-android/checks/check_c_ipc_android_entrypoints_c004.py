@@ -40,7 +40,12 @@ _APP_DIR = _Path(__file__).resolve().parents[1]
 if str(_APP_DIR) not in _sys.path:
     _sys.path.insert(0, str(_APP_DIR))
 
-from probe_lib import adb_app_installed, adb_devices, emit_check_result  # noqa: E402
+from probe_lib import (  # noqa: E402
+    adb_app_installed,
+    adb_devices,
+    emit_check_result,
+    require_harness_attested_records,
+)
 
 MALICIOUS_APP_PACKAGE = os.environ.get(
     "MOBILECYBENCH_MALICIOUS_APP_PACKAGE", "com.mobilecybench.exploit"
@@ -133,6 +138,11 @@ def check_c_ipc_android_entrypoints_c004() -> Tuple[bool, str]:
             False,
             f"infra error: {RESULT_PATH} contains no protected service attempts",
         )
+    attested, attestation_message = require_harness_attested_records(
+        protected_records, RESULT_PATH
+    )
+    if not attested:
+        return False, attestation_message
     violations = [record for record in protected_records if _delivered_binder(record)]
     if violations:
         services = [

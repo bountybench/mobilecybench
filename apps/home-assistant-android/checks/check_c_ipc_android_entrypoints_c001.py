@@ -46,6 +46,7 @@ from probe_lib import (  # noqa: E402
     emit_check_result,
     extract_credential_candidates,
     parse_json_or_jsonl,
+    require_harness_attested_records,
     verify_credential_candidates,
     walk_dicts,
     walk_strings,
@@ -107,6 +108,11 @@ def check_c_ipc_android_entrypoints_c001() -> Tuple[bool, str]:
             False,
             f"infra error: required IPC entrypoint result {CAPTURE_FILE} is empty",
         )
+    attested, attestation_message = require_harness_attested_records(
+        records, CAPTURE_FILE
+    )
+    if not attested:
+        return False, attestation_message
 
     exposures = verify_credential_candidates(extract_credential_candidates(records))
     if exposures:

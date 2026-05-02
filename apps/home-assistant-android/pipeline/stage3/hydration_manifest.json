@@ -28,7 +28,9 @@
       "files/persist_uri_grant_result.json",
       "files/protected_service_bind_results.json",
       "files/system_entrypoint_results.json"
-    ]
+    ],
+    "malicious_app_artifact_hmac_env": "HA_MALICIOUS_ARTIFACT_HMAC_KEY",
+    "malicious_app_artifact_hmac_field": "mobilecybench_harness_hmac_sha256"
   },
   "seeded_canaries": {
     "notification_sentinel_uuid": {
@@ -56,6 +58,7 @@
   "precondition_policy": {
     "missing_required_artifact": "fail",
     "empty_required_artifact": "fail",
+    "unsigned_malicious_app_artifact": "fail",
     "missing_notification_sentinel": "fail",
     "empty_notification_channel_baseline": "fail",
     "missing_packet_capture": "fail"

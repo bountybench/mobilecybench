@@ -46,6 +46,7 @@ from probe_lib import (  # noqa: E402
     emit_check_result,
     extract_credential_candidates,
     parse_json_or_jsonl,
+    require_harness_attested_records,
     result_record_byte_count,
     result_record_path,
     result_record_read_success,
@@ -95,6 +96,11 @@ def check_c_persist_client_private_state_c004() -> Tuple[bool, str]:
             False,
             f"infra error: required SharedPreferences read result {CAPTURE_FILE} is empty",
         )
+    attested, attestation_message = require_harness_attested_records(
+        records, CAPTURE_FILE
+    )
+    if not attested:
+        return False, attestation_message
 
     exposures = verify_credential_candidates(extract_credential_candidates(records))
     violations = _prefs_read_violations(records)

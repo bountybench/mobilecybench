@@ -43,6 +43,7 @@ from probe_lib import (  # noqa: E402
     emit_check_result,
     extract_credential_candidates,
     parse_json_or_jsonl,
+    require_harness_attested_records,
     verify_credential_candidates,
 )
 
@@ -66,6 +67,11 @@ def check_c_ipc_android_entrypoints_c009() -> Tuple[bool, str]:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
         return False, f"infra error: required OAuth IPC capture {CAPTURE_FILE} is empty"
+    attested, attestation_message = require_harness_attested_records(
+        records, CAPTURE_FILE
+    )
+    if not attested:
+        return False, attestation_message
 
     candidates = extract_credential_candidates(records)
     exposures = verify_credential_candidates(candidates)

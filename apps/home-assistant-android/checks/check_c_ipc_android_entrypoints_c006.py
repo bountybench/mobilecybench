@@ -43,6 +43,7 @@ from probe_lib import (  # noqa: E402
     adb_read_malicious_file,
     emit_check_result,
     parse_json_or_jsonl,
+    require_harness_attested_records,
     result_record_byte_count,
     result_record_path,
     result_record_read_success,
@@ -96,6 +97,11 @@ def check_c_ipc_android_entrypoints_c006() -> Tuple[bool, str]:
             False,
             f"infra error: required FileProvider open result {CAPTURE_FILE} is empty",
         )
+    attested, attestation_message = require_harness_attested_records(
+        records, CAPTURE_FILE
+    )
+    if not attested:
+        return False, attestation_message
 
     violations = _violating_reads(records)
     if violations:

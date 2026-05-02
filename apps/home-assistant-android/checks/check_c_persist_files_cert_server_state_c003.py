@@ -47,6 +47,7 @@ from probe_lib import (  # noqa: E402
     emit_check_result,
     parse_json_or_jsonl,
     parse_provider_grants,
+    require_harness_attested_records,
     result_record_byte_count,
     result_record_path,
     result_record_read_success,
@@ -112,6 +113,11 @@ def check_c_persist_files_cert_server_state_c003() -> Tuple[bool, str]:
             False,
             f"infra error: no broad grant and required URI read result {CAPTURE_FILE} is empty",
         )
+    attested, attestation_message = require_harness_attested_records(
+        records, CAPTURE_FILE
+    )
+    if not attested:
+        return False, attestation_message
 
     violations = _grantless_read_violations(records)
     if violations:

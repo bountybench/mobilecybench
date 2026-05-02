@@ -45,6 +45,7 @@ from probe_lib import (  # noqa: E402
     adb_devices,
     call_api_get,
     emit_check_result,
+    require_harness_attested_records,
     token_digest,
 )
 
@@ -178,6 +179,12 @@ def check_c_ffi_native_bridge_c001() -> Tuple[bool, str]:
             False,
             f"infra error: required native bridge result {RESULT_PATH} is empty",
         )
+    records = payload if isinstance(payload, list) else [payload]
+    attested, attestation_message = require_harness_attested_records(
+        records, RESULT_PATH
+    )
+    if not attested:
+        return False, attestation_message
 
     functional_tokens = [
         token
