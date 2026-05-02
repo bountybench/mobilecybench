@@ -117,31 +117,9 @@ def _tap_community_field_from_label(d) -> bool:
     """
     back_button = d(description="Back")
     label = d(text="Community")
-    width, height = d.window_size()
+    width, _height = d.window_size()
 
     try:
-        # Source-backed primary anchor: the community field has a trailing
-        # dropdown icon with contentDescription "TODO", while the submit icon
-        # uses the same content description but lives in the top app bar.
-        # Prefer a visible TODO icon below the app bar and tap its center; the
-        # full-width overlay should intercept that coordinate.
-        candidates: list[tuple[int, tuple[int, int, int, int]]] = []
-        for node in d.xpath('//*[@content-desc="TODO"]').all():
-            bounds = _parse_bounds(node.attrib.get("bounds", ""))
-            if not bounds:
-                continue
-            left_x, top_y, right_x, bottom_y = bounds
-            if top_y <= height * 0.2:
-                continue
-            candidates.append((top_y, (left_x, top_y, right_x, bottom_y)))
-
-        if candidates:
-            _top_y, (left_x, top_y, right_x, bottom_y) = min(
-                candidates, key=lambda item: item[0]
-            )
-            d.click((left_x + right_x) // 2, (top_y + bottom_y) // 2)
-            return bool(back_button.wait(timeout=10))
-
         if not label.exists:
             return False
 
