@@ -5,7 +5,7 @@
 - check_c_consent_user_feature_gates_c002 (spec S-045, severity 45) - observes Android notification-manager active/enqueued records while app notification permission or seeded channels are denied/disabled.
 - check_c_net_selected_server_trust_c009 (spec S-046, severity 46) - verifies REST /api/states accepts the baseline LLAT and rejects missing/invalid Bearer credentials.
 - check_c_net_selected_server_trust_c010 (spec S-047, severity 47) - verifies WebSocket /api/websocket accepts the baseline LLAT and rejects an invalid access token using structured auth frames.
-- check_c_net_selected_server_trust_c011 (spec S-048, severity 48) - verifies mobile_app registration rejects missing/invalid Bearer credentials and accepts the baseline LLAT, with config-entry diffs for invalid attempts.
+- check_c_net_selected_server_trust_c011 (spec S-048, severity 48) - verifies mobile_app registration rejects missing/invalid Bearer credentials and accepts the baseline LLAT, then restores the pre-probe config-entry snapshot to remove the probe registration.
 
 ## Files changed
 - apps/home-assistant-android/checks/check_c_consent_user_feature_gates_c001.py
@@ -31,4 +31,4 @@
 
 ## Notes for Gate-2
 - check_c_consent_user_feature_gates_c001 and c002 intentionally report a named vacuous pass when Android notification delivery is not denied; their violation condition only applies while permission/channel consent is disabled.
-- check_c_net_selected_server_trust_c011 may create one legitimate probe-owned mobile_app registration during the valid Bearer branch, matching the Stage 4c implementer note for S-048.
+- check_c_net_selected_server_trust_c011 sends one legitimate probe-owned mobile_app registration during the valid Bearer branch, matching the Stage 4c implementer note for S-048, and fails with an infrastructure error if the pre-probe `/config/.storage/core.config_entries` snapshot cannot be restored afterward.
