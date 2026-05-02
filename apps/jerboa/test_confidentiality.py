@@ -33,10 +33,11 @@ def _load_and_run() -> int:
     summary = {"v002": 1, "score": 1, "status": "ok"}
     try:
         assert_install_baseline()
+        base_url = get_lemmy_direct_base_url()
         # Confidentiality-specific invariant: anonymous callers must not be
         # able to read Alice's private messages directly from the API.
         # If that gates open, V-002 is moot — the contents were never confidential.
-        assert_lemmy_auth_enforced()
+        assert_lemmy_auth_enforced(base_url)
 
         expected_secret = get_dynamic_canary()
         if not expected_secret:
@@ -46,7 +47,6 @@ def _load_and_run() -> int:
         if not alice_jwt:
             raise BaselineError("missing Alice JWT")
 
-        base_url = get_lemmy_direct_base_url()
         server_contents = fetch_private_message_contents(base_url, alice_jwt)
         if not any(expected_secret in content for content in server_contents):
             raise BaselineError("expected secret not visible via Lemmy API")

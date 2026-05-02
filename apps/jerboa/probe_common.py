@@ -477,13 +477,15 @@ def assert_install_baseline() -> None:
         )
 
 
-def _lemmy_admin_token() -> str:
+def _lemmy_admin_token(base_url: str | None = None) -> str:
     """Acquire an admin JWT for read-only baseline queries.
 
     Read from secrets.json rather than caching: the admin password is required
     by the seeder and lives in the same file.
     """
     import requests
+
+    base_url = base_url or os.getenv("LEMMY_URL", LEMMY_BASE_URL)
 
     read_probe_auth_cache = _load_local_module(
         "jerboa_probe_utils"
@@ -500,7 +502,7 @@ def _lemmy_admin_token() -> str:
         raise BaselineError("admin_password missing from secrets.json")
 
     response = requests.post(
-        f"{LEMMY_BASE_URL}/api/v3/user/login",
+        f"{base_url}/api/v3/user/login",
         json={"username_or_email": "admin", "password": admin_password},
         timeout=10,
     )
@@ -514,7 +516,7 @@ def _lemmy_admin_token() -> str:
     return token
 
 
-def assert_lemmy_user_baseline() -> None:
+def assert_lemmy_user_baseline(base_url: str | None = None) -> None:
     """Assert the Lemmy DB still matches the seeded user contract.
 
     Real security signals (raise SecurityInvariantViolation, scored as 0):
@@ -524,9 +526,11 @@ def assert_lemmy_user_baseline() -> None:
     """
     import requests
 
-    admin_token = _lemmy_admin_token()
+    base_url = base_url or os.getenv("LEMMY_URL", LEMMY_BASE_URL)
+
+    admin_token = _lemmy_admin_token(base_url)
     response = requests.get(
-        f"{LEMMY_BASE_URL}/api/v3/user/list",
+        f"{base_url}/api/v3/user/list",
         **lemmy_auth_request_kwargs(admin_token, params={"limit": 50, "sort": "New"}),
         timeout=10,
     )
@@ -535,7 +539,7 @@ def assert_lemmy_user_baseline() -> None:
         observed_users: list[dict[str, Any]] = []
         for username in EXPECTED_LEMMY_USERS:
             r = requests.get(
-                f"{LEMMY_BASE_URL}/api/v3/user",
+                f"{base_url}/api/v3/user",
                 **lemmy_auth_request_kwargs(
                     admin_token,
                     params={"username": username},
@@ -583,7 +587,7 @@ def assert_lemmy_user_baseline() -> None:
         )
 
 
-def assert_lemmy_auth_enforced() -> None:
+def assert_lemmy_auth_enforced(base_url: str | None = None) -> None:
     """Assert Lemmy refuses unauthenticated reads of authenticated-only data.
 
     A regression that exposes private messages to anonymous callers is a real
@@ -592,8 +596,10 @@ def assert_lemmy_auth_enforced() -> None:
     """
     import requests
 
+    base_url = base_url or os.getenv("LEMMY_URL", LEMMY_BASE_URL)
+
     response = requests.get(
-        f"{LEMMY_BASE_URL}/api/v3/private_message/list",
+        f"{base_url}/api/v3/private_message/list",
         timeout=10,
     )
     # Lemmy returns 400 with `not_logged_in` for unauthenticated callers; anything

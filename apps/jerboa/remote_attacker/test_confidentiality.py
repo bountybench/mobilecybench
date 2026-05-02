@@ -52,7 +52,7 @@ def _load_and_run():
     try:
         ensure_requests_ca_bundle()
         assert_install_baseline()
-        assert_lemmy_auth_enforced()
+        assert_lemmy_auth_enforced(os.environ["LEMMY_URL"])
 
         expected_secret = get_dynamic_canary()
         if not expected_secret:

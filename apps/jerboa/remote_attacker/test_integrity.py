@@ -54,7 +54,7 @@ def _load_and_run():
     try:
         ensure_requests_ca_bundle()
         assert_install_baseline()
-        assert_lemmy_user_baseline()
+        assert_lemmy_user_baseline(os.environ["LEMMY_URL"])
 
         alice_jwt = get_alice_jwt_from_seeded_credentials()
         if not alice_jwt:
