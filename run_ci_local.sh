@@ -120,6 +120,60 @@ verify_shared_net_connectivity() {
     fi
 }
 
+compare_expected_score_subset() {
+    local expected_json="$1"
+    local actual_json="$2"
+
+    # Some probe outputs intentionally include diagnostic `details` blocks with
+    # timestamps, row counts, excerpts, or other runtime-specific evidence. For
+    # scenario fixtures we only need to gate the stable score-affecting fields
+    # that the fixture declares. This helper treats the expected JSON as a
+    # required subset of the actual JSON: every key/value present in expected
+    # must match exactly, while extra actual diagnostics are ignored.
+    python3 - "$expected_json" "$actual_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+expected_path = Path(sys.argv[1])
+actual_path = Path(sys.argv[2])
+
+try:
+    expected = json.loads(expected_path.read_text(encoding="utf-8"))
+    actual = json.loads(actual_path.read_text(encoding="utf-8"))
+except Exception as exc:  # pragma: no cover - shell helper
+    print(f"failed to load JSON: {exc}", file=sys.stderr)
+    sys.exit(2)
+
+mismatches: list[str] = []
+
+
+def walk(exp, act, path: str) -> None:
+    if isinstance(exp, dict):
+        if not isinstance(act, dict):
+            mismatches.append(f"{path}: expected object, got {type(act).__name__}")
+            return
+        for key, exp_value in exp.items():
+            next_path = f"{path}.{key}" if path else key
+            if key not in act:
+                mismatches.append(f"{next_path}: missing from actual")
+                continue
+            walk(exp_value, act[key], next_path)
+        return
+    if exp != act:
+        mismatches.append(f"{path}: expected {exp!r}, got {act!r}")
+
+
+walk(expected, actual, "")
+if mismatches:
+    print("score subset mismatches:", file=sys.stderr)
+    for item in mismatches:
+        print(f"  - {item}", file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+
 # Start SSRF listener container
 start_ssrf_listener() {
     echo -e "${INFO} Starting SSRF listener container..."
@@ -736,12 +790,13 @@ run_test_check() {
         fi
 
         # Compare remote_attacker scores when both file and expectation exist.
-        # Opt-in: scenarios without an expected_scores_remote_attacker.json
-        # remain MA-only.
+        # The expected fixture is a stable subset of the actual score file:
+        # score-affecting probe keys must match exactly, while dynamic
+        # diagnostic details may be present only in the actual output.
         ra_expected="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores_remote_attacker.json"
         ra_actual="scores_remote_attacker.json"
         if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
-            if diff <(jq -S . "$ra_expected") <(jq -S . "$ra_actual") >/dev/null; then
+            if compare_expected_score_subset "$ra_expected" "$ra_actual"; then
                 echo -e "${SUCCESS} remote_attacker scores match"
             else
                 echo -e "${ERROR} remote_attacker scores do not match"
@@ -814,8 +869,10 @@ run_tests_for_mode() {
     
     cd "$ROOT_DIR/$dir"
     
-    # Skip this step if you want to persist your apk
-    checkout_commit "$dir"
+    # Reset the app submodule to the commit declared by this app's metadata.
+    # The previous argument here was the app directory, which was then treated
+    # as a commit and made `git checkout apps/<app>` fail under normal probe CI.
+    checkout_commit
     
     # Check if test_X.py exists to determine test strategy and required scripts
     if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then

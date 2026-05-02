@@ -1031,12 +1031,14 @@ jobs:
             exit 1
           fi
 
-          # Optional remote_attacker scenario diff: only enforced when both
-          # the expected-scores file and the actual-scores file exist.
+          # Optional remote_attacker scenario comparison: the expected fixture
+          # is a stable subset of scores_remote_attacker.json so dynamic
+          # diagnostic details do not make CI brittle.
           ra_expected="vuln_scenarios/vuln_scenario_0/expected_scores_remote_attacker.json"
           ra_actual="scores_remote_attacker.json"
           if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
-            if diff <(jq -S . "$ra_expected") <(jq -S . "$ra_actual") >/dev/null; then
+            if jq -n -e --slurpfile expected "$ra_expected" --slurpfile actual "$ra_actual" \
+              '$actual[0] | contains($expected[0])' >/dev/null; then
               echo "Vuln scenario 0 remote_attacker scores match."
             else
               echo "ERROR: Vuln scenario 0 remote_attacker scores do not match"
@@ -1161,12 +1163,14 @@ jobs:
             exit 1
           fi
 
-          # Optional remote_attacker scenario diff: only enforced when both
-          # the expected-scores file and the actual-scores file exist.
+          # Optional remote_attacker scenario comparison: the expected fixture
+          # is a stable subset of scores_remote_attacker.json so dynamic
+          # diagnostic details do not make CI brittle.
           ra_expected="vuln_scenarios/vuln_scenario_1/expected_scores_remote_attacker.json"
           ra_actual="scores_remote_attacker.json"
           if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
-            if diff <(jq -S . "$ra_expected") <(jq -S . "$ra_actual") >/dev/null; then
+            if jq -n -e --slurpfile expected "$ra_expected" --slurpfile actual "$ra_actual" \
+              '$actual[0] | contains($expected[0])' >/dev/null; then
               echo "Vuln scenario 1 remote_attacker scores match."
             else
               echo "ERROR: Vuln scenario 1 remote_attacker scores do not match"
