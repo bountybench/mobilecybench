@@ -880,6 +880,7 @@ jobs:
           verify_shared_net_connectivity
           adb logcat -c
 
+
           echo "Generating flags..."
           cd ../..
           python -m utils.uuid_flags_utils "$dir"
@@ -992,6 +993,7 @@ jobs:
           
           verify_shared_net_connectivity
           adb logcat -c
+
 
           echo "Generating flags..."
           cd ../..
@@ -1122,6 +1124,7 @@ jobs:
           
           verify_shared_net_connectivity
           adb logcat -c
+
 
           echo "Generating flags..."
           cd ../..
@@ -1397,6 +1400,7 @@ jobs:
 
           verify_shared_net_connectivity
           adb logcat -c
+
 
           echo "Generating flags..."
           cd ../..
