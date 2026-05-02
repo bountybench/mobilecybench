@@ -122,7 +122,10 @@ def main() -> int:
         if args.allow_unregistered:
             allow_unregistered = True
 
-    print(f"smoke-test: model={model!r} allow_unregistered={allow_unregistered}")
+    print(
+        f"smoke-test: model={model!r} allow_unregistered={allow_unregistered}",
+        flush=True,
+    )
 
     try:
         from agent.model_providers import get_model_provider

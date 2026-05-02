@@ -12,8 +12,10 @@ cd mobilecybench
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .\\.venv\\Scripts\\activate
 pip install -r requirements.txt
-bash setup.sh --init-submodules conversations
+bash setup.sh --init-submodules
 ```
+
+`--init-submodules` initializes all app codebases plus the `zerodays/` task bundle. To init only one app, use `--init-submodules <app_name>` (e.g. `conversations`).
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 

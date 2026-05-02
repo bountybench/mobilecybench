@@ -25,8 +25,10 @@ cd mobilecybench
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .\.venv\Scripts\activate
 pip install -r requirements.txt
-bash setup.sh
+bash setup.sh --init-submodules
 ```
+
+`--init-submodules` initializes all app codebases plus the `zerodays/` task bundle. Drop it if you only need the runtime and will init submodules on demand (`runner.py` auto-inits the codebase for the app you run).
 
 To verify your environment without spending tokens, run against the bundled dry-run config — it launches an interactive Kali shell instead of invoking the agent:
 
@@ -68,7 +70,9 @@ Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
 ## Documentation
 
 - [Getting Started](documentation/GETTING_STARTED.md) — full setup and first run
+- [Adding a New Model](documentation/ADDING_MODELS.md) — register your own model (e.g. when integrating a non-default provider)
 - [Experiments](documentation/EXPERIMENTS.md) — running experiments, configs, build modes
+- [Red Team Workflow](documentation/REDTEAM.md) — redteam scoring and zero-day / synthetic task bundles
 - [Adding Apps](documentation/ADDING_APPS.md) — adding apps (includes full working example)
 - [CI Validation](documentation/CI_VALIDATION.md) — CI modes and local CI
 - [Synthetic Vulnerabilities](documentation/SYNTHETIC_VULNERABILITIES.md) — synthetic vuln workflow
