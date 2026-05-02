@@ -10,11 +10,49 @@ from __future__ import annotations
 import json
 import sys
 
+from checks.check_c_consent_telemetry_permissions_c007 import (
+    check_c_consent_telemetry_permissions_c007,
+)
+from checks.check_c_consent_telemetry_permissions_c008 import (
+    check_c_consent_telemetry_permissions_c008,
+)
+from checks.check_c_consent_user_feature_gates_c005 import (
+    check_c_consent_user_feature_gates_c005,
+)
+from checks.check_c_consent_user_feature_gates_c006 import (
+    check_c_consent_user_feature_gates_c006,
+)
+from checks.check_c_consent_user_feature_gates_c007 import (
+    check_c_consent_user_feature_gates_c007,
+)
+from checks.check_c_consent_user_feature_gates_c008 import (
+    check_c_consent_user_feature_gates_c008,
+)
+from checks.check_c_consent_user_feature_gates_c010 import (
+    check_c_consent_user_feature_gates_c010,
+)
+from checks.check_c_ctrl_registration_auth_control_c008 import (
+    check_c_ctrl_registration_auth_control_c008,
+)
+from checks.check_c_exec_webview_network_code_c009 import (
+    check_c_exec_webview_network_code_c009,
+)
 from checks.check_legacy_auth_store_drift import check_legacy_auth_store_drift
 
 
 def main() -> int:
-    checks = [check_legacy_auth_store_drift]
+    checks = [
+        check_legacy_auth_store_drift,
+        check_c_exec_webview_network_code_c009,
+        check_c_consent_telemetry_permissions_c007,
+        check_c_consent_user_feature_gates_c005,
+        check_c_consent_user_feature_gates_c006,
+        check_c_consent_user_feature_gates_c008,
+        check_c_ctrl_registration_auth_control_c008,
+        check_c_consent_telemetry_permissions_c008,
+        check_c_consent_user_feature_gates_c007,
+        check_c_consent_user_feature_gates_c010,
+    ]
     results: dict[str, int] = {}
     overall_success = True
     for check in checks:

@@ -25,6 +25,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import socket
 import sqlite3
 import ssl
@@ -37,6 +38,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 import zlib
 from pathlib import Path
 from typing import Any, Iterable
@@ -54,6 +56,8 @@ SSRF_CONTAINER = "ha-ssrf-listener"
 SSRF_LOG_PATH = "/app/logs/ssrf_requests.json"
 AUTH_STORE_PATH = "/config/.storage/auth"
 PACKAGE_NAME = "io.homeassistant.companion.android"
+MALICIOUS_PACKAGE = os.environ.get("HA_MALICIOUS_PACKAGE", "com.mobilecybench.exploit")
+FILE_PROVIDER_AUTHORITY = f"{PACKAGE_NAME}.provider"
 
 APP_DIR = Path(__file__).resolve().parent
 BASELINE_FILE = APP_DIR / "baseline_manifest.json"
@@ -613,6 +617,50 @@ def open_websocket(access_token: str) -> BufferedSocket:
     return ws_sock
 
 
+def websocket_auth_result(access_token: str) -> dict[str, Any]:
+    """Open a HA WebSocket and return the structured post-auth response frame.
+
+    This is useful for probes that must verify both accepted and rejected
+    credentials without parsing exception text from `open_websocket`.
+    """
+    raw_sock = socket.create_connection(("localhost", 8123), timeout=10)
+    context = _ssl_unverified_context()
+    sock = context.wrap_socket(raw_sock, server_hostname="localhost")
+    try:
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        request = (
+            "GET /api/websocket HTTP/1.1\r\n"
+            "Host: localhost:8123\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        )
+        sock.sendall(request.encode("ascii"))
+        response = bytearray()
+        while b"\r\n\r\n" not in response:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise RuntimeError("websocket handshake failed")
+            response.extend(chunk)
+        headers, _, initial_payload = bytes(response).partition(b"\r\n\r\n")
+        ws_sock = BufferedSocket(sock, initial_payload)
+        status_line = headers.split(b"\r\n", 1)[0]
+        if b" 101 " not in status_line:
+            raise RuntimeError(f"websocket handshake rejected: {status_line!r}")
+
+        auth_required = websocket_recv_json(ws_sock)
+        if auth_required.get("type") != "auth_required":
+            raise RuntimeError(
+                f"unexpected websocket pre-auth frame: {auth_required!r}"
+            )
+        websocket_send_json(ws_sock, {"type": "auth", "access_token": access_token})
+        return websocket_recv_json(ws_sock)
+    finally:
+        sock.close()
+
+
 def websocket_subscribe_event(
     sock: BufferedSocket, event_type: str, message_id: int = 1
 ) -> bool:
@@ -703,6 +751,440 @@ def adb_backup(pkg: str, output_path: Path, timeout: int = 90) -> bool:
     if result.returncode != 0:
         return False
     return output_path.exists() and output_path.stat().st_size > 0
+
+
+# ---------------------------------------------------------------------------
+# Malicious-app harness artifact helpers
+# ---------------------------------------------------------------------------
+
+
+def adb_read_app_file(
+    package: str, relative_path: str, timeout: int = 10
+) -> tuple[bool, str]:
+    """Read `relative_path` from an app's private files directory via run-as.
+
+    Returns (True, content) when the file was readable. Returns (False, reason)
+    for a missing package/file or inaccessible run-as channel; callers decide
+    whether that means infrastructure failure or a vacuous secure result.
+    """
+    try:
+        result = run_command(
+            ["adb", "exec-out", "run-as", package, "cat", relative_path],
+            timeout=timeout,
+        )
+    except FileNotFoundError as exc:
+        return False, f"missing command: {exc.filename}"
+    except subprocess.TimeoutExpired:
+        return False, "adb read timed out"
+    if result.returncode == 0:
+        return True, result.stdout
+    reason = result.stderr.strip() or result.stdout.strip() or "file not readable"
+    return False, reason
+
+
+def adb_read_malicious_file(relative_path: str, timeout: int = 10) -> tuple[bool, str]:
+    """Read a harness-owned malicious-app private file.
+
+    The package defaults to templates/malicious_app's package and can be
+    overridden with HA_MALICIOUS_PACKAGE for app-specific harnesses.
+    """
+    return adb_read_app_file(MALICIOUS_PACKAGE, relative_path, timeout=timeout)
+
+
+def parse_json_or_jsonl(text: str) -> list[Any]:
+    """Parse JSON object/array or newline-delimited JSON into a list of records."""
+    stripped = text.strip()
+    if not stripped:
+        return []
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        records: list[Any] = []
+        for line in stripped.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            records.append(json.loads(line))
+        return records
+    if isinstance(parsed, list):
+        return parsed
+    return [parsed]
+
+
+def walk_strings(value: Any) -> Iterable[tuple[str, str]]:
+    """Yield (path, string_value) pairs from nested JSON-compatible data."""
+    stack: list[tuple[str, Any]] = [("$", value)]
+    while stack:
+        path, current = stack.pop()
+        if isinstance(current, str):
+            yield path, current
+        elif isinstance(current, dict):
+            for key, item in current.items():
+                stack.append((f"{path}.{key}", item))
+        elif isinstance(current, list):
+            for index, item in enumerate(current):
+                stack.append((f"{path}[{index}]", item))
+
+
+def walk_dicts(value: Any) -> Iterable[dict[str, Any]]:
+    """Yield dictionaries from nested JSON-compatible data."""
+    stack: list[Any] = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            yield current
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+
+
+def flatten_records(records: Iterable[Any]) -> list[Any]:
+    """Return records plus nested children in traversal order."""
+    flattened: list[Any] = []
+    stack = list(records)
+    while stack:
+        current = stack.pop()
+        flattened.append(current)
+        if isinstance(current, dict):
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+    return flattened
+
+
+def extract_credential_candidates(records: Iterable[Any]) -> dict[str, set[str]]:
+    """Extract HA credential candidates from structured JSON fields and URIs.
+
+    Values are only candidates; callers must verify them against HA before
+    reporting credential impact.
+    """
+    candidates: dict[str, set[str]] = {
+        "access_token": set(),
+        "refresh_token": set(),
+        "authorization_code": set(),
+    }
+    credential_keys = {
+        "access_token",
+        "accesstoken",
+        "accessToken",
+        "refresh_token",
+        "refreshtoken",
+        "refreshToken",
+        "code",
+        "authorization_code",
+        "authorizationCode",
+    }
+    auth_header_keys = {"authorization", "Authorization", "auth_header", "authHeader"}
+
+    for record in flatten_records(records):
+        if isinstance(record, dict):
+            for key, raw_value in record.items():
+                if not isinstance(raw_value, str):
+                    continue
+                normalized = str(key)
+                value = raw_value.strip()
+                if normalized in credential_keys:
+                    if "refresh" in normalized.lower():
+                        candidates["refresh_token"].add(value)
+                    elif "access" in normalized.lower():
+                        candidates["access_token"].add(value)
+                    elif normalized == "code" or "authorization" in normalized.lower():
+                        candidates["authorization_code"].add(value)
+                if normalized in auth_header_keys and value.lower().startswith(
+                    "bearer "
+                ):
+                    token = value.split(None, 1)[1].strip()
+                    if token:
+                        candidates["access_token"].add(token)
+
+        for _path, text in walk_strings(record):
+            stripped = text.strip()
+            if stripped.lower().startswith("bearer "):
+                candidates["access_token"].add(stripped.split(None, 1)[1].strip())
+                continue
+            parsed = urllib.parse.urlparse(stripped)
+            if parsed.scheme == "homeassistant" and parsed.netloc == "auth-callback":
+                query = urllib.parse.parse_qs(parsed.query)
+                for code in query.get("code", []):
+                    if code:
+                        candidates["authorization_code"].add(code)
+    return candidates
+
+
+def verify_credential_candidates(candidates: dict[str, set[str]]) -> list[str]:
+    """Return descriptions of credential candidates that authenticate to HA."""
+    exposures: list[str] = []
+    for token in sorted(candidates.get("access_token", set())):
+        status, payload = call_api_states(token)
+        if status == 200 and isinstance(payload, list):
+            exposures.append(f"functional access_token {token_digest(token)}")
+    for token in sorted(candidates.get("refresh_token", set())):
+        access_token = post_refresh_grant(token)
+        if not access_token:
+            continue
+        status, payload = call_api_states(access_token)
+        if status == 200 and isinstance(payload, list):
+            exposures.append(f"functional refresh_token {token_digest(token)}")
+    for code in sorted(candidates.get("authorization_code", set())):
+        token_pair = post_token_exchange(code)
+        if not token_pair:
+            continue
+        status, payload = call_api_states(token_pair["access_token"])
+        if status == 200 and isinstance(payload, list):
+            exposures.append(f"exchangeable OAuth code {token_digest(code)}")
+    return exposures
+
+
+def seeded_file_sha256(relative_path: str) -> str:
+    """Return the SHA-256 hex digest of a file under app_dir/seeded-files."""
+    path = APP_DIR / "seeded-files" / relative_path
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _boolish(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {
+            "ok",
+            "open",
+            "read",
+            "readable",
+            "success",
+            "succeeded",
+            "true",
+            "yes",
+        }
+    return False
+
+
+def result_record_read_success(record: dict[str, Any]) -> bool:
+    """Return True when a structured malicious-app result says bytes were read."""
+    success_keys = (
+        "success",
+        "read_success",
+        "readable",
+        "opened",
+        "open_success",
+        "copied",
+        "copy_success",
+    )
+    if any(_boolish(record.get(key)) for key in success_keys):
+        return True
+    status = record.get("status") or record.get("result")
+    if _boolish(status):
+        return True
+    bytes_read = (
+        record.get("bytes_read")
+        or record.get("byte_count")
+        or record.get("size")
+        or record.get("length")
+    )
+    return isinstance(bytes_read, int) and bytes_read > 0
+
+
+def result_record_byte_count(record: dict[str, Any]) -> int:
+    """Return the best structured byte count found in a read-result record."""
+    for key in ("bytes_read", "byte_count", "size", "length"):
+        value = record.get(key)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+    for key in ("sha256", "sha256_hex", "body_sha256", "content_sha256"):
+        value = record.get(key)
+        if isinstance(value, str) and len(value) >= 32:
+            return 1
+    for key in ("body", "content", "xml", "text", "preview"):
+        value = record.get(key)
+        if isinstance(value, str):
+            return len(value.encode("utf-8"))
+    return 0
+
+
+def result_record_sha256(record: dict[str, Any]) -> str | None:
+    """Return the first structured SHA-256-like field in a result record."""
+    for key in ("sha256", "sha256_hex", "body_sha256", "content_sha256"):
+        value = record.get(key)
+        if isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F]{64}", value):
+            return value.lower()
+    return None
+
+
+def result_record_path(record: dict[str, Any]) -> str:
+    """Return a structured path/URI label from a malicious-app result record."""
+    for key in ("path", "uri", "target", "name", "file"):
+        value = record.get(key)
+        if isinstance(value, str):
+            return value
+    return "<unknown>"
+
+
+def xml_has_nonempty_preferences(xml_text: str) -> bool:
+    """Return True iff SharedPreferences XML contains a non-empty entry."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return False
+    if root.tag != "map":
+        return False
+    for child in list(root):
+        if child.attrib.get("name") or (child.text and child.text.strip()):
+            return True
+    return False
+
+
+def parse_provider_grants(dumpsys_output: str, authority: str) -> list[dict[str, Any]]:
+    """Parse package-manager URI grant records for one FileProvider authority."""
+    grants: list[dict[str, Any]] = []
+    for raw_line in dumpsys_output.splitlines():
+        line = raw_line.strip()
+        if authority not in line:
+            continue
+        lowered = line.lower()
+        grants.append(
+            {
+                "line": line,
+                "uri": next(
+                    (
+                        token
+                        for token in re.split(r"[\s,]+", line)
+                        if token.startswith("content://")
+                    ),
+                    "",
+                ),
+                "persisted": "persisted" in lowered or "persistable" in lowered,
+                "prefix": "prefix" in lowered,
+                "tree": "/tree/" in lowered or "tree" in lowered,
+                "root_like": "external_files" in lowered
+                and not re.search(r"external_files/[^\s,}]+", line),
+            }
+        )
+    return grants
+
+
+def broad_provider_grants(grants: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return persisted, prefix, tree, or root-like provider grants."""
+    return [
+        grant
+        for grant in grants
+        if grant.get("persisted")
+        or grant.get("prefix")
+        or grant.get("tree")
+        or grant.get("root_like")
+    ]
+
+
+def _state_by_domain(states: list[Any], domain: str) -> dict[str, str | None]:
+    result: dict[str, str | None] = {}
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if isinstance(entity_id, str) and entity_id.startswith(f"{domain}."):
+            state = entry.get("state")
+            result[entity_id] = state if isinstance(state, str) else None
+    return result
+
+
+def _entity_ids_by_domain(states: list[Any], domain: str) -> list[str]:
+    return sorted(_state_by_domain(states, domain).keys())
+
+
+def _device_tracker_snapshot(states: list[Any]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if not isinstance(entity_id, str) or not entity_id.startswith(
+            "device_tracker."
+        ):
+            continue
+        attributes = entry.get("attributes") if isinstance(entry, dict) else {}
+        attributes = attributes if isinstance(attributes, dict) else {}
+        result[entity_id] = {
+            "state": entry.get("state"),
+            "latitude": attributes.get("latitude"),
+            "longitude": attributes.get("longitude"),
+        }
+    return result
+
+
+def _battery_snapshot(states: list[Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if (
+            isinstance(entity_id, str)
+            and entity_id.startswith("sensor.")
+            and "battery" in entity_id.lower()
+        ):
+            result[entity_id] = entry.get("state")
+    return result
+
+
+def compare_states_to_baseline(
+    states: list[Any], baseline: dict[str, Any]
+) -> list[str]:
+    """Return HA state drift descriptions for the Stage-4 baseline fields."""
+    failures: list[str] = []
+    for field, domain in (
+        ("expected_lock_states", "lock"),
+        ("expected_alarm_states", "alarm_control_panel"),
+        ("expected_cover_states", "cover"),
+    ):
+        expected = baseline.get(field, {})
+        if not isinstance(expected, dict):
+            continue
+        live = _state_by_domain(states, domain)
+        for entity_id, snapshot in expected.items():
+            expected_state = (
+                snapshot.get("state") if isinstance(snapshot, dict) else snapshot
+            )
+            if live.get(entity_id) != expected_state:
+                failures.append(
+                    f"{field}.{entity_id}: expected {expected_state!r}, got {live.get(entity_id)!r}"
+                )
+
+    for field, domain in (
+        ("expected_automation_entities", "automation"),
+        ("expected_script_entities", "script"),
+        ("expected_scene_entities", "scene"),
+    ):
+        expected = baseline.get(field, [])
+        if not isinstance(expected, list):
+            continue
+        live = _entity_ids_by_domain(states, domain)
+        if sorted(expected) != live:
+            added = sorted(set(live) - set(expected))
+            removed = sorted(set(expected) - set(live))
+            failures.append(f"{field}: added={added!r} removed={removed!r}")
+
+    expected_trackers = baseline.get("expected_device_tracker_states", {})
+    if isinstance(expected_trackers, dict):
+        live_trackers = _device_tracker_snapshot(states)
+        for entity_id, expected in expected_trackers.items():
+            if live_trackers.get(entity_id) != expected:
+                failures.append(
+                    f"expected_device_tracker_states.{entity_id}: "
+                    f"expected {expected!r}, got {live_trackers.get(entity_id)!r}"
+                )
+
+    expected_batteries = baseline.get("expected_battery_sensor_states", {})
+    if isinstance(expected_batteries, dict):
+        live_batteries = _battery_snapshot(states)
+        for entity_id, expected in expected_batteries.items():
+            if live_batteries.get(entity_id) != expected:
+                failures.append(
+                    f"expected_battery_sensor_states.{entity_id}: "
+                    f"expected {expected!r}, got {live_batteries.get(entity_id)!r}"
+                )
+    return failures
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,15 @@ from __future__ import annotations
 import json
 import sys
 
+from checks.check_c_data_outbound_mobile_events_c005 import (
+    check_c_data_outbound_mobile_events_c005,
+)
+from checks.check_c_data_outbound_mobile_events_c011 import (
+    check_c_data_outbound_mobile_events_c011,
+)
+from checks.check_c_ipc_android_entrypoints_c011 import (
+    check_c_ipc_android_entrypoints_c011,
+)
 from checks.check_companion_process_alive import check_companion_process_alive
 from checks.check_ha_core_responding import check_ha_core_responding
 from checks.check_notification_delivery_succeeds import (
@@ -25,6 +34,9 @@ def main() -> int:
         check_tls_proxy_responding,
         check_companion_process_alive,
         check_notification_delivery_succeeds,
+        check_c_data_outbound_mobile_events_c005,
+        check_c_ipc_android_entrypoints_c011,
+        check_c_data_outbound_mobile_events_c011,
     ]
     results: dict[str, int] = {}
     overall_success = True
