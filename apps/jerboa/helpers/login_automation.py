@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 import os
+import sqlite3
+import subprocess
 import sys
+import tempfile
 import time
 import traceback
+from pathlib import Path
 
 try:
     from apps.jerboa.helpers.ui_session import (
@@ -162,6 +166,78 @@ def open_add_account_mode(d):
     return None
 
 
+def home_or_drawer_visible(d):
+    return any(
+        (
+            d(description="Menu").exists,
+            d(text="Anonymous").exists,
+            d(text="Add Account").exists,
+            d(text="Add account").exists,
+            d(text="Local").exists,
+            d(text="All").exists,
+            d(text="Profile").exists,
+            d(text="Inbox").exists,
+            d(text="Settings").exists,
+        )
+    )
+
+
+def _adb_cmd(device_serial, *args):
+    return ["adb", "-s", device_serial, *args]
+
+
+def _copy_from_device(device_serial, remote_path, local_path):
+    result = subprocess.run(
+        _adb_cmd(device_serial, "exec-out", "su", "0", "cat", remote_path),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0 or not result.stdout:
+        return False
+    Path(local_path).write_bytes(result.stdout)
+    return True
+
+
+def current_account_matches(device_serial, package_name, username, instance_host):
+    db_dir = f"/data/data/{package_name}/databases"
+    db_name = "jerboa"
+
+    with tempfile.TemporaryDirectory(prefix="jerboa-db-") as tmpdir:
+        local_db = str(Path(tmpdir) / db_name)
+        local_wal = str(Path(tmpdir) / f"{db_name}-wal")
+        local_shm = str(Path(tmpdir) / f"{db_name}-shm")
+
+        if not _copy_from_device(device_serial, f"{db_dir}/{db_name}", local_db):
+            return False
+        _copy_from_device(device_serial, f"{db_dir}/{db_name}-wal", local_wal)
+        _copy_from_device(device_serial, f"{db_dir}/{db_name}-shm", local_shm)
+
+        try:
+            conn = sqlite3.connect(f"file:{local_db}?mode=ro", uri=True)
+            try:
+                rows = conn.execute(
+                    "SELECT current, instance, name, jwt FROM account"
+                ).fetchall()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            return False
+
+        for current, instance, name, jwt in rows:
+            if (
+                int(current) == 1
+                and instance == instance_host
+                and name == username
+                and isinstance(jwt, str)
+                and jwt
+            ):
+                return True
+
+    return False
+
+
 def login_jerboa(instance_host, username, password):
     """
     Automate login to the Jerboa app.
@@ -214,6 +290,12 @@ def login_jerboa(instance_host, username, password):
         d.screenshot("/tmp/jerboa_screen.png")
     except Exception:
         pass
+
+    if current_account_matches(
+        device_serial, package_name, username, instance_host
+    ) and home_or_drawer_visible(d):
+        log("Current account already matches requested Jerboa user")
+        return True
 
     # --- Resolve the first actionable state ---
     done_button = d(text="Done")
@@ -333,14 +415,14 @@ def login_jerboa(instance_host, username, password):
     log("Clicking 'Login'...")
 
     def login_succeeded():
-        # Jerboa navigates to Home on successful login. The stable UI contract
-        # there is the top app bar's "Menu" icon, while the login form fields
-        # disappear. Do not rely on raw username text, which is not the home
-        # screen contract and may render as a formatted drawer header label.
+        # Jerboa persists the active account into the Room DB on successful
+        # login. That is a stronger signal than a transient Compose screen.
         try:
             password_gone = not d(textContains="assword").exists
-            menu_visible = d(description="Menu").exists
-            return password_gone and menu_visible
+            account_persisted = current_account_matches(
+                device_serial, package_name, username, instance_host
+            )
+            return password_gone and home_or_drawer_visible(d) and account_persisted
         except Exception:
             return False
 
