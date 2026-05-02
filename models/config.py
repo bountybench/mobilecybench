@@ -87,6 +87,7 @@ class RunnerConfig(BaseModel):
     def from_file(
         cls, config_path: Path, overrides: Optional[dict] = None
     ) -> "RunnerConfig":
+        config_path = Path(config_path)
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Runner configuration file not found: {config_path}"
