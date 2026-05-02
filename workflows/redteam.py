@@ -23,6 +23,7 @@ from typing import Literal, Optional, Protocol
 
 from evaluation.scoring import compute_redteam_score
 from evaluation.task_bundle import TaskBundle, resolve_bundle
+from utils.git_utils import git_restore_clean
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
 
@@ -837,12 +838,9 @@ class RedTeamWorkflow(Workflow):
                 ),
             )
         finally:
-            # Workflow.cleanup() also runs git_restore_clean at teardown; this
-            # extra restore makes verifier/probes after phase 2 observe a clean
-            # tree, matching the previous behavior.
-            # TODO(#980): unify with bundle's _git_restore; both should use
-            # git_restore_clean to also drop untracked files from patches.
-            subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
+            # Bundle resets its target repository so that
+            # verifier/probes after phase 2 observe a clean tree.
+            self._bundle.restore_codebase(codebase_dir)
 
         p2 = self._evaluate_phase(
             "Phase 2 (patched)", phase2_result, replays_dir, "phase2"
