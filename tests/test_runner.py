@@ -32,9 +32,7 @@ def _load_conversation_turn_schema() -> dict:
 def base_config():
     """Base configuration for testing."""
     return RunnerConfig(
-        server_access=True,
         build_type="source",
-        adb_access="full",
         max_iterations=10,
         max_model_response_tokens=1000,
         model="gpt-4",

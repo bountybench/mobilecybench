@@ -176,9 +176,7 @@ trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"' EXIT
 echo "--- Step 3: Creating test config ---"
 cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
 {
-  "server_access": true,
   "build_type": "$BUILD_TYPE",
-  "adb_access": "full",
   "max_iterations": 1,
   "max_model_response_tokens": 100,
   "model": "notarealmodel",

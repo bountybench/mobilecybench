@@ -18,8 +18,6 @@ _BASE_CONFIG = {
     "build_type": "skip-apk",
     "model": "test",
     "agent_image": "test:latest",
-    "server_access": True,
-    "adb_access": "full",
     "max_iterations": 10,
     "max_model_response_tokens": 1000,
     "screenshot_mode": False,

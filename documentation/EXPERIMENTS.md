@@ -100,68 +100,30 @@ Edit `runner_config.json`:
 }
 ```
 
-All fields are defined and validated in [`models/config.py:RunnerConfig`](../models/config.py); the schema below is the source of truth. Required fields have no default — every run config must declare them. The committed `runner_config.json` is a working example.
+### Where field docs live
 
-#### Workflow & task selectors
+`RunnerConfig` in [`models/config.py`](../models/config.py) is the single source of truth for every field — type, default, and description. The same schema is published three ways for different audiences:
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `workflow` | `"exploit" \| "redteam"` | `"exploit"` | Pipeline to run. `exploit` requires `synthetic_vuln_id`; `redteam` requires exactly one of `task` (zero-day) or `synthetic_vuln_id` (synthetic). |
-| `synthetic_vuln_id` | `str \| null` | `null` | Which `apps/<app>/synthetic_vulnerabilities/<vuln_id>/` to use. Required for `exploit`; one of {this, `task`} required for `redteam`. |
-| `task` | `str \| null` | `null` | Zero-day task selector (for `redteam`). Names a directory under `zerodays/reports/<app>/<task>/task/`. |
-| `attacker_model` | `"malicious_app" \| "remote_attacker" \| null` | `null` | Dev/debug hint only — runtime always reads the authoritative value from the task bundle's `metadata.json` and overrides this field. See REDTEAM.md. |
+| Surface | When to reach for it |
+|---|---|
+| `runner_config.json` with `"$schema": "./schemas/runner_config.schema.json"` | Editing in VSCode / JetBrains / Neovim — autocomplete, hover docs, and validation light up automatically. |
+| [`schemas/runner_config.schema.json`](../schemas/runner_config.schema.json) | Programmatic validation in sweep generators (`jsonschema.validate(config, schema)`), or feeding into `quicktype` to produce typed config builders. |
+| `python runner.py --explain-config` | Terminal / SSH / CI — prints the same JSON Schema to stdout (`\| jq` friendly). |
 
-#### Mode flags
+A CI parity test ([`tests/test_runner_config_schema.py`](../tests/test_runner_config_schema.py)) fails the build if the committed schema drifts from the model. After editing `models/config.py`, regenerate with:
 
-`dry_run`, `gold_run`, and `replay_run` are mutually exclusive (enforced by `RunnerConfig.validate_mode_flags`); leave at most one truthy per run.
+```bash
+python scripts/generate_runner_config_schema.py
+```
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `dry_run` | `bool` | (required) | If true, launches an interactive Kali shell instead of the agent. Useful for verifying setup without API credits. |
-| `gold_run` | `bool` | `false` | Replay the task's reference exploit through the full pipeline instead of invoking the agent. |
-| `replay_run` | `str \| null` | `null` | Replay a prior redteam exploit artifact from `logs/experiment_<uuid>`. May also be set via `runner.py --replay-run`. |
+### Cross-field invariants (not visible in the schema)
 
-#### Model & agent
+JSON Schema captures per-field types and defaults, but not these multi-field rules. `RunnerConfig`'s validators enforce them at config-load time:
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `model` | `str` | (required) | Model id for the custom agent (e.g. `gpt-5.5`, `claude-opus-4-7`, `gemini-3.1-pro`). Also forwarded to codex mode. Ignored by claude-code. See `agent/model_providers/factory.py:SupportedModel`. |
-| `reasoning_effort` | `str \| null` | `null` | Reasoning effort hint (e.g. `"low"`, `"medium"`, `"high"`). Applied by the custom agent (forwarded to the provider) and codex mode (forwarded to the Codex CLI). Ignored by claude-code. |
-| `agent_mode` | `"custom" \| "codex" \| "claude-code"` | `"custom"` | Agent implementation to use. See [Agent Mode](#agent-mode) below. |
-| `agent_image` | `str` | (required) | Docker image to run the agent in (e.g. `cybench/mobilecybench:latest`). Pulled implicitly on first use. |
-| `max_iterations` | `int (>0)` | (required) | Maximum agent turns before stopping. Custom agent only. |
-| `max_model_response_tokens` | `int (>0)` | (required) | Per-call output token cap forwarded to the provider. |
-| `custom_system_prompt` | `str \| null` | `null` | Free-form text appended to the workflow-built system prompt (after any per-app `additional_info` from `metadata.json`). Useful for hints, framing tweaks, or additional guidance. Applies to all agent modes. |
-| `allowed_tools` | `list[str] \| null` | `null` | Restrict the tool surface. Validated against `{execute_command, get_current_ui_state, execute_command_with_ui_state}`. Null = all tools. |
-| `allow_unregistered_models` | `bool` | `false` | Permit models not in `SupportedModel`. When true, falls through to LiteLLM with auto-detected routing and a WARNING; `cost_usd` is `$0` until pricing is registered. See [ADDING_MODELS.md](ADDING_MODELS.md). |
-
-#### App, build & access
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `build_type` | `"source" \| "download-apk" \| "skip-apk"` | (required) | How to acquire the APK: build from source, download a published artifact, or assume it's already in `apps/<app>/apk/`. |
-| `no_codebase` | `bool` | `false` | When true, the agent receives only the APK at `/app/apk/` (no codebase). When false, full source mounted at `/app/codebase`. |
-| `server_access` | `bool` | (required) | If true, the agent can reach app backend containers over the shared docker network. |
-| `adb_access` | `"none" \| "limited" \| "full"` | (required) | ADB privilege ceiling enforced by the proxy. See ARCHITECTURE.md. |
-
-#### Emulator
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `emulator_backend` | `"native" \| "container"` | `"native"` | Run the emulator as a host process or as a separate Docker container (used by GKE). |
-| `emulator_display` | `"headed" \| "headless"` | `"headed"` | Whether the emulator opens a window. |
-| `screenshot_mode` | `bool` | (required) | Capture a per-turn PNG screenshot. Adds ~10s/turn and disk usage. |
-| `emulator_boot_timeout_seconds` | `int (>0)` | `300` | How long to wait for the emulator to be ready. |
-
-#### Timeouts
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `script_timeout` | `int (>0)` | `600` | Seconds for long-running scripts (exploit, verify, setup, prepare_app). |
-| `build_command_timeout` | `int (>0)` | `1200` | Seconds for the APK build command. |
-| `apk_timeout` | `int (>0)` | `60` | `am instrument` timeout for the malicious-APK replay path. |
-| `agent_timeout` | `int (>0)` | `1800` | Seconds for CLI-based agents (`codex`, `claude-code`). Custom agent uses `timeout_ms` instead. |
-| `timeout_ms` | `int (>0)` | `600000` | Per-LLM-API-call timeout in milliseconds (custom agent, plus `docker exec` calls into the kali container). |
+- `attacker_model` requires `workflow == "redteam"`. Even then it's only a dev/debug hint — the runtime overrides it from the task bundle's `metadata.json`. See [REDTEAM.md](REDTEAM.md).
+- `workflow == "exploit"` requires `synthetic_vuln_id`.
+- `workflow == "redteam"` requires **exactly one** of `task` (zero-day) or `synthetic_vuln_id` (synthetic).
+- `dry_run`, `gold_run`, and `replay_run` are mutually exclusive — at most one may be truthy.
 
 ### Agent Mode
 

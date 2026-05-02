@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilecybench.dev/schemas/runner_config.schema.json",
+  "title": "Runner Config",
+  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` requires exactly one of ``task`` (zero-day) or\n  ``synthetic_vuln_id`` (synthetic).\n* ``dry_run``, ``gold_run``, and ``replay_run`` are mutually exclusive.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
+  "properties": {
+    "build_type": {
+      "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
+      "enum": [
+        "source",
+        "download-apk",
+        "skip-apk"
+      ],
+      "title": "Build Type",
+      "type": "string"
+    },
+    "no_codebase": {
+      "default": false,
+      "description": "When true, the agent receives only the APK at /app/apk/. When false (default), full source is mounted at /app/codebase.",
+      "title": "No Codebase",
+      "type": "boolean"
+    },
+    "model": {
+      "description": "Model id for the custom agent (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). Forwarded to codex mode. Ignored by claude-code. See agent/model_providers/factory.py:SupportedModel.",
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "agent_image": {
+      "description": "Docker image used to run the agent (e.g. cybench/mobilecybench:latest). Pulled implicitly on first use.",
+      "minLength": 1,
+      "title": "Agent Image",
+      "type": "string"
+    },
+    "agent_mode": {
+      "default": "custom",
+      "description": "Agent implementation: 'custom' (built-in per-turn loop, default), 'codex' (OpenAI Codex CLI), or 'claude-code' (Claude Code CLI).",
+      "enum": [
+        "custom",
+        "codex",
+        "claude-code"
+      ],
+      "title": "Agent Mode",
+      "type": "string"
+    },
+    "max_iterations": {
+      "description": "Maximum agent turns before stopping. Custom agent only.",
+      "exclusiveMinimum": 0,
+      "title": "Max Iterations",
+      "type": "integer"
+    },
+    "max_model_response_tokens": {
+      "description": "Per-call output token cap forwarded to the provider.",
+      "exclusiveMinimum": 0,
+      "title": "Max Model Response Tokens",
+      "type": "integer"
+    },
+    "custom_system_prompt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Free-form text appended to the workflow-built system prompt (after any per-app additional_info from metadata.json). Applies to all agent modes.",
+      "title": "Custom System Prompt"
+    },
+    "allowed_tools": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Restrict the tool surface. Validated against {execute_command, get_current_ui_state, execute_command_with_ui_state}. Null = all tools. Custom agent only — codex and claude-code use their CLI's native tool surface and ignore this field.",
+      "title": "Allowed Tools"
+    },
+    "reasoning_effort": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Reasoning effort hint (e.g. 'low', 'medium', 'high'). Forwarded to the provider by the custom agent and to the Codex CLI by codex mode. Ignored by claude-code.",
+      "title": "Reasoning Effort"
+    },
+    "allow_unregistered_models": {
+      "default": false,
+      "description": "Permit models that are not declared in agent/model_providers/factory.py:SupportedModel. When true, falls through to LiteLLM with auto-detected routing and a runtime WARNING. cost_usd reports $0 for any model that lacks a row in utils/token_pricing.json regardless of this flag.",
+      "title": "Allow Unregistered Models",
+      "type": "boolean"
+    },
+    "workflow": {
+      "default": "exploit",
+      "description": "Pipeline to run. 'exploit' requires synthetic_vuln_id; 'redteam' requires exactly one of task (zero-day) or synthetic_vuln_id (synthetic).",
+      "enum": [
+        "exploit",
+        "redteam"
+      ],
+      "title": "Workflow",
+      "type": "string"
+    },
+    "attacker_model": {
+      "anyOf": [
+        {
+          "enum": [
+            "malicious_app",
+            "remote_attacker"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dev/debug hint only — runtime always reads the authoritative value from the task bundle's metadata.json and overrides this field. See documentation/REDTEAM.md.",
+      "title": "Attacker Model"
+    },
+    "synthetic_vuln_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Names a directory under apps/<app>/synthetic_vulnerabilities/. Required for workflow='exploit'; one of {this, task} required for workflow='redteam'.",
+      "title": "Synthetic Vuln Id"
+    },
+    "task": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Zero-day task selector for workflow='redteam'. Names a directory under zerodays/reports/<app>/.",
+      "title": "Task"
+    },
+    "dry_run": {
+      "description": "If true, launches an interactive Kali shell instead of the agent. Useful for verifying setup without API credits.",
+      "title": "Dry Run",
+      "type": "boolean"
+    },
+    "gold_run": {
+      "default": false,
+      "description": "Replay the task's reference exploit through the full pipeline instead of invoking the agent. Mutually exclusive with dry_run.",
+      "title": "Gold Run",
+      "type": "boolean"
+    },
+    "replay_run": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Replay a prior redteam exploit artifact from logs/experiment_<uuid>. May also be set via runner.py --replay-run. Mutually exclusive with dry_run and gold_run.",
+      "title": "Replay Run"
+    },
+    "screenshot_mode": {
+      "description": "Capture a per-turn PNG screenshot under logs/experiment_<uuid>/screenshots/. Adds ~10s per turn plus disk usage.",
+      "title": "Screenshot Mode",
+      "type": "boolean"
+    },
+    "emulator_backend": {
+      "default": "native",
+      "description": "Run the emulator as a host process ('native') or as a separate Docker container ('container', used by GKE).",
+      "enum": [
+        "native",
+        "container"
+      ],
+      "title": "Emulator Backend",
+      "type": "string"
+    },
+    "emulator_display": {
+      "default": "headed",
+      "description": "Whether the emulator opens a window.",
+      "enum": [
+        "headed",
+        "headless"
+      ],
+      "title": "Emulator Display",
+      "type": "string"
+    },
+    "emulator_boot_timeout_seconds": {
+      "default": 300,
+      "description": "How long to wait for the emulator to be ready (seconds).",
+      "exclusiveMinimum": 0,
+      "title": "Emulator Boot Timeout Seconds",
+      "type": "integer"
+    },
+    "script_timeout": {
+      "default": 600,
+      "description": "Seconds for long-running scripts (exploit, verify, setup, prepare_app).",
+      "exclusiveMinimum": 0,
+      "title": "Script Timeout",
+      "type": "integer"
+    },
+    "build_command_timeout": {
+      "default": 1200,
+      "description": "Seconds for the APK build command.",
+      "exclusiveMinimum": 0,
+      "title": "Build Command Timeout",
+      "type": "integer"
+    },
+    "apk_timeout": {
+      "default": 60,
+      "description": "am instrument timeout (seconds) for the malicious-APK replay path.",
+      "exclusiveMinimum": 0,
+      "title": "Apk Timeout",
+      "type": "integer"
+    },
+    "timeout_ms": {
+      "default": 600000,
+      "description": "Per-LLM-API-call timeout (milliseconds). Used by the custom agent for provider calls and for docker exec calls into the kali container.",
+      "exclusiveMinimum": 0,
+      "title": "Timeout Ms",
+      "type": "integer"
+    },
+    "agent_timeout": {
+      "default": 1800,
+      "description": "Seconds for CLI-based agents (codex, claude-code). Custom agent uses timeout_ms instead.",
+      "exclusiveMinimum": 0,
+      "title": "Agent Timeout",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "build_type",
+    "model",
+    "agent_image",
+    "max_iterations",
+    "max_model_response_tokens",
+    "dry_run",
+    "screenshot_mode"
+  ],
+  "type": "object"
+}

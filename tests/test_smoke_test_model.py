@@ -75,8 +75,6 @@ def test_main_returns_0_on_successful_call(smoke_test_module, tmp_path):
         "model": "gpt-5.5",
         "build_type": "skip-apk",
         "agent_image": "x:latest",
-        "server_access": True,
-        "adb_access": "full",
         "max_iterations": 1,
         "max_model_response_tokens": 64,
         "screenshot_mode": False,
