@@ -40,8 +40,10 @@ To run the agent for real, set the API key for the model in `runner_config.json`
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
-python runner.py conversations
+python runner.py owncloud-android
 ```
+
+The committed `runner_config.json` defaults to probe-only + `malicious_app`, which requires per-app probes (`apps/<app>/test_*.py`) and `generic_probe_config.json`. Apps that satisfy both for `malicious_app` and `remote_attacker` today: `home-assistant-android`, `jitsi-meet`, `nextcloud-talk`, `ntfy-android`, `owncloud-android`. `openhab` and `termux` support `malicious_app` only.
 
 **To use a different provider**, change `runner_config.json:model` to a supported id *and* put the matching env var in `agent/.env` — they have to match, or the run will fail when the wrong key is loaded:
 
@@ -59,7 +61,7 @@ A run is defined by three independent axes:
 - **Task type** — *synthetic* (a bug we introduce in an app) or *zero-day* (a bug that existed in the wild). Selected by `synthetic_vuln_id` or `task` respectively. `exploit` accepts only synthetic; `redteam` two-phase accepts either; `redteam` probe-only is bundle-less and forbids both.
 - **Attacker model** — `malicious_app` (agent builds an exploit APK) or `remote_attacker` (agent writes `exploit.sh`). Two-phase redteam reads it from the task bundle's `metadata.json`; probe-only takes it from `attacker_model` on the runner config (no task metadata to read).
 
-The committed `runner_config.json` is a probe-only example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, no task / vuln). It runs against any app with a published APK bundle (`build_type: "download-apk"` fetches it on first run). For the two-phase exploit / redteam walkthroughs, see [Experiments](documentation/EXPERIMENTS.md) and [Red Team Workflow](documentation/REDTEAM.md).
+The committed `runner_config.json` is a probe-only example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, no task / vuln). It runs against any app that ships per-app probes and `generic_probe_config.json` and has a published APK bundle (`build_type: "download-apk"` fetches it on first run). For the two-phase exploit / redteam walkthroughs, see [Experiments](documentation/EXPERIMENTS.md) and [Red Team Workflow](documentation/REDTEAM.md).
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
