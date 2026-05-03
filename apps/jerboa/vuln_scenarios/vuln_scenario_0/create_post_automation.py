@@ -50,6 +50,7 @@ DEFAULT_SEEDED_COMMUNITIES = [
     ("Gaming Community", "gaming"),
     ("News Discussion", "news"),
 ]
+DEEPLINK_INSTANCE = "https://lemmy.ml"
 
 
 def _wait_for_any_text(d, candidates: list[str], timeout: int = 15) -> str | None:
@@ -107,6 +108,20 @@ def _overlay_height_px(d) -> int:
     return 120
 
 
+def _dp_to_px(d, dp: int) -> int:
+    try:
+        density_out = d.shell("wm density").output
+        for line in density_out.splitlines():
+            if ":" not in line:
+                continue
+            value = line.split(":", 1)[1].strip()
+            if value.isdigit():
+                return max(1, round(dp * int(value) / 160))
+    except Exception:
+        pass
+    return max(1, dp * 3)
+
+
 def _tap_community_field_from_label(d) -> bool:
     """Tap the overlaid community field using the known Compose layout.
 
@@ -148,6 +163,47 @@ def _tap_community_field_from_label(d) -> bool:
 
 def _community_picker_is_visible(d, timeout: int = 10) -> bool:
     return _wait_for_any_text(d, ["Search...", "Back"], timeout=timeout) is not None
+
+
+def _selected_community_present(d) -> bool:
+    for _title, query in _load_seeded_community_specs():
+        if d(text=query).exists:
+            return True
+    return False
+
+
+def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
+    seeded_communities = _load_seeded_community_specs()
+    if not seeded_communities:
+        return False
+
+    title, query = seeded_communities[0]
+    deeplink = f"{DEEPLINK_INSTANCE}/c/{query}"
+    d.shell(
+        "am start -a android.intent.action.VIEW "
+        f"-n {pkg}/com.jerboa.MainActivity "
+        f"-d {deeplink!r}"
+    )
+    wait_for_ui_stable(d, min_consecutive=2, timeout=10)
+
+    if not _wait_for_any_text(d, [title, query], timeout=15):
+        _log(f"Community deeplink did not resolve for {query}")
+        return False
+
+    width, height = d.window_size()
+    fab_margin_x = _dp_to_px(d, 28)
+    fab_margin_y = _dp_to_px(d, 36)
+    d.click(width - fab_margin_x, height - fab_margin_y)
+    if not d(text="Create post").wait(timeout=15):
+        _log("Community FAB did not open Create post")
+        return False
+
+    close_button = d(description="Close")
+    if close_button.exists:
+        close_button.click()
+        wait_for_ui_stable(d, min_consecutive=1, timeout=5)
+
+    return True
 
 
 def _open_community_picker(d) -> bool:
@@ -225,7 +281,9 @@ def _select_seeded_community(d) -> bool:
     return False
 
 
-def _submit_post_once(d, pkg: str, body: str) -> bool:
+def _submit_post_once(
+    d, pkg: str, body: str, allow_community_deeplink_fallback: bool = True
+) -> bool:
     # Maintain causal chain: (re)send the share intent with our body payload.
     # Do NOT launch MainActivity directly, which can drop intent extras.
     d.shell(
@@ -269,16 +327,24 @@ def _submit_post_once(d, pkg: str, body: str) -> bool:
         except Exception as e:
             _log(f"Failed to defocus title field via app bar: {e}")
 
-    # Select a community (required for formValid).
-    if not _open_community_picker(d):
-        _log("Community selector not found")
-        return False
-    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+    if not _selected_community_present(d):
+        # Select a community (required for formValid).
+        if not _open_community_picker(d):
+            if allow_community_deeplink_fallback and _establish_selected_community_via_deeplink(
+                d, pkg
+            ):
+                _log("Established selected community via community deeplink fallback")
+                return _submit_post_once(
+                    d, pkg, body, allow_community_deeplink_fallback=False
+                )
+            _log("Community selector not found")
+            return False
+        wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
-    if not _select_seeded_community(d):
-        _log("Failed to select a seeded community")
-        return False
-    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+        if not _select_seeded_community(d):
+            _log("Failed to select a seeded community")
+            return False
+        wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
     # Back on create post screen; click the actual ActionTopBar submit control.
     if not d(text="Create post").wait(timeout=15):
