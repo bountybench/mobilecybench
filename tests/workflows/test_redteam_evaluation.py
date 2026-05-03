@@ -1111,7 +1111,8 @@ def test_bundleless_probe_only_codebase_absent_is_noop(tmp_path):
     """Variant 5 (APK-only): codebase_dir doesn't exist; _prepare_runtime_codebase
     must return cleanly without invoking git_restore_clean.
 
-    Uses malicious_app since remote_attacker rejects no_codebase=True.
+    Uses malicious_app because this test targets runtime codebase restoration,
+    not remote replay resource routing.
     """
     config = RunnerConfig(
         **{
@@ -1216,6 +1217,32 @@ def test_config_probe_only_no_codebase_remote_attacker_allowed():
     assert config.probe_only is True
     assert config.no_codebase is True
     assert config.attacker_model == "remote_attacker"
+
+
+@pytest.mark.parametrize(
+    ("attacker_model", "no_codebase"),
+    [
+        ("malicious_app", False),
+        ("malicious_app", True),
+        ("remote_attacker", False),
+        ("remote_attacker", True),
+    ],
+)
+def test_config_probe_only_mvp_matrix_allowed(attacker_model, no_codebase):
+    config = RunnerConfig(
+        **{
+            **_BASE_CONFIG,
+            "task": None,
+            "synthetic_vuln_id": None,
+            "probe_only": True,
+            "attacker_model": attacker_model,
+            "no_codebase": no_codebase,
+        }
+    )
+
+    assert config.probe_only is True
+    assert config.attacker_model == attacker_model
+    assert config.no_codebase is no_codebase
 
 
 def test_config_probe_only_rejected_on_exploit_workflow():
