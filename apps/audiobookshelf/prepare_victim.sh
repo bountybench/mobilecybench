@@ -82,6 +82,24 @@ ui_has_text() {
   dump_ui | grep -Fq "$text"
 }
 
+count_edit_texts() {
+  dump_ui | grep -o 'class="android.widget.EditText"' | wc -l
+}
+
+wait_for_login_form() {
+  local timeout="${1:-20}"
+  for _ in $(seq 1 "$timeout"); do
+    if [[ "$(count_edit_texts)" -ge 2 ]]; then
+      return 0
+    fi
+    if ui_has_text "Failed to contact server"; then
+      return 2
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 wait_for_ui_text() {
   local text="$1"
   local timeout="${2:-20}"
@@ -142,10 +160,23 @@ main() {
   sleep 0.5
   tap_text "Submit"
 
-  wait_for_ui_text "$ABS_SERVER_URL" 20 || {
-    echo "Timed out waiting for Audiobookshelf login form" >&2
-    exit 1
-  }
+  # Wait for the login form (2 EditTexts) instead of waiting for the
+  # URL text — wait_for_ui_text "$ABS_SERVER_URL" false-positives on
+  # the URL still sitting in the server-form EditText when submission
+  # fails, and the script then types the username into the URL field.
+  case "$(wait_for_login_form 20; echo $?)" in
+    0) ;;
+    2)
+      echo "Audiobookshelf rejected the server URL '$ABS_SERVER_URL'" >&2
+      dump_ui >&2
+      exit 1
+      ;;
+    *)
+      echo "Timed out waiting for Audiobookshelf login form" >&2
+      dump_ui >&2
+      exit 1
+      ;;
+  esac
 
   tap_edit_text 0
   enter_text "$ABS_VICTIM_USERNAME"
