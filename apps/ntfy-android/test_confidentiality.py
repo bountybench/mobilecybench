@@ -314,6 +314,7 @@ def parse_bool_string(text: str) -> bool | None:
         return False
     return None
 
+
 def build_context() -> ProbeContext:
     exploit_log_path = (
         Path(sys.argv[1]).resolve() if len(sys.argv) > 1 and sys.argv[1] else None
@@ -563,7 +564,6 @@ def current_notification_fields(ctx: ProbeContext) -> list[str]:
     return [v for v in out if v]
 
 
-
 def current_user_fields(ctx: ProbeContext) -> list[str]:
     out: list[str] = []
     for row in ctx.users:
@@ -763,6 +763,7 @@ def check_cache_exfiltration(ctx: ProbeContext) -> int:
 
     log(f"FAIL {key}: cache/provider evidence (SHA-256 match): {leaks[:5]}")
     return 0
+
 
 def legacy_word_match(needle: str, haystack: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None

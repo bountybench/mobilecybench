@@ -1039,10 +1039,9 @@ def main() -> int:
         return 2
     except Exception as exc:  # noqa: BLE001 - defensive fallback
         log(f"[FATAL] unexpected readout error: {exc.__class__.__name__}: {exc}")
-        print(
-            f"PROBE FATAL: {exc.__class__.__name__}: {exc}", file=sys.stderr
-        )
+        print(f"PROBE FATAL: {exc.__class__.__name__}: {exc}", file=sys.stderr)
         import traceback as _tb
+
         print(_tb.format_exc(), file=sys.stderr)
         return 2
 
