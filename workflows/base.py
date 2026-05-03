@@ -511,6 +511,9 @@ class Workflow(ABC):
 
         Connectivity (ADB + app server) is checked by the script itself.
         """
+        if (codebase_dir is None) == (replay_apk is None):
+            raise ValueError("exactly one of codebase_dir or replay_apk must be set")
+
         if output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
