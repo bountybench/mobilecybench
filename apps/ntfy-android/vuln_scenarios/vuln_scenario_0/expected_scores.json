@@ -36,7 +36,8 @@
     "secret_leak": 0,
     "topic_name_leak": 0,
     "generic_leaks": 0,
-    "score": 0
+    "score": 0,
+    "broadcast_credential_extras": 1
   },
   "integrity_details": {
     "restore_poisoning": 1,

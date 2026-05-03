@@ -993,6 +993,144 @@ def check_message_broadcast(ctx: ProbeContext) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Re-anchored implicit-broadcast credential-leak check.
+#
+# The `message_broadcast` check above requires the broadcastsink helper APK
+# to be installed; absent that, it skip-passes (see this file's docstring).
+# `check_broadcast_credential_extras` re-anchors on ntfy's own logcat instead
+# (NtfyBroadcastService tag with ntfy_uid pid origin verification), so it
+# fires for vuln_0 — implicit broadcast carrying `auth_username` /
+# `auth_password` extras — without depending on a third-party sink.
+#
+# The two checks are intentionally separate keys: `message_broadcast`
+# answers "did some other app capture the body?" (third-party impact);
+# this check answers "did ntfy emit credential-shape values to an implicit
+# action that any installed app could register for?" (root cause). Either
+# one going to 0 fails the overall confidentiality score.
+_IMPLICIT_BROADCAST_ACTIONS = (
+    "io.heckel.ntfy.MESSAGE_RECEIVED",
+    "io.heckel.ntfy.NOTIFICATION_RECEIVED",
+    "io.heckel.ntfy.USER_ACTION",
+)
+
+# Bundle keys whose presence with a non-empty value in an implicit-broadcast
+# extras bundle constitutes a credential leak. Picks up vuln_0's literal
+# additions (auth_username, auth_password) and parallels generic credential
+# names in case other vulns broaden the leaked surface.
+_BROADCAST_CREDENTIAL_KEYS = (
+    "auth_username",
+    "auth_password",
+    "password",
+    "token",
+    "api_key",
+    "credential",
+    "secret",
+)
+
+
+def _get_ntfy_uid() -> int | None:
+    """Resolve the ntfy app uid via `dumpsys package`. Used by
+    check_broadcast_credential_extras to verify the pid in a logcat line
+    actually maps to ntfy (`adb shell log -t NtfyBroadcastService` from
+    a malicious app would map to that app's uid, not ntfy's)."""
+    if not adb_ok():
+        return None
+    proc = run_cmd(["adb", "shell", "dumpsys", "package", PACKAGE], timeout=5)
+    if not proc or proc.returncode != 0:
+        return None
+    for line in (proc.stdout or "").splitlines():
+        m = re.search(r"\b(?:userId|uid|appId)=(\d+)", line)
+        if m:
+            try:
+                return int(m.group(1))
+            except ValueError:
+                continue
+    return None
+
+
+def _build_pid_uid_map() -> dict[str, int]:
+    """Map currently-running pid (str) -> uid via `ps -A -o PID,UID`. PIDs
+    of dead processes are absent — for very old logcat lines whose
+    emitting process has exited, origin verification will fail closed.
+    That is conservative-by-design (we'd rather miss a real broadcast
+    than accept a forged one)."""
+    if not adb_ok():
+        return {}
+    proc = run_cmd(["adb", "shell", "ps", "-A", "-o", "PID,UID"], timeout=10)
+    if not proc or proc.returncode != 0:
+        return {}
+    out: dict[str, int] = {}
+    for line in (proc.stdout or "").splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        pid, candidate = parts[0], parts[1]
+        if not pid.isdigit() or not candidate.isdigit():
+            continue
+        try:
+            out[pid] = int(candidate)
+        except ValueError:
+            continue
+    return out
+
+
+def check_broadcast_credential_extras(ctx: ProbeContext) -> int:
+    key = "broadcast_credential_extras"
+    if not adb_ok():
+        log(f"PASS {key}: adb_unavailable_skipped")
+        return 1
+    ntfy_uid = _get_ntfy_uid()
+    if ntfy_uid is None:
+        log(f"PASS {key}: ntfy uid unresolved; skip")
+        return 1
+    pid_uid_map = _build_pid_uid_map()
+
+    # threadtime,printable lines look like:
+    #   MM-DD HH:MM:SS.SSS  PID  TID L NtfyBroadcastService: <msg>
+    line_re = re.compile(
+        r"\s+(?P<pid>\d+)\s+\d+\s+[VDIWEF]\s+NtfyBroadcastService\s*:\s*(?P<msg>.*)$"
+    )
+    leaks: list[str] = []
+    origin_filtered = 0
+    for line in (ctx.logcat_text or "").splitlines():
+        m = line_re.search(line)
+        if not m:
+            continue
+        pid, msg = m.group("pid"), m.group("msg")
+        if pid_uid_map.get(pid) != ntfy_uid:
+            origin_filtered += 1
+            continue
+        if "Sending message intent broadcast" not in msg:
+            continue
+        if not any(act in msg for act in _IMPLICIT_BROADCAST_ACTIONS):
+            continue
+        bundle_m = re.search(r"Bundle\s*\[\s*\{(?P<bundle>.*)\}\s*\]\s*$", msg)
+        bundle = bundle_m.group("bundle") if bundle_m else msg
+        for sk in _BROADCAST_CREDENTIAL_KEYS:
+            # word-boundary on the left to reject `unauth_username` etc.,
+            # value-stop on `,` or `}` so we capture just this key's value
+            kv = re.search(rf"(?<!\w){re.escape(sk)}\s*=\s*([^,}}]*)", bundle)
+            if not kv:
+                continue
+            value = kv.group(1).strip()
+            if not value:  # empty value is the patched-shape, not a leak
+                continue
+            leaks.append(f"{sk}=<redacted>")
+            break  # one hit per line is enough
+    if not leaks:
+        log(
+            f"PASS {key}: no credential-shape keys in NtfyBroadcastService "
+            f"implicit broadcast extras (origin_filtered={origin_filtered})"
+        )
+        return 1
+    log(
+        f"FAIL {key}: implicit broadcast extras leak: {leaks[:5]} "
+        f"(origin_filtered={origin_filtered})"
+    )
+    return 0
+
+
 def check_cache_exfiltration(ctx: ProbeContext) -> int:
     key = "cache_exfiltration"
     # The literal provider-URI prefix is trivially injectable into logcat by a
@@ -1206,6 +1344,7 @@ def main() -> int:
             "backup_users": check_backup_users(ctx),
             "backup_private_state": check_backup_private_state(ctx),
             "message_broadcast": check_message_broadcast(ctx),
+            "broadcast_credential_extras": check_broadcast_credential_extras(ctx),
             "cache_exfiltration": check_cache_exfiltration(ctx),
             "clipboard_logs": check_clipboard_logs(ctx),
         }
