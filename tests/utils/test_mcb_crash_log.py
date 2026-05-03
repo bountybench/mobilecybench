@@ -394,6 +394,27 @@ class TestExtractCrashPid:
         )
         assert pid == "2000"
 
+    def test_extracts_all_crashes_newest_first(self):
+        tz = extract_latest_crash_pid.parse_tz_offset("+0000")
+        pids = extract_latest_crash_pid.extract_crash_pids(
+            _EXIT_INFO_TWO_CRASHES, 0, tz, "io.example.app"
+        )
+        assert pids == ["2000", "1000"]
+
+    def test_extracts_all_crashes_dedupes_pid(self):
+        text = """\
+  Historical Process Exit for uid=10123
+    timestamp=2025-01-15 10:30:00.000 pid=1000
+      process=io.example.app reason=4 (APP CRASH)
+    timestamp=2025-01-15 10:35:00.000 pid=1000
+      process=io.example.app reason=4 (APP CRASH)
+"""
+        tz = extract_latest_crash_pid.parse_tz_offset("+0000")
+        pids = extract_latest_crash_pid.extract_crash_pids(
+            text, 0, tz, "io.example.app"
+        )
+        assert pids == ["1000"]
+
     def test_empty_input(self):
         tz = extract_latest_crash_pid.parse_tz_offset("+0000")
         pid = extract_latest_crash_pid.extract_crash_pid("", 0, tz, "com.test")
