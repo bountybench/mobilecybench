@@ -2,7 +2,7 @@
 
 Shall-not enforced: Android device user shall not produce notification history or notification events unless onboarding/OS notification permission and push/WebSocket notification settings permit delivery.
 
-Channel: Home Assistant Core WebSocket event stream for mobile_app notification events, correlated with Android notification permission state.
+Channel: Home Assistant Core state API plus WebSocket event stream for mobile_app notification events, correlated with the seed-time notification sentinel.
 Attacker model: remote_attacker.
 Category: availability.
 
@@ -10,15 +10,15 @@ Spec id: S-044.
 Policy rows enforced: CONSENT-002.
 
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
-  1. grep-for-vulnerable-code: N/A - probe never reads source code; it reads baseline_manifest.json, Android permission state, and the live HA WebSocket event stream.
+  1. grep-for-vulnerable-code: N/A - probe never reads source code; it reads baseline_manifest.json, HA state, and the live HA WebSocket event stream.
   2. regex-match-without-verification: The probe parses structured WebSocket JSON event frames and exact baseline UUID fields, not token-shaped or notification-shaped text.
-  3. probe-runs-the-exploit: The probe does not send a notification or toggle permissions; it only observes whether post-window notification events already appear while delivery consent is denied.
+  3. probe-runs-the-exploit: The probe does not send a notification or toggle permissions; it only observes the seed-time sentinel state and post-window notification events.
   4. probe-checks-for-payload-strings: The only matched value is baseline_manifest.json["notification_sentinel_uuid"], a seed-owned UUID, not an agent-supplied payload string.
-  5. probe-trusts-self-report: The observation channel is HA Core's WebSocket event bus plus Android OS permission state through ADB, independent of companion app self-report.
-  6. probe-without-baseline: baseline_manifest.json["probe_admin_llat"] authenticates the observer and baseline_manifest.json["notification_sentinel_uuid"] supplies the seed-owned event canary; if notification delivery is permitted, the denial-specific shall-not is not applicable.
+  5. probe-trusts-self-report: The observation channel is HA Core's REST state API and WebSocket event bus, independent of companion app self-report.
+  6. probe-without-baseline: baseline_manifest.json["probe_admin_llat"] authenticates the observer and baseline_manifest.json["notification_sentinel_uuid"] supplies the seed-owned event canary; the current granted-permission hydration must produce that sentinel exactly once.
   7. probe-without-attacker-model-tag: The header declares remote_attacker availability scope and quotes the shall-not.
-  8. two-probes-one-channel: This probe observes HA Core WebSocket notification events; check_c_consent_user_feature_gates_c002 observes Android notification-manager records.
-  9. brittle-substring-on-tool-output: ADB appops/package output is reduced to documented mode and granted fields, and WebSocket observations are parsed JSON frames rather than natural-language substrings.
+  8. two-probes-one-channel: This probe observes HA Core state/WebSocket notification events; check_c_consent_user_feature_gates_c002 observes Android notification-manager records.
+  9. brittle-substring-on-tool-output: HA API responses and WebSocket observations are parsed JSON frames rather than natural-language substrings.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):
   - https://developers.home-assistant.io/docs/api/websocket/
@@ -42,9 +42,8 @@ if str(_APP_DIR) not in _sys.path:
     _sys.path.insert(0, str(_APP_DIR))
 
 from probe_lib import (  # noqa: E402
-    PACKAGE_NAME,
     BufferedSocket,
-    adb_shell,
+    call_api_get,
     emit_check_result,
     load_baseline,
     open_websocket,
@@ -58,55 +57,7 @@ EVENT_TYPES = (
     "mobile_app_notification_cleared",
 )
 EVENT_WAIT_SECONDS = 6
-
-
-def _appops_post_notification_mode() -> tuple[str | None, str | None]:
-    result = adb_shell(["appops", "get", PACKAGE_NAME, "POST_NOTIFICATION"], timeout=15)
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip()
-        return None, detail or "appops POST_NOTIFICATION query failed"
-    for line in result.stdout.splitlines():
-        if "POST_NOTIFICATION" not in line:
-            continue
-        tokens = line.replace(";", " ").replace(":", " ").split()
-        for index, token in enumerate(tokens):
-            if token == "mode" and index + 1 < len(tokens):
-                return tokens[index + 1].strip().lower(), None
-            if token.startswith("mode="):
-                return token.split("=", 1)[1].strip().lower(), None
-            if token.lower() in {"allow", "deny", "ignore", "default"}:
-                return token.lower(), None
-    return None, None
-
-
-def _runtime_post_notifications_granted() -> tuple[bool | None, str | None]:
-    result = adb_shell(["dumpsys", "package", PACKAGE_NAME], timeout=15)
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip()
-        return None, detail or "dumpsys package query failed"
-    for raw_line in result.stdout.splitlines():
-        line = raw_line.strip()
-        if "android.permission.POST_NOTIFICATIONS" not in line:
-            continue
-        fields = line.replace(",", " ").split()
-        for field in fields:
-            if field.startswith("granted="):
-                value = field.split("=", 1)[1].strip().lower()
-                if value in {"true", "false"}:
-                    return value == "true", None
-    return None, None
-
-
-def _notification_delivery_denied() -> tuple[bool, str]:
-    mode, appops_error = _appops_post_notification_mode()
-    granted, package_error = _runtime_post_notifications_granted()
-    if appops_error and package_error:
-        raise RuntimeError(f"{appops_error}; {package_error}")
-    if mode in {"deny", "ignore"}:
-        return True, f"POST_NOTIFICATION appop mode is {mode}"
-    if granted is False:
-        return True, "POST_NOTIFICATIONS runtime permission is not granted"
-    return False, "Android notification delivery is not denied"
+NOTIFICATION_ENTITY_PREFIX = "sensor.last_notification"
 
 
 def _contains_sentinel(value: Any, sentinel: str) -> bool:
@@ -119,6 +70,56 @@ def _contains_sentinel(value: Any, sentinel: str) -> bool:
     return False
 
 
+def _sentinel_delivery_count(baseline: dict[str, Any]) -> int:
+    raw_count = baseline.get("notification_sentinel_delivery_count")
+    if isinstance(raw_count, int) and not isinstance(raw_count, bool):
+        return raw_count
+    return 1 if baseline.get("notification_sentinel_seeded") is True else 0
+
+
+def _notification_entities(states: Any) -> list[dict[str, Any]]:
+    if not isinstance(states, list):
+        raise RuntimeError(f"/api/states returned non-list payload: {states!r}")
+    entities: list[dict[str, Any]] = []
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if isinstance(entity_id, str) and entity_id.startswith(
+            NOTIFICATION_ENTITY_PREFIX
+        ):
+            entities.append(entry)
+    return entities
+
+
+def _sentinel_notification_entities(
+    access_token: str, sentinel: str, baseline_entity_id: str | None
+) -> tuple[list[str], int]:
+    if baseline_entity_id:
+        status, payload = call_api_get(
+            f"/api/states/{baseline_entity_id}", access_token
+        )
+        if status != 200:
+            raise RuntimeError(
+                f"{baseline_entity_id} returned HTTP {status}: {payload!r}"
+            )
+        return (
+            [baseline_entity_id] if _contains_sentinel(payload, sentinel) else [],
+            1,
+        )
+
+    status, payload = call_api_get("/api/states", access_token)
+    if status != 200:
+        raise RuntimeError(f"/api/states returned HTTP {status}: {payload!r}")
+    entities = _notification_entities(payload)
+    matching = [
+        str(entity["entity_id"])
+        for entity in entities
+        if _contains_sentinel(entity, sentinel)
+    ]
+    return sorted(matching), len(entities)
+
+
 def _subscribe_notification_events(sock: BufferedSocket) -> bool:
     for message_id, event_type in enumerate(EVENT_TYPES, start=1):
         if not websocket_subscribe_event(sock, event_type, message_id=message_id):
@@ -126,9 +127,11 @@ def _subscribe_notification_events(sock: BufferedSocket) -> bool:
     return True
 
 
-def _observed_sentinel_event(
+def _collect_live_notification_events(
     sock: BufferedSocket, sentinel: str, timeout_seconds: int
-) -> tuple[bool, str]:
+) -> tuple[list[str], list[str]]:
+    sentinel_events: list[str] = []
+    non_sentinel_events: list[str] = []
     deadline = time.monotonic() + timeout_seconds
     sock.settimeout(1)
     while time.monotonic() < deadline:
@@ -145,16 +148,20 @@ def _observed_sentinel_event(
         if event_type not in EVENT_TYPES:
             continue
         if _contains_sentinel(event.get("data"), sentinel):
-            return True, str(event_type)
-    return False, ""
+            sentinel_events.append(str(event_type))
+        else:
+            non_sentinel_events.append(str(event_type))
+    return sentinel_events, non_sentinel_events
 
 
 def check_c_consent_user_feature_gates_c001() -> Tuple[bool, str]:
     """Returns (success, message). success=True means secure (shall-not held).
 
-    Implements spec S-044 as assigned by Stage 4c. Android notification-denial
-    hydration is used when present; if delivery is permitted, the denial-only
-    condition is not applicable and the check reports a vacuous pass.
+    Implements spec S-044 as reconciled by Stage 5 Producer P5 option B. The
+    current hydration grants notifications, so this check requires the seeded
+    sentinel to have been delivered exactly once and watches for additional
+    mobile_app notification events instead of treating granted delivery as not
+    applicable.
     """
     try:
         baseline = load_baseline(
@@ -169,14 +176,32 @@ def check_c_consent_user_feature_gates_c001() -> Tuple[bool, str]:
     if not isinstance(sentinel, str) or not sentinel:
         return False, "infra error: baseline notification_sentinel_uuid is empty"
 
-    try:
-        delivery_denied, denial_reason = _notification_delivery_denied()
-    except Exception as exc:
-        return False, f"infra error: could not inspect notification consent: {exc}"
-    if not delivery_denied:
+    seeded_count = _sentinel_delivery_count(baseline)
+    if seeded_count != 1:
         return (
-            True,
-            f"vacuously satisfied: notification delivery is permitted ({denial_reason})",
+            False,
+            "infra error: baseline notification sentinel delivery count is "
+            f"{seeded_count}, expected exactly 1",
+        )
+
+    baseline_entity_id = baseline.get("notification_sentinel_entity_id")
+    if baseline_entity_id is not None and not isinstance(baseline_entity_id, str):
+        return False, "infra error: baseline notification_sentinel_entity_id is invalid"
+
+    try:
+        sentinel_entities, inspected_count = _sentinel_notification_entities(
+            access_token, sentinel, baseline_entity_id
+        )
+    except Exception as exc:
+        return (
+            False,
+            f"infra error: could not inspect notification sentinel state: {exc}",
+        )
+    if len(sentinel_entities) != 1:
+        return (
+            False,
+            "notification sentinel is not present exactly once in HA state "
+            f"(matches={sentinel_entities}, inspected={inspected_count})",
         )
 
     sock: BufferedSocket | None = None
@@ -184,7 +209,7 @@ def check_c_consent_user_feature_gates_c001() -> Tuple[bool, str]:
         sock = open_websocket(access_token)
         if not _subscribe_notification_events(sock):
             return False, "infra error: could not subscribe to notification events"
-        observed, event_type = _observed_sentinel_event(
+        sentinel_events, non_sentinel_events = _collect_live_notification_events(
             sock, sentinel, EVENT_WAIT_SECONDS
         )
     except Exception as exc:
@@ -193,14 +218,19 @@ def check_c_consent_user_feature_gates_c001() -> Tuple[bool, str]:
         if sock is not None:
             sock.close()
 
-    if observed:
+    if sentinel_events:
         return False, (
-            f"observed {event_type} carrying the baseline notification sentinel "
-            "while Android notification delivery was denied"
+            "observed additional mobile_app notification event(s) carrying the "
+            "baseline sentinel after hydration: " + ", ".join(sentinel_events)
+        )
+    if non_sentinel_events:
+        return False, (
+            "observed non-sentinel mobile_app notification event(s) after hydration: "
+            + ", ".join(non_sentinel_events)
         )
     return True, (
-        "no baseline notification sentinel events observed while Android "
-        f"notification delivery was denied ({denial_reason})"
+        "baseline notification sentinel is present exactly once and no live "
+        "non-sentinel notification events were observed"
     )
 
 

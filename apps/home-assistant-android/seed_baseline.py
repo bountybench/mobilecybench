@@ -15,6 +15,8 @@ probes consume. Phase A adds:
   their baseline importance values when available.
 - notification_sentinel_uuid: seed-owned canary value for notification-content
   visibility probes.
+- notification_sentinel_delivery_count: the number of seed-owned sentinel
+  notifications hydration attempted to deliver successfully.
 - auth_provider: logical snapshot of HA local-auth provider usernames, user IDs,
   and password-hash digests.
 - expected_server_list: list of seeded HA servers (one entry from
@@ -935,6 +937,9 @@ def build_manifest() -> dict[str, Any]:
         "expected_notification_channels": _expected_notification_channels(),
         "notification_sentinel_uuid": notification_sentinel_uuid,
         "notification_sentinel_seeded": notification_sentinel_seeded,
+        "notification_sentinel_delivery_count": (
+            1 if notification_sentinel_seeded else 0
+        ),
         "notification_sentinel_entity_id": _notification_entity_id(
             states, notification_sentinel_uuid
         ),

@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import importlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -82,7 +83,12 @@ def test_missing_attacker_log_entries_are_clean_run_pass(monkeypatch):
     assert "callback log not present or empty" in message
 
 
-def test_notification_delivery_allowed_is_not_applicable(monkeypatch):
+class _DummySocket:
+    def close(self):
+        pass
+
+
+def test_notification_consent_granted_requires_seeded_sentinel(monkeypatch):
     module = importlib.import_module("checks.check_c_consent_user_feature_gates_c001")
     monkeypatch.setattr(
         module,
@@ -90,23 +96,133 @@ def test_notification_delivery_allowed_is_not_applicable(monkeypatch):
         lambda required_keys=(): {
             "probe_admin_llat": "admin-token",
             "notification_sentinel_uuid": "sentinel",
+            "notification_sentinel_seeded": True,
+            "notification_sentinel_delivery_count": 1,
+            "notification_sentinel_entity_id": "sensor.last_notification_phone",
         },
     )
     monkeypatch.setattr(
         module,
-        "_notification_delivery_denied",
-        lambda: (False, "Android notification delivery is not denied"),
+        "call_api_get",
+        lambda path, token: (
+            200,
+            {
+                "entity_id": "sensor.last_notification_phone",
+                "state": "ok",
+                "attributes": {"android.text": "seeded sentinel"},
+            },
+        ),
     )
-
-    def fail_open_websocket(_access_token):
-        raise AssertionError("permitted-notification path should not observe events")
-
-    monkeypatch.setattr(module, "open_websocket", fail_open_websocket)
+    monkeypatch.setattr(module, "open_websocket", lambda _access_token: _DummySocket())
+    monkeypatch.setattr(module, "_subscribe_notification_events", lambda _sock: True)
+    monkeypatch.setattr(
+        module,
+        "_collect_live_notification_events",
+        lambda _sock, _sentinel, _seconds: ([], []),
+    )
 
     ok, message = module.check_c_consent_user_feature_gates_c001()
 
     assert ok is True
-    assert "notification delivery is permitted" in message
+    assert "present exactly once" in message
+
+
+def test_notification_consent_granted_fails_without_seeded_sentinel(monkeypatch):
+    module = importlib.import_module("checks.check_c_consent_user_feature_gates_c001")
+    monkeypatch.setattr(
+        module,
+        "load_baseline",
+        lambda required_keys=(): {
+            "probe_admin_llat": "admin-token",
+            "notification_sentinel_uuid": "sentinel",
+            "notification_sentinel_seeded": False,
+            "notification_sentinel_delivery_count": 0,
+        },
+    )
+
+    ok, message = module.check_c_consent_user_feature_gates_c001()
+
+    assert ok is False
+    assert "expected exactly 1" in message
+
+
+def test_notification_manager_requires_single_sentinel_record(monkeypatch):
+    module = importlib.import_module("checks.check_c_consent_user_feature_gates_c002")
+    monkeypatch.setattr(
+        module,
+        "load_baseline",
+        lambda required_keys=(): {
+            "notification_sentinel_uuid": "sentinel",
+            "notification_sentinel_seeded": True,
+            "notification_sentinel_delivery_count": 1,
+        },
+    )
+
+    def fake_adb_shell(args, timeout=10):
+        if args[:2] == ["dumpsys", "package"]:
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout="android.permission.POST_NOTIFICATIONS: granted=true",
+                stderr="",
+            )
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=(
+                "NotificationRecord(pkg=io.homeassistant.companion.android id=1)\n"
+                "  android.text=MobileCyBench notification sentinel\n"
+                "  tag=sentinel\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(module, "adb_shell", fake_adb_shell)
+
+    ok, message = module.check_c_consent_user_feature_gates_c002()
+
+    assert ok is True
+    assert "present exactly once" in message
+
+
+def test_notification_manager_rejects_non_sentinel_record(monkeypatch):
+    module = importlib.import_module("checks.check_c_consent_user_feature_gates_c002")
+    monkeypatch.setattr(
+        module,
+        "load_baseline",
+        lambda required_keys=(): {
+            "notification_sentinel_uuid": "sentinel",
+            "notification_sentinel_seeded": True,
+            "notification_sentinel_delivery_count": 1,
+        },
+    )
+
+    def fake_adb_shell(args, timeout=10):
+        if args[:2] == ["dumpsys", "package"]:
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout="android.permission.POST_NOTIFICATIONS: granted=true",
+                stderr="",
+            )
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=(
+                "NotificationRecord(pkg=io.homeassistant.companion.android id=1)\n"
+                "  tag=sentinel\n"
+                "NotificationRecord(pkg=io.homeassistant.companion.android id=2)\n"
+                "  tag=attacker\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(module, "adb_shell", fake_adb_shell)
+
+    ok, message = module.check_c_consent_user_feature_gates_c002()
+
+    assert ok is False
+    assert "non-sentinel" in message
 
 
 def test_missing_packet_capture_is_clean_run_pass(monkeypatch):
