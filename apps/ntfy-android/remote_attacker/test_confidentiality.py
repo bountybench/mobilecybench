@@ -2,6 +2,26 @@
 """
 Probe: ntfy-android — Confidentiality (remote_attacker attacker model)
 
+DEAD-CODE STATE (2026-05-02):
+    Every check in this file is currently future-armed: it depends on
+    helper-app evidence pipelines (org.mobilecybench.{httpcallbacks,
+    broadcastsink,intentsink,clipboardsink,docprovider}) that no
+    install/setup script in this repo produces, AND on env vars
+    (MCB_TRUST_HTTP_CALLBACK_EVIDENCE, MCB_TRUST_SINK_EVIDENCE,
+    MCB_TRUST_PASTE_EVIDENCE) that no harness sets. As shipped, every
+    check returns score=1 with status `skipped_pending_trusted_*_evidence`.
+    Two paths to make these checks live:
+      1. Build the helper APKs (multi-component infra; out of scope for
+         the current PR) and have start_runtime.sh install them.
+      2. Re-anchor each check on evidence ntfy itself emits — e.g.,
+         NtfyBroadcastService logcat (with ntfy-uid pid origin) for
+         public_action_broadcast / markdown_click_uri, NtfyUserActWrk
+         logcat for http_action_basic_credential. This eliminates the
+         helper-app dependency.
+    Until one of those happens, the legacy `secret_leak`/`topic_name_leak`/
+    `generic_leaks` checks in the malicious_app probe (top-level
+    test_confidentiality.py) remain the only confidentiality coverage.
+
 Implemented specs:
     HTTP action leaked saved Basic credential
     Attachment/icon request leaked credentials or headers
