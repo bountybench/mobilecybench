@@ -395,11 +395,10 @@ def _run_remote_phase_and_capture(wf, target_apk: Path, phase_dir: Path) -> dict
     return captured
 
 
-def test_remote_attacker_replay_mounts_codebase_under_default_resource_model(
+def test_remote_attacker_replay_mounts_codebase_under_default(
     remote_attacker_config, tmp_path
 ):
-    """no_codebase=False (default): replay mounts /app/codebase, no /app/apk.
-    Mirrors the agent's source-only resource model."""
+    """no_codebase=False (default): replay mounts /app/codebase."""
     wf = _make_workflow(remote_attacker_config, tmp_path)
     target_apk = wf.app_dir / "apk" / "phase1" / "testapp.apk"
     target_apk.parent.mkdir(parents=True, exist_ok=True)
@@ -414,8 +413,10 @@ def test_remote_attacker_replay_mounts_codebase_under_default_resource_model(
 def test_remote_attacker_replay_mounts_apk_only_under_no_codebase(
     remote_attacker_config, tmp_path
 ):
-    """no_codebase=True: replay drops /app/codebase, stages the per-phase
-    APK at /app/apk. Mirrors the agent's single-APK resource model."""
+    """no_codebase=True is the security-load-bearing case: replay must NOT
+    mount /app/codebase (no source anywhere the agent or exploit reaches),
+    and stages the per-phase APK at /app/apk to mirror the agent-phase
+    path."""
     config = remote_attacker_config.model_copy(update={"no_codebase": True})
     wf = _make_workflow(config, tmp_path)
     target_apk = wf.app_dir / "apk" / "phase1" / "testapp.apk"
@@ -429,10 +430,10 @@ def test_remote_attacker_replay_mounts_apk_only_under_no_codebase(
 
 
 def test_run_exploit_stages_replay_apk_into_sibling_dir(redteam_config, tmp_path):
-    """Lower-level: _run_exploit copies the single APK into a sibling of
-    output_dir (so it survives output_dir's rmtree) and emits --apk-dir
-    pointing at that staging dir. Defends against the wholesale-mount
-    regression: the staged dir must contain exactly the one APK."""
+    """_run_exploit copies the single APK into a sibling of output_dir (so
+    it survives output_dir's rmtree) and emits --apk-dir pointing at the
+    staging dir. Defends against the wholesale-mount regression: the staged
+    dir must contain exactly the one APK, never apps/<app>/apk wholesale."""
     wf = _make_workflow(redteam_config, tmp_path)
     src_apk = tmp_path / "src" / "testapp.apk"
     src_apk.parent.mkdir(parents=True)
@@ -442,7 +443,6 @@ def test_run_exploit_stages_replay_apk_into_sibling_dir(redteam_config, tmp_path
 
     def fake_popen(cmd, **_kwargs):
         captured["cmd"] = cmd
-        # Mimic subprocess.Popen interface enough for _run_exploit's loop.
         proc = MagicMock()
         proc.stdout = iter([])
         proc.wait.return_value = None
@@ -466,12 +466,9 @@ def test_run_exploit_stages_replay_apk_into_sibling_dir(redteam_config, tmp_path
     cmd = captured["cmd"]
     assert "--apk-dir" in cmd
     apk_dir = Path(cmd[cmd.index("--apk-dir") + 1])
-    # Sibling of output_dir, not inside it (output_dir gets rmtree'd).
     assert apk_dir.parent == output_dir.parent
     assert apk_dir != output_dir
-    # Exactly one APK staged — never apps/<app>/apk wholesale.
-    staged = list(apk_dir.iterdir())
-    assert staged == [apk_dir / src_apk.name]
+    assert list(apk_dir.iterdir()) == [apk_dir / src_apk.name]
     assert "--codebase-dir" not in cmd
 
 

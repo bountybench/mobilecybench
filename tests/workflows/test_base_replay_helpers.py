@@ -195,12 +195,8 @@ class TestRunExploitContainerScript:
 
     def test_rejects_missing_replay_resource(self, tmp_path):
         proc = subprocess.run(
-            self._base_args(tmp_path),
-            capture_output=True,
-            text=True,
-            check=False,
+            self._base_args(tmp_path), capture_output=True, text=True, check=False
         )
-
         assert proc.returncode == 1
         assert "exactly one of --codebase-dir or --apk-dir" in proc.stderr
 
@@ -209,7 +205,6 @@ class TestRunExploitContainerScript:
         apk_dir = tmp_path / "apk"
         codebase_dir.mkdir()
         apk_dir.mkdir()
-
         proc = subprocess.run(
             self._base_args(tmp_path)
             + ["--codebase-dir", str(codebase_dir), "--apk-dir", str(apk_dir)],
@@ -217,6 +212,5 @@ class TestRunExploitContainerScript:
             text=True,
             check=False,
         )
-
         assert proc.returncode == 1
         assert "exactly one of --codebase-dir or --apk-dir" in proc.stderr

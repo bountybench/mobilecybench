@@ -71,8 +71,8 @@
 ### Information Available
 
 **Mounted directories in Kali container:**
-- `/app/codebase` - Full app source code (read-only copy). Mounted when `no_codebase=false` (the default), in both the agent container and the exploit-replay container.
-- `/app/apk` - One phase-specific APK. Mounted only when `no_codebase=true`, in both the agent container and the exploit-replay container; the agent has the APK but no source. The replay container always mirrors the agent's resource model — never both mounts at once, never `apps/<app>/apk` wholesale.
+- `/app/codebase` - Full app source code (read-only copy). Mounted when `no_codebase=false` (the default), in both the agent container and the exploit-replay container. `no_codebase=true` is the only mode that guarantees no source anywhere the agent or replay reaches.
+- `/app/apk` - One phase-specific APK. Mounted under `no_codebase=true` in both the agent container and the exploit-replay container so exploit.sh resolves the same path the agent had. (One APK only — never `apps/<app>/apk` wholesale.) Note that the agent always has ADB access to the running emulator and can pull the APK regardless of this mount.
 - `/app/agent_exploit` - Empty directory for agent to write exploits
 - `/app/agent_output` - Directory for exploit results (captured secrets, exfiltrated data). Volume-mounted so verify scripts on the host can read them.
 - `/app/verify_files` (exploit mode only) - Contains evaluator verification logic

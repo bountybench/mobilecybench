@@ -503,11 +503,14 @@ class Workflow(ABC):
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
-        Replay mirrors the agent's resource model: callers pass exactly one of
-        ``codebase_dir`` (no_codebase=False; mounts /app/codebase) or
-        ``replay_apk`` (no_codebase=True; the single APK file to stage and
-        mount at /app/apk). Both kwargs are required so every call site states
-        intent explicitly.
+        Replay mirrors the agent container's resource model: callers pass
+        exactly one of ``codebase_dir`` (no_codebase=False; mounts
+        /app/codebase) or ``replay_apk`` (no_codebase=True; the single APK
+        file to stage and mount at /app/apk so exploit.sh resolves the same
+        path the agent had during the agent phase). The codebase mount is
+        the security-load-bearing one — replay must not expose source the
+        agent never had. The APK mount is for path-symmetry with the agent
+        phase.
 
         Connectivity (ADB + app server) is checked by the script itself.
         """
