@@ -177,7 +177,7 @@ def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
     if not seeded_communities:
         return False
 
-    title, query = seeded_communities[0]
+    _title, query = seeded_communities[0]
     deeplink = f"{DEEPLINK_INSTANCE}/c/{query}"
     d.shell(
         "am start -a android.intent.action.VIEW "
@@ -186,7 +186,7 @@ def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
     )
     wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
-    if not _wait_for_any_text(d, [title, query], timeout=15):
+    if not _wait_for_any_text(d, [query, "Back"], timeout=15):
         _log(f"Community deeplink did not resolve for {query}")
         return False
 
