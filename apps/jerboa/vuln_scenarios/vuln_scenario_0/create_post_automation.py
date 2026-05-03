@@ -157,6 +157,16 @@ def _open_community_picker(d) -> bool:
     if _tap_community_field_from_label(d):
         return True
 
+    try:
+        scroller = d(scrollable=True)
+        if scroller.exists:
+            scroller.scroll.to(text="Community")
+            wait_for_ui_stable(d, min_consecutive=1, timeout=5)
+            if _tap_community_field_from_label(d):
+                return True
+    except Exception as e:
+        _log(f"Scrollable community seek failed: {e}")
+
     width, height = d.window_size()
     for _ in range(6):
         try:
