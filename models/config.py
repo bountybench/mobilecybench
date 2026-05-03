@@ -37,6 +37,12 @@ class RunnerConfig(BaseModel):
     # The two modes are mutually exclusive — we never provide both.
     no_codebase: bool = False
 
+    # When True, RedTeamWorkflow runs only Phase 1 (original APK) and scores
+    # solely on whether the app probes triggered after the agent's exploit.
+    # No patched-phase comparison, no verifier_diff/patch_diff signals.
+    # Intended for APK-only / public-app runs where no fix.patch is available.
+    probe_only: bool = False
+
     # agent limits
     max_iterations: int = Field(gt=0)
     max_model_response_tokens: int = Field(gt=0)
