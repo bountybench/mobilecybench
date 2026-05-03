@@ -22,8 +22,6 @@ baseline_android_dir.txt
 after_android_dir.txt
 apk_hash_baseline.txt
 device_epoch_baseline.txt
-device_epoch_baseline_pre_reset.txt
-exact_alarm_baseline.json
 crash_sniffer.pid
 .runtime_state/
 dummy_log.txt

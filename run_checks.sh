@@ -294,17 +294,6 @@ echo "Scores saved to $GENERIC_SCORES_DEST"
 RA_PROBE_DIR="$app_path/remote_attacker"
 RA_SCORES_DEST="${REMOTE_ATTACKER_SCORES_OUT:-scores_remote_attacker.json}"
 if [ -d "$RA_PROBE_DIR" ] && [ "${RA_CHECKS_ENABLED:-0}" = "1" ]; then
-    # Auto-trust the exact-alarm baseline when start_runtime.sh has captured
-    # it at the host-side app path. The baseline file is only writable by
-    # the host-side runtime (the agent's exploit container has no host
-    # filesystem mount), so its presence at this path is sufficient
-    # provenance for the probe's MCB_TRUST_EXACT_ALARM_BASELINE gate.
-    # Per-app opt-in: only set when the file is actually present, so apps
-    # without the matching capture continue to skip the gated checks.
-    if [ -f "$app_path/exact_alarm_baseline.json" ] && \
-       [ -z "${MCB_TRUST_EXACT_ALARM_BASELINE:-}" ]; then
-        export MCB_TRUST_EXACT_ALARM_BASELINE=1
-    fi
     # Always remove a stale RA score file so a mid-run abort can't leave the
     # previous run's output in place to be consumed as if it were fresh.
     rm -f "$RA_SCORES_DEST"
