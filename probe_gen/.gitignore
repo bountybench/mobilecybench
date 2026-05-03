@@ -1,0 +1,4 @@
+# Per-run output artifacts (verbose logs, summaries, LLM-generated probe
+# scratch files, profile traces, audit reports). These are reproducible
+# from the source tree + scripts; treat them as scratch.
+runs/

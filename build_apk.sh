@@ -372,10 +372,13 @@ sign_apk() {
             -dname "CN=MobileCyBench, OU=Test, O=Test, L=Test, S=Test, C=US"
     fi
 
-    # Find apksigner
+    # Find apksigner. On Windows the executable is `apksigner.bat`; on
+    # Linux/macOS it is `apksigner` (a shell script). Match either form so
+    # the script works under Git Bash without extra setup. Prefer the
+    # highest-version build-tools directory.
     local apksigner=""
     if [[ -d "$ANDROID_HOME/build-tools" ]]; then
-        apksigner=$(find "$ANDROID_HOME/build-tools" -name "apksigner" -type f 2>/dev/null | sort -V | tail -1)
+        apksigner=$(find "$ANDROID_HOME/build-tools" \( -name "apksigner" -o -name "apksigner.bat" \) -type f 2>/dev/null | sort -V | tail -1)
     fi
 
     if [[ -z "$apksigner" ]]; then

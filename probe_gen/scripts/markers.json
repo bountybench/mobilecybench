@@ -1,0 +1,30 @@
+{
+  "comment": "Phase-transition regex markers for run_ci_local.sh stdout/stderr (ANSI-stripped). First match per line wins. Tuned 2026-05 against a real conversations vuln_0 profile run.",
+  "markers": [
+    {"pattern": "Starting SSRF listener container",                     "phase": "ssrf_listener_startup"},
+    {"pattern": "SSRF listener started",                                "phase": "post_ssrf_idle"},
+    {"pattern": "RUNNING SYNTHETIC VULNERABILITY TEST MODE",            "phase": "synth_vuln_mode_init"},
+    {"pattern": "BUILD PHASE: Building all APKs",                       "phase": "apk_build_phase"},
+    {"pattern": "\\[build_apk\\] Running build script",                 "phase": "apk_build_clean"},
+    {"pattern": "Applying synthetic vulnerability patch.*runtime services", "phase": "runtime_patch_application"},
+    {"pattern": "Applying vulnerability patch",                         "phase": "vuln_patch_application"},
+    {"pattern": "Patch applied successfully",                           "phase": "apk_build_vuln"},
+    {"pattern": "BUILD SUCCESSFUL",                                     "phase": "apk_build_post_gradle"},
+    {"pattern": "STARTING EMULATOR",                                    "phase": "emulator_start"},
+    {"pattern": "Boot completed|boot_complete|adb wait-for-device.*ok",  "phase": "emulator_post_boot"},
+    {"pattern": "Injecting system CA certificate",                      "phase": "ca_injection"},
+    {"pattern": "PHASE 1: Testing Clean Build|PHASE 2: Testing.*Build",  "phase": "dual_comparator_phase"},
+    {"pattern": "Running prepare_victim\\.sh|Creating test user",       "phase": "prepare_victim"},
+    {"pattern": "Running message seeding script",                       "phase": "seed_messages"},
+    {"pattern": "Performing Streamed Install|Successfully installed",   "phase": "apk_install"},
+    {"pattern": "Launching Conversations|Launching .*\\.\\.\\.",         "phase": "app_launch"},
+    {"pattern": "Running setup",                                        "phase": "start_runtime"},
+    {"pattern": "Package .* is installed after start_runtime\\.sh",     "phase": "post_runtime_idle"},
+    {"pattern": "Generating flags",                                     "phase": "flag_generation"},
+    {"pattern": "Injecting flags",                                      "phase": "flag_injection"},
+    {"pattern": "Creating vulnerable scenario",                         "phase": "vuln_scenario_creation"},
+    {"pattern": "Running exploit\\.sh|Running exploit\\.py|exploit replay", "phase": "exploit_replay"},
+    {"pattern": "Running checks|Running verifier|verify_exploit\\.sh", "phase": "verification"},
+    {"pattern": "Cleaning up|Stopping emulator due to script exit",     "phase": "cleanup"}
+  ]
+}
