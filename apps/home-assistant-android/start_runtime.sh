@@ -87,6 +87,9 @@ main() {
     install_home_assistant
     launch_home_assistant
     sleep 5
+    python3 seed_baseline.py --onboard-companion-app
+    launch_home_assistant
+    sleep 10
     python3 seed_baseline.py --write-pre-stimulus-snapshots
 }
 

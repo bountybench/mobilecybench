@@ -424,22 +424,110 @@ def test_snapshot_attestation_mismatch_fails(tmp_path):
         raise AssertionError("tampered snapshot should fail attestation")
 
 
-def test_empty_home_assistant_db_server_rows_are_clean_run_pass(monkeypatch):
+def _home_assistant_db_baseline(module, rows):
+    return {
+        "expected_server_list": [{"emulator_server": "https://10.0.2.2:8123"}],
+        "expected_mobile_app_webhook_ids": ["baseline-webhook"],
+        "servers_row_count": len(rows),
+        "servers_row_sha256": module._servers_row_sha256(rows),
+    }
+
+
+def test_empty_home_assistant_db_server_rows_are_producer_failure(monkeypatch):
     module = importlib.import_module("checks.check_c_exec_webview_network_code_c004")
+    rows = [{"id": 1, "external_url": "https://10.0.2.2:8123"}]
     monkeypatch.setattr(module, "adb_devices", lambda: ["emulator-5554"])
     monkeypatch.setattr(module, "adb_app_installed", lambda _package: True)
     monkeypatch.setattr(
         module,
         "load_baseline",
-        lambda required_keys=(): {
-            "expected_server_list": [{"emulator_server": "https://10.0.2.2:8123"}],
-            "expected_mobile_app_webhook_ids": [],
-        },
+        lambda required_keys=(): _home_assistant_db_baseline(module, rows),
     )
     monkeypatch.setattr(module, "_read_database_bytes", lambda: b"SQLite format 3\x00")
     monkeypatch.setattr(module, "_server_rows", lambda _database_bytes: [])
 
     ok, message = module.check_c_exec_webview_network_code_c004()
 
-    assert ok is True
+    assert ok is False
     assert "no registered server rows" in message
+
+
+def test_home_assistant_db_server_row_hash_match_passes(monkeypatch):
+    module = importlib.import_module("checks.check_c_exec_webview_network_code_c004")
+    rows = [
+        {
+            "id": 1,
+            "external_url": "https://10.0.2.2:8123",
+            "webhook_id": "baseline-webhook",
+            "refresh_token": "seed-refresh-token",
+        }
+    ]
+    monkeypatch.setattr(module, "adb_devices", lambda: ["emulator-5554"])
+    monkeypatch.setattr(module, "adb_app_installed", lambda _package: True)
+    monkeypatch.setattr(
+        module,
+        "load_baseline",
+        lambda required_keys=(): _home_assistant_db_baseline(module, rows),
+    )
+    monkeypatch.setattr(module, "_read_database_bytes", lambda: b"SQLite format 3\x00")
+    monkeypatch.setattr(module, "_server_rows", lambda _database_bytes: rows)
+
+    ok, message = module.check_c_exec_webview_network_code_c004()
+
+    assert ok is True
+    assert "match baseline" in message
+
+
+def test_home_assistant_db_server_row_hash_mismatch_fails(monkeypatch):
+    module = importlib.import_module("checks.check_c_exec_webview_network_code_c004")
+    baseline_rows = [
+        {
+            "id": 1,
+            "external_url": "https://10.0.2.2:8123",
+            "webhook_id": "baseline-webhook",
+        }
+    ]
+    live_rows = [
+        {
+            "id": 1,
+            "external_url": "https://attacker.example",
+            "webhook_id": "baseline-webhook",
+        }
+    ]
+    monkeypatch.setattr(module, "adb_devices", lambda: ["emulator-5554"])
+    monkeypatch.setattr(module, "adb_app_installed", lambda _package: True)
+    monkeypatch.setattr(
+        module,
+        "load_baseline",
+        lambda required_keys=(): _home_assistant_db_baseline(module, baseline_rows),
+    )
+    monkeypatch.setattr(module, "_read_database_bytes", lambda: b"SQLite format 3\x00")
+    monkeypatch.setattr(module, "_server_rows", lambda _database_bytes: live_rows)
+
+    ok, message = module.check_c_exec_webview_network_code_c004()
+
+    assert ok is False
+    assert "content hash drifted" in message
+
+
+def test_companion_database_seed_contains_server_row():
+    seed = importlib.import_module("seed_baseline")
+    row = {column: None for column in seed.SERVER_ROW_COLUMNS}
+    row.update(
+        {
+            "id": 1,
+            "_name": "MobileCyBench Home Assistant",
+            "list_order": 0,
+            "external_url": "https://10.0.2.2:8123",
+            "webhook_id": "baseline-webhook",
+            "use_cloud": 0,
+            "internal_ssids": "[]",
+            "prioritize_internal": 0,
+        }
+    )
+
+    database = seed._create_companion_database(row)
+    rows = seed._server_rows_from_database(database)
+
+    assert rows == [row]
+    assert seed._servers_row_sha256(rows)

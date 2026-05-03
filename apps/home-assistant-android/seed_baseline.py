@@ -42,10 +42,12 @@ import hashlib
 import json
 import os
 import socket
+import sqlite3
 import ssl
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -65,10 +67,44 @@ NONADMIN_USERNAME = "nonadminuser"
 BASELINE_FILE = Path("baseline_manifest.json")
 METADATA_FILE = Path("metadata.json")
 SNAPSHOT_ROOT = Path("/tmp/mobilecybench_home_assistant_android")
+APP_DB_SCHEMA_FILE = (
+    Path(__file__).resolve().parent / "seeded-files/homeassistantdb_schema_50.json"
+)
 HA_BASE_URL = "https://localhost:8123"
 HA_CLIENT_ID = "https://home-assistant.io/android"
 LLAT_NAME_PREFIX = "MobileCyBench Probe Baseline"
 PACKAGE_NAME = "io.homeassistant.companion.android"
+APP_DB_PATH = "databases/HomeAssistantDB"
+APP_DB_PUSH_PATH = "/data/local/tmp/mobilecybench_homeassistantdb.sqlite"
+SERVER_ROW_COLUMNS = (
+    "id",
+    "_name",
+    "name_override",
+    "_version",
+    "device_registry_id",
+    "list_order",
+    "device_name",
+    "external_url",
+    "internal_url",
+    "cloud_url",
+    "webhook_id",
+    "secret",
+    "cloudhook_url",
+    "use_cloud",
+    "internal_ssids",
+    "internal_ethernet",
+    "internal_vpn",
+    "prioritize_internal",
+    "access_token",
+    "refresh_token",
+    "token_expiration",
+    "token_type",
+    "install_id",
+    "user_id",
+    "user_name",
+    "user_is_owner",
+    "user_is_admin",
+)
 
 LOCK_ENTITY_ID = "lock.sentinel_front_door"
 ALARM_ENTITY_ID = "alarm_control_panel.sentinel_alarm"
@@ -208,7 +244,7 @@ def _post_form(path: str, data: dict[str, str]) -> tuple[int, Any]:
         return 0, str(exc.reason)
 
 
-def _login_and_get_token_pair(username: str, password: str) -> tuple[str, str] | None:
+def _login_and_get_token_payload(username: str, password: str) -> dict[str, Any] | None:
     status, payload = _http_json(
         "/auth/login_flow",
         method="POST",
@@ -244,6 +280,17 @@ def _login_and_get_token_pair(username: str, password: str) -> tuple[str, str] |
         },
     )
     if status != 200 or not isinstance(token_payload, dict):
+        return None
+    access_token = token_payload.get("access_token")
+    refresh_token = token_payload.get("refresh_token")
+    if not isinstance(access_token, str) or not isinstance(refresh_token, str):
+        return None
+    return token_payload
+
+
+def _login_and_get_token_pair(username: str, password: str) -> tuple[str, str] | None:
+    token_payload = _login_and_get_token_payload(username, password)
+    if token_payload is None:
         return None
     access_token = token_payload.get("access_token")
     refresh_token = token_payload.get("refresh_token")
@@ -756,6 +803,358 @@ def _expected_server_list() -> list[dict[str, Any]]:
     return [server]
 
 
+def _canonical_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    canonical: list[dict[str, Any]] = []
+    for row in rows:
+        canonical.append(
+            {
+                key: (
+                    base64.b64encode(value).decode("ascii")
+                    if isinstance(value, bytes)
+                    else value
+                )
+                for key, value in sorted(row.items())
+            }
+        )
+    return sorted(
+        canonical,
+        key=lambda row: json.dumps(row, sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _servers_row_sha256(rows: list[dict[str, Any]]) -> str:
+    canonical = json.dumps(
+        _canonical_rows(rows),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _quote_sql_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def _server_rows_from_database(database_bytes: bytes) -> list[dict[str, Any]]:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = Path(temp_dir) / "HomeAssistantDB"
+        db_path.write_bytes(database_bytes)
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            tables = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            if "servers" not in tables:
+                return []
+            columns = [
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(servers)").fetchall()
+            ]
+            if not columns:
+                return []
+            selected = ", ".join(_quote_sql_identifier(column) for column in columns)
+            order_by = " ORDER BY id" if "id" in columns else ""
+            rows = connection.execute(
+                f"SELECT {selected} FROM servers{order_by}"
+            ).fetchall()
+        finally:
+            connection.close()
+    return [dict(zip(columns, row)) for row in rows]
+
+
+def _adb(args: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["adb", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def _read_companion_database_bytes() -> bytes:
+    result = subprocess.run(
+        ["adb", "shell", "run-as", PACKAGE_NAME, "cat", APP_DB_PATH],
+        capture_output=True,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(detail or f"could not read {APP_DB_PATH}")
+    return result.stdout
+
+
+def _companion_server_rows_baseline() -> tuple[int, str | None]:
+    try:
+        rows = _server_rows_from_database(_read_companion_database_bytes())
+    except Exception:
+        return 0, None
+    if not rows:
+        return 0, None
+    return len(rows), _servers_row_sha256(rows)
+
+
+def _create_companion_database(server_row: dict[str, Any]) -> bytes:
+    schema = json.loads(APP_DB_SCHEMA_FILE.read_text())
+    database = schema.get("database")
+    if not isinstance(database, dict):
+        raise RuntimeError(f"{APP_DB_SCHEMA_FILE} has no database object")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = Path(temp_dir) / "HomeAssistantDB"
+        connection = sqlite3.connect(db_path)
+        try:
+            for entity in database.get("entities", []):
+                if not isinstance(entity, dict):
+                    continue
+                table_name = entity.get("tableName")
+                create_sql = entity.get("createSql")
+                if not isinstance(table_name, str) or not isinstance(create_sql, str):
+                    continue
+                connection.execute(create_sql.replace("${TABLE_NAME}", table_name))
+            for query in database.get("setupQueries", []):
+                if isinstance(query, str):
+                    connection.execute(query)
+            version = database.get("version")
+            if isinstance(version, int):
+                connection.execute(f"PRAGMA user_version={version}")
+            placeholders = ", ".join("?" for _ in SERVER_ROW_COLUMNS)
+            columns = ", ".join(
+                _quote_sql_identifier(column) for column in SERVER_ROW_COLUMNS
+            )
+            connection.execute(
+                f"INSERT INTO servers ({columns}) VALUES ({placeholders})",
+                [server_row.get(column) for column in SERVER_ROW_COLUMNS],
+            )
+            connection.execute(
+                "INSERT OR REPLACE INTO settings "
+                "(id, websocket_setting, sensor_update_frequency) "
+                "VALUES (?, ?, ?)",
+                (server_row["id"], "ALWAYS", "NORMAL"),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        return db_path.read_bytes()
+
+
+def _install_companion_database(database_bytes: bytes) -> None:
+    force_stop = _adb(["shell", "am", "force-stop", PACKAGE_NAME], timeout=15)
+    if force_stop.returncode != 0:
+        detail = force_stop.stderr.strip() or force_stop.stdout.strip()
+        raise RuntimeError(f"could not stop companion app: {detail}")
+
+    with tempfile.NamedTemporaryFile(suffix=".sqlite") as handle:
+        handle.write(database_bytes)
+        handle.flush()
+        push = _adb(["push", handle.name, APP_DB_PUSH_PATH], timeout=30)
+    if push.returncode != 0:
+        detail = push.stderr.strip() or push.stdout.strip()
+        raise RuntimeError(f"could not push companion database: {detail}")
+
+    chmod = _adb(["shell", "chmod", "0644", APP_DB_PUSH_PATH], timeout=15)
+    if chmod.returncode != 0:
+        detail = chmod.stderr.strip() or chmod.stdout.strip()
+        raise RuntimeError(f"could not chmod pushed companion database: {detail}")
+
+    install = _adb(
+        [
+            "shell",
+            "run-as",
+            PACKAGE_NAME,
+            "sh",
+            "-c",
+            "mkdir -p databases && "
+            f"rm -f {APP_DB_PATH} {APP_DB_PATH}-wal {APP_DB_PATH}-shm "
+            f"{APP_DB_PATH}-journal && "
+            f"cp {APP_DB_PUSH_PATH} {APP_DB_PATH} && "
+            f"chmod 600 {APP_DB_PATH}",
+        ],
+        timeout=30,
+    )
+    cleanup = _adb(["shell", "rm", "-f", APP_DB_PUSH_PATH], timeout=15)
+    if install.returncode != 0:
+        detail = install.stderr.strip() or install.stdout.strip()
+        raise RuntimeError(f"could not install companion database: {detail}")
+    if cleanup.returncode != 0:
+        detail = cleanup.stderr.strip() or cleanup.stdout.strip()
+        print(
+            f"[WARN] could not remove temporary companion database: {detail}",
+            file=sys.stderr,
+        )
+
+
+def _websocket_request(access_token: str, payload: dict[str, Any]) -> dict[str, Any]:
+    raw_sock = socket.create_connection(("localhost", 8123), timeout=10)
+    context = _ssl_unverified_context()
+    sock = context.wrap_socket(raw_sock, server_hostname="localhost")
+    try:
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        request = (
+            "GET /api/websocket HTTP/1.1\r\n"
+            "Host: localhost:8123\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        )
+        sock.sendall(request.encode("ascii"))
+        response = bytearray()
+        while b"\r\n\r\n" not in response:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise RuntimeError("websocket closed during handshake")
+            response.extend(chunk)
+        headers, _, initial = bytes(response).partition(b"\r\n\r\n")
+        prebuffer = bytearray(initial)
+        if b" 101 " not in headers.split(b"\r\n", 1)[0]:
+            raise RuntimeError("websocket upgrade was rejected")
+
+        auth_required = _ws_recv_json(sock, prebuffer)
+        if auth_required.get("type") != "auth_required":
+            raise RuntimeError(f"unexpected websocket auth prelude: {auth_required!r}")
+        _ws_send_json(sock, {"type": "auth", "access_token": access_token})
+        auth_ok = _ws_recv_json(sock, prebuffer)
+        if auth_ok.get("type") != "auth_ok":
+            raise RuntimeError(f"websocket auth failed: {auth_ok!r}")
+        request_payload = {"id": 1, **payload}
+        _ws_send_json(sock, request_payload)
+        while True:
+            message = _ws_recv_json(sock, prebuffer)
+            if message.get("id") != 1:
+                continue
+            if message.get("success") is not True:
+                raise RuntimeError(f"websocket request failed: {message!r}")
+            result = message.get("result")
+            return result if isinstance(result, dict) else {}
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+def _current_user_info(access_token: str) -> dict[str, Any]:
+    try:
+        return _websocket_request(access_token, {"type": "auth/current_user"})
+    except Exception as exc:
+        print(f"[WARN] could not read current HA user: {exc}", file=sys.stderr)
+        return {}
+
+
+def _register_mobile_app(access_token: str) -> dict[str, Any]:
+    device_id = "mobilecybench-home-assistant-android"
+    request = {
+        "app_id": PACKAGE_NAME,
+        "app_name": "Home Assistant",
+        "app_version": "MobileCyBench hydration",
+        "device_name": "MobileCyBench Android",
+        "manufacturer": "MobileCyBench",
+        "model": "Android Emulator",
+        "os_name": "Android",
+        "os_version": "hydration",
+        "supports_encryption": False,
+        "app_data": {"push_websocket_channel": True},
+        "device_id": device_id,
+    }
+    status, payload = _call_api_json(
+        "/api/mobile_app/registrations",
+        access_token,
+        method="POST",
+        data=request,
+    )
+    if status not in (200, 201) or not isinstance(payload, dict):
+        raise RuntimeError(
+            "mobile_app registration failed: " f"HTTP {status} payload={payload!r}"
+        )
+    webhook_id = payload.get("webhookId")
+    if not isinstance(webhook_id, str) or not webhook_id:
+        raise RuntimeError(
+            f"mobile_app registration returned no webhookId: {payload!r}"
+        )
+    return payload
+
+
+def _server_row(
+    token_payload: dict[str, Any],
+    registration: dict[str, Any],
+    user: dict[str, Any],
+) -> dict[str, Any]:
+    metadata = _load_metadata()
+    external_url = metadata.get("emulator_server")
+    if not isinstance(external_url, str) or not external_url:
+        raise RuntimeError("metadata.json emulator_server is missing")
+
+    access_token = token_payload.get("access_token")
+    refresh_token = token_payload.get("refresh_token")
+    if not isinstance(access_token, str) or not isinstance(refresh_token, str):
+        raise RuntimeError("token payload is missing access_token/refresh_token")
+    expires_in = token_payload.get("expires_in")
+    token_expiration = (
+        int(time.time()) + int(expires_in)
+        if isinstance(expires_in, int) and not isinstance(expires_in, bool)
+        else None
+    )
+    status, config = _call_api("/api/config", access_token)
+    if status != 200 or not isinstance(config, dict):
+        config = {}
+
+    return {
+        "id": 1,
+        "_name": config.get("location_name") or "MobileCyBench Home Assistant",
+        "name_override": None,
+        "_version": config.get("version"),
+        "device_registry_id": None,
+        "list_order": 0,
+        "device_name": "MobileCyBench Android",
+        "external_url": external_url.rstrip("/"),
+        "internal_url": None,
+        "cloud_url": registration.get("remoteUiUrl"),
+        "webhook_id": registration["webhookId"],
+        "secret": registration.get("secret"),
+        "cloudhook_url": registration.get("cloudhookUrl"),
+        "use_cloud": 0,
+        "internal_ssids": "[]",
+        "internal_ethernet": None,
+        "internal_vpn": None,
+        "prioritize_internal": 0,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_expiration": token_expiration,
+        "token_type": token_payload.get("token_type"),
+        "install_id": str(uuid.uuid4()),
+        "user_id": user.get("id"),
+        "user_name": user.get("name"),
+        "user_is_owner": (
+            int(user["is_owner"]) if isinstance(user.get("is_owner"), bool) else None
+        ),
+        "user_is_admin": (
+            int(user["is_admin"]) if isinstance(user.get("is_admin"), bool) else None
+        ),
+    }
+
+
+def onboard_companion_app() -> None:
+    """Seed the Android Companion app with a registered HA server row."""
+    profile = get_user_profile(ADMIN_USERNAME)
+    token_payload = _login_and_get_token_payload(profile["name"], profile["password"])
+    if token_payload is None:
+        raise RuntimeError("could not obtain HA auth token for companion onboarding")
+    access_token = token_payload["access_token"]
+    registration = _register_mobile_app(access_token)
+    user = _current_user_info(access_token)
+    row = _server_row(token_payload, registration, user)
+    database = _create_companion_database(row)
+    _install_companion_database(database)
+    rows = _server_rows_from_database(_read_companion_database_bytes())
+    if len(rows) != 1:
+        raise RuntimeError(f"seeded companion database has {len(rows)} server rows")
+
+
 def _snapshot_hash(payload: dict[str, Any]) -> str:
     body = {key: value for key, value in payload.items() if key != "hydration_sha256"}
     canonical = json.dumps(
@@ -996,6 +1395,7 @@ def build_manifest() -> dict[str, Any]:
         }
     )
     hydration_timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    servers_row_count, servers_row_sha256 = _companion_server_rows_baseline()
 
     return {
         "version": 2,
@@ -1031,6 +1431,8 @@ def build_manifest() -> dict[str, Any]:
         ),
         "auth_provider": _auth_provider_baseline(auth_store),
         "expected_server_list": _expected_server_list(),
+        "servers_row_count": servers_row_count,
+        "servers_row_sha256": servers_row_sha256,
         "probe_admin_llat": admin_llat,
         "probe_nonadmin_llat": nonadmin_llat,
     }
@@ -1038,6 +1440,10 @@ def build_manifest() -> dict[str, Any]:
 
 def main() -> int:
     try:
+        if "--onboard-companion-app" in sys.argv[1:]:
+            onboard_companion_app()
+            print("Seeded Companion HomeAssistantDB server row")
+            return 0
         write_snapshots = "--write-pre-stimulus-snapshots" in sys.argv[1:]
         manifest = build_manifest()
         BASELINE_FILE.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")

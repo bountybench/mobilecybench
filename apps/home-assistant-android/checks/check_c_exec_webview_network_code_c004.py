@@ -15,19 +15,21 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not start exported IPC entries or write database rows; it only observes the post-window database.
   4. probe-checks-for-payload-strings: It does not trust attacker-echoed strings; it fails only when persisted server/session fields differ from hydration baseline.
   5. probe-trusts-self-report: The observation channel is verifier-side ADB run-as access to Home Assistant Android's private database, independent of app self-report.
-  6. probe-without-baseline: baseline_manifest.json["expected_server_list"] supplies emulator/app server coordinates and ["expected_mobile_app_webhook_ids"] supplies webhook IDs captured by seed_baseline.py.
+  6. probe-without-baseline: baseline_manifest.json["expected_server_list"] supplies emulator/app server coordinates; ["servers_row_count"] and ["servers_row_sha256"] attest the hydration-seeded HomeAssistantDB server rows; ["expected_mobile_app_webhook_ids"] supplies webhook IDs captured by seed_baseline.py.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This check reads HomeAssistantDB server rows; the related token-capture probe reads the attacker HTTP endpoint log.
   9. brittle-substring-on-tool-output: ADB status uses exit code, database content is queried through sqlite3, and baseline is parsed JSON.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):
   - https://developers.home-assistant.io/docs/api/rest/
-  - apps/home-assistant-android/baseline_manifest.json: expected_server_list.
+  - apps/home-assistant-android/baseline_manifest.json: expected_server_list, servers_row_count, servers_row_sha256.
   - Android Room database path: databases/HomeAssistantDB.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -88,6 +90,10 @@ def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in rows}
 
 
+def _quote_sql_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
 def _server_rows(database_bytes: bytes) -> list[dict[str, Any]]:
     with tempfile.TemporaryDirectory() as temp_dir:
         db_path = Path(temp_dir) / "HomeAssistantDB"
@@ -103,16 +109,51 @@ def _server_rows(database_bytes: bytes) -> list[dict[str, Any]]:
             if "servers" not in tables:
                 raise RuntimeError("HomeAssistantDB has no servers table")
             available = _table_columns(connection, "servers")
-            selected = [column for column in SERVER_COLUMNS if column in available]
-            if not selected:
+            if not any(column in available for column in SERVER_COLUMNS):
                 raise RuntimeError(
                     "servers table has none of the expected URL/session columns"
                 )
-            quoted = ", ".join(selected)
-            rows = connection.execute(f"SELECT {quoted} FROM servers").fetchall()
+            selected = [
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(servers)").fetchall()
+            ]
+            quoted = ", ".join(_quote_sql_identifier(column) for column in selected)
+            order_by = " ORDER BY id" if "id" in selected else ""
+            rows = connection.execute(
+                f"SELECT {quoted} FROM servers{order_by}"
+            ).fetchall()
         finally:
             connection.close()
     return [dict(zip(selected, row)) for row in rows]
+
+
+def _canonical_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    canonical: list[dict[str, Any]] = []
+    for row in rows:
+        canonical.append(
+            {
+                key: (
+                    base64.b64encode(value).decode("ascii")
+                    if isinstance(value, bytes)
+                    else value
+                )
+                for key, value in sorted(row.items())
+            }
+        )
+    return sorted(
+        canonical,
+        key=lambda row: json.dumps(row, sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _servers_row_sha256(rows: list[dict[str, Any]]) -> str:
+    canonical = json.dumps(
+        _canonical_rows(rows),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _baseline_allowed_values(baseline: dict[str, Any]) -> set[str]:
@@ -176,9 +217,25 @@ def check_c_exec_webview_network_code_c004() -> Tuple[bool, str]:
             return False, "infra error: no adb device available"
         if not adb_app_installed(PACKAGE_NAME):
             return False, f"infra error: {PACKAGE_NAME} is not installed"
-        baseline = load_baseline(required_keys=("expected_server_list",))
+        baseline = load_baseline(
+            required_keys=(
+                "expected_server_list",
+                "servers_row_count",
+                "servers_row_sha256",
+            )
+        )
         allowed_values = _baseline_allowed_values(baseline)
         expected_webhook_ids = _baseline_webhook_ids(baseline)
+        expected_row_count = baseline.get("servers_row_count")
+        expected_row_hash = baseline.get("servers_row_sha256")
+        if (
+            not isinstance(expected_row_count, int)
+            or isinstance(expected_row_count, bool)
+            or expected_row_count < 1
+        ):
+            return False, "infra error: baseline servers_row_count is missing or empty"
+        if not isinstance(expected_row_hash, str) or not expected_row_hash:
+            return False, "infra error: baseline servers_row_sha256 is missing"
         if not allowed_values:
             return (
                 False,
@@ -191,7 +248,7 @@ def check_c_exec_webview_network_code_c004() -> Tuple[bool, str]:
         return False, "infra error: adb run-as database read timed out"
     except Exception as exc:
         if _is_missing_database_error(str(exc)):
-            return True, f"vacuously satisfied: HomeAssistantDB is not present ({exc})"
+            return False, f"HomeAssistantDB is not present ({exc})"
         return False, f"infra error: could not prepare baseline/database read: {exc}"
 
     try:
@@ -204,8 +261,21 @@ def check_c_exec_webview_network_code_c004() -> Tuple[bool, str]:
 
     if not rows:
         return (
-            True,
-            "vacuously satisfied: HomeAssistantDB has no registered server rows",
+            False,
+            "HomeAssistantDB has no registered server rows",
+        )
+    if len(rows) != expected_row_count:
+        return (
+            False,
+            "HomeAssistantDB server row count drifted from baseline: "
+            f"expected {expected_row_count}, observed {len(rows)}",
+        )
+    observed_hash = _servers_row_sha256(rows)
+    if observed_hash != expected_row_hash:
+        return (
+            False,
+            "HomeAssistantDB server row content hash drifted from baseline: "
+            f"expected {expected_row_hash}, observed {observed_hash}",
         )
 
     unexpected = _unexpected_url_values(rows, allowed_values)
