@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -529,25 +530,33 @@ class Workflow(ABC):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            start_new_session=True,
         )
-        lines = []
-        for line in proc.stdout:
-            line = line.rstrip("\n")
-            lines.append(line)
+
+        timed_out = False
+        try:
+            stdout, _stderr = proc.communicate(timeout=self.config.script_timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            timeout_message = (
+                f"Exploit replay timed out after {self.config.script_timeout}s; "
+                "killed subprocess tree"
+            )
+            logger.error(
+                f"Exploit replay timed out after {self.config.script_timeout}s; "
+                "killing subprocess tree"
+            )
+            self._kill_process_tree(proc)
+            stdout, _stderr = proc.communicate()
+            stdout = (stdout or "").rstrip("\n")
+            stdout = f"{stdout}\n{timeout_message}" if stdout else timeout_message
+
+        stdout = stdout or ""
+        for line in stdout.splitlines():
             logger.info(f"[replay] {line}")
 
-        try:
-            proc.wait(timeout=self.config.script_timeout)
-        except subprocess.TimeoutExpired:
-            logger.error(
-                f"Exploit replay timed out after {self.config.script_timeout}s, killing process"
-            )
-            proc.kill()
-            proc.wait()
-
-        stdout = "\n".join(lines)
-
-        logger.info(f"Exploit replay exit_code={proc.returncode}")
+        exit_code = self.TIMEOUT_EXIT_CODE if timed_out else proc.returncode
+        logger.info(f"Exploit replay exit_code={exit_code}")
 
         stdout_path = output_dir / "stdout.txt"
         evidence_path = output_dir / "replay_evidence.log"
@@ -562,16 +571,31 @@ class Workflow(ABC):
         )
 
         return {
-            "replay_exit_code": proc.returncode,
+            "replay_exit_code": exit_code,
             "replay_stdout": stdout,
             "replay_stderr": "",
             "replay_evidence_path": str(evidence_path),
             "image": exploit_image,
+            "replay_timed_out": timed_out,
         }
 
     # -- Shared evaluation helpers -----------------------------------------------
 
     SCORE_FILE = "scores.json"
+    TIMEOUT_EXIT_CODE = 124
+
+    @staticmethod
+    def _kill_process_tree(proc: subprocess.Popen) -> None:
+        """Kill a subprocess and any children in its process group."""
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
 
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
         return {"status": status, "score": score, "scores": {}, **kwargs}
@@ -620,29 +644,52 @@ class Workflow(ABC):
 
         cmd = ["bash", str(run_checks)] + args
         logger.info(f"Running checks: {' '.join(cmd)}")
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=check_dir,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             env=env,
+            start_new_session=True,
         )
+        try:
+            stdout, stderr = proc.communicate(timeout=self.config.script_timeout)
+        except subprocess.TimeoutExpired:
+            logger.error(
+                f"run_checks.sh timed out after {self.config.script_timeout}s; "
+                "killing subprocess tree"
+            )
+            self._kill_process_tree(proc)
+            stdout, stderr = proc.communicate()
+            if stdout:
+                logger.error(f"stdout: {stdout}")
+            if stderr:
+                logger.error(f"stderr: {stderr}")
+            return False
 
         if proc.returncode != 0:
             logger.error(f"run_checks.sh failed (exit {proc.returncode})")
-            if proc.stderr:
-                logger.error(f"stderr: {proc.stderr}")
+            if stdout:
+                logger.error(f"stdout: {stdout}")
+            if stderr:
+                logger.error(f"stderr: {stderr}")
             return False
 
         for path in (app_scores_out, generic_scores_out):
-            if path.exists():
-                try:
-                    json.loads(path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError:
-                    logger.error(f"Invalid JSON in {path}")
-                    return False
-            else:
-                logger.warning(f"Score output file not produced: {path}")
+            if not path.exists():
+                logger.error(f"Score output file not produced: {path}")
+                return False
+            try:
+                score_data = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as e:
+                logger.error(f"Invalid JSON in {path}: {e}")
+                return False
+            if not isinstance(score_data, dict) or not isinstance(
+                score_data.get("scores"), dict
+            ):
+                logger.error(f"Malformed score output file: {path}")
+                return False
 
         return True
 
