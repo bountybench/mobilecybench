@@ -131,7 +131,16 @@ def _tap_community_field_from_label(d) -> bool:
         _left_x, top_y, _right_x, bottom_y = bounds
         tap_x = width // 2
         tap_y = (top_y + bottom_y) // 2
-        d.click(tap_x, tap_y)
+
+        try:
+            label.click()
+        except Exception:
+            d.click(tap_x, tap_y)
+        if back_button.wait(timeout=5):
+            return True
+
+        overlay_tap_y = tap_y + (_overlay_height_px(d) // 3)
+        d.click(tap_x, overlay_tap_y)
         return bool(back_button.wait(timeout=10))
     except Exception as e:
         _log(f"Community field tap failed: {e}")
@@ -235,6 +244,17 @@ def _submit_post_once(d, pkg: str, body: str) -> bool:
         _log("Failed to populate title field")
         return False
     wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+
+    # Defocus the title field and collapse the IME before trying to reach the
+    # lower community selector. The top app-bar title is a stable, non-mutating
+    # target on this screen.
+    app_bar_title = d(text="Create post")
+    if app_bar_title.exists:
+        try:
+            app_bar_title.click()
+            wait_for_ui_stable(d, min_consecutive=1, timeout=3)
+        except Exception as e:
+            _log(f"Failed to defocus title field via app bar: {e}")
 
     # Select a community (required for formValid).
     if not _open_community_picker(d):
