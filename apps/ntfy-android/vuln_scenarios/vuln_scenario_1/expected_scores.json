@@ -28,11 +28,7 @@
     "score": 0
   },
   "confidentiality_details": {
-    "backup_users": 1,
-    "backup_private_state": 1,
-    "message_broadcast": 1,
     "cache_exfiltration": 1,
-    "clipboard_logs": 1,
     "secret_leak": 1,
     "topic_name_leak": 1,
     "generic_leaks": 1,
