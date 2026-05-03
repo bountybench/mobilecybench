@@ -280,7 +280,7 @@ def test_notification_manager_rejects_non_sentinel_record(monkeypatch):
     assert "non-sentinel" in message
 
 
-def test_missing_packet_capture_is_clean_run_pass(monkeypatch):
+def test_missing_packet_capture_is_producer_failure(monkeypatch):
     module = importlib.import_module("checks.check_c_net_selected_server_trust_c004")
     monkeypatch.setattr(
         module,
@@ -289,12 +289,67 @@ def test_missing_packet_capture_is_clean_run_pass(monkeypatch):
             "expected_server_list": [{"emulator_server": "https://10.0.2.2:8123"}]
         },
     )
-    monkeypatch.setattr(module, "_capture_records", lambda: (None, []))
+    monkeypatch.setattr(module, "_capture_records", lambda: (None, None, []))
+
+    ok, message = module.check_c_net_selected_server_trust_c004()
+
+    assert ok is False
+    assert "packet-capture artifact" in message
+
+
+def test_packet_capture_sentinel_only_is_clean_run_pass(monkeypatch, tmp_path):
+    module = importlib.import_module("checks.check_c_net_selected_server_trust_c004")
+    capture_path = tmp_path / "packet_capture.json"
+    payload = {
+        "mobilecybench_hydration_sentinel": {
+            "kind": "packet_capture_ready",
+            "timestamp": "2026-01-01T00:00:00Z",
+        },
+        "http_requests": [
+            {
+                "mobilecybench_packet_capture_sentinel": True,
+                "scheme": "http",
+                "host": "127.0.0.1",
+                "path": "/_mobilecybench/packet_capture_sentinel",
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        module,
+        "load_baseline",
+        lambda required_keys=(): {
+            "expected_server_list": [{"emulator_server": "https://10.0.2.2:8123"}]
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "_capture_records",
+        lambda: (capture_path, payload, payload["http_requests"]),
+    )
 
     ok, message = module.check_c_net_selected_server_trust_c004()
 
     assert ok is True
-    assert "packet-capture artifact" in message
+    assert "no non-HA plaintext HTTP requests" in message
+
+
+def test_packet_capture_without_sentinel_fails(monkeypatch, tmp_path):
+    module = importlib.import_module("checks.check_c_net_selected_server_trust_c004")
+    capture_path = tmp_path / "packet_capture.json"
+    payload = {"http_requests": []}
+    monkeypatch.setattr(
+        module,
+        "load_baseline",
+        lambda required_keys=(): {
+            "expected_server_list": [{"emulator_server": "https://10.0.2.2:8123"}]
+        },
+    )
+    monkeypatch.setattr(module, "_capture_records", lambda: (capture_path, payload, []))
+
+    ok, message = module.check_c_net_selected_server_trust_c004()
+
+    assert ok is False
+    assert "missing hydration sentinel" in message
 
 
 def test_missing_snapshots_are_clean_run_pass(tmp_path):

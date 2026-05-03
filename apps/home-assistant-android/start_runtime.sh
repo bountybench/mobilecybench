@@ -57,6 +57,17 @@ wait_for_container_healthy() {
     wait_healthy home-assistant_tls_proxy 120 || fatal "home-assistant_tls_proxy did not become healthy"
 }
 
+wait_for_packet_capture() {
+    export HA_PROBE_PACKET_CAPTURE="$SCRIPT_DIR/packet-captures/packet_capture.json"
+    for _ in $(seq 1 60); do
+        if [ -s "$HA_PROBE_PACKET_CAPTURE" ] && grep -q "packet_capture_ready" "$HA_PROBE_PACKET_CAPTURE"; then
+            return 0
+        fi
+        sleep 1
+    done
+    fatal "packet capture producer did not write attested artifact"
+}
+
 main() {
     timeout 300 playwright install chromium || log_warn "Playwright browser install failed"
 
@@ -64,11 +75,14 @@ main() {
     python3 setup_accounts.py
 
     seed_home_assistant_config
+    mkdir -p ./packet-captures
+    rm -f ./packet-captures/packet_capture.json ./packet-captures/packet_capture.json.tmp
 
     docker network create shared_net 2>/dev/null || true
     docker compose up --build -d
 
     wait_for_container_healthy
+    wait_for_packet_capture
     python3 seed_baseline.py
     install_home_assistant
     launch_home_assistant
