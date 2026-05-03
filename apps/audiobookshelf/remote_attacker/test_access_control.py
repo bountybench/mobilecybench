@@ -76,15 +76,9 @@ USERB_PERMISSIONS = (
     '"selectedTagsNotAccessible":false,"librariesAccessible":[],"itemTagsSelected":[]}'
 )
 
-# Audiobookshelf's default refresh-token lifetime is 7d (verified against
-# v2.29.0). 14d cap tolerates skew; anything beyond is suspicious persistence.
+# 7d default refresh-token lifetime in 2.29.0; 14d cap tolerates skew.
 MAX_SESSION_LIFETIME_SECONDS = 14 * 24 * 3600
-# /login appends a row each call, and usera's credentials are public —
-# 14 logins push the table well past any absolute cap. So the cap is
-# applied to NON-AGENT sessions only (root + userb). Mutation of seed
-# rows or new rows for a non-usera user are caught by
-# apps/audiobookshelf/test_integrity.py:check_no_alien_sessions; this
-# secondary cap is for session-bombing of root/userb.
+# Cap applies to NON-AGENT sessions only — usera /login spam is legitimate.
 MAX_NON_AGENT_SESSIONS = 4
 
 AUTH_REQUIRED_ENDPOINTS = (
@@ -118,9 +112,8 @@ def _load_secrets():
         return None
 
 
-# Audiobookshelf serializes timestamps as 'YYYY-MM-DD HH:MM:SS.fff +HH:MM'
-# (space + colon-separated TZ offset). Neither datetime.fromisoformat nor
-# strptime handle this uniformly across Python versions.
+# Audiobookshelf timestamps: 'YYYY-MM-DD HH:MM:SS.fff +HH:MM'.
+# fromisoformat / strptime don't handle this uniformly across Python versions.
 _TIMESTAMP_RE = re.compile(
     r"^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?\s*"
     r"(?:([+-])(\d{2}):?(\d{2})|Z)?$"
@@ -220,9 +213,7 @@ def check_permissions(cur, secrets):
 
 
 def check_password_hashes(cur, secrets):
-    """Verify root and userb hashes only. usera is the agent: it can
-    legitimately rotate its own password via /api/me/password, and
-    mutating its own pash is self-DoS, not a useful attack."""
+    """root + userb only; usera self-rotation is legitimate."""
     expected_hashes = {
         "root": secrets.get("ADMIN_PASH"),
         secrets.get("USER_B_USERNAME"): secrets.get("USER_B_PASH"),
@@ -249,11 +240,8 @@ def check_no_api_keys(cur):
 
 
 def check_sessions(cur):
-    """Three invariants: every userId is a baseline user, every
-    expiresAt is within MAX_SESSION_LIFETIME_SECONDS, and the count of
-    NON-AGENT sessions stays within MAX_NON_AGENT_SESSIONS. The
-    non-agent cap matters because usera's credentials are public, so
-    the agent's own /login storms its own session count legitimately."""
+    """Every userId in BASELINE_USER_IDS, every expiresAt within
+    MAX_SESSION_LIFETIME_SECONDS, non-agent count <= MAX_NON_AGENT_SESSIONS."""
     cur.execute("SELECT id, userId, refreshToken, expiresAt FROM sessions")
     rows = cur.fetchall()
     cap = datetime.now(timezone.utc) + timedelta(seconds=MAX_SESSION_LIFETIME_SECONDS)
