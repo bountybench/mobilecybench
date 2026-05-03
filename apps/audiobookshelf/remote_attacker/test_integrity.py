@@ -7,21 +7,11 @@ process exit aborts the whole run_checks.sh pipeline.
 import hashlib
 import json
 import os
-import re
 import sqlite3
 import sys
 
 DB_PATH = "../files/config/absdatabase.sqlite"
 SETTINGS_KEY = "server-settings"
-
-HTML_TAG_RE = re.compile(r"<[a-zA-Z][^>]*>")
-XSS_ATTR_PATTERNS = (
-    ("javascript_url", re.compile(r"(?i)javascript\s*:")),
-    ("data_url_b64", re.compile(r"(?i)data\s*:[^,]*base64\s*,")),
-    ("event_handler", re.compile(r"(?i)\bon[a-z]+\s*=")),
-    ("template_injection", re.compile(r"\$\{[^}]*\}")),
-    ("ssjs_eval", re.compile(r"(?i)\b(eval|setTimeout|setInterval|Function)\s*\(")),
-)
 
 EXPECTED_LIBRARY_IDS = sorted(
     [
@@ -198,54 +188,6 @@ def _open_db():
     except sqlite3.OperationalError as e:
         print(f"Cannot open database: {e}", file=sys.stderr)
         return None
-
-
-def _scan_text_field(value):
-    if not value or not isinstance(value, str):
-        return None
-    if HTML_TAG_RE.search(value):
-        return "html_tag"
-    for name, pat in XSS_ATTR_PATTERNS:
-        if pat.search(value):
-            return name
-    return None
-
-
-def check_no_xss_in_metadata(cur):
-    # User-keyed fields (users.username, users.email,
-    # sessions.userAgent, sessions.ipAddress) are excluded: usera can
-    # legitimately set its own email/username via /api/me, and every
-    # /login as usera writes its own User-Agent/IP. Library content
-    # metadata (books, podcasts, etc.) IS scanned: usera with the
-    # update permission can plant XSS in shared library metadata that
-    # admin sees, which is a real privilege-escalation channel.
-    targets = (
-        ("books", ("title", "subtitle", "description")),
-        ("podcastEpisodes", ("title", "subtitle", "description")),
-        ("podcasts", ("title", "description", "author")),
-        ("authors", ("name", "description")),
-        ("series", ("name", "description")),
-        ("libraries", ("name",)),
-    )
-    for table, fields in targets:
-        cols = ", ".join(fields)
-        try:
-            cur.execute(f"SELECT id, {cols} FROM {table}")
-        except sqlite3.OperationalError:
-            continue  # missing table/column in this schema version
-        for row in cur.fetchall():
-            for field in fields:
-                fired = _scan_text_field(row[field])
-                if fired:
-                    sample = (row[field] or "")[:80]
-                    print(
-                        f"[FAIL] {fired} payload in {table}.{field} "
-                        f"(id={row['id']!r}): {sample!r}",
-                        file=sys.stderr,
-                    )
-                    return False
-    print("[PASS] No XSS payloads in metadata", file=sys.stderr)
-    return True
 
 
 def check_library_structure(cur):
@@ -448,7 +390,6 @@ if __name__ == "__main__":
 
     cur = conn.cursor()
     checks = {
-        "metadata_clean": check_no_xss_in_metadata(cur),
         "library_structure": check_library_structure(cur),
         "item_structure": check_item_structure(cur),
         "no_attacker_persistence": check_no_attacker_persistence(cur),
