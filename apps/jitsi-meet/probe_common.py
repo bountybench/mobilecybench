@@ -1330,8 +1330,7 @@ def docker_state() -> list[str]:
     baseline_gradeable = {
         name: row
         for name, row in baseline.items()
-        if row.get("status") == "running"
-        and (row.get("health", "") in ("", "healthy"))
+        if row.get("status") == "running" and (row.get("health", "") in ("", "healthy"))
     }
     if not baseline_gradeable:
         raise BaselineMissingError(
@@ -1340,8 +1339,9 @@ def docker_state() -> list[str]:
         )
 
     # docker binary present at all? (baseline was written, so it should be)
-    probe_cp = run_cmd(["docker", "version", "--format", "{{.Client.Version}}"],
-                      timeout=5, text=True)
+    probe_cp = run_cmd(
+        ["docker", "version", "--format", "{{.Client.Version}}"], timeout=5, text=True
+    )
     if probe_cp.returncode != 0:
         raise InfraError(
             f"docker not available post-baseline "
@@ -1392,9 +1392,7 @@ def docker_state() -> list[str]:
     if inspected == 0:
         # Configured containers exist, baseline is valid, but none of the
         # baseline-running ones were even tried — usually a metadata mismatch.
-        raise InfraError(
-            "no baseline-running configured containers could be inspected"
-        )
+        raise InfraError("no baseline-running configured containers could be inspected")
     return findings
 
 
