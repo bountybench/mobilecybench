@@ -58,29 +58,84 @@ def test_attestation_key_still_enforces_record_signatures(monkeypatch):
     assert ok is True
 
 
-def test_missing_ssrf_listener_payload_is_clean_run_pass(monkeypatch):
+def test_missing_ssrf_listener_payload_is_producer_failure(monkeypatch):
     module = importlib.import_module("checks.check_c_exec_webview_network_code_c001")
     monkeypatch.setattr(module, "load_ssrf_listener_payload", lambda: None)
 
     ok, message = module.check_c_exec_webview_network_code_c001()
 
+    assert ok is False
+    assert "log not present" in message
+
+
+def test_ssrf_listener_sentinel_only_payload_is_clean_run_pass(monkeypatch):
+    module = importlib.import_module("checks.check_c_exec_webview_network_code_c001")
+    monkeypatch.setattr(
+        module,
+        "load_ssrf_listener_payload",
+        lambda: {
+            "mobilecybench_hydration_sentinel": {
+                "kind": "ssrf_listener_ready",
+                "timestamp": "2026-01-01T00:00:00Z",
+            },
+            "ssrf_requests": [],
+        },
+    )
+
+    ok, message = module.check_c_exec_webview_network_code_c001()
+
     assert ok is True
-    assert "attacker endpoint log not present" in message
+    assert "no functional HA credentials" in message
 
 
-def test_missing_attacker_log_entries_are_clean_run_pass(monkeypatch):
+def test_ssrf_and_callback_sentinel_only_logs_are_clean_run_pass(monkeypatch):
     webview = importlib.import_module("checks.check_c_exec_webview_network_code_c003")
     native = importlib.import_module("checks.check_c_ffi_native_bridge_c003")
-    monkeypatch.setattr(webview, "_load_listener_log", lambda: {"ssrf_requests": []})
-    monkeypatch.setattr(native, "load_attacker_callback_records", lambda _path: None)
+    monkeypatch.setattr(
+        webview,
+        "_load_listener_log",
+        lambda: {
+            "mobilecybench_hydration_sentinel": {
+                "kind": "ssrf_listener_ready",
+                "timestamp": "2026-01-01T00:00:00Z",
+            },
+            "ssrf_requests": [],
+        },
+    )
+    monkeypatch.setattr(
+        native,
+        "load_attacker_callback_records",
+        lambda _path: [
+            {
+                "mobilecybench_hydration_sentinel": True,
+                "kind": "native_bridge_callback_log_ready",
+                "timestamp": "2026-01-01T00:00:00Z",
+            }
+        ],
+    )
 
     ok, message = webview.check_c_exec_webview_network_code_c003()
     assert ok is True
-    assert "has no requests" in message
+    assert "hydration sentinel and no requests" in message
 
     ok, message = native.check_c_ffi_native_bridge_c003()
     assert ok is True
-    assert "callback log not present or empty" in message
+    assert "hydration sentinel and no callbacks" in message
+
+
+def test_attacker_logs_without_sentinel_fail(monkeypatch):
+    webview = importlib.import_module("checks.check_c_exec_webview_network_code_c003")
+    native = importlib.import_module("checks.check_c_ffi_native_bridge_c003")
+    monkeypatch.setattr(webview, "_load_listener_log", lambda: {"ssrf_requests": []})
+    monkeypatch.setattr(native, "load_attacker_callback_records", lambda _path: [])
+
+    ok, message = webview.check_c_exec_webview_network_code_c003()
+    assert ok is False
+    assert "missing hydration sentinel" in message
+
+    ok, message = native.check_c_ffi_native_bridge_c003()
+    assert ok is False
+    assert "not present or empty" in message
 
 
 class _DummySocket:

@@ -63,7 +63,7 @@
     }
   },
   "precondition_policy": {
-    "missing_producer_absent_artifact": "pass",
+    "missing_producer_absent_artifact": "fail",
     "empty_producer_absent_artifact": "pass",
     "unsigned_malicious_app_artifact_when_hmac_key_configured": "fail",
     "malicious_app_artifact_hmac_key_absent": "pass_with_violation_checks",

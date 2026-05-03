@@ -57,6 +57,7 @@ services:
       - SSRF_LISTEN_PORT=14378
       - SSRF_LOG_FILE=/app/logs/ssrf_requests.json
       - SSRF_PROBE_HOST=ha-ssrf-listener
+      - NATIVE_BRIDGE_CALLBACK_LOG_FILE=/tmp/native_bridge_callbacks.ndjson
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:14378/health', timeout=2)"]
       interval: 5s

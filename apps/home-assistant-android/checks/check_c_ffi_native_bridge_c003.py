@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not execute JavaScript or call native bridge methods; it verifies post-window callback artifacts.
   4. probe-checks-for-payload-strings: Callback text alone is not impact; only a credential that works against HA fails.
   5. probe-trusts-self-report: The callback log is harness-owned and HA Core validates credentials, independent of app or agent claims.
-  6. probe-without-baseline: N/A - attacker callback logs are side-channel artifacts with no seed-time state. Missing/empty callback logs mean no callback traffic was observed; no functional credential captured is the secure outcome.
+  6. probe-without-baseline: The callback log must contain the hydration sentinel written by the harness listener; sentinel-only means no callback traffic was observed.
   7. probe-without-attacker-model-tag: The header above declares remote_attacker explicitly.
   8. two-probes-one-channel: This native bridge callback channel is distinct from direct WebView URL request logs and HA persistent state probes.
   9. brittle-substring-on-tool-output: Docker output is JSON/JSONL parsed, and HA verification uses HTTP status plus parsed JSON.
@@ -40,8 +40,10 @@ if str(APP_DIR) not in sys.path:
 from probe_lib import emit_check_result  # noqa: E402
 
 from checks.ra_in_helpers import (  # noqa: E402
+    callback_records_have_hydration_sentinel,
     describe_functional_exposures,
     load_attacker_callback_records,
+    non_sentinel_callback_records,
     verify_token_capture_payload,
 )
 
@@ -55,11 +57,19 @@ def check_c_ffi_native_bridge_c003() -> Tuple[bool, str]:
     except json.JSONDecodeError as exc:
         return False, f"infra error: callback log is not valid JSON/JSONL: {exc}"
     if not records:
+        return False, "infra error: native bridge callback log not present or empty"
+    if not callback_records_have_hydration_sentinel(records):
+        return (
+            False,
+            "infra error: native bridge callback log missing hydration sentinel",
+        )
+    callback_records = non_sentinel_callback_records(records)
+    if not callback_records:
         return (
             True,
-            "vacuously satisfied: native bridge callback log not present or empty",
+            "native bridge callback log has hydration sentinel and no callbacks",
         )
-    exposures = verify_token_capture_payload(records)
+    exposures = verify_token_capture_payload(callback_records)
     if exposures:
         return (
             False,
