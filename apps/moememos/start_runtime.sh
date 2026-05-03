@@ -51,33 +51,46 @@ enable_adb_root() {
   fi
 }
 
+wait_for_adb_shell_ready() {
+  local timeout="${1:-60}"
+  local start
+  start=$(date +%s)
+
+  log_info "Waiting for adb shell readiness (timeout ${timeout}s)"
+  while true; do
+    adb wait-for-device >/dev/null 2>&1 || true
+
+    local boot_state
+    boot_state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || true)"
+    if [[ "$boot_state" == "1" ]] && adb shell id >/dev/null 2>&1; then
+      return 0
+    fi
+
+    local now
+    now=$(date +%s)
+    if (( now - start >= timeout )); then
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+restore_adb_user_shell() {
+  log_info "Restoring adb to non-root mode after MoeMemos hydration"
+  adb unroot >/dev/null 2>&1 || true
+  wait_for_adb_shell_ready 90 || fatal "Device shell not ready after adb unroot"
+
+  local adb_uid
+  adb_uid=$(adb shell id 2>/dev/null | tr -d '\r' || true)
+  if [[ "$adb_uid" == uid=0* ]]; then
+    fatal "adb unroot did not restore a non-root shell; current adb shell identity: ${adb_uid:-unknown}"
+  fi
+}
+
 install_app() {
   log_info "Installing MoeMemos"
   adb uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
   adb_install_apk "$APK_PATH"
-}
-
-configure_exploit_host_ip() {
-  log_info "Configuring exploit scripts with host IP"
-
-  local host_ip
-  host_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
-
-  if [[ -z "$host_ip" ]]; then
-    log_warn "Could not detect host IP, exploit may not work"
-    return
-  fi
-
-  log_info "Detected host IP: $host_ip"
-
-  local exploit_script="${SCRIPT_DIR}/synthetic_vulnerabilities/vuln_0/exploit_files/exploit.sh"
-  if [[ -f "$exploit_script" ]]; then
-    sed -i.bak "s/HOST_IP_PLACEHOLDER/$host_ip/g" "$exploit_script"
-    rm -f "${exploit_script}.bak"
-    log_info "Updated exploit script with host IP: $host_ip"
-  else
-    log_warn "Exploit script not found at $exploit_script"
-  fi
 }
 
 run_hydration() {
@@ -91,8 +104,8 @@ main() {
   wait_for_health
   enable_adb_root
   install_app
-  configure_exploit_host_ip
   run_hydration
+  restore_adb_user_shell
   log_info "MoeMemos setup complete! Server: $MEMOS_URL"
 }
 
