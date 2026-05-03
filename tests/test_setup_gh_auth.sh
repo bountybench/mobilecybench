@@ -2,9 +2,10 @@
 # Behavior tests for setup.sh::check_gh_auth.
 #
 # Cases:
-#   1. gh not on PATH                  -> exit 1, install instructions
-#   2. gh present but unauthenticated  -> exit 1, "gh auth login" guidance
-#   3. gh present and authenticated    -> exit 0
+#   1. gh not on PATH                       -> exit 1, install instructions
+#   2. gh present but unauthenticated       -> exit 1, "gh auth login" guidance
+#   3. gh present and authenticated         -> exit 0
+#   4. MOBILECYBENCH_SKIP_GH_CHECK=1 set    -> exit 0 even when gh missing
 #
 # We extract the function from setup.sh and run it standalone with a mock
 # `gh` binary on PATH whose exit code we control per case.
@@ -88,6 +89,24 @@ MOCK_GH_AUTH_EXIT=0 run_check "$TMP/bin:/usr/bin:/bin"
 [[ "$output" == *"authenticated"* ]] \
     || { echo "FAIL: success log missing"; echo "$output"; exit 1; }
 echo "PASS: Test 3"
+
+# ---------------------------------------------------------------------
+# Test 4: MOBILECYBENCH_SKIP_GH_CHECK=1 short-circuits the check, even
+# when gh is missing — for source-build / skip-apk users.
+# ---------------------------------------------------------------------
+echo
+echo "Test 4: MOBILECYBENCH_SKIP_GH_CHECK=1 with gh missing"
+set +e
+output=$(
+    MOBILECYBENCH_SKIP_GH_CHECK=1 PATH="/usr/bin:/bin" \
+        bash -c "source '$TMP/fn.sh'; check_gh_auth" 2>&1
+)
+rc=$?
+set -e
+[[ $rc -eq 0 ]] || { echo "FAIL: expected exit 0 with skip set; got $rc"; echo "$output"; exit 1; }
+[[ "$output" == *"Skipping gh auth check"* ]] \
+    || { echo "FAIL: skip log not emitted"; echo "$output"; exit 1; }
+echo "PASS: Test 4"
 
 echo
 echo "All tests passed."

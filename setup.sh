@@ -420,6 +420,11 @@ Install apktool (see options above) and re-run setup.sh."
 }
 
 check_gh_auth() {
+    if [[ -n "${MOBILECYBENCH_SKIP_GH_CHECK:-}" ]]; then
+        log "Skipping gh auth check (MOBILECYBENCH_SKIP_GH_CHECK set)"
+        return 0
+    fi
+
     log "Checking GitHub CLI authentication..."
 
     if ! command_exists gh; then
@@ -427,7 +432,8 @@ check_gh_auth() {
   macOS:   brew install gh
   Linux:   sudo apt install gh   (or see https://cli.github.com/)
   Windows: choco install gh
-Then run: gh auth login"
+Then run: gh auth login
+(Building only from source / skip-apk? Set MOBILECYBENCH_SKIP_GH_CHECK=1 to skip this check.)"
     fi
 
     # Also accepts GH_TOKEN / GITHUB_TOKEN env auth (CI/Docker, no `gh auth login`).
