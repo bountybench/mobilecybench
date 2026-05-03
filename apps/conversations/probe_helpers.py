@@ -55,8 +55,21 @@ AVAIL_TIMEOUT = 5
 
 APP_PACKAGE = metadata["package_name"]
 APP_DB_PATH = f"/data/data/{APP_PACKAGE}/databases/history"
-EXPECTED_ACCOUNT_JID = metadata["username"]
 INTEGRITY_STATE_PATH = _APP_DIR / ".runtime_integrity_state.json"
+
+# In remote_attacker mode, the attacker is `agentuser` and the on-device
+# victim is a different account (user1 in this benchmark). Probes that
+# read victim-side state (the on-device messages/identities/accounts
+# table) need to compare against the VICTIM's JID, not the agent's.
+# The workflow sets MCB_ATTACKER_MODEL when invoking probes / hooks.
+ATTACKER_MODEL = os.environ.get("MCB_ATTACKER_MODEL", "malicious_app")
+if ATTACKER_MODEL == "remote_attacker":
+    VICTIM_USER = "user1"
+else:
+    VICTIM_USER = metadata["username"].split("@", 1)[0]
+VICTIM_JID = f"{VICTIM_USER}@{DOMAIN}"
+# Backwards-compat alias used by test_access_control.py.
+EXPECTED_ACCOUNT_JID = VICTIM_JID
 
 NON_AGENT_CREDENTIALS = {
     "admin": secrets["admin_password"],
