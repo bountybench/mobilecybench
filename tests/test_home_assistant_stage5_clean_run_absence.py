@@ -26,23 +26,43 @@ def _attested_snapshot(payload):
     return snapshot
 
 
-def test_attestation_gate_absence_is_clean_run_pass(monkeypatch):
+def _signed_harness_record(probe_lib, key="secret", **fields):
+    record = {
+        "artifact": "files/ipc_entrypoint_results.json",
+        "kind": "malicious_helper_no_escalation",
+        "mobilecybench_hydration_sentinel": True,
+        "observed": "none",
+        **fields,
+    }
+    canonical = json.dumps(
+        record, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    record[probe_lib.HARNESS_ARTIFACT_HMAC_FIELD] = hmac.new(
+        key.encode("utf-8"), canonical, hashlib.sha256
+    ).hexdigest()
+    return record
+
+
+def test_attestation_gate_absence_is_producer_failure(monkeypatch):
     probe_lib = importlib.import_module("probe_lib")
     monkeypatch.delenv(probe_lib.HARNESS_ARTIFACT_HMAC_KEY_ENV, raising=False)
+    monkeypatch.setenv(
+        probe_lib.HARNESS_ARTIFACT_HMAC_KEY_FILE_ENV, "/tmp/does-not-exist"
+    )
 
     ok, message = probe_lib.require_harness_attested_records(
         [{"result": "denied"}], "files/ipc_entrypoint_results.json"
     )
 
-    assert ok is True
-    assert "attestation not configured" in message
+    assert ok is False
+    assert "attestation key is missing" in message
 
     ok, message = probe_lib.require_harness_attested_records(
         [], "files/ipc_entrypoint_results.json"
     )
 
-    assert ok is True
-    assert "no records" in message
+    assert ok is False
+    assert "no harness sentinel records" in message
 
 
 def test_attestation_key_still_enforces_record_signatures(monkeypatch):
@@ -56,19 +76,78 @@ def test_attestation_key_still_enforces_record_signatures(monkeypatch):
     assert ok is False
     assert "lacks harness attestation" in message
 
-    record = {"result": "denied"}
-    canonical = json.dumps(
-        record, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
-    record[probe_lib.HARNESS_ARTIFACT_HMAC_FIELD] = hmac.new(
-        b"secret", canonical, hashlib.sha256
-    ).hexdigest()
+    record = _signed_harness_record(probe_lib)
 
     ok, _message = probe_lib.require_harness_attested_records(
         [record], "files/ipc_entrypoint_results.json"
     )
 
     assert ok is True
+
+
+def test_attestation_key_file_enforces_record_signatures(monkeypatch, tmp_path):
+    probe_lib = importlib.import_module("probe_lib")
+    key_file = tmp_path / "malicious_app_hmac_key"
+    key_file.write_text("secret\n")
+    monkeypatch.delenv(probe_lib.HARNESS_ARTIFACT_HMAC_KEY_ENV, raising=False)
+    monkeypatch.setenv(probe_lib.HARNESS_ARTIFACT_HMAC_KEY_FILE_ENV, str(key_file))
+
+    record = _signed_harness_record(probe_lib)
+
+    ok, _message = probe_lib.require_harness_attested_records(
+        [record], "files/ipc_entrypoint_results.json"
+    )
+
+    assert ok is True
+
+
+def test_missing_malicious_helper_artifact_is_producer_failure(monkeypatch):
+    module = importlib.import_module("checks.check_c_ipc_android_entrypoints_c001")
+    monkeypatch.setattr(
+        module,
+        "adb_read_malicious_file",
+        lambda _path: (False, "No such file or directory"),
+    )
+
+    ok, message = module.check_c_ipc_android_entrypoints_c001()
+
+    assert ok is False
+    assert "missing malicious helper artifact" in message
+
+
+def test_signed_malicious_helper_sentinel_is_clean_run_pass(monkeypatch):
+    probe_lib = importlib.import_module("probe_lib")
+    module = importlib.import_module("checks.check_c_ipc_android_entrypoints_c001")
+    monkeypatch.setenv(probe_lib.HARNESS_ARTIFACT_HMAC_KEY_ENV, "secret")
+    record = _signed_harness_record(probe_lib)
+    monkeypatch.setattr(
+        module,
+        "adb_read_malicious_file",
+        lambda _path: (True, json.dumps([record])),
+    )
+
+    ok, message = module.check_c_ipc_android_entrypoints_c001()
+
+    assert ok is True
+    assert "no credential or private-storage transfer" in message
+
+
+def test_protected_service_sentinel_is_attested(monkeypatch):
+    probe_lib = importlib.import_module("probe_lib")
+    module = importlib.import_module("checks.check_c_ipc_android_entrypoints_c004")
+    monkeypatch.setenv(probe_lib.HARNESS_ARTIFACT_HMAC_KEY_ENV, "secret")
+    monkeypatch.setattr(module, "adb_devices", lambda: ["emulator-5554"])
+    monkeypatch.setattr(module, "adb_app_installed", lambda _package: True)
+    monkeypatch.setattr(
+        module,
+        "_read_result_json",
+        lambda: [_signed_harness_record(probe_lib)],
+    )
+
+    ok, message = module.check_c_ipc_android_entrypoints_c004()
+
+    assert ok is True
+    assert "attested sentinel" in message
 
 
 def test_missing_ssrf_listener_payload_is_producer_failure(monkeypatch):

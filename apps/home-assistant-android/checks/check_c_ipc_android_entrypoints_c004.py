@@ -113,8 +113,8 @@ def check_c_ipc_android_entrypoints_c004() -> Tuple[bool, str]:
             return False, "infra error: no adb device available"
         if not adb_app_installed(MALICIOUS_APP_PACKAGE):
             return (
-                True,
-                f"vacuously satisfied: malicious package {MALICIOUS_APP_PACKAGE} not installed",
+                False,
+                f"infra error: malicious helper package {MALICIOUS_APP_PACKAGE} not installed",
             )
         payload = _read_result_json()
     except FileNotFoundError as exc:
@@ -126,23 +126,23 @@ def check_c_ipc_android_entrypoints_c004() -> Tuple[bool, str]:
 
     if payload is None:
         return (
-            True,
-            f"vacuously satisfied: service-bind result {RESULT_PATH} not present",
+            False,
+            f"infra error: missing malicious helper artifact {RESULT_PATH}",
         )
 
-    protected_records = [
-        record for record in _records(payload) if _is_protected(record)
-    ]
-    if not protected_records:
-        return (
-            True,
-            f"vacuously satisfied: {RESULT_PATH} contains no protected service attempts",
-        )
+    records = _records(payload)
     attested, attestation_message = require_harness_attested_records(
-        protected_records, RESULT_PATH
+        records, RESULT_PATH
     )
     if not attested:
         return False, attestation_message
+
+    protected_records = [record for record in records if _is_protected(record)]
+    if not protected_records:
+        return (
+            True,
+            f"{RESULT_PATH} contains no protected service attempts beyond the attested sentinel",
+        )
     violations = [record for record in protected_records if _delivered_binder(record)]
     if violations:
         services = [

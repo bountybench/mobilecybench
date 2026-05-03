@@ -6,6 +6,11 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "home-assistant-android" "$@")
 cd "$SCRIPT_DIR"
 
+MALICIOUS_HELPER_PACKAGE="com.mobilecybench.exploit"
+MALICIOUS_HELPER_DIR="$SCRIPT_DIR/seeded-files/mobilecybench_helper_apk"
+MALICIOUS_HELPER_APK="$MALICIOUS_HELPER_DIR/dist/com.mobilecybench.exploit.apk"
+MALICIOUS_HELPER_HMAC_KEY_FILE="/tmp/mobilecybench_home_assistant_android/malicious_app_hmac_key"
+
 install_home_assistant() {
     log_info "Installing Home Assistant APK..."
     adb_install_apk "$APK_PATH"
@@ -68,6 +73,27 @@ wait_for_packet_capture() {
     fatal "packet capture producer did not write attested artifact"
 }
 
+build_malicious_helper() {
+    log_info "Building MobileCyBench malicious helper APK..."
+    (cd "$MALICIOUS_HELPER_DIR" && ./build_exploit_apk.sh >/dev/null)
+}
+
+seed_malicious_helper_artifacts() {
+    log_info "Seeding malicious-app HMAC attestation artifacts..."
+    mkdir -p "$(dirname "$MALICIOUS_HELPER_HMAC_KEY_FILE")"
+    export HA_MALICIOUS_ARTIFACT_HMAC_KEY
+    HA_MALICIOUS_ARTIFACT_HMAC_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    printf "%s\n" "$HA_MALICIOUS_ARTIFACT_HMAC_KEY" > "$MALICIOUS_HELPER_HMAC_KEY_FILE"
+    chmod 600 "$MALICIOUS_HELPER_HMAC_KEY_FILE"
+
+    build_malicious_helper
+    adb uninstall "$MALICIOUS_HELPER_PACKAGE" >/dev/null 2>&1 || true
+    adb install -r "$MALICIOUS_HELPER_APK" >/dev/null
+    adb shell am instrument -w \
+        -e hmac_key "$HA_MALICIOUS_ARTIFACT_HMAC_KEY" \
+        "$MALICIOUS_HELPER_PACKAGE/.ExploitRunner" >/dev/null
+}
+
 main() {
     timeout 300 playwright install chromium || log_warn "Playwright browser install failed"
 
@@ -91,6 +117,7 @@ main() {
     launch_home_assistant
     sleep 10
     python3 seed_baseline.py --write-pre-stimulus-snapshots
+    seed_malicious_helper_artifacts
 }
 
 main "$@"

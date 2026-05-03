@@ -85,8 +85,8 @@ def check_c_ipc_android_entrypoints_c006() -> Tuple[bool, str]:
     readable, content_or_reason = adb_read_malicious_file(CAPTURE_FILE)
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: no FileProvider open result present ({content_or_reason})",
+            False,
+            f"infra error: missing malicious helper artifact {CAPTURE_FILE} ({content_or_reason})",
         )
     try:
         records = parse_json_or_jsonl(content_or_reason)
@@ -94,8 +94,8 @@ def check_c_ipc_android_entrypoints_c006() -> Tuple[bool, str]:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
         return (
-            True,
-            f"vacuously satisfied: FileProvider open result {CAPTURE_FILE} is empty",
+            False,
+            f"infra error: malicious helper artifact {CAPTURE_FILE} is empty",
         )
     attested, attestation_message = require_harness_attested_records(
         records, CAPTURE_FILE

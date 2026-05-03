@@ -58,15 +58,15 @@ def check_c_ipc_android_entrypoints_c009() -> Tuple[bool, str]:
     readable, content_or_reason = adb_read_malicious_file(CAPTURE_FILE)
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: no OAuth IPC capture present ({content_or_reason})",
+            False,
+            f"infra error: missing malicious helper artifact {CAPTURE_FILE} ({content_or_reason})",
         )
     try:
         records = parse_json_or_jsonl(content_or_reason)
     except json.JSONDecodeError as exc:
         return False, f"infra error: malformed {CAPTURE_FILE}: {exc}"
     if not records:
-        return True, f"vacuously satisfied: OAuth IPC capture {CAPTURE_FILE} is empty"
+        return False, f"infra error: malicious helper artifact {CAPTURE_FILE} is empty"
     attested, attestation_message = require_harness_attested_records(
         records, CAPTURE_FILE
     )

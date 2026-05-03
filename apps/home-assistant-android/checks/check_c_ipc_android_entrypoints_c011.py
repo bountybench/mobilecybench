@@ -142,8 +142,8 @@ def check_c_ipc_android_entrypoints_c011() -> Tuple[bool, str]:
     try:
         if not adb_app_installed(MALICIOUS_PACKAGE):
             return (
-                True,
-                f"vacuously satisfied: malicious harness package {MALICIOUS_PACKAGE} is not installed",
+                False,
+                f"infra error: malicious helper package {MALICIOUS_PACKAGE} is not installed",
             )
     except Exception as exc:
         return False, f"infra error: could not query Android packages: {exc}"
@@ -151,8 +151,8 @@ def check_c_ipc_android_entrypoints_c011() -> Tuple[bool, str]:
     readable, raw_result = _read_result_file()
     if not readable:
         return (
-            True,
-            f"vacuously satisfied: malicious harness result {RESULT_FILE} not present",
+            False,
+            f"infra error: missing malicious helper artifact {RESULT_FILE} ({raw_result})",
         )
 
     try:
@@ -162,7 +162,7 @@ def check_c_ipc_android_entrypoints_c011() -> Tuple[bool, str]:
 
     attempts = _attempt_count(payload)
     if attempts == 0:
-        return True, f"vacuously satisfied: {RESULT_FILE} contains no attempts"
+        return False, f"infra error: malicious helper artifact {RESULT_FILE} is empty"
     records = payload if isinstance(payload, list) else [payload]
     attested, attestation_message = require_harness_attested_records(
         records, RESULT_FILE

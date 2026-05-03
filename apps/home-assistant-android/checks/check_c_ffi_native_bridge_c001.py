@@ -158,8 +158,8 @@ def check_c_ffi_native_bridge_c001() -> Tuple[bool, str]:
             return False, "infra error: no adb device available"
         if not adb_app_installed(MALICIOUS_APP_PACKAGE):
             return (
-                True,
-                f"vacuously satisfied: malicious package {MALICIOUS_APP_PACKAGE} not installed",
+                False,
+                f"infra error: malicious helper package {MALICIOUS_APP_PACKAGE} not installed",
             )
         payload = _read_result_json()
     except FileNotFoundError as exc:
@@ -171,13 +171,13 @@ def check_c_ffi_native_bridge_c001() -> Tuple[bool, str]:
 
     if payload is None:
         return (
-            True,
-            f"vacuously satisfied: native bridge result {RESULT_PATH} not present",
+            False,
+            f"infra error: missing malicious helper artifact {RESULT_PATH}",
         )
     if payload in ({}, []):
         return (
-            True,
-            f"vacuously satisfied: native bridge result {RESULT_PATH} is empty",
+            False,
+            f"infra error: malicious helper artifact {RESULT_PATH} is empty",
         )
     records = payload if isinstance(payload, list) else [payload]
     attested, attestation_message = require_harness_attested_records(
