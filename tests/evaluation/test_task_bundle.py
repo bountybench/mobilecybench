@@ -213,7 +213,7 @@ def test_probe_only_bundle_patch_raises():
 
 def test_probe_only_bundle_build_apks_calls_clean_baseline_build(tmp_path, monkeypatch):
     """build_type='source' must be supported: build the clean baseline APK
-    once. NotImplementedError here would break variant 4 (open-source)."""
+    once. NotImplementedError here would break source-builds for probe-only."""
     bundle = ProbeOnlyBundle(
         app_dir=tmp_path / "apps" / "myapp", _attacker_model="malicious_app"
     )

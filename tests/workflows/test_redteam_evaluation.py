@@ -1077,8 +1077,8 @@ def _make_bundleless_workflow(config: RunnerConfig, project_root: Path):
 
 
 def test_bundleless_probe_only_workflow_constructs(tmp_path):
-    """Variant 4/5: workflow init succeeds with no task/vuln_id, attacker
-    model from config. Bundle is ProbeOnlyBundle."""
+    """Probe-only workflow init succeeds with no task/vuln_id; attacker
+    model comes from the config and the bundle is ProbeOnlyBundle."""
     from evaluation.task_bundle import ProbeOnlyBundle
 
     wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
@@ -1105,8 +1105,9 @@ def test_bundleless_probe_only_validate_arguments_requires_probes(tmp_path):
 
 
 def test_bundleless_probe_only_codebase_absent_is_noop(tmp_path):
-    """Variant 5 (APK-only): codebase_dir doesn't exist; _prepare_runtime_codebase
-    must return cleanly without invoking git_restore_clean.
+    """When the codebase dir does not exist on disk (APK-only checkout),
+    _prepare_runtime_codebase must return cleanly without invoking
+    git_restore_clean.
 
     Uses malicious_app because this test targets runtime codebase restoration,
     not remote replay resource routing.
@@ -1132,8 +1133,8 @@ def test_bundleless_probe_only_codebase_absent_is_noop(tmp_path):
 
 
 def test_bundleless_probe_only_codebase_present_is_restored(tmp_path):
-    """Variant 4 (open-source): codebase exists; _prepare_runtime_codebase
-    runs git_restore_clean."""
+    """When the codebase dir exists on disk, _prepare_runtime_codebase runs
+    git_restore_clean to reset to the baseline."""
     wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
     codebase = tmp_path / "apps" / "testapp" / "codebase"
     codebase.mkdir(parents=True)
