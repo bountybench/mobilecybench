@@ -397,3 +397,20 @@ main()
 PYEOF
 
 log_info "Victim login complete"
+
+# Stage 3 hydration — produces apps/openhab/pipeline/stage3/hydration_manifest.json
+# and stands up the sibling fake-receiver containers that RA-CO probes consume.
+# Each numbered step is idempotent, so re-running here on top of seed_environment.sh
+# / preconfigure_app from start_runtime.sh short-circuits the overlapping pieces
+# and only does the genuinely new work (sibling receivers, attacker substrate,
+# manifest). cleanup.sh already calls scripts/hydration/unhydrate.sh, so teardown
+# pairing is in place.
+HYDRATION_RUN_ALL="$SCRIPT_DIR/scripts/hydration/run_all.sh"
+if [ -x "$HYDRATION_RUN_ALL" ]; then
+  log_info "Running stage 3 hydration..."
+  if ! "$HYDRATION_RUN_ALL"; then
+    log_warn "Hydration did not complete; probes that require hydration_manifest.json will infra-error"
+  fi
+else
+  log_info "No hydration script at $HYDRATION_RUN_ALL; skipping"
+fi
