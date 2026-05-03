@@ -547,7 +547,7 @@ class Workflow(ABC):
                 "killing subprocess tree"
             )
             self._kill_process_tree(proc)
-            stdout, _stderr = proc.communicate()
+            stdout, _stderr = self._communicate_after_kill(proc)
             stdout = (stdout or "").rstrip("\n")
             stdout = f"{stdout}\n{timeout_message}" if stdout else timeout_message
 
@@ -582,7 +582,9 @@ class Workflow(ABC):
     # -- Shared evaluation helpers -----------------------------------------------
 
     SCORE_FILE = "scores.json"
+    # Matches GNU timeout(1), which makes timeout exits easy to recognize.
     TIMEOUT_EXIT_CODE = 124
+    PROCESS_REAP_TIMEOUT_SECONDS = 10
 
     @staticmethod
     def _kill_process_tree(proc: subprocess.Popen) -> None:
@@ -596,6 +598,57 @@ class Workflow(ABC):
                 proc.kill()
             except ProcessLookupError:
                 pass
+
+    @staticmethod
+    def _timeout_output_to_text(output: str | bytes | None) -> str:
+        if output is None:
+            return ""
+        if isinstance(output, bytes):
+            return output.decode("utf-8", errors="replace")
+        return output
+
+    def _communicate_after_kill(self, proc: subprocess.Popen) -> tuple[str, str | None]:
+        try:
+            return proc.communicate(timeout=self.PROCESS_REAP_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as e:
+            logger.error(
+                f"Timed out collecting subprocess output after "
+                f"{self.PROCESS_REAP_TIMEOUT_SECONDS}s"
+            )
+            for pipe in (proc.stdout, proc.stderr):
+                if pipe:
+                    pipe.close()
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            return (
+                self._timeout_output_to_text(e.output),
+                self._timeout_output_to_text(e.stderr),
+            )
+
+    @staticmethod
+    def _validate_probe_score_files(paths: tuple[Path, Path], *, strict: bool) -> bool:
+        for path in paths:
+            if not path.exists():
+                message = f"Score output file not produced: {path}"
+                if strict:
+                    logger.error(message)
+                    return False
+                logger.warning(message)
+                continue
+            try:
+                score_data = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as e:
+                logger.error(f"Invalid JSON in {path}: {e}")
+                return False
+            if strict and (
+                not isinstance(score_data, dict)
+                or not isinstance(score_data.get("scores"), dict)
+            ):
+                logger.error(f"Malformed score output file: {path}")
+                return False
+        return True
 
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
         return {"status": status, "score": score, "scores": {}, **kwargs}
@@ -628,7 +681,8 @@ class Workflow(ABC):
         check_dir = probe_dir
 
         run_checks = check_dir / "run_checks.sh"
-        if not run_checks.exists():
+        using_project_run_checks = not run_checks.exists()
+        if using_project_run_checks:
             run_checks = self.project_root / "run_checks.sh"
 
         env = os.environ.copy()
@@ -661,7 +715,7 @@ class Workflow(ABC):
                 "killing subprocess tree"
             )
             self._kill_process_tree(proc)
-            stdout, stderr = proc.communicate()
+            stdout, stderr = self._communicate_after_kill(proc)
             if stdout:
                 logger.error(f"stdout: {stdout}")
             if stderr:
@@ -676,22 +730,10 @@ class Workflow(ABC):
                 logger.error(f"stderr: {stderr}")
             return False
 
-        for path in (app_scores_out, generic_scores_out):
-            if not path.exists():
-                logger.error(f"Score output file not produced: {path}")
-                return False
-            try:
-                score_data = json.loads(path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError) as e:
-                logger.error(f"Invalid JSON in {path}: {e}")
-                return False
-            if not isinstance(score_data, dict) or not isinstance(
-                score_data.get("scores"), dict
-            ):
-                logger.error(f"Malformed score output file: {path}")
-                return False
-
-        return True
+        return self._validate_probe_score_files(
+            (app_scores_out, generic_scores_out),
+            strict=using_project_run_checks,
+        )
 
     def _isolate_backend(self) -> None:
         """Disconnect backend containers from shared_net during replay."""

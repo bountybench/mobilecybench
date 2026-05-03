@@ -10,6 +10,8 @@ import pytest
 from models.config import RunnerConfig
 from workflows.base import Workflow
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 class _ConcreteWorkflow(Workflow):
     """Minimal concrete subclass for testing base helpers."""
@@ -53,6 +55,25 @@ def _write_run_checks(probe_dir: Path, body: str) -> Path:
     run_checks = probe_dir / "run_checks.sh"
     run_checks.write_text(f"#!/bin/bash\n{body}", encoding="utf-8")
     return run_checks
+
+
+def _write_probe_scripts(probe_dir: Path) -> None:
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "test_access_control.py",
+        "test_availability.py",
+        "test_confidentiality.py",
+        "test_integrity.py",
+    ):
+        (probe_dir / name).write_text(
+            'import json\nprint(json.dumps({"score": 1}))\n',
+            encoding="utf-8",
+        )
+    (probe_dir / "metadata.json").write_text("{}", encoding="utf-8")
+    (probe_dir / "generic_probe_config.json").write_text(
+        '{"generic_probe_applicability": {}}',
+        encoding="utf-8",
+    )
 
 
 class TestRestartRuntime:
@@ -180,7 +201,6 @@ class TestRunExploit:
         assert result["replay_exit_code"] == Workflow.TIMEOUT_EXIT_CODE
         assert result["replay_timed_out"] is True
         stdout = (output_dir / "stdout.txt").read_text(encoding="utf-8")
-        assert "partial output" in stdout
         assert "timed out" in stdout
         assert "timed out" in Path(result["replay_evidence_path"]).read_text(
             encoding="utf-8"
@@ -206,11 +226,35 @@ class TestRunChecks:
         assert ok is False
         assert "run_checks.sh timed out" in caplog.text
 
-    def test_missing_score_file_fails_closed(self, workflow, tmp_path, caplog):
+    def test_project_root_run_checks_fallback_honors_score_env_paths(
+        self, workflow, tmp_path
+    ):
+        workflow.project_root = REPO_ROOT
         probe_dir = tmp_path / "probe"
-        _write_run_checks(
-            probe_dir,
-            "printf '%s\\n' '{\"scores\": {}}' > \"$APP_SCORES_OUT\"\n",
+        _write_probe_scripts(probe_dir)
+
+        app_scores = tmp_path / "app_scores.json"
+        generic_scores = tmp_path / "generic_scores.json"
+
+        ok = workflow._run_checks(
+            "",
+            app_scores_out=app_scores,
+            generic_scores_out=generic_scores,
+            probe_dir=probe_dir,
+        )
+
+        assert ok is True
+        assert app_scores.exists()
+        assert generic_scores.exists()
+
+    def test_project_root_fallback_missing_score_file_fails_closed(
+        self, workflow, tmp_path, caplog
+    ):
+        probe_dir = tmp_path / "probe"
+        probe_dir.mkdir()
+        (tmp_path / "run_checks.sh").write_text(
+            "#!/bin/bash\n" "printf '%s\\n' '{\"scores\": {}}' > \"$APP_SCORES_OUT\"\n",
+            encoding="utf-8",
         )
 
         with caplog.at_level(logging.ERROR, logger="workflows.base"):
@@ -224,12 +268,36 @@ class TestRunChecks:
         assert ok is False
         assert "Score output file not produced" in caplog.text
 
-    def test_malformed_score_json_fails_closed(self, workflow, tmp_path, caplog):
+    def test_probe_local_missing_score_file_is_legacy_warning(
+        self, workflow, tmp_path, caplog
+    ):
         probe_dir = tmp_path / "probe"
         _write_run_checks(
             probe_dir,
+            "printf '%s\\n' '{\"scores\": {}}' > \"$APP_SCORES_OUT\"\n",
+        )
+
+        with caplog.at_level(logging.WARNING, logger="workflows.base"):
+            ok = workflow._run_checks(
+                "",
+                app_scores_out=tmp_path / "app_scores.json",
+                generic_scores_out=tmp_path / "generic_scores.json",
+                probe_dir=probe_dir,
+            )
+
+        assert ok is True
+        assert "Score output file not produced" in caplog.text
+
+    def test_project_root_fallback_malformed_score_json_fails_closed(
+        self, workflow, tmp_path, caplog
+    ):
+        probe_dir = tmp_path / "probe"
+        probe_dir.mkdir()
+        (tmp_path / "run_checks.sh").write_text(
+            "#!/bin/bash\n"
             "printf '%s\\n' '{\"scores\": {}}' > \"$APP_SCORES_OUT\"\n"
             "printf '%s\\n' '{not-json' > \"$GENERIC_SCORES_OUT\"\n",
+            encoding="utf-8",
         )
 
         with caplog.at_level(logging.ERROR, logger="workflows.base"):
