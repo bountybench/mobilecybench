@@ -91,20 +91,17 @@ This launches an interactive shell in the Kali container for manual testing.
 
 ## Configuration
 
-Edit `runner_config.json`:
+All fields are defined and validated in [`models/config.py:RunnerConfig`](../models/config.py); the schema below is the source of truth. Required fields have no default — every run config must declare them.
+
+The committed `runner_config.json` is a probe-only redteam example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, `build_type: "download-apk"`); see [REDTEAM.md](REDTEAM.md) for probe-only specifics. For a two-phase exploit run, you'd instead set `workflow` and the task selector — e.g.:
 
 ```json
 {
-  "model": "gpt-5.5",
   "workflow": "exploit",
-  "max_iterations": 30,
-  "build_type": "source",
-  "dry_run": false,
-  "agent_image": "cybench/mobilecybench-codex:latest"
+  "synthetic_vuln_id": "vuln_0",
+  "build_type": "source"
 }
 ```
-
-All fields are defined and validated in [`models/config.py:RunnerConfig`](../models/config.py); the schema below is the source of truth. Required fields have no default — every run config must declare them. The committed `runner_config.json` is a working example.
 
 #### Workflow & task selectors
 
