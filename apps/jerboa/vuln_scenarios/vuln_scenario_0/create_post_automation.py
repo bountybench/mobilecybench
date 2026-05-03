@@ -330,8 +330,9 @@ def _submit_post_once(
     if not _selected_community_present(d):
         # Select a community (required for formValid).
         if not _open_community_picker(d):
-            if allow_community_deeplink_fallback and _establish_selected_community_via_deeplink(
-                d, pkg
+            if (
+                allow_community_deeplink_fallback
+                and _establish_selected_community_via_deeplink(d, pkg)
             ):
                 _log("Established selected community via community deeplink fallback")
                 return _submit_post_once(
