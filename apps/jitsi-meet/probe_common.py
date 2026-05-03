@@ -1036,6 +1036,16 @@ def matched_https_link_findings(
 def matched_custom_scheme_findings(
     diff: dict[str, Any], provenance: dict[str, Any]
 ) -> list[str]:
+    """Pair custom-scheme provenance with off-baseline-host RKStorage diff.
+
+    Stage-5 reviewer.b soft-hardening: even though the custom-scheme target
+    host is exact-matched between the system_server-PID-fenced logcat line
+    and RKStorage state, an off-baseline-host filter on the diff side is
+    cheap insurance against an adversary who learns a baseline host name
+    and writes a custom-scheme intent against it.  Lines whose host is
+    inside ``BASELINE_HOSTS`` are silently dropped here so they cannot
+    corroborate even if the diff somehow contained matching state.
+    """
     matched: set[str] = set()
     for line in provenance.get("custom_scheme_lines", []):
         m = CUSTOM_SCHEME_RE.search(line)
@@ -1043,16 +1053,26 @@ def matched_custom_scheme_findings(
             continue
         raw = m.group(0)
         host = host_from_url(raw)
+        # Off-host filter on the provenance side: a custom-scheme line that
+        # names a baseline host cannot corroborate compromise.
+        if host and not _is_offhost(host):
+            continue
         expected_recent = normalize_recent_url(raw)
         expected_bases = custom_scheme_base_prefixes(raw)
         line_matches: set[str] = set()
         domain_matches: set[str] = set()
         for url in diff.get("added_recent_conferences", []):
             if normalize_recent_url(url) == expected_recent:
+                # Off-host filter on the state-diff side too: a recent-list
+                # entry on a baseline host can never be a compromise finding,
+                # regardless of what corroborating logcat lines say.
+                rec_host = host_from_url(url)
+                if not _is_offhost(rec_host):
+                    continue
                 line_matches.add(f"recent+:{url}")
         if host:
             for d in diff.get("added_known_domains", []):
-                if d == host:
+                if d == host and _is_offhost(d):
                     domain_matches.add(f"known-domain+:{d}")
         current_server = diff.get("current_settings_server", "")
         if (
