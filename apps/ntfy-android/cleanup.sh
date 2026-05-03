@@ -47,6 +47,7 @@ for f in "${SCRIPT_DIR}/baseline_availability.json" \
          "${SCRIPT_DIR}/apk_hash_baseline.txt" \
          "${SCRIPT_DIR}/device_epoch_baseline.txt" \
          "${SCRIPT_DIR}/device_epoch_baseline_pre_reset.txt" \
+         "${SCRIPT_DIR}/exact_alarm_baseline.json" \
          "${SCRIPT_DIR}/last_state.json" \
          "${SCRIPT_DIR}/hydration_state.json" \
          "${SCRIPT_DIR}/last_verification.json" \
