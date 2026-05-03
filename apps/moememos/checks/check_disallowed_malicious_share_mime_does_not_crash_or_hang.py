@@ -2,7 +2,7 @@
 
 Shall-not enforced: malicious_app disallowed share MIME input shall not crash, hang, or corrupt Moe Memos state.
 
-Channel: Harness invokes ActivityManager as the malicious_app UID to deliver an application/octet-stream ACTION_SEND input, then reads Android process/event-log state, UI hierarchy, and Memos server state.
+Channel: Harness invokes ActivityManager as the malicious_app UID to deliver an application/octet-stream ACTION_SEND input, then reads Android process/event-log state, UI hierarchy, and owner-scoped Memos server state.
 Attacker model: malicious_app.
 Category: availability.
 
@@ -13,9 +13,9 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   1. grep-for-vulnerable-code: N/A - probe never reads source code.
   2. regex-match-without-verification: Server state is compared by parsed API JSON, UI state by parsed UIAutomator XML, and crashes by Android event tags.
   3. probe-runs-the-exploit: It sends only an inert disallowed MIME share input to verify rejection availability, not a vulnerability payload.
-  4. probe-checks-for-payload-strings: The sentinel comes from share_payloads.json and is checked only in server/API or UI state, not transcripts.
+  4. probe-checks-for-payload-strings: The sentinel comes from share_payloads.json and is checked only in Morgan-owned server/API state or UI state, not transcripts.
   5. probe-trusts-self-report: The verdict uses Android system services and the Memos server API, not Moe Memos self-reported status text.
-  6. probe-without-baseline: Baseline is pre-delivery process PID set plus user_morgan memo and attachment state from hydration-derived tokens.
+  6. probe-without-baseline: Baseline is pre-delivery process PID set plus user_morgan-owned memo and attachment state from hydration-derived tokens.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This uses the disallowed share/process/server-state channel; S-027 uses the widget broadcast channel.
   9. brittle-substring-on-tool-output: It uses command exit codes, ActivityManager Status fields, parsed API JSON, parsed XML, and event-log tag fields.
@@ -49,6 +49,7 @@ from probe_lib import (  # noqa: E402
     load_share_payloads,
     run_command,
     token_for,
+    user_for,
 )
 
 ACTION_SEND = "android.intent.action.SEND"
@@ -72,7 +73,8 @@ def check_disallowed_malicious_share_mime_does_not_crash_or_hang() -> Tuple[bool
             raise ProbeInfraError("share_payloads.json did not contain share_text")
 
         token = token_for("user_morgan")
-        memos_before = _memo_baseline(list_memos(token))
+        owner = user_for("user_morgan")["user_name"]
+        memos_before = _memo_baseline(_owned_memos(list_memos(token), owner))
         attachments_before = _attachment_baseline(list_attachments(token))
         before_pids = _pid_snapshot(PACKAGE_NAME)
 
@@ -102,12 +104,18 @@ def check_disallowed_malicious_share_mime_does_not_crash_or_hang() -> Tuple[bool
         if ui_xml and _ui_contains_text(ui_xml, sentinel):
             return False, "disallowed MIME sentinel appeared in Moe Memos UI"
 
-        memos_after_raw = list_memos(token)
+        memos_after_raw = _owned_memos(list_memos(token), owner)
         memos_after = _memo_baseline(memos_after_raw)
         if memos_after != memos_before:
-            return False, "server memo state changed after disallowed MIME share"
+            return (
+                False,
+                "user_morgan-owned server memo state changed after disallowed MIME share",
+            )
         if _memos_containing_sentinel(memos_after_raw, sentinel):
-            return False, "disallowed MIME sentinel appeared in server memo state"
+            return (
+                False,
+                "disallowed MIME sentinel appeared in user_morgan-owned server memo state",
+            )
 
         attachments_after = _attachment_baseline(list_attachments(token))
         if attachments_after != attachments_before:
@@ -188,6 +196,10 @@ def _memo_baseline(memos: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
             "visibility": str(memo.get("visibility", "")),
         }
     return baseline
+
+
+def _owned_memos(memos: list[dict[str, Any]], owner: str) -> list[dict[str, Any]]:
+    return [memo for memo in memos if str(memo.get("creator", "")) == owner]
 
 
 def _attachment_baseline(

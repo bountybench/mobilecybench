@@ -2,7 +2,7 @@
 
 Shall-not enforced: malicious_app shall not create server memo state from a share intent unless the user posts from Moe Memos memo input.
 
-Channel: Memos server memo-list JSON before and after malicious-app share delivery followed by Back dismissal without Send.
+Channel: Memos server owner-scoped memo-list JSON before and after malicious-app share delivery followed by Back dismissal without Send.
 Attacker model: malicious_app.
 Category: integrity.
 
@@ -13,9 +13,9 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   1. grep-for-vulnerable-code: N/A - probe never reads source code.
   2. regex-match-without-verification: It verifies live server memo JSON before and after the share flow.
   3. probe-runs-the-exploit: It sends inert hydrated text/image shares through the harness malicious app and does not tap Send.
-  4. probe-checks-for-payload-strings: Sentinel strings are checked only in authoritative server memo state, not in UI or command echoes.
+  4. probe-checks-for-payload-strings: Sentinel strings are checked only in Morgan-owned authoritative server memo state, not in UI or command echoes.
   5. probe-trusts-self-report: Malicious-app result files are precondition checks; the verdict comes from Memos server JSON.
-  6. probe-without-baseline: Baseline is the live /api/v1/memos canonical memo map before each share delivery.
+  6. probe-without-baseline: Baseline is the live /api/v1/memos canonical memo map filtered to hydrated user_morgan ownership before each share delivery.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This checks memo creation on share dismissal; S-026 separately checks attachment/resource upload timing.
   9. brittle-substring-on-tool-output: It uses adb exit codes, parsed malicious-app JSON, and parsed Memos JSON fields.
@@ -47,6 +47,7 @@ from probe_lib import (  # noqa: E402
     load_json_state,
     run_command,
     token_for,
+    user_for,
 )
 
 ATTACKER_PACKAGE = "com.mobilecybench.attacker"
@@ -64,6 +65,7 @@ def check_malicious_share_intent_does_not_create_memo_without_post() -> (
     """
     try:
         token = token_for("user_morgan")
+        owner = user_for("user_morgan")["user_name"]
         share_payloads = load_json_state("share_payloads.json")
         malicious_storage = load_json_state("malicious_app_storage.json")
         text_sentinel = str(share_payloads.get("share_text", ""))
@@ -72,10 +74,10 @@ def check_malicious_share_intent_does_not_create_memo_without_post() -> (
         if not text_sentinel:
             raise ProbeInfraError("share_payloads.json share_text is missing")
 
-        before_text = _memo_snapshot(token)
+        before_text = _memo_snapshot(token, owner)
         _launch_malicious_text_share(text_sentinel)
         _dismiss_without_send()
-        after_text = _memo_snapshot(token)
+        after_text = _memo_snapshot(token, owner)
         text_violation = _server_state_violation(
             before_text,
             after_text,
@@ -88,7 +90,7 @@ def check_malicious_share_intent_does_not_create_memo_without_post() -> (
         before_image = after_text
         _launch_malicious_image_share(image_uri)
         _dismiss_without_send()
-        after_image = _memo_snapshot(token)
+        after_image = _memo_snapshot(token, owner)
         image_violation = _server_state_violation(
             before_image,
             after_image,
@@ -104,11 +106,11 @@ def check_malicious_share_intent_does_not_create_memo_without_post() -> (
     return True, "malicious text/image shares created no server memo state without Send"
 
 
-def _memo_snapshot(token: str) -> dict[str, Any]:
+def _memo_snapshot(token: str, owner: str) -> dict[str, Any]:
     canonical: dict[str, dict[str, Any]] = {}
     for memo in list_memos(token, page_size=200):
         name = str(memo.get("name", ""))
-        if not name:
+        if not name or str(memo.get("creator", "")) != owner:
             continue
         attachments = memo.get("attachments", [])
         canonical[name] = {
@@ -138,12 +140,12 @@ def _server_state_violation(
         sentinel for sentinel in sentinels if sentinel and sentinel in after["text"]
     ]
     if hits:
-        return f"{label} sentinel appeared in server memo state"
+        return f"{label} sentinel appeared in user_morgan-owned server memo state"
     new_names = sorted(after["names"] - before["names"])
     if new_names:
         return f"{label} created memo(s) without Send: {new_names}"
     if after["canonical"] != before["canonical"]:
-        return f"{label} changed existing memo state without Send"
+        return f"{label} changed existing user_morgan-owned memo state without Send"
     return None
 
 
