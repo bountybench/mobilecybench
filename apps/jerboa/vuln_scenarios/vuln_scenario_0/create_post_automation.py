@@ -180,9 +180,10 @@ def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
     _title, query = seeded_communities[0]
     deeplink = f"{DEEPLINK_INSTANCE}/c/{query}"
     d.shell(
-        "am start -a android.intent.action.VIEW "
-        f"-n {pkg}/com.jerboa.MainActivity "
-        f"-d {deeplink!r}"
+        "am start -W -a android.intent.action.VIEW "
+        "-c android.intent.category.BROWSABLE "
+        f"-d {deeplink!r} "
+        f"{pkg}"
     )
     wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
