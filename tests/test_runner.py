@@ -463,6 +463,47 @@ class TestTaskMetadataOverride:
         assert exit_code == 1
 
 
+class TestZerodaySubmoduleInit:
+    """zerodays/ submodule must be lazy-initialized BEFORE validate_arguments
+    for redteam tasks, otherwise validation surfaces a misleading 'Task file
+    not found' error instead of an init hint."""
+
+    def test_zerodays_init_runs_for_redteam_task_before_validate(
+        self, base_config, tmp_path
+    ):
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "task": "report-4",
+                "synthetic_vuln_id": None,
+                "attacker_model": "remote_attacker",
+            }
+        )
+        # Make task metadata read succeed so flow reaches the init step.
+        task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
+        task_dir.mkdir(parents=True)
+        (task_dir / "metadata.json").write_text(
+            json.dumps({"attacker_model": "remote_attacker"})
+        )
+
+        order = []
+
+        def fail_validate(self):
+            order.append("validate")
+            raise RuntimeError("stop")
+
+        with patch(
+            "runner.ensure_zerodays_submodule",
+            side_effect=lambda *a, **k: order.append("zerodays_init"),
+        ), patch("runner.ensure_app_submodule"), patch(
+            "workflows.RedTeamWorkflow.validate_arguments", new=fail_validate
+        ):
+            run(config, "testapp", tmp_path)
+
+        assert order == ["zerodays_init", "validate"]
+
+
 class TestReplayMetadataOverride:
     """Replay metadata must normalize selectors for TaskBundle XOR."""
 
