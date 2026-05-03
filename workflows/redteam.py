@@ -207,13 +207,23 @@ class RemoteAttackerOps:
             return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
 
         logger.info("[phase] Running exploit.sh in container...")
+        # Replay mirrors the agent's resource model: under no_codebase=True the
+        # agent saw /app/apk/<file>.apk and no source; otherwise /app/codebase.
+        # _run_exploit handles the per-phase APK staging when replay_apk is set.
+        if workflow.config.no_codebase:
+            codebase_dir = None
+            replay_apk = kwargs["target_apk"]
+        else:
+            codebase_dir = workflow.app_dir / "codebase"
+            replay_apk = None
         exploit_result = workflow._run_exploit(
             kwargs["exploit_dir"],
             phase_dir,
             exploit_runner=workflow.project_root / "utils" / "run_exploit_container.sh",
             exploit_image=os.environ.get("EXPLOIT_IMAGE", workflow.config.agent_image),
             app_server=workflow.metadata.get("app_server"),
-            codebase_dir=workflow.app_dir / "codebase",
+            codebase_dir=codebase_dir,
+            replay_apk=replay_apk,
             logs_dir=logger_manager.get_logs_dir(),
         )
 
@@ -712,7 +722,7 @@ class RedTeamWorkflow(Workflow):
                 )
             else:
                 probe_vuln = int(p1["probes_triggered"])
-                # signal/no_signal — distinct from two-phase vulnerable/patched
+                # signal/no_signal — distinct from two-phase verified/needs_review
                 # since probe_only has no comparison build to vouch for the
                 # probe's specificity.
                 status = "signal" if probe_vuln else "no_signal"

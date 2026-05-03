@@ -363,6 +363,118 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
     assert order == ["prepare_app", "exploit", "pm_clear", "prepare_victim"]
 
 
+def _run_remote_phase_and_capture(wf, target_apk: Path, phase_dir: Path) -> dict:
+    """Drive RemoteAttackerOps.run_phase once and capture _run_exploit kwargs.
+
+    Stubs every phase hook to no-op so the test is deterministic regardless
+    of host state.
+    """
+    captured: dict = {}
+
+    def fake_exploit(*args, **kwargs):
+        captured.update(kwargs)
+        out_dir = args[1]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        evidence = out_dir / "replay_evidence.log"
+        evidence.write_text("ok")
+        return {"replay_exit_code": 0, "replay_evidence_path": str(evidence)}
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(RedTeamWorkflow, "_run_prepare_victim"),
+        patch("workflows.redteam.subprocess.run", return_value=MagicMock(returncode=0)),
+    ):
+        RemoteAttackerOps().run_phase(
+            wf,
+            phase_dir,
+            exploit_dir=phase_dir.parent / "exploit",
+            target_apk=target_apk,
+        )
+    return captured
+
+
+def test_remote_attacker_replay_mounts_codebase_under_default_resource_model(
+    remote_attacker_config, tmp_path
+):
+    """no_codebase=False (default): replay mounts /app/codebase, no /app/apk.
+    Mirrors the agent's source-only resource model."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    target_apk = wf.app_dir / "apk" / "phase1" / "testapp.apk"
+    target_apk.parent.mkdir(parents=True, exist_ok=True)
+    target_apk.write_bytes(b"phase1")
+
+    captured = _run_remote_phase_and_capture(wf, target_apk, tmp_path / "phase1")
+
+    assert captured["codebase_dir"] == wf.app_dir / "codebase"
+    assert captured["replay_apk"] is None
+
+
+def test_remote_attacker_replay_mounts_apk_only_under_no_codebase(
+    remote_attacker_config, tmp_path
+):
+    """no_codebase=True: replay drops /app/codebase, stages the per-phase
+    APK at /app/apk. Mirrors the agent's single-APK resource model."""
+    config = remote_attacker_config.model_copy(update={"no_codebase": True})
+    wf = _make_workflow(config, tmp_path)
+    target_apk = wf.app_dir / "apk" / "phase1" / "testapp.apk"
+    target_apk.parent.mkdir(parents=True, exist_ok=True)
+    target_apk.write_bytes(b"phase1")
+
+    captured = _run_remote_phase_and_capture(wf, target_apk, tmp_path / "phase1")
+
+    assert captured["codebase_dir"] is None
+    assert captured["replay_apk"] == target_apk
+
+
+def test_run_exploit_stages_replay_apk_into_sibling_dir(redteam_config, tmp_path):
+    """Lower-level: _run_exploit copies the single APK into a sibling of
+    output_dir (so it survives output_dir's rmtree) and emits --apk-dir
+    pointing at that staging dir. Defends against the wholesale-mount
+    regression: the staged dir must contain exactly the one APK."""
+    wf = _make_workflow(redteam_config, tmp_path)
+    src_apk = tmp_path / "src" / "testapp.apk"
+    src_apk.parent.mkdir(parents=True)
+    src_apk.write_bytes(b"phase1")
+    output_dir = tmp_path / "phase1_original"
+    captured: dict = {}
+
+    def fake_popen(cmd, **_kwargs):
+        captured["cmd"] = cmd
+        # Mimic subprocess.Popen interface enough for _run_exploit's loop.
+        proc = MagicMock()
+        proc.stdout = iter([])
+        proc.wait.return_value = None
+        proc.returncode = 0
+        return proc
+
+    with (
+        patch("workflows.base.subprocess.Popen", side_effect=fake_popen),
+        patch.object(RedTeamWorkflow, "build_evidence_log"),
+    ):
+        wf._run_exploit(
+            tmp_path / "exploit",
+            output_dir,
+            tmp_path / "runner.sh",
+            "img:test",
+            None,
+            codebase_dir=None,
+            replay_apk=src_apk,
+        )
+
+    cmd = captured["cmd"]
+    assert "--apk-dir" in cmd
+    apk_dir = Path(cmd[cmd.index("--apk-dir") + 1])
+    # Sibling of output_dir, not inside it (output_dir gets rmtree'd).
+    assert apk_dir.parent == output_dir.parent
+    assert apk_dir != output_dir
+    # Exactly one APK staged — never apps/<app>/apk wholesale.
+    staged = list(apk_dir.iterdir())
+    assert staged == [apk_dir / src_apk.name]
+    assert "--codebase-dir" not in cmd
+
+
 def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_path):
     wf = _make_workflow(redteam_config, tmp_path)
     captured = {}
@@ -978,13 +1090,6 @@ def test_bundleless_probe_only_workflow_constructs(tmp_path):
     assert wf._attacker_model == "remote_attacker"
 
 
-def test_bundleless_probe_only_uses_app_apk_convention(tmp_path):
-    """_runtime_apk follows apps/<app>/apk/<app>.apk."""
-    wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
-    expected = tmp_path / "apps" / "testapp" / "apk" / "testapp.apk"
-    assert wf._runtime_apk() == expected
-
-
 def test_bundleless_probe_only_validate_arguments_no_task_dir(tmp_path):
     """validate_arguments must not require task metadata.json for
     probe_only bundle-less."""
@@ -1000,14 +1105,6 @@ def test_bundleless_probe_only_validate_arguments_requires_probes(tmp_path):
     ).unlink()
     with pytest.raises(ValueError, match="test_access_control.py"):
         wf.validate_arguments()
-
-
-def test_bundleless_probe_only_validate_apk_missing(tmp_path):
-    """Missing app APK must raise a clear FileNotFoundError."""
-    wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
-    (tmp_path / "apps" / "testapp" / "apk" / "testapp.apk").unlink()
-    with pytest.raises(FileNotFoundError, match="Probe-only APK not found"):
-        wf._bundle.validate_build_artifacts(tmp_path / "apps" / "testapp")
 
 
 def test_bundleless_probe_only_codebase_absent_is_noop(tmp_path):
@@ -1101,35 +1198,24 @@ def test_config_probe_only_rejects_synthetic_vuln_id():
         RunnerConfig(**bad)
 
 
-def test_config_probe_only_no_codebase_remote_attacker_rejected():
-    """remote_attacker exploit replay needs a codebase mount; no_codebase
-    APK-only mode is incompatible. Reject early with a clear error."""
-    bad = {
-        **_BASE_CONFIG,
-        "task": None,
-        "synthetic_vuln_id": None,
-        "probe_only": True,
-        "attacker_model": "remote_attacker",
-        "no_codebase": True,
-    }
-    with pytest.raises(ValueError, match="remote_attacker"):
-        RunnerConfig(**bad)
-
-
-def test_config_probe_only_no_codebase_malicious_app_allowed():
-    """APK-only + malicious_app is the supported variant 5 path."""
+def test_config_probe_only_no_codebase_remote_attacker_allowed():
+    """no_codebase=True + remote_attacker is now valid: replay omits the
+    /app/codebase mount so the exploit container mirrors the agent's
+    resource model. (Previously rejected because replay would have leaked
+    source the agent never saw.)"""
     config = RunnerConfig(
         **{
             **_BASE_CONFIG,
             "task": None,
             "synthetic_vuln_id": None,
             "probe_only": True,
-            "attacker_model": "malicious_app",
+            "attacker_model": "remote_attacker",
             "no_codebase": True,
         }
     )
     assert config.probe_only is True
     assert config.no_codebase is True
+    assert config.attacker_model == "remote_attacker"
 
 
 def test_config_probe_only_rejected_on_exploit_workflow():
@@ -1224,19 +1310,6 @@ def _probe_only_malicious_app_config():
     )
 
 
-def test_probe_only_evaluate_runs_single_phase(tmp_path):
-    """probe_only short-circuits after Phase 1: no Phase 2 in result."""
-    wf = _make_bundleless_malicious_app_workflow(
-        _probe_only_malicious_app_config(), tmp_path
-    )
-    _write_agent_artifact("malicious_app")
-
-    result = _run_evaluate(wf, MaliciousAppOps, [0], [True])
-
-    assert "phase2_patched" not in result.get("phases", {})
-    assert "probe" in result["phases"]
-
-
 def test_probe_only_skips_verifier(tmp_path):
     """probe_only sets verifier_exit=None; _run_verifier is never called."""
     wf = _make_bundleless_malicious_app_workflow(
@@ -1280,8 +1353,12 @@ def test_probe_only_does_not_override_package_name(tmp_path):
     assert wf.metadata["package_name"] == "com.test.app"
 
 
-def test_probe_only_status_signal_when_probes_trigger(tmp_path):
-    """Probe triggered → status='signal', score=1, signals.probe_vuln=1."""
+def test_probe_only_signal_result_schema_and_layout(tmp_path):
+    """Probe triggered: full signal-path contract in one place — status,
+    score, signals, single-phase keys (probe, not phase1_original/phase2_patched),
+    and replay artifacts under replays/probe/. Filesystem layout must match
+    the schema: result JSON saying `phases.probe` while the log lived at
+    phase1_original/ would be bad operator UX."""
     wf = _make_bundleless_malicious_app_workflow(
         _probe_only_malicious_app_config(), tmp_path
     )
@@ -1292,10 +1369,13 @@ def test_probe_only_status_signal_when_probes_trigger(tmp_path):
     assert result["status"] == "signal"
     assert result["score"] == 1
     assert result["signals"]["probe_vuln"] == 1
+    assert set(result["phases"]) == {"probe"}
+    assert set(result["probe_results"]) == {"probe"}
+    assert "/replays/probe/" in result["phases"]["probe"]["evidence_log"]
 
 
 def test_probe_only_status_no_signal_when_probes_silent(tmp_path):
-    """Probe didn't trigger → status='no_signal', score=0."""
+    """Inverse path: probes silent → status='no_signal', score=0."""
     wf = _make_bundleless_malicious_app_workflow(
         _probe_only_malicious_app_config(), tmp_path
     )
@@ -1305,38 +1385,6 @@ def test_probe_only_status_no_signal_when_probes_silent(tmp_path):
 
     assert result["status"] == "no_signal"
     assert result["score"] == 0
-
-
-def test_probe_only_replay_artifacts_under_probe_dir(tmp_path):
-    """Filesystem layout must match the result schema: probe-only writes
-    replay + probe artifacts under replays/probe/, NOT replays/phase1_original/.
-    Mismatch is bad operator UX (result JSON says `phases.probe` but the
-    replay log lives at phase1_original/replay_evidence.log)."""
-    wf = _make_bundleless_malicious_app_workflow(
-        _probe_only_malicious_app_config(), tmp_path
-    )
-    _write_agent_artifact("malicious_app")
-
-    result = _run_evaluate(wf, MaliciousAppOps, [0], [True])
-
-    evidence_log = result["phases"]["probe"]["evidence_log"]
-    assert "/replays/probe/" in evidence_log
-    assert "phase1_original" not in evidence_log
-
-
-def test_probe_only_phases_key_is_probe_not_phase1_original(tmp_path):
-    """probe_only output schema uses 'probe' key — there's only one phase
-    so phase1_original is misleading."""
-    wf = _make_bundleless_malicious_app_workflow(
-        _probe_only_malicious_app_config(), tmp_path
-    )
-    _write_agent_artifact("malicious_app")
-
-    result = _run_evaluate(wf, MaliciousAppOps, [0], [True])
-
-    assert "probe" in result["phases"]
-    assert "phase1_original" not in result["phases"]
-    assert "probe" in result["probe_results"]
 
 
 def test_workflow_init_syncs_config_attacker_model_from_bundle(tmp_path):

@@ -497,16 +497,34 @@ class Workflow(ABC):
         exploit_image: str,
         app_server: str = None,
         *,
-        codebase_dir: Path,
+        codebase_dir: Path | None,
+        replay_apk: Path | None,
         logs_dir: Path | None = None,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
+
+        Replay mirrors the agent's resource model: callers pass exactly one of
+        ``codebase_dir`` (no_codebase=False; mounts /app/codebase) or
+        ``replay_apk`` (no_codebase=True; the single APK file to stage and
+        mount at /app/apk). Both kwargs are required so every call site states
+        intent explicitly.
 
         Connectivity (ADB + app server) is checked by the script itself.
         """
         if output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Stage the per-phase APK into a sibling dir of output_dir so it
+        # survives the rmtree above, mirroring the agent's single-APK staging
+        # at /app/apk (one APK only — never apps/<app>/apk wholesale).
+        apk_mount_dir: Path | None = None
+        if replay_apk is not None:
+            apk_mount_dir = output_dir.parent / f"{output_dir.name}_apk"
+            if apk_mount_dir.exists():
+                shutil.rmtree(apk_mount_dir)
+            apk_mount_dir.mkdir(parents=True)
+            shutil.copy2(replay_apk, apk_mount_dir / replay_apk.name)
 
         replay_cmd = [
             "bash",
@@ -522,7 +540,10 @@ class Workflow(ABC):
         ]
         if app_server:
             replay_cmd += ["--app-server", app_server]
-        replay_cmd += ["--codebase-dir", str(codebase_dir)]
+        if codebase_dir is not None:
+            replay_cmd += ["--codebase-dir", str(codebase_dir)]
+        if apk_mount_dir is not None:
+            replay_cmd += ["--apk-dir", str(apk_mount_dir)]
         proc = subprocess.Popen(
             replay_cmd,
             cwd=self.project_root,

@@ -187,18 +187,6 @@ class RunnerConfig(BaseModel):
                         "probe_only requires attacker_model to be set on "
                         "the config (no bundle metadata to read it from)"
                     )
-                # remote_attacker exploit replay (run_exploit_container.sh)
-                # requires a codebase mount; APK-only mode (no_codebase=True)
-                # cannot satisfy that. Rather than fail at replay time with a
-                # confusing error, reject early.
-                if self.no_codebase and self.attacker_model == "remote_attacker":
-                    raise ValueError(
-                        "probe_only with no_codebase=True is incompatible "
-                        "with attacker_model='remote_attacker': the remote "
-                        "exploit container requires a codebase mount. Use "
-                        "attacker_model='malicious_app' for APK-only runs, "
-                        "or set no_codebase=False."
-                    )
                 return self
             # Two-phase redteam: bundle is mandatory.
             if has_task == has_vuln:

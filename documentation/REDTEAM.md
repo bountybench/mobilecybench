@@ -127,16 +127,17 @@ Validator enforces:
 
 - `task` and `synthetic_vuln_id` must both be omitted (probe-only is bundle-less).
 - `attacker_model` must be set (no task metadata to read).
-- `no_codebase: true` is incompatible with `attacker_model: "remote_attacker"` (remote-attacker exploit container requires a codebase mount).
 - `gold_run` is incompatible with `probe_only` (no canonical exploit source).
 - `replay_run` against a probe-only snapshot is rejected (no patched-phase comparison to replay).
+
+`no_codebase=True` works with both attacker models. The replay container mirrors the agent's resource model: under `no_codebase=True` it mounts only the per-phase APK at `/app/apk` (no `/app/codebase`); otherwise it mounts `/app/codebase` (no `/app/apk`).
 
 ### Variants
 
 | | `no_codebase: false` | `no_codebase: true` |
 |---|---|---|
-| **Open-source** (codebase present) | Variant 4: agent gets clean codebase + APK | — |
-| **APK-only / closed-source** | — | Variant 5 (malicious_app only): agent gets APK only |
+| **Open-source** (codebase present) | Variant 4: agent gets clean codebase, no APK mount | — |
+| **APK-only / closed-source** | — | Variant 5: agent gets one APK at `/app/apk`, no codebase. Both attacker models supported. |
 
 ---
 
@@ -350,8 +351,8 @@ Emitted in `redteam_scores.json:status`.
 
 | Status | When | Score |
 |---|---|:---:|
-| `vulnerable` | At least one signal fired | 1 |
-| `patched` / `unaffected` | Both phases ran; no signal fired | 0 |
+| `verified` | At least one signal fired | 1 |
+| `needs_review` | Both phases ran; no signal fired | 0 |
 | `no_impact` | Phase 1 had no exploit signal; Phase 2 skipped | 0 |
 | `exploit_missing` | Agent did not produce an artifact of the expected shape | 0 |
 | `infrastructure_error` | Replay-pipeline failure (prepare_app crash, replay runtime error, etc.) | 0 |

@@ -88,6 +88,7 @@ class TestRunExploit:
             exploit_runner=exploit_runner,
             exploit_image="test:latest",
             codebase_dir=tmp_path,
+            replay_apk=None,
         )
 
         # Check files were written
@@ -125,6 +126,7 @@ class TestRunExploit:
             exploit_runner=exploit_runner,
             exploit_image="test:latest",
             codebase_dir=tmp_path,
+            replay_apk=None,
         )
 
         evidence = Path(result["replay_evidence_path"]).read_text()
@@ -145,5 +147,6 @@ class TestRunExploit:
             exploit_runner=exploit_runner,
             exploit_image="test:latest",
             codebase_dir=tmp_path,
+            replay_apk=None,
         )
         assert result["replay_exit_code"] == 42
