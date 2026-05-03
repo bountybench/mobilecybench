@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from evaluation.task_bundle import (
+    ProbeOnlyBundle,
     SyntheticBundle,
     TaskBundle,
     ZerodayBundle,
@@ -190,3 +191,72 @@ def test_zeroday_validate_build_artifacts_requires_hardened_apk(tmp_path):
     (tmp_path / "apps" / "x" / "apk" / "x.apk").touch()
     with pytest.raises(FileNotFoundError, match="hardened"):
         bundle.validate_build_artifacts(tmp_path / "apps" / "x")
+
+
+def test_probe_only_bundle_kind_and_apk_paths(tmp_path):
+    app_dir = tmp_path / "apps" / "myapp"
+    bundle = ProbeOnlyBundle(app_dir=app_dir, _attacker_model="malicious_app")
+    assert bundle.kind == "probe_only"
+    assert bundle.attacker_model() == "malicious_app"
+    expected_apk = app_dir / "apk" / "myapp.apk"
+    assert bundle.phase1_apk() == expected_apk
+    assert bundle.phase2_apk() == expected_apk  # only one APK in probe_only
+
+
+def test_probe_only_bundle_patch_raises():
+    bundle = ProbeOnlyBundle(app_dir=Path("/tmp/x"), _attacker_model="malicious_app")
+    with pytest.raises(NotImplementedError):
+        _ = bundle.patch
+    with pytest.raises(NotImplementedError):
+        bundle.prepare_phase2_codebase(Path("/tmp/x"))
+
+
+def test_probe_only_bundle_build_apks_calls_clean_baseline_build(tmp_path, monkeypatch):
+    """build_type='source' must be supported: build the clean baseline APK
+    once. NotImplementedError here would break variant 4 (open-source)."""
+    bundle = ProbeOnlyBundle(
+        app_dir=tmp_path / "apps" / "myapp", _attacker_model="malicious_app"
+    )
+    captured = {}
+
+    def fake_run_build(project_root, args, timeout):
+        captured["project_root"] = project_root
+        captured["args"] = list(args)
+        captured["timeout"] = timeout
+
+    monkeypatch.setattr("evaluation.task_bundle._run_build", fake_run_build)
+    bundle.build_apks("myapp", tmp_path, timeout=600)
+
+    assert captured == {
+        "project_root": tmp_path,
+        "args": ["myapp"],
+        "timeout": 600,
+    }
+
+
+def test_probe_only_bundle_validate_build_artifacts(tmp_path):
+    bundle = ProbeOnlyBundle(
+        app_dir=tmp_path / "apps" / "myapp", _attacker_model="malicious_app"
+    )
+    with pytest.raises(FileNotFoundError, match="Probe-only APK"):
+        bundle.validate_build_artifacts(tmp_path / "apps" / "myapp")
+    apk = tmp_path / "apps" / "myapp" / "apk" / "myapp.apk"
+    apk.parent.mkdir(parents=True)
+    apk.touch()
+    bundle.validate_build_artifacts(tmp_path / "apps" / "myapp")
+
+
+def test_resolve_bundle_returns_probe_only_bundle(tmp_path):
+    config = _config(
+        probe_only=True,
+        attacker_model="malicious_app",
+    )
+    bundle = resolve_bundle(config, tmp_path, "myapp")
+    assert isinstance(bundle, ProbeOnlyBundle)
+    assert bundle.attacker_model() == "malicious_app"
+
+
+def test_resolve_bundle_probe_only_rejects_unknown_attacker_model(tmp_path):
+    config = _config(probe_only=True, attacker_model="bogus")
+    with pytest.raises(ValueError, match="attacker_model"):
+        resolve_bundle(config, tmp_path, "myapp")

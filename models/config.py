@@ -20,10 +20,13 @@ class RunnerConfig(BaseModel):
 
     # workflow type
     workflow: Literal["exploit", "redteam"] = "exploit"
-    # attacker_model is authoritative in task metadata. At runtime, runner.py
-    # reads it from the task bundle and overrides this field. A config-level
-    # value is only a dev/debug hint; runtime always defers to metadata.
-    # TODO(#979): drop this field — TaskBundle should own attacker_model.
+    # Authoritative source depends on mode:
+    #   - Two-phase redteam (synthetic / zeroday): bundle reads it from
+    #     <task_dir>/metadata.json::attacker_model. Workflow init syncs the
+    #     effective value back into config so prompts/credentials see one
+    #     consistent value (logs the override when config differed).
+    #   - Probe-only (variants 4 / 5, bundle-less): config is authoritative
+    #     because there is no task metadata.json to read from.
     attacker_model: Optional[Literal["malicious_app", "remote_attacker"]] = None
     # Synthetic-vuln selector (for exploit mode, or for redteam+synthetic).
     # Points at apps/<app>/synthetic_vulnerabilities/<vuln_id>/.
@@ -122,12 +125,41 @@ class RunnerConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_probe_only_workflow(self) -> "RunnerConfig":
+        """probe_only is a redteam-only mode. On other workflows it would
+        be silently ignored, which violates the truthful-config contract
+        (operator reads probe_only=True and assumes it took effect)."""
+        if self.probe_only and self.workflow != "redteam":
+            raise ValueError(
+                f"probe_only=True requires workflow='redteam'; "
+                f"got workflow={self.workflow!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_gold_run_probe_only(self) -> "RunnerConfig":
+        """gold_run resolves a canonical exploit source; probe_only has
+        none (no patch / no verifier / no replayable artifact). Reject
+        early instead of failing at gold-source resolution."""
+        if self.gold_run and self.probe_only:
+            raise ValueError(
+                "gold_run is incompatible with probe_only: probe_only has "
+                "no canonical exploit source to resolve. Run interactively "
+                "with the same probe_only config instead."
+            )
+        return self
+
+    @model_validator(mode="after")
     def validate_task(self) -> "RunnerConfig":
         """Workflow-specific task selector validation.
 
         - exploit: requires synthetic_vuln_id.
-        - redteam: requires exactly one of task (zeroday) or synthetic_vuln_id
-          (synthetic). replay_run bypasses validation.
+        - redteam (two-phase): requires exactly one of task (zeroday) or
+          synthetic_vuln_id (synthetic).
+        - redteam + probe_only: bundle-less mode is allowed when neither
+          task nor synthetic_vuln_id is set, but attacker_model must be
+          set on the config (no task metadata.json to read it from).
+          replay_run bypasses validation.
         """
         if self.replay_run:
             return self
@@ -136,7 +168,40 @@ class RunnerConfig(BaseModel):
                 raise ValueError("workflow='exploit' requires synthetic_vuln_id")
             return self
         if self.workflow == "redteam":
-            if bool(self.task) == bool(self.synthetic_vuln_id):
+            has_task = bool(self.task)
+            has_vuln = bool(self.synthetic_vuln_id)
+            if self.probe_only:
+                # Probe-only is bundle-less by design: the bundle's
+                # patch/verifier are irrelevant, and accepting a task or
+                # vuln_id alongside probe_only invites operator confusion
+                # ("did vuln_0 get applied?" — no).
+                if has_task or has_vuln:
+                    raise ValueError(
+                        "probe_only is bundle-less: do not set task or "
+                        "synthetic_vuln_id; got "
+                        f"task={self.task!r}, "
+                        f"synthetic_vuln_id={self.synthetic_vuln_id!r}"
+                    )
+                if not self.attacker_model:
+                    raise ValueError(
+                        "probe_only requires attacker_model to be set on "
+                        "the config (no bundle metadata to read it from)"
+                    )
+                # remote_attacker exploit replay (run_exploit_container.sh)
+                # requires a codebase mount; APK-only mode (no_codebase=True)
+                # cannot satisfy that. Rather than fail at replay time with a
+                # confusing error, reject early.
+                if self.no_codebase and self.attacker_model == "remote_attacker":
+                    raise ValueError(
+                        "probe_only with no_codebase=True is incompatible "
+                        "with attacker_model='remote_attacker': the remote "
+                        "exploit container requires a codebase mount. Use "
+                        "attacker_model='malicious_app' for APK-only runs, "
+                        "or set no_codebase=False."
+                    )
+                return self
+            # Two-phase redteam: bundle is mandatory.
+            if has_task == has_vuln:
                 raise ValueError(
                     "workflow='redteam' requires exactly one of task "
                     "(zeroday) or synthetic_vuln_id (synthetic); "
