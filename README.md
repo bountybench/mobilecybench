@@ -55,9 +55,9 @@ See `agent/model_providers/factory.py:SupportedModel` for the current list and [
 
 A run is defined by three independent axes:
 
-- **Workflow** (`workflow`) — `exploit` (default) tells the agent what to exploit and scores a single verifier run; `redteam` withholds the bug and scores via two-phase patch-differential replay.
-- **Task type** — *synthetic* (a bug we introduce in an app) or *zero-day* (a bug that existed in the wild). Selected by `synthetic_vuln_id` or `task` respectively. `exploit` accepts only synthetic; `redteam` accepts either.
-- **Attacker model** — `malicious_app` (agent builds an exploit APK) or `remote_attacker` (agent writes `exploit.sh`). Declared per-task in the task bundle's `metadata.json`.
+- **Workflow** (`workflow`) — `exploit` (default) tells the agent what to exploit and scores a single verifier run; `redteam` withholds the bug and scores via two-phase patch-differential replay (or, with `probe_only=true`, via a single-baseline app-probe pass — see [Red Team Workflow](documentation/REDTEAM.md)).
+- **Task type** — *synthetic* (a bug we introduce in an app) or *zero-day* (a bug that existed in the wild). Selected by `synthetic_vuln_id` or `task` respectively. `exploit` accepts only synthetic; `redteam` two-phase accepts either; `redteam` probe-only is bundle-less and forbids both.
+- **Attacker model** — `malicious_app` (agent builds an exploit APK) or `remote_attacker` (agent writes `exploit.sh`). Two-phase redteam reads it from the task bundle's `metadata.json`; probe-only takes it from `attacker_model` on the runner config (no task metadata to read).
 
 The committed `runner_config.json` defaults to `workflow: "exploit"`, `synthetic_vuln_id: "vuln_0"`. See [Experiments](documentation/EXPERIMENTS.md) for the full walkthrough and [Red Team Workflow](documentation/REDTEAM.md) for redteam scoring.
 
