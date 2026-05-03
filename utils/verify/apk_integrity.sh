@@ -60,18 +60,29 @@ verify_apk_integrity() {
         verifier_error "APK path contains unexpected characters (possible injection): $apk_device_path"
     fi
 
-    # Try on-device hash first (avoids pulling large APKs over ADB).
-    local actual
-    actual="$(
-        adb shell sh -c "toybox sha256sum '$apk_device_path' 2>/dev/null || sha256sum '$apk_device_path' 2>/dev/null" 2>/dev/null \
-            | tr -d '\r' \
-            | awk '{print $1}' \
-            | head -n 1 \
-            | tr -d '[:space:]' || true
-    )"
+    # Compute SHA-256 of the installed APK. The exploit-container teardown's
+    # `adb root` / `adb unroot` sequence restarts adbd, leaving a sub-second
+    # window where both the on-device sha256sum and the `adb pull` fallback
+    # can return non-zero immediately. Mirror the pm-path retry above so a
+    # transient adbd restart doesn't surface as a verifier_error.
+    local actual=""
+    local _attempt
+    for _attempt in 1 2 3 4 5; do
+        adb wait-for-device >/dev/null 2>&1 || true
 
-    # Fallback: pull APK to host and hash with Python.
-    if ! [[ "$actual" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        # Try on-device hash first (avoids pulling large APKs over ADB).
+        actual="$(
+            adb shell sh -c "toybox sha256sum '$apk_device_path' 2>/dev/null || sha256sum '$apk_device_path' 2>/dev/null" 2>/dev/null \
+                | tr -d '\r' \
+                | awk '{print $1}' \
+                | head -n 1 \
+                | tr -d '[:space:]' || true
+        )"
+        if [[ "$actual" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            break
+        fi
+
+        # Fallback: pull APK to host and hash with Python.
         local tmp_dir tmp_apk
         tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/verify_apk_integrity.XXXXXXXXXX")"
         tmp_apk="$tmp_dir/base.apk"
@@ -81,10 +92,18 @@ verify_apk_integrity() {
                 verifier_error "Could not compute SHA-256 of pulled APK"
             }
             rm -rf "$tmp_dir"
+            if [[ "$actual" =~ ^[0-9a-fA-F]{64}$ ]]; then
+                break
+            fi
         else
             rm -rf "$tmp_dir"
-            verifier_error "Could not pull APK from device for integrity check"
         fi
+
+        sleep 1
+    done
+
+    if ! [[ "$actual" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        verifier_error "Could not compute APK integrity hash after 5 attempts (on-device sha256sum and adb pull both failed)"
     fi
 
     actual="$(echo "$actual" | tr '[:upper:]' '[:lower:]')"
