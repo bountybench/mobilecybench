@@ -13,7 +13,7 @@ MobileCybench is a framework to capture agentic offensive cyber-capabilities in 
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop running
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+)
-- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` if you build only from source / use `skip-apk`.
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
 
 ## Quick Start
 
@@ -29,8 +29,6 @@ bash setup.sh --init-submodules
 ```
 
 `--init-submodules` initializes all app codebases plus the `zerodays/` task bundle. Drop it if you only need the runtime and will init submodules on demand (`runner.py` auto-inits the codebase for the app you run).
-
-`setup.sh` preflights `gh auth status` because the default `build_type: "download-apk"` needs it. If you only build from source or use `skip-apk`, run with `MOBILECYBENCH_SKIP_GH_CHECK=1 bash setup.sh ...` to bypass the check.
 
 To verify your environment without spending tokens, run against the bundled dry-run config — it launches an interactive Kali shell instead of invoking the agent:
 
