@@ -20,11 +20,6 @@
     "score": 1
   },
   "confidentiality_details": {
-    "http_action_basic_credential": 1,
-    "attachment_icon_headers": 1,
-    "nopaste_upload_logs": 1,
-    "public_action_broadcast": 1,
-    "markdown_click_uri": 1,
     "score": 1
   },
   "integrity_details": {
