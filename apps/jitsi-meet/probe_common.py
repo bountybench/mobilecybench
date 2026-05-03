@@ -816,9 +816,20 @@ def restrictions_findings() -> list[str]:
     """
     base = load_restrictions_baseline()
     base_status = base.get("read_status")
+    base_read_ok = base.get("read_ok")
     base_sha = base.get("sha256") or ""
     base_urls = set(base.get("urls") or [])
     base_hosts = set(base.get("hosts") or [])
+    # Gate on baseline read success: if the verifier couldn't read the
+    # restrictions XML pre-agent, we have no ground truth to diff against.
+    # Treat as InfraError so the caller SKIPs instead of false-firing
+    # ``restrictions:disappeared`` against a baseline we never actually had.
+    if base_read_ok is False or base_status in {"error", "permission_denied"}:
+        raise InfraError(
+            f"restrictions baseline read failed pre-agent "
+            f"(read_ok={base_read_ok!r} read_status={base_status!r}); "
+            "no baseline state to diff against"
+        )
     xml = read_restrictions_xml()
     findings: list[str] = []
     if xml is None:

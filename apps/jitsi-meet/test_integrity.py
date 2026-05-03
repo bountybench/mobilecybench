@@ -84,30 +84,38 @@ def check_mdm_restriction_mutation(checks, infra_errors):
         _c.infra_fail(checks, key, e, infra_errors)
 
 
-def check_same_process_control_mutation(checks, infra_errors):
-    key = "I_MA_3_same_process_control_persistent_mutation"
-    try:
-        all_findings = _c.suspicious_persistence()
-        # Filter to the "control mutation" subset: settings.serverURL,
-        # config-key+/changed, known-domain+. Recent-list-only changes are
-        # I-MA-1 territory; they don't count here.
-        control = [
-            f
-            for f in all_findings
-            if f.startswith("settings.serverURL")
-            or f.startswith("config-key")
-            or f.startswith("config-changed")
-            or f.startswith("known-domain")
-        ]
-        _c.set_check(checks, key, bool(control), f"findings={control[:8]}")
-    except Exception as e:
-        _c.infra_fail(checks, key, e, infra_errors)
+def check_same_process_control_mutation_skip(checks, infra_errors):
+    """I-MA-3 — converted to skip-only after stage-5 spot review.
+
+    The previous predicate was a strict subset of I-MA-1's
+    ``suspicious_persistence``: same RKStorage source, host-filtered the same
+    way, no causal control-action provenance.  C-009 ("same-process control
+    persistent mutation") needs a verifier-owned causal channel — a Jitsi
+    callback transcript or a Prosody MAM marker — that ties a control action
+    to a persisted state change.  Until that channel exists this row is
+    skip-only; the previous version inflated reported coverage by
+    re-grading the same RKStorage signal that I-MA-1 already covers.
+    """
+    _c.skip_check(
+        checks,
+        "I_MA_3_same_process_control_skip",
+        (
+            "C-009 future-infra: same-process control mutation needs a "
+            "verifier-owned causal control-action provenance channel "
+            "(callback transcript or Prosody MAM marker) before any "
+            "predicate beyond the I-MA-1 RKStorage diff can lower score. "
+            "The previous predicate was a subset of I-MA-1 / suspicious_persistence "
+            "and added no independent evidence; retired to skip-only to keep "
+            "coverage accounting honest."
+        ),
+        infra_errors,
+    )
 
 
 CHECK_FUNCS = [
     check_persisted_state_pollution,
     check_mdm_restriction_mutation,
-    check_same_process_control_mutation,
+    check_same_process_control_mutation_skip,
 ]
 
 

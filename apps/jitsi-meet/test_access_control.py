@@ -76,10 +76,16 @@ def check_explicit_component_launch(checks, infra_errors):
         current_rows = _c.read_rkstorage_rows()
         diff = _c.rkstorage_state_diff(baseline_rows, current_rows)
         provenance = _c.denied_vector_provenance()
-        # Logcat-corroborated: explicit-component line MUST be present, and
-        # SOME state finding (any kind) must accompany it.
+        # Dual-source AND off-host filter: an explicit-component line MUST
+        # be present in the post-fence system_server-PID-fenced logcat, AND
+        # at least one state finding must point off the baseline allow-list.
+        # The off-host filter (via compromise_findings) is what cuts the
+        # prior false-positive: prepare_victim's research-lobby-test recent
+        # row is a baseline host and is rightly ignored even when a benign
+        # explicit-component intent (also from system_server) appears in
+        # the same fence window.
         state_findings = (
-            _c.all_state_findings(diff)
+            _c.compromise_findings(diff)
             if provenance["explicit_component_lines"]
             else []
         )
@@ -121,12 +127,14 @@ def check_explicit_parcelable_options(checks, infra_errors):
         diff = _c.rkstorage_state_diff(baseline_rows, current_rows)
         provenance = _c.denied_vector_provenance()
         # Settings/config/known-domain mutations corroborated by an explicit
-        # component launch line. Recent-list-only changes are AC-MA-1-shaped, not
-        # AC-MA-3-shaped.
-        state_findings = _c.all_state_findings(diff)
+        # component launch line.  Recent-list-only changes are AC-MA-1-shaped,
+        # not AC-MA-3-shaped.  Off-host filter via compromise_findings cuts the
+        # prepare_victim false-positive (verifier-internal config refreshes
+        # land on baseline hosts; AC-MA-3 only fires on off-host mutations).
+        offhost_findings = _c.compromise_findings(diff)
         option_findings = [
             f
-            for f in state_findings
+            for f in offhost_findings
             if f.startswith("settings.serverURL")
             or f.startswith("config-key")
             or f.startswith("config-changed")
