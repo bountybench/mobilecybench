@@ -25,8 +25,8 @@ class RunnerConfig(BaseModel):
     #     <task_dir>/metadata.json::attacker_model. Workflow init syncs the
     #     effective value back into config so prompts/credentials see one
     #     consistent value (logs the override when config differed).
-    #   - Probe-only (variants 4 / 5, bundle-less): config is authoritative
-    #     because there is no task metadata.json to read from.
+    #   - Probe-only (bundle-less): config is authoritative because there is
+    #     no task metadata.json to read from.
     attacker_model: Optional[Literal["malicious_app", "remote_attacker"]] = None
     # Synthetic-vuln selector (for exploit mode, or for redteam+synthetic).
     # Points at apps/<app>/synthetic_vulnerabilities/<vuln_id>/.
@@ -40,10 +40,12 @@ class RunnerConfig(BaseModel):
     # The two modes are mutually exclusive — we never provide both.
     no_codebase: bool = False
 
-    # When True, RedTeamWorkflow runs only Phase 1 (original APK) and scores
-    # solely on whether the app probes triggered after the agent's exploit.
-    # No patched-phase comparison, no verifier_diff/patch_diff signals.
-    # Intended for APK-only / public-app runs where no fix.patch is available.
+    # When True, RedTeamWorkflow runs in bundle-less probe-only mode: a single
+    # replay against the app's baseline APK (apps/<app>/apk/<app>.apk), no
+    # patch, no verifier, no two-phase comparison. Score is signal/no_signal
+    # based on app probes. Forbids task / synthetic_vuln_id; requires
+    # attacker_model on the config (no task metadata to read). See
+    # documentation/REDTEAM.md#probe-only-mode.
     probe_only: bool = False
 
     # agent limits

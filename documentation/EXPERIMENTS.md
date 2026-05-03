@@ -145,7 +145,7 @@ All fields are defined and validated in [`models/config.py:RunnerConfig`](../mod
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `build_type` | `"source" \| "download-apk" \| "skip-apk"` | (required) | How to acquire the APK: build from source, download a published artifact, or assume it's already in `apps/<app>/apk/`. |
-| `no_codebase` | `bool` | `false` | When true, the agent receives only the APK at `/app/apk/` (no codebase). When false, full source mounted at `/app/codebase`. |
+| `no_codebase` | `bool` | `false` | When true, neither the agent container nor the exploit-replay container mounts `/app/codebase`; both mount one phase-specific APK at `/app/apk` instead. When false, both containers mount `/app/codebase`. See [REDTEAM.md#resource-model](REDTEAM.md#resource-model). |
 | `server_access` | `bool` | (required) | If true, the agent can reach app backend containers over the shared docker network. |
 | `adb_access` | `"none" \| "limited" \| "full"` | (required) | ADB privilege ceiling enforced by the proxy. See ARCHITECTURE.md. |
 

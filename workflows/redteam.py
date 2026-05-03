@@ -1,11 +1,13 @@
-"""RedTeamWorkflow — task-based evaluation pipeline.
+"""RedTeamWorkflow — redteam evaluation pipeline.
 
-One task = one vulnerability. Two bundle types share the pipeline:
-- ZerodayBundle: zerodays/reports/<app>/<task>/task/ (fix.patch direction).
+Three bundle types share the pipeline (see evaluation.task_bundle):
 - SyntheticBundle: apps/<app>/synthetic_vulnerabilities/<vuln>/ (vulnerability.patch direction).
+- ZerodayBundle:   zerodays/reports/<app>/<task>/task/ (fix.patch direction).
+- ProbeOnlyBundle: bundle-less probe-only runs (no patch, no verifier).
 
-Bundle selection and patch direction live behind evaluation.task_bundle.TaskBundle.
-The workflow never branches on bundle kind.
+Path resolution lives behind the TaskBundle Protocol so the workflow does not
+branch on bundle kind for paths. Two-phase vs probe-only branching is driven
+by `config.probe_only`, which short-circuits the patch/verifier/Phase-2 steps.
 
 Two attacker models share the pipeline via lightweight strategy objects:
 - MaliciousAppOps: APK-based exploit (host replay via am instrument)
@@ -347,10 +349,10 @@ class RedTeamWorkflow(Workflow):
             assert_zerodays_initialized(self.project_root)
 
         if self.config.probe_only:
-            # Probe-only (variants 4 / 5, bundle-less): no patch, no verifier,
-            # no task-specific behavior. package_name comes from app metadata
-            # (already populated by the base Workflow init); attacker_model
-            # was already resolved via bundle.attacker_model() in __init__.
+            # Probe-only is bundle-less: no patch, no verifier, no task-specific
+            # behavior. package_name comes from app metadata (already populated
+            # by the base Workflow init); attacker_model was already resolved
+            # via bundle.attacker_model() in __init__.
             if self._ops.uses_generic_probes:
                 from evaluation.generic_probe_config import load_generic_probe_config
 
@@ -487,10 +489,10 @@ class RedTeamWorkflow(Workflow):
         # For synthetic bundles the patch is applied on top of the checked-out
         # baseline commit INSIDE _setup_agent_codebase so the snapshot the
         # agent gets matches the Phase 1 target. For zeroday the hook is a
-        # no-op (baseline is already vulnerable). For probe_only the hook
-        # is git_restore_clean (or no-op when codebase is absent in variant
-        # 5). evaluate() will re-apply this later against apps/<app>/codebase
-        # for the replay codebase-dir.
+        # no-op (baseline is already vulnerable). For probe_only the hook is
+        # git_restore_clean (or no-op when no_codebase=True and no source is
+        # present). evaluate() will re-apply this later against
+        # apps/<app>/codebase for the replay codebase-dir.
         # When no_codebase=True the agent container only sees the APK. Pass
         # the runtime APK explicitly so redteam runs don't fall back to the
         # agent_container derivation, which assumes a synthetic bundle's

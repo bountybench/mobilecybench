@@ -226,10 +226,10 @@ class ZerodayBundle:
 class ProbeOnlyBundle:
     """Bundle stub for probe-only runs against an app with no task bundle.
 
-    Covers RedTeamWorkflow probe-only variants where no synthetic vuln or
-    zeroday task exists: open-source apps without a bundle, and APK-only /
-    closed-source apps. The agent runs against the clean app build, probes
-    score the result, and there is no patch / verifier / phase 2.
+    Used when no synthetic vuln or zeroday task exists: open-source apps
+    without a bundle, and APK-only / closed-source apps. The agent runs
+    against the clean app build, probes score the result, and there is
+    no patch / verifier / phase 2.
 
     `attacker_model` is supplied at construction (from RunnerConfig) since
     there is no task metadata.json to read from.
