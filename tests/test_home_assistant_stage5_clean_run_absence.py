@@ -13,6 +13,19 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 
+def _attested_snapshot(payload):
+    snapshot = {
+        **payload,
+        "hydration_attested": True,
+        "hydration_timestamp": "2026-01-01T00:00:00Z",
+    }
+    canonical = json.dumps(
+        snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    snapshot["hydration_sha256"] = hashlib.sha256(canonical).hexdigest()
+    return snapshot
+
+
 def test_attestation_gate_absence_is_clean_run_pass(monkeypatch):
     probe_lib = importlib.import_module("probe_lib")
     monkeypatch.delenv(probe_lib.HARNESS_ARTIFACT_HMAC_KEY_ENV, raising=False)
@@ -352,26 +365,63 @@ def test_packet_capture_without_sentinel_fails(monkeypatch, tmp_path):
     assert "missing hydration sentinel" in message
 
 
-def test_missing_snapshots_are_clean_run_pass(tmp_path):
+def test_missing_snapshots_are_producer_failures(tmp_path):
     helpers = importlib.import_module("checks.ra_in_helpers")
 
     ok, message = helpers.compare_dynamic_inventory(
         {}, tmp_path / "missing_inventory.json"
     )
-    assert ok is True
-    assert "no pre-stimulus snapshot" in message
+    assert ok is False
+    assert "missing pre-stimulus snapshot" in message
 
     ok, message = helpers.compare_required_room_snapshot(
         {"integrity_check": [["ok"]]}, tmp_path / "missing_room.json"
     )
-    assert ok is True
-    assert "no pre-stimulus snapshot" in message
+    assert ok is False
+    assert "missing pre-stimulus snapshot" in message
 
     ok, message = helpers.compare_required_room_snapshot(
         {"integrity_check": [["malformed"]]}, tmp_path / "missing_room.json"
     )
     assert ok is False
     assert "integrity_check" in message
+
+
+def test_attested_snapshots_are_clean_run_pass(tmp_path):
+    helpers = importlib.import_module("checks.ra_in_helpers")
+    inventory_path = tmp_path / "inventory.json"
+    room_path = tmp_path / "room.json"
+    room_snapshot = {
+        "integrity_check": [["ok"]],
+        "master": [],
+        "table_info": {},
+        "user_version": 1,
+    }
+    inventory_path.write_text(json.dumps(_attested_snapshot({})))
+    room_path.write_text(json.dumps(_attested_snapshot(room_snapshot)))
+
+    ok, message = helpers.compare_dynamic_inventory({}, inventory_path)
+    assert ok is True
+    assert "no new or modified" in message
+
+    ok, message = helpers.compare_required_room_snapshot(room_snapshot, room_path)
+    assert ok is True
+    assert "match baseline" in message
+
+
+def test_snapshot_attestation_mismatch_fails(tmp_path):
+    helpers = importlib.import_module("checks.ra_in_helpers")
+    snapshot_path = tmp_path / "inventory.json"
+    payload = _attested_snapshot({})
+    payload["hydration_timestamp"] = "tampered"
+    snapshot_path.write_text(json.dumps(payload))
+
+    try:
+        helpers.compare_dynamic_inventory({}, snapshot_path)
+    except RuntimeError as exc:
+        assert "hydration_sha256 mismatch" in str(exc)
+    else:
+        raise AssertionError("tampered snapshot should fail attestation")
 
 
 def test_empty_home_assistant_db_server_rows_are_clean_run_pass(monkeypatch):

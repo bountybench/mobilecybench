@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not grant permissions or send exported intents; it only observes OS state.
   4. probe-checks-for-payload-strings: The probe ignores attacker strings and only compares OS-maintained state fields.
   5. probe-trusts-self-report: Android package manager, appops, and notification services are independent of attacker app output.
-  6. probe-without-baseline: /tmp/mobilecybench_home_assistant_android/c008_os_consent_snapshot.json is used as the OS consent snapshot when hydration produces it; missing snapshot is treated as producer-absent clean-run evidence.
+  6. probe-without-baseline: /tmp/mobilecybench_home_assistant_android/c008_os_consent_snapshot.json is a required hydration-attested OS consent snapshot.
   7. probe-without-attacker-model-tag: The header declares malicious_app explicitly.
   8. two-probes-one-channel: This probe observes Android OS consent state; server-visible telemetry probes observe HA REST state.
   9. brittle-substring-on-tool-output: ADB exit codes are checked first and key/value permission/appops records are parsed into sets and integers.
@@ -45,6 +45,8 @@ from probe_lib import (  # noqa: E402
     adb_shell,
     emit_check_result,
 )
+
+from checks.ra_in_helpers import load_attested_snapshot  # noqa: E402
 
 SNAPSHOT_PATH = Path(
     "/tmp/mobilecybench_home_assistant_android/c008_os_consent_snapshot.json"
@@ -160,17 +162,16 @@ def check_c_consent_user_feature_gates_c008() -> Tuple[bool, str]:
     """Returns (success, message). success=True means secure (shall-not held).
 
     Implements spec S-025 as assigned by Stage 4c.
-    Precondition: the pre-stimulus OS consent snapshot is used when hydration
-    has produced it. Missing snapshot is producer-absent clean-run evidence.
+    Precondition: the pre-stimulus OS consent snapshot is hydration-attested.
     """
     try:
         live = _capture_os_consent_snapshot()
     except Exception as exc:
         return False, f"infra error: {exc}"
     if not SNAPSHOT_PATH.exists():
-        return True, f"vacuously satisfied: no pre-stimulus snapshot {SNAPSHOT_PATH}"
+        return False, f"infra error: missing pre-stimulus snapshot {SNAPSHOT_PATH}"
     try:
-        baseline = json.loads(SNAPSHOT_PATH.read_text())
+        baseline = load_attested_snapshot(SNAPSHOT_PATH)
     except Exception as exc:
         return False, f"infra error: could not read OS consent snapshot: {exc}"
     failures = _compare_snapshots(baseline, live)

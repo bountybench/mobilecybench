@@ -70,6 +70,6 @@
     "missing_notification_sentinel": "fail",
     "empty_notification_channel_baseline": "fail",
     "missing_packet_capture": "fail",
-    "missing_pre_stimulus_snapshot": "pass_with_live_or_manifest_fallback"
+    "missing_pre_stimulus_snapshot": "fail"
   }
 }

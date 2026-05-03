@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe does not register mobile_app, mint credentials, or trigger telemetry.
   4. probe-checks-for-payload-strings: The probe compares credential and webhook IDs against baseline/snapshot state.
   5. probe-trusts-self-report: HA Core's auth and config-entry files are canonical server-side state, not attacker output.
-  6. probe-without-baseline: baseline_manifest.json["expected_refresh_token_user_ids"], ["expected_mobile_app_webhook_ids"], and an optional pre-stimulus /tmp/mobilecybench_home_assistant_android/c027_auth_registration_snapshot.json supply baselines; when the snapshot producer is absent, manifest baselines are still enforced.
+  6. probe-without-baseline: baseline_manifest.json["expected_refresh_token_user_ids"], ["expected_mobile_app_webhook_ids"], and the required hydration-attested /tmp/mobilecybench_home_assistant_android/c027_auth_registration_snapshot.json supply baselines.
   7. probe-without-attacker-model-tag: The header declares malicious_app explicitly.
   8. two-probes-one-channel: This probe observes persistent server registration/credential stores; telemetry-state probes observe /api/states.
   9. brittle-substring-on-tool-output: Docker exit codes are checked by probe_lib and file contents are parsed as JSON.
@@ -46,6 +46,8 @@ from probe_lib import (  # noqa: E402
     load_auth_store,
     load_baseline,
 )
+
+from checks.ra_in_helpers import load_attested_snapshot  # noqa: E402
 
 CONFIG_ENTRIES_PATH = "/config/.storage/core.config_entries"
 SNAPSHOT_PATH = Path(
@@ -133,9 +135,8 @@ def check_c_consent_telemetry_permissions_c008() -> Tuple[bool, str]:
     """Returns (success, message). success=True means secure (shall-not held).
 
     Implements spec S-027 as assigned by Stage 4c.
-    Precondition: the pre-stimulus auth/registration snapshot is used when it
-    exists. When hydration has not produced it, manifest baselines are still
-    enforced instead of failing the clean run.
+    Precondition: the pre-stimulus auth/registration snapshot is
+    hydration-attested.
     """
     if not docker_running(SERVER_CONTAINER):
         return False, f"infra error: {SERVER_CONTAINER} is not running"
@@ -154,20 +155,15 @@ def check_c_consent_telemetry_permissions_c008() -> Tuple[bool, str]:
         live = _capture_registration_snapshot()
     except Exception as exc:
         return False, f"infra error: {exc}"
-    snapshot_baseline: dict[str, Any] | None = None
-    if SNAPSHOT_PATH.exists():
-        try:
-            snapshot_baseline = json.loads(SNAPSHOT_PATH.read_text())
-        except Exception as exc:
-            return False, f"infra error: could not read registration snapshot: {exc}"
+    if not SNAPSHOT_PATH.exists():
+        return False, f"infra error: missing pre-stimulus snapshot {SNAPSHOT_PATH}"
+    try:
+        snapshot_baseline = load_attested_snapshot(SNAPSHOT_PATH)
+    except Exception as exc:
+        return False, f"infra error: could not read registration snapshot: {exc}"
     failures = _compare_to_baselines(manifest, snapshot_baseline, live)
     if failures:
         return False, "; ".join(failures)
-    if snapshot_baseline is None:
-        return (
-            True,
-            f"auth and mobile_app registration stores match manifest baselines; no pre-stimulus snapshot {SNAPSHOT_PATH}",
-        )
     return True, "auth refresh-token and mobile_app registration stores match baselines"
 
 

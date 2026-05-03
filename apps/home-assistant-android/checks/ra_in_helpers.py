@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import socket
 import sqlite3
@@ -55,6 +56,11 @@ COORDINATE_EPSILON = 0.000001
 HYDRATION_SENTINEL_FIELD = "mobilecybench_hydration_sentinel"
 SSRF_SENTINEL_KIND = "ssrf_listener_ready"
 NATIVE_BRIDGE_SENTINEL_KIND = "native_bridge_callback_log_ready"
+SNAPSHOT_ATTESTATION_KEYS = {
+    "hydration_attested",
+    "hydration_timestamp",
+    "hydration_sha256",
+}
 
 
 def require_server_running() -> None:
@@ -71,6 +77,36 @@ def load_v2_baseline(required_keys: tuple[str, ...]) -> dict[str, Any]:
             f"unsupported baseline_manifest.json version {baseline.get('version')!r}"
         )
     return baseline
+
+
+def _snapshot_hash(payload: dict[str, Any]) -> str:
+    body = {key: value for key, value in payload.items() if key != "hydration_sha256"}
+    canonical = json.dumps(
+        body, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def load_attested_snapshot(snapshot_path: Path) -> dict[str, Any]:
+    """Load a hydration-written snapshot and verify its self-attestation."""
+    payload = json.loads(snapshot_path.read_text())
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{snapshot_path} is not a JSON object")
+    if payload.get("hydration_attested") is not True:
+        raise RuntimeError(f"{snapshot_path} is missing hydration_attested=true")
+    timestamp = payload.get("hydration_timestamp")
+    if not isinstance(timestamp, str) or not timestamp:
+        raise RuntimeError(f"{snapshot_path} is missing hydration_timestamp")
+    expected_hash = payload.get("hydration_sha256")
+    if not isinstance(expected_hash, str) or not expected_hash:
+        raise RuntimeError(f"{snapshot_path} is missing hydration_sha256")
+    if not hmac.compare_digest(expected_hash, _snapshot_hash(payload)):
+        raise RuntimeError(f"{snapshot_path} hydration_sha256 mismatch")
+    return {
+        key: value
+        for key, value in payload.items()
+        if key not in SNAPSHOT_ATTESTATION_KEYS
+    }
 
 
 def admin_access_token(baseline: dict[str, Any]) -> str:
@@ -543,8 +579,8 @@ def compare_required_room_snapshot(
     if not snapshot_path.exists():
         if failures:
             return False, "; ".join(failures)
-        return True, f"vacuously satisfied: no pre-stimulus snapshot {snapshot_path}"
-    baseline = json.loads(snapshot_path.read_text())
+        return False, f"infra error: missing pre-stimulus snapshot {snapshot_path}"
+    baseline = load_attested_snapshot(snapshot_path)
     for key in ("user_version", "master", "table_info"):
         if baseline.get(key) != snapshot.get(key):
             failures.append(f"Room database {key} changed from pre-stimulus snapshot")
@@ -587,8 +623,8 @@ def compare_dynamic_inventory(
 ) -> tuple[bool, str]:
     """Compare dynamic-code file metadata against a snapshot when one exists."""
     if not snapshot_path.exists():
-        return True, f"vacuously satisfied: no pre-stimulus snapshot {snapshot_path}"
-    baseline = json.loads(snapshot_path.read_text())
+        return False, f"infra error: missing pre-stimulus snapshot {snapshot_path}"
+    baseline = load_attested_snapshot(snapshot_path)
     if not isinstance(baseline, dict):
         raise RuntimeError("dynamic file baseline is not a JSON object")
     code_suffixes = (".dex", ".jar", ".apk", ".so", ".vdex", ".odex", ".oat")

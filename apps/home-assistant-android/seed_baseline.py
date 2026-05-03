@@ -64,6 +64,7 @@ ADMIN_USERNAME = "adminuser"
 NONADMIN_USERNAME = "nonadminuser"
 BASELINE_FILE = Path("baseline_manifest.json")
 METADATA_FILE = Path("metadata.json")
+SNAPSHOT_ROOT = Path("/tmp/mobilecybench_home_assistant_android")
 HA_BASE_URL = "https://localhost:8123"
 HA_CLIENT_ID = "https://home-assistant.io/android"
 LLAT_NAME_PREFIX = "MobileCyBench Probe Baseline"
@@ -755,6 +756,89 @@ def _expected_server_list() -> list[dict[str, Any]]:
     return [server]
 
 
+def _snapshot_hash(payload: dict[str, Any]) -> str:
+    body = {key: value for key, value in payload.items() if key != "hydration_sha256"}
+    canonical = json.dumps(
+        body, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _attested_snapshot(
+    payload: dict[str, Any], hydration_timestamp: str
+) -> dict[str, Any]:
+    snapshot = {
+        **payload,
+        "hydration_attested": True,
+        "hydration_timestamp": hydration_timestamp,
+    }
+    snapshot["hydration_sha256"] = _snapshot_hash(snapshot)
+    return snapshot
+
+
+def _write_attested_snapshot(
+    path: Path, payload: dict[str, Any], hydration_timestamp: str
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot = _attested_snapshot(payload, hydration_timestamp)
+    path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
+
+
+def _refresh_token_snapshot(auth_store: dict[str, Any]) -> dict[str, list[str]]:
+    tokens = auth_store.get("data", {}).get("refresh_tokens", [])
+    token_ids: set[str] = set()
+    user_ids: set[str] = set()
+    if isinstance(tokens, list):
+        for token in tokens:
+            if not isinstance(token, dict):
+                continue
+            token_id = token.get("id")
+            user_id = token.get("user_id")
+            if isinstance(token_id, str) and token_id:
+                token_ids.add(token_id)
+            if isinstance(user_id, str) and user_id:
+                user_ids.add(user_id)
+    return {
+        "refresh_token_ids": sorted(token_ids),
+        "refresh_token_user_ids": sorted(user_ids),
+    }
+
+
+def _auth_registration_snapshot() -> dict[str, list[str]]:
+    snapshot = _refresh_token_snapshot(load_auth_store())
+    snapshot["mobile_app_webhook_ids"] = _mobile_app_webhook_ids()
+    return snapshot
+
+
+def write_pre_stimulus_snapshots(manifest: dict[str, Any]) -> None:
+    """Write hydration-attested snapshots consumed by Stage 4d probes."""
+    hydration_timestamp = manifest.get("hydration_timestamp")
+    if not isinstance(hydration_timestamp, str) or not hydration_timestamp:
+        raise RuntimeError("manifest hydration_timestamp missing")
+
+    from checks.check_c_consent_user_feature_gates_c008 import (  # noqa: PLC0415
+        _capture_os_consent_snapshot,
+    )
+    from checks.ra_in_helpers import (  # noqa: PLC0415
+        dynamic_file_inventory,
+        read_room_database_bytes,
+        room_schema_snapshot,
+    )
+
+    database_bytes = read_room_database_bytes()
+    room_snapshot = room_schema_snapshot(database_bytes)
+    snapshots = {
+        SNAPSHOT_ROOT
+        / "c027_auth_registration_snapshot.json": _auth_registration_snapshot(),
+        SNAPSHOT_ROOT / "c008_os_consent_snapshot.json": _capture_os_consent_snapshot(),
+        SNAPSHOT_ROOT / "c005_dynamic_file_inventory.json": dynamic_file_inventory(),
+        SNAPSHOT_ROOT / "c006_room_schema_snapshot.json": room_snapshot,
+        SNAPSHOT_ROOT / "c009_room_schema_snapshot.json": room_snapshot,
+    }
+    for path, payload in snapshots.items():
+        _write_attested_snapshot(path, payload, hydration_timestamp)
+
+
 def _safe_admin_refresh_token_count(admin_user_id: str) -> int:
     try:
         return len(admin_refresh_token_ids(load_auth_store(), admin_user_id))
@@ -911,10 +995,12 @@ def build_manifest() -> dict[str, Any]:
             if token.get("user_id")
         }
     )
+    hydration_timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     return {
         "version": 2,
         "description": "Seed-time Home Assistant state used by app-specific probes.",
+        "hydration_timestamp": hydration_timestamp,
         # Preserved from version 1
         "protected_admin_user_id": admin_user_id,
         "protected_admin_username": admin_profile["name"],
@@ -952,9 +1038,13 @@ def build_manifest() -> dict[str, Any]:
 
 def main() -> int:
     try:
+        write_snapshots = "--write-pre-stimulus-snapshots" in sys.argv[1:]
         manifest = build_manifest()
         BASELINE_FILE.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         print(f"Wrote {BASELINE_FILE}")
+        if write_snapshots:
+            write_pre_stimulus_snapshots(manifest)
+            print(f"Wrote pre-stimulus snapshots under {SNAPSHOT_ROOT}")
         return 0
     except Exception as exc:
         print(f"Failed to write {BASELINE_FILE}: {exc}", file=sys.stderr)
