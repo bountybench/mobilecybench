@@ -1,5 +1,7 @@
 import json
 import shutil
+import subprocess
+import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -151,6 +153,15 @@ def _write_agent_artifact(attacker_model: str, *, present: bool = True) -> Path:
     if attacker_model == "remote_attacker" and present:
         (exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0\n")
     return exploit_dir
+
+
+def _patch_agent_container(*, create_network=None, setup_agent=None):
+    fake_module = types.ModuleType("agent.agent_container")
+    fake_module.create_docker_network = create_network or (lambda name: None)
+    fake_module.setup_agent_environment = setup_agent or (
+        lambda **kwargs: MagicMock(container=MagicMock())
+    )
+    return patch.dict("sys.modules", {"agent.agent_container": fake_module})
 
 
 def _run_evaluate(wf, ops_cls, exits, probes, *, verifier=(1, 1)):
@@ -363,6 +374,87 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
     assert order == ["prepare_app", "exploit", "pm_clear", "prepare_victim"]
 
 
+def test_remote_attacker_pm_clear_failure_is_infrastructure_error(
+    remote_attacker_config, tmp_path
+):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+
+    def fake_exploit(*args, **kwargs):
+        phase_dir = args[1]
+        phase_dir.mkdir(parents=True, exist_ok=True)
+        evidence = phase_dir / "replay_evidence.log"
+        evidence.write_text("exploit output")
+        return {"replay_exit_code": 0, "replay_evidence_path": str(evidence)}
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch.object(RedTeamWorkflow, "_run_prepare_victim") as mock_prepare_victim,
+        patch(
+            "workflows.redteam.subprocess.run",
+            return_value=MagicMock(
+                returncode=1,
+                stdout="Failure",
+                stderr="package not found",
+            ),
+        ),
+    ):
+        result = RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=Path("apk/test.apk"),
+        )
+
+    assert result.exit_code == 2
+    assert result.failure_kind == "app_data_reset_failed"
+    assert result.evidence_log_path is not None
+    assert result.evidence_log_path.exists()
+    mock_prepare_victim.assert_not_called()
+
+
+def test_remote_attacker_pm_clear_timeout_is_infrastructure_error(
+    remote_attacker_config, tmp_path
+):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+
+    def fake_exploit(*args, **kwargs):
+        phase_dir = args[1]
+        phase_dir.mkdir(parents=True, exist_ok=True)
+        evidence = phase_dir / "replay_evidence.log"
+        evidence.write_text("exploit output")
+        return {"replay_exit_code": 0, "replay_evidence_path": str(evidence)}
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch.object(RedTeamWorkflow, "_run_prepare_victim") as mock_prepare_victim,
+        patch(
+            "workflows.redteam.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(
+                ["adb", "shell", "pm", "clear", "com.test.app"],
+                timeout=30,
+                output="partial stdout",
+                stderr="partial stderr",
+            ),
+        ),
+    ):
+        result = RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=Path("apk/test.apk"),
+        )
+
+    assert result.exit_code == 2
+    assert result.failure_kind == "app_data_reset_failed"
+    assert result.evidence_log_path is not None
+    assert result.evidence_log_path.exists()
+    mock_prepare_victim.assert_not_called()
+
+
 def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_path):
     wf = _make_workflow(redteam_config, tmp_path)
     captured = {}
@@ -375,17 +467,13 @@ def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_
         return MagicMock(container=MagicMock())
 
     with (
-        patch("agent.agent_container.create_docker_network"),
+        _patch_agent_container(setup_agent=fake_setup_agent),
         patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
         patch.object(RedTeamWorkflow, "setup_apks"),
         patch.object(type(wf._bundle), "validate_build_artifacts"),
         patch("utils.emulator_certs.inject_system_ca"),
         patch(
             "utils.setup_utils.install_app_and_setup_backend", side_effect=fake_install
-        ),
-        patch(
-            "agent.agent_container.setup_agent_environment",
-            side_effect=fake_setup_agent,
         ),
         patch("utils.setup_utils.check_connectivity"),
         patch.object(MaliciousAppOps, "setup_agent_extras"),
@@ -400,6 +488,55 @@ def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_
         "apk_path": wf._bundle.phase1_apk(),
         "post_checkout_hook": wf._prepare_runtime_codebase,
     }
+
+
+def test_setup_runtime_environment_preflights_forwards_and_marks_before_install(
+    redteam_config, tmp_path
+):
+    wf = _make_workflow(redteam_config, tmp_path)
+    call_order: list[str] = []
+
+    emulator = MagicMock()
+    emulator.start_in_background.side_effect = lambda: call_order.append(
+        "start_emulator"
+    )
+    emulator.wait_until_ready.side_effect = lambda timeout: call_order.append(
+        "emulator_ready"
+    )
+    emulator.setup_port_forwards.side_effect = lambda app_dir: call_order.append(
+        "port_forwards"
+    )
+
+    def fake_create_network(name: str) -> None:
+        call_order.append(f"create_network:{name}")
+
+    def fake_install(*args, **kwargs):
+        call_order.append("install_app_and_setup_backend")
+        assert wf._backend_runtime_state_file().read_text().strip() == "testapp"
+
+    with (
+        _patch_agent_container(
+            create_network=fake_create_network,
+            setup_agent=lambda **kwargs: MagicMock(container=MagicMock()),
+        ),
+        patch("utils.emulator_manager.EmulatorManager", return_value=emulator),
+        patch.object(RedTeamWorkflow, "setup_apks"),
+        patch.object(type(wf._bundle), "validate_build_artifacts"),
+        patch("utils.emulator_certs.inject_system_ca"),
+        patch(
+            "utils.setup_utils.install_app_and_setup_backend", side_effect=fake_install
+        ),
+        patch("utils.setup_utils.check_connectivity"),
+        patch.object(MaliciousAppOps, "setup_agent_extras"),
+    ):
+        wf.setup_runtime_environment()
+
+    assert call_order.index("create_network:shared_net") < call_order.index(
+        "install_app_and_setup_backend"
+    )
+    assert call_order.index("port_forwards") < call_order.index(
+        "install_app_and_setup_backend"
+    )
 
 
 def test_setup_runtime_environment_creates_shared_net_before_install(
@@ -419,9 +556,9 @@ def test_setup_runtime_environment_creates_shared_net_before_install(
         call_order.append("install_app_and_setup_backend")
 
     with (
-        patch(
-            "agent.agent_container.create_docker_network",
-            side_effect=fake_create_network,
+        _patch_agent_container(
+            create_network=fake_create_network,
+            setup_agent=lambda **kwargs: MagicMock(container=MagicMock()),
         ),
         patch("utils.emulator_manager.EmulatorManager", return_value=MagicMock()),
         patch.object(RedTeamWorkflow, "setup_apks"),
@@ -429,10 +566,6 @@ def test_setup_runtime_environment_creates_shared_net_before_install(
         patch("utils.emulator_certs.inject_system_ca"),
         patch(
             "utils.setup_utils.install_app_and_setup_backend", side_effect=fake_install
-        ),
-        patch(
-            "agent.agent_container.setup_agent_environment",
-            return_value=MagicMock(container=MagicMock()),
         ),
         patch("utils.setup_utils.check_connectivity"),
         patch.object(MaliciousAppOps, "setup_agent_extras"),

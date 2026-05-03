@@ -280,9 +280,10 @@ Normal redteam evaluation (`gold_run=false`, `dry_run=false`):
 1. `runner.py` loads `task/metadata.json` and overrides `config.attacker_model`.
 2. `validate_arguments`: check `fix.patch`, `verify_files/verify_exploit.sh`, `metadata.json`; load `generic_probe_config.json` for `malicious_app`; confirm probe scripts exist.
 3. `setup_runtime_environment`:
+    - Run app cleanup preflight so stale backends from previous runs are stopped.
     - Start the emulator in the background.
     - Acquire APKs per `build_type` (`source` builds original + hardened; `skip-apk` and `download-apk` require them to already exist).
-    - Wait for the emulator; inject system CA.
+    - Wait for the emulator; inject system CA; configure emulator port forwards for container-emulator runs.
     - Install the original APK; start backend services.
     - Start the agent container. For `malicious_app`, inject `templates/malicious_app/` into `/app/agent_exploit/exploit_apk/`.
 4. Run the agent, save `agent_exploit/` from the container, tear down the agent container.
