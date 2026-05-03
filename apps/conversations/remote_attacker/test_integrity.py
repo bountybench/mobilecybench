@@ -32,11 +32,9 @@ score=1 → secure
 
 import json
 import sys
-from pathlib import Path
 from typing import Tuple
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+# probe_helpers comes from PYTHONPATH=apps/conversations, set by run_checks.sh.
 from probe_helpers import (
     APP_DB_PATH,
     DOMAIN,

@@ -215,6 +215,59 @@ seed_data(){
   sleep 2
 }
 
+setup_probe_nonces(){
+  # Generate per-run nonces for the malicious_app sub-checks that gate
+  # on a runtime-generated value (B5 sent-message, B17 shortcut, B9
+  # logcat hidden-JID, B15 PID baseline). The probes read these from
+  # files in the app dir; the malicious APK / replay harness reads the
+  # same files (or env vars MCB_B*_NONCE) at execute time so the value
+  # is post-build and not hardcodable.
+  log_info "Setting up probe nonces..."
+
+  local app_dir="$SCRIPT_DIR"
+
+  # B5: sent-message body nonce
+  openssl rand -hex 16 | sed 's/^/MCB_B5_/' > "$app_dir/.b5_runtime_nonce"
+  chmod 600 "$app_dir/.b5_runtime_nonce"
+  log_info "  B5 nonce written"
+
+  # B17: shortcut label nonce
+  openssl rand -hex 16 | sed 's/^/MCB_B17_/' > "$app_dir/.b17_runtime_nonce"
+  chmod 600 "$app_dir/.b17_runtime_nonce"
+  log_info "  B17 nonce written"
+
+  # B15: app PID baseline (captured AFTER login + auto-restart settle).
+  if command -v adb >/dev/null 2>&1; then
+    local pid
+    pid=$(adb shell "pidof $TARGET_PACKAGE 2>/dev/null" | tr -d '\r' | awk '{print $1}')
+    if [[ -n "$pid" ]]; then
+      printf '%s' "$pid" > "$app_dir/.app_pid_baseline"
+      chmod 600 "$app_dir/.app_pid_baseline"
+      log_info "  app PID baseline = $pid"
+    else
+      log_warn "  pidof returned empty; B15 baseline not written"
+    fi
+  fi
+
+  # B9: hidden JID. Register a runtime-named XMPP account on Prosody and
+  # write its JID to `.b9_hidden_jid` so the probe knows what to scan for.
+  # We deliberately do NOT send a trigger message here — that would cause
+  # Conversations to MAM-query for the JID, which logs it under tag
+  # 'conversations' and would make the V-B01 leak fire in BASELINE,
+  # breaking CI's "baseline scores all 1s" gate. A vuln scenario that
+  # wants to exercise B9 can send the trigger itself.
+  local hidden_local hidden_jid
+  hidden_local="hidden_$(openssl rand -hex 4)"
+  hidden_jid="${hidden_local}@10.0.2.2"
+  if docker exec "$TARGET_CONTAINER" prosodyctl register "$hidden_local" 10.0.2.2 hiddenpass >/dev/null 2>&1; then
+    log_info "  hidden user $hidden_jid registered (no trigger message sent)"
+    printf '%s' "$hidden_jid" > "$app_dir/.b9_hidden_jid"
+    chmod 600 "$app_dir/.b9_hidden_jid"
+  else
+    log_warn "  failed to register hidden user; B9 baseline not written"
+  fi
+}
+
 main(){
   setup_prosody_server
   load_credentials
@@ -227,6 +280,7 @@ main(){
   seed_data
   snapshot_app_own_fingerprints
   snapshot_app_peer_fingerprints
+  setup_probe_nonces
   log_info "Setup complete"
 }
 

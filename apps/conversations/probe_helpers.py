@@ -21,6 +21,7 @@ import json
 import os
 import random
 import subprocess
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -38,6 +39,7 @@ with open(_APP_DIR / "secrets.json") as f:
     secrets = json.load(f)
 
 DOMAIN = metadata["emulator_server"].split(":")[0]
+MUC_DOMAIN = f"conference.{DOMAIN}"
 PROSODY_C2S_PORT = int(metadata["emulator_server"].split(":")[1])
 PROSODY_S2S_PORT = "5269"
 PROSODY_HOST = os.getenv("PROSODY_HOST", "localhost")
@@ -122,6 +124,8 @@ def _create_bosh_body(rid, sid=None, **attrs) -> ET.Element:
 
 
 def _send_bosh_request(body_elem: ET.Element, timeout: int = 10) -> str:
+    """Strict POST; raises on RequestException. Used by probe code that
+    cares about error visibility."""
     xml_bytes = ET.tostring(body_elem, encoding="utf-8")
     response = requests.post(
         BOSH_URL,
@@ -130,6 +134,41 @@ def _send_bosh_request(body_elem: ET.Element, timeout: int = 10) -> str:
         timeout=timeout,
         verify=False,
     )
+    return response.text
+
+
+def _send_bosh_request_silent(
+    body_elem: ET.Element,
+    timeout: int = 30,
+    log_timeout_threshold: int = 10,
+) -> str:
+    """Fire-and-forget POST; returns "" on RequestException. Used by
+    seeding code where short-timeout sends are intentional. Timeouts
+    below `log_timeout_threshold` seconds suppress the log line so the
+    seed output isn't noisy.
+    """
+    xml_bytes = ET.tostring(body_elem, encoding="utf-8")
+    t0 = time.monotonic()
+    try:
+        response = requests.post(
+            BOSH_URL,
+            data=xml_bytes,
+            headers={"Content-Type": "text/xml; charset=utf-8"},
+            timeout=timeout,
+            verify=False,
+        )
+    except requests.exceptions.ReadTimeout:
+        if timeout >= log_timeout_threshold:
+            print(f"[bosh] ReadTimeout after {time.monotonic()-t0:.1f}s ({BOSH_URL})")
+        return ""
+    except requests.exceptions.RequestException as e:
+        print(f"[bosh] {type(e).__name__} after {time.monotonic()-t0:.1f}s: {e}")
+        return ""
+    if response.status_code != 200:
+        print(
+            f"[bosh] HTTP {response.status_code} ({len(response.content)}B): "
+            f"{response.text[:200]!r}"
+        )
     return response.text
 
 
@@ -603,3 +642,277 @@ def app_db_present() -> Tuple[bool, str]:
             "(Conversations not installed or never launched)"
         )
     return True, "App DB present"
+
+
+# --- BOSH stateful client (used by seed_messages.py and any caller that
+# wants OO ergonomics over the function-style helpers above). The class
+# is intentionally a thin wrapper that holds a session dict; methods
+# delegate to module-level helpers so there is exactly one implementation
+# of each BOSH operation.
+
+
+class XMPPClient:
+    """Thin OO wrapper around a BOSH session dict.
+
+    Constructed with (username, password). `connect()` populates self.session
+    via `xmpp_connect`. All other methods delegate to module-level helpers.
+    """
+
+    def __init__(self, username: str, password: str):
+        self.username = username
+        self.password = password
+        self.jid = f"{username}@{DOMAIN}"
+        self.session: Dict = {}
+
+    @property
+    def rid(self) -> int:
+        return self.session.get("rid", 0)
+
+    @property
+    def sid(self):
+        return self.session.get("sid")
+
+    @property
+    def full_jid(self):
+        # Reconstructed from session resource if available.
+        # Probe-style sessions don't track resource explicitly; for callers
+        # that need a from-stanza, supply the full JID as bare JID — the
+        # server will fill the resource from the bound session.
+        return self.jid
+
+    def connect(self) -> bool:
+        ok, msg, sess = xmpp_connect(self.username, self.password)
+        if ok:
+            self.session = sess
+            print(f"[{self.username}] Connected")
+        else:
+            print(f"[{self.username}] {msg}")
+        return ok
+
+    def disconnect(self) -> None:
+        if self.session:
+            xmpp_disconnect(self.session)
+            print(f"[{self.username}] Disconnected")
+
+    def send_message(self, to_jid: str, message_text: str) -> bool:
+        return xmpp_send_message(self.session, to_jid, message_text)
+
+    def get_roster_items(self):
+        return xmpp_query_roster(self.session)
+
+    def get_pep_devicelist(self, owner_jid: str):
+        return xmpp_query_pep_devicelist(self.session, owner_jid)
+
+    def join_muc(self, room_name: str, nickname: str = None):
+        if nickname is None:
+            nickname = self.username
+        room_jid = f"{room_name}@{MUC_DOMAIN}"
+        xmpp_join_muc(self.session, room_jid, nickname=nickname)
+        print(f"[{self.username}] Joined room: {room_name}")
+        return room_jid
+
+    def configure_room_persistent(self, room_jid: str) -> bool:
+        ok = xmpp_configure_room_persistent(self.session, room_jid)
+        print(f"[{self.username}] Configured room persistent: {room_jid}")
+        return ok
+
+    def publish_bookmark(
+        self, room_jid: str, nick: str = None, autojoin: bool = True
+    ) -> bool:
+        if nick is None:
+            nick = self.username
+        ok = xmpp_publish_bookmark(self.session, room_jid, nick=nick, autojoin=autojoin)
+        print(f"[{self.username}] Published bookmark: {room_jid} (autojoin={autojoin})")
+        return ok
+
+    def send_muc_message(self, room_jid: str, message_text: str) -> bool:
+        return xmpp_send_muc_message(self.session, room_jid, message_text)
+
+    def send_muc_message_capture_stanza_id(
+        self, room_jid: str, message_text: str, poll_attempts: int = 5
+    ):
+        return xmpp_send_muc_message_capture_stanza_id(
+            self.session, room_jid, message_text, poll_attempts=poll_attempts
+        )
+
+
+# Function-style equivalents of XMPPClient methods that didn't already exist
+# above. These are the single source of truth for each BOSH operation.
+
+
+def xmpp_send_message(session: Dict, to_jid: str, message_text: str) -> bool:
+    """Send a 1:1 chat message. Fire-and-forget (timeout=5)."""
+    if not session:
+        return False
+    session["rid"] += 1
+    body = _create_bosh_body(rid=session["rid"], sid=session["sid"])
+    msg_id = f"msg-{int(time.time() * 1000)}-{random.randint(1000, 9999)}"
+    msg = ET.SubElement(
+        body,
+        "message",
+        {
+            "xmlns": "jabber:client",
+            "to": to_jid,
+            "type": "chat",
+            "id": msg_id,
+        },
+    )
+    ET.SubElement(msg, "body").text = message_text
+    _send_bosh_request_silent(body, timeout=5)
+    return True
+
+
+def xmpp_send_muc_message(session: Dict, room_jid: str, message_text: str) -> bool:
+    """Send a groupchat message. Fire-and-forget."""
+    if not session:
+        return False
+    session["rid"] += 1
+    body = _create_bosh_body(rid=session["rid"], sid=session["sid"])
+    msg_id = f"muc-{int(time.time() * 1000)}-{random.randint(1000, 9999)}"
+    msg = ET.SubElement(
+        body,
+        "message",
+        {
+            "xmlns": "jabber:client",
+            "to": room_jid,
+            "type": "groupchat",
+            "id": msg_id,
+        },
+    )
+    ET.SubElement(msg, "body").text = message_text
+    _send_bosh_request_silent(body, timeout=5)
+    return True
+
+
+def xmpp_send_muc_message_capture_stanza_id(
+    session: Dict,
+    room_jid: str,
+    message_text: str,
+    poll_attempts: int = 5,
+):
+    """Send groupchat + parse the server-reflected `<stanza-id by=>`.
+
+    Used by the A6 seeding step. BOSH long-poll behaviour means callers
+    should invoke this when the room's reflection queue is small (i.e.
+    right after the joins, before bulk-send).
+    """
+    if not session:
+        return None
+    session["rid"] += 1
+    origin_id = f"muc-cap-{int(time.time() * 1000)}-{random.randint(1000, 9999)}"
+    body = _create_bosh_body(rid=session["rid"], sid=session["sid"])
+    msg = ET.SubElement(
+        body,
+        "message",
+        {
+            "xmlns": "jabber:client",
+            "to": room_jid,
+            "type": "groupchat",
+            "id": origin_id,
+        },
+    )
+    ET.SubElement(msg, "body").text = message_text
+    ET.SubElement(msg, "origin-id", {"xmlns": "urn:xmpp:sid:0", "id": origin_id})
+
+    responses = []
+    send_resp = _send_bosh_request_silent(body, timeout=15)
+    if send_resp:
+        responses.append(send_resp)
+
+    for _ in range(poll_attempts):
+        time.sleep(0.3)
+        session["rid"] += 1
+        poll = _create_bosh_body(rid=session["rid"], sid=session["sid"])
+        resp = _send_bosh_request_silent(poll, timeout=15)
+        if resp:
+            responses.append(resp)
+
+        for raw in responses:
+            try:
+                root = ET.fromstring(raw)
+            except ET.ParseError:
+                continue
+            for refl in root.iter("{jabber:client}message"):
+                if refl.get("type") != "groupchat":
+                    continue
+                if not any(
+                    el.get("id") == origin_id
+                    for el in refl.iter("{urn:xmpp:sid:0}origin-id")
+                ):
+                    continue
+                for sid_el in refl.iter("{urn:xmpp:sid:0}stanza-id"):
+                    return {
+                        "stanza_id": sid_el.get("id"),
+                        "by": sid_el.get("by"),
+                        "origin_id": origin_id,
+                        "body": message_text,
+                    }
+    return None
+
+
+def xmpp_publish_bookmark(
+    session: Dict,
+    room_jid: str,
+    nick: str,
+    autojoin: bool = True,
+) -> bool:
+    """Publish a XEP-0048 conference bookmark to the user's PEP node.
+
+    Conversations reads `storage:bookmarks` on login and auto-joins
+    rooms with `autojoin='true'`, fetches MUC MAM, and stores rows in
+    the local messages table — which is what makes the on-device A6
+    body check live.
+    """
+    if not session:
+        return False
+    session["rid"] += 1
+    body = _create_bosh_body(rid=session["rid"], sid=session["sid"])
+    iq = ET.SubElement(body, "iq", {"type": "set", "id": f"bookmark-{session['rid']}"})
+    pubsub = ET.SubElement(iq, "pubsub", {"xmlns": "http://jabber.org/protocol/pubsub"})
+    publish = ET.SubElement(pubsub, "publish", {"node": "storage:bookmarks"})
+    item = ET.SubElement(publish, "item", {"id": "current"})
+    storage = ET.SubElement(item, "storage", {"xmlns": "storage:bookmarks"})
+    conf = ET.SubElement(
+        storage,
+        "conference",
+        {
+            "jid": room_jid,
+            "name": room_jid.split("@", 1)[0],
+            "autojoin": "true" if autojoin else "false",
+        },
+    )
+    ET.SubElement(conf, "nick").text = nick
+    _send_bosh_request_silent(body, timeout=10)
+    return True
+
+
+def xmpp_configure_room_persistent(session: Dict, room_jid: str) -> bool:
+    """Submit a XEP-0045 owner config form making the room persistent.
+
+    Required so MUC MAM survives all-occupants-leave (otherwise the
+    room's archive disappears on the last departure and the seeded
+    A6 stanza-id baseline becomes unreachable).
+    """
+    if not session:
+        return False
+    session["rid"] += 1
+    body = _create_bosh_body(rid=session["rid"], sid=session["sid"])
+    iq = ET.SubElement(
+        body,
+        "iq",
+        {
+            "type": "set",
+            "id": f"muc-config-{session['rid']}",
+            "to": room_jid,
+        },
+    )
+    query = ET.SubElement(
+        iq, "query", {"xmlns": "http://jabber.org/protocol/muc#owner"}
+    )
+    x = ET.SubElement(query, "x", {"xmlns": "jabber:x:data", "type": "submit"})
+    f1 = ET.SubElement(x, "field", {"var": "FORM_TYPE", "type": "hidden"})
+    ET.SubElement(f1, "value").text = "http://jabber.org/protocol/muc#roomconfig"
+    f2 = ET.SubElement(x, "field", {"var": "muc#roomconfig_persistentroom"})
+    ET.SubElement(f2, "value").text = "1"
+    _send_bosh_request_silent(body, timeout=10)
+    return True

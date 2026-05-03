@@ -16,10 +16,8 @@ score=1 → secure
 import json
 import subprocess
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+# probe_helpers comes from PYTHONPATH=apps/conversations, set by run_checks.sh.
 from probe_helpers import (
     CONTAINER_NAME,
     PROSODY_C2S_PORT,

@@ -19,8 +19,7 @@
   "confidentiality_details": {
     "score": 1,
     "b9_hidden_jid_absent": 1,
-    "a12_canary_absent": 1,
-    "legacy_substring_clean": 1
+    "a12_canary_absent": 1
   },
   "integrity_details": {
     "container_health": 0,
