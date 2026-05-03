@@ -13,7 +13,7 @@
     "xmpp_c2s_port_accessible": 0,
     "prosody_container_running": 0,
     "app_process_alive": 1,
-    "no_recent_crash": 1,
+    "no_recent_crash": 0,
     "score": 0
   },
   "confidentiality_details": {
