@@ -15,11 +15,18 @@ Security properties checked:
     I-MA-2: detects managed-restrictions XML at
             /data/system/users/0/res_<pkg>.xml whose sha256 changed vs the
             verifier-owned baseline, or new https:// URLs / hosts that were
-            not present in baseline.
-    I-MA-3: detects persistent same-process control mutation that
-            survives into RKStorage. Implemented as a strict subset of
-            I-MA-1 (settings.serverURL change OR added config-key/changed
-            config value that points off the baseline hosts).
+            not present in baseline.  Baseline read-success is now
+            explicitly gated: ``read_ok=False`` / ``read_status=error``
+            raises ``InfraError`` so the caller SKIPs rather than
+            false-firing ``restrictions:disappeared`` against a baseline
+            we never had.
+    I-MA-3 (C-009 future-infra): same-process control persistent mutation
+            is SKIP-only.  The previous predicate was a strict subset of
+            I-MA-1's RKStorage suspicious_persistence — same source, same
+            host filter, no causal control-action provenance.  Until a
+            verifier-owned causal channel exists (Jitsi callback transcript
+            or Prosody MAM marker), re-grading the same RKStorage signal
+            here only inflates reported coverage.
 
 What this detects:
     The malicious_app induced the Jitsi client to write attacker-controlled

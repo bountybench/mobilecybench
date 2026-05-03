@@ -17,8 +17,15 @@ Security properties checked:
            The harness has no verifier-owned proxy/HTTP/Prosody-collab
            transcript yet, so this remains skip-only until that infrastructure
            lands.
-    I-RA-3: default-server / managed-trust poisoning — managed-restrictions
-           XML mutation OR settings.serverURL pointed off-baseline.
+    I-RA-3: managed-trust restriction poisoning — narrowed to
+           restrictions-only after stage-5 reviewer.a flagged the prior
+           OR(settings.serverURL, restrictions) as a coverage mislabel.
+           The settings.serverURL channel is already covered by
+           AC-RA-1 / AC-RA-2 (RKStorage state diff with off-host filter)
+           and I-RA-1 (config-cache poisoning), so this row's unique
+           scope is the OS-managed restrictions XML.  Predicate:
+           ``probe_common.restrictions_findings`` (sha256 drift OR new
+           https URL OR new host vs baseline).
 
 What this detects:
     The remote attacker drove the victim app to write attacker-controlled
