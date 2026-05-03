@@ -316,6 +316,11 @@ class RedTeamWorkflow(Workflow):
     def validate_arguments(self) -> None:
         super().validate_arguments()
 
+        if self._bundle.kind == "zeroday":
+            from evaluation.task_bundle import assert_zerodays_initialized
+
+            assert_zerodays_initialized(self.project_root)
+
         task_metadata_path = self._bundle.task_dir / "metadata.json"
         # probe_only runs against a single APK with no fix/vulnerability
         # patch and no verifier; only the metadata.json is required so we

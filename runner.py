@@ -191,8 +191,10 @@ def _load_task_attacker_model(
     project_root: Path, app_name: str, config: RunnerConfig
 ) -> str:
     """Return attacker_model from the redteam task bundle (synthetic or zeroday)."""
-    from evaluation.task_bundle import resolve_bundle
+    from evaluation.task_bundle import assert_zerodays_initialized, resolve_bundle
 
+    if getattr(config, "task", None):
+        assert_zerodays_initialized(project_root)
     bundle = resolve_bundle(config, project_root, app_name)
     task_meta_path = bundle.task_dir / "metadata.json"
     if not task_meta_path.exists():

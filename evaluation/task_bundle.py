@@ -185,11 +185,39 @@ class ZerodayBundle:
             )
 
 
+def assert_zerodays_initialized(project_root: Path) -> None:
+    """Surface a clear, actionable error when zerodays/ is empty.
+
+    The submodule is registered in .gitmodules but `bash setup.sh` only
+    initializes it with --init-submodules. A bare clone leaves the
+    directory empty, and downstream code that opens task/metadata.json
+    raises a path-not-found error that does not point at the submodule.
+
+    Callers run this as an environment precondition before exercising a
+    ZerodayBundle's filesystem paths (validate_arguments hooks, runner
+    startup metadata reads).
+    """
+    zerodays_dir = project_root / "zerodays"
+    if zerodays_dir.exists() and any(zerodays_dir.iterdir()):
+        return
+    raise FileNotFoundError(
+        "zerodays/ submodule is not initialized — required for redteam "
+        "zero-day tasks. Run:\n"
+        "    git submodule update --init zerodays\n"
+        "If you do not have access to the submodule remote, contact a "
+        "repo maintainer."
+    )
+
+
 def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
     """Return the TaskBundle for the current config.
 
     Strict XOR: exactly one of config.task (zeroday) or
     config.synthetic_vuln_id (synthetic) must be set.
+
+    Pure path-resolution — does not check filesystem state. Callers that
+    need an environment precondition should invoke
+    ``assert_zerodays_initialized`` separately.
     """
     task = getattr(config, "task", None)
     vuln_id = getattr(config, "synthetic_vuln_id", None)

@@ -109,6 +109,10 @@ class Workflow(ABC):
 
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
 
+        # TODO: `config.allowed_tools` is currently honored only by the
+        # custom agent. Codex and Claude Code agents drive their own CLI
+        # tool surfaces (Codex's native `shell`, Claude Code's built-in
+        # tools) and would need a separate filter pass — wire when needed.
         if agent_mode == "claude-code":
             from agent.claude_code_agent import ClaudeCodeAgent
 
@@ -171,6 +175,7 @@ class Workflow(ABC):
                 no_codebase=self.config.no_codebase,
                 allow_unregistered_models=self.config.allow_unregistered_models,
                 vuln_id=self.config.synthetic_vuln_id or "vuln_0",
+                allowed_tools=self.config.allowed_tools,
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 

@@ -10,6 +10,7 @@ from evaluation.task_bundle import (
     SyntheticBundle,
     TaskBundle,
     ZerodayBundle,
+    assert_zerodays_initialized,
     resolve_bundle,
 )
 
@@ -76,6 +77,13 @@ def test_bundle_paths(bundle, task_dir, phase1_apk, phase2_apk):
     assert bundle.phase2_apk() == phase2_apk
 
 
+def _initialized_zerodays_root(tmp_path: Path) -> Path:
+    """Project root with a non-empty zerodays/ submodule directory."""
+    (tmp_path / "zerodays").mkdir()
+    (tmp_path / "zerodays" / ".keep").write_text("")
+    return tmp_path
+
+
 @pytest.mark.parametrize(
     ("cfg", "expected_type"),
     [
@@ -92,6 +100,28 @@ def test_resolve_bundle_preserves_synthetic_vuln_id():
     bundle = resolve_bundle(_config(synthetic_vuln_id="vuln_0"), Path("/p"), "app")
     assert isinstance(bundle, SyntheticBundle)
     assert bundle.vuln_id == "vuln_0"
+
+
+def test_assert_zerodays_initialized_raises_when_submodule_missing(tmp_path):
+    """A bare clone leaves zerodays/ empty; downstream callers should
+    see an actionable error pointing at the submodule, not a generic
+    path-not-found from an opener deeper in the stack."""
+    with pytest.raises(
+        FileNotFoundError, match="zerodays/ submodule is not initialized"
+    ):
+        assert_zerodays_initialized(tmp_path)
+
+
+def test_assert_zerodays_initialized_passes_when_submodule_populated(tmp_path):
+    """Once any content lives under zerodays/, the precondition clears."""
+    assert_zerodays_initialized(_initialized_zerodays_root(tmp_path))
+
+
+def test_resolve_bundle_does_not_check_filesystem(tmp_path):
+    """resolve_bundle is pure path-resolution — env preconditions live
+    in `assert_zerodays_initialized`, not here."""
+    bundle = resolve_bundle(_config(task="report-1"), tmp_path, "app")
+    assert isinstance(bundle, ZerodayBundle)
 
 
 @pytest.mark.parametrize(
