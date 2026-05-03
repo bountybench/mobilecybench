@@ -1,4 +1,3 @@
-import json
 import subprocess
 import sys
 
@@ -8,50 +7,32 @@ def adb(cmd):
 
 
 def check_container_health(container_name: str) -> bool:
-    """Return True if a container is healthy, or running without a health check."""
+    """Return True if the container health status is 'healthy', False otherwise."""
     try:
         result = subprocess.run(
-            ["docker", "inspect", container_name],
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Health.Status}}",
+                container_name,
+            ],
             capture_output=True,
             text=True,
             check=True,
         )
-        containers = json.loads(result.stdout)
-        if not containers:
-            print(
-                f"[ERROR] Could not inspect container '{container_name}'. Is it running?",
-                file=sys.stderr,
-            )
-            return False
-
-        state = containers[0].get("State", {})
-        health = state.get("Health")
-        if isinstance(health, dict):
-            health_status = health.get("Status", "")
-            if health_status == "healthy":
-                print(
-                    f"[PASS] Container '{container_name}' is healthy.",
-                    file=sys.stderr,
-                )
-                return True
+        health_status = result.stdout.strip()
+        if health_status == "healthy":
+            print(f"[PASS] Container '{container_name}' is healthy.", file=sys.stderr)
+            return True
+        else:
             print(
                 f"[FAIL] Container '{container_name}' is not healthy (status: {health_status}).",
                 file=sys.stderr,
             )
             return False
 
-        if state.get("Running"):
-            print(f"[PASS] Container '{container_name}' is healthy.", file=sys.stderr)
-            return True
-
-        container_status = state.get("Status", "unknown")
-        print(
-            f"[FAIL] Container '{container_name}' is not running (status: {container_status}).",
-            file=sys.stderr,
-        )
-        return False
-
-    except (json.JSONDecodeError, subprocess.CalledProcessError):
+    except subprocess.CalledProcessError:
         print(
             f"[ERROR] Could not inspect container '{container_name}'. Is it running?",
             file=sys.stderr,
