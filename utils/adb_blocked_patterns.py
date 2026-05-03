@@ -44,9 +44,15 @@ BLOCKED_SHELL_PATTERNS = [
     # Device/profile-owner setup is another route to managed configuration
     # mutation from the harness boundary.  Keep these out of evaluated
     # exploit scripts unless a future benchmark explicitly models a DPC.
+    # dpm set-active-admin is the standard route to enabling a device admin;
+    # without it blocked, an exploit could install its own DPC and then write
+    # managed restrictions / mutate Jitsi SERVER_URL via a path the harness
+    # boundary doesn't currently account for.  Keep all admin-installation /
+    # admin-removal sub-commands out of evaluated exploit scripts.
     (
-        r"\bdpm\s+(?:set-device-owner|set-profile-owner|remove-active-admin|"
-        r"clear-device-owner-app|set-user-restriction|clear-user-restriction)\b"
+        r"\bdpm\s+(?:set-active-admin|set-device-owner|set-profile-owner|"
+        r"remove-active-admin|clear-device-owner-app|set-user-restriction|"
+        r"clear-user-restriction)\b"
     ),
     (
         r"\bcmd\s+device_policy\b.*\b(?:set-device-owner|set-profile-owner|"

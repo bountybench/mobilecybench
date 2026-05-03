@@ -6,9 +6,12 @@ Attacker model:
     remote_attacker
 
 Security properties checked:
-    AC-RA-1: HTTPS app-link conference coercion — detects victim
-           recent-list entries containing a conference URL on a non-baseline
-           host.
+    AC-RA-1: HTTPS app-link conference coercion — DUAL-SOURCE.  Requires
+           both (a) a non-baseline-host recent-list URL diff in RKStorage
+           AND (b) a system_server-PID-fenced ATM/AM ACTION_VIEW line in
+           the post-baseline logcat that names the same host pointing at
+           org.jitsi.meet/.MainActivity.  Either channel alone passes —
+           score=0 only when both agree.
     AC-RA-2: remote deployment / config selection — detects added
            config.js cache rows, off-baseline hosts introduced into existing
            config values, or known-domain entries that point off-baseline.

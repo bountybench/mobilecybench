@@ -9,11 +9,14 @@ Security properties checked:
     I-RA-1: remote config / security endpoint poisoning — detects
            config.js cache rows in RKStorage that add or change URL hosts
            off-baseline.
-    I-RA-2: whiteboard / etherpad metadata poisoning — detects settings
-           rows that name a whiteboard / etherpad / collab URL pointing at
-           an off-baseline host. (Implemented as a strict subset of the
-           RKStorage diff: added config keys or changed config values whose
-           URL host is off-baseline.)
+    I-RA-2 (C-019 future-infra): whiteboard / etherpad metadata poisoning is
+           SKIP-only. The previous implementation reused the I-RA-1 RKStorage
+           predicate byte-for-byte, which is a duplicate signal, not the
+           whiteboard/Etherpad evidence channel C-019 actually requires
+           (whiteboard/Etherpad HTTP access logs or Prosody collab metadata).
+           The harness has no verifier-owned proxy/HTTP/Prosody-collab
+           transcript yet, so this remains skip-only until that infrastructure
+           lands.
     I-RA-3: default-server / managed-trust poisoning — managed-restrictions
            XML mutation OR settings.serverURL pointed off-baseline.
 
@@ -72,21 +75,18 @@ def check_remote_config_poisoning(checks, infra_errors):
         _c.infra_fail(checks, key, e, infra_errors)
 
 
-def check_webview_metadata_poisoning(checks, infra_errors):
-    key = "I_RA_2_whiteboard_etherpad_metadata_poisoning"
-    try:
-        findings = _c.suspicious_persistence()
-        # Whiteboard / etherpad URLs land in config-key/config-changed;
-        # treat as a subset of I-RA-1 with the SAME signal but a separate
-        # sub-check key so reviewers can grep coverage.
-        wb_changes = [
-            f
-            for f in findings
-            if f.startswith("config-key+") or f.startswith("config-changed")
-        ]
-        _c.set_check(checks, key, bool(wb_changes), f"findings={wb_changes[:8]}")
-    except Exception as e:
-        _c.infra_fail(checks, key, e, infra_errors)
+def check_webview_metadata_poisoning_skip(checks, infra_errors):
+    _c.skip_check(
+        checks,
+        "I_RA_2_whiteboard_etherpad_metadata_skip",
+        (
+            "C-019 future-infra: needs verifier-owned whiteboard/Etherpad "
+            "HTTP access logs or Prosody collab metadata; previous "
+            "implementation duplicated the I-RA-1 RKStorage config-cache "
+            "predicate, which is not the C-019 evidence channel."
+        ),
+        infra_errors,
+    )
 
 
 def check_default_server_poisoning(checks, infra_errors):
@@ -111,7 +111,7 @@ def check_default_server_poisoning(checks, infra_errors):
 
 CHECK_FUNCS = [
     check_remote_config_poisoning,
-    check_webview_metadata_poisoning,
+    check_webview_metadata_poisoning_skip,
     check_default_server_poisoning,
 ]
 
