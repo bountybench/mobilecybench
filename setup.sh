@@ -419,6 +419,26 @@ Install apktool (see options above) and re-run setup.sh."
     fi
 }
 
+check_gh_auth() {
+    log "Checking GitHub CLI authentication..."
+
+    if ! command_exists gh; then
+        error_exit "GitHub CLI ('gh') not found. Required by default build_type='download-apk'.
+  macOS:   brew install gh
+  Linux:   sudo apt install gh   (or see https://cli.github.com/)
+  Windows: choco install gh
+Then run: gh auth login"
+    fi
+
+    # Also accepts GH_TOKEN / GITHUB_TOKEN env auth (CI/Docker, no `gh auth login`).
+    if ! gh auth status >/dev/null 2>&1; then
+        error_exit "gh CLI installed but not authenticated. Run: gh auth login
+(or set GH_TOKEN / GITHUB_TOKEN in your environment for non-interactive use)"
+    fi
+
+    log "gh CLI authenticated"
+}
+
 # Detect OS and architecture
 detect_os() {
     case "$(uname -s)" in
@@ -700,7 +720,9 @@ main() {
 
     # Check and install apktool
     check_apktool
-    
+
+    check_gh_auth
+
     # Install Android SDK if not present
     if [[ ! -d "$ANDROID_HOME/cmdline-tools" ]]; then
         install_android_sdk "$os"
