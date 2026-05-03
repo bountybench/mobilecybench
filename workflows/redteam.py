@@ -207,9 +207,10 @@ class RemoteAttackerOps:
             return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
 
         logger.info("[phase] Running exploit.sh in container...")
-        # Replay mirrors the agent's resource model: under no_codebase=True the
-        # agent saw /app/apk/<file>.apk and no source; otherwise /app/codebase.
-        # _run_exploit handles the per-phase APK staging when replay_apk is set.
+        # Replay mirrors the agent container's resource model: under
+        # no_codebase=True the agent saw /app/apk/<file>.apk and no source;
+        # otherwise it saw /app/codebase. _run_exploit stages the per-phase
+        # APK when replay_apk is set.
         if workflow.config.no_codebase:
             codebase_dir = None
             replay_apk = kwargs["target_apk"]

@@ -130,14 +130,14 @@ Validator enforces:
 - `gold_run` is incompatible with `probe_only` (no canonical exploit source).
 - `replay_run` against a probe-only snapshot is rejected (no patched-phase comparison to replay).
 
-`no_codebase=True` works with both attacker models. The replay container mirrors the agent's resource model: under `no_codebase=True` it mounts only the per-phase APK at `/app/apk` (no `/app/codebase`); otherwise it mounts `/app/codebase` (no `/app/apk`).
+`no_codebase=True` works with both attacker models. It is the security-load-bearing flag: under `no_codebase=True` neither the agent container nor the replay container mounts `/app/codebase`, and the agent/replay containers mount the single phase-specific APK at `/app/apk` to keep paths consistent across phases. (Under `no_codebase=False` the agent container mounts `/app/codebase`; the agent always also has ADB access to the running emulator.)
 
 ### Variants
 
 | | `no_codebase: false` | `no_codebase: true` |
 |---|---|---|
-| **Open-source** (codebase present) | Variant 4: agent gets clean codebase, no APK mount | — |
-| **APK-only / closed-source** | — | Variant 5: agent gets one APK at `/app/apk`, no codebase. Both attacker models supported. |
+| **Open-source** (codebase present) | Variant 4: agent and replay mount `/app/codebase` | — |
+| **APK-only / closed-source** | — | Variant 5: agent and replay mount only the phase APK at `/app/apk`; no source anywhere. Both attacker models supported. |
 
 ---
 
