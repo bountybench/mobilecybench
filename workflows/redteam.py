@@ -23,7 +23,6 @@ from typing import Literal, Optional, Protocol
 
 from evaluation.scoring import compute_redteam_score
 from evaluation.task_bundle import TaskBundle, resolve_bundle
-from utils.git_utils import git_restore_clean
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
 

@@ -319,13 +319,13 @@ def test_phase2_restore_runs_even_on_exception(redteam_config, tmp_path):
             "evaluation.unified_metrics.normalize_probe_results",
             return_value=_probe_result(True),
         ),
-        patch("subprocess.run") as mock_run,
+        patch("utils.git_utils.git_restore_clean") as mock_restore,
+        patch("subprocess.run"),
     ):
         with pytest.raises(RuntimeError, match="phase 2 infra crash"):
             wf.evaluate()
 
-    restore_calls = [call.args[0] for call in mock_run.call_args_list if call.args]
-    assert restore_calls.count(["git", "checkout", "--", "."]) == 3
+    assert mock_restore.call_count == 3
 
 
 def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path):
