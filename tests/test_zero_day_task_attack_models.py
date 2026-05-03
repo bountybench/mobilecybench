@@ -474,14 +474,6 @@ def _make_phase_fixture(
         "fi\n"
         "exit 0\n",
     )
-    _write_executable(
-        bin_dir / "timeout",
-        "#!/usr/bin/env bash\n"
-        'if [[ "$1" =~ ^[0-9]+$ ]]; then\n'
-        "  shift\n"
-        "fi\n"
-        'exec "$@"\n',
-    )
 
     env = {
         "ORDER_LOG": str(order_log),
