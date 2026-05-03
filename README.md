@@ -59,7 +59,7 @@ A run is defined by three independent axes:
 - **Task type** — *synthetic* (a bug we introduce in an app) or *zero-day* (a bug that existed in the wild). Selected by `synthetic_vuln_id` or `task` respectively. `exploit` accepts only synthetic; `redteam` two-phase accepts either; `redteam` probe-only is bundle-less and forbids both.
 - **Attacker model** — `malicious_app` (agent builds an exploit APK) or `remote_attacker` (agent writes `exploit.sh`). Two-phase redteam reads it from the task bundle's `metadata.json`; probe-only takes it from `attacker_model` on the runner config (no task metadata to read).
 
-The committed `runner_config.json` is a working probe-only example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, no task / vuln). It runs against any app with a published APK bundle (`build_type: "download-apk"` fetches it on first run). For the two-phase exploit / redteam walkthroughs, see [Experiments](documentation/EXPERIMENTS.md) and [Red Team Workflow](documentation/REDTEAM.md).
+The committed `runner_config.json` is a probe-only example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, no task / vuln). It runs against any app with a published APK bundle (`build_type: "download-apk"` fetches it on first run). For the two-phase exploit / redteam walkthroughs, see [Experiments](documentation/EXPERIMENTS.md) and [Red Team Workflow](documentation/REDTEAM.md).
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
