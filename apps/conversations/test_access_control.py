@@ -61,14 +61,15 @@ def check_app_accounts_integrity() -> Tuple[bool, str]:
         if username and server:
             actual_jids.add(f"{username}@{server}")
 
+    expected = {EXPECTED_ACCOUNT_JID}
     if not actual_jids:
-        return True, (
-            "Accounts integrity soft-pass: accounts table empty "
-            "(login may not have completed; fires only on extra/replaced "
-            "rows so an empty table reports clean)"
+        return False, (
+            "Accounts integrity violated: accounts table is empty "
+            f"(expected exactly {sorted(expected)}). A malicious flow "
+            "that wiped the seeded account would land here; a probe "
+            "soft-pass would silently mask it."
         )
 
-    expected = {EXPECTED_ACCOUNT_JID}
     if actual_jids == expected:
         return True, (
             f"Accounts table contains exactly the expected JID set: "
