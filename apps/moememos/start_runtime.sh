@@ -7,6 +7,8 @@ APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "moememos" "$@")
 cd "$SCRIPT_DIR"
 
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-180}
+ADB_RESTART_ATTEMPTS=${ADB_RESTART_ATTEMPTS:-4}
+ADB_RESTART_RETRY_DELAY_SECONDS=${ADB_RESTART_RETRY_DELAY_SECONDS:-5}
 
 TARGET_PACKAGE="me.mudkip.moememos"
 MEMOS_URL="http://localhost:5230"
@@ -37,18 +39,28 @@ enable_adb_root() {
   log_info "Enabling adb root for MoeMemos app-private hydration"
   wait_for_device_boot 120 || fatal "Device not ready for adb root"
 
-  local root_output
-  if ! root_output=$(adb root 2>&1); then
-    fatal "adb root is required for MoeMemos hydration but failed: $root_output"
-  fi
-  adb wait-for-device
-  wait_for_device_boot 120 || fatal "Device not ready after adb root"
+  local attempt root_output root_rc adb_uid
+  for ((attempt = 1; attempt <= ADB_RESTART_ATTEMPTS; attempt++)); do
+    adb wait-for-device >/dev/null 2>&1 || true
 
-  local adb_uid
-  adb_uid=$(adb shell id 2>/dev/null | tr -d '\r' || true)
-  if [[ "$adb_uid" != uid=0* ]]; then
-    fatal "adb root is required for MoeMemos hydration; current adb shell identity: ${adb_uid:-unknown}"
-  fi
+    root_rc=0
+    root_output="$(adb root 2>&1)" || root_rc=$?
+
+    adb wait-for-device >/dev/null 2>&1 || true
+    wait_for_adb_shell_ready 45 || true
+
+    adb_uid=$(adb shell id 2>/dev/null | tr -d '\r' || true)
+    if [[ "$adb_uid" == uid=0* ]]; then
+      return 0
+    fi
+
+    if (( attempt < ADB_RESTART_ATTEMPTS )); then
+      log_warn "adb root attempt ${attempt}/${ADB_RESTART_ATTEMPTS} did not reach root shell; retrying"
+      sleep "$ADB_RESTART_RETRY_DELAY_SECONDS"
+    fi
+  done
+
+  fatal "adb root is required for MoeMemos hydration; last rc=${root_rc}, output=${root_output:-<empty>}, identity=${adb_uid:-unknown}"
 }
 
 wait_for_adb_shell_ready() {
@@ -77,14 +89,27 @@ wait_for_adb_shell_ready() {
 
 restore_adb_user_shell() {
   log_info "Restoring adb to non-root mode after MoeMemos hydration"
-  adb unroot >/dev/null 2>&1 || true
-  wait_for_adb_shell_ready 90 || fatal "Device shell not ready after adb unroot"
 
-  local adb_uid
-  adb_uid=$(adb shell id 2>/dev/null | tr -d '\r' || true)
-  if [[ "$adb_uid" == uid=0* ]]; then
-    fatal "adb unroot did not restore a non-root shell; current adb shell identity: ${adb_uid:-unknown}"
-  fi
+  local attempt unroot_output unroot_rc adb_uid
+  for ((attempt = 1; attempt <= ADB_RESTART_ATTEMPTS; attempt++)); do
+    unroot_rc=0
+    unroot_output="$(adb unroot 2>&1)" || unroot_rc=$?
+
+    adb wait-for-device >/dev/null 2>&1 || true
+    wait_for_adb_shell_ready 45 || true
+
+    adb_uid=$(adb shell id 2>/dev/null | tr -d '\r' || true)
+    if [[ "$adb_uid" != uid=0* && -n "$adb_uid" ]]; then
+      return 0
+    fi
+
+    if (( attempt < ADB_RESTART_ATTEMPTS )); then
+      log_warn "adb unroot attempt ${attempt}/${ADB_RESTART_ATTEMPTS} did not restore user shell; retrying"
+      sleep "$ADB_RESTART_RETRY_DELAY_SECONDS"
+    fi
+  done
+
+  fatal "adb unroot did not restore a non-root shell; last rc=${unroot_rc}, output=${unroot_output:-<empty>}, identity=${adb_uid:-unknown}"
 }
 
 install_app() {
