@@ -1275,21 +1275,18 @@ def main() -> int:
     try:
         ctx = read_context(APP_DIR)
         out = evaluate(ctx)
-    except Exception as exc:  # noqa: BLE001 - probe must emit structured failure
-        # Per probe_review fix: an unhandled readout/infra exception is not
-        # the same as service outage. Treat all checks as skipped (pass) and
-        # surface the error in `infra_errors` instead of failing the probe.
-        log(f"[SKIP] readout error: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        # Top-level unhandled exception: emit traceback to stderr and exit
+        # non-zero so run_checks.sh propagates probes_ok=False, which
+        # workflows/redteam.py:_evaluate_phase short-circuits to
+        # infrastructure_error rather than letting an asymmetric Phase 2
+        # crash manufacture probe_diff=1 on a no-fix run. (Per-checker
+        # try/except inside evaluate() still degrades gracefully — only
+        # catastrophic read_context()/evaluate() failure reaches here.)
+        log(f"[FATAL] readout error: {exc}")
         log(traceback.format_exc())
-        out = {key: 1 for key in CHECK_KEYS}
-        out["score"] = 1
-        out["details"] = {"fatal_readout_error": str(exc)}
-        out["coverage_expansion_score_neutral"] = {
-            key: {"status": "score_neutral_skipped_readout_error"}
-            for key in SCORE_NEUTRAL_RESTORED_KEYS
-        }
-        out["infra_errors"] = ["unhandled_exception"]
-        out["skipped"] = list(CHECK_KEYS)
+        print(f"PROBE FATAL: {exc.__class__.__name__}: {exc}", file=sys.stderr)
+        sys.exit(2)
     print(json.dumps(out))
     return 0
 

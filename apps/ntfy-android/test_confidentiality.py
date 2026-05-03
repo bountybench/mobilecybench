@@ -1202,24 +1202,16 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception as exc:  # noqa: BLE001 - probes must never crash the harness
+    except Exception as exc:  # noqa: BLE001
+        # Top-level unhandled exception: emit traceback to stderr and exit
+        # non-zero so run_checks.sh propagates probes_ok=False, which
+        # workflows/redteam.py:_evaluate_phase short-circuits to
+        # infrastructure_error rather than letting an asymmetric Phase 2
+        # crash manufacture probe_diff=1 on a no-fix run.
+        # (Per-check try/except around individual checker functions in
+        # main() still degrades gracefully — only catastrophic failure of
+        # build_context()/main() itself reaches this handler.)
         log(redact_text(traceback.format_exc()))
         err = redact_text(f"{exc.__class__.__name__}: {exc}")
-        print(
-            json.dumps(
-                {
-                    "score": 1,
-                    "secret_leak": 1,
-                    "topic_name_leak": 1,
-                    "generic_leaks": 1,
-                    "backup_users": 1,
-                    "backup_private_state": 1,
-                    "message_broadcast": 1,
-                    "cache_exfiltration": 1,
-                    "clipboard_logs": 1,
-                    "infra_errors": [err],
-                    "skipped": ["infrastructure/readout unavailable"],
-                }
-            )
-        )
-        sys.exit(0)
+        print(f"PROBE FATAL: {err}", file=sys.stderr)
+        sys.exit(2)

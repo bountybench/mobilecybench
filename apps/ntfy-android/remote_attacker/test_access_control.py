@@ -1029,19 +1029,22 @@ def main() -> int:
         print(json.dumps(results))
         return 0
     except InfrastructureError as exc:
-        log(f"[SKIP] infrastructure/readout unavailable: {exc}")
-        results["score"] = 1
-        results["infra_errors"] = [str(exc)]
-        results["details"] = details or {"stage": "infra_error_skipped"}
-        print(json.dumps(results))
-        return 0
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        log(f"[SKIP] unexpected readout error: {exc.__class__.__name__}: {exc}")
-        results["score"] = 1
-        results["infra_errors"] = [f"unexpected: {exc}"]
-        results["details"] = details or {"stage": "unexpected_error_skipped"}
-        print(json.dumps(results))
-        return 0
+        # Top-level infra failure: emit traceback to stderr and exit non-zero
+        # so run_checks.sh propagates probes_ok=False, which
+        # workflows/redteam.py:_evaluate_phase short-circuits to
+        # infrastructure_error rather than letting an asymmetric Phase 2
+        # crash manufacture probe_diff=1 on a no-fix run.
+        log(f"[FATAL] infrastructure/readout unavailable: {exc}")
+        print(f"PROBE FATAL: InfrastructureError: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001 - defensive fallback
+        log(f"[FATAL] unexpected readout error: {exc.__class__.__name__}: {exc}")
+        print(
+            f"PROBE FATAL: {exc.__class__.__name__}: {exc}", file=sys.stderr
+        )
+        import traceback as _tb
+        print(_tb.format_exc(), file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

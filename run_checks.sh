@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# pipefail so probe-pipeline exit codes propagate. Without this,
+# `python probe.py | tail -1` masks a non-zero python exit (tail always
+# succeeds), so a top-level probe failure looks identical to "probe ran
+# cleanly and reported all-secure" — which lets an asymmetric Phase 2
+# infra flake manufacture probe_diff=1 in redteam scoring.
+set -o pipefail
+
 # Universal run_checks.sh to run the four probe scripts for an app
 app_path="$(realpath "$1")"
 exploit_log="$(realpath "$2" 2>/dev/null)"

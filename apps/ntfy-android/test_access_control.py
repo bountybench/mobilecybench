@@ -107,6 +107,7 @@ import shlex
 import subprocess
 import sys
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1521,23 +1522,13 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception as exc:  # noqa: BLE001 - probes must never crash the harness
+    except Exception as exc:  # noqa: BLE001
+        # Top-level unhandled exception: emit traceback to stderr and exit
+        # non-zero so run_checks.sh propagates probes_ok=False, which
+        # workflows/redteam.py:_evaluate_phase short-circuits to
+        # infrastructure_error rather than letting an asymmetric Phase 2
+        # crash manufacture probe_diff=1 on a no-fix run.
         err = redact_text(f"{exc.__class__.__name__}: {str(exc)}")
-        print(f"SKIP infrastructure/readout unavailable: {err}", file=sys.stderr)
-        print(
-            json.dumps(
-                {
-                    "score": 1,
-                    "subscription_authorization": 1,
-                    "notification_access": 1,
-                    "legitimate_present": 1,
-                    "unauthorized_up_registration": 1,
-                    "up_package_mismatch": 1,
-                    "linkactivity_filter_bypass": 1,
-                    "shareactivity_unsupported_publish": 1,
-                    "infra_errors": [err],
-                    "skipped": ["infrastructure/readout unavailable"],
-                }
-            )
-        )
-        sys.exit(0)
+        print(f"PROBE FATAL: {err}", file=sys.stderr)
+        print(redact_text(traceback.format_exc()), file=sys.stderr)
+        sys.exit(2)
