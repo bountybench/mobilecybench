@@ -115,7 +115,6 @@ def _tap_community_field_from_label(d) -> bool:
     Tapping by coordinates inside that overlay is more stable than clicking the
     text label node itself, which is not the actual control.
     """
-    back_button = d(description="Back")
     label = d(text="Community")
     width, _height = d.window_size()
 
@@ -136,15 +135,19 @@ def _tap_community_field_from_label(d) -> bool:
             label.click()
         except Exception:
             d.click(tap_x, tap_y)
-        if back_button.wait(timeout=5):
+        if _community_picker_is_visible(d, timeout=5):
             return True
 
         overlay_tap_y = tap_y + (_overlay_height_px(d) // 3)
         d.click(tap_x, overlay_tap_y)
-        return bool(back_button.wait(timeout=10))
+        return _community_picker_is_visible(d, timeout=10)
     except Exception as e:
         _log(f"Community field tap failed: {e}")
         return False
+
+
+def _community_picker_is_visible(d, timeout: int = 10) -> bool:
+    return _wait_for_any_text(d, ["Search...", "Back"], timeout=timeout) is not None
 
 
 def _open_community_picker(d) -> bool:
