@@ -186,6 +186,17 @@ def _selected_community_present(d) -> bool:
     return False
 
 
+def _populate_body_field(d, body: str) -> bool:
+    body_field = d(textContains="Body")
+    if not body_field.exists:
+        body_field = d(className="android.widget.EditText", instance=2)
+    if not wait_and_set_text(d, body_field, body):
+        _log("Failed to populate body field")
+        return False
+    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+    return True
+
+
 def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
     seeded_communities = _load_seeded_community_specs()
     if not seeded_communities:
@@ -212,11 +223,6 @@ def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
     if not d(text="Create post").wait(timeout=15):
         _log("Community FAB did not open Create post")
         return False
-
-    close_button = d(description="Close")
-    if close_button.exists:
-        close_button.click()
-        wait_for_ui_stable(d, min_consecutive=1, timeout=5)
 
     return True
 
@@ -297,16 +303,22 @@ def _select_seeded_community(d) -> bool:
 
 
 def _submit_post_once(
-    d, pkg: str, body: str, allow_community_deeplink_fallback: bool = True
+    d,
+    pkg: str,
+    body: str,
+    allow_community_deeplink_fallback: bool = True,
+    assume_community_selected: bool = False,
+    redispatch_share: bool = True,
 ) -> bool:
-    # Maintain causal chain: (re)send the share intent with our body payload.
-    # Do NOT launch MainActivity directly, which can drop intent extras.
-    d.shell(
-        "am start -a android.intent.action.SEND "
-        f"-n {pkg}/com.jerboa.MainActivity "
-        f"--es android.intent.extra.TEXT {body!r} "
-        "-t text/plain"
-    )
+    if redispatch_share:
+        # Maintain causal chain: (re)send the share intent with our body payload.
+        # Do NOT launch MainActivity directly, which can drop intent extras.
+        d.shell(
+            "am start -a android.intent.action.SEND "
+            f"-n {pkg}/com.jerboa.MainActivity "
+            f"--es android.intent.extra.TEXT {body!r} "
+            "-t text/plain"
+        )
 
     # Wait for create post screen.
     if not d(text="Create post").wait(timeout=25):
@@ -314,9 +326,9 @@ def _submit_post_once(
         return False
     wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
-    # Fail-closed: require evidence that the share body actually landed on-screen.
     marker = body[:16]
-    if not d(textContains=marker).wait(timeout=10):
+    share_body_visible = d(textContains=marker).wait(timeout=10)
+    if not share_body_visible and redispatch_share:
         _log("Share body marker not found in UI; refusing to submit")
         return False
 
@@ -331,6 +343,10 @@ def _submit_post_once(
         return False
     wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
+    if not share_body_visible:
+        if not _populate_body_field(d, body):
+            return False
+
     # Defocus the title field and collapse the IME before trying to reach the
     # lower community selector. The top app-bar title is a stable, non-mutating
     # target on this screen.
@@ -342,7 +358,7 @@ def _submit_post_once(
         except Exception as e:
             _log(f"Failed to defocus title field via app bar: {e}")
 
-    if not _selected_community_present(d):
+    if not assume_community_selected and not _selected_community_present(d):
         # Select a community (required for formValid).
         if not _open_community_picker(d):
             if (
@@ -351,7 +367,12 @@ def _submit_post_once(
             ):
                 _log("Established selected community via community deeplink fallback")
                 return _submit_post_once(
-                    d, pkg, body, allow_community_deeplink_fallback=False
+                    d,
+                    pkg,
+                    body,
+                    allow_community_deeplink_fallback=False,
+                    assume_community_selected=True,
+                    redispatch_share=False,
                 )
             _log("Community selector not found")
             return False
