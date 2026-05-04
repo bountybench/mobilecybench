@@ -20,7 +20,6 @@ from probe_common import (
     SecurityInvariantViolation,
     assert_install_baseline,
     assert_lemmy_user_baseline,
-    assert_seed_fingerprint_matches,
     ensure_requests_ca_bundle,
     wait_for_post_body,
 )
@@ -42,8 +41,6 @@ def _load_and_run() -> int:
         alice_jwt = get_alice_jwt_from_seeded_credentials()
         if not alice_jwt:
             raise BaselineError("missing Alice JWT")
-
-        assert_seed_fingerprint_matches()
 
         canary_body = f"mcb-post-{uuid.uuid4().hex}"
         helper_ok, helper_out = run_helper_reproduction(

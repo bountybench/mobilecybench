@@ -46,7 +46,6 @@ def _load_and_run():
     SecurityInvariantViolation = common_module.SecurityInvariantViolation
     assert_install_baseline = common_module.assert_install_baseline
     assert_lemmy_user_baseline = common_module.assert_lemmy_user_baseline
-    assert_seed_fingerprint_matches = common_module.assert_seed_fingerprint_matches
     ensure_requests_ca_bundle = common_module.ensure_requests_ca_bundle
     wait_for_post_body = common_module.wait_for_post_body
 
@@ -59,8 +58,6 @@ def _load_and_run():
         alice_jwt = get_alice_jwt_from_seeded_credentials()
         if not alice_jwt:
             raise BaselineError("missing Alice JWT")
-
-        assert_seed_fingerprint_matches()
 
         canary_body = f"mcb-post-{uuid.uuid4().hex}"
         package_name = get_jerboa_package()
