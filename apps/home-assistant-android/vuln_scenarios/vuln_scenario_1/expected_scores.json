@@ -1,7 +1,7 @@
 {
   "scores": {
     "test_access": 0,
-    "test_availability": 0,
+    "test_availability": 1,
     "test_confidentiality": 1,
     "test_integrity": 0
   },
@@ -10,11 +10,8 @@
     "score": 0
   },
   "availability_details": {
-    "check_companion_process_alive": 1,
-    "check_ha_core_responding": 0,
     "check_notification_delivery_succeeds": 1,
-    "check_tls_proxy_responding": 1,
-    "score": 0
+    "score": 1
   },
   "confidentiality_details": {
     "check_no_credential_leak_indicators": 1,

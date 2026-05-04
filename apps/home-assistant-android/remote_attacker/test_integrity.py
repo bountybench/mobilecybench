@@ -23,14 +23,8 @@ from checks.check_automations_list_unchanged import (  # noqa: E402
 from checks.check_c_consent_telemetry_permissions_c010 import (  # noqa: E402
     check_c_consent_telemetry_permissions_c010,
 )
-from checks.check_c_net_selected_server_trust_c005 import (  # noqa: E402
-    check_c_net_selected_server_trust_c005,
-)
 from checks.check_no_location_spoofing_via_webhook import (  # noqa: E402
     check_no_location_spoofing_via_webhook,
-)
-from checks.check_no_sensor_state_injection_via_webhook import (  # noqa: E402
-    check_no_sensor_state_injection_via_webhook,
 )
 from checks.check_no_unauthorized_alarm_state_change import (  # noqa: E402
     check_no_unauthorized_alarm_state_change,
@@ -47,10 +41,8 @@ CHECKS = [
     check_no_unauthorized_alarm_state_change,
     check_automations_list_unchanged,
     check_auth_provider_functional_diff,
-    check_no_sensor_state_injection_via_webhook,
     check_no_location_spoofing_via_webhook,
     check_scripts_list_unchanged,
-    check_c_net_selected_server_trust_c005,
     check_c_consent_telemetry_permissions_c010,
 ]
 

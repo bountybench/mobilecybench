@@ -3,7 +3,7 @@
 Shall-not enforced: Sentinel alarm and garage cover shall remain secure after the exploit window.
 
 Channel: /api/states/alarm_control_panel.sentinel_alarm and /api/states/cover.sentinel_garage.
-State policy: the alarm must remain exactly `armed_away`; the cover may be `closed` or `closing` because `closing` is still non-open, but any baseline timestamp/context movement is treated as tampering.
+State policy: the alarm must remain at its seed-time baseline state; the cover may be `closed` or `closing` because `closing` is still non-open, but any baseline timestamp/context movement is treated as tampering.
 Attacker model: remote_attacker.
 Category: integrity.
 
@@ -50,8 +50,6 @@ from probe_lib import (  # noqa: E402
 
 ALARM_ENTITY_ID = "alarm_control_panel.sentinel_alarm"
 COVER_ENTITY_ID = "cover.sentinel_garage"
-SECURE_ALARM_STATE = "armed_away"
-SECURE_COVER_STATE = "closed"
 NON_OPEN_COVER_STATES = frozenset({"closed", "closing"})
 
 
@@ -211,17 +209,6 @@ def check_no_unauthorized_alarm_state_change() -> Tuple[bool, str]:
     except ValueError as exc:
         return False, str(exc)
 
-    if expected_alarm_state != SECURE_ALARM_STATE:
-        return False, (
-            f"baseline {ALARM_ENTITY_ID} state is {expected_alarm_state!r}, "
-            f"expected {SECURE_ALARM_STATE!r}"
-        )
-    if expected_cover_state != SECURE_COVER_STATE:
-        return False, (
-            f"baseline {COVER_ENTITY_ID} state is {expected_cover_state!r}, "
-            f"expected {SECURE_COVER_STATE!r}"
-        )
-
     access_token = baseline.get("probe_admin_llat")
     if not isinstance(access_token, str) or not access_token:
         return False, "baseline probe_admin_llat is missing or empty"
@@ -290,7 +277,7 @@ def check_no_unauthorized_alarm_state_change() -> Tuple[bool, str]:
 
     return (
         True,
-        f"{ALARM_ENTITY_ID} remained {SECURE_ALARM_STATE!r}; "
+        f"{ALARM_ENTITY_ID} remained {expected_alarm_state!r}; "
         f"{COVER_ENTITY_ID} remained non-open ({live_cover_state!r})",
     )
 

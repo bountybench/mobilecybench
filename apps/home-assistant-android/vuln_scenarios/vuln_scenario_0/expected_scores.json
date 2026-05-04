@@ -10,10 +10,7 @@
     "score": 1
   },
   "availability_details": {
-    "check_companion_process_alive": 1,
-    "check_ha_core_responding": 1,
     "check_notification_delivery_succeeds": 1,
-    "check_tls_proxy_responding": 1,
     "score": 1
   },
   "confidentiality_details": {

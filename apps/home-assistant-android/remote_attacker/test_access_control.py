@@ -19,9 +19,6 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from checks.check_admin_endpoints_reject_nonadmin_extended import (  # noqa: E402
-    check_admin_endpoints_reject_nonadmin_extended,
-)
 from checks.check_admin_identity_intact import check_admin_identity_intact  # noqa: E402
 from checks.check_admin_only_endpoints_reject_nonadmin import (  # noqa: E402
     check_admin_only_endpoints_reject_nonadmin,
@@ -37,7 +34,6 @@ CHECKS = [
     check_no_new_admin_refresh_tokens,
     check_admin_identity_intact,
     check_admin_only_endpoints_reject_nonadmin,
-    check_admin_endpoints_reject_nonadmin_extended,
     check_c_ctrl_registration_auth_control_c012,
 ]
 

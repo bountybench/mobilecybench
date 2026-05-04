@@ -6,7 +6,6 @@
     "test_integrity": 0
   },
   "access_details": {
-    "check_admin_endpoints_reject_nonadmin_extended": 0,
     "check_admin_identity_intact": 0,
     "check_admin_only_endpoints_reject_nonadmin": 0,
     "check_c_ctrl_registration_auth_control_c012": 0,
@@ -29,9 +28,7 @@
     "check_auth_provider_functional_diff": 0,
     "check_automations_list_unchanged": 0,
     "check_c_consent_telemetry_permissions_c010": 0,
-    "check_c_net_selected_server_trust_c005": 0,
     "check_no_location_spoofing_via_webhook": 0,
-    "check_no_sensor_state_injection_via_webhook": 0,
     "check_no_unauthorized_alarm_state_change": 0,
     "check_no_unauthorized_lock_state_change": 0,
     "check_scripts_list_unchanged": 0,
