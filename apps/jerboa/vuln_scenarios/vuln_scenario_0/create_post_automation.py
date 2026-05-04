@@ -389,29 +389,44 @@ def _submit_post_once(
         return False
 
     width, height = d.window_size()
-    submit_candidates: list[tuple[int, object]] = []
-    for node in d.xpath('//*[@content-desc="TODO" and @enabled="true"]').all():
+    submit_candidates: list[tuple[int, int, object]] = []
+    for node in d.xpath('//*[@content-desc="TODO"]').all():
         bounds = node.attrib.get("bounds")
         if not bounds:
             continue
         parsed = _parse_bounds(bounds)
         if not parsed:
             continue
-        left_x, top_y, _right_x, _bottom_y = parsed
+        left_x, top_y, right_x, bottom_y = parsed
         if top_y > height * 0.2:
             continue
         if left_x < width * 0.65:
             continue
-        submit_candidates.append((left_x, node))
+        submit_candidates.append((top_y, -left_x, node))
 
-    if not submit_candidates:
-        _log("Submit action not found")
-        return False
+    if submit_candidates:
+        _, _, submit_btn = min(submit_candidates)
+        submit_btn.click()
+        _log("Clicked create-post submit action")
+        return True
 
-    _, submit_btn = max(submit_candidates, key=lambda item: item[0])
-    submit_btn.click()
-    _log("Clicked create-post submit action")
-    return True
+    app_bar_title = d(text="Create post")
+    if app_bar_title.exists:
+        try:
+            title_node = app_bar_title.get()
+            bounds = _parse_bounds(title_node.attrib.get("bounds", ""))
+            if bounds:
+                _left_x, top_y, _right_x, bottom_y = bounds
+                tap_x = width - _dp_to_px(d, 28)
+                tap_y = (top_y + bottom_y) // 2
+                d.click(tap_x, tap_y)
+                _log("Clicked create-post submit action via top-bar geometry fallback")
+                return True
+        except Exception as e:
+            _log(f"Top-bar submit fallback failed: {e}")
+
+    _log("Submit action not found")
+    return False
 
 
 def _reset_app_between_attempts(d, pkg: str) -> None:
