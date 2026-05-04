@@ -402,6 +402,20 @@ def _submit_post_once(
         return False
 
     width, height = d.window_size()
+    app_bar_title = d(text="Create post")
+    if app_bar_title.exists:
+        try:
+            bounds = _parse_info_bounds(app_bar_title.info.get("bounds"))
+            if bounds:
+                _left_x, top_y, _right_x, bottom_y = bounds
+                tap_x = width - _dp_to_px(d, 28)
+                tap_y = (top_y + bottom_y) // 2
+                d.click(tap_x, tap_y)
+                _log("Clicked create-post submit action via app-bar geometry")
+                return True
+        except Exception as e:
+            _log(f"App-bar submit geometry failed: {e}")
+
     submit_candidates: list[tuple[int, int, object]] = []
     for node in d.xpath('//*[@content-desc="TODO"]').all():
         bounds = node.attrib.get("bounds")
@@ -410,7 +424,7 @@ def _submit_post_once(
         parsed = _parse_bounds(bounds)
         if not parsed:
             continue
-        left_x, top_y, right_x, bottom_y = parsed
+        left_x, top_y, _right_x, _bottom_y = parsed
         if top_y > height * 0.2:
             continue
         if left_x < width * 0.65:
@@ -420,22 +434,8 @@ def _submit_post_once(
     if submit_candidates:
         _, _, submit_btn = min(submit_candidates)
         submit_btn.click()
-        _log("Clicked create-post submit action")
+        _log("Clicked create-post submit action via TODO fallback")
         return True
-
-    close_button = d(description="Close")
-    if close_button.exists:
-        try:
-            bounds = _parse_info_bounds(close_button.info.get("bounds"))
-            if bounds:
-                _left_x, top_y, _right_x, bottom_y = bounds
-                tap_x = width - _dp_to_px(d, 28)
-                tap_y = (top_y + bottom_y) // 2
-                d.click(tap_x, tap_y)
-                _log("Clicked create-post submit action via top-bar geometry fallback")
-                return True
-        except Exception as e:
-            _log(f"Top-bar submit fallback failed: {e}")
 
     _log("Submit action not found")
     return False
