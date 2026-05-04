@@ -216,6 +216,76 @@ def _restriction_urls(xml: str) -> list[str]:
     return sorted(set(re.findall(r"https?://[^\s<>'\"]+", xml)))
 
 
+def _wait_for_containers_running(
+    containers: list[str], timeout_s: int = 180, interval_s: float = 2.0
+) -> dict[str, str]:
+    """Block until each named container reports State.Status=running, or timeout.
+
+    The probe-side ``load_container_state_baseline`` only treats containers
+    that were ``running`` (and ``healthy``, when a Health object exists) at
+    capture time as gradeable.  ``docker compose up -d`` returns immediately
+    while images are still pulling, so capturing the baseline right after
+    ``compose up`` regularly produces an empty gradeable set and the probe
+    falsely scores 0.  Block here so the captured snapshot reflects the
+    actual post-startup state.
+
+    For containers that declare a Health object, also wait for
+    ``Health.Status=healthy`` (subject to the same timeout).  Containers
+    without health probes pass once Status=running.
+
+    Returns a dict ``{name: final_status}`` for diagnostic logging.  Does NOT
+    raise on timeout — the caller still writes whatever the final inspect
+    sees, and the probe's gating logic decides how to treat it.
+    """
+    import time
+
+    if not containers:
+        return {}
+    deadline = time.monotonic() + timeout_s
+    final: dict[str, str] = {}
+    pending = [c for c in containers if c]
+    while pending and time.monotonic() < deadline:
+        still_pending: list[str] = []
+        for c in pending:
+            insp = _run(
+                ["docker", "inspect", "--format", "{{json .State}}", c], timeout=15
+            )
+            if insp.returncode != 0 or not insp.stdout:
+                still_pending.append(c)
+                final[c] = "inspect_failed"
+                continue
+            try:
+                state = json.loads(insp.stdout.decode("utf-8", "replace"))
+            except Exception:
+                still_pending.append(c)
+                final[c] = "inspect_unparseable"
+                continue
+            status = str(state.get("Status", "") or "").strip()
+            health_obj = state.get("Health") or {}
+            health = (
+                str(health_obj.get("Status", "") or "").strip()
+                if isinstance(health_obj, dict)
+                else ""
+            )
+            final[c] = f"{status}/{health or '-'}"
+            if status != "running":
+                still_pending.append(c)
+                continue
+            if health and health != "healthy":
+                still_pending.append(c)
+                continue
+        pending = still_pending
+        if pending:
+            time.sleep(interval_s)
+    if pending:
+        details = ", ".join(f"{c}={final.get(c, 'unknown')}" for c in pending)
+        print(
+            f"[baseline] WARN: containers not running/healthy at capture time: {details}",
+            file=sys.stderr,
+        )
+    return final
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -305,7 +375,19 @@ def main() -> int:
     # error-only baseline would make backend availability appear "covered" while
     # the probe can only SKIP.  Fail setup instead so the harness either has a
     # usable pre-agent baseline or does not claim current A-RA-1 coverage.
+    #
+    # ``docker compose up -d`` returns immediately while images are still
+    # pulling; without this wait the captured state would be a mix of
+    # ``created`` / ``starting`` rows and the probe's gradeable-set filter
+    # would be empty even though backend was healthy seconds later.
     try:
+        wait_summary = _wait_for_containers_running(list(args.containers))
+        if wait_summary:
+            print(
+                "[baseline] container readiness summary: "
+                + ", ".join(f"{c}={s}" for c, s in sorted(wait_summary.items())),
+                file=sys.stderr,
+            )
         state: dict[str, dict[str, str]] = {}
         inspect_errors: list[str] = []
         for c in args.containers:

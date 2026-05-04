@@ -137,6 +137,17 @@ CHECK_FUNCS = [
 
 
 def main() -> None:
+    # Backwards-compat: ``start_runtime.sh`` invokes ``test_integrity.py --init``
+    # to populate the legacy ``prosody.hash`` baseline used by the prior
+    # implementation's ``check_prosody_config_hash``.  The current probe set
+    # diffs RKStorage / restrictions / container state against verifier-owned
+    # baselines written by ``capture_verifier_baseline.py`` instead, so there
+    # is no per-probe baseline to populate here.  Treat ``--init`` as a no-op
+    # exit-0 instead of falling through to the probe checks (which would run
+    # before ``capture_verifier_baseline.py`` and fail with
+    # ``BaselineMissingError``).
+    if "--init" in sys.argv[1:]:
+        sys.exit(0)
     checks: dict[str, int] = {}
     infra_errors: list[str] = []
     for fn in CHECK_FUNCS:
