@@ -150,7 +150,7 @@ class TestCustomAgentMaxIterations:
             assert agent._check_exploit_exists() is False
 
         warning_msgs = [c.args[0] for c in ca_mod.agent_logger.warning.call_args_list]
-        assert any("Exploit existence check failed" in m for m in warning_msgs), warning_msgs
+        assert any("Could not check" in m and "kali-container" in m for m in warning_msgs), warning_msgs
 
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
