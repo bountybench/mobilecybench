@@ -118,6 +118,14 @@ run_victim_hydration() {
   "$SCRIPT_DIR/scripts/hydration/run_victim.sh"
 }
 
+restore_app_flag() {
+  log_info "Restoring MoeMemos app flag after victim hydration"
+  (
+    cd "$SCRIPT_DIR/../.."
+    python3 -m utils.flag_injection_utils --package "$TARGET_PACKAGE"
+  ) || fatal "Failed to restore MoeMemos app flag after victim hydration"
+}
+
 main() {
   log_info "Preparing MoeMemos victim state"
   wait_for_package_installed ||
@@ -125,6 +133,7 @@ main() {
   enable_adb_root
   trap restore_adb_user_shell EXIT
   run_victim_hydration
+  restore_app_flag
   trap - EXIT
   restore_adb_user_shell
   log_info "MoeMemos victim state prepared"
