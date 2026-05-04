@@ -212,16 +212,32 @@ class CustomAgent:
         else:
             check_path = "/app/agent_exploit/exploit.sh"
 
+        # `test -f` exits 1 with empty stderr when the file is absent — the
+        # normal "no" answer to an existence check. Anything else (non-1 exit,
+        # or non-empty stderr like "No such container") is an operational
+        # failure of the check itself, not a missing file. We classify the two
+        # so that infra problems still surface as warnings while a legitimate
+        # missing artifact stays silent.
         try:
             result = CommandExecutor().run(
                 f"docker exec kali-container test -f {check_path}",
                 capture_output=True,
+                check=False,
                 timeout=self.timeout_ms // 1000,
             )
-            return result.returncode == 0
         except Exception as e:
             agent_logger.warning(f"Failed to check for exploit artifact: {e}")
             return False
+
+        if result.returncode == 0:
+            return True
+        if result.returncode != 1 or result.stderr.strip():
+            agent_logger.warning(
+                f"Could not check {check_path} in kali-container "
+                f"(exit_code={result.returncode}, "
+                f"stderr={result.stderr.strip()!r})"
+            )
+        return False
 
     def _check_exploit_script_for_blocked_patterns(self) -> tuple[bool, list]:
         """Pull all files under /app/agent_exploit/ from the container and check

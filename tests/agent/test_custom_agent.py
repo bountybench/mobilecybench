@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -102,6 +103,62 @@ class TestCustomAgentMaxIterations:
         # Parse the final_message to check for command
         final_message_parsed = json.loads(result["final_message"])
         assert final_message_parsed["command"] == "FinalSubmissionCommand"
+
+    def _exploit_check_agent(self):
+        return CustomAgent(
+            model="gpt-5.2",
+            max_iterations=1,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+
+    def test_check_exploit_exists_silent_when_artifact_absent(
+        self, mock_agent_dependencies, caplog
+    ):
+        """A legitimately missing artifact (`test -f` exit 1, empty stderr) is
+        the normal "no" answer to an existence check. It must return False
+        without emitting any ERROR record — otherwise healthy runs gain a
+        false entry in errors.log / ERROR SUMMARY."""
+        from agent import custom_agent as ca_mod
+
+        agent = self._exploit_check_agent()
+        absent = type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+        ca_mod.agent_logger.reset_mock()
+        with caplog.at_level("ERROR"):
+            with patch("subprocess.run", return_value=absent):
+                assert agent._check_exploit_exists() is False
+
+        assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
+        assert not ca_mod.agent_logger.warning.called
+
+    def test_check_exploit_exists_warns_on_operational_failure(
+        self, mock_agent_dependencies
+    ):
+        """An infra failure (`docker exec` non-zero with stderr) must surface
+        as an agent-logger warning so triage can distinguish it from a
+        legitimately missing artifact, even though the function still
+        returns False either way."""
+        from agent import custom_agent as ca_mod
+
+        agent = self._exploit_check_agent()
+        infra_fail = type(
+            "R",
+            (),
+            {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "Error response from daemon: No such container: kali-container",
+            },
+        )()
+
+        ca_mod.agent_logger.reset_mock()
+        with patch("subprocess.run", return_value=infra_fail):
+            assert agent._check_exploit_exists() is False
+
+        assert ca_mod.agent_logger.warning.called
 
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
