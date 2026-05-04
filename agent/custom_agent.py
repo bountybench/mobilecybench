@@ -233,8 +233,9 @@ class CustomAgent:
             return True
         if result.returncode != 1 or result.stderr.strip():
             agent_logger.warning(
-                f"Could not check {check_path} in kali-container: "
-                f"rc={result.returncode}, stderr={result.stderr.strip()!r}"
+                f"Could not check {check_path} in kali-container "
+                f"(exit_code={result.returncode}, "
+                f"stderr={result.stderr.strip()!r})"
             )
         return False
 
