@@ -34,7 +34,12 @@ class PhaseResult:
     exit_code: int
     evidence_log_path: Path | None = None
     failure_kind: (
-        Literal["prepare_app_crash", "prepare_victim_crash", "replay_runtime_error"]
+        Literal[
+            "prepare_app_crash",
+            "prepare_victim_crash",
+            "replay_runtime_error",
+            "app_data_reset_failed",
+        ]
         | None
     ) = None
 
@@ -231,12 +236,43 @@ class RemoteAttackerOps:
         )
 
         if package_name:
+
+            def app_data_reset_failed() -> PhaseResult:
+                evidence_path = exploit_result.get("replay_evidence_path")
+                phase_dir.mkdir(parents=True, exist_ok=True)
+                return PhaseResult(
+                    exit_code=2,
+                    evidence_log_path=Path(evidence_path) if evidence_path else None,
+                    failure_kind="app_data_reset_failed",
+                )
+
             logger.info(f"Clearing app data (pm clear {package_name})")
-            subprocess.run(
-                ["adb", "shell", "pm", "clear", package_name],
-                capture_output=True,
-                timeout=30,
-            )
+            try:
+                clear_result = subprocess.run(
+                    ["adb", "shell", "pm", "clear", package_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+            except subprocess.TimeoutExpired as e:
+                logger.error(f"pm clear timed out for {package_name}")
+                if e.stdout:
+                    logger.error(f"pm clear stdout:\n{str(e.stdout).strip()}")
+                if e.stderr:
+                    logger.error(f"pm clear stderr:\n{str(e.stderr).strip()}")
+                return app_data_reset_failed()
+
+            if clear_result.returncode != 0:
+                if clear_result.stdout:
+                    logger.error(f"pm clear stdout:\n{clear_result.stdout.strip()}")
+                if clear_result.stderr:
+                    logger.error(f"pm clear stderr:\n{clear_result.stderr.strip()}")
+                logger.error(
+                    "pm clear failed for %s (exit %s)",
+                    package_name,
+                    clear_result.returncode,
+                )
+                return app_data_reset_failed()
 
         # Per-app victim seed: pm clear wiped /data/data/<package>/, so re-seed
         # the victim's logged-in state before the verifier runs. Mirrors CI's
@@ -431,9 +467,7 @@ class RedTeamWorkflow(Workflow):
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import check_connectivity, install_app_and_setup_backend
 
-        # Ensure shared_net exists before any docker compose up runs, otherwise
-        # apps' compose files (which declare `external: true`) abort.
-        self._ensure_shared_docker_network()
+        self._preflight_cleanup_app_runtime()
 
         logger.info("Starting emulator...")
         self.emulator = EmulatorManager(
@@ -474,12 +508,13 @@ class RedTeamWorkflow(Workflow):
         )
 
         inject_system_ca(self.project_root)
+        self.emulator.setup_port_forwards(self.app_dir)
 
         # Install the runtime APK so the agent's observations match the
-        # source tree it analyzes. _runtime_apk() returns
-        # ProbeOnlyBundle's app baseline APK in probe_only mode, otherwise
-        # the bundle's phase-1 APK (vulnerable for synthetic, original for
-        # zeroday).
+        # source tree it analyzes. _runtime_apk() returns ProbeOnlyBundle's
+        # app baseline APK in probe_only mode, otherwise the bundle's phase-1
+        # APK (vulnerable for synthetic, original for zeroday).
+        self._mark_app_backend_active()
         install_app_and_setup_backend(
             self.app_dir,
             self.emulator,
