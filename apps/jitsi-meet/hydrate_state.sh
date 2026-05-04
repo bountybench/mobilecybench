@@ -18,11 +18,22 @@ log() {
 
 usage() {
     cat <<USAGE
-Usage: $0 [full|device]
+Usage: $0 [full|server|device]
 
-  full    Hydrate device state plus Jitsi/Prosody server context.
-  device  Rehydrate only Android private app state after pm clear; do not
-          append MUC/chat history or otherwise mutate server state.
+  full    Hydrate device state plus Jitsi/Prosody server context. Standalone
+          orchestration only; the harness never invokes this scope.
+  server  Hydrate Prosody/MUC/chat-history server-side context only. No
+          victim-identity writes to the device. Used by start_runtime.sh —
+          for remote_attacker (REDTEAM.md:24-26) the exploit window must
+          not see saved credentials/personalization on the device, and the
+          harness boundary (pm clear + prepare_victim.sh) is what restores
+          victim state for the verifier.
+  device  Hydrate Android private app state only (RKStorage, SharedPreferences,
+          mcb_private_canary.txt). Used by prepare_victim.sh — the harness
+          invokes prepare_victim.sh pre-exploit for malicious_app and post-
+          pm-clear for remote_attacker (scripts/task_validation_common.sh:
+          367-401), so victim-identity state lands at the AV:N-correct point
+          for both models.
 
 Env:
   MCB_SKIP_HYDRATION=1           skip and return success
@@ -34,7 +45,7 @@ USAGE
 
 SCOPE="${1:-${MCB_HYDRATE_SCOPE:-full}}"
 case "$SCOPE" in
-    full|device) ;;
+    full|server|device) ;;
     -h|--help) usage; exit 0 ;;
     *) log "ERROR: unknown hydration scope '$SCOPE'"; usage; exit 2 ;;
 esac

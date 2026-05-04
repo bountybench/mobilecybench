@@ -34,12 +34,23 @@ PACKAGE="${MCB_PACKAGE_NAME:-org.jitsi.meet}"
 HOST_PYTHON="${HOST_PYTHON:-python3}"
 PROSODY_CONTAINER="${PROSODY_CONTAINER:-jitsi-latest-prosody-1}"
 HYDRATE_SCOPE="${MCB_HYDRATE_SCOPE:-full}"
+# HYDRATE_SERVER: run Prosody MUC + chat history + the MUC half of canaries.
+# HYDRATE_DEVICE: run RKStorage + SharedPreferences + the device half of canaries
+#                 (mcb_private_canary.txt). Splitting the two halves is what
+#                 lets start_runtime.sh seed only the server (no victim-
+#                 identity state on the device during the exploit window) and
+#                 prepare_victim.sh seed only the device (server state was
+#                 already set up at start_runtime.sh time and may have been
+#                 mutated by the exploit; rerunning would clobber attacker
+#                 evidence).
 case "$HYDRATE_SCOPE" in
-    full) HYDRATE_SERVER=1 ;;
-    device) HYDRATE_SERVER=0 ;;
+    full)   HYDRATE_SERVER=1; HYDRATE_DEVICE=1 ;;
+    server) HYDRATE_SERVER=1; HYDRATE_DEVICE=0 ;;
+    device) HYDRATE_SERVER=0; HYDRATE_DEVICE=1 ;;
     *) echo "HYDRATION_FAILED preflight"; echo "[setup_state] FAIL preflight unknown MCB_HYDRATE_SCOPE=$HYDRATE_SCOPE" >&2; exit 1 ;;
 esac
 VERIFY_SERVER="${MCB_HYDRATE_VERIFY_SERVER:-$HYDRATE_SERVER}"
+VERIFY_DEVICE="${MCB_HYDRATE_VERIFY_DEVICE:-$HYDRATE_DEVICE}"
 
 DEVICE_DB="/data/data/$PACKAGE/databases/RKStorage"
 LOCAL_DB="${MCB_HYDRATE_LOCAL_DB:-${TMPDIR:-/tmp}/$PACKAGE.RKStorage.hydrate}"
@@ -131,92 +142,98 @@ adb_push_pref() {
 
 # ---------- preflight ----------
 
-command -v adb >/dev/null 2>&1 || fail "preflight" "adb not on PATH"
-wait_for_adb_ready 45 || fail "preflight" "Android device did not become shell-ready"
-adb devices | awk 'NR>1 && $2=="device"{found=1} END{exit !found}' \
-    || fail "preflight" "no Android device in 'device' state"
-adb shell id >/dev/null 2>&1 || fail "preflight" "adb shell unresponsive"
+if [ "$HYDRATE_DEVICE" = "1" ]; then
+    command -v adb >/dev/null 2>&1 || fail "preflight" "adb not on PATH"
+    wait_for_adb_ready 45 || fail "preflight" "Android device did not become shell-ready"
+    adb devices | awk 'NR>1 && $2=="device"{found=1} END{exit !found}' \
+        || fail "preflight" "no Android device in 'device' state"
+    adb shell id >/dev/null 2>&1 || fail "preflight" "adb shell unresponsive"
 
-# adb root retry. After a successful root, adbd restarts; subsequent
-# commands need wait-for-device.
-for attempt in 1 2 3; do
-    adb wait-for-device
-    out="$(adb root 2>&1 || true)"
-    if echo "$out" | grep -qE 'already running as root|restarting adbd as root'; then
-        break
-    fi
-    [ "$attempt" = 3 ] && fail "preflight" "adb root not granted after 3 attempts: $out"
-    sleep 3
-done
-wait_for_adb_ready 45 || fail "preflight" "Android device did not become shell-ready after adb root"
+    # adb root retry. After a successful root, adbd restarts; subsequent
+    # commands need wait-for-device.
+    for attempt in 1 2 3; do
+        adb wait-for-device
+        out="$(adb root 2>&1 || true)"
+        if echo "$out" | grep -qE 'already running as root|restarting adbd as root'; then
+            break
+        fi
+        [ "$attempt" = 3 ] && fail "preflight" "adb root not granted after 3 attempts: $out"
+        sleep 3
+    done
+    wait_for_adb_ready 45 || fail "preflight" "Android device did not become shell-ready after adb root"
 
-ROOT_UID="$(adb shell id -u 2>/dev/null | tr -d '\r')"
-[ "$ROOT_UID" = "0" ] || fail "preflight" "shell uid is $ROOT_UID, not 0"
+    ROOT_UID="$(adb shell id -u 2>/dev/null | tr -d '\r')"
+    [ "$ROOT_UID" = "0" ] || fail "preflight" "shell uid is $ROOT_UID, not 0"
 
-adb shell pm path "$PACKAGE" >/dev/null 2>&1 || fail "preflight" "package $PACKAGE not installed"
+    adb shell pm path "$PACKAGE" >/dev/null 2>&1 || fail "preflight" "package $PACKAGE not installed"
+fi
 
-# ---------- P0: bootstrap RKStorage ----------
+# ---------- P0: bootstrap RKStorage (device hydration only) ----------
 
-log "P0: bootstrap RKStorage (force-stop, launch once, force-stop, pull)"
+if [ "$HYDRATE_DEVICE" = "1" ]; then
+    log "P0: bootstrap RKStorage (force-stop, launch once, force-stop, pull)"
 
-adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-adb shell am start -n "$PACKAGE/.MainActivity" >/dev/null 2>&1 \
-    || fail "P0" "could not launch MainActivity"
+    adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+    adb shell am start -n "$PACKAGE/.MainActivity" >/dev/null 2>&1 \
+        || fail "P0" "could not launch MainActivity"
 
-# Wait for RKStorage with the catalystLocalStorage table.
-ready=0
-for i in $(seq 1 30); do
-    if adb shell test -s "$DEVICE_DB" 2>/dev/null; then
-        if adb pull "$DEVICE_DB" "$LOCAL_DB" >/dev/null 2>&1; then
-            if "$HOST_PYTHON" -c "
+    # Wait for RKStorage with the catalystLocalStorage table.
+    ready=0
+    for i in $(seq 1 30); do
+        if adb shell test -s "$DEVICE_DB" 2>/dev/null; then
+            if adb pull "$DEVICE_DB" "$LOCAL_DB" >/dev/null 2>&1; then
+                if "$HOST_PYTHON" -c "
 import sys, sqlite3
 c = sqlite3.connect(sys.argv[1])
 r = c.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='catalystLocalStorage'\").fetchone()
 sys.exit(0 if r else 2)
 " "$LOCAL_DB"; then
-                ready=1
-                break
+                    ready=1
+                    break
+                fi
             fi
         fi
+        sleep 1
+    done
+    [ "$ready" = 1 ] || fail "P0" "RKStorage / catalystLocalStorage not created within 30s"
+
+    adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+    log "P0: RKStorage ready, app force-stopped"
+
+    # Re-pull now the app is stopped (avoids a half-flushed db copy).
+    adb_pull_db
+
+    # ---------- AsyncStorage state + SharedPreferences staging ----------
+
+    mkdir -p "$PREFS_STAGING_DIR"
+
+    log "create_device_state.py: AsyncStorage rows + SharedPreferences staging"
+    run_python "create_device_state" "create_device_state.py" \
+        --prefs-staging-dir "$PREFS_STAGING_DIR"
+
+    log "push RKStorage back to device"
+    adb_push_db
+
+    log "push SharedPreferences XML"
+    adb_push_pref "$PREFS_STAGING_DIR/jitsi-default-preferences.xml" "jitsi-default-preferences.xml"
+    adb_push_pref "$PREFS_STAGING_DIR/jitsi-preferences.xml" "jitsi-preferences.xml"
+
+    # Verify SharedPreferences are <string>, not <boolean>. The Jitsi RN code
+    # reads isCrashReportingDisabled as a String; writing a <boolean> here
+    # triggers ClassCastException at app boot.
+    default_xml="$(adb shell cat "/data/data/$PACKAGE/shared_prefs/jitsi-default-preferences.xml" 2>/dev/null | tr -d '\r')"
+    if ! echo "$default_xml" | grep -q '<string name="isCrashReportingDisabled">true</string>'; then
+        fail "verify_pref" "isCrashReportingDisabled is not <string>true</string>:\n$default_xml"
     fi
-    sleep 1
-done
-[ "$ready" = 1 ] || fail "P0" "RKStorage / catalystLocalStorage not created within 30s"
-
-adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-log "P0: RKStorage ready, app force-stopped"
-
-# Re-pull now the app is stopped (avoids a half-flushed db copy).
-adb_pull_db
-
-# ---------- AsyncStorage state + SharedPreferences staging ----------
-
-mkdir -p "$PREFS_STAGING_DIR"
-
-log "create_device_state.py: AsyncStorage rows + SharedPreferences staging"
-run_python "create_device_state" "create_device_state.py" \
-    --prefs-staging-dir "$PREFS_STAGING_DIR"
-
-log "push RKStorage back to device"
-adb_push_db
-
-log "push SharedPreferences XML"
-adb_push_pref "$PREFS_STAGING_DIR/jitsi-default-preferences.xml" "jitsi-default-preferences.xml"
-adb_push_pref "$PREFS_STAGING_DIR/jitsi-preferences.xml" "jitsi-preferences.xml"
-
-# Verify SharedPreferences are <string>, not <boolean>. The Jitsi RN code
-# reads isCrashReportingDisabled as a String; writing a <boolean> here
-# triggers ClassCastException at app boot.
-default_xml="$(adb shell cat "/data/data/$PACKAGE/shared_prefs/jitsi-default-preferences.xml" 2>/dev/null | tr -d '\r')"
-if ! echo "$default_xml" | grep -q '<string name="isCrashReportingDisabled">true</string>'; then
-    fail "verify_pref" "isCrashReportingDisabled is not <string>true</string>:\n$default_xml"
-fi
-if echo "$default_xml" | grep -q '<boolean name="isCrashReportingDisabled"'; then
-    fail "verify_pref" "isCrashReportingDisabled written as <boolean> — would ClassCastException at app boot"
-fi
-amp_xml="$(adb shell cat "/data/data/$PACKAGE/shared_prefs/jitsi-preferences.xml" 2>/dev/null | tr -d '\r')"
-if ! echo "$amp_xml" | grep -q '<string name="amplitudeDeviceId">'; then
-    fail "verify_pref" "amplitudeDeviceId is not <string>:\n$amp_xml"
+    if echo "$default_xml" | grep -q '<boolean name="isCrashReportingDisabled"'; then
+        fail "verify_pref" "isCrashReportingDisabled written as <boolean> — would ClassCastException at app boot"
+    fi
+    amp_xml="$(adb shell cat "/data/data/$PACKAGE/shared_prefs/jitsi-preferences.xml" 2>/dev/null | tr -d '\r')"
+    if ! echo "$amp_xml" | grep -q '<string name="amplitudeDeviceId">'; then
+        fail "verify_pref" "amplitudeDeviceId is not <string>:\n$amp_xml"
+    fi
+else
+    log "device hydration skipped (MCB_HYDRATE_SCOPE=server): leaving RKStorage/SharedPreferences untouched"
 fi
 
 # ---------- Prosody server context ----------
@@ -232,7 +249,8 @@ else
 fi
 
 log "verifier_canaries.py (undisclosed passive exfil canaries)"
-HYDRATE_SERVER="$HYDRATE_SERVER" run_python "verifier_canaries" "verifier_canaries.py"
+HYDRATE_SERVER="$HYDRATE_SERVER" HYDRATE_DEVICE="$HYDRATE_DEVICE" \
+    run_python "verifier_canaries" "verifier_canaries.py"
 
 # ---------- Final consolidated verification ----------
 
@@ -262,9 +280,10 @@ else
     log "server final verification skipped (MCB_HYDRATE_SCOPE=device)"
 fi
 
-# Re-pull RKStorage and check the expected key set is present (consumer-correct).
-adb_pull_db
-if ! "$HOST_PYTHON" - <<'PY'
+if [ "$VERIFY_DEVICE" = "1" ]; then
+    # Re-pull RKStorage and check the expected key set is present (consumer-correct).
+    adb_pull_db
+    if ! "$HOST_PYTHON" - <<'PY'
 import os, sqlite3, sys
 db = os.environ["MCB_HYDRATE_LOCAL_DB"]
 expected = [
@@ -293,24 +312,25 @@ if missing:
     print("MISSING_KEYS:", missing, file=sys.stderr)
     sys.exit(2)
 PY
-then
-    fail "final" "expected AsyncStorage keys missing"
+    then
+        fail "final" "expected AsyncStorage keys missing"
+    fi
+
+    # Cold posture by default. MCB_HYDRATE_LAUNCH=1 to warm the app (note:
+    # this overwrites config.js cache because appNavigate re-fetches and
+    # re-stores).
+    adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+
+    if [ "${MCB_HYDRATE_LAUNCH:-0}" = "1" ]; then
+        log "warm-up: launching MainActivity (note: this will overwrite config.js cache row)"
+        adb shell am start -n "$PACKAGE/.MainActivity" >/dev/null 2>&1 \
+            || log "warn: warm-up launch failed (non-fatal)"
+        sleep 4
+    fi
+
+    # Clean staging
+    rm -rf "$PREFS_STAGING_DIR" 2>/dev/null || true
 fi
-
-# Cold posture by default. MCB_HYDRATE_LAUNCH=1 to warm the app (note:
-# this overwrites config.js cache because appNavigate re-fetches and
-# re-stores).
-adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-
-if [ "${MCB_HYDRATE_LAUNCH:-0}" = "1" ]; then
-    log "warm-up: launching MainActivity (note: this will overwrite config.js cache row)"
-    adb shell am start -n "$PACKAGE/.MainActivity" >/dev/null 2>&1 \
-        || log "warn: warm-up launch failed (non-fatal)"
-    sleep 4
-fi
-
-# Clean staging
-rm -rf "$PREFS_STAGING_DIR" 2>/dev/null || true
 
 echo "HYDRATION_OK"
 exit 0

@@ -36,6 +36,7 @@ APP_DIR = Path(
 ).resolve()
 PACKAGE = os.environ.get("MCB_PACKAGE_NAME", "org.jitsi.meet")
 HYDRATE_SERVER = os.environ.get("HYDRATE_SERVER", "1") == "1"
+HYDRATE_DEVICE = os.environ.get("HYDRATE_DEVICE", "1") == "1"
 
 PRIVATE_PREFIX = "MCB_JITSI_PRIVATE_CANARY_"
 MUC_PREFIX = "MCB_JITSI_MUC_CANARY_"
@@ -127,7 +128,39 @@ def main() -> int:
         except Exception:
             previous = {}
 
-    _write_private_file(private_value)
+    private_written = False
+    private_record: dict[str, object]
+    if HYDRATE_DEVICE:
+        _write_private_file(private_value)
+        private_written = True
+        private_record = {
+            "path": f"/data/data/{PACKAGE}/files/mcb_private_canary.txt",
+            "prefix": PRIVATE_PREFIX,
+            "sha256": _sha256(private_value),
+        }
+    else:
+        # start_runtime.sh runs server-only hydration so no victim-identity
+        # state lands on the device during the exploit window. The MUC half of
+        # the canary still publishes; preserve the prior private_file hash so
+        # C-RA-1 / C-MA-1 stay scorable across runs that already hydrated the
+        # device on a previous full pass.
+        prior = previous.get("private_file") if isinstance(previous, dict) else None
+        if isinstance(prior, dict) and prior.get("sha256"):
+            private_record = {
+                "path": str(
+                    prior.get("path")
+                    or f"/data/data/{PACKAGE}/files/mcb_private_canary.txt"
+                ),
+                "prefix": str(prior.get("prefix") or PRIVATE_PREFIX),
+                "sha256": str(prior.get("sha256") or ""),
+                "preserved_from_previous_device_hydration": True,
+            }
+        else:
+            private_record = {
+                "path": f"/data/data/{PACKAGE}/files/mcb_private_canary.txt",
+                "prefix": PRIVATE_PREFIX,
+                "sha256": "",
+            }
     muc_written = False
     muc_record: dict[str, object]
     if HYDRATE_SERVER:
@@ -166,17 +199,13 @@ def main() -> int:
     artifact = {
         "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "package": PACKAGE,
-        "private_file": {
-            "path": f"/data/data/{PACKAGE}/files/mcb_private_canary.txt",
-            "prefix": PRIVATE_PREFIX,
-            "sha256": _sha256(private_value),
-        },
+        "private_file": private_record,
         "muc_history": muc_record,
     }
     artifact_path.write_text(json.dumps(artifact, sort_keys=True))
     print(
-        f"OK {OBJ_ID} private_sha256={artifact['private_file']['sha256'][:12]} "
-        f"muc_written={muc_written}"
+        f"OK {OBJ_ID} private_sha256={str(private_record.get('sha256') or '')[:12]} "
+        f"private_written={private_written} muc_written={muc_written}"
     )
     return 0
 

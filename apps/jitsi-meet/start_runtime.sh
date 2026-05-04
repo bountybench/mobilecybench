@@ -374,14 +374,25 @@ main() {
 
     setup_hashes
 
-    # The probe/review pipeline relies on hydrated victim/server
-    # context, not just a freshly installed APK. Keep adb rooted across hydration
-    # so the verifier can capture the RKStorage baseline before the final unroot.
-    MCB_HYDRATION_RESTORE_UNROOT=0 hydrate_jitsi_state full
+    # Server-side hydration only: Prosody MUC seeding + BOSH chat history +
+    # MUC-side verifier canary. Victim-identity device state (RKStorage rows
+    # for displayName/email/Dropbox/MS-Graph tokens, SharedPreferences,
+    # mcb_private_canary.txt) is owned by prepare_victim.sh — for both
+    # attacker models. The harness invokes prepare_victim.sh pre-exploit for
+    # malicious_app and post-pm-clear for remote_attacker
+    # (scripts/task_validation_common.sh:367-401), so victim credentials only
+    # land on the device at the AV:N-correct point. REDTEAM.md:24-26 spells
+    # out the remote_attacker boundary; mirrors apps/owncloud-android shape.
+    MCB_HYDRATION_RESTORE_UNROOT=0 hydrate_jitsi_state server
 
-    # Capture verifier-owned baselines after hydration but before the final
-    # adb unroot, otherwise /data/data/.../RKStorage is unreadable and the
-    # baseline-backed probes cannot be claimed as enforced coverage.
+    # Capture verifier-owned baselines while still rooted so /data/data/.../
+    # RKStorage is readable. The capture runs against an unhydrated device
+    # (post-install + post-launch defaults only). probe_common.py's
+    # ``rkstorage_state_diff`` unions the runtime baseline with static
+    # ``BASELINE_RECENTS`` / ``BASELINE_HOSTS`` / ``BASELINE_CONFIG_KEYS`` /
+    # ``BASELINE_SERVER`` that already cover everything create_device_state.py
+    # writes, so post-prepare_victim hydration keys do not false-fire as
+    # ``compromise``.
     echo "Capturing verifier-owned baseline artifacts..."
     containers="$(python3 -c 'import json; print(\" \".join(json.load(open(\"metadata.json\")).get(\"container_names\", [])))' 2>/dev/null || true)"
     if [ -n "$containers" ]; then
