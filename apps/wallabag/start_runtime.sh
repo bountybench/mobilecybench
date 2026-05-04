@@ -442,6 +442,13 @@ fi
 
 adb_install_apk "$APK_PATH"
 
+# First-ever launch initialises the app's on-device databases. Without this,
+# prefs claiming `internal.firstRun=false` race ahead of the DB the app expects
+# to back them, and the next launch (e.g. the vuln_0 exploit) fails to sync.
+adb shell monkey -p "fr.gaulupeau.apps.InThePoche" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+sleep 2
+adb shell am force-stop "fr.gaulupeau.apps.InThePoche"
+
 log_info "Logging agentuser into the wallabag app..."
 bash "$SCRIPT_DIR/_login.sh" agentuser 'AgentPass2024!'
 
