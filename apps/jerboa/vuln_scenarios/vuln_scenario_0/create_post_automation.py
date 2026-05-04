@@ -235,6 +235,37 @@ def _await_submit_outcome(d, timeout: int = 30) -> bool:
     return False
 
 
+def _top_app_bar_submit_candidates(
+    d,
+) -> list[tuple[int, int, object, tuple[int, int, int, int]]]:
+    """Return candidate submit controls from the create-post top app bar.
+
+    In CreatePost.kt the real submit action is the top-app-bar Add icon with
+    `contentDescription = "TODO"`. There is another TODO icon in the community
+    dropdown field lower on the form, so constrain candidates to the upper
+    app-bar region and the right side of the screen.
+    """
+    width, height = d.window_size()
+    candidates: list[tuple[int, int, object, tuple[int, int, int, int]]] = []
+    for node in d.xpath('//*[@content-desc="TODO"]').all():
+        bounds = node.attrib.get("bounds")
+        if not bounds:
+            continue
+        enabled = str(node.attrib.get("enabled", "")).lower()
+        if enabled and enabled != "true":
+            continue
+        parsed = _parse_bounds(bounds)
+        if not parsed:
+            continue
+        left_x, top_y, right_x, bottom_y = parsed
+        if top_y > height * 0.2:
+            continue
+        if left_x < width * 0.65:
+            continue
+        candidates.append((top_y, -left_x, node, (left_x, top_y, right_x, bottom_y)))
+    return candidates
+
+
 def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
     seeded_communities = _load_seeded_community_specs()
     if not seeded_communities:
@@ -409,7 +440,7 @@ def _submit_post_once(
                     pkg,
                     body,
                     allow_community_deeplink_fallback=False,
-                    assume_community_selected=True,
+                    assume_community_selected=False,
                     redispatch_share=False,
                 )
             _log("Community selector not found")
@@ -426,40 +457,20 @@ def _submit_post_once(
         _log("Did not return to Create post after community selection")
         return False
 
-    width, height = d.window_size()
-    app_bar_title = d(text="Create post")
-    if app_bar_title.exists:
-        try:
-            bounds = _parse_info_bounds(app_bar_title.info.get("bounds"))
-            if bounds:
-                _left_x, top_y, _right_x, bottom_y = bounds
-                tap_x = width - _dp_to_px(d, 28)
-                tap_y = (top_y + bottom_y) // 2
-                d.click(tap_x, tap_y)
-                _log("Clicked create-post submit action via app-bar geometry")
-                return _await_submit_outcome(d)
-        except Exception as e:
-            _log(f"App-bar submit geometry failed: {e}")
-
-    submit_candidates: list[tuple[int, int, object]] = []
-    for node in d.xpath('//*[@content-desc="TODO"]').all():
-        bounds = node.attrib.get("bounds")
-        if not bounds:
-            continue
-        parsed = _parse_bounds(bounds)
-        if not parsed:
-            continue
-        left_x, top_y, _right_x, _bottom_y = parsed
-        if top_y > height * 0.2:
-            continue
-        if left_x < width * 0.65:
-            continue
-        submit_candidates.append((top_y, -left_x, node))
-
+    submit_candidates = _top_app_bar_submit_candidates(d)
     if submit_candidates:
-        _, _, submit_btn = min(submit_candidates)
-        submit_btn.click()
-        _log("Clicked create-post submit action via TODO fallback")
+        _, _, submit_btn, submit_bounds = min(submit_candidates)
+        try:
+            submit_btn.click()
+            _log("Clicked create-post submit action via top-app-bar TODO control")
+            if _await_submit_outcome(d):
+                return True
+        except Exception as e:
+            _log(f"Top-app-bar TODO control click failed: {e}")
+
+        left_x, top_y, right_x, bottom_y = submit_bounds
+        d.click((left_x + right_x) // 2, (top_y + bottom_y) // 2)
+        _log("Clicked create-post submit action via TODO control bounds")
         return _await_submit_outcome(d)
 
     _log("Submit action not found")
