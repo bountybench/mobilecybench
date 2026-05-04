@@ -82,6 +82,19 @@ def _parse_bounds(bounds: str) -> tuple[int, int, int, int] | None:
         return None
 
 
+def _parse_info_bounds(bounds_info) -> tuple[int, int, int, int] | None:
+    if not isinstance(bounds_info, dict):
+        return None
+    try:
+        left = int(bounds_info["left"])
+        top = int(bounds_info["top"])
+        right = int(bounds_info["right"])
+        bottom = int(bounds_info["bottom"])
+        return left, top, right, bottom
+    except Exception:
+        return None
+
+
 def _load_seeded_community_specs() -> list[tuple[str, str]]:
     manifest_path = Path(__file__).resolve().parents[2] / "baseline_manifest.json"
     try:
@@ -410,11 +423,10 @@ def _submit_post_once(
         _log("Clicked create-post submit action")
         return True
 
-    app_bar_title = d(text="Create post")
-    if app_bar_title.exists:
+    close_button = d(description="Close")
+    if close_button.exists:
         try:
-            title_node = app_bar_title.get()
-            bounds = _parse_bounds(title_node.attrib.get("bounds", ""))
+            bounds = _parse_info_bounds(close_button.info.get("bounds"))
             if bounds:
                 _left_x, top_y, _right_x, bottom_y = bounds
                 tap_x = width - _dp_to_px(d, 28)
