@@ -212,10 +212,15 @@ class CustomAgent:
         else:
             check_path = "/app/agent_exploit/exploit.sh"
 
+        # `test -f` returns exit 1 when the file is absent. That is a normal
+        # outcome of an existence check, not an error, so we pass check=False
+        # to avoid CommandExecutor logging it at ERROR level (which would
+        # otherwise pollute errors.log on healthy runs).
         try:
             result = CommandExecutor().run(
                 f"docker exec kali-container test -f {check_path}",
                 capture_output=True,
+                check=False,
                 timeout=self.timeout_ms // 1000,
             )
             return result.returncode == 0
