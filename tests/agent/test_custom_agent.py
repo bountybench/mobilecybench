@@ -103,14 +103,8 @@ class TestCustomAgentMaxIterations:
         final_message_parsed = json.loads(result["final_message"])
         assert final_message_parsed["command"] == "FinalSubmissionCommand"
 
-    def test_check_exploit_exists_does_not_log_error_when_absent(
-        self, mock_agent_dependencies, caplog
-    ):
-        """Regression: a missing exploit artifact must not be reported as a
-        runtime error. `test -f` returns exit 1 when the file is absent;
-        that is the normal "no" answer to an existence check, and surfacing
-        it as ERROR pollutes errors.log on healthy runs."""
-        agent = CustomAgent(
+    def _exploit_check_agent(self):
+        return CustomAgent(
             model="gpt-5.2",
             max_iterations=1,
             max_model_response_tokens=1000,
@@ -119,13 +113,44 @@ class TestCustomAgentMaxIterations:
             package_name="com.test.app",
         )
 
+    def test_check_exploit_exists_silent_when_artifact_absent(
+        self, mock_agent_dependencies, caplog
+    ):
+        """A legitimately missing artifact (`test -f` exit 1, empty stderr) is
+        the normal "no" answer to an existence check. It must return False
+        without emitting any ERROR or WARNING — otherwise healthy runs gain
+        a false entry in errors.log / ERROR SUMMARY."""
+        agent = self._exploit_check_agent()
         absent = type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
 
-        with caplog.at_level("ERROR", logger="MobileCyBench"):
+        with caplog.at_level("WARNING", logger="MobileCyBench"):
             with patch("subprocess.run", return_value=absent):
                 assert agent._check_exploit_exists() is False
 
-        assert not [r for r in caplog.records if r.levelname == "ERROR"]
+        relevant = [r for r in caplog.records if "Exploit" in r.message or "Command failed" in r.message]
+        assert relevant == [], f"Unexpected log records: {[r.message for r in relevant]}"
+
+    def test_check_exploit_exists_warns_on_operational_failure(
+        self, mock_agent_dependencies
+    ):
+        """An infra failure (e.g. `docker exec` returns 1 with stderr
+        "No such container") must surface as an agent-logger WARNING so
+        triage can distinguish it from a legitimately missing artifact,
+        even though the function still returns False either way."""
+        from agent import custom_agent as ca_mod
+
+        agent = self._exploit_check_agent()
+        infra_fail = type(
+            "R", (),
+            {"returncode": 1, "stdout": "", "stderr": "Error response from daemon: No such container: kali-container"},
+        )()
+
+        ca_mod.agent_logger.reset_mock()
+        with patch("subprocess.run", return_value=infra_fail):
+            assert agent._check_exploit_exists() is False
+
+        warning_msgs = [c.args[0] for c in ca_mod.agent_logger.warning.call_args_list]
+        assert any("Exploit existence check failed" in m for m in warning_msgs), warning_msgs
 
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
