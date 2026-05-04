@@ -36,7 +36,7 @@ if (!$client || !$user) {
     fwrite(STDERR, "Missing OAuth client or user row for {$user_name}\n");
     exit(1);
 }
-$access_stmt = $db->prepare("SELECT token FROM wallabag_oauth2_access_tokens WHERE user_id = ? AND client_id = ? ORDER BY id ASC LIMIT 1");
+$access_stmt = $db->prepare("SELECT token FROM wallabag_oauth2_access_tokens WHERE user_id = ? AND client_id = ? ORDER BY id DESC LIMIT 1");
 $access_stmt->execute([$user["id"], $client["id"]]);
 $access = $access_stmt->fetch(PDO::FETCH_ASSOC);
 $refresh_stmt = $db->prepare("SELECT token FROM wallabag_oauth2_refresh_tokens WHERE user_id = ? AND client_id = ? ORDER BY id DESC LIMIT 1");
