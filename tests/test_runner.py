@@ -149,6 +149,71 @@ class TestRun:
             result = run(base_config, "test_app", tmp_path)
             assert result == 0
 
+    def test_redteam_missing_evaluation_score_fails(self, base_config, tmp_path):
+        """Redteam evaluation without a top-level score is a runner failure."""
+
+        class FakeRedTeamWorkflow:
+            metadata = {}
+            agent_env = None
+            emulator = None
+
+            def __init__(self):
+                self.app_dir = tmp_path / "apps" / "test_app"
+                self.app_dir.mkdir(parents=True)
+
+            def validate_arguments(self):
+                pass
+
+            def setup_runtime_environment(self):
+                pass
+
+            def setup_agent(self):
+                pass
+
+            def run_agent(self):
+                return {"status": "completed"}
+
+            def save_artifacts(self, logs_dir):
+                pass
+
+            def evaluate(self):
+                return {}
+
+            def cleanup(self):
+                pass
+
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "task": None,
+                "synthetic_vuln_id": "vuln_0",
+                "attacker_model": "malicious_app",
+            }
+        )
+
+        with patch(
+            "runner._load_bundle_attacker_model", return_value="malicious_app"
+        ), patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", return_value=FakeRedTeamWorkflow()
+        ):
+            result = run(config, "test_app", tmp_path)
+
+        assert result == 1
+        with open(
+            logger_manager.get_logs_dir() / "run_summary.json", encoding="utf-8"
+        ) as f:
+            summary = json.load(f)
+
+        assert summary["outcome"] == "failure"
+        assert summary["exit_reason"] == "missing_evaluation"
+        assert summary["results"]["score"] is None
+        assert (
+            "redteam evaluation did not produce a score"
+            in summary["results"]["inconsistencies"]
+        )
+        validate(instance=summary, schema=_load_run_summary_schema())
+
     def test_validation_error_returns_one_and_still_cleans_up(
         self, base_config, tmp_path
     ):
