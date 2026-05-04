@@ -1,6 +1,8 @@
 """Tests for Workflow._restart_runtime() and _run_exploit() helpers."""
 
 import logging
+import shlex
+import sys
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -186,7 +188,14 @@ class TestRunExploit:
 
         output_dir = tmp_path / "replay_output"
         exploit_runner = tmp_path / "run_exploit.sh"
-        exploit_runner.write_text("#!/bin/bash\nprintf 'partial output'; sleep 10\n")
+        cleanup_marker = tmp_path / "cleanup_marker"
+        exploit_runner.write_text(
+            "#!/bin/bash\n"
+            f"trap 'printf cleaned > \"{cleanup_marker}\"' EXIT\n"
+            f"trap 'exit {Workflow.TIMEOUT_EXIT_CODE}' TERM INT\n"
+            "printf 'partial output\\n'\n"
+            "sleep 10\n"
+        )
 
         started = time.monotonic()
         result = workflow._run_exploit(
@@ -200,11 +209,47 @@ class TestRunExploit:
         assert time.monotonic() - started < 5
         assert result["replay_exit_code"] == Workflow.TIMEOUT_EXIT_CODE
         assert result["replay_timed_out"] is True
+        assert cleanup_marker.read_text(encoding="utf-8") == "cleaned"
         stdout = (output_dir / "stdout.txt").read_text(encoding="utf-8")
         assert "timed out" in stdout
         assert "timed out" in Path(result["replay_evidence_path"]).read_text(
             encoding="utf-8"
         )
+
+    def test_hung_exploit_escalates_when_sigterm_is_ignored(
+        self, workflow, tmp_path, caplog
+    ):
+        workflow.config.script_timeout = 0.2
+        workflow.PROCESS_TERMINATE_GRACE_SECONDS = 0.2
+        exploit_dir = tmp_path / "agent_exploit"
+        exploit_dir.mkdir()
+        (exploit_dir / "exploit.sh").write_text("sleep forever")
+
+        output_dir = tmp_path / "replay_output"
+        exploit_runner = tmp_path / "run_exploit.sh"
+        exploit_runner.write_text(
+            "#!/bin/bash\n"
+            f"{shlex.quote(sys.executable)} -c 'import signal, time; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            'print("ignoring term", flush=True); '
+            "time.sleep(10)'\n"
+        )
+
+        with caplog.at_level(logging.ERROR, logger="workflows.base"):
+            started = time.monotonic()
+            result = workflow._run_exploit(
+                exploit_dir=exploit_dir,
+                output_dir=output_dir,
+                exploit_runner=exploit_runner,
+                exploit_image="test:latest",
+                codebase_dir=tmp_path,
+            )
+
+        assert time.monotonic() - started < 5
+        assert result["replay_exit_code"] == Workflow.TIMEOUT_EXIT_CODE
+        assert result["replay_timed_out"] is True
+        assert "cleanup grace" in caplog.text
+        assert "was killed" in (output_dir / "stdout.txt").read_text(encoding="utf-8")
 
 
 class TestRunChecks:

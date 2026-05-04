@@ -538,16 +538,23 @@ class Workflow(ABC):
             stdout, _stderr = proc.communicate(timeout=self.config.script_timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
-            timeout_message = (
-                f"Exploit replay timed out after {self.config.script_timeout}s; "
-                "killed subprocess tree"
-            )
             logger.error(
                 f"Exploit replay timed out after {self.config.script_timeout}s; "
-                "killing subprocess tree"
+                "terminating subprocess tree"
             )
-            self._kill_process_tree(proc)
-            stdout, _stderr = self._communicate_after_kill(proc)
+            stdout, _stderr, forced_kill = self._communicate_after_timeout(
+                proc, label="Exploit replay"
+            )
+            if forced_kill:
+                timeout_message = (
+                    f"Exploit replay timed out after {self.config.script_timeout}s; "
+                    "SIGTERM cleanup grace expired and subprocess tree was killed"
+                )
+            else:
+                timeout_message = (
+                    f"Exploit replay timed out after {self.config.script_timeout}s; "
+                    "subprocess tree terminated after cleanup signal"
+                )
             stdout = (stdout or "").rstrip("\n")
             stdout = f"{stdout}\n{timeout_message}" if stdout else timeout_message
 
@@ -584,20 +591,29 @@ class Workflow(ABC):
     SCORE_FILE = "scores.json"
     # Matches GNU timeout(1), which makes timeout exits easy to recognize.
     TIMEOUT_EXIT_CODE = 124
+    PROCESS_TERMINATE_GRACE_SECONDS = 10
     PROCESS_REAP_TIMEOUT_SECONDS = 10
 
     @staticmethod
-    def _kill_process_tree(proc: subprocess.Popen) -> None:
-        """Kill a subprocess and any children in its process group."""
+    def _signal_process_tree(proc: subprocess.Popen, sig: signal.Signals) -> None:
+        """Signal a subprocess and any children in its process group."""
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
+            os.killpg(proc.pid, sig)
         except ProcessLookupError:
             pass
         except OSError:
             try:
-                proc.kill()
+                proc.send_signal(sig)
             except ProcessLookupError:
                 pass
+
+    @classmethod
+    def _terminate_process_tree(cls, proc: subprocess.Popen) -> None:
+        cls._signal_process_tree(proc, signal.SIGTERM)
+
+    @classmethod
+    def _kill_process_tree(cls, proc: subprocess.Popen) -> None:
+        cls._signal_process_tree(proc, signal.SIGKILL)
 
     @staticmethod
     def _timeout_output_to_text(output: str | bytes | None) -> str:
@@ -626,6 +642,25 @@ class Workflow(ABC):
                 self._timeout_output_to_text(e.output),
                 self._timeout_output_to_text(e.stderr),
             )
+
+    def _communicate_after_timeout(
+        self, proc: subprocess.Popen, *, label: str
+    ) -> tuple[str, str | None, bool]:
+        self._terminate_process_tree(proc)
+        try:
+            stdout, stderr = proc.communicate(
+                timeout=self.PROCESS_TERMINATE_GRACE_SECONDS
+            )
+            return stdout, stderr, False
+        except subprocess.TimeoutExpired:
+            logger.error(
+                f"{label} did not exit after "
+                f"{self.PROCESS_TERMINATE_GRACE_SECONDS}s cleanup grace; "
+                "killing subprocess tree"
+            )
+            self._kill_process_tree(proc)
+            stdout, stderr = self._communicate_after_kill(proc)
+            return stdout, stderr, True
 
     @staticmethod
     def _validate_probe_score_files(paths: tuple[Path, Path], *, strict: bool) -> bool:
@@ -712,10 +747,11 @@ class Workflow(ABC):
         except subprocess.TimeoutExpired:
             logger.error(
                 f"run_checks.sh timed out after {self.config.script_timeout}s; "
-                "killing subprocess tree"
+                "terminating subprocess tree"
             )
-            self._kill_process_tree(proc)
-            stdout, stderr = self._communicate_after_kill(proc)
+            stdout, stderr, _forced_kill = self._communicate_after_timeout(
+                proc, label="run_checks.sh"
+            )
             if stdout:
                 logger.error(f"stdout: {stdout}")
             if stderr:
