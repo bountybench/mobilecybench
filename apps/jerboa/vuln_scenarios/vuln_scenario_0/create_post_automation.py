@@ -53,12 +53,21 @@ DEFAULT_SEEDED_COMMUNITIES = [
 DEEPLINK_INSTANCE = "https://lemmy.ml"
 
 
-def _wait_for_any_text(d, candidates: list[str], timeout: int = 15) -> str | None:
+def _wait_for_any_text(
+    d,
+    candidates: list[str],
+    timeout: int = 15,
+    description_candidates: list[str] | None = None,
+) -> str | None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         for candidate in candidates:
             if d(text=candidate).exists:
                 return candidate
+        if description_candidates:
+            for candidate in description_candidates:
+                if d(description=candidate).exists:
+                    return candidate
         time.sleep(0.5)
     return None
 
@@ -162,7 +171,12 @@ def _tap_community_field_from_label(d) -> bool:
 
 
 def _community_picker_is_visible(d, timeout: int = 10) -> bool:
-    return _wait_for_any_text(d, ["Search...", "Back"], timeout=timeout) is not None
+    return (
+        _wait_for_any_text(
+            d, ["Search..."], timeout=timeout, description_candidates=["Back"]
+        )
+        is not None
+    )
 
 
 def _selected_community_present(d) -> bool:
@@ -187,7 +201,7 @@ def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
     )
     wait_for_ui_stable(d, min_consecutive=2, timeout=10)
 
-    if not _wait_for_any_text(d, [query, "Back"], timeout=15):
+    if not _wait_for_any_text(d, [query], timeout=15, description_candidates=["Back"]):
         _log(f"Community deeplink did not resolve for {query}")
         return False
 
