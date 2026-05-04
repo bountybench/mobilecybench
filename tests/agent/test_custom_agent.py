@@ -103,6 +103,30 @@ class TestCustomAgentMaxIterations:
         final_message_parsed = json.loads(result["final_message"])
         assert final_message_parsed["command"] == "FinalSubmissionCommand"
 
+    def test_check_exploit_exists_does_not_log_error_when_absent(
+        self, mock_agent_dependencies, caplog
+    ):
+        """Regression: a missing exploit artifact must not be reported as a
+        runtime error. `test -f` returns exit 1 when the file is absent;
+        that is the normal "no" answer to an existence check, and surfacing
+        it as ERROR pollutes errors.log on healthy runs."""
+        agent = CustomAgent(
+            model="gpt-5.2",
+            max_iterations=1,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+
+        absent = type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+        with caplog.at_level("ERROR", logger="MobileCyBench"):
+            with patch("subprocess.run", return_value=absent):
+                assert agent._check_exploit_exists() is False
+
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
         agent = CustomAgent(
