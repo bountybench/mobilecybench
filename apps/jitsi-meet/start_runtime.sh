@@ -394,7 +394,13 @@ main() {
     # writes, so post-prepare_victim hydration keys do not false-fire as
     # ``compromise``.
     echo "Capturing verifier-owned baseline artifacts..."
-    containers="$(python3 -c 'import json; print(\" \".join(json.load(open(\"metadata.json\")).get(\"container_names\", [])))' 2>/dev/null || true)"
+    # Outer "$(...)" is double-quoted, so inner Python literal must use single
+    # quotes — backslash-escaped double quotes inside single-quoted shell
+    # arguments are kept verbatim and parse as a Python SyntaxError, suppressed
+    # by `2>/dev/null || true`. The bug silently emptied $containers, made
+    # capture_verifier_baseline.py write `{"containers": {}}`, and made the
+    # A-RA-1 backend availability probe always SKIP (no gradeable-set match).
+    containers="$(python3 -c "import json; print(' '.join(json.load(open('metadata.json')).get('container_names', [])))" 2>/dev/null || true)"
     if [ -n "$containers" ]; then
         python3 ./capture_verifier_baseline.py --package org.jitsi.meet --containers $containers
     else
