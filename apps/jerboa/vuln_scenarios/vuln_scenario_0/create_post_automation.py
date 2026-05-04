@@ -210,6 +210,31 @@ def _populate_body_field(d, body: str) -> bool:
     return True
 
 
+def _await_submit_outcome(d, timeout: int = 30) -> bool:
+    """Return True only after Jerboa reaches the post screen contract.
+
+    Source of truth:
+    - CreatePostViewModel always pops the create-post route after the network call.
+    - On actual success, it then navigates to `post/{id}`.
+    - PostActivity renders a stable top bar titled "Comments".
+
+    So a submit tap is not success by itself. Success is reaching the post
+    screen, not merely leaving the form.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if d(text="Comments").exists and not d(text="Create post").exists:
+            wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+            return True
+        time.sleep(0.5)
+
+    if d(text="Create post").exists:
+        _log("Submit did not leave Create post screen")
+    else:
+        _log("Submit left Create post but did not reach Comments screen")
+    return False
+
+
 def _establish_selected_community_via_deeplink(d, pkg: str) -> bool:
     seeded_communities = _load_seeded_community_specs()
     if not seeded_communities:
@@ -412,7 +437,7 @@ def _submit_post_once(
                 tap_y = (top_y + bottom_y) // 2
                 d.click(tap_x, tap_y)
                 _log("Clicked create-post submit action via app-bar geometry")
-                return True
+                return _await_submit_outcome(d)
         except Exception as e:
             _log(f"App-bar submit geometry failed: {e}")
 
@@ -435,7 +460,7 @@ def _submit_post_once(
         _, _, submit_btn = min(submit_candidates)
         submit_btn.click()
         _log("Clicked create-post submit action via TODO fallback")
-        return True
+        return _await_submit_outcome(d)
 
     _log("Submit action not found")
     return False
