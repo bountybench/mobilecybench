@@ -14,12 +14,13 @@ For the shared task-file contract (verifier design, env vars), see [TASK.md](TAS
 ## Contents
 
 1. [Attacker models](#attack-models)
-2. [Scoring](#scoring)
-3. [Probe-only mode](#probe-only-mode)
-4. [Run a redteam evaluation](#run-a-redteam-evaluation)
-5. [Run a gold check](#run-a-gold-check)
-6. [Author a task](#author-a-task)
-7. [Reference](#reference)
+2. [Execution model](#execution-model)
+3. [Scoring](#scoring)
+4. [Probe-only mode](#probe-only-mode)
+5. [Run a redteam evaluation](#run-a-redteam-evaluation)
+6. [Run a gold check](#run-a-gold-check)
+7. [Author a task](#author-a-task)
+8. [Reference](#reference)
 
 ---
 
@@ -39,6 +40,35 @@ The two attacker models share the pipeline through strategy objects in `workflow
 | **Replay mechanism** | `am instrument` against the installed malicious APK | Sandboxed Docker container with ADB + backend access |
 | **Probes** | Per-app CIA probes in `apps/<app>/test_*.py` | Per-app remote-attacker probes in `apps/<app>/remote_attacker/test_*.py` |
 | **Uses generic probe config** | Yes | No |
+
+## Execution model
+
+A redteam run has two distinct segments that operate on the same emulator with **different state ownership**:
+
+1. **Agent dev phase.** Setup runs once (`setup_runtime_environment`: emulator boot, CA injection, original APK install, `apps/<app>/start_runtime.sh`, agent container start). The emulator and backends are agent-owned: the agent has ADB and can poke at both. Whatever app-level identity `start_runtime.sh` installs (e.g. logging the app in as `agentuser`) is dev scaffolding, not victim state. The agent's job here is to produce its exploit artifact (`exploit_apk/` for `malicious_app`, `exploit.sh` for `remote_attacker`).
+
+2. **Replay phase.** Runtime restarts (`_restart_runtime` in `workflows/base.py`): emulator reboot, CA re-injection, backend reset, **`start_runtime.sh` runs again from scratch**, then the per-task `prepare_app.sh` hook. After that, the per-app `prepare_victim.sh` hook runs at the model-appropriate point (see `malicious_app` and `remote_attacker` flows in [Pipeline stages](#pipeline-stages)). Then the model-specific replay (`am instrument` / `exploit.sh`), then `verify_exploit.sh`, then probes.
+
+```
+agent dev phase                          replay phase  (×2 in two-phase scoring)
+---------------                          -------------
+emulator boot                            emulator restart
+inject system CA                         re-inject system CA
+install original APK                     install phase APK (vulnerable then patched)
+start_runtime.sh                         start_runtime.sh                  (re-runs)
+agent container starts                   prepare_app.sh   (per-task)
+agent produces exploit artifact          prepare_victim.sh (per-app — timing
+agent container torn down                                   depends on attacker model)
+                                         replay (am instrument / exploit.sh)
+                                         verify_exploit.sh
+                                         probes
+```
+
+Why the seam matters:
+
+- **The agent never observes a logged-in victim's session.** Anything the agent could read off the device during the dev phase is permanently outside replay-phase device state. Per-run secrets the probes use for attribution (canary files at `/data/local/tmp/...`, baseline state fingerprints) only need to be unguessable to the *replay-phase* device, which only the malicious APK / `exploit.sh` interact with.
+- **`start_runtime.sh` runs twice.** App-level setup must be idempotent and re-establishable from scratch, since runtime restart re-creates emulator state. The two calls serve different roles: dev (give the agent a working app) and replay-phase floor (clean state for `prepare_app.sh` / `prepare_victim.sh` to overlay).
+- **Two-phase scoring repeats only the replay phase.** The agent dev phase runs once; the replay phase runs once per APK comparator (vulnerable, patched).
 
 ## Scoring
 
