@@ -30,6 +30,15 @@ from jerboa_probe_utils import (
 log_path = Path(sys.argv[1])
 lines: list[str] = []
 
+
+def _summarize_log_text(text: str | None, limit: int = 8000) -> str:
+    if not text:
+        return ""
+    compact = text.replace("\r", "").replace("\n", "\\n").strip()
+    if len(compact) > limit:
+        return compact[:limit] + "...<truncated>"
+    return compact
+
 dispatch_body = f"mcb-post-{uuid.uuid4().hex}"
 dispatch_ok, _ = run_helper_reproduction(
     mode="dispatch_send",
@@ -79,17 +88,28 @@ else:
             raise RuntimeError(f"missing UI automation helper: {ui}")
         import subprocess
 
-        ui_run = subprocess.run(
-            [sys.executable, str(ui), dispatch_body],
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
+        try:
+            ui_run = subprocess.run(
+                [sys.executable, str(ui), dispatch_body],
+                capture_output=True,
+                text=True,
+                timeout=360,
+            )
+        except subprocess.TimeoutExpired as exc:
+            lines.append("mode=dispatch_send verdict=false reason=ui_submit_timeout")
+            stderr_text = _summarize_log_text(exc.stderr)
+            stdout_text = _summarize_log_text(exc.stdout)
+            if stderr_text:
+                lines.append(f"mode=dispatch_send ui_submit_stderr={stderr_text}")
+            if stdout_text:
+                lines.append(f"mode=dispatch_send ui_submit_stdout={stdout_text}")
+            log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            raise SystemExit(1)
         lines.append(f"mode=dispatch_send ui_submit_exit={ui_run.returncode}")
         if ui_run.returncode != 0:
             lines.append("mode=dispatch_send verdict=false reason=ui_submit_failed")
-            stderr_text = (ui_run.stderr or "").strip()
-            stdout_text = (ui_run.stdout or "").strip()
+            stderr_text = _summarize_log_text(ui_run.stderr)
+            stdout_text = _summarize_log_text(ui_run.stdout)
             if stderr_text:
                 lines.append(f"mode=dispatch_send ui_submit_stderr={stderr_text}")
             if stdout_text:
