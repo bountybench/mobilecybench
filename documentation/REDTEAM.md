@@ -368,6 +368,7 @@ Emitted in `redteam_scores.json:status`.
 | `no_signal` | Probes did not trigger | 0 |
 | `infrastructure_error` | Replay-pipeline failure | 0 |
 | `probe_evaluator_error` | `run_checks.sh` failed or produced invalid JSON | 0 |
+| `infrastructure_error` | Phase setup or replay crashed (`prepare_app_crash`, `prepare_victim_crash`, or `replay_runtime_error`); scoring skipped to avoid polluted signals | 0 |
 
 ### Pipeline stages
 
