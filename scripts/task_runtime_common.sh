@@ -107,24 +107,6 @@ task_runtime_set_context() {
     TASK_RUNTIME_ENV=("${task_runtime_env[@]}")
 }
 
-task_runtime_run_with_timeout() {
-    local timeout_seconds="$1"
-    shift
-
-    local timeout_cmd=""
-    if command -v timeout >/dev/null 2>&1; then
-        timeout_cmd="timeout"
-    elif command -v gtimeout >/dev/null 2>&1; then
-        timeout_cmd="gtimeout"
-    fi
-
-    if [ -n "$timeout_cmd" ]; then
-        env "${TASK_RUNTIME_ENV[@]}" "$timeout_cmd" "$timeout_seconds" "$@"
-    else
-        env "${TASK_RUNTIME_ENV[@]}" "$@"
-    fi
-}
-
 task_runtime_run_prepare_hook() {
     local log_file="${1:-}"
     local prepare_hook="$TASK_RUNTIME_TASK_DIR/prepare_app.sh"
@@ -135,7 +117,7 @@ task_runtime_run_prepare_hook() {
     if [ -n "$log_file" ]; then
         if ! (
             cd "$TASK_RUNTIME_TASK_DIR" && \
-            task_runtime_run_with_timeout 300 bash "$prepare_hook" >"$log_file" 2>&1
+            env "${TASK_RUNTIME_ENV[@]}" timeout 300 bash "$prepare_hook" >"$log_file" 2>&1
         ); then
             cat "$log_file" >&2 || true
             echo -e "${ERROR} prepare_app.sh failed or timed out"
@@ -145,7 +127,7 @@ task_runtime_run_prepare_hook() {
     else
         if ! (
             cd "$TASK_RUNTIME_TASK_DIR" && \
-            task_runtime_run_with_timeout 300 bash "$prepare_hook"
+            env "${TASK_RUNTIME_ENV[@]}" timeout 300 bash "$prepare_hook"
         ); then
             echo -e "${ERROR} prepare_app.sh failed or timed out"
             return 1
