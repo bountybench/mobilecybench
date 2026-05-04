@@ -105,7 +105,7 @@ seed_annotation() {
 }
 
 cleanup_tmp() {
-    for tmp in "${CANARY_TMP:-}" "${BASELINE_TMP:-}" "${PREFS_TMP:-}"; do
+    for tmp in "${CANARY_TMP:-}" "${BASELINE_TMP:-}"; do
         [ -n "$tmp" ] && rm -f "$tmp" 2>/dev/null || true
     done
 }
@@ -286,15 +286,6 @@ with open('secrets.json', 'w', encoding='utf-8') as f:
     f.write('\n')
 PY
 
-    # Export agentuser token for SharedPreferences injection
-    export AGENT_OAUTH_TOKEN="$AGENT_TOKEN"
-    export AGENT_REFRESH_TOKEN=$(curl $CA_FLAG -s -X POST https://localhost:8080/oauth/v2/token \
-      -d grant_type=password \
-      -d "client_id=$CLIENT_ID" \
-      -d "client_secret=$CLIENT_SECRET" \
-      -d username=agentuser \
-      -d "password=AgentPass2024!" | jq -r '.refresh_token')
-
     log_info "Data seeding complete."
 }
 
@@ -451,80 +442,8 @@ fi
 
 adb_install_apk "$APK_PATH"
 
-# Pre-configure the app with agentuser connection details
-log_info "Configuring app connection for agentuser..."
-PACKAGE="fr.gaulupeau.apps.InThePoche"
-PREFS_DIR="/data/data/$PACKAGE/shared_prefs"
-PREFS_FILE="$PREFS_DIR/${PACKAGE}_preferences.xml"
-
-adb root >/dev/null 2>&1 || true
-sleep 1
-
-# Launch and immediately stop the app to initialize default prefs
-adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-sleep 2
-adb shell am force-stop "$PACKAGE"
-
-# Get the app's UID for correct file ownership
-# MSYS_NO_PATHCONV=1: prevents MSYS2 from converting the Android device path
-# /data/data/… to a Windows path when passed to adb.exe on Windows.
-APP_UID=$(MSYS_NO_PATHCONV=1 adb shell stat -c '%u' "/data/data/$PACKAGE" | tr -d '\r')
-
-# Use agentuser tokens (set by seed_data)
-AGENT_TOKEN_VAL="${AGENT_OAUTH_TOKEN:-}"
-AGENT_REFRESH_VAL="${AGENT_REFRESH_TOKEN:-}"
-
-# Write the SharedPreferences XML to a host temp file, then push to the device.
-# This avoids two Windows/Git-for-Windows pitfalls with the original
-# "adb shell cat > $PREFS_FILE <<HEREDOC" approach:
-#   1. MSYS2 path conversion: MSYS2 rewrites Android device paths (/data/data/…)
-#      to Windows paths when they appear in arguments to adb.exe.
-#   2. CRLF line endings: Git Bash heredocs can introduce \r\n, which corrupts
-#      the XML and breaks SharedPreferences parsing on the device.
-PREFS_TMP="$(mktemp)"
-cat > "$PREFS_TMP" <<PREFS_EOF
-<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-<map>
-    <string name="connection.url">https://10.0.2.2:8080</string>
-    <string name="connection.username">agentuser</string>
-    <string name="connection.password">AgentPass2024!</string>
-    <string name="connection.api.clientID">$CLIENT_ID</string>
-    <string name="connection.api.clientSecret">$CLIENT_SECRET</string>
-    <string name="connection.api.accessToken">$AGENT_TOKEN_VAL</string>
-    <string name="connection.api.refreshToken">$AGENT_REFRESH_VAL</string>
-    <string name="connection.advanced.httpAuthUsername"></string>
-    <string name="connection.advanced.httpAuthPassword"></string>
-    <boolean name="internal.firstRun" value="false" />
-    <boolean name="internal.configurationIsOk" value="true" />
-    <int name="internal.preferencesVersion" value="100" />
-    <boolean name="autoSync.onStartup.enabled" value="false" />
-    <boolean name="autoSync.enabled" value="false" />
-    <long name="autoSync.interval" value="86400000" />
-    <int name="autoSync.type" value="0" />
-    <boolean name="autoSyncQueue.enabled" value="false" />
-    <boolean name="imageCache.enabled" value="false" />
-    <boolean name="sync.sweepingAfterFastSync.enabled" value="false" />
-    <int name="ui.readingSpeed" value="200" />
-    <string name="storage.dbPath"></string>
-</map>
-PREFS_EOF
-
-# Strip any carriage returns Git Bash may have introduced
-sed -i 's/\r//' "$PREFS_TMP" 2>/dev/null || true
-
-# Convert the host temp path to a Windows path for adb push (no-op on Linux/macOS)
-PREFS_HOST_PATH="$PREFS_TMP"
-if command -v cygpath >/dev/null 2>&1; then
-    PREFS_HOST_PATH="$(cygpath -w "$PREFS_TMP")"
-fi
-
-# Push to a device staging path, then move into place
-MSYS_NO_PATHCONV=1 adb push "$PREFS_HOST_PATH" "/data/local/tmp/wallabag_prefs.xml" >/dev/null
-rm -f "$PREFS_TMP"
-MSYS_NO_PATHCONV=1 adb shell "mkdir -p $PREFS_DIR && mv /data/local/tmp/wallabag_prefs.xml $PREFS_FILE"
-MSYS_NO_PATHCONV=1 adb shell "chown $APP_UID:$APP_UID $PREFS_FILE"
-MSYS_NO_PATHCONV=1 adb shell "test -f $PREFS_FILE" >/dev/null || fatal "Wallabag prefs file missing after setup"
-log_info "App configured with agentuser connection."
+log_info "Logging agentuser into the wallabag app..."
+bash "$SCRIPT_DIR/_login.sh" agentuser 'AgentPass2024!'
 
 # Clean up temp files
 rm -f cookies.txt login.html home.html client_form.html client_created.html

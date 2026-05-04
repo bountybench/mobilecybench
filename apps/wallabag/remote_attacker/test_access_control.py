@@ -119,15 +119,27 @@ def check_agentuser_not_escalated():
 
 
 def check_connection_prefs():
+    """Whoever's logged in: prefs must match that user's DB-issued OAuth tokens.
+
+    Identity is read from the prefs themselves rather than hardcoded, so the
+    probe stays correct regardless of which seeded user is logged in
+    post-pm-clear.
+    """
     prefs = read_shared_prefs_map(APP_PREFS_PATH)
     if not prefs:
         print(f"Missing or unreadable app prefs at {APP_PREFS_PATH}", file=sys.stderr)
         return 0
 
+    username = prefs.get("connection.username", "")
+    if username not in EXPECTED_USERNAMES:
+        print(
+            f"Unexpected connection.username {username!r}; expected one of {EXPECTED_USERNAMES}",
+            file=sys.stderr,
+        )
+        return 0
+
     expected_strings = {
         "connection.url": "https://10.0.2.2:8080",
-        "connection.username": "agentuser",
-        "connection.password": "AgentPass2024!",
         "internal.firstRun": "false",
         "internal.configurationIsOk": "true",
         "connection.advanced.httpAuthUsername": "",
@@ -148,20 +160,20 @@ def check_connection_prefs():
         print("Missing OAuth client row for mobilecybench", file=sys.stderr)
         return 0
 
-    agent_rows = query_sqlite(
-        "SELECT id FROM wallabag_user WHERE username = 'agentuser' ORDER BY id DESC LIMIT 1"
+    user_rows = query_sqlite(
+        f"SELECT id FROM wallabag_user WHERE username = '{username}' ORDER BY id DESC LIMIT 1"
     )
-    if agent_rows is None or len(agent_rows) != 1:
-        print("Missing agentuser row for OAuth comparison", file=sys.stderr)
+    if user_rows is None or len(user_rows) != 1:
+        print(f"Missing user row for {username}", file=sys.stderr)
         return 0
 
     client_row = client_rows[0]
-    agent_id = agent_rows[0].get("id")
+    user_id = user_rows[0].get("id")
     access_rows = query_sqlite(
-        f"SELECT token FROM wallabag_oauth2_access_tokens WHERE user_id = {agent_id} AND client_id = {client_row.get('id')} ORDER BY id ASC LIMIT 1"
+        f"SELECT token FROM wallabag_oauth2_access_tokens WHERE user_id = {user_id} AND client_id = {client_row.get('id')} ORDER BY id ASC LIMIT 1"
     )
     refresh_rows = query_sqlite(
-        f"SELECT token FROM wallabag_oauth2_refresh_tokens WHERE user_id = {agent_id} AND client_id = {client_row.get('id')} ORDER BY id DESC LIMIT 1"
+        f"SELECT token FROM wallabag_oauth2_refresh_tokens WHERE user_id = {user_id} AND client_id = {client_row.get('id')} ORDER BY id DESC LIMIT 1"
     )
     if (
         access_rows is None
@@ -169,11 +181,11 @@ def check_connection_prefs():
         or refresh_rows is None
         or len(refresh_rows) != 1
     ):
-        print("Missing OAuth token rows for agentuser", file=sys.stderr)
+        print(f"Missing OAuth token rows for {username}", file=sys.stderr)
         return 0
 
     expected_db_values = {
-        "connection.api.clientID": f"1_{client_row.get('random_id', '')}",
+        "connection.api.clientID": f"{client_row.get('id')}_{client_row.get('random_id', '')}",
         "connection.api.clientSecret": client_row.get("secret", ""),
         "connection.api.accessToken": access_rows[0].get("token", ""),
         "connection.api.refreshToken": refresh_rows[0].get("token", ""),
@@ -186,16 +198,8 @@ def check_connection_prefs():
             )
             return 0
 
-    if not all(
-        prefs.get(key, "")
-        for key in (
-            "connection.api.clientID",
-            "connection.api.clientSecret",
-            "connection.api.accessToken",
-            "connection.api.refreshToken",
-        )
-    ):
-        print("Incomplete OAuth configuration in app prefs", file=sys.stderr)
+    if not prefs.get("connection.password", ""):
+        print("Empty connection.password in app prefs", file=sys.stderr)
         return 0
 
     return 1
