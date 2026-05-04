@@ -96,6 +96,24 @@ def _alice_jwt() -> str:
     raise RuntimeError("missing alice_jwt")
 
 
+def _baseline_manifest() -> dict[str, Any]:
+    manifest_path = Path(__file__).resolve().parent / "baseline_manifest.json"
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"missing baseline manifest: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("baseline manifest is not an object")
+    return payload
+
+
+def _manifest_corpus(manifest: dict[str, Any]) -> dict[str, Any]:
+    corpus = manifest.get("corpus")
+    if not isinstance(corpus, dict):
+        raise RuntimeError("baseline manifest missing corpus")
+    return corpus
+
+
 def _get_json(
     path: str,
     *,
@@ -198,84 +216,185 @@ def _post_record(post_view: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _list_posts(alice_jwt: str, *, saved_only: bool = False) -> list[dict[str, Any]]:
-    params: dict[str, Any] = {"type_": "All", "limit": 50}
-    if saved_only:
-        params["saved_only"] = "true"
+def _post_detail(alice_jwt: str, post_id: int) -> dict[str, Any]:
     payload = _get_json(
-        "/api/v3/post/list", **_auth_request_kwargs(alice_jwt, params=params)
+        "/api/v3/post",
+        **_auth_request_kwargs(
+            alice_jwt,
+            params={"id": post_id},
+            include_query_auth=True,
+        ),
     )
-    rows = payload.get("posts") or []
-    if len(rows) >= 50:
-        raise RuntimeError("post list reached limit 50; fingerprint would be truncated")
+    return payload
+
+
+def _list_seeded_posts(
+    alice_jwt: str, manifest: dict[str, Any]
+) -> list[dict[str, Any]]:
+    corpus = _manifest_corpus(manifest)
+    posts = corpus.get("posts") or []
     out: list[dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, dict):
+    for post in posts:
+        if not isinstance(post, dict):
             continue
-        record = _post_record(row)
-        if record:
-            out.append(record)
+        post_id = post.get("id")
+        if not isinstance(post_id, int):
+            raise RuntimeError("seeded manifest post missing numeric id")
+        payload = _post_detail(alice_jwt, post_id)
+        post_view = payload.get("post_view")
+        if not isinstance(post_view, dict):
+            raise RuntimeError(f"post {post_id} detail missing post_view")
+        record = _post_record(post_view)
+        if not record:
+            raise RuntimeError(f"post {post_id} detail missing stable fields")
+        out.append(record)
     return sorted(
         out, key=lambda item: (item["title"], item["creator"], item["community"])
     )
 
 
-def _list_comments(alice_jwt: str, posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    comments: list[dict[str, Any]] = []
-    for post in posts:
-        payload = _get_json(
-            "/api/v3/comment/list",
-            **_auth_request_kwargs(
-                alice_jwt,
-                params={"post_id": post["id"], "limit": 50, "sort": "New"},
-            ),
-        )
+def _comment_record(
+    row: dict[str, Any], *, post_title: str, post_id: int
+) -> dict[str, Any] | None:
+    comment = row.get("comment") or row.get("comment_view", {}).get("comment") or {}
+    creator = row.get("creator") or row.get("comment_view", {}).get("creator") or {}
+    comment_id = comment.get("id")
+    body = comment.get("content")
+    if not isinstance(comment_id, int):
+        return None
+    if not isinstance(body, str) or not body:
+        return None
+    return {
+        "id": comment_id,
+        "author": creator.get("name") or "",
+        "post_id": post_id,
+        "post_title": post_title,
+        "content": body,
+        "parent_id": comment.get("parent_id") or 0,
+    }
+
+
+def _list_seeded_comments(
+    alice_jwt: str, manifest: dict[str, Any]
+) -> list[dict[str, Any]]:
+    corpus = _manifest_corpus(manifest)
+    posts = corpus.get("posts") or []
+    expected_comments = corpus.get("comments") or []
+
+    comments_by_post: dict[int, set[int]] = {}
+    for comment in expected_comments:
+        if not isinstance(comment, dict):
+            continue
+        post_id = comment.get("post_id")
+        comment_id = comment.get("id")
+        if isinstance(post_id, int) and isinstance(comment_id, int):
+            comments_by_post.setdefault(post_id, set()).add(comment_id)
+
+    post_titles = {
+        post["id"]: post["title"]
+        for post in posts
+        if isinstance(post, dict)
+        and isinstance(post.get("id"), int)
+        and isinstance(post.get("title"), str)
+    }
+
+    out: list[dict[str, Any]] = []
+    for post_id, expected_ids in comments_by_post.items():
+        payload = _post_detail(alice_jwt, post_id)
         rows = payload.get("comments") or []
-        if len(rows) >= 50:
-            raise RuntimeError(
-                f"comment list for post {post['id']} reached limit 50; fingerprint would be truncated"
-            )
+        post_title = post_titles.get(post_id, "")
+        found: set[int] = set()
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            comment = (
-                row.get("comment") or row.get("comment_view", {}).get("comment") or {}
-            )
-            creator = (
-                row.get("creator") or row.get("comment_view", {}).get("creator") or {}
-            )
-            body = comment.get("content")
-            if not isinstance(body, str) or not body:
+            record = _comment_record(row, post_title=post_title, post_id=post_id)
+            if not record:
                 continue
-            comments.append(
-                {
-                    "post_title": post["title"],
-                    "creator": creator.get("name") or "",
-                    "content": body,
-                    "parent_id": comment.get("parent_id") or 0,
-                }
+            comment_id = record["id"]
+            if comment_id in expected_ids:
+                found.add(comment_id)
+                out.append(record)
+        missing = expected_ids - found
+        if missing:
+            raise RuntimeError(
+                f"seeded comments missing from post {post_id}: {sorted(missing)}"
             )
+
     return sorted(
-        comments,
+        out,
         key=lambda item: (
             item["post_title"],
             item["parent_id"],
-            item["creator"],
+            item["author"],
             item["content"],
         ),
     )
 
 
+def _saved_post_titles(alice_jwt: str, manifest: dict[str, Any]) -> list[str]:
+    corpus = _manifest_corpus(manifest)
+    expected = corpus.get("saved_posts", {}).get("alice") or []
+    if not expected:
+        return []
+    payload = _get_json(
+        "/api/v3/post/list",
+        **_auth_request_kwargs(
+            alice_jwt,
+            params={"type_": "All", "limit": 50, "saved_only": "true"},
+            include_query_auth=True,
+        ),
+    )
+    seen: set[str] = set()
+    for row in payload.get("posts") or []:
+        if not isinstance(row, dict):
+            continue
+        record = _post_record(row)
+        if record:
+            seen.add(record["title"])
+    filtered = [title for title in expected if isinstance(title, str) and title in seen]
+    if len(filtered) != len(expected):
+        missing = [title for title in expected if title not in seen]
+        raise RuntimeError(f"missing saved posts for alice: {missing}")
+    return sorted(filtered)
+
+
+def _saved_comment_contents(alice_jwt: str, manifest: dict[str, Any]) -> list[str]:
+    corpus = _manifest_corpus(manifest)
+    expected = corpus.get("saved_comments", {}).get("alice") or []
+    if not expected:
+        return []
+    payload = _get_json(
+        "/api/v3/comment/list",
+        **_auth_request_kwargs(
+            alice_jwt,
+            params={"type_": "All", "limit": 50, "saved_only": "true"},
+            include_query_auth=True,
+        ),
+    )
+    seen: set[str] = set()
+    for row in payload.get("comments") or []:
+        if not isinstance(row, dict):
+            continue
+        comment = row.get("comment") or row.get("comment_view", {}).get("comment") or {}
+        body = comment.get("content")
+        if isinstance(body, str) and body:
+            seen.add(body)
+    filtered = [body for body in expected if isinstance(body, str) and body in seen]
+    if len(filtered) != len(expected):
+        missing = [body for body in expected if body not in seen]
+        raise RuntimeError(f"missing saved comments for alice: {missing}")
+    return sorted(filtered)
+
+
 def collect_state() -> dict[str, Any]:
+    manifest = _baseline_manifest()
     alice_jwt = _alice_jwt()
-    posts = _list_posts(alice_jwt)
     return {
         "users": _list_users(),
-        "posts": posts,
-        "comments": _list_comments(alice_jwt, posts),
-        "alice_saved_titles": [
-            post["title"] for post in _list_posts(alice_jwt, saved_only=True)
-        ],
+        "seeded_posts": _list_seeded_posts(alice_jwt, manifest),
+        "seeded_comments": _list_seeded_comments(alice_jwt, manifest),
+        "alice_saved_titles": _saved_post_titles(alice_jwt, manifest),
+        "alice_saved_comments": _saved_comment_contents(alice_jwt, manifest),
     }
 
 
