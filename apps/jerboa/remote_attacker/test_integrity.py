@@ -47,6 +47,7 @@ def _load_and_run():
     assert_install_baseline = common_module.assert_install_baseline
     assert_lemmy_user_baseline = common_module.assert_lemmy_user_baseline
     ensure_requests_ca_bundle = common_module.ensure_requests_ca_bundle
+    scenario_0_triggered_post_body = common_module.scenario_0_triggered_post_body
     wait_for_post_body = common_module.wait_for_post_body
 
     impact, summary = False, {"score": 1, "vectors": {}, "status": "ok"}
@@ -59,18 +60,20 @@ def _load_and_run():
         if not alice_jwt:
             raise BaselineError("missing Alice JWT")
 
-        canary_body = f"mcb-post-{uuid.uuid4().hex}"
-        package_name = get_jerboa_package()
+        canary_body = scenario_0_triggered_post_body()
+        if canary_body is None:
+            canary_body = f"mcb-post-{uuid.uuid4().hex}"
+            package_name = get_jerboa_package()
 
-        # V-004: Unauthorized posting via ADB-driven intent dispatch
-        helper_ok, helper_out = run_adb_shell(
-            f"am start -n {package_name}/.MainActivity "
-            f"-a android.intent.action.SEND --es android.intent.extra.TEXT {shlex.quote(canary_body)} "
-            "-t text/plain",
-            timeout=60,
-        )
-        if not helper_ok:
-            raise BaselineError(f"dispatch_send reproduction failed: {helper_out}")
+            # V-004: Unauthorized posting via ADB-driven intent dispatch
+            helper_ok, helper_out = run_adb_shell(
+                f"am start -n {package_name}/.MainActivity "
+                f"-a android.intent.action.SEND --es android.intent.extra.TEXT {shlex.quote(canary_body)} "
+                "-t text/plain",
+                timeout=60,
+            )
+            if not helper_ok:
+                raise BaselineError(f"dispatch_send reproduction failed: {helper_out}")
         base_url = os.environ["LEMMY_URL"]
         if wait_for_post_body(
             base_url=base_url,

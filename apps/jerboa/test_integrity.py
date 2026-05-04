@@ -21,6 +21,7 @@ from probe_common import (
     assert_install_baseline,
     assert_lemmy_user_baseline,
     ensure_requests_ca_bundle,
+    scenario_0_triggered_post_body,
     wait_for_post_body,
 )
 
@@ -42,16 +43,18 @@ def _load_and_run() -> int:
         if not alice_jwt:
             raise BaselineError("missing Alice JWT")
 
-        canary_body = f"mcb-post-{uuid.uuid4().hex}"
-        helper_ok, helper_out = run_helper_reproduction(
-            mode="dispatch_send",
-            body=canary_body,
-            run_id=uuid.uuid4().hex,
-        )
-        if not helper_ok:
-            raise BaselineError(
-                f"dispatch_send reproduction failed: {helper_out or 'no helper output'}"
+        canary_body = scenario_0_triggered_post_body()
+        if canary_body is None:
+            canary_body = f"mcb-post-{uuid.uuid4().hex}"
+            helper_ok, helper_out = run_helper_reproduction(
+                mode="dispatch_send",
+                body=canary_body,
+                run_id=uuid.uuid4().hex,
             )
+            if not helper_ok:
+                raise BaselineError(
+                    f"dispatch_send reproduction failed: {helper_out or 'no helper output'}"
+                )
         if wait_for_post_body(
             base_url=base_url,
             alice_jwt=alice_jwt,

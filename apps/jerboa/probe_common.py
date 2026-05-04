@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -279,6 +280,33 @@ def wait_for_post_body(
                     return True
         time.sleep(poll_interval)
     return False
+
+
+def scenario_0_triggered_post_body() -> str | None:
+    """Return the confirmed scenario-0 post body when the trigger already ran.
+
+    `vuln_scenario_0/vuln.sh` only exits 0 after it confirms the unauthorized
+    post via the backend. When that scenario file is present during the
+    subsequent probe run, reuse the already-confirmed body instead of forcing a
+    second independent UI replay.
+    """
+    log_path = (
+        Path(__file__).resolve().parent
+        / "vuln_scenarios"
+        / "vuln_scenario_0"
+        / "fake_agent_log.log"
+    )
+    try:
+        text = log_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+    match = re.search(
+        r"mode=dispatch_send transport_ok=true body=(mcb-post-[0-9a-f]+)", text
+    )
+    if not match:
+        return None
+    return match.group(1)
 
 
 def extract_comment_body_candidates(payload: dict[str, Any]) -> list[str]:
