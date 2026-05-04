@@ -2,6 +2,7 @@
 
 import logging
 import shlex
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -102,6 +103,28 @@ class TestRestartRuntime:
 
 
 class TestRunExploit:
+    def test_rejects_missing_replay_resource(self, workflow, tmp_path):
+        with pytest.raises(ValueError, match="exactly one"):
+            workflow._run_exploit(
+                exploit_dir=tmp_path / "agent_exploit",
+                output_dir=tmp_path / "replay_output",
+                exploit_runner=tmp_path / "run_exploit.sh",
+                exploit_image="test:latest",
+                codebase_dir=None,
+                replay_apk=None,
+            )
+
+    def test_rejects_multiple_replay_resources(self, workflow, tmp_path):
+        with pytest.raises(ValueError, match="exactly one"):
+            workflow._run_exploit(
+                exploit_dir=tmp_path / "agent_exploit",
+                output_dir=tmp_path / "replay_output",
+                exploit_runner=tmp_path / "run_exploit.sh",
+                exploit_image="test:latest",
+                codebase_dir=tmp_path / "codebase",
+                replay_apk=tmp_path / "app.apk",
+            )
+
     def test_writes_evidence_files(self, workflow, tmp_path):
         exploit_dir = tmp_path / "agent_exploit"
         exploit_dir.mkdir()
@@ -120,6 +143,7 @@ class TestRunExploit:
             exploit_runner=exploit_runner,
             exploit_image="test:latest",
             codebase_dir=tmp_path,
+            replay_apk=None,
         )
 
         # Check files were written
@@ -157,6 +181,7 @@ class TestRunExploit:
             exploit_runner=exploit_runner,
             exploit_image="test:latest",
             codebase_dir=tmp_path,
+            replay_apk=None,
         )
 
         evidence = Path(result["replay_evidence_path"]).read_text()
@@ -177,6 +202,7 @@ class TestRunExploit:
             exploit_runner=exploit_runner,
             exploit_image="test:latest",
             codebase_dir=tmp_path,
+            replay_apk=None,
         )
         assert result["replay_exit_code"] == 42
 
@@ -204,6 +230,7 @@ class TestRunExploit:
             exploit_runner=exploit_runner,
             exploit_image="test:latest",
             codebase_dir=tmp_path,
+            replay_apk=None,
         )
 
         assert time.monotonic() - started < 5
@@ -243,6 +270,7 @@ class TestRunExploit:
                 exploit_runner=exploit_runner,
                 exploit_image="test:latest",
                 codebase_dir=tmp_path,
+                replay_apk=None,
             )
 
         assert time.monotonic() - started < 5
@@ -355,3 +383,44 @@ class TestRunChecks:
 
         assert ok is False
         assert "Invalid JSON" in caplog.text
+
+
+class TestRunExploitContainerScript:
+    def _base_args(self, tmp_path):
+        exploit_dir = tmp_path / "agent_exploit"
+        exploit_dir.mkdir()
+        (exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0\n")
+        return [
+            "bash",
+            str(
+                Path(__file__).resolve().parents[2]
+                / "utils"
+                / "run_exploit_container.sh"
+            ),
+            "--exploit-dir",
+            str(exploit_dir),
+            "--output-dir",
+            str(tmp_path / "replay_output"),
+        ]
+
+    def test_rejects_missing_replay_resource(self, tmp_path):
+        proc = subprocess.run(
+            self._base_args(tmp_path), capture_output=True, text=True, check=False
+        )
+        assert proc.returncode == 1
+        assert "exactly one of --codebase-dir or --apk-dir" in proc.stderr
+
+    def test_rejects_multiple_replay_resources(self, tmp_path):
+        codebase_dir = tmp_path / "codebase"
+        apk_dir = tmp_path / "apk"
+        codebase_dir.mkdir()
+        apk_dir.mkdir()
+        proc = subprocess.run(
+            self._base_args(tmp_path)
+            + ["--codebase-dir", str(codebase_dir), "--apk-dir", str(apk_dir)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 1
+        assert "exactly one of --codebase-dir or --apk-dir" in proc.stderr

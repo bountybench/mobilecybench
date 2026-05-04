@@ -126,7 +126,7 @@ class CustomAgent:
         self.runtime = ToolRuntime(allowed_tools=allowed_tools)
 
         # Build system prompt
-        self._initial_tree_context = get_directory_tree()
+        self._initial_tree_context = get_directory_tree(self.no_codebase)
         self._instructions = self._get_system_prompt_text(additional_context)
 
         agent_logger.info("Agent initialized with system prompt instructions.")

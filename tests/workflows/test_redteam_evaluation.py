@@ -363,6 +363,114 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
     assert order == ["prepare_app", "exploit", "pm_clear", "prepare_victim"]
 
 
+def _run_remote_phase_and_capture(wf, target_apk: Path, phase_dir: Path) -> dict:
+    """Drive RemoteAttackerOps.run_phase once and capture _run_exploit kwargs.
+
+    Stubs every phase hook to no-op so the test is deterministic regardless
+    of host state.
+    """
+    captured: dict = {}
+
+    def fake_exploit(*args, **kwargs):
+        captured.update(kwargs)
+        out_dir = args[1]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        evidence = out_dir / "replay_evidence.log"
+        evidence.write_text("ok")
+        return {"replay_exit_code": 0, "replay_evidence_path": str(evidence)}
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(RedTeamWorkflow, "_run_prepare_victim"),
+        patch("workflows.redteam.subprocess.run", return_value=MagicMock(returncode=0)),
+    ):
+        RemoteAttackerOps().run_phase(
+            wf,
+            phase_dir,
+            exploit_dir=phase_dir.parent / "exploit",
+            target_apk=target_apk,
+        )
+    return captured
+
+
+def test_remote_attacker_replay_mounts_codebase_under_default(
+    remote_attacker_config, tmp_path
+):
+    """no_codebase=False (default): replay mounts /app/codebase."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    target_apk = wf.app_dir / "apk" / "phase1" / "testapp.apk"
+    target_apk.parent.mkdir(parents=True, exist_ok=True)
+    target_apk.write_bytes(b"phase1")
+
+    captured = _run_remote_phase_and_capture(wf, target_apk, tmp_path / "phase1")
+
+    assert captured["codebase_dir"] == wf.app_dir / "codebase"
+    assert captured["replay_apk"] is None
+
+
+def test_remote_attacker_replay_mounts_apk_only_under_no_codebase(
+    remote_attacker_config, tmp_path
+):
+    """no_codebase=True is the security-load-bearing case: replay must NOT
+    mount /app/codebase (no source anywhere the agent or exploit reaches),
+    and stages the per-phase APK at /app/apk to mirror the agent-phase
+    path."""
+    config = remote_attacker_config.model_copy(update={"no_codebase": True})
+    wf = _make_workflow(config, tmp_path)
+    target_apk = wf.app_dir / "apk" / "phase1" / "testapp.apk"
+    target_apk.parent.mkdir(parents=True, exist_ok=True)
+    target_apk.write_bytes(b"phase1")
+
+    captured = _run_remote_phase_and_capture(wf, target_apk, tmp_path / "phase1")
+
+    assert captured["codebase_dir"] is None
+    assert captured["replay_apk"] == target_apk
+
+
+def test_run_exploit_stages_replay_apk_into_sibling_dir(redteam_config, tmp_path):
+    """_run_exploit copies the single APK into a sibling of output_dir (so
+    it survives output_dir's rmtree) and emits --apk-dir pointing at the
+    staging dir. Defends against the wholesale-mount regression: the staged
+    dir must contain exactly the one APK, never apps/<app>/apk wholesale."""
+    wf = _make_workflow(redteam_config, tmp_path)
+    src_apk = tmp_path / "src" / "testapp.apk"
+    src_apk.parent.mkdir(parents=True)
+    src_apk.write_bytes(b"phase1")
+    output_dir = tmp_path / "phase1_original"
+    captured: dict = {}
+
+    def fake_popen(cmd, **_kwargs):
+        captured["cmd"] = cmd
+        proc = MagicMock()
+        proc.communicate.return_value = ("", None)
+        proc.returncode = 0
+        return proc
+
+    with (
+        patch("workflows.base.subprocess.Popen", side_effect=fake_popen),
+        patch.object(RedTeamWorkflow, "build_evidence_log"),
+    ):
+        wf._run_exploit(
+            tmp_path / "exploit",
+            output_dir,
+            tmp_path / "runner.sh",
+            "img:test",
+            None,
+            codebase_dir=None,
+            replay_apk=src_apk,
+        )
+
+    cmd = captured["cmd"]
+    assert "--apk-dir" in cmd
+    apk_dir = Path(cmd[cmd.index("--apk-dir") + 1])
+    assert apk_dir.parent == output_dir.parent
+    assert apk_dir != output_dir
+    assert list(apk_dir.iterdir()) == [apk_dir / src_apk.name]
+    assert "--codebase-dir" not in cmd
+
+
 def test_setup_runtime_environment_uses_phase1_bundle_state(redteam_config, tmp_path):
     wf = _make_workflow(redteam_config, tmp_path)
     captured = {}
@@ -466,29 +574,6 @@ def test_validate_arguments_requires_bundle_patch(
     wf = _make_workflow(config, tmp_path, synthetic=synthetic)
     wf._bundle.patch.unlink()
     with pytest.raises(ValueError, match=missing_name):
-        wf.validate_arguments()
-
-
-def test_probe_only_validate_arguments_skips_patch_and_verifier(tmp_path):
-    """probe_only mode should not require fix.patch or verify_exploit.sh."""
-    config = RunnerConfig(
-        **{**_BASE_CONFIG, "attacker_model": "remote_attacker", "probe_only": True}
-    )
-    wf = _make_workflow(config, tmp_path)
-    wf._bundle.patch.unlink()
-    (wf._bundle.task_dir / "verify_files" / "verify_exploit.sh").unlink()
-    # Should not raise: only metadata.json is required.
-    wf.validate_arguments()
-
-
-def test_probe_only_validate_arguments_still_requires_metadata(tmp_path):
-    """probe_only still needs metadata.json to resolve attacker_model."""
-    config = RunnerConfig(
-        **{**_BASE_CONFIG, "attacker_model": "remote_attacker", "probe_only": True}
-    )
-    wf = _make_workflow(config, tmp_path)
-    (wf._bundle.task_dir / "metadata.json").unlink()
-    with pytest.raises(ValueError, match="metadata.json"):
         wf.validate_arguments()
 
 
@@ -942,3 +1027,409 @@ echo "prepare_victim:$MCB_ATTACKER_MODEL" >> "{order_log}"
         "pm_clear",
         "prepare_victim:remote_attacker",
     ]
+
+
+# ---------------------------------------------------------------------------
+# probe_only (bundle-less by definition — no task / no synthetic_vuln_id)
+# ---------------------------------------------------------------------------
+
+
+def _probe_only_bundleless_config(*, no_codebase: bool = False):
+    """Bundle-less probe_only config. Uses remote_attacker so probes live
+    under apps/<app>/remote_attacker/ and the generic_probe_config is
+    skipped (uses_generic_probes=False)."""
+    return RunnerConfig(
+        **{
+            **_BASE_CONFIG,
+            "task": None,
+            "synthetic_vuln_id": None,
+            "attacker_model": "remote_attacker",
+            "probe_only": True,
+            "no_codebase": no_codebase,
+        }
+    )
+
+
+def _make_bundleless_workflow(config: RunnerConfig, project_root: Path):
+    """Set up an app on disk with no bundle directory and construct a
+    RedTeamWorkflow against it."""
+    app_dir = project_root / "apps" / "testapp"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        app_dir / "metadata.json",
+        {
+            "commit_version": "abc123",
+            "sdk": "34",
+            "package_name": "com.test.app",
+            "container_names": [],
+            "app_server": "http://server:8080",
+        },
+    )
+    _write_probes(app_dir / "remote_attacker")
+    (app_dir / "apk").mkdir(parents=True, exist_ok=True)
+    (app_dir / "apk" / "testapp.apk").write_bytes(b"fake apk")
+
+    wf = RedTeamWorkflow(config, "testapp", project_root)
+    wf.metadata = json.loads((app_dir / "metadata.json").read_text())
+    wf.emulator = MagicMock()
+    return wf
+
+
+def test_bundleless_probe_only_workflow_constructs(tmp_path):
+    """Probe-only workflow init succeeds with no task/vuln_id; attacker
+    model comes from the config and the bundle is ProbeOnlyBundle."""
+    from evaluation.task_bundle import ProbeOnlyBundle
+
+    wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
+    assert isinstance(wf._bundle, ProbeOnlyBundle)
+    assert wf._bundle.kind == "probe_only"
+    assert wf._attacker_model == "remote_attacker"
+
+
+def test_bundleless_probe_only_validate_arguments_no_task_dir(tmp_path):
+    """validate_arguments must not require task metadata.json for
+    probe_only bundle-less."""
+    wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
+    wf.validate_arguments()  # no raise
+
+
+def test_bundleless_probe_only_validate_arguments_requires_probes(tmp_path):
+    """Missing test_*.py probe files must raise a clear error."""
+    wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
+    (
+        tmp_path / "apps" / "testapp" / "remote_attacker" / "test_access_control.py"
+    ).unlink()
+    with pytest.raises(ValueError, match="test_access_control.py"):
+        wf.validate_arguments()
+
+
+def test_bundleless_probe_only_codebase_absent_is_noop(tmp_path):
+    """When the codebase dir does not exist on disk (APK-only checkout),
+    _prepare_runtime_codebase must return cleanly without invoking
+    git_restore_clean.
+
+    Uses malicious_app because this test targets runtime codebase restoration,
+    not remote replay resource routing.
+    """
+    config = RunnerConfig(
+        **{
+            **_BASE_CONFIG,
+            "task": None,
+            "synthetic_vuln_id": None,
+            "attacker_model": "malicious_app",
+            "probe_only": True,
+            "no_codebase": True,
+        }
+    )
+    wf = _make_bundleless_malicious_app_workflow(config, tmp_path)
+    missing_codebase = tmp_path / "apps" / "testapp" / "codebase"
+    assert not missing_codebase.exists()
+
+    with patch("utils.git_utils.git_restore_clean") as git_restore:
+        wf._prepare_runtime_codebase(missing_codebase)
+
+    git_restore.assert_not_called()
+
+
+def test_bundleless_probe_only_codebase_present_is_restored(tmp_path):
+    """When the codebase dir exists on disk, _prepare_runtime_codebase runs
+    git_restore_clean to reset to the baseline."""
+    wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
+    codebase = tmp_path / "apps" / "testapp" / "codebase"
+    codebase.mkdir(parents=True)
+
+    with patch("utils.git_utils.git_restore_clean") as git_restore:
+        wf._prepare_runtime_codebase(codebase)
+
+    git_restore.assert_called_once_with(codebase)
+
+
+def test_config_probe_only_bundleless_requires_attacker_model():
+    """probe_only without bundle must declare attacker_model on config."""
+    bad = {
+        **_BASE_CONFIG,
+        "task": None,
+        "synthetic_vuln_id": None,
+        "attacker_model": None,
+        "probe_only": True,
+    }
+    with pytest.raises(ValueError, match="attacker_model"):
+        RunnerConfig(**bad)
+
+
+def test_config_redteam_without_bundle_or_probe_only_rejected():
+    """Two-phase redteam must still require task XOR synthetic_vuln_id."""
+    bad = {**_BASE_CONFIG, "task": None, "synthetic_vuln_id": None}
+    with pytest.raises(ValueError, match="exactly one"):
+        RunnerConfig(**bad)
+
+
+def test_config_redteam_rejects_both_bundle_selectors():
+    """task + synthetic_vuln_id together must still be rejected."""
+    bad = {**_BASE_CONFIG, "task": "report-0", "synthetic_vuln_id": "vuln_0"}
+    with pytest.raises(ValueError, match="exactly one"):
+        RunnerConfig(**bad)
+
+
+def test_config_probe_only_rejects_task():
+    """probe_only is bundle-less by design — task field forbidden."""
+    bad = {
+        **_BASE_CONFIG,
+        "synthetic_vuln_id": None,
+        "probe_only": True,
+        "attacker_model": "malicious_app",
+    }
+    with pytest.raises(ValueError, match="bundle-less"):
+        RunnerConfig(**bad)
+
+
+def test_config_probe_only_rejects_synthetic_vuln_id():
+    """probe_only is bundle-less — synthetic_vuln_id forbidden too."""
+    bad = {
+        **_BASE_CONFIG,
+        "task": None,
+        "synthetic_vuln_id": "vuln_0",
+        "probe_only": True,
+        "attacker_model": "malicious_app",
+    }
+    with pytest.raises(ValueError, match="bundle-less"):
+        RunnerConfig(**bad)
+
+
+def test_config_probe_only_no_codebase_remote_attacker_allowed():
+    """no_codebase=True + remote_attacker is now valid: replay omits the
+    /app/codebase mount so the exploit container mirrors the agent's
+    resource model. (Previously rejected because replay would have leaked
+    source the agent never saw.)"""
+    config = RunnerConfig(
+        **{
+            **_BASE_CONFIG,
+            "task": None,
+            "synthetic_vuln_id": None,
+            "probe_only": True,
+            "attacker_model": "remote_attacker",
+            "no_codebase": True,
+        }
+    )
+    assert config.probe_only is True
+    assert config.no_codebase is True
+    assert config.attacker_model == "remote_attacker"
+
+
+@pytest.mark.parametrize(
+    ("attacker_model", "no_codebase"),
+    [
+        ("malicious_app", False),
+        ("malicious_app", True),
+        ("remote_attacker", False),
+        ("remote_attacker", True),
+    ],
+)
+def test_config_probe_only_mvp_matrix_allowed(attacker_model, no_codebase):
+    config = RunnerConfig(
+        **{
+            **_BASE_CONFIG,
+            "task": None,
+            "synthetic_vuln_id": None,
+            "probe_only": True,
+            "attacker_model": attacker_model,
+            "no_codebase": no_codebase,
+        }
+    )
+
+    assert config.probe_only is True
+    assert config.attacker_model == attacker_model
+    assert config.no_codebase is no_codebase
+
+
+def test_config_probe_only_rejected_on_exploit_workflow():
+    """probe_only is redteam-only. Setting it on workflow=exploit would
+    silently no-op and violate the truthful-config contract."""
+    bad = {
+        **_BASE_CONFIG,
+        "workflow": "exploit",
+        "task": None,
+        "synthetic_vuln_id": "vuln_0",
+        "attacker_model": None,
+        "probe_only": True,
+    }
+    with pytest.raises(ValueError, match="probe_only=True requires workflow='redteam'"):
+        RunnerConfig(**bad)
+
+
+def test_config_gold_run_with_probe_only_rejected():
+    """gold_run requires a canonical exploit source; probe_only has none.
+    Reject early rather than failing at gold-source resolution."""
+    bad = {
+        **_BASE_CONFIG,
+        "task": None,
+        "synthetic_vuln_id": None,
+        "attacker_model": "malicious_app",
+        "probe_only": True,
+        "gold_run": True,
+    }
+    with pytest.raises(ValueError, match="gold_run is incompatible with probe_only"):
+        RunnerConfig(**bad)
+
+
+# ---------------------------------------------------------------------------
+# probe_only behavioral tests (use bundle-less workflow)
+# ---------------------------------------------------------------------------
+
+
+def _make_bundleless_malicious_app_workflow(config: RunnerConfig, project_root: Path):
+    """Variant of _make_bundleless_workflow for malicious_app attacker model.
+
+    malicious_app uses generic probes — generic_probe_config.json must
+    declare each applicability key the app surface supports.
+    """
+    app_dir = project_root / "apps" / "testapp"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        app_dir / "metadata.json",
+        {
+            "commit_version": "abc123",
+            "sdk": "34",
+            "package_name": "com.test.app",
+            "container_names": [],
+            "app_server": "",
+        },
+    )
+    _write_json(
+        app_dir / "generic_probe_config.json",
+        {
+            "version": 1,
+            "generic_probe_applicability": {
+                "access.ssrf_detected": False,
+                "availability.check_container_health": False,
+                "confidentiality.app_flag": False,
+                "confidentiality.container_flag": False,
+                "confidentiality.secrets": False,
+                "integrity.app_flag": False,
+                "integrity.app_pwned_file": False,
+                "integrity.container_flag": False,
+                "integrity.container_pwned_file": False,
+            },
+        },
+    )
+    _write_probes(app_dir)
+    (app_dir / "apk").mkdir(parents=True, exist_ok=True)
+    (app_dir / "apk" / "testapp.apk").write_bytes(b"fake apk")
+
+    wf = RedTeamWorkflow(config, "testapp", project_root)
+    wf.metadata = json.loads((app_dir / "metadata.json").read_text())
+    wf.emulator = MagicMock()
+    return wf
+
+
+def _probe_only_malicious_app_config():
+    return RunnerConfig(
+        **{
+            **_BASE_CONFIG,
+            "task": None,
+            "synthetic_vuln_id": None,
+            "attacker_model": "malicious_app",
+            "probe_only": True,
+        }
+    )
+
+
+def test_probe_only_skips_verifier(tmp_path):
+    """probe_only sets verifier_exit=None; _run_verifier is never called."""
+    wf = _make_bundleless_malicious_app_workflow(
+        _probe_only_malicious_app_config(), tmp_path
+    )
+    _write_agent_artifact("malicious_app")
+
+    with patch.object(RedTeamWorkflow, "_run_verifier") as verifier:
+        result = _run_evaluate(wf, MaliciousAppOps, [0], [True])
+
+    verifier.assert_not_called()
+    assert result["phases"]["probe"]["verifier_exit"] is None
+
+
+def test_probe_only_skips_prepare_app(tmp_path):
+    """probe_only never invokes the per-task prepare_app hook — the bundle
+    is not task-specific in probe_only."""
+    wf = _make_bundleless_malicious_app_workflow(
+        _probe_only_malicious_app_config(), tmp_path
+    )
+    _write_agent_artifact("malicious_app")
+
+    with patch.object(RedTeamWorkflow, "_run_setup_hook") as hook:
+        _run_evaluate(wf, MaliciousAppOps, [0], [True])
+
+    # _run_setup_hook is shared by prepare_app + prepare_victim.
+    # Filter to prepare_app calls only.
+    prepare_app_calls = [
+        c for c in hook.call_args_list if c.kwargs.get("label") == "prepare_app"
+    ]
+    assert prepare_app_calls == []
+
+
+def test_probe_only_does_not_override_package_name(tmp_path):
+    """probe_only must keep the app-level package_name; no task metadata
+    override happens since there is no task_dir."""
+    wf = _make_bundleless_malicious_app_workflow(
+        _probe_only_malicious_app_config(), tmp_path
+    )
+    wf.validate_arguments()
+    assert wf.metadata["package_name"] == "com.test.app"
+
+
+def test_probe_only_signal_result_schema_and_layout(tmp_path):
+    """Probe triggered: full signal-path contract in one place — status,
+    score, signals, single-phase keys (probe, not phase1_original/phase2_patched),
+    and replay artifacts under replays/probe/. Filesystem layout must match
+    the schema: result JSON saying `phases.probe` while the log lived at
+    phase1_original/ would be bad operator UX."""
+    wf = _make_bundleless_malicious_app_workflow(
+        _probe_only_malicious_app_config(), tmp_path
+    )
+    _write_agent_artifact("malicious_app")
+
+    result = _run_evaluate(wf, MaliciousAppOps, [0], [True])
+
+    assert result["status"] == "signal"
+    assert result["score"] == 1
+    assert result["signals"]["probe_vuln"] == 1
+    assert set(result["phases"]) == {"probe"}
+    assert set(result["probe_results"]) == {"probe"}
+    assert "/replays/probe/" in result["phases"]["probe"]["evidence_log"]
+
+
+def test_probe_only_status_no_signal_when_probes_silent(tmp_path):
+    """Inverse path: probes silent → status='no_signal', score=0."""
+    wf = _make_bundleless_malicious_app_workflow(
+        _probe_only_malicious_app_config(), tmp_path
+    )
+    _write_agent_artifact("malicious_app")
+
+    result = _run_evaluate(wf, MaliciousAppOps, [0], [False])
+
+    assert result["status"] == "no_signal"
+    assert result["score"] == 0
+
+
+def test_workflow_init_syncs_config_attacker_model_from_bundle(tmp_path):
+    """Bundle is the source of truth for attacker_model; the workflow must
+    update self.config so downstream prompt/credential logic sees the
+    effective value rather than whatever stale value the operator passed.
+
+    We write bundle metadata declaring remote_attacker but pass a config
+    with malicious_app; init must rewrite config to match the bundle.
+    """
+    # First wire fixtures using a remote_attacker config so the helper
+    # sets up remote_attacker probes + bundle metadata.
+    wf = _make_workflow(
+        RunnerConfig(**{**_BASE_CONFIG, "attacker_model": "remote_attacker"}),
+        tmp_path,
+    )
+    # Now reconstruct with a stale config (malicious_app) — bundle metadata
+    # still says remote_attacker, so init should override.
+    stale_config = RunnerConfig(**{**_BASE_CONFIG, "attacker_model": "malicious_app"})
+    rebuilt = RedTeamWorkflow(stale_config, "testapp", tmp_path)
+    assert rebuilt._attacker_model == "remote_attacker"
+    assert rebuilt.config.attacker_model == "remote_attacker"
+    # And the original wf is also remote_attacker (sanity).
+    assert wf._attacker_model == "remote_attacker"

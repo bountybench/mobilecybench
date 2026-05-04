@@ -22,7 +22,7 @@ from utils.exploit_source import (
     resolve_replay_source,
     stage_exploit_source,
 )
-from utils.git_utils import ensure_app_submodule
+from utils.git_utils import ensure_app_submodule, ensure_zerodays_submodule
 from utils.logger import logger, logger_manager
 from utils.run_artifacts import (
     normalize_agent_result,
@@ -187,28 +187,19 @@ def _log_experiment_config(
     )
 
 
-def _load_task_attacker_model(
+def _load_bundle_attacker_model(
     project_root: Path, app_name: str, config: RunnerConfig
 ) -> str:
-    """Return attacker_model from the redteam task bundle (synthetic or zeroday)."""
+    """Return the bundle's authoritative attacker_model for redteam runs.
+
+    Bundle-backed (synthetic / zeroday): read from task metadata.json.
+    Probe-only bundle-less: returns the config value (the bundle echoes it).
+    """
     from evaluation.task_bundle import assert_zerodays_initialized, resolve_bundle
 
     if getattr(config, "task", None):
         assert_zerodays_initialized(project_root)
-    bundle = resolve_bundle(config, project_root, app_name)
-    task_meta_path = bundle.task_dir / "metadata.json"
-    if not task_meta_path.exists():
-        raise ValueError(f"metadata.json not found at {task_meta_path}")
-
-    task_meta = json.loads(task_meta_path.read_text())
-    task_attacker_model = task_meta.get("attacker_model")
-    valid_models = {"malicious_app", "remote_attacker"}
-    if task_attacker_model not in valid_models:
-        raise ValueError(
-            f"attacker_model={'missing' if task_attacker_model is None else repr(task_attacker_model)} "
-            f"in {task_meta_path} (must be one of {valid_models})"
-        )
-    return task_attacker_model
+    return resolve_bundle(config, project_root, app_name).attacker_model()
 
 
 def _log_evaluation_result(evaluation: dict) -> None:
@@ -281,21 +272,32 @@ def run(
                 updates["task"] = replay.task
                 updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
                 updates["attacker_model"] = replay.attacker_model
+                # Replay validation in models/config.py is bypassed for
+                # replay_run, and resolve_replay_source already refused any
+                # probe_only snapshot — so an accepted replay source is
+                # always two-phase. Force probe_only=False here to defend
+                # against a stale probe_only=True in the operator's current
+                # config silently routing a two-phase replay through
+                # ProbeOnlyBundle.
+                updates["probe_only"] = False
             elif replay.workflow == "exploit":
                 updates["task"] = None
                 updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
                 updates["attacker_model"] = None
-        elif config.workflow == "redteam" and (config.task or config.synthetic_vuln_id):
-            task_attacker_model = _load_task_attacker_model(
+                updates["probe_only"] = False
+        elif config.workflow == "redteam":
+            # Bundle owns attacker_model. Sync into config so downstream
+            # gold-source resolution sees the authoritative value.
+            bundle_attacker_model = _load_bundle_attacker_model(
                 project_root, app_name, config
             )
-            if task_attacker_model != config.attacker_model:
+            if bundle_attacker_model != config.attacker_model:
                 logger.info(
-                    "Task metadata overrides attacker_model: %s -> %s",
+                    "Bundle attacker_model overrides config: %s -> %s",
                     config.attacker_model,
-                    task_attacker_model,
+                    bundle_attacker_model,
                 )
-                updates["attacker_model"] = task_attacker_model
+                updates["attacker_model"] = bundle_attacker_model
 
         if updates:
             config = config.model_copy(update=updates)
@@ -319,11 +321,17 @@ def run(
         workflow_type = type(workflow).__name__
         logger.info(f"Created {workflow_type} for app: {app_name}")
 
+        # Submodule init must precede validate_arguments: redteam zero-day
+        # bundles read fix.patch / metadata.json from zerodays/, so an
+        # uninitialized submodule would surface as a misleading "Task file
+        # not found" error.
+        if config.workflow == "redteam" and config.task:
+            ensure_zerodays_submodule(project_root)
+        ensure_app_submodule(project_root, app_name)
+
         logger.info("Validating arguments...")
         workflow.validate_arguments()
         logger.info("Arguments validated")
-
-        ensure_app_submodule(project_root, app_name)
 
         # Log structured experiment configuration for observability
         _log_experiment_config(config, app_name, workflow)
