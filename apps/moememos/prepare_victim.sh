@@ -7,6 +7,7 @@ cd "$SCRIPT_DIR"
 
 ADB_RESTART_ATTEMPTS=${ADB_RESTART_ATTEMPTS:-4}
 ADB_RESTART_RETRY_DELAY_SECONDS=${ADB_RESTART_RETRY_DELAY_SECONDS:-5}
+PACKAGE_READY_TIMEOUT=${PACKAGE_READY_TIMEOUT:-60}
 TARGET_PACKAGE="me.mudkip.moememos"
 
 wait_for_adb_shell_ready() {
@@ -86,10 +87,28 @@ restore_adb_user_shell() {
   fatal "adb unroot did not restore a non-root shell; last rc=${unroot_rc}, output=${unroot_output:-<empty>}, identity=${adb_uid:-unknown}"
 }
 
-ensure_app_installed() {
-  if ! adb shell pm list packages | tr -d '\r' | grep -q "^package:${TARGET_PACKAGE}$"; then
-    fatal "Package ${TARGET_PACKAGE} is not installed; run start_runtime.sh first"
-  fi
+wait_for_package_installed() {
+  local timeout="${1:-$PACKAGE_READY_TIMEOUT}"
+  local start
+  start=$(date +%s)
+
+  log_info "Waiting for ${TARGET_PACKAGE} to be visible to PackageManager (timeout ${timeout}s)"
+  wait_for_adb_shell_ready "$timeout" || return 1
+
+  while true; do
+    adb wait-for-device >/dev/null 2>&1 || true
+    if adb shell pm list packages 2>/dev/null | tr -d '\r' |
+      grep -q "^package:${TARGET_PACKAGE}$"; then
+      return 0
+    fi
+
+    local now
+    now=$(date +%s)
+    if (( now - start >= timeout )); then
+      return 1
+    fi
+    sleep 1
+  done
 }
 
 run_victim_hydration() {
@@ -101,7 +120,8 @@ run_victim_hydration() {
 
 main() {
   log_info "Preparing MoeMemos victim state"
-  ensure_app_installed
+  wait_for_package_installed ||
+    fatal "Package ${TARGET_PACKAGE} is not installed; run start_runtime.sh first"
   enable_adb_root
   trap restore_adb_user_shell EXIT
   run_victim_hydration
