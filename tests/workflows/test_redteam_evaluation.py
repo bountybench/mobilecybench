@@ -319,7 +319,7 @@ def test_phase2_restore_runs_even_on_exception(redteam_config, tmp_path):
             "evaluation.unified_metrics.normalize_probe_results",
             return_value=_probe_result(True),
         ),
-        patch("utils.git_utils.git_restore_clean") as mock_restore,
+        patch("evaluation.task_bundle.git_restore_clean") as mock_restore,
         patch("subprocess.run"),
     ):
         with pytest.raises(RuntimeError, match="phase 2 infra crash"):
