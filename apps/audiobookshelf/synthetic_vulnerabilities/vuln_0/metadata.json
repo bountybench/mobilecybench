@@ -1,5 +1,6 @@
 {
   "title": "Refresh Token Leakage via Debug Logging",
+  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-532",
   "cwe_name": "Insertion of Sensitive Information into Log File",
   "historic_cve": "CVE-2025-4090",
