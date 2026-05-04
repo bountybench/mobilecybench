@@ -17,9 +17,6 @@ EXACT_ALARM_BASELINE_FILE="${SCRIPT_DIR}/exact_alarm_baseline.json"
 CRASH_SNIFFER_LOG="${SCRIPT_DIR}/crash_sniffer.log"
 CRASH_SNIFFER_PID_FILE="${SCRIPT_DIR}/crash_sniffer.pid"
 EMULATOR_GATEWAY="http://10.0.2.2:8080"
-HYDRATION_SCRIPT="${SCRIPT_DIR}/hydrate_device_state.py"
-HYDRATION_LOG="${SCRIPT_DIR}/hydration_run.log"
-HYDRATION_MANIFEST="${SCRIPT_DIR}/hydration_state.json"
 
 wait_for_adb_device() {
   local context="${1:-adb operation}"
@@ -374,28 +371,6 @@ run_ntfy_seeding() {
   python3 ntfy_seeding.py || log_warn "ntfy_seeding.py failed"
 }
 
-run_hydration_overlay() {
-  if [ "${MCB_SKIP_HYDRATION:-0}" = "1" ]; then
-    log_warn "MCB_SKIP_HYDRATION=1; skipping ntfy hydration overlay"
-    return 0
-  fi
-  [ -f "$HYDRATION_SCRIPT" ] || fatal "Hydration script missing: $HYDRATION_SCRIPT"
-
-  wait_for_adb_device "ntfy hydration overlay"
-  log_info "Running ntfy hydration overlay -> $HYDRATION_LOG"
-  if ! python3 "$HYDRATION_SCRIPT" \
-      --app-dir "$SCRIPT_DIR" \
-      --base-url "$EMULATOR_GATEWAY" \
-      --server-url "${NTFY_LOCAL_BASE:-http://localhost:8080}" \
-      --manifest "$HYDRATION_MANIFEST" \
-      >"$HYDRATION_LOG" 2>&1; then
-    cat "$HYDRATION_LOG" >&2 || true
-    fatal "ntfy hydration overlay failed"
-  fi
-  cat "$HYDRATION_LOG" || true
-  log_info "Hydration overlay complete; manifest=$HYDRATION_MANIFEST"
-}
-
 main() {
   start_stack
   wait_for_health
@@ -405,11 +380,16 @@ main() {
   configure_app_defaults
   launch_app
   run_ntfy_seeding
-  run_hydration_overlay
+  # Victim-identity hydration (saved User row, displayName, hydration-marked
+  # Notification history) is owned by prepare_victim.sh — for both attacker
+  # models. malicious_app: prepare_victim.sh runs pre-exploit (the malicious
+  # APK needs a logged-in victim to attack). remote_attacker: prepare_victim.sh
+  # runs post-pm-clear so no victim credentials sit on the device during the
+  # exploit window (REDTEAM.md:158-165, scripts/task_validation_common.sh:
+  # 381-389). Mirrors the apps/owncloud-android pattern.
   capture_baseline
-  # Capture the epoch and clear crash logs after all app/server hydration has
-  # completed. Probes use this as the post-setup boundary; hydration artifacts
-  # must be baseline context, not agent-impact evidence.
+  # Probes use this as the post-setup boundary; capture after seeding/baseline
+  # have stabilized.
   capture_device_epoch_baseline
   capture_exact_alarm_baseline
   clear_crash_logcat

@@ -11,7 +11,6 @@ SERVER_URL="${NTFY_SERVER_URL:-${NTFY_URL:-http://localhost:8080}}"
 TIMEOUT="${HYDRATION_TIMEOUT:-60}"
 SKIP_START_RUNTIME="${HYDRATION_SKIP_START_RUNTIME:-0}"
 STATE_MANIFEST="${SCRIPT_DIR}/last_state.json"
-START_RUNTIME_MANIFEST="${SCRIPT_DIR}/hydration_state.json"
 
 log() { printf '[setup_state] %s\n' "$*" >&2; }
 fatal() { printf '[setup_state] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -52,22 +51,21 @@ cd "$REPO_ROOT"
 if [[ "$SKIP_START_RUNTIME" != "1" ]]; then
   log "running existing ntfy runtime setup ($APP_DIR/start_runtime.sh)"
   "$APP_DIR/start_runtime.sh" "$@"
-  if [[ ! -f "$START_RUNTIME_MANIFEST" ]]; then
-    fatal "expected hydration manifest missing after start_runtime.sh: $START_RUNTIME_MANIFEST"
-  fi
-  cp "$START_RUNTIME_MANIFEST" "$STATE_MANIFEST"
-  log "reused start_runtime hydration manifest -> $STATE_MANIFEST"
 else
   log "HYDRATION_SKIP_START_RUNTIME=1; using existing runtime/app state"
-  log "applying realistic victim-state overlay"
-  python3 "$SCRIPT_DIR/hydrate_device_state.py" \
-    --app-dir "$APP_DIR" \
-    --package "$PACKAGE" \
-    --base-url "$DEVICE_BASE_URL" \
-    --server-url "$SERVER_URL" \
-    --timeout "$TIMEOUT" \
-    --manifest "$STATE_MANIFEST"
 fi
+
+# Victim-identity hydration is owned by prepare_victim.sh in the harness flow;
+# this manual orchestrator invokes the same overlay directly so standalone
+# verification still ends with a fully hydrated victim.
+log "applying realistic victim-state overlay"
+python3 "$SCRIPT_DIR/hydrate_device_state.py" \
+  --app-dir "$APP_DIR" \
+  --package "$PACKAGE" \
+  --base-url "$DEVICE_BASE_URL" \
+  --server-url "$SERVER_URL" \
+  --timeout "$TIMEOUT" \
+  --manifest "$STATE_MANIFEST"
 
 log "verifying hydrated state"
 python3 "$SCRIPT_DIR/verify_state.py" \

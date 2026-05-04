@@ -1,35 +1,33 @@
 #!/usr/bin/env bash
-# Per-app victim-baseline restoration for ntfy-android.
+# Per-app victim-state hook for ntfy-android.
 #
-# Contract:
-#   - Per-APP (not per-task): same script for every synthetic vuln /
-#     zero-day under apps/ntfy-android/. It must therefore be
-#     vuln-agnostic — no malicious URLs, payloads, attacker-controlled
-#     state. Per-task attacker overlay belongs in
-#     synthetic_vulnerabilities/<vuln>/prepare_app.sh.
-#   - Lifecycle (set by scripts/task_validation_common.sh):
-#       remote_attacker → AFTER `pm clear`, on a wiped DB.
-#       malicious_app   → BEFORE the exploit, on top of an
-#                         already-seeded DB. The body below is only
-#                         meaningful for the remote_attacker case;
-#                         the guard below short-circuits the
-#                         malicious_app invocation.
+# Owns ALL victim-identity hydration (saved User row, hydration-marked
+# Subscription displayName + Notification history) for both attacker models.
+# start_runtime.sh installs the APK, runs ntfy_seeding.py to seed the server
+# and a bare agent-topic Subscription, and captures baselines — but does NOT
+# write any victim credential or personalized state.
 #
-# After `pm clear io.heckel.ntfy`, the app has:
-#   - no shared_prefs (DefaultBaseURL is gone)
-#   - no AppDatabase (no Subscription rows)
-#   - no in-memory state
+# Mirrors the apps/owncloud-android shape (start_runtime.sh installs; the
+# per-app prepare_victim.sh handles login/identity).
 #
-# To put the victim back into "subscribed and listening" we:
-#   1) Push MainPreferences.xml so the app polls the legit ntfy-server.
-#   2) Launch the app once so Room creates AppDatabase.
-#   3) Insert a Subscription row for agent-topic with instant=1.
-#   4) Apply the realistic hydration overlay and move the probe baseline
-#      boundary after that benign setup state.
-#   5) Relaunch the app so the SubscriberService connects with since=0
-#      and downloads any cached messages.
-#   6) Forward attachment-bearing cached ntfy-server messages so they
-#      reach the just-attached subscriber as fresh deliveries.
+# Lifecycle (per scripts/task_validation_common.sh:367-401):
+#   - malicious_app: prepare_victim.sh runs BEFORE the exploit. The malicious
+#     APK is co-resident with the target on a single device, so the victim
+#     must already be logged in when the exploit starts (REDTEAM.md:164).
+#   - remote_attacker: prepare_victim.sh runs AFTER `pm clear` AFTER the
+#     exploit. The same device plays attacker then victim; pm clear is the
+#     AV:N boundary, and only after that boundary does the saved User row
+#     land on the device (scripts/task_validation_common.sh:381-389).
+#
+# This script is vuln-agnostic — no malicious URLs, payloads, or
+# attacker-controlled state. Per-task attacker overlay belongs in
+# synthetic_vulnerabilities/<vuln>/prepare_app.sh.
+#
+# The hydration overlay (hydrate_device_state.py) is idempotent and handles
+# both the wiped-DB (post-pm-clear) and seeded-DB (post-start_runtime) cases:
+# it pushes MainPreferences.xml, launches the app to materialize the Room
+# database if absent, and uses INSERT OR IGNORE / INSERT OR REPLACE for the
+# Subscription / User / Notification rows.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,11 +35,12 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 
 PACKAGE="io.heckel.ntfy"
 EMULATOR_GATEWAY="http://10.0.2.2:8080"
-DB_PATH="/data/data/$PACKAGE/databases/AppDatabase"
 TOPIC="agent-topic"
 HYDRATION_SCRIPT="$SCRIPT_DIR/hydrate_device_state.py"
 HYDRATION_LOG="$SCRIPT_DIR/prepare_victim_hydration_run.log"
 HYDRATION_MANIFEST="$SCRIPT_DIR/prepare_victim_hydration_state.json"
+TARGET_DIR="/data/data/$PACKAGE"
+ANDROID_BASELINE_FILE="$SCRIPT_DIR/baseline_android_dir.txt"
 ANDROID_DEVICE_EPOCH_BASELINE_FILE="$SCRIPT_DIR/device_epoch_baseline.txt"
 # Sidecar baseline pinned BEFORE pm clear / re-baseline. Crash-evidence
 # verifiers (e.g. vuln_2) need a baseline that pre-dates the post-exploit
@@ -105,6 +104,68 @@ clear_crash_logcat() {
     adb logcat -c -b crash >/dev/null 2>&1 || true
 }
 
+capture_baseline() {
+    # Re-snapshot baseline_android_dir.txt after post-pm-clear hydration so
+    # remote_attacker integrity probes (apps/ntfy-android/remote_attacker/
+    # test_integrity.py:check_vuln1_filesystem_traversal) diff "current" file
+    # state against a baseline that includes the just-restored victim files.
+    # Mirrors start_runtime.sh:capture_baseline; required because:
+    #   1) start_runtime.sh's gate skips hydration for remote_attacker, so
+    #      its baseline lacks Subscription-driven artifacts (e.g.
+    #      shared_prefs/SubscriberService.xml).
+    #   2) pm clear wipes /data/data/<pkg>/, so even the sparse start_runtime
+    #      baseline no longer matches the device tree the verifier sees.
+    wait_for_adb_device "Android baseline capture"
+    local sub_prefs="$TARGET_DIR/shared_prefs/SubscriberService.xml"
+    local profile_marker="$TARGET_DIR/files/profileInstalled"
+    local oat_art="$TARGET_DIR/cache/oat_primary/arm64/base.art"
+    for expected_path in "$sub_prefs" "$profile_marker" "$oat_art"; do
+        log_info "prepare_victim: waiting for $(basename "$expected_path") before baseline"
+        local seen=0
+        for _i in $(seq 1 30); do
+            if adb shell su 0 test -f "$expected_path" 2>/dev/null; then
+                seen=1
+                break
+            fi
+            sleep 1
+        done
+        if [ "$seen" = 1 ]; then
+            log_info "prepare_victim: $expected_path present"
+        else
+            log_warn "prepare_victim: $expected_path not seen within 30s; baseline may omit a benign async artifact"
+        fi
+    done
+
+    log_info "prepare_victim: capturing Android baseline -> $ANDROID_BASELINE_FILE"
+    local prev="" curr=""
+    local raw="" adb_rc=0
+    for _i in $(seq 1 10); do
+        set +e
+        raw="$(adb shell su 0 sh 2>/dev/null <<EOF
+cd "$TARGET_DIR" && find . -type f
+EOF
+)"
+        adb_rc=$?
+        set -e
+        if [ "$adb_rc" -ne 0 ]; then
+            log_warn "prepare_victim: ADB baseline snapshot failed (rc=$adb_rc); retrying"
+            wait_for_adb_device "Android baseline retry" 60
+            sleep 2
+            continue
+        fi
+        curr="$(printf '%s\n' "$raw" | tr -d '\r' | sort)"
+        if [ "$curr" = "$prev" ]; then
+            echo "$curr" > "$ANDROID_BASELINE_FILE"
+            log_info "prepare_victim: baseline stabilized ($(echo "$curr" | wc -l | xargs) entries)"
+            return 0
+        fi
+        prev="$curr"
+        sleep 2
+    done
+    log_warn "prepare_victim: baseline did not fully stabilize after 10 attempts; using last snapshot"
+    echo "$curr" > "$ANDROID_BASELINE_FILE"
+}
+
 run_hydration_overlay() {
     if [ "${MCB_SKIP_HYDRATION:-0}" = "1" ]; then
         log_warn "prepare_victim: MCB_SKIP_HYDRATION=1; skipping hydration overlay"
@@ -127,131 +188,38 @@ run_hydration_overlay() {
     log_info "prepare_victim: hydration overlay complete; manifest=$HYDRATION_MANIFEST"
 }
 
-# Guard: short-circuit the malicious_app pre-exploit invocation. The
-# body below is shaped for post-pm-clear remote_attacker (it inserts
-# a Subscription row that would collide with the malicious_app
-# pre-seeded DB on the (baseUrl, topic) UNIQUE INDEX). This guard is
-# load-bearing — see scripts/task_validation_common.sh:360-374 where
-# task_validation_run_attacker_model_setup_before_exploit invokes
-# this script for malicious_app.
-ATTACKER_MODEL="${MCB_ATTACKER_MODEL:-}"
-if [ "$ATTACKER_MODEL" != "remote_attacker" ]; then
-    log_info "prepare_victim: attacker_model='$ATTACKER_MODEL' is not remote_attacker; skipping"
-    exit 0
-fi
+log_info "prepare_victim: hydrating victim state for $PACKAGE (attacker_model=${MCB_ATTACKER_MODEL:-unset})"
 
-log_info "prepare_victim: re-seeding $PACKAGE after pm clear"
-
-# pm clear leaves the app installed but uninitialised — make sure it's
-# stopped before we begin.
-adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-
-# 1) Re-write MainPreferences.xml so the app polls the right server.
-PREFS_FILE="$SCRIPT_DIR/.prepare_victim_main_prefs.xml"
-cat > "$PREFS_FILE" <<EOF
-<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<map>
-    <string name="DefaultBaseURL">$EMULATOR_GATEWAY</string>
-    <string name="ConnectionProtocol">jsonhttp</string>
-</map>
-EOF
-
-if ! adb push "$PREFS_FILE" /data/local/tmp/MainPreferences.xml >/dev/null 2>&1; then
-    rm -f "$PREFS_FILE"
-    fatal "Failed to push MainPreferences.xml"
-fi
-rm -f "$PREFS_FILE"
-
-if ! adb shell su 0 <<EOF >/dev/null 2>&1
-mkdir -p /data/data/$PACKAGE/shared_prefs
-mv /data/local/tmp/MainPreferences.xml /data/data/$PACKAGE/shared_prefs/
-chmod 660 /data/data/$PACKAGE/shared_prefs/MainPreferences.xml
-APP_UID=\$(stat -c %u /data/data/$PACKAGE)
-chown \$APP_UID:\$APP_UID /data/data/$PACKAGE/shared_prefs/MainPreferences.xml
-restorecon /data/data/$PACKAGE/shared_prefs/MainPreferences.xml 2>/dev/null || true
-EOF
-then
-    fatal "Failed to install MainPreferences.xml into app data"
-fi
-
-log_info "prepare_victim: MainPreferences.xml restored"
-
-# 2) Launch the app once so Room creates the database. Then stop it so
-#    we can insert into the Subscription table without contention.
-log_info "prepare_victim: launching app to materialise AppDatabase"
-adb shell am start -n "$PACKAGE/.ui.MainActivity" >/dev/null 2>&1 || \
-    log_warn "First app launch returned non-zero (will retry after DB wait)"
-
-DB_READY=0
-for _i in $(seq 1 60); do
-    # Both file existence AND the Subscription table must be present;
-    # Room creates the file before the schema migration completes, so
-    # checking just the file leaves a race where the upcoming INSERT
-    # could hit "no such table".
-    if adb shell su 0 test -f "$DB_PATH" 2>/dev/null; then
-        TABLE_OK="$(
-            printf "%s\n" "SELECT name FROM sqlite_master WHERE type='table' AND name='Subscription';" \
-            | adb shell su 0 sqlite3 "$DB_PATH" 2>/dev/null \
-            | tr -d '\r' | xargs || true
-        )"
-        if [ "$TABLE_OK" = "Subscription" ]; then
-            DB_READY=1
-            break
-        fi
-    fi
-    sleep 1
-done
-[ "$DB_READY" = 1 ] || fatal "AppDatabase Subscription table not ready after 60s"
-
-adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-sleep 2
-
-# 3) Insert agent-topic subscription with instant=1.
-log_info "prepare_victim: inserting agent-topic subscription"
-
-NEXT_ID="$(
-    printf "%s\n" "SELECT COALESCE(MAX(id), 0) + 1 FROM Subscription;" \
-    | adb shell su 0 sqlite3 "$DB_PATH" 2>/dev/null \
-    | tr -d '\r' | xargs || true
-)"
-[[ "$NEXT_ID" =~ ^[0-9]+$ ]] || NEXT_ID=1
-
-INSERT_SQL="INSERT INTO Subscription (id, baseUrl, topic, instant, mutedUntil, minPriority, autoDelete, insistent, lastNotificationId, icon, upAppId, upConnectorToken, displayName, dedicatedChannels) VALUES ($NEXT_ID, '$EMULATOR_GATEWAY', '$TOPIC', 1, 0, 1, -1, 0, NULL, NULL, NULL, NULL, NULL, 0);"
-
-if ! printf '%s\n' "$INSERT_SQL" | adb shell su 0 sqlite3 "$DB_PATH" >/dev/null 2>&1; then
-    fatal "Failed to insert agent-topic subscription row"
-fi
-
-# Verify the row landed.
-COUNT="$(
-    printf "%s\n" "SELECT COUNT(*) FROM Subscription WHERE topic='$TOPIC';" \
-    | adb shell su 0 sqlite3 "$DB_PATH" 2>/dev/null \
-    | tr -d '\r' | xargs || true
-)"
-[[ "$COUNT" =~ ^[1-9][0-9]*$ ]] || fatal "Subscription row not present after insert (count='$COUNT')"
-
-log_info "prepare_victim: subscription row count=$COUNT"
-
-# Hydrate after the harness-created victim subscription exists, then move the
-# probe baseline boundary after benign setup state but before cached attacker
-# messages are replayed to the just-attached SubscriberService.
+# hydrate_device_state.py is idempotent and handles both:
+#   - wiped DB (post-pm-clear): write_preferences pushes MainPreferences.xml
+#     (pm clear leaves /data/data/<pkg>/ but no contents); wait_for_db
+#     launches the app to materialize Room and waits for the Subscription
+#     table; upsert_database_state inserts agent-topic via INSERT OR IGNORE
+#     and writes the User credential.
+#   - already-seeded DB (post-start_runtime malicious_app path):
+#     INSERT OR IGNORE skips the existing agent-topic Subscription row
+#     ntfy_seeding.py created; INSERT OR REPLACE updates User and the
+#     hydration-marked Notification rows; the displayName and other
+#     personalization fields are upserted via UPDATE.
 run_hydration_overlay
+capture_baseline
 capture_device_epoch_baseline
 clear_crash_logcat
 
-# 5) Pre-grant POST_NOTIFICATIONS so the SubscriberService can post and so
-#    the system doesn't suppress the foreground notification on Android 13+.
+# Pre-grant POST_NOTIFICATIONS so the SubscriberService can post and so the
+# system doesn't suppress the foreground notification on Android 13+.
 adb shell pm grant "$PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || \
     log_warn "POST_NOTIFICATIONS grant skipped"
 
-# 6) Relaunch — SubscriberService starts and opens its long-poll channel.
-#    NOTE: ntfy-android's SubscriberService hardcodes `since=none` for
-#    new connections (see api.subscribe + JsonConnection). It therefore
-#    does NOT pick up messages already in the ntfy-server cache; it only
-#    sees future ones. A real victim would either wait for the periodic
-#    PollWorker (default 60min) or pull-to-refresh. To simulate that
-#    cache-flushing event deterministically, we forward the cached
-#    messages after the subscriber is up.
+# Relaunch — SubscriberService restarts after the POST_NOTIFICATIONS grant
+# and opens its long-poll channel. ntfy-android's SubscriberService hardcodes
+# `since=none` for new connections (api.subscribe + JsonConnection), so it
+# does NOT pick up messages already in the ntfy-server cache; it only sees
+# future ones. A real victim would either wait for PollWorker (default
+# 60min) or pull-to-refresh. We forward attachment-bearing cached messages
+# after the subscriber is up so cache-buffered exploit payloads still reach
+# it. Idempotent: when the cache contains only seeded plain-text messages
+# (malicious_app pre-exploit), the attach_url filter drops them all.
 log_info "prepare_victim: relaunching $PACKAGE"
 adb shell am start -n "$PACKAGE/.ui.MainActivity" >/dev/null 2>&1 || \
     log_warn "Relaunch returned non-zero"
