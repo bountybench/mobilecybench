@@ -93,6 +93,32 @@ seed_initial_messages(){
   fi
 }
 
+snapshot_prosody_data_bytes(){
+  # A8 baseline: snapshot the size of Prosody's per-host data directory
+  # right after seeding completes. The remote_attacker availability probe
+  # later compares against this to detect an attacker filling disk via
+  # MAM/PEP/upload growth. seed_messages.py wrote the integrity state in
+  # JSON; we merge prosody_data_bytes in place via jq.
+  local state="${INTEGRITY_STATE_PATH:-${SCRIPT_DIR}/.runtime_integrity_state.json}"
+  if [[ ! -f "$state" ]]; then
+    log_warn "Skipping prosody data-bytes baseline: $state missing"
+    return 0
+  fi
+  local bytes
+  bytes=$(docker exec "$TARGET_CONTAINER" sh -c \
+    'du -sb /var/lib/prosody 2>/dev/null | awk "{print \$1}"' \
+    | tr -d '[:space:]')
+  if ! [[ "$bytes" =~ ^[0-9]+$ ]]; then
+    log_warn "Could not read /var/lib/prosody size; skipping baseline"
+    return 0
+  fi
+  local tmp
+  tmp=$(mktemp)
+  jq --argjson b "$bytes" '.prosody_data_bytes = $b' "$state" > "$tmp" && mv "$tmp" "$state"
+  chmod 600 "$state"
+  log_info "Prosody data-bytes baseline: $bytes B"
+}
+
 # login_agentuser, seed_data, snapshot_app_own_fingerprints,
 # snapshot_app_peer_fingerprints, setup_probe_nonces moved to
 # prepare_victim.sh (per-victim hook called by the redteam workflow).
