@@ -1,5 +1,6 @@
 """Tests for Workflow._restart_runtime() and _run_exploit() helpers."""
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -45,6 +46,19 @@ def workflow(tmp_path):
     wf = _ConcreteWorkflow(config, "testapp", tmp_path)
     wf.emulator = MagicMock()
     return wf
+
+
+def test_save_result_preserves_existing_file_when_json_write_fails(workflow):
+    workflow.app_dir.mkdir(parents=True)
+    scores_file = workflow.app_dir / workflow.SCORE_FILE
+    original = {"status": "previous", "score": 1}
+    scores_file.write_text(json.dumps(original), encoding="utf-8")
+
+    with pytest.raises(TypeError):
+        workflow._save_result({"status": "broken", "score": 0, "bad": object()})
+
+    assert json.loads(scores_file.read_text(encoding="utf-8")) == original
+    assert not (workflow.app_dir / f"{workflow.SCORE_FILE}.tmp").exists()
 
 
 class TestRestartRuntime:

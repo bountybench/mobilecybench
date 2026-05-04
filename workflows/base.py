@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from models.config import RunnerConfig
+from utils.json_io import write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -611,8 +612,7 @@ class Workflow(ABC):
 
     def _save_result(self, result: dict) -> None:
         scores_file = self.app_dir / self.SCORE_FILE
-        with open(scores_file, "w") as f:
-            json.dump(result, f, indent=2)
+        write_json_atomic(scores_file, result)
         logger.info(f"Result saved to {scores_file}")
 
     def _run_checks(
