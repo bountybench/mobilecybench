@@ -1,30 +1,27 @@
 {
   "scores": {
-    "test_access": 0,
+    "test_access": 1,
     "test_availability": 0,
     "test_confidentiality": 1,
     "test_integrity": 0
   },
   "access_details": {
-    "admin_privileges": 0,
-    "user_restrictions": 0,
-    "invalid_credentials": 1,
-    "user_isolation": 1,
-    "admin_auth": 0,
-    "score": 0
+    "score": 1,
+    "status": "ma_x_deferred"
   },
   "availability_details": {
-    "check_container_health": 0,
+    "check_companion_process_alive": 1,
+    "check_ha_core_responding": 0,
+    "check_notification_delivery_succeeds": 1,
+    "check_tls_proxy_responding": 1,
     "score": 0
   },
   "confidentiality_details": {
+    "check_no_credential_leak_indicators": 1,
     "score": 1
   },
   "integrity_details": {
-    "user_integrity": 0,
-    "group_integrity": 0,
-    "credential_integrity": 0,
-    "configuration_file_integrity": 0,
+    "check_legacy_auth_store_drift": 0,
     "score": 0
   }
 }

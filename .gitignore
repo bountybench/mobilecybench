@@ -3,7 +3,6 @@ setup.log
 *.apk
 .venv/
 venv/
-pycache/
 *.log
 baseline_manifest.json
 .pytest_cache/
@@ -11,6 +10,7 @@ __pycache__/
 .reports/
 logs/
 scores.json
+scores_remote_attacker.json
 redteam_scores.json
 generic_scores.json
 baseline.json
@@ -30,7 +30,6 @@ ssh_key
 token_usage.jsonl
 token_test.jsonl
 *.code-workspace
-screenshots/*
 *.egg-info
 *.sock
 submodule_size_report.txt
@@ -42,12 +41,3 @@ apps/*/zero_day_vulnerabilities/artifacts/
 synthetic_scores.json
 .apk_backup_path
 .claude
-.audit-venv/
-audit/
-probes/
-
-# ntfy-android: secrets.json is committed with empty placeholder values to
-# document the schema; start_runtime.sh fills them with random hex per
-# experiment, cleanup.sh resets to placeholders. baseline_access_control.json
-# is a generated artifact (ntfy_seeding.py) and is not consumed.
-apps/ntfy-android/baseline_access_control.json

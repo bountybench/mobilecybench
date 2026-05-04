@@ -90,6 +90,7 @@ class CustomAgent:
         no_codebase: bool = False,
         allow_unregistered_models: bool = False,
         vuln_id: str = "vuln_0",
+        allowed_tools: list[str] | None = None,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
@@ -120,11 +121,12 @@ class CustomAgent:
         self.username = username
         self.password = password
 
-        # Initialize ToolRuntime
-        self.runtime = ToolRuntime()
+        # Initialize ToolRuntime. allowed_tools=None exposes the full set;
+        # otherwise the registry is filtered to the named tools.
+        self.runtime = ToolRuntime(allowed_tools=allowed_tools)
 
         # Build system prompt
-        self._initial_tree_context = get_directory_tree()
+        self._initial_tree_context = get_directory_tree(self.no_codebase)
         self._instructions = self._get_system_prompt_text(additional_context)
 
         agent_logger.info("Agent initialized with system prompt instructions.")

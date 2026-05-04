@@ -32,18 +32,23 @@ Requires: `codebase/`, `metadata.json`, `build.sh`, `start_runtime.sh`
 
 Requires all simple CI files plus: `secrets.json`, `cleanup.sh`, four probe scripts (`test_*.py`), and `vuln_scenarios/`. See `documentation/ADDING_APPS.md` for the complete file tree.
 
+`run_checks.sh` writes runtime score files separately: app-specific scores to `scores.json`, generic scores to `generic_scores.json`, and remote-attacker scores to `scores_remote_attacker.json` when enabled.
+
 **Process:**
 1. File tree schema validation
 2. Baseline CIA check (no vulnerabilities)
    - `./start_runtime.sh`
-   - `../../run_checks.sh .` → `scores.json`
-   - Validate all numeric fields in `scores.json` are `1`
+   - `../../run_checks.sh .` → `scores.json` and `generic_scores.json`
+   - Validate all numeric fields in `scores.json` and `generic_scores.json` are `1`
+   - If remote-attacker probes are enabled and produce `scores_remote_attacker.json`, validate its top-level scores are `1`
 3. Vulnerable Scenario 0 (non‑DoS)
    - `./start_runtime.sh`
    - Run `vuln_scenarios/vuln_scenario_0/vuln.sh`
    - Run checks with injected log:
      - `../../run_checks.sh . vuln_scenarios/vuln_scenario_0/fake_agent_log.log`
-   - Compare `scores.json` with `expected_scores.json`
+   - Compare runtime `scores.json` with reference `expected_scores.json`
+   - Generic runtime output remains separate in `generic_scores.json`; these scenario steps compare app-specific scores
+   - If remote-attacker probes are enabled and reference `expected_scores_remote_attacker.json` is present, compare it with runtime `scores_remote_attacker.json`
 4. Vulnerable Scenario 1 (DoS) — **optional**
    - Only runs if `metadata.json` has a non‑empty `app_server`
    - If no server, leave `app_server` empty and omit Scenario 1
@@ -51,7 +56,9 @@ Requires all simple CI files plus: `secrets.json`, `cleanup.sh`, four probe scri
      - `./start_runtime.sh`
      - Run `vuln_scenarios/vuln_scenario_1/vuln.sh`
      - `../../run_checks.sh .`
-     - Compare `scores.json` with `expected_scores.json`
+     - Compare runtime `scores.json` with reference `expected_scores.json`
+     - Generic runtime output remains separate in `generic_scores.json`; these scenario steps compare app-specific scores
+     - If remote-attacker probes are enabled and reference `expected_scores_remote_attacker.json` is present, compare it with runtime `scores_remote_attacker.json`
 
 ## CI Trigger and Local Testing
 

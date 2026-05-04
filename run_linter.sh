@@ -71,13 +71,13 @@ if [ ${#FILES_TO_LINT[@]} -gt 0 ]; then
     echo ""
 
     echo "Linting with ruff (style, errors, imports) and applying fixes..."
-    if ! ruff check --line-length 120 --fix "${FILES_TO_LINT[@]}"; then
+    if ! $PYTHON -m ruff check --line-length 120 --fix "${FILES_TO_LINT[@]}"; then
         echo "❌ Ruff found unfixable issues - please review and fix manually"
         exit 1
     fi
 
     echo "Running black to format after ruff fixes..."
-    if ! black "${FILES_TO_LINT[@]}"; then
+    if ! $PYTHON -m black "${FILES_TO_LINT[@]}"; then
         echo "❌ Black formatting failed"
         exit 1
     fi

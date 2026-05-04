@@ -48,7 +48,8 @@ run_seeder(){
 install_app(){
   log_info "Installing ownCloud on Android device"
   adb uninstall com.owncloud.android >/dev/null 2>&1 || true
-  adb_install_apk "$APK_PATH"
+  wait_for_device_boot 120 || fatal "Device not ready for APK install"
+  adb install -r -g "$APK_PATH"
 
   log_info "Launching ownCloud..."
   adb shell am start -n com.owncloud.android/com.owncloud.android.ui.activity.SplashActivity >/dev/null 2>&1 || true

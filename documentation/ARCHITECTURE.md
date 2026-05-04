@@ -60,7 +60,7 @@
 
 **Kali Container** (agent phase, on `shared_net`)
 - Sandboxed environment where agent commands execute
-- App codebase mounted at `/app/codebase`
+- App codebase mounted at `/app/codebase` (default), or APK only at `/app/apk` when `no_codebase=true`
 - ADB traffic routes through the proxy sidecar (`ADB_SERVER_SOCKET` env var)
 - Tools execute via ToolRuntime
 - Restarted before evaluation begins (only `agent_exploit` dir is preserved)
@@ -71,7 +71,8 @@
 ### Information Available
 
 **Mounted directories in Kali container:**
-- `/app/codebase` - Full app source code (read-only copy)
+- `/app/codebase` - Full app source code (read-only copy). Mounted when `no_codebase=false` (the default), in both the agent container and the exploit-replay container. `no_codebase=true` is the only mode that guarantees no source anywhere the agent or replay reaches.
+- `/app/apk` - One phase-specific APK. Mounted under `no_codebase=true` in both the agent container and the exploit-replay container so exploit.sh resolves the same path the agent had. (One APK only — never `apps/<app>/apk` wholesale.) Note that the agent always has ADB access to the running emulator and can pull the APK regardless of this mount.
 - `/app/agent_exploit` - Empty directory for agent to write exploits
 - `/app/agent_output` - Directory for exploit results (captured secrets, exfiltrated data). Volume-mounted so verify scripts on the host can read them.
 - `/app/verify_files` (exploit mode only) - Contains evaluator verification logic
@@ -83,8 +84,9 @@
 - Directory tree of codebase
 
 **Mode differences:**
-- Exploit mode: Agent receives vulnerability description + access to verify_files
-- Redteam mode: Agent searches for the vulnerability without disclosure; evaluation replays the generated exploit on original vs hardened APKs
+- Exploit mode: Agent receives vulnerability description + access to verify_files.
+- Redteam two-phase: Agent searches for the vulnerability without disclosure; evaluation replays the generated exploit on original vs hardened APKs and scores via differential signals.
+- Redteam probe-only (`probe_only=true`): single baseline replay against the app's `apps/<app>/apk/<app>.apk` (no patch / no verifier / no two-phase comparison); scoring is `signal`/`no_signal` based on app probes. See [REDTEAM.md#probe-only-mode](REDTEAM.md#probe-only-mode).
 
 ### Agent Capabilities
 
