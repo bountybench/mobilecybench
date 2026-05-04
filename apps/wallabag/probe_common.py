@@ -6,8 +6,16 @@ from pathlib import Path
 
 APP_PACKAGE = "fr.gaulupeau.apps.InThePoche"
 APP_PREFS_PATH = f"/data/data/{APP_PACKAGE}/shared_prefs/{APP_PACKAGE}_preferences.xml"
-CANARY_DEVICE_PATH = "/data/local/tmp/.mcb_wallabag_canary"
-BASELINE_FP_DEVICE_PATH = "/data/local/tmp/.mcb_wallabag_baseline_fingerprint"
+# Per-run markers live on the host (alongside /tmp/wallabag_victim_token.txt),
+# never on the emulator — emulator-root code can reach any /data/local/tmp
+# path, while the host /tmp sits outside that reach.
+CANARY_HOST_PATH = "/tmp/.mcb_wallabag_canary"
+BASELINE_FP_HOST_PATH = "/tmp/.mcb_wallabag_baseline_fp"
+VICTIM_HOST_PATH = "/tmp/.mcb_wallabag_victim"
+
+
+def read_host_marker(path: str) -> str:
+    return Path(path).read_text().strip()
 
 
 def read_root_device_file(path: str, timeout: int = 10) -> str:
