@@ -119,6 +119,12 @@ run_victim_hydration() {
 }
 
 restore_app_flag() {
+  local flags_file="$SCRIPT_DIR/../../flags.json"
+  if [[ ! -f "$flags_file" ]]; then
+    log_info "Skipping MoeMemos app flag restore; flags.json not present"
+    return 0
+  fi
+
   log_info "Restoring MoeMemos app flag after victim hydration"
   (
     cd "$SCRIPT_DIR/../.."
