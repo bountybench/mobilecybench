@@ -210,6 +210,57 @@ def _populate_body_field(d, body: str) -> bool:
     return True
 
 
+def _log_submit_diagnostics(d, body: str) -> None:
+    """Emit the exact form and selector state before/after submit attempts."""
+    try:
+        diagnostics: dict[str, object] = {
+            "create_post_visible": bool(d(text="Create post").exists),
+            "comments_visible": bool(d(text="Comments").exists),
+            "close_visible": bool(d(description="Close").exists),
+            "community_text_visible": bool(d(text="Community").exists),
+            "selected_seeded_visible": _selected_community_present(d),
+            "body_marker_visible": bool(d(textContains=body[:16]).exists),
+        }
+
+        title_field = d(textContains="Title")
+        diagnostics["title_field_visible"] = bool(title_field.exists)
+        if title_field.exists:
+            try:
+                diagnostics["title_field_text"] = title_field.get_text()
+            except Exception:
+                pass
+
+        body_field = d(textContains="Body")
+        diagnostics["body_field_visible"] = bool(body_field.exists)
+        if body_field.exists:
+            try:
+                diagnostics["body_field_text"] = body_field.get_text()
+            except Exception:
+                pass
+
+        todo_nodes = []
+        for node in d.xpath('//*[@content-desc="TODO"]').all():
+            todo_nodes.append(
+                {
+                    "bounds": node.attrib.get("bounds"),
+                    "enabled": node.attrib.get("enabled"),
+                    "clickable": node.attrib.get("clickable"),
+                    "class": node.attrib.get("class"),
+                }
+            )
+        diagnostics["todo_nodes"] = todo_nodes
+        diagnostics["top_app_bar_submit_candidates"] = [
+            {
+                "bounds": bounds,
+                "class": node.attrib.get("class"),
+            }
+            for _, _, node, bounds in _top_app_bar_submit_candidates(d)
+        ]
+        _log(f"Submit diagnostics: {json.dumps(diagnostics, sort_keys=True)}")
+    except Exception as exc:
+        _log(f"Submit diagnostics failed: {exc}")
+
+
 def _await_submit_outcome(d, timeout: int = 30) -> bool:
     """Return True only after Jerboa reaches the post screen contract.
 
@@ -457,6 +508,8 @@ def _submit_post_once(
         _log("Did not return to Create post after community selection")
         return False
 
+    _log_submit_diagnostics(d, body)
+
     submit_candidates = _top_app_bar_submit_candidates(d)
     if submit_candidates:
         _, _, submit_btn, submit_bounds = min(submit_candidates)
@@ -465,6 +518,7 @@ def _submit_post_once(
             _log("Clicked create-post submit action via top-app-bar TODO control")
             if _await_submit_outcome(d):
                 return True
+            _log_submit_diagnostics(d, body)
         except Exception as e:
             _log(f"Top-app-bar TODO control click failed: {e}")
 
@@ -473,6 +527,7 @@ def _submit_post_once(
         _log("Clicked create-post submit action via TODO control bounds")
         if _await_submit_outcome(d):
             return True
+        _log_submit_diagnostics(d, body)
 
     app_bar_title = d(text="Create post")
     if app_bar_title.exists:
@@ -487,6 +542,7 @@ def _submit_post_once(
                 _log("Clicked create-post submit action via app-bar geometry fallback")
                 if _await_submit_outcome(d):
                     return True
+                _log_submit_diagnostics(d, body)
         except Exception as e:
             _log(f"App-bar submit geometry fallback failed: {e}")
 
