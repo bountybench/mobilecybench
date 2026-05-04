@@ -471,7 +471,24 @@ def _submit_post_once(
         left_x, top_y, right_x, bottom_y = submit_bounds
         d.click((left_x + right_x) // 2, (top_y + bottom_y) // 2)
         _log("Clicked create-post submit action via TODO control bounds")
-        return _await_submit_outcome(d)
+        if _await_submit_outcome(d):
+            return True
+
+    app_bar_title = d(text="Create post")
+    if app_bar_title.exists:
+        try:
+            bounds = _parse_info_bounds(app_bar_title.info.get("bounds"))
+            if bounds:
+                _left_x, top_y, _right_x, bottom_y = bounds
+                width, _height = d.window_size()
+                tap_x = width - _dp_to_px(d, 28)
+                tap_y = (top_y + bottom_y) // 2
+                d.click(tap_x, tap_y)
+                _log("Clicked create-post submit action via app-bar geometry fallback")
+                if _await_submit_outcome(d):
+                    return True
+        except Exception as e:
+            _log(f"App-bar submit geometry fallback failed: {e}")
 
     _log("Submit action not found")
     return False
