@@ -1,6 +1,10 @@
 """Tests for Workflow._restart_runtime() and _run_exploit() helpers."""
 
+import logging
+import shlex
 import subprocess
+import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +12,8 @@ import pytest
 
 from models.config import RunnerConfig
 from workflows.base import Workflow
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class _ConcreteWorkflow(Workflow):
@@ -45,6 +51,32 @@ def workflow(tmp_path):
     wf = _ConcreteWorkflow(config, "testapp", tmp_path)
     wf.emulator = MagicMock()
     return wf
+
+
+def _write_run_checks(probe_dir: Path, body: str) -> Path:
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    run_checks = probe_dir / "run_checks.sh"
+    run_checks.write_text(f"#!/bin/bash\n{body}", encoding="utf-8")
+    return run_checks
+
+
+def _write_probe_scripts(probe_dir: Path) -> None:
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "test_access_control.py",
+        "test_availability.py",
+        "test_confidentiality.py",
+        "test_integrity.py",
+    ):
+        (probe_dir / name).write_text(
+            'import json\nprint(json.dumps({"score": 1}))\n',
+            encoding="utf-8",
+        )
+    (probe_dir / "metadata.json").write_text("{}", encoding="utf-8")
+    (probe_dir / "generic_probe_config.json").write_text(
+        '{"generic_probe_applicability": {}}',
+        encoding="utf-8",
+    )
 
 
 class TestRestartRuntime:
@@ -173,6 +205,184 @@ class TestRunExploit:
             replay_apk=None,
         )
         assert result["replay_exit_code"] == 42
+
+    def test_hung_exploit_times_out_and_writes_artifact(self, workflow, tmp_path):
+        workflow.config.script_timeout = 0.2
+        exploit_dir = tmp_path / "agent_exploit"
+        exploit_dir.mkdir()
+        (exploit_dir / "exploit.sh").write_text("sleep forever")
+
+        output_dir = tmp_path / "replay_output"
+        exploit_runner = tmp_path / "run_exploit.sh"
+        cleanup_marker = tmp_path / "cleanup_marker"
+        exploit_runner.write_text(
+            "#!/bin/bash\n"
+            f"trap 'printf cleaned > \"{cleanup_marker}\"' EXIT\n"
+            f"trap 'exit {Workflow.TIMEOUT_EXIT_CODE}' TERM INT\n"
+            "printf 'partial output\\n'\n"
+            "sleep 10\n"
+        )
+
+        started = time.monotonic()
+        result = workflow._run_exploit(
+            exploit_dir=exploit_dir,
+            output_dir=output_dir,
+            exploit_runner=exploit_runner,
+            exploit_image="test:latest",
+            codebase_dir=tmp_path,
+            replay_apk=None,
+        )
+
+        assert time.monotonic() - started < 5
+        assert result["replay_exit_code"] == Workflow.TIMEOUT_EXIT_CODE
+        assert result["replay_timed_out"] is True
+        assert cleanup_marker.read_text(encoding="utf-8") == "cleaned"
+        stdout = (output_dir / "stdout.txt").read_text(encoding="utf-8")
+        assert "timed out" in stdout
+        assert "timed out" in Path(result["replay_evidence_path"]).read_text(
+            encoding="utf-8"
+        )
+
+    def test_hung_exploit_escalates_when_sigterm_is_ignored(
+        self, workflow, tmp_path, caplog
+    ):
+        workflow.config.script_timeout = 0.2
+        workflow.PROCESS_TERMINATE_GRACE_SECONDS = 0.2
+        exploit_dir = tmp_path / "agent_exploit"
+        exploit_dir.mkdir()
+        (exploit_dir / "exploit.sh").write_text("sleep forever")
+
+        output_dir = tmp_path / "replay_output"
+        exploit_runner = tmp_path / "run_exploit.sh"
+        exploit_runner.write_text(
+            "#!/bin/bash\n"
+            f"{shlex.quote(sys.executable)} -c 'import signal, time; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            'print("ignoring term", flush=True); '
+            "time.sleep(10)'\n"
+        )
+
+        with caplog.at_level(logging.ERROR, logger="workflows.base"):
+            started = time.monotonic()
+            result = workflow._run_exploit(
+                exploit_dir=exploit_dir,
+                output_dir=output_dir,
+                exploit_runner=exploit_runner,
+                exploit_image="test:latest",
+                codebase_dir=tmp_path,
+                replay_apk=None,
+            )
+
+        assert time.monotonic() - started < 5
+        assert result["replay_exit_code"] == Workflow.TIMEOUT_EXIT_CODE
+        assert result["replay_timed_out"] is True
+        assert "cleanup grace" in caplog.text
+        assert "was killed" in (output_dir / "stdout.txt").read_text(encoding="utf-8")
+
+
+class TestRunChecks:
+    def test_hung_probe_times_out(self, workflow, tmp_path, caplog):
+        workflow.config.script_timeout = 0.2
+        probe_dir = tmp_path / "probe"
+        _write_run_checks(probe_dir, "printf 'probe started'; sleep 10\n")
+
+        with caplog.at_level(logging.ERROR, logger="workflows.base"):
+            started = time.monotonic()
+            ok = workflow._run_checks(
+                "",
+                app_scores_out=tmp_path / "app_scores.json",
+                generic_scores_out=tmp_path / "generic_scores.json",
+                probe_dir=probe_dir,
+            )
+
+        assert time.monotonic() - started < 5
+        assert ok is False
+        assert "run_checks.sh timed out" in caplog.text
+
+    def test_project_root_run_checks_fallback_honors_score_env_paths(
+        self, workflow, tmp_path
+    ):
+        workflow.project_root = REPO_ROOT
+        probe_dir = tmp_path / "probe"
+        _write_probe_scripts(probe_dir)
+
+        app_scores = tmp_path / "app_scores.json"
+        generic_scores = tmp_path / "generic_scores.json"
+
+        ok = workflow._run_checks(
+            "",
+            app_scores_out=app_scores,
+            generic_scores_out=generic_scores,
+            probe_dir=probe_dir,
+        )
+
+        assert ok is True
+        assert app_scores.exists()
+        assert generic_scores.exists()
+
+    def test_project_root_fallback_missing_score_file_fails_closed(
+        self, workflow, tmp_path, caplog
+    ):
+        probe_dir = tmp_path / "probe"
+        probe_dir.mkdir()
+        (tmp_path / "run_checks.sh").write_text(
+            "#!/bin/bash\n" "printf '%s\\n' '{\"scores\": {}}' > \"$APP_SCORES_OUT\"\n",
+            encoding="utf-8",
+        )
+
+        with caplog.at_level(logging.ERROR, logger="workflows.base"):
+            ok = workflow._run_checks(
+                "",
+                app_scores_out=tmp_path / "app_scores.json",
+                generic_scores_out=tmp_path / "generic_scores.json",
+                probe_dir=probe_dir,
+            )
+
+        assert ok is False
+        assert "Score output file not produced" in caplog.text
+
+    def test_probe_local_missing_score_file_is_legacy_warning(
+        self, workflow, tmp_path, caplog
+    ):
+        probe_dir = tmp_path / "probe"
+        _write_run_checks(
+            probe_dir,
+            "printf '%s\\n' '{\"scores\": {}}' > \"$APP_SCORES_OUT\"\n",
+        )
+
+        with caplog.at_level(logging.WARNING, logger="workflows.base"):
+            ok = workflow._run_checks(
+                "",
+                app_scores_out=tmp_path / "app_scores.json",
+                generic_scores_out=tmp_path / "generic_scores.json",
+                probe_dir=probe_dir,
+            )
+
+        assert ok is True
+        assert "Score output file not produced" in caplog.text
+
+    def test_project_root_fallback_malformed_score_json_fails_closed(
+        self, workflow, tmp_path, caplog
+    ):
+        probe_dir = tmp_path / "probe"
+        probe_dir.mkdir()
+        (tmp_path / "run_checks.sh").write_text(
+            "#!/bin/bash\n"
+            "printf '%s\\n' '{\"scores\": {}}' > \"$APP_SCORES_OUT\"\n"
+            "printf '%s\\n' '{not-json' > \"$GENERIC_SCORES_OUT\"\n",
+            encoding="utf-8",
+        )
+
+        with caplog.at_level(logging.ERROR, logger="workflows.base"):
+            ok = workflow._run_checks(
+                "",
+                app_scores_out=tmp_path / "app_scores.json",
+                generic_scores_out=tmp_path / "generic_scores.json",
+                probe_dir=probe_dir,
+            )
+
+        assert ok is False
+        assert "Invalid JSON" in caplog.text
 
 
 class TestRunExploitContainerScript:

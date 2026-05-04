@@ -536,8 +536,7 @@ def test_run_exploit_stages_replay_apk_into_sibling_dir(redteam_config, tmp_path
     def fake_popen(cmd, **_kwargs):
         captured["cmd"] = cmd
         proc = MagicMock()
-        proc.stdout = iter([])
-        proc.wait.return_value = None
+        proc.communicate.return_value = ("", None)
         proc.returncode = 0
         return proc
 
