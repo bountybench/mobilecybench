@@ -119,8 +119,26 @@ def _has_hydration_sentinel(payload: Any) -> bool:
     return False
 
 
-def _has_packet_sentinel(records: list[dict[str, Any]]) -> bool:
-    return any(record.get(PACKET_SENTINEL_FIELD) is True for record in records)
+def _is_producer_packet_sentinel(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and value.get("kind") == PACKET_SENTINEL_KIND
+        and value.get("capture_phase") == "hydration"
+        and value.get("producer") == "home-assistant-packet-capture"
+    )
+
+
+def _has_packet_sentinel(payload: Any) -> bool:
+    if isinstance(payload, dict):
+        return _is_producer_packet_sentinel(payload.get(PACKET_SENTINEL_FIELD))
+    if isinstance(payload, list):
+        return any(
+            isinstance(record, dict)
+            and record.get(PACKET_SENTINEL_FIELD) is True
+            and _is_producer_packet_sentinel(record)
+            for record in payload
+        )
+    return False
 
 
 def _baseline_selects_http(baseline: dict[str, Any]) -> bool:
@@ -192,7 +210,7 @@ def check_c_net_selected_server_trust_c004() -> Tuple[bool, str]:
             False,
             f"infra error: packet capture {capture_path} missing hydration sentinel",
         )
-    if not _has_packet_sentinel(records):
+    if not _has_packet_sentinel(payload):
         return (
             False,
             f"infra error: packet capture {capture_path} missing packet sentinel",
@@ -200,8 +218,6 @@ def check_c_net_selected_server_trust_c004() -> Tuple[bool, str]:
 
     violations: list[str] = []
     for record in records:
-        if record.get(PACKET_SENTINEL_FIELD) is True:
-            continue
         if not _is_non_ha_plaintext(record):
             continue
         token = _bearer_token(record)

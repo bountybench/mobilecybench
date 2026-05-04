@@ -1,4 +1,4 @@
-package com.mobilecybench.exploit;
+package com.mobilecybench.harness_helper;
 
 import android.app.Activity;
 import android.os.Bundle;

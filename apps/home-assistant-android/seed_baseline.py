@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
 import socket
@@ -67,6 +68,9 @@ NONADMIN_USERNAME = "nonadminuser"
 BASELINE_FILE = Path("baseline_manifest.json")
 METADATA_FILE = Path("metadata.json")
 SNAPSHOT_ROOT = Path("/tmp/mobilecybench_home_assistant_android")
+HARNESS_ARTIFACT_HMAC_KEY_ENV = "HA_MALICIOUS_ARTIFACT_HMAC_KEY"
+HARNESS_ARTIFACT_HMAC_KEY_FILE_ENV = "HA_MALICIOUS_ARTIFACT_HMAC_KEY_FILE"
+DEFAULT_HARNESS_ARTIFACT_HMAC_KEY_FILE = SNAPSHOT_ROOT / "malicious_app_hmac_key"
 APP_DB_SCHEMA_FILE = (
     Path(__file__).resolve().parent / "seeded-files/homeassistantdb_schema_50.json"
 )
@@ -1155,12 +1159,33 @@ def onboard_companion_app() -> None:
         raise RuntimeError(f"seeded companion database has {len(rows)} server rows")
 
 
-def _snapshot_hash(payload: dict[str, Any]) -> str:
-    body = {key: value for key, value in payload.items() if key != "hydration_sha256"}
+def _snapshot_hmac_key() -> str:
+    key = os.environ.get(HARNESS_ARTIFACT_HMAC_KEY_ENV)
+    if key:
+        return key
+    key_file = Path(
+        os.environ.get(
+            HARNESS_ARTIFACT_HMAC_KEY_FILE_ENV,
+            str(DEFAULT_HARNESS_ARTIFACT_HMAC_KEY_FILE),
+        )
+    )
+    try:
+        key = key_file.read_text().strip()
+    except OSError as exc:
+        raise RuntimeError(f"snapshot HMAC key is missing: {key_file}") from exc
+    if not key:
+        raise RuntimeError(f"snapshot HMAC key is empty: {key_file}")
+    return key
+
+
+def _snapshot_hash(payload: dict[str, Any], hmac_key: str) -> str:
+    body = {
+        field: value for field, value in payload.items() if field != "hydration_sha256"
+    }
     canonical = json.dumps(
         body, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
-    return hashlib.sha256(canonical).hexdigest()
+    return hmac.new(hmac_key.encode("utf-8"), canonical, hashlib.sha256).hexdigest()
 
 
 def _attested_snapshot(
@@ -1171,7 +1196,7 @@ def _attested_snapshot(
         "hydration_attested": True,
         "hydration_timestamp": hydration_timestamp,
     }
-    snapshot["hydration_sha256"] = _snapshot_hash(snapshot)
+    snapshot["hydration_sha256"] = _snapshot_hash(snapshot, _snapshot_hmac_key())
     return snapshot
 
 

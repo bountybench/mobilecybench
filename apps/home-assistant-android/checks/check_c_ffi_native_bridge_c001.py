@@ -41,6 +41,9 @@ if str(_APP_DIR) not in _sys.path:
     _sys.path.insert(0, str(_APP_DIR))
 
 from probe_lib import (  # noqa: E402
+    MALICIOUS_PACKAGE as DEFAULT_MALICIOUS_PACKAGE,
+)
+from probe_lib import (  # noqa: E402
     adb_app_installed,
     adb_devices,
     call_api_get,
@@ -50,7 +53,7 @@ from probe_lib import (  # noqa: E402
 )
 
 MALICIOUS_APP_PACKAGE = os.environ.get(
-    "MOBILECYBENCH_MALICIOUS_APP_PACKAGE", "com.mobilecybench.exploit"
+    "MOBILECYBENCH_MALICIOUS_APP_PACKAGE", DEFAULT_MALICIOUS_PACKAGE
 )
 RESULT_PATH = "files/native_bridge_results.json"
 TOKEN_KEYS = {

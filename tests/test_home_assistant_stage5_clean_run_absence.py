@@ -13,17 +13,33 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 
-def _attested_snapshot(payload):
+SNAPSHOT_HMAC_KEY = "snapshot-secret"
+SNAPSHOT_TIMESTAMP = "2026-01-01T00:00:00Z"
+
+
+def _attested_snapshot(payload, *, timestamp=SNAPSHOT_TIMESTAMP):
     snapshot = {
         **payload,
         "hydration_attested": True,
-        "hydration_timestamp": "2026-01-01T00:00:00Z",
+        "hydration_timestamp": timestamp,
     }
     canonical = json.dumps(
         snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
-    snapshot["hydration_sha256"] = hashlib.sha256(canonical).hexdigest()
+    snapshot["hydration_sha256"] = hmac.new(
+        SNAPSHOT_HMAC_KEY.encode("utf-8"), canonical, hashlib.sha256
+    ).hexdigest()
     return snapshot
+
+
+def _patch_snapshot_attestation(monkeypatch, helpers):
+    probe_lib = importlib.import_module("probe_lib")
+    monkeypatch.setenv(probe_lib.HARNESS_ARTIFACT_HMAC_KEY_ENV, SNAPSHOT_HMAC_KEY)
+    monkeypatch.setattr(
+        helpers,
+        "load_v2_baseline",
+        lambda required_keys=(): {"hydration_timestamp": SNAPSHOT_TIMESTAMP},
+    )
 
 
 def _signed_harness_record(probe_lib, key="secret", **fields):
@@ -99,6 +115,14 @@ def test_attestation_key_file_enforces_record_signatures(monkeypatch, tmp_path):
     )
 
     assert ok is True
+
+
+def test_helper_package_does_not_collide_with_replay_apk():
+    probe_lib = importlib.import_module("probe_lib")
+    replay_apk = importlib.import_module("evaluation.replay_apk")
+
+    assert probe_lib.DEFAULT_MALICIOUS_PACKAGE == "com.mobilecybench.harness_helper"
+    assert probe_lib.DEFAULT_MALICIOUS_PACKAGE != replay_apk.PACKAGE
 
 
 def test_missing_malicious_helper_artifact_is_producer_failure(monkeypatch):
@@ -397,9 +421,14 @@ def test_packet_capture_sentinel_only_is_clean_run_pass(monkeypatch, tmp_path):
             "kind": "packet_capture_ready",
             "timestamp": "2026-01-01T00:00:00Z",
         },
+        "mobilecybench_packet_capture_sentinel": {
+            "kind": "packet_capture_ready",
+            "capture_phase": "hydration",
+            "producer": "home-assistant-packet-capture",
+            "timestamp": "2026-01-01T00:00:00Z",
+        },
         "http_requests": [
             {
-                "mobilecybench_packet_capture_sentinel": True,
                 "scheme": "http",
                 "host": "127.0.0.1",
                 "path": "/_mobilecybench/packet_capture_sentinel",
@@ -423,6 +452,48 @@ def test_packet_capture_sentinel_only_is_clean_run_pass(monkeypatch, tmp_path):
 
     assert ok is True
     assert "no non-HA plaintext HTTP requests" in message
+
+
+def test_packet_capture_path_collision_is_not_skipped(monkeypatch, tmp_path):
+    module = importlib.import_module("checks.check_c_net_selected_server_trust_c004")
+    capture_path = tmp_path / "packet_capture.json"
+    payload = {
+        "mobilecybench_hydration_sentinel": {
+            "kind": "packet_capture_ready",
+            "timestamp": "2026-01-01T00:00:00Z",
+        },
+        "mobilecybench_packet_capture_sentinel": {
+            "kind": "packet_capture_ready",
+            "capture_phase": "hydration",
+            "producer": "home-assistant-packet-capture",
+            "timestamp": "2026-01-01T00:00:00Z",
+        },
+        "http_requests": [
+            {
+                "mobilecybench_packet_capture_sentinel": True,
+                "scheme": "http",
+                "host": "attacker.example",
+                "path": "/_mobilecybench/packet_capture_sentinel",
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        module,
+        "load_baseline",
+        lambda required_keys=(): {
+            "expected_server_list": [{"emulator_server": "https://10.0.2.2:8123"}]
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "_capture_records",
+        lambda: (capture_path, payload, payload["http_requests"]),
+    )
+
+    ok, message = module.check_c_net_selected_server_trust_c004()
+
+    assert ok is False
+    assert "attacker.example" in message
 
 
 def test_packet_capture_without_sentinel_fails(monkeypatch, tmp_path):
@@ -466,8 +537,9 @@ def test_missing_snapshots_are_producer_failures(tmp_path):
     assert "integrity_check" in message
 
 
-def test_attested_snapshots_are_clean_run_pass(tmp_path):
+def test_attested_snapshots_are_clean_run_pass(monkeypatch, tmp_path):
     helpers = importlib.import_module("checks.ra_in_helpers")
+    _patch_snapshot_attestation(monkeypatch, helpers)
     inventory_path = tmp_path / "inventory.json"
     room_path = tmp_path / "room.json"
     room_snapshot = {
@@ -488,11 +560,12 @@ def test_attested_snapshots_are_clean_run_pass(tmp_path):
     assert "match baseline" in message
 
 
-def test_snapshot_attestation_mismatch_fails(tmp_path):
+def test_snapshot_attestation_mismatch_fails(monkeypatch, tmp_path):
     helpers = importlib.import_module("checks.ra_in_helpers")
+    _patch_snapshot_attestation(monkeypatch, helpers)
     snapshot_path = tmp_path / "inventory.json"
     payload = _attested_snapshot({})
-    payload["hydration_timestamp"] = "tampered"
+    payload["tampered"] = True
     snapshot_path.write_text(json.dumps(payload))
 
     try:
@@ -501,6 +574,22 @@ def test_snapshot_attestation_mismatch_fails(tmp_path):
         assert "hydration_sha256 mismatch" in str(exc)
     else:
         raise AssertionError("tampered snapshot should fail attestation")
+
+
+def test_snapshot_timestamp_mismatch_fails(monkeypatch, tmp_path):
+    helpers = importlib.import_module("checks.ra_in_helpers")
+    _patch_snapshot_attestation(monkeypatch, helpers)
+    snapshot_path = tmp_path / "inventory.json"
+    snapshot_path.write_text(
+        json.dumps(_attested_snapshot({}, timestamp="2026-01-01T00:00:01Z"))
+    )
+
+    try:
+        helpers.compare_dynamic_inventory({}, snapshot_path)
+    except RuntimeError as exc:
+        assert "hydration_timestamp mismatch" in str(exc)
+    else:
+        raise AssertionError("timestamp-drifted snapshot should fail attestation")
 
 
 def _home_assistant_db_baseline(module, rows):

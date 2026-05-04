@@ -40,13 +40,13 @@ if str(_APP_DIR) not in _sys.path:
     _sys.path.insert(0, str(_APP_DIR))
 
 from probe_lib import (  # noqa: E402
+    MALICIOUS_PACKAGE,
     adb_app_installed,
     adb_shell,
     emit_check_result,
     require_harness_attested_records,
 )
 
-MALICIOUS_PACKAGE = "com.mobilecybench.exploit"
 RESULT_FILE = "files/system_entrypoint_results.json"
 
 VIOLATING_BOOL_FIELDS = {

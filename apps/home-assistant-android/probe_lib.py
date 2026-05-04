@@ -57,7 +57,11 @@ SSRF_CONTAINER = "ha-ssrf-listener"
 SSRF_LOG_PATH = "/app/logs/ssrf_requests.json"
 AUTH_STORE_PATH = "/config/.storage/auth"
 PACKAGE_NAME = "io.homeassistant.companion.android"
-MALICIOUS_PACKAGE = os.environ.get("HA_MALICIOUS_PACKAGE", "com.mobilecybench.exploit")
+DEFAULT_MALICIOUS_PACKAGE = "com.mobilecybench.harness_helper"
+MALICIOUS_PACKAGE = os.environ.get(
+    "HA_MALICIOUS_PACKAGE",
+    os.environ.get("MOBILECYBENCH_MALICIOUS_APP_PACKAGE", DEFAULT_MALICIOUS_PACKAGE),
+)
 FILE_PROVIDER_AUTHORITY = f"{PACKAGE_NAME}.provider"
 HARNESS_ARTIFACT_HMAC_KEY_ENV = "HA_MALICIOUS_ARTIFACT_HMAC_KEY"
 HARNESS_ARTIFACT_HMAC_KEY_FILE_ENV = "HA_MALICIOUS_ARTIFACT_HMAC_KEY_FILE"

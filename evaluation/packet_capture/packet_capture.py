@@ -10,7 +10,6 @@ import signal
 import subprocess
 import threading
 import time
-import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +36,7 @@ REQUEST_LINE_RE = re.compile(
 
 records_lock = threading.Lock()
 records: list[dict[str, Any]] = []
+packet_sentinel: dict[str, Any] | None = None
 current_record: dict[str, Any] | None = None
 tcpdump_process: subprocess.Popen[str] | None = None
 
@@ -57,6 +57,7 @@ def _write_artifact() -> None:
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         HYDRATION_SENTINEL_FIELD: _hydration_sentinel(),
+        PACKET_SENTINEL_FIELD: packet_sentinel,
         "http_requests": records,
         "total_count": len(records),
         "last_updated": _utc_timestamp(),
@@ -83,26 +84,32 @@ def _update_current_host(host: str) -> None:
 
 
 def _send_sentinel_request() -> None:
+    global packet_sentinel
     time.sleep(1.0)
     try:
         urllib.request.urlopen(SENTINEL_URL, timeout=5).read()
+        packet_sentinel = {
+            "kind": PACKET_SENTINEL_KIND,
+            "capture_phase": "hydration",
+            "producer": "home-assistant-packet-capture",
+            "request_url": SENTINEL_URL,
+            "timestamp": _utc_timestamp(),
+        }
+        with records_lock:
+            _write_artifact()
     except Exception:
-        # The probe treats a missing captured sentinel as producer failure. This
+        # The probe treats a missing producer sentinel as producer failure. This
         # sidecar keeps running so later traffic is still visible for diagnosis.
         pass
 
 
 def _record_request_line(method: str, target: str) -> None:
     global current_record
-    parsed = urllib.parse.urlsplit(SENTINEL_URL)
-    sentinel_path = parsed.path or "/"
-    is_sentinel = target == sentinel_path
     record = {
         "timestamp": _utc_timestamp(),
         "method": method,
         "path": target,
         "scheme": "http",
-        PACKET_SENTINEL_FIELD: is_sentinel,
     }
     current_record = record
     _append_record(record)

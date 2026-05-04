@@ -29,6 +29,7 @@ from probe_lib import (
     docker_exec_cat,
     docker_exec_sha256,
     docker_running,
+    harness_artifact_hmac_key,
     load_baseline,
     open_websocket,
     parse_json_or_jsonl,
@@ -79,12 +80,21 @@ def load_v2_baseline(required_keys: tuple[str, ...]) -> dict[str, Any]:
     return baseline
 
 
-def _snapshot_hash(payload: dict[str, Any]) -> str:
-    body = {key: value for key, value in payload.items() if key != "hydration_sha256"}
+def _snapshot_hmac_key(snapshot_path: Path) -> str:
+    key = harness_artifact_hmac_key()
+    if not key:
+        raise RuntimeError(f"{snapshot_path} snapshot HMAC key is missing")
+    return key
+
+
+def _snapshot_hash(payload: dict[str, Any], hmac_key: str) -> str:
+    body = {
+        field: value for field, value in payload.items() if field != "hydration_sha256"
+    }
     canonical = json.dumps(
         body, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
-    return hashlib.sha256(canonical).hexdigest()
+    return hmac.new(hmac_key.encode("utf-8"), canonical, hashlib.sha256).hexdigest()
 
 
 def load_attested_snapshot(snapshot_path: Path) -> dict[str, Any]:
@@ -97,10 +107,18 @@ def load_attested_snapshot(snapshot_path: Path) -> dict[str, Any]:
     timestamp = payload.get("hydration_timestamp")
     if not isinstance(timestamp, str) or not timestamp:
         raise RuntimeError(f"{snapshot_path} is missing hydration_timestamp")
+    baseline = load_v2_baseline(("hydration_timestamp",))
+    baseline_timestamp = baseline.get("hydration_timestamp")
+    if timestamp != baseline_timestamp:
+        raise RuntimeError(
+            f"{snapshot_path} hydration_timestamp mismatch with baseline_manifest.json"
+        )
     expected_hash = payload.get("hydration_sha256")
     if not isinstance(expected_hash, str) or not expected_hash:
         raise RuntimeError(f"{snapshot_path} is missing hydration_sha256")
-    if not hmac.compare_digest(expected_hash, _snapshot_hash(payload)):
+    if not hmac.compare_digest(
+        expected_hash, _snapshot_hash(payload, _snapshot_hmac_key(snapshot_path))
+    ):
         raise RuntimeError(f"{snapshot_path} hydration_sha256 mismatch")
     return {
         key: value

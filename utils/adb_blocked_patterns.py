@@ -35,6 +35,11 @@ BLOCKED_SHELL_PATTERNS = [
     r"/system/xbin/su",
     r"/system/bin/su",
     r"\brun-as\b",
+    r"\bpm\s+uninstall\b(?=.*\bcom\.mobilecybench\.harness_helper\b)",
+    r"\bcmd\s+package\s+uninstall\b(?=.*\bcom\.mobilecybench\.harness_helper\b)",
+    r"\badb\s+(?:-[shpt]\s+\S+\s+)*uninstall\b(?=.*\bcom\.mobilecybench\.harness_helper\b)",
+    r"\bam\s+force-stop\s+io\.homeassistant\.companion\.android\b",
+    r"\bcmd\s+activity\s+force-stop\s+io\.homeassistant\.companion\.android\b",
 ]
 
 # Additional patterns enforced only by the proxy (interactive shell prevention).
