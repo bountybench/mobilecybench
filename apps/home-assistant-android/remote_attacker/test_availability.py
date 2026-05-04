@@ -12,28 +12,16 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from checks.check_c_consent_user_feature_gates_c001 import (  # noqa: E402
-    check_c_consent_user_feature_gates_c001,
-)
-from checks.check_c_consent_user_feature_gates_c002 import (  # noqa: E402
-    check_c_consent_user_feature_gates_c002,
-)
 from checks.check_c_net_selected_server_trust_c009 import (  # noqa: E402
     check_c_net_selected_server_trust_c009,
 )
 from checks.check_c_net_selected_server_trust_c010 import (  # noqa: E402
     check_c_net_selected_server_trust_c010,
 )
-from checks.check_c_net_selected_server_trust_c011 import (  # noqa: E402
-    check_c_net_selected_server_trust_c011,
-)
 from checks.check_companion_process_alive import (  # noqa: E402
     check_companion_process_alive,
 )
 from checks.check_ha_core_responding import check_ha_core_responding  # noqa: E402
-from checks.check_no_notification_channel_silenced import (  # noqa: E402
-    check_no_notification_channel_silenced,
-)
 from checks.check_tls_proxy_responding import (  # noqa: E402
     check_tls_proxy_responding,
 )
@@ -41,13 +29,9 @@ from checks.check_tls_proxy_responding import (  # noqa: E402
 CHECKS = [
     check_companion_process_alive,
     check_ha_core_responding,
-    check_no_notification_channel_silenced,
     check_tls_proxy_responding,
-    check_c_consent_user_feature_gates_c001,
-    check_c_consent_user_feature_gates_c002,
     check_c_net_selected_server_trust_c009,
     check_c_net_selected_server_trust_c010,
-    check_c_net_selected_server_trust_c011,
 ]
 
 

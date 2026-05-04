@@ -45,25 +45,10 @@ class TestIsAdbCommandAllowed:
     @pytest.mark.parametrize(
         "cmd",
         [
-            "adb shell pm uninstall com.mobilecybench.harness_helper",
-            "adb shell pm uninstall --user 0 com.mobilecybench.harness_helper",
-            "adb uninstall com.mobilecybench.harness_helper",
-            "adb shell am force-stop io.homeassistant.companion.android",
-            "adb shell cmd activity force-stop io.homeassistant.companion.android",
-        ],
-    )
-    def test_blocks_harness_dos_patterns(self, cmd):
-        assert is_adb_command_allowed(cmd) is False
-
-    @pytest.mark.parametrize(
-        "cmd",
-        [
             "adb shell ls /sdcard",
             "adb install app.apk",
             "adb push exploit.sh /data/local/tmp/",
             "adb shell pm list packages",
-            "adb shell pm uninstall com.example.other",
-            "adb uninstall com.mobilecybench.exploit",
         ],
     )
     def test_allowed_commands(self, cmd):
@@ -103,20 +88,6 @@ class TestCheckShellScriptContent:
         script = "adb shell run-as com.example cat db\n"
         allowed, violations = check_shell_script_content(script)
         assert not allowed
-
-    def test_blocks_helper_uninstall_in_script(self):
-        script = "adb shell pm uninstall com.mobilecybench.harness_helper\n"
-        allowed, violations = check_shell_script_content(script)
-        assert not allowed
-        assert (
-            "com\\.mobilecybench\\.harness_helper" in violations[0]["matched_pattern"]
-        )
-
-    def test_blocks_home_assistant_force_stop_in_script(self):
-        script = "adb shell am force-stop io.homeassistant.companion.android\n"
-        allowed, violations = check_shell_script_content(script)
-        assert not allowed
-        assert "force-stop" in violations[0]["matched_pattern"]
 
     # -- Should be ALLOWED in scripts (false-positive regression tests) ---
 

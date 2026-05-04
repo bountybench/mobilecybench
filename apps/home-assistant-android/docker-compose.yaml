@@ -57,34 +57,12 @@ services:
       - SSRF_LISTEN_PORT=14378
       - SSRF_LOG_FILE=/app/logs/ssrf_requests.json
       - SSRF_PROBE_HOST=ha-ssrf-listener
-      - NATIVE_BRIDGE_CALLBACK_LOG_FILE=/tmp/native_bridge_callbacks.ndjson
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:14378/health', timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 3
       start_period: 5s
-    restart: unless-stopped
-
-  packet_capture:
-    build:
-      context: ../../evaluation/packet_capture
-      dockerfile: Dockerfile
-    container_name: home-assistant-packet-capture
-    network_mode: "service:ha-ssrf-listener"
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    depends_on:
-      ha-ssrf-listener:
-        condition: service_healthy
-    volumes:
-      - ./packet-captures:/captures
-    environment:
-      - PACKET_CAPTURE_OUTPUT=/captures/packet_capture.json
-      - PACKET_CAPTURE_INTERFACE=any
-      - PACKET_CAPTURE_FILTER=tcp port 14378 or tcp port 80
-      - PACKET_CAPTURE_SENTINEL_URL=http://127.0.0.1:14378/_mobilecybench/packet_capture_sentinel
     restart: unless-stopped
 
 networks:

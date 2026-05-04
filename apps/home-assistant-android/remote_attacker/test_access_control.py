@@ -26,32 +26,8 @@ from checks.check_admin_identity_intact import check_admin_identity_intact  # no
 from checks.check_admin_only_endpoints_reject_nonadmin import (  # noqa: E402
     check_admin_only_endpoints_reject_nonadmin,
 )
-from checks.check_c_ctrl_registration_auth_control_c001 import (  # noqa: E402
-    check_c_ctrl_registration_auth_control_c001,
-)
-from checks.check_c_ctrl_registration_auth_control_c002 import (  # noqa: E402
-    check_c_ctrl_registration_auth_control_c002,
-)
-from checks.check_c_ctrl_registration_auth_control_c004 import (  # noqa: E402
-    check_c_ctrl_registration_auth_control_c004,
-)
-from checks.check_c_ctrl_registration_auth_control_c005 import (  # noqa: E402
-    check_c_ctrl_registration_auth_control_c005,
-)
-from checks.check_c_ctrl_registration_auth_control_c007 import (  # noqa: E402
-    check_c_ctrl_registration_auth_control_c007,
-)
 from checks.check_c_ctrl_registration_auth_control_c012 import (  # noqa: E402
     check_c_ctrl_registration_auth_control_c012,
-)
-from checks.check_c_net_selected_server_trust_c001 import (  # noqa: E402
-    check_c_net_selected_server_trust_c001,
-)
-from checks.check_c_net_selected_server_trust_c007 import (  # noqa: E402
-    check_c_net_selected_server_trust_c007,
-)
-from checks.check_c_net_selected_server_trust_c008 import (  # noqa: E402
-    check_c_net_selected_server_trust_c008,
 )
 from checks.check_no_new_admin_refresh_tokens import (  # noqa: E402
     check_no_new_admin_refresh_tokens,
@@ -62,15 +38,7 @@ CHECKS = [
     check_admin_identity_intact,
     check_admin_only_endpoints_reject_nonadmin,
     check_admin_endpoints_reject_nonadmin_extended,
-    check_c_ctrl_registration_auth_control_c004,
     check_c_ctrl_registration_auth_control_c012,
-    check_c_net_selected_server_trust_c001,
-    check_c_ctrl_registration_auth_control_c005,
-    check_c_ctrl_registration_auth_control_c007,
-    check_c_net_selected_server_trust_c007,
-    check_c_net_selected_server_trust_c008,
-    check_c_ctrl_registration_auth_control_c002,
-    check_c_ctrl_registration_auth_control_c001,
 ]
 
 

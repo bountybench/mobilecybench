@@ -94,22 +94,9 @@ Expect: stdout JSON has `"score": 0` and an `"error"` key; stderr explains the m
 
 ### remote_attacker/test_confidentiality.py (secondary attacker model: remote_attacker)
 
-**Compromised case (must emit `score: 0`)**
+**Deferred-entrypoint case (must emit `score: 1`)**
 
-Setup: clean runtime with the Android companion logged in. The companion source stores `servers.refresh_token` in `HomeAssistantDB` and includes databases in backup at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/common/schemas/io.homeassistant.companion.android.database.AppDatabase/49.json#L969-L1090 and https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/app/src/main/res/xml/backup_rules.xml#L1-L6.
-
-Run:
-
-```bash
-cd apps/home-assistant-android/remote_attacker
-python3 test_confidentiality.py
-```
-
-Expect: stdout JSON has `"score": 0`, `"functional_refresh_tokens_absent": 0`, and a positive `"functional_refresh_token_count"`.
-
-**Secure case (must emit `score: 1`)**
-
-Setup: patched build that either excludes `HomeAssistantDB` from backup, disables backup, or stores no functional refresh token in the backed-up database.
+Setup: no special setup required. The prior RA-X `adb backup` oracle is intentionally inactive because the channel is unavailable on the Android 12+/SDK 35 runner floor.
 
 Run:
 
@@ -118,20 +105,7 @@ cd apps/home-assistant-android/remote_attacker
 python3 test_confidentiality.py
 ```
 
-Expect: stdout JSON has `"score": 1` and `"functional_refresh_tokens_absent": 1`.
-
-**Infrastructure-error case (must still emit JSON, still exit 0)**
-
-Setup: run without an emulator/ADB device, or run on an Android image where `adb backup` cannot complete.
-
-Run:
-
-```bash
-cd apps/home-assistant-android/remote_attacker
-python3 test_confidentiality.py
-```
-
-Expect: stdout JSON has `"score": 0` and an `"error"` key; stderr reports the ADB or backup failure.
+Expect: stdout JSON has `"score": 1` and `"status": "ra_x_deferred"`; stderr explains that RA-X needs a viable exfiltration oracle.
 
 ### remote_attacker/test_availability.py (secondary attacker model: remote_attacker)
 

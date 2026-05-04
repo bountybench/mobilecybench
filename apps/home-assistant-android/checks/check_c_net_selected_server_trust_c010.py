@@ -17,7 +17,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   5. probe-trusts-self-report: The oracle is HA Core's WebSocket handshake response over the TLS proxy, independent of companion app or agent self-report.
   6. probe-without-baseline: baseline_manifest.json["probe_admin_llat"] supplies the seed-time valid WebSocket credential; the invalid-token request is an explicit negative control with no pre-exploit state.
   7. probe-without-attacker-model-tag: The header declares remote_attacker availability scope and quotes the shall-not.
-  8. two-probes-one-channel: This probe covers WebSocket /api/websocket auth; check_c_net_selected_server_trust_c009 covers REST and check_c_net_selected_server_trust_c011 covers registration.
+  8. two-probes-one-channel: This probe covers WebSocket /api/websocket auth; check_c_net_selected_server_trust_c009 covers REST.
   9. brittle-substring-on-tool-output: The helper returns parsed JSON auth frames, and assertions inspect the structured "type" field rather than exception text or command output.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):

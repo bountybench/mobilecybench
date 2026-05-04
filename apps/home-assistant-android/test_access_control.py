@@ -1,55 +1,21 @@
 #!/usr/bin/env python3
-"""Entrypoint for malicious_app access-control probes.
-
-Preserves the required access-control entrypoint for the malicious_app runner.
-There is no active MA-X probe in this round because the old SSRF-listener token
-oracle could be spoofed by direct malicious-app traffic.
-
-Output contract:
-- Always exits 0.
-- Emits a single JSON dict on stdout.
-- Preserves the legacy `status: ma_x_deferred` diagnostic while `score`
-  reflects the active MA-AC checks below.
-"""
+"""Entrypoint for malicious_app access-control probes."""
 from __future__ import annotations
 
 import json
 import sys
 
-from checks.check_c_exec_webview_network_code_c003 import (
-    check_c_exec_webview_network_code_c003,
+from checks.check_c_ipc_android_entrypoints_c002 import (
+    check_c_ipc_android_entrypoints_c002,
 )
-from checks.check_c_exec_webview_network_code_c004 import (
-    check_c_exec_webview_network_code_c004,
-)
-from checks.check_c_ffi_native_bridge_c001 import check_c_ffi_native_bridge_c001
-from checks.check_c_ipc_android_entrypoints_c004 import (
-    check_c_ipc_android_entrypoints_c004,
-)
-from checks.check_c_ipc_android_entrypoints_c005 import (
-    check_c_ipc_android_entrypoints_c005,
-)
-
-
-def check_ma_x_deferred() -> tuple[bool, str]:
-    return (
-        True,
-        "MA-X deferred: removed spoofable SSRF listener token oracle; active MA-AC probes run separately",
-    )
-
 
 CHECKS = [
-    check_ma_x_deferred,
-    check_c_ffi_native_bridge_c001,
-    check_c_exec_webview_network_code_c003,
-    check_c_exec_webview_network_code_c004,
-    check_c_ipc_android_entrypoints_c004,
-    check_c_ipc_android_entrypoints_c005,
+    check_c_ipc_android_entrypoints_c002,
 ]
 
 
 def main() -> int:
-    results: dict[str, int | str] = {"status": "ma_x_deferred"}
+    results: dict[str, int] = {}
     overall_success = True
     for check in CHECKS:
         try:

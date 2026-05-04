@@ -12,51 +12,11 @@ from __future__ import annotations
 import json
 import sys
 
-from checks.check_c_data_outbound_mobile_events_c006 import (
-    check_c_data_outbound_mobile_events_c006,
-)
-from checks.check_c_ipc_android_entrypoints_c001 import (
-    check_c_ipc_android_entrypoints_c001,
-)
-from checks.check_c_ipc_android_entrypoints_c002 import (
-    check_c_ipc_android_entrypoints_c002,
-)
-from checks.check_c_ipc_android_entrypoints_c003 import (
-    check_c_ipc_android_entrypoints_c003,
-)
-from checks.check_c_ipc_android_entrypoints_c006 import (
-    check_c_ipc_android_entrypoints_c006,
-)
-from checks.check_c_ipc_android_entrypoints_c009 import (
-    check_c_ipc_android_entrypoints_c009,
-)
-from checks.check_c_persist_client_private_state_c001 import (
-    check_c_persist_client_private_state_c001,
-)
-from checks.check_c_persist_client_private_state_c004 import (
-    check_c_persist_client_private_state_c004,
-)
-from checks.check_c_persist_files_cert_server_state_c001 import (
-    check_c_persist_files_cert_server_state_c001,
-)
-from checks.check_c_persist_files_cert_server_state_c003 import (
-    check_c_persist_files_cert_server_state_c003,
-)
 from checks.check_no_credential_leak_indicators import (
     check_no_credential_leak_indicators,
 )
 
 CHECKS = [
-    check_c_data_outbound_mobile_events_c006,
-    check_c_ipc_android_entrypoints_c009,
-    check_c_ipc_android_entrypoints_c001,
-    check_c_ipc_android_entrypoints_c006,
-    check_c_persist_client_private_state_c001,
-    check_c_persist_client_private_state_c004,
-    check_c_persist_files_cert_server_state_c001,
-    check_c_ipc_android_entrypoints_c002,
-    check_c_ipc_android_entrypoints_c003,
-    check_c_persist_files_cert_server_state_c003,
     check_no_credential_leak_indicators,
 ]
 

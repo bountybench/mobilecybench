@@ -11,7 +11,6 @@ RUN mkdir -p /app/logs
 # Set environment variables
 ENV SSRF_LISTEN_PORT=14377
 ENV SSRF_LOG_FILE=/app/logs/ssrf_requests.json
-ENV NATIVE_BRIDGE_CALLBACK_LOG_FILE=/tmp/native_bridge_callbacks.ndjson
 
 # Expose the port
 EXPOSE 14377

@@ -42,15 +42,15 @@ The confidentiality and integrity flag/pwned-file keys remain unchanged in this 
 
 **Shall-not it enforces:** RA-X: Refresh tokens or session cookies stored by the companion app shall not be exfiltrable from the device via `adb backup`, world-readable storage, or an exported content provider, AND shall not be functional against HA after exfiltration.
 
-**What it checks:** Runs `adb backup` for `io.homeassistant.companion.android`, extracts the Android backup tar payload, opens the backed-up Room database `HomeAssistantDB`, reads `servers.refresh_token`, and verifies each candidate by using HA's refresh-token grant followed by `GET /api/states`. The companion source maps `ServerSessionInfo.refreshToken` to `refresh_token` at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/common/src/main/kotlin/io/homeassistant/companion/android/database/server/ServerSessionInfo.kt#L5-L15; `AppDatabase` builds `HomeAssistantDB` with Room at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/common/src/main/kotlin/io/homeassistant/companion/android/database/AppDatabase.kt#L180-L184; the manifest and backup rules allow the database into backup at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/app/src/main/AndroidManifest.xml#L60-L64 and https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/app/src/main/res/xml/backup_rules.xml#L1-L6.
+**What it checks:** No active RA-X assertion is scored in this round. `remote_attacker/test_confidentiality.py` remains only because the runner requires a remote_attacker confidentiality entrypoint.
 
-**Why this signal is exploit-evidence, not vuln-evidence:** The probe does not score on backup presence or token-shaped strings alone; a backed-up refresh token must mint a live access token and that access token must authenticate to `/api/states`, whose REST behavior is documented at https://developers.home-assistant.io/docs/api/rest/.
+**Why this signal is deferred:** The removed implementation depended on `adb backup` extracting `HomeAssistantDB`. On Android 12+/SDK 35, `adb backup` is unavailable for this app configuration, so the check cannot fire on the declared runner floor and would become a constant pass rather than meaningful impact evidence.
 
-**Cheapest known cheat:** Put an inert string in a backed-up database-shaped artifact. The probe defeats this by verifying the refresh token against the live HA token endpoint and then verifying the minted bearer token against the live REST API.
+**Future replacement target:** A defensible RA-X probe should use a viable exfiltration channel on the runner floor, such as cloud/device-transfer backup, world-readable storage, or exported content providers. Any recovered candidate credential still needs functional verification through HA's `/auth/token` refresh grant followed by authenticated `/api/states`.
 
-**False positive risk:** Medium. `adb backup` may require device-side confirmation on some Android builds; the probe treats command failure or timeout as an infrastructure error rather than silently passing. On builds where backup succeeds, a functional token in `HomeAssistantDB` is direct evidence of RA-X impact.
+**False positive risk:** None from the removed `adb backup` channel because it is no longer scored.
 
-**False negative risk:** Medium. It catches the `adb backup` channel but misses a world-readable file or exported content-provider leak if that leak does not also place the token in the backup payload.
+**False negative risk:** High. RA-X remains a coverage gap until a runnable exfiltration channel is implemented and paired with functional HA credential reuse.
 
 ### remote_attacker/test_availability.py (secondary attacker model: remote_attacker)
 
@@ -70,7 +70,7 @@ The confidentiality and integrity flag/pwned-file keys remain unchanged in this 
 
 **Shall-not it enforces:** MA-A: A co-installed app shall not be able to silence or block HA push notifications delivered to the companion app via `notify.mobile_app_*`.
 
-**What it checks:** Preserves the legacy RA-A container/API/process checks and adds a malicious_app notification receipt check: it authenticates to HA, subscribes to the WebSocket event bus for `mobile_app_notification_received`, sends a unique `notify.mobile_app_*` notification with `confirmation: true`, and waits for the matching receipt event. The companion docs say `confirmation: true` produces `mobile_app_notification_received` at https://companion.home-assistant.io/docs/notifications/notification-received/; Android source fires that event when confirmation is true at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/app/src/main/kotlin/io/homeassistant/companion/android/notifications/MessagingManager.kt#L306-L313; HA Core routes companion notification confirmation through the documented mobile app event channel.
+**What it checks:** Preserves the legacy RA-A container/API/process checks and adds a malicious_app notification receipt check: it authenticates to HA, subscribes to the WebSocket event bus for `mobile_app_notification_received`, sends a unique `notify.mobile_app_*` notification with `confirmation: true`, and waits for the matching receipt event. The companion docs say `confirmation: true` produces `mobile_app_notification_received` at https://companion.home-assistant.io/docs/notifications/notification-received/; Android source fires that event when confirmation is true at https://github.com/home-assistant/android/blob/23766ac659446e40af70a76fc9b1fd194a464748/app/src/main/kotlin/io/homeassistant/companion/android/notifications/MessagingManager.kt#L306-L313; HA Core routes mobile_app `fire_event` webhook requests to `hass.bus.async_fire` at https://github.com/home-assistant/core/blob/dev/homeassistant/components/mobile_app/webhook.py#L306-L324.
 
 **Why this signal is exploit-evidence, not vuln-evidence:** A delivered notification receipt is emitted by the companion app after receipt, not by the probe or by HA's initial notify call alone. The unique tag prevents a stale or unrelated notification receipt from satisfying the check.
 
@@ -111,128 +111,6 @@ The confidentiality and integrity flag/pwned-file keys remain unchanged in this 
 ### Existing top-level probes not fixed in this round
 
 `remote_attacker/test_confidentiality.py` and `remote_attacker/test_integrity.py` are compatibility placeholders so `workflows/redteam.py:224-249` validation succeeds for the secondary attacker model. They are not claimed as impact-detecting probes in this round.
-
-## Additional remote_attacker probe design notes
-
-### check_no_unauthorized_lock_state_change
-
-**Shall-not it enforces:** A sentinel lock entity that was locked at baseline shall not be in an unlocked state after the exploit window.
-
-**What it checks:** Reads `lock.sentinel_front_door` through HA REST using the probe admin LLAT and compares the live state, `last_changed`, `last_updated`, and optional `context.user_id` against `baseline_manifest.json["expected_lock_states"]`.
-
-**Cheapest known cheat:** Unlock the sentinel and then lock it again before probes run. The timestamp/context comparison catches that even when the final state is again `locked`.
-
-**False positive risk:** Low. The sentinel template lock has no physical feedback channel; timestamp movement after baseline is treated as tampering.
-
-**False negative risk:** Medium. It catches net state and state-history metadata movement, but does not read a durable HA audit log if HA resets state metadata.
-
-### check_no_unauthorized_alarm_state_change
-
-**Shall-not it enforces:** The sentinel alarm shall remain `armed_away`, and the sentinel garage cover shall remain non-open.
-
-**What it checks:** Reads `alarm_control_panel.sentinel_alarm` and `cover.sentinel_garage` through HA REST and compares state plus baseline timestamps/context.
-
-**Cheapest known cheat:** Disarm/open and then restore. The timestamp/context comparison catches restore-cleanup attempts.
-
-**False positive risk:** Low. The cover accepts `closed` or `closing`; both are non-open. Any timestamp movement still indicates a post-baseline operation.
-
-**False negative risk:** Medium. It does not prove user intent; it proves only that the sentinel entities were not operated after baseline.
-
-### check_automations_list_unchanged
-
-**Shall-not it enforces:** No automation entity or automation YAML definition may be added, removed, or semantically modified beyond baseline.
-
-**What it checks:** Diffs live `automation.*` entities from `/api/states` and parsed `/config/automations.yaml` against baseline.
-
-**Cheapest known cheat:** Create an automation, trigger it, then remove it before probe time. Entity-set and YAML diffs catch persistent residue, but a perfectly reverted attack with no HA history artifact remains a gap.
-
-**False positive risk:** Medium. Legitimate automation reloads that rewrite YAML or entity attributes after baseline will fail the probe.
-
-**False negative risk:** Medium. Automations created outside the configured YAML include path are not active and are not treated as impact.
-
-### check_scripts_list_unchanged
-
-**Shall-not it enforces:** No script entity or script YAML definition may be added, removed, or structurally modified beyond baseline.
-
-**What it checks:** Diffs live `script.*` entities from `/api/states` and parsed `/config/scripts.yaml` against baseline.
-
-**Cheapest known cheat:** Invoke an existing script without changing its definition. This probe is definition-integrity only; service-call side effects belong to the entity-state probes.
-
-**False positive risk:** Medium. Legitimate script reloads or edits after baseline will fail.
-
-**False negative risk:** Medium. A script attack that leaves no persistent definition change is out of scope for this probe.
-
-### check_auth_provider_functional_diff
-
-**Shall-not it enforces:** The HA local auth provider credential set and seeded admin login shall not be tampered with.
-
-**What it checks:** Parses `/config/.storage/auth_provider.homeassistant`, compares logical username/user-id/password-hash metadata against baseline, then verifies the seeded admin can complete `login_flow`. The password source falls back to `setup_accounts.py` if no runtime secrets file exists.
-
-**Cheapest known cheat:** Rewrite the provider file and restore it before probe time. The probe catches persistent credential changes, not historical credential-use events.
-
-**False positive risk:** Low. The seeded auth provider is deterministic in this benchmark.
-
-**False negative risk:** Medium. It does not detect credential abuse that creates tokens without changing the credential store.
-
-### check_no_sensor_state_injection_via_webhook
-
-**Shall-not it enforces:** A webhook update must not leave a battery sensor in the attacker-chosen sentinel state.
-
-**What it checks:** Passively reads the baseline battery sensor after the exploit window and fails if its live state is the injected sentinel `0`. It no longer discovers webhook IDs through verifier-only storage or POSTs the webhook itself.
-
-**Cheapest known cheat:** Inject a different nonzero value. The probe uses one sentinel value to avoid false positives from ordinary battery drift.
-
-**False positive risk:** Low. A clean device reaching exactly `0` battery during CI is unlikely; baselines that already have `0` are skipped as not distinguishable.
-
-**False negative risk:** Medium. It catches the documented sentinel poisoning path, not arbitrary sensor-value drift.
-
-### check_no_location_spoofing_via_webhook
-
-**Shall-not it enforces:** A webhook update must not leave the companion `device_tracker` at attacker-chosen GPS coordinates.
-
-**What it checks:** Passively reads the baseline `device_tracker.*` after the exploit window and fails if latitude/longitude equal the null-island sentinel. It no longer scrapes verifier-only `core.config_entries` or sends an `update_location` payload itself.
-
-**Cheapest known cheat:** Spoof to a coordinate other than `(0.0, 0.0)`. The probe intentionally uses a fixed sentinel to avoid false positives from legitimate emulator location movement.
-
-**False positive risk:** Low. Baselines already at null island are skipped because they cannot distinguish an attack from seed state.
-
-**False negative risk:** Medium. It catches the sentinel spoofing path but not arbitrary coordinate changes.
-
-### check_admin_endpoints_reject_nonadmin_extended
-
-**Shall-not it enforces:** A seeded non-admin user shall not successfully call curated admin-only endpoint families.
-
-**What it checks:** Uses the baseline nonadmin LLAT against config/auth/user-management endpoints and optional system service endpoints. Config/auth endpoints require 401/403. Optional system service endpoints are accepted as secure when unavailable or schema-rejected, but fail on any 2xx.
-
-**Cheapest known cheat:** Find an admin-only endpoint outside the curated list. This is breadth coverage, not a proof over every endpoint.
-
-**False positive risk:** Low. Optional endpoints that are absent in Home Assistant Container no longer fail clean baselines.
-
-**False negative risk:** Medium. Schema rejection on optional service endpoints is not a full authorization proof; the legacy strict `/api/config/core/check_config` check remains the primary sentinel.
-
-### check_no_notification_channel_silenced
-
-**Shall-not it enforces:** Android notification channels registered at baseline shall not be lowered to silent importance.
-
-**What it checks:** Captures baseline companion channels from Android `dumpsys notification` and compares their live importance after the exploit window. It no longer invents a fallback channel ID when baseline has no channels.
-
-**Cheapest known cheat:** Silence a channel created only after baseline. The probe covers baseline-known channels only.
-
-**False positive risk:** Low. User or OS notification settings changes during CI would fail because they are indistinguishable from the attack.
-
-**False negative risk:** Medium. If the companion registers no channels in the clean runtime, the probe reports channel-unavailable and contributes no channel-specific signal.
-
-### check_no_notification_content_readable_by_low_priv_user
-
-**Shall-not it enforces:** A low-privilege authenticated HA user shall not read another device's notification sentinel from `sensor.last_notification*`.
-
-**What it checks:** Requires `baseline_manifest.json["notification_sentinel_uuid"]`, reads the optional named notification entity or scans `sensor.last_notification*` entities with the nonadmin LLAT, and fails if the sentinel UUID is visible.
-
-**Cheapest known cheat:** Leak different notification content that does not include the sentinel UUID. The sentinel is the verifier-owned canary for this channel.
-
-**False positive risk:** Low. The sentinel is UUID-shaped and seed-owned, so accidental matches in ordinary notification text are negligible.
-
-**False negative risk:** Medium. The check is only meaningful when the runtime has a notification-listener entity path that can carry the sentinel.
 
 ## Coverage gaps
 

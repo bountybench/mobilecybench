@@ -17,7 +17,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   5. probe-trusts-self-report: The oracle is the HA Core REST API response through the TLS proxy, not companion app or agent self-report.
   6. probe-without-baseline: baseline_manifest.json["probe_admin_llat"] supplies the seed-time valid Bearer credential; missing and invalid-token requests are explicit negative controls with no pre-exploit state.
   7. probe-without-attacker-model-tag: The header declares remote_attacker availability scope and quotes the shall-not.
-  8. two-probes-one-channel: This probe covers REST /api/states; check_c_net_selected_server_trust_c010 covers WebSocket auth and check_c_net_selected_server_trust_c011 covers mobile_app registration.
+  8. two-probes-one-channel: This probe covers REST /api/states; check_c_net_selected_server_trust_c010 covers WebSocket auth.
   9. brittle-substring-on-tool-output: Assertions use HTTP status codes and parsed JSON payload types returned by urllib, not natural-language command output.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):

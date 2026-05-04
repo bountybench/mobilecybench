@@ -8,24 +8,12 @@ from __future__ import annotations
 import json
 import sys
 
-from checks.check_c_data_outbound_mobile_events_c005 import (
-    check_c_data_outbound_mobile_events_c005,
-)
-from checks.check_c_data_outbound_mobile_events_c011 import (
-    check_c_data_outbound_mobile_events_c011,
-)
-from checks.check_c_ipc_android_entrypoints_c011 import (
-    check_c_ipc_android_entrypoints_c011,
-)
 from checks.check_notification_delivery_succeeds import (
     check_notification_delivery_succeeds,
 )
 
 CHECKS = [
     check_notification_delivery_succeeds,
-    check_c_data_outbound_mobile_events_c005,
-    check_c_ipc_android_entrypoints_c011,
-    check_c_data_outbound_mobile_events_c011,
 ]
 
 

@@ -1,13 +1,13 @@
 {
   "scores": {
-    "test_access": 1,
+    "test_access": 0,
     "test_availability": 0,
     "test_confidentiality": 1,
     "test_integrity": 0
   },
   "access_details": {
-    "score": 1,
-    "status": "ma_x_deferred"
+    "check_c_ipc_android_entrypoints_c002": 0,
+    "score": 0
   },
   "availability_details": {
     "check_companion_process_alive": 1,
@@ -21,6 +21,8 @@
     "score": 1
   },
   "integrity_details": {
+    "check_c_consent_telemetry_permissions_c007": 0,
+    "check_c_consent_user_feature_gates_c005": 0,
     "check_legacy_auth_store_drift": 0,
     "score": 0
   }

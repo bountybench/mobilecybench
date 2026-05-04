@@ -20,62 +20,11 @@ from checks.check_auth_provider_functional_diff import (  # noqa: E402
 from checks.check_automations_list_unchanged import (  # noqa: E402
     check_automations_list_unchanged,
 )
-from checks.check_c_consent_telemetry_permissions_c001 import (  # noqa: E402
-    check_c_consent_telemetry_permissions_c001,
-)
-from checks.check_c_consent_telemetry_permissions_c002 import (  # noqa: E402
-    check_c_consent_telemetry_permissions_c002,
-)
-from checks.check_c_consent_telemetry_permissions_c004 import (  # noqa: E402
-    check_c_consent_telemetry_permissions_c004,
-)
-from checks.check_c_consent_telemetry_permissions_c005 import (  # noqa: E402
-    check_c_consent_telemetry_permissions_c005,
-)
 from checks.check_c_consent_telemetry_permissions_c010 import (  # noqa: E402
     check_c_consent_telemetry_permissions_c010,
 )
-from checks.check_c_consent_telemetry_permissions_c011 import (  # noqa: E402
-    check_c_consent_telemetry_permissions_c011,
-)
-from checks.check_c_data_outbound_mobile_events_c001 import (  # noqa: E402
-    check_c_data_outbound_mobile_events_c001,
-)
-from checks.check_c_data_outbound_mobile_events_c002 import (  # noqa: E402
-    check_c_data_outbound_mobile_events_c002,
-)
-from checks.check_c_data_outbound_mobile_events_c003 import (  # noqa: E402
-    check_c_data_outbound_mobile_events_c003,
-)
-from checks.check_c_data_outbound_mobile_events_c004 import (  # noqa: E402
-    check_c_data_outbound_mobile_events_c004,
-)
-from checks.check_c_exec_webview_network_code_c001 import (  # noqa: E402
-    check_c_exec_webview_network_code_c001,
-)
-from checks.check_c_exec_webview_network_code_c005 import (  # noqa: E402
-    check_c_exec_webview_network_code_c005,
-)
-from checks.check_c_exec_webview_network_code_c006 import (  # noqa: E402
-    check_c_exec_webview_network_code_c006,
-)
-from checks.check_c_exec_webview_network_code_c007 import (  # noqa: E402
-    check_c_exec_webview_network_code_c007,
-)
-from checks.check_c_exec_webview_network_code_c012 import (  # noqa: E402
-    check_c_exec_webview_network_code_c012,
-)
-from checks.check_c_ffi_native_bridge_c003 import (  # noqa: E402
-    check_c_ffi_native_bridge_c003,
-)
 from checks.check_c_net_selected_server_trust_c005 import (  # noqa: E402
     check_c_net_selected_server_trust_c005,
-)
-from checks.check_c_net_selected_server_trust_c006 import (  # noqa: E402
-    check_c_net_selected_server_trust_c006,
-)
-from checks.check_c_persist_files_cert_server_state_c005 import (  # noqa: E402
-    check_c_persist_files_cert_server_state_c005,
 )
 from checks.check_no_location_spoofing_via_webhook import (  # noqa: E402
     check_no_location_spoofing_via_webhook,
@@ -101,25 +50,8 @@ CHECKS = [
     check_no_sensor_state_injection_via_webhook,
     check_no_location_spoofing_via_webhook,
     check_scripts_list_unchanged,
-    check_c_exec_webview_network_code_c001,
-    check_c_ffi_native_bridge_c003,
-    check_c_exec_webview_network_code_c006,
-    check_c_exec_webview_network_code_c005,
-    check_c_exec_webview_network_code_c007,
-    check_c_consent_telemetry_permissions_c001,
-    check_c_consent_telemetry_permissions_c002,
-    check_c_data_outbound_mobile_events_c003,
-    check_c_data_outbound_mobile_events_c004,
     check_c_net_selected_server_trust_c005,
-    check_c_consent_telemetry_permissions_c004,
-    check_c_consent_telemetry_permissions_c005,
     check_c_consent_telemetry_permissions_c010,
-    check_c_consent_telemetry_permissions_c011,
-    check_c_data_outbound_mobile_events_c001,
-    check_c_data_outbound_mobile_events_c002,
-    check_c_exec_webview_network_code_c012,
-    check_c_net_selected_server_trust_c006,
-    check_c_persist_files_cert_server_state_c005,
 ]
 
 
