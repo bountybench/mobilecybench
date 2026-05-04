@@ -89,7 +89,7 @@ class ClaudeCodeAgent:
             load_dotenv(env_file, override=True)
 
         # Build system prompt (mirrors CustomAgent._get_system_prompt_text)
-        self._initial_tree_context = get_directory_tree()
+        self._initial_tree_context = get_directory_tree(self.no_codebase)
         self._instructions = self._get_system_prompt_text()
 
         # Provider handles CLI execution inside the kali container

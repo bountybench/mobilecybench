@@ -71,6 +71,14 @@ class TestCreateWorkflow:
         """RedTeamWorkflow is created when config.workflow == 'redteam'."""
         from workflows import RedTeamWorkflow
 
+        # Bundle now owns attacker_model — seed task metadata.json so workflow
+        # init can read it.
+        task_dir = tmp_path / "zerodays" / "reports" / "test_app" / "report-0" / "task"
+        task_dir.mkdir(parents=True)
+        (task_dir / "metadata.json").write_text(
+            json.dumps({"attacker_model": "malicious_app"})
+        )
+
         rt_config = RunnerConfig(
             **{
                 **base_config.model_dump(),
@@ -577,6 +585,57 @@ class TestReplayMetadataOverride:
             "task": None,
             "synthetic_vuln_id": "vuln_7",
             "attacker_model": "malicious_app",
+        }
+
+    def test_redteam_replay_clears_stale_probe_only_flag(self, base_config, tmp_path):
+        """Operator's current config may carry probe_only=True (their last
+        run) while replaying a two-phase saved run. The replay-validation
+        bypass in models/config.py would otherwise let probe_only=True
+        survive into resolve_bundle, which routes on probe_only first and
+        would silently return ProbeOnlyBundle — converting a two-phase
+        replay into probe-only with no warning. Force probe_only=False
+        for any accepted replay source (resolve_replay_source already
+        rejects probe-only snapshots upstream)."""
+        # probe_only is redteam-only; the realistic scenario is the operator's
+        # current (saved) config is a redteam probe-only run, then they
+        # invoke replay against an unrelated two-phase artifact.
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "task": None,
+                "synthetic_vuln_id": None,
+                "attacker_model": "malicious_app",
+                "probe_only": True,  # stale from a prior probe-only run
+                "replay_run": "logs/exp-3",
+            }
+        )
+        replay = ExploitSource(
+            kind="replay",
+            source_dir=tmp_path / "logs" / "exp-3" / "agent_exploit",
+            app_name="testapp",
+            workflow="redteam",
+            task="report-5",
+            synthetic_vuln_id=None,
+            attacker_model="remote_attacker",
+        )
+        captured = {}
+
+        def spy(cfg, app_name, project_root):
+            captured["probe_only"] = cfg.probe_only
+            captured["task"] = cfg.task
+            captured["attacker_model"] = cfg.attacker_model
+            raise RuntimeError("stop before workflow setup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", side_effect=spy
+        ):
+            run(config, "testapp", tmp_path, exploit_source=replay)
+
+        assert captured == {
+            "probe_only": False,
+            "task": "report-5",
+            "attacker_model": "remote_attacker",
         }
 
 

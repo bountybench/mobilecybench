@@ -1,0 +1,20 @@
+# Force LF line endings on text files that run inside Linux containers
+# (exploit.sh, prepare_app.sh, verify_files/*, etc.). Without this, Windows
+# contributors with the default `core.autocrlf=true` get CRLF on checkout,
+# which breaks bash inside the Linux exploit container with cryptic errors
+# like `$'\r': command not found` and `cannot open '/path\r/file.py\r'`.
+#
+# Linux/macOS contributors are not affected — git treats LF as native and
+# `text eol=lf` is a no-op there.
+#
+# Scope: every file extension below is something we expect to execute (or be
+# imported into something that executes) inside a Linux container or on a
+# Linux-side adb shell. Project-internal docs (.md) intentionally omitted —
+# they're read by editors that handle either ending.
+*.sh    text eol=lf
+*.bash  text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+Dockerfile* text eol=lf
+gradlew text eol=lf

@@ -79,7 +79,7 @@ Once the smoke-test passes, do a one-iteration real run to exercise the agent lo
 
 ```bash
 # Set max_iterations: 1 in runner_config.json (keep dry_run: false), then:
-python runner.py conversations
+python runner.py owncloud-android
 ```
 
 Open `logs/latest/conversation.jsonl` and confirm the single turn has non-empty `assistant_text` (or `reasoning_summary`) and at least one tool call.
