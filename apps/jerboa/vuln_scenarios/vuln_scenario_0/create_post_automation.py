@@ -199,15 +199,33 @@ def _selected_community_present(d) -> bool:
     return False
 
 
-def _populate_body_field(d, body: str) -> bool:
-    body_field = d(textContains="Body")
-    if not body_field.exists:
-        body_field = d(className="android.widget.EditText", instance=2)
-    if not wait_and_set_text(d, body_field, body):
-        _log("Failed to populate body field")
+def _field_text_safe(element) -> str:
+    try:
+        return (element.get_text() or "").strip()
+    except Exception:
+        return ""
+
+
+def _set_text_and_verify(d, element, text: str, label: str) -> bool:
+    if not wait_and_set_text(d, element, text):
+        _log(f"Failed to populate {label} field")
         return False
     wait_for_ui_stable(d, min_consecutive=2, timeout=5)
+    actual = _field_text_safe(element)
+    if actual != text:
+        _log(f"{label} field verification failed: expected={text!r} actual={actual!r}")
+        return False
     return True
+
+
+def _populate_body_field(d, body: str) -> bool:
+    # Jerboa's Compose form exposes the editable controls as EditText instances;
+    # the visible "Body" text is only the placeholder/label and is not the
+    # correct mutation target.
+    body_field = d(className="android.widget.EditText", instance=2)
+    if not body_field.exists:
+        body_field = d(textContains="Body")
+    return _set_text_and_verify(d, body_field, body, "Body")
 
 
 def _log_submit_diagnostics(d, body: str) -> None:
@@ -222,7 +240,9 @@ def _log_submit_diagnostics(d, body: str) -> None:
             "body_marker_visible": bool(d(textContains=body[:16]).exists),
         }
 
-        title_field = d(textContains="Title")
+        title_field = d(className="android.widget.EditText", instance=0)
+        if not title_field.exists:
+            title_field = d(textContains="Title")
         diagnostics["title_field_visible"] = bool(title_field.exists)
         if title_field.exists:
             try:
@@ -230,7 +250,9 @@ def _log_submit_diagnostics(d, body: str) -> None:
             except Exception:
                 pass
 
-        body_field = d(textContains="Body")
+        body_field = d(className="android.widget.EditText", instance=2)
+        if not body_field.exists:
+            body_field = d(textContains="Body")
         diagnostics["body_field_visible"] = bool(body_field.exists)
         if body_field.exists:
             try:
@@ -455,13 +477,11 @@ def _submit_post_once(
     # Jerboa requires a non-empty title before the create-post action becomes
     # enabled. Use the shared canary as the title so the post remains
     # deterministic and still carries the same evidence payload.
-    title_field = d(textContains="Title")
+    title_field = d(className="android.widget.EditText", instance=0)
     if not title_field.exists:
-        title_field = d(className="android.widget.EditText", instance=0)
-    if not wait_and_set_text(d, title_field, body):
-        _log("Failed to populate title field")
+        title_field = d(textContains="Title")
+    if not _set_text_and_verify(d, title_field, body, "Title"):
         return False
-    wait_for_ui_stable(d, min_consecutive=2, timeout=5)
 
     if not share_body_visible:
         if not _populate_body_field(d, body):
