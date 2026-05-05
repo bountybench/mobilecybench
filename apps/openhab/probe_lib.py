@@ -27,7 +27,12 @@ from xml.etree import ElementTree as ET
 APP_DIR = Path(__file__).resolve().parent
 PACKAGE_NAME = "org.openhab.habdroid"
 APP_PACKAGE = PACKAGE_NAME
-ATTACKER_PACKAGE = "dev.mobilecybench.openhab.attacker"
+EVAL_EXPLOIT_PACKAGE = "com.mobilecybench.exploit"
+EVAL_EXPLOIT_EVIDENCE_DEVICE_DIR = f"/sdcard/Android/data/{EVAL_EXPLOIT_PACKAGE}/files"
+HYDRATION_ATTACKER_PACKAGE = "dev.mobilecybench.openhab.attacker"
+# Backwards-compatible hydration alias. Scored malicious-app checks should use
+# EVAL_EXPLOIT_PACKAGE or replay evidence instead of this substrate package.
+ATTACKER_PACKAGE = HYDRATION_ATTACKER_PACKAGE
 OPENHAB_BASE_URL = "http://localhost:8080"
 OPENHAB_CONTAINER = "openhab"
 MOSQUITTO_CONTAINER = "mosquitto"

@@ -28,7 +28,8 @@ STATE_DIR = APP_DIR / "pipeline" / "stage3"
 MANIFEST_OUT = STATE_DIR / "hydration_manifest.json"
 STATUS_PATH = STATE_DIR / "hydration_status.json"
 APP_PACKAGE = "org.openhab.habdroid"
-ATTACKER_PACKAGE = "dev.mobilecybench.openhab.attacker"
+EVAL_EXPLOIT_PACKAGE = "com.mobilecybench.exploit"
+HYDRATION_ATTACKER_PACKAGE = "dev.mobilecybench.openhab.attacker"
 SERVER_URL = "http://localhost:8080"
 EMULATOR_SERVER = "http://10.0.2.2:8080"
 SITEMAP_PATH = APP_DIR / "openhab_conf" / "sitemaps" / "home.sitemap"
@@ -1734,8 +1735,8 @@ def ensure_malicious_substrate(check=False):
         state = load_json(state_path)
         if not state or state.get("run_id") != run_id():
             raise HydrationError("malicious_app_state.json missing or run_id mismatch")
-        if not package_installed(ATTACKER_PACKAGE):
-            raise HydrationError("attacker package not installed")
+        if not package_installed(HYDRATION_ATTACKER_PACKAGE):
+            raise HydrationError("hydration attacker package not installed")
         log("06 skipped: already seeded")
         return
 
@@ -1802,10 +1803,13 @@ def ensure_malicious_substrate(check=False):
         state_path,
         {
             "run_id": rid,
-            "package": ATTACKER_PACKAGE,
+            "package": HYDRATION_ATTACKER_PACKAGE,
+            "hydration_attacker_package": HYDRATION_ATTACKER_PACKAGE,
+            "evaluation_exploit_package": EVAL_EXPLOIT_PACKAGE,
+            "role": "hydration_substrate_not_evaluation_exploit",
             "apk_path": rel(apk_path),
             "apk_sha256": apk_hash,
-            "requested_permissions": requested_permissions(ATTACKER_PACKAGE),
+            "requested_permissions": requested_permissions(HYDRATION_ATTACKER_PACKAGE),
             "target_requested_permissions": requested_permissions(APP_PACKAGE),
             "fake_endpoint_strategy": endpoints.get(
                 "fake_endpoint_strategy", "not_recorded"
@@ -2007,7 +2011,9 @@ def write_manifest(check=False):
         "items": load_json(STATE_DIR / "items.json", {}).get("items", []),
         "android": {
             "target_package": APP_PACKAGE,
-            "attacker_package": ATTACKER_PACKAGE,
+            "attacker_package": HYDRATION_ATTACKER_PACKAGE,
+            "hydration_attacker_package": HYDRATION_ATTACKER_PACKAGE,
+            "evaluation_exploit_package": EVAL_EXPLOIT_PACKAGE,
             "configured_server": EMULATOR_SERVER,
             "fake_endpoint_strategy": endpoints.get(
                 "fake_endpoint_strategy", "adb_hosts_or_host_lan_ip"
@@ -2128,8 +2134,8 @@ def unhydrate(_check=False):
             report["removed"].append("mqtt_retained_sentinel")
 
     if adb_devices():
-        adb("uninstall", ATTACKER_PACKAGE, check=False)
-        report["removed"].append(f"android_package:{ATTACKER_PACKAGE}")
+        adb("uninstall", HYDRATION_ATTACKER_PACKAGE, check=False)
+        report["removed"].append(f"android_package:{HYDRATION_ATTACKER_PACKAGE}")
         if rid:
             adb(
                 "shell",

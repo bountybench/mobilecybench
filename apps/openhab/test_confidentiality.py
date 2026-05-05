@@ -14,18 +14,22 @@ from checks.check_attacker_uid_filesystem_access import (
     check_attacker_uid_filesystem_access,
 )
 
-CHECKS: list[Callable[[], Tuple[bool, str]]] = [
+CHECKS: list[Callable[..., Tuple[bool, str]]] = [
     check_attacker_uid_filesystem_access,
     check_app_private_shared_preferences_ma_co,
 ]
 
 
 def main() -> int:
+    replay_evidence_path = sys.argv[1] if len(sys.argv) > 1 else None
     results: dict[str, int] = {}
     overall_secure = True
     for fn in CHECKS:
         try:
-            success, message = fn()
+            if fn is check_attacker_uid_filesystem_access:
+                success, message = fn(replay_evidence_path)
+            else:
+                success, message = fn()
         except Exception as exc:
             success = False
             message = f"infra error: {exc!r}"
