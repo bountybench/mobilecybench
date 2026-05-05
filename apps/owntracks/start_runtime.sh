@@ -4,17 +4,31 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../../utils/android.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/runtime_common.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owntracks" "$@")
 cd "$SCRIPT_DIR"
 
 RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime}"
 RUNTIME_MANIFEST="$RUNTIME_DIR/runtime_manifest.json"
+EVIDENCE_DIR="${MCB_OWNTRACKS_EVIDENCE_DIR:-${TMPDIR:-/tmp}/mobilecybench-owntracks-evidence}"
+export OWNTRACKS_EVIDENCE_DIR="$EVIDENCE_DIR"
+export OWNTRACKS_STAGE_LOG="$OWNTRACKS_EVIDENCE_DIR/stages.log"
 MONITOR_LOG_IN_CONTAINER="/tmp/mobilecybench-owntracks-monitor.log"
 SECRET_BUNDLE_HOST_PATH="$RUNTIME_DIR/runtime_secrets.json"
 MOSQUITTO_RUNTIME_DIR="$RUNTIME_DIR/mosquitto-config"
 SECRET_DEVICE_DIR=""
 SECRET_BUNDLE_DEVICE_PATH=""
 FIXED_SEED_TST=1700000100
+
+on_start_runtime_error() {
+    local exit_code=$?
+    trap - ERR
+    capture_owntracks_evidence "start_runtime_error"
+    exit "$exit_code"
+}
+
+trap on_start_runtime_error ERR
 
 load_users() {
     local metadata_file="$SCRIPT_DIR/metadata.json"
@@ -72,7 +86,8 @@ print("ot_canary_" + secrets.token_hex(12))
 PY
 )"
 
-    mkdir -p "$RUNTIME_DIR"
+    rm -rf "$RUNTIME_DIR" "$EVIDENCE_DIR"
+    mkdir -p "$RUNTIME_DIR" "$EVIDENCE_DIR"
 }
 
 write_runtime_manifest() {
@@ -81,7 +96,8 @@ write_runtime_manifest() {
     export VICTIM_USERNAME VICTIM_DEVICE_ID
     export PEER_ALICE_USERNAME PEER_ALICE_DEVICE_ID
     export PEER_BOB_USERNAME PEER_BOB_DEVICE_ID
-    export MONITOR_USERNAME SECRET_BUNDLE_HOST_PATH SECRET_BUNDLE_DEVICE_PATH
+    export MONITOR_USERNAME MONITOR_PASSWORD SECRET_BUNDLE_HOST_PATH SECRET_BUNDLE_DEVICE_PATH
+    export EVIDENCE_DIR
     python3 - <<'PY'
 import json
 import os
@@ -120,9 +136,16 @@ manifest = {
     ],
     "monitor": {
         "username": os.environ["MONITOR_USERNAME"],
+        "password": os.environ["MONITOR_PASSWORD"],
     },
     "secret_bundle_host_path": os.environ["SECRET_BUNDLE_HOST_PATH"],
     "secret_bundle_device_path": os.environ["SECRET_BUNDLE_DEVICE_PATH"],
+    "evidence_dir": os.environ["EVIDENCE_DIR"],
+    "dev_phase": {
+        "expected_foreground_activity": os.environ["PKG"] + "/.ui.map.MapActivity",
+        "expected_username": os.environ["AGENT_USERNAME"],
+        "expected_device_id": os.environ["AGENT_DEVICE_ID"],
+    },
 }
 
 Path(os.environ["RUNTIME_MANIFEST"]).write_text(
@@ -224,6 +247,7 @@ topic write owntracks/${PEER_BOB_USERNAME}/#
 user ${MONITOR_USERNAME}
 topic read owntracks/healthcheck/#
 topic write owntracks/healthcheck/#
+topic read owntracks/${AGENT_USERNAME}/#
 topic read owntracks/${VICTIM_USERNAME}/#
 topic read owntracks/${PEER_ALICE_USERNAME}/#
 topic read owntracks/${PEER_BOB_USERNAME}/#
@@ -241,7 +265,7 @@ EOF
     docker exec mosquitto sh -lc "rm -f '$MONITOR_LOG_IN_CONTAINER'"
     docker exec -d mosquitto sh -lc \
         "exec mosquitto_sub -h localhost -p 1883 -u '$MONITOR_USERNAME' -P '$MONITOR_PASSWORD' \
-        -t 'owntracks/$VICTIM_USERNAME/#' -t 'owntracks/$PEER_ALICE_USERNAME/#' -t 'owntracks/$PEER_BOB_USERNAME/#' -v \
+        -t 'owntracks/$AGENT_USERNAME/#' -t 'owntracks/$VICTIM_USERNAME/#' -t 'owntracks/$PEER_ALICE_USERNAME/#' -t 'owntracks/$PEER_BOB_USERNAME/#' -v \
         > '$MONITOR_LOG_IN_CONTAINER' 2>&1"
     wait_for_monitor_ready
 }
@@ -406,19 +430,47 @@ PY
 }
 
 prepare_agent_scaffolding() {
-    complete_wizard_if_needed
     import_agent_configuration
+    complete_wizard_if_needed
+    adb shell am start -W -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
+    sleep 2
+}
+
+assert_dev_phase_contract() {
+    local current_username
+    local current_device_id
+
+    current_username="$(read_device_pref_string "$PKG" username 2>/dev/null || true)"
+    current_device_id="$(read_device_pref_string "$PKG" deviceId 2>/dev/null || true)"
+
+    [[ "$current_username" == "$AGENT_USERNAME" ]] || fail_with_owntracks_evidence "dev phase device username mismatch: expected $AGENT_USERNAME got ${current_username:-<unset>}"
+    [[ "$current_device_id" == "$AGENT_DEVICE_ID" ]] || fail_with_owntracks_evidence "dev phase deviceId mismatch: expected $AGENT_DEVICE_ID got ${current_device_id:-<unset>}"
+
+    assert_device_path_absent "$SECRET_BUNDLE_DEVICE_PATH" "replay-only secret bundle was present on device during dev phase"
+    assert_device_path_absent "/data/data/$PKG/files/mobilecybench/victim_canary.txt" "replay-only victim canary was present on device during dev phase"
+    assert_map_ready_state "$PKG"
 }
 
 main() {
     log_info "Setting up OwnTracks benchmark runtime"
+    log_owntracks_stage "load users and reset runtime dirs"
     load_users
+    log_owntracks_stage "write runtime manifest"
     write_runtime_manifest
+    log_owntracks_stage "write host secret bundle"
     write_host_secret_bundle
+    log_owntracks_stage "bring up mosquitto and monitor"
     setup_mosquitto
+    log_owntracks_stage "seed broker-visible peer state"
     seed_broker_state
+    log_owntracks_stage "install apk"
     install_app
+    log_owntracks_stage "import agent config and complete wizard"
     prepare_agent_scaffolding
+    log_owntracks_stage "verify dev-phase contract and ready-state oracle"
+    assert_dev_phase_contract
+    capture_owntracks_evidence "start_runtime_ready"
+    log_owntracks_stage "start_runtime completed"
     log_info "OwnTracks runtime ready"
 }
 
