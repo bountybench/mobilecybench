@@ -785,7 +785,30 @@ def check_unregister_delete(ctx: ProbeContext) -> tuple[bool, dict[str, Any]]:
     detail: dict[str, Any] = {}
     baseline_up = load_up_baseline_signatures()
     if not baseline_up:
+        # Score-neutral SKIP. The check compares the post-baseline UnifiedPush
+        # subscription set against a UP baseline signature snapshot at
+        # probe_state/outbound_broadcasts/up_registration_baseline.json. No
+        # component under apps/ntfy-android/* writes that file (verified:
+        # grep for 'up_registration_baseline' returns only the probe-side
+        # READERS in test_availability.py and test_access_control.py).
+        # Without the baseline, every fail branch is unreachable and we
+        # explicitly skip rather than default-pass.
+        log(
+            "SKIP check_unifiedpush_unregister_delete: missing baseline file "
+            "probe_state/outbound_broadcasts/up_registration_baseline.json "
+            "(no producer wired in apps/ntfy-android/*); without baseline UP "
+            "signatures the missing-row diff is undefined."
+        )
         detail["status"] = "no_up_baseline_snapshot_skipped"
+        detail["skipped"] = True
+        detail["missing_baseline_paths"] = [
+            "probe_state/outbound_broadcasts/up_registration_baseline.json",
+            f"{APP_DIR}/probe_state/outbound_broadcasts/up_registration_baseline.json",
+        ]
+        detail["missing_hook"] = (
+            "no producer wired for up_registration_baseline.json "
+            "-- needs a hydration step that snapshots the post-baseline UP signature set"
+        )
         return True, detail
 
     try:

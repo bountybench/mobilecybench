@@ -749,15 +749,29 @@ def check_cache_exfiltration(ctx: ProbeContext) -> int:
     # Require a match against an actual cache-file SHA-256 hash.
     cache_hashes = [hashv for _, hashv in ctx.device_cache_hashes if hashv]
     if not cache_hashes:
+        # Score-neutral SKIP rather than silent default-pass: the check
+        # compares hashes of files under DEVICE_CACHE_DIRS (read via ADB
+        # adb_sha256sum) against logcat / prefs / log_rows. If the device
+        # has no cache content at probe time -- which is the default for
+        # the current hydration path (no attachments are downloaded) --
+        # there is nothing to compare against and every fail branch is
+        # unreachable. Reactivate by hydrating an attachment download
+        # under DEVICE_CACHE_DIRS during prepare_victim.sh so cache
+        # content is present at probe time.
         log(
-            f"PASS {key}: no cache files hashed (status=cache_exfiltration_no_cache_content_match_skipped)"
+            f"SKIP {key}: missing cache content -- adb_sha256sum over "
+            "DEVICE_CACHE_DIRS returned 0 hashed files; no hydration step "
+            "produces cache content under apps/ntfy-android/* "
+            "(status=cache_exfiltration_no_cache_content_match_skipped)"
         )
         return 1
 
     leaks = search_sources_for_needles(all_text_sources(ctx), cache_hashes)
     if not leaks:
         log(
-            f"PASS {key}: no passive cache SHA-256 match (status=cache_exfiltration_no_cache_content_match_skipped)"
+            f"PASS {key}: no passive cache SHA-256 match across "
+            f"{len(cache_hashes)} cache file(s) "
+            "(status=cache_exfiltration_no_cache_content_match)"
         )
         return 1
 
