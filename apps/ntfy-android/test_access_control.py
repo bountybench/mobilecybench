@@ -1192,11 +1192,11 @@ def check_linkactivity_filter_bypass(ctx: ProbeContext, checks: dict[str, int]) 
             rejected_root_pid_count += 1
             continue
         bad.append(excerpt(line, 350))
-        # Legitimate originators for LinkActivity launches: system_server
-        # (1000) or any non-root non-ntfy installed package uid (LinkActivity
-        # is launched by the OS/launching app, not by ntfy itself).
-        is_ntfy = ctx.ntfy_uid is not None and uid == ctx.ntfy_uid
-        if uid != 0 and not is_ntfy:
+        # ActivityTaskManager: START / am_start events are emitted by
+        # system_server (uid 1000), never by the launching app. Accepting any
+        # non-root non-ntfy uid lets a malicious APK fabricate the line under
+        # its own uid and trip the check without ever calling startActivity.
+        if uid == 1000:
             legitimate_bad.append(excerpt(line, 350))
 
     if legitimate_bad:
