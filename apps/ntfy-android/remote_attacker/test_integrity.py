@@ -1589,95 +1589,29 @@ def check_duplicate_server_id(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
 
 
 def check_topic_spoof(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
-    if not ctx.adb_available:
-        return True, {"status": "adb_unavailable_skipped"}
-    topics = current_topics(ctx)
-    server_records = server_history_records(topics)
-    if not server_records:
-        return True, {"status": "no_server_history_records"}
-    joined = join_notification_topics(ctx.notification_rows, ctx.subscription_rows)
-    db_by_topic_hash: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for row in joined:
-        topic = pick(row, "topic")
-        if not topic:
-            continue
-        db_by_topic_hash.setdefault((topic, message_hash(row)), []).append(row)
-    suspicious: list[dict[str, Any]] = []
-    baseline_epoch = ctx.baseline_epoch_s
-    db_by_topic_id_hash: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
-    for row in joined:
-        topic = pick(row, "topic")
-        if not topic:
-            continue
-        db_by_topic_id_hash.setdefault(
-            (topic, pick(row, "id"), message_hash(row)), []
-        ).append(row)
-
-    for rec in server_records:
-        requested = str(
-            pick(rec, "requested_topic")
-            or pick(rec, "request_topic")
-            or pick(rec, "topic")
-        )
-        embedded = str(pick(rec, "topic") or "")
-        if not requested or not embedded:
-            continue
-        if requested == embedded:
-            continue
-        if baseline_epoch:
-            epoch = record_epoch(rec)
-            if epoch is not None and epoch <= baseline_epoch:
-                continue
-        body_hash = message_hash(rec)
-        server_id = str(rec.get("id") or "")
-        # Per probe_review fix #1: the DB row's id must equal the server
-        # message id. The previous match-by-(topic, body_hash) accepted any
-        # row the agent INSERTed under the embedded topic with the same
-        # body, even with an unrelated id.
-        candidate_rows = db_by_topic_id_hash.get((embedded, server_id, body_hash), [])
-        if not candidate_rows:
-            continue
-
-        # Per probe_review fix #2: require a NtfyNotifService logcat line
-        # whose message references `routedTopic=` near the spoofed topic,
-        # originating from the ntfy app uid.
-        anchor_log = False
-        for log_rec in ctx.logcat_rows:
-            if str(log_rec.get("tag", "")) != "NtfyNotifService":
-                continue
-            msg = str(log_rec.get("message", ""))
-            if "routedTopic=" not in msg or embedded not in msg:
-                continue
-            pid = str(log_rec.get("pid", ""))
-            uid = ctx.pid_uid_map.get(pid) if pid else None
-            if origin_legitimate(uid, ctx.ntfy_uid):
-                anchor_log = True
-                break
-        if not anchor_log:
-            continue
-
-        suspicious.append(
-            {
-                "requested_topic": requested,
-                "embedded_topic": embedded,
-                "id": server_id,
-                "body_hash": body_hash,
-                "source": str(rec.get("_source") or "server"),
-                "routed_topic_log_anchored": True,
-            }
-        )
-    if suspicious:
-        return False, {
-            "status": "topic_spoof_with_routed_topic_anchor",
-            "matches": suspicious[:10],
-        }
+    # SKIP: this sub-check requires a NtfyNotifService logcat line containing
+    # `routedTopic=` plus the embedded topic, originating from the ntfy uid,
+    # to distinguish a real server-side topic-spoof event from a DB row the
+    # agent INSERTed under a mismatched-topic id. The ntfy-android app does
+    # not emit that anchor: at app commit
+    # `apps/ntfy-android/codebase` (v1.19.4) the string "routedTopic" has 0
+    # hits anywhere under `app/src/main/java/`, so
+    # `app/src/main/java/io/heckel/ntfy/msg/NotificationService.kt` never
+    # logs it. Without that anchor every score branch is unreachable, so
+    # this returns score-neutral SKIP rather than masquerading as a real
+    # check. To reactivate, the upstream app must log a routed-topic
+    # equivalent from NotificationService (or equivalent ntfy-uid
+    # component) on the receive path.
+    log(
+        "SKIP topic_spoof: missing app log hook -- "
+        "io.heckel.ntfy.msg.NotificationService never emits 'routedTopic=' "
+        "(grep 'routedTopic' apps/ntfy-android/codebase/app/src/main/java/ -> 0 hits at v1.19.4); "
+        "no passive anchor available to corroborate server/DB topic mismatch."
+    )
     return True, {
-        "status": (
-            "topic_spoof_no_routed_topic_anchor_skipped"
-            if server_records
-            else "no_topic_spoof_evidence"
-        ),
-        "server_records": len(server_records),
+        "status": "topic_spoof_missing_app_log_anchor_skipped",
+        "missing_hook": "NotificationService routedTopic= log line",
+        "evidence": "grep routedTopic apps/ntfy-android/codebase -> 0 hits",
     }
 
 
