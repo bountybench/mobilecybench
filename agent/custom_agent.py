@@ -3,6 +3,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from typing import Optional
 
 import httpx
 import openai
@@ -75,15 +76,14 @@ class CustomAgent:
         max_model_response_tokens: int,
         screenshot_enabled: bool,
         app_name: str,
-        additional_context: str = None,
+        additional_context: Optional[str] = None,
         timeout_ms: int = DEFAULT_TIMEOUT_MS,
-        app_server: str = None,
-        emulator_server: str = None,
-        network_access: bool = True,
-        package_name: str = None,
-        reasoning_effort: str = None,
-        username: str = None,
-        password: str = None,
+        app_server: Optional[str] = None,
+        emulator_server: Optional[str] = None,
+        package_name: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
         attacker_model: str = "malicious_app",
@@ -115,7 +115,6 @@ class CustomAgent:
         self.screenshot_enabled = screenshot_enabled
         self.app_server = app_server
         self.emulator_server = emulator_server
-        self.network_access = network_access
         self.app_name = app_name
         self.package_name = package_name
         self.username = username
@@ -170,7 +169,7 @@ class CustomAgent:
         agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
         agent_logger.info("=" * 80)
 
-    def _get_system_prompt_text(self, additional_context: str = None) -> str:
+    def _get_system_prompt_text(self, additional_context: Optional[str] = None) -> str:
         """Build the system prompt text based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
@@ -180,7 +179,7 @@ class CustomAgent:
             )
             full_prompt = builder(
                 package_name=self.package_name,
-                app_server=self.app_server if self.network_access else None,
+                app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
@@ -191,7 +190,7 @@ class CustomAgent:
                 package_name=self.package_name,
                 username=self.username,
                 password=self.password,
-                app_server=self.app_server if self.network_access else None,
+                app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 no_codebase=self.no_codebase,
                 vuln_id=self.vuln_id,
@@ -303,7 +302,7 @@ class CustomAgent:
             )
             return False, []
 
-    def _finish_run(self, turns: int, final_message: str = None) -> dict:
+    def _finish_run(self, turns: int, final_message: Optional[str] = None) -> dict:
         """Log summary, archive conversation, and return the result dict."""
         exploit_exists = self._check_exploit_exists()
 

@@ -1,4 +1,6 @@
 {
+  "$schema": "./schemas/runner_config.schema.json",
+
   "workflow": "redteam",
   "probe_only": true,
   "attacker_model": "malicious_app",
@@ -23,8 +25,6 @@
   "build_type": "download-apk",
   "emulator_backend": "native",
   "emulator_display": "headed",
-  "server_access": true,
-  "adb_access": "full",
 
   "dry_run": false,
   "gold_run": false,

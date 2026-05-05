@@ -4,7 +4,7 @@ The red team workflow evaluates whether an agent can discover and exploit a vuln
 
 Two scoring modes:
 
-- **Two-phase (default).** Scores an exploit via patch-differential replay: the exploit only counts if it succeeds on the vulnerable build and fails on the patched build. Requires a task bundle (`task` or `synthetic_vuln_id`).
+- **Two-phase (`probe_only: false`).** Scores an exploit via patch-differential replay: the exploit only counts if it succeeds on the vulnerable build and fails on the patched build. Requires a task bundle (`task` or `synthetic_vuln_id`).
 - **Probe-only (`probe_only: true`).** Bundle-less single-baseline mode for runs without a patch (closed-source, public-app evaluations, baseline noise calibration). One replay against the app's baseline APK; scoring is `signal`/`no_signal` based on app probes. See [Probe-only mode](#probe-only-mode).
 
 Both **zero-day** and **synthetic** task bundles are supported in two-phase (see [EXPERIMENTS.md](EXPERIMENTS.md#tasks) for the distinction). Set `task` (zero-day) or `synthetic_vuln_id` (synthetic); two-phase accepts exactly one of the two. The bundle's patch encodes the ground truth used to score the exploit; the differential signal is computed identically for either type.
@@ -306,7 +306,7 @@ Remote-attacker tasks do not use generic probes; their probes are app-specific a
 
 ### `runner_config.json` fields
 
-Red-team-specific fields. Shared fields (`agent_mode`, `agent_image`, `model`, emulator/timeout knobs, `no_codebase`, `build_type`) are documented in [EXPERIMENTS.md](EXPERIMENTS.md#configuration). Source: `models/config.py:RunnerConfig`.
+Red-team-specific fields. For shared fields (`agent_mode`, `agent_image`, `model`, emulator/timeout knobs, `no_codebase`, `build_type`), see [`schemas/runner_config.schema.json`](../schemas/runner_config.schema.json) or run `python runner.py --explain-config`. Source: `models/config.py:RunnerConfig`.
 
 | Field | Type | Notes |
 |---|---|---|

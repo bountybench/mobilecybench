@@ -161,9 +161,7 @@ def _log_experiment_config(
         config.max_iterations,
     )
     logger.info(
-        "Access: adb=%s server_access=%s emulator=%s/%s",
-        config.adb_access,
-        str(config.server_access).lower(),
+        "Emulator: %s/%s",
         config.emulator_backend,
         config.emulator_display,
     )
@@ -495,7 +493,21 @@ def main():
         "--replay-run",
         help="Replay a prior redteam experiment from logs/experiment_<uuid>",
     )
+    parser.add_argument(
+        "--explain-config",
+        action="store_true",
+        help=(
+            "Print the JSON Schema for runner_config.json (field names, "
+            "types, defaults, descriptions) and exit. Same content as "
+            "schemas/runner_config.schema.json; useful for sweep tooling "
+            "or when you do not want to leave the terminal."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.explain_config:
+        print(RunnerConfig.render_json_schema(), end="")
+        return 0
 
     # Load config first so replay_run from JSON is visible to validation.
     config_path = Path(args.config)
