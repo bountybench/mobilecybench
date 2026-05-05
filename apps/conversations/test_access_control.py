@@ -35,19 +35,21 @@ from probe_helpers import (
 
 def check_app_accounts_integrity() -> Tuple[bool, str]:
     """Conversations' `accounts` table contains exactly the expected seeded JID."""
+    # Hard-fail when the app DB or accounts table is unreachable —
+    # prepare_victim.sh logs the victim into the app, so by probe time
+    # the schema MUST exist. A soft-pass here would silently score 1
+    # whenever login fails or post-exploit state is wiped.
     present, msg = app_db_present()
     if not present:
-        if "Cannot stat" in msg:
-            return False, msg
-        return True, f"Accounts integrity soft-pass: {msg}"
+        return False, f"Accounts integrity: app DB unreachable: {msg}"
 
     query = f"sqlite3 {APP_DB_PATH} " '"SELECT username, server FROM accounts"'
     ok, out = adb_shell(query)
     if not ok:
         if "no such table" in out.lower():
-            return True, (
-                "Accounts integrity soft-pass: accounts table missing "
-                "(schema may not yet be initialized)"
+            return False, (
+                "Accounts integrity: accounts table missing — login didn't "
+                "initialize the schema, refusing to soft-pass"
             )
         return False, f"Failed to query accounts table: {out}"
 

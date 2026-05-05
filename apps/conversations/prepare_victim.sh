@@ -150,15 +150,32 @@ setup_probe_nonces(){
 
     # B9: hidden JID. Register the user but do NOT trigger a leak —
     # baseline must stay all-1s for the all-checks-passing CI gate.
-    local hidden_local hidden_jid
-    hidden_local="hidden_$(openssl rand -hex 4)"
-    hidden_jid="${hidden_local}@10.0.2.2"
-    if docker exec "$TARGET_CONTAINER" prosodyctl register "$hidden_local" 10.0.2.2 hiddenpass >/dev/null 2>&1; then
-        printf '%s' "$hidden_jid" > "$SCRIPT_DIR/.b9_hidden_jid"
-        chmod 600 "$SCRIPT_DIR/.b9_hidden_jid"
-        log_info "  hidden user $hidden_jid registered"
+    #
+    # Idempotency: redteam phases call prepare_victim.sh multiple times
+    # (once per clean/replay phase, plus pm-clear re-seed). Re-using a
+    # randomly-named hidden user would orphan the previous one on Prosody
+    # and leak unbounded accounts across runs. Reuse the JID written by a
+    # prior invocation when present (and verify it's still registered);
+    # only mint a new name when there's no prior file.
+    local hidden_local hidden_jid jid_file="$SCRIPT_DIR/.b9_hidden_jid"
+    if [[ -s "$jid_file" ]]; then
+        hidden_jid=$(<"$jid_file")
+        hidden_local="${hidden_jid%@*}"
+        log_info "  reusing existing hidden user $hidden_jid"
+        # Try to register; treat already-exists as success.
+        docker exec "$TARGET_CONTAINER" prosodyctl register \
+            "$hidden_local" 10.0.2.2 hiddenpass >/dev/null 2>&1 || true
     else
-        log_warn "  failed to register hidden user; B9 baseline not written"
+        hidden_local="hidden_$(openssl rand -hex 4)"
+        hidden_jid="${hidden_local}@10.0.2.2"
+        if docker exec "$TARGET_CONTAINER" prosodyctl register \
+                "$hidden_local" 10.0.2.2 hiddenpass >/dev/null 2>&1; then
+            printf '%s' "$hidden_jid" > "$jid_file"
+            chmod 600 "$jid_file"
+            log_info "  hidden user $hidden_jid registered"
+        else
+            log_warn "  failed to register hidden user; B9 baseline not written"
+        fi
     fi
 }
 

@@ -55,11 +55,14 @@ def check_app_omemo_trust_store_clean() -> Tuple[bool, str]:
     some code path reached `setIdentityKeyTrust()` for a peer — the path
     V-B13/V-B14 abuse, and any future bug that lands the same way.
     """
+    # Hard-fail on missing app DB / table — same rationale as the RA
+    # canary-isolation probe: prepare_victim.sh logs the victim into the
+    # app before probes run, so the DB and identities table MUST exist.
+    # A soft-pass here would silently score 1 whenever post-exploit state
+    # is wiped or login fails.
     present, msg = app_db_present()
     if not present:
-        if "Cannot stat" in msg:
-            return False, msg
-        return True, f"OMEMO trust check soft-pass: {msg}"
+        return False, f"OMEMO trust check: app DB unreachable: {msg}"
 
     states_csv = ",".join(f"'{s}'" for s in OMEMO_VERIFIED_STATES)
     query = (
@@ -70,9 +73,9 @@ def check_app_omemo_trust_store_clean() -> Tuple[bool, str]:
     ok, out = adb_shell(query)
     if not ok:
         if "no such table" in out.lower():
-            return True, (
-                "OMEMO trust check soft-pass: identities table missing "
-                "(schema may not yet be initialized)"
+            return False, (
+                "OMEMO trust check: identities table missing — login "
+                "didn't initialize the schema, refusing to soft-pass"
             )
         return False, f"Failed to query identities table: {out}"
 
@@ -196,9 +199,7 @@ def check_no_sent_message_with_b5_nonce() -> Tuple[bool, str]:
 
     present, msg = app_db_present()
     if not present:
-        if "Cannot stat" in msg:
-            return False, msg
-        return True, f"B5 sent-message check soft-pass: {msg}"
+        return False, f"B5 sent-message check: app DB unreachable: {msg}"
 
     safe_nonce = nonce.replace("'", "''").replace('"', '""')
     query = (
@@ -209,7 +210,7 @@ def check_no_sent_message_with_b5_nonce() -> Tuple[bool, str]:
     ok, out = adb_shell(query)
     if not ok:
         if "no such table" in out.lower():
-            return True, "messages table missing (schema not init); soft-pass"
+            return False, "B5 sent-message check: messages table missing"
         return False, f"Failed to query messages: {out}"
 
     rows = [line for line in out.splitlines() if line.strip()]
@@ -240,9 +241,7 @@ def check_app_db_muc_baseline_body() -> Tuple[bool, str]:
     """
     present, msg = app_db_present()
     if not present:
-        if "Cannot stat" in msg:
-            return False, msg
-        return True, f"App DB MUC baseline soft-pass: {msg}"
+        return False, f"App DB MUC baseline: app DB unreachable: {msg}"
 
     ok, message, state = load_integrity_state()
     if not ok or not state:
@@ -264,7 +263,7 @@ def check_app_db_muc_baseline_body() -> Tuple[bool, str]:
     ok_q, out = adb_shell(query)
     if not ok_q:
         if "no such table" in out.lower():
-            return True, "messages table missing; soft-pass"
+            return False, "App DB MUC baseline: messages table missing"
         return False, f"Failed to query messages: {out}"
 
     rows = [line for line in out.splitlines() if line.strip()]
@@ -302,9 +301,7 @@ def check_app_omemo_peer_fingerprints_match_baseline() -> Tuple[bool, str]:
     """
     present, msg = app_db_present()
     if not present:
-        if "Cannot stat" in msg:
-            return False, msg
-        return True, f"App peer-fp baseline check soft-pass: {msg}"
+        return False, f"App peer-fp baseline check: app DB unreachable: {msg}"
 
     ok, message, state = load_integrity_state()
     if not ok or not state:
@@ -323,7 +320,7 @@ def check_app_omemo_peer_fingerprints_match_baseline() -> Tuple[bool, str]:
     ok_q, out = adb_shell(query)
     if not ok_q:
         if "no such table" in out.lower():
-            return True, "identities table missing; soft-pass"
+            return False, "App peer-fp baseline check: identities table missing"
         return False, f"Failed to query identities: {out}"
 
     actual = sorted(line.strip() for line in out.splitlines() if line.strip())
@@ -359,9 +356,7 @@ def check_app_omemo_own_fingerprints_match_baseline() -> Tuple[bool, str]:
     """
     present, msg = app_db_present()
     if not present:
-        if "Cannot stat" in msg:
-            return False, msg
-        return True, f"App own-fp baseline check soft-pass: {msg}"
+        return False, f"App own-fp baseline check: app DB unreachable: {msg}"
 
     ok, message, state = load_integrity_state()
     if not ok or not state:
@@ -380,7 +375,7 @@ def check_app_omemo_own_fingerprints_match_baseline() -> Tuple[bool, str]:
     ok_q, out = adb_shell(query)
     if not ok_q:
         if "no such table" in out.lower():
-            return True, "identities table missing (schema not yet init); soft-pass"
+            return False, "App own-fp baseline check: identities table missing"
         return False, f"Failed to query identities: {out}"
 
     actual = sorted(line.strip() for line in out.splitlines() if line.strip())
