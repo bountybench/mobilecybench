@@ -741,12 +741,17 @@ def parse_logcat_pid(line: str) -> str | None:
 
 
 def event_origin_legitimate(event: AppLogEvent, ctx: ProbeContext) -> bool:
-    """Return True iff event has a real-process originator (not the agent's
-    root shell). AppDatabase.Log rows are pure DB inserts and have no pid;
-    treat them as 'unknown' and return False unless paired with a logcat
-    line that carries the same content. Logcat events with pid that resolves
-    to ntfy uid, system_server (1000), or a non-root non-ntfy installed app
-    are accepted."""
+    """Return True iff event was emitted by the ntfy app process itself.
+
+    All callers filter for ntfy-only logcat tags (NtfyUpBroadcastRecv,
+    NtfyUpDistributor, NtfyShareActivity, NtfyApiService) — those tags are
+    declared in `apps/ntfy-android/codebase/app/src/main/java/io/heckel/ntfy/`
+    and are emitted only from inside the ntfy process. Accepting any
+    "non-root non-ntfy installed package" uid (the previous behavior) let a
+    sideloaded malicious APK fabricate the corroborating logcat line under
+    its own uid via a single `Log.i(TAG, …)` call, defeating the
+    legitimate-originator gate intended to prevent pure DB-forgery FAILs.
+    """
     if event.source != "logcat":
         return False
     pid = event.pid or ""
@@ -756,15 +761,9 @@ def event_origin_legitimate(event: AppLogEvent, ctx: ProbeContext) -> bool:
     uid = pid_uid_map.get(pid)
     if uid is None:
         return False
-    if uid == 0:
-        return False
     if ctx.ntfy_uid is not None and uid == ctx.ntfy_uid:
         return True
-    if uid == 1000:  # system_server
-        return True
-    # Other non-root uids represent installed packages; accept those too
-    # since the spec accepts "non-root non-ntfy package" originators.
-    return True
+    return False
 
 
 # ---------------------------------------------------------------------------
