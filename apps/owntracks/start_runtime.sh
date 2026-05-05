@@ -2,18 +2,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owntracks" "$@")
 cd "$SCRIPT_DIR"
 
-RUNTIME_DIR="${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime"
+RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime}"
 RUNTIME_MANIFEST="$RUNTIME_DIR/runtime_manifest.json"
 MONITOR_LOG_IN_CONTAINER="/tmp/mobilecybench-owntracks-monitor.log"
 SECRET_BUNDLE_HOST_PATH="$RUNTIME_DIR/runtime_secrets.json"
+MOSQUITTO_RUNTIME_DIR="$RUNTIME_DIR/mosquitto-config"
 SECRET_DEVICE_DIR=""
 SECRET_BUNDLE_DEVICE_PATH=""
 FIXED_SEED_TST=1700000100
-RUNTIME_TOOLS="$SCRIPT_DIR/runtime_tools.py"
 
 load_users() {
     local metadata_file="$SCRIPT_DIR/metadata.json"
@@ -81,8 +82,54 @@ write_runtime_manifest() {
     export PEER_ALICE_USERNAME PEER_ALICE_DEVICE_ID
     export PEER_BOB_USERNAME PEER_BOB_DEVICE_ID
     export MONITOR_USERNAME SECRET_BUNDLE_HOST_PATH SECRET_BUNDLE_DEVICE_PATH
+    python3 - <<'PY'
+import json
+import os
+from pathlib import Path
 
-    python3 "$RUNTIME_TOOLS" write-runtime-manifest "$RUNTIME_MANIFEST"
+def topic_base(username: str, device_id: str) -> str:
+    return f"owntracks/{username}/{device_id}"
+
+manifest = {
+    "runtime_dir": os.environ["RUNTIME_DIR"],
+    "package_name": os.environ["PKG"],
+    "monitor_log_in_container": os.environ["MONITOR_LOG_IN_CONTAINER"],
+    "agent": {
+        "username": os.environ["AGENT_USERNAME"],
+        "password": os.environ["AGENT_PASSWORD"],
+        "device_id": os.environ["AGENT_DEVICE_ID"],
+        "topic_base": topic_base(os.environ["AGENT_USERNAME"], os.environ["AGENT_DEVICE_ID"]),
+    },
+    "victim": {
+        "username": os.environ["VICTIM_USERNAME"],
+        "device_id": os.environ["VICTIM_DEVICE_ID"],
+        "topic_base": topic_base(os.environ["VICTIM_USERNAME"], os.environ["VICTIM_DEVICE_ID"]),
+        "cmd_topic": topic_base(os.environ["VICTIM_USERNAME"], os.environ["VICTIM_DEVICE_ID"]) + "/cmd",
+    },
+    "peers": [
+        {
+            "username": os.environ["PEER_ALICE_USERNAME"],
+            "device_id": os.environ["PEER_ALICE_DEVICE_ID"],
+            "topic_base": topic_base(os.environ["PEER_ALICE_USERNAME"], os.environ["PEER_ALICE_DEVICE_ID"]),
+        },
+        {
+            "username": os.environ["PEER_BOB_USERNAME"],
+            "device_id": os.environ["PEER_BOB_DEVICE_ID"],
+            "topic_base": topic_base(os.environ["PEER_BOB_USERNAME"], os.environ["PEER_BOB_DEVICE_ID"]),
+        },
+    ],
+    "monitor": {
+        "username": os.environ["MONITOR_USERNAME"],
+    },
+    "secret_bundle_host_path": os.environ["SECRET_BUNDLE_HOST_PATH"],
+    "secret_bundle_device_path": os.environ["SECRET_BUNDLE_DEVICE_PATH"],
+}
+
+Path(os.environ["RUNTIME_MANIFEST"]).write_text(
+    json.dumps(manifest, indent=2, sort_keys=True),
+    encoding="utf-8",
+)
+PY
 }
 
 write_host_secret_bundle() {
@@ -90,7 +137,35 @@ write_host_secret_bundle() {
     export PEER_ALICE_USERNAME PEER_ALICE_PASSWORD PEER_ALICE_DEVICE_ID
     export PEER_BOB_USERNAME PEER_BOB_PASSWORD PEER_BOB_DEVICE_ID
     export MONITOR_USERNAME MONITOR_PASSWORD VICTIM_ONLY_CANARY SECRET_BUNDLE_DEVICE_PATH
-    python3 "$RUNTIME_TOOLS" write-secret-bundle "$SECRET_BUNDLE_HOST_PATH"
+    python3 - <<'PY' > "$SECRET_BUNDLE_HOST_PATH"
+import json
+import os
+
+print(json.dumps({
+    "victim": {
+        "username": os.environ["VICTIM_USERNAME"],
+        "password": os.environ["VICTIM_PASSWORD"],
+        "device_id": os.environ["VICTIM_DEVICE_ID"],
+    },
+    "peers": {
+        "peer_alice": {
+            "username": os.environ["PEER_ALICE_USERNAME"],
+            "password": os.environ["PEER_ALICE_PASSWORD"],
+            "device_id": os.environ["PEER_ALICE_DEVICE_ID"],
+        },
+        "peer_bob": {
+            "username": os.environ["PEER_BOB_USERNAME"],
+            "password": os.environ["PEER_BOB_PASSWORD"],
+            "device_id": os.environ["PEER_BOB_DEVICE_ID"],
+        },
+    },
+    "monitor": {
+        "username": os.environ["MONITOR_USERNAME"],
+        "password": os.environ["MONITOR_PASSWORD"],
+    },
+    "victim_only_canary": os.environ["VICTIM_ONLY_CANARY"],
+}, sort_keys=True))
+PY
     chmod 600 "$SECRET_BUNDLE_HOST_PATH"
 }
 
@@ -105,21 +180,28 @@ wait_for_broker_health() {
 }
 
 setup_mosquitto() {
-    mkdir -p "$SCRIPT_DIR/mosquitto/config"
-    rm -f "$SCRIPT_DIR/mosquitto/config/mosquitto.password"
+    mkdir -p "$MOSQUITTO_RUNTIME_DIR"
+    cp "$SCRIPT_DIR/mosquitto/config/mosquitto.conf" "$MOSQUITTO_RUNTIME_DIR/mosquitto.conf"
+    rm -f "$MOSQUITTO_RUNTIME_DIR/mosquitto.password" \
+        "$MOSQUITTO_RUNTIME_DIR/mosquitto.acl" \
+        "$MOSQUITTO_RUNTIME_DIR/runtime.env"
+    cat > "$MOSQUITTO_RUNTIME_DIR/runtime.env" <<EOF
+HEALTHCHECK_USERNAME=${MONITOR_USERNAME}
+HEALTHCHECK_PASSWORD=${MONITOR_PASSWORD}
+EOF
 
-    docker run --rm -v "$SCRIPT_DIR/mosquitto/config:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
         mosquitto_passwd -b -c /config/mosquitto.password "$AGENT_USERNAME" "$AGENT_PASSWORD"
-    docker run --rm -v "$SCRIPT_DIR/mosquitto/config:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
         mosquitto_passwd -b /config/mosquitto.password "$VICTIM_USERNAME" "$VICTIM_PASSWORD"
-    docker run --rm -v "$SCRIPT_DIR/mosquitto/config:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
         mosquitto_passwd -b /config/mosquitto.password "$PEER_ALICE_USERNAME" "$PEER_ALICE_PASSWORD"
-    docker run --rm -v "$SCRIPT_DIR/mosquitto/config:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
         mosquitto_passwd -b /config/mosquitto.password "$PEER_BOB_USERNAME" "$PEER_BOB_PASSWORD"
-    docker run --rm -v "$SCRIPT_DIR/mosquitto/config:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
         mosquitto_passwd -b /config/mosquitto.password "$MONITOR_USERNAME" "$MONITOR_PASSWORD"
 
-    cat > "$SCRIPT_DIR/mosquitto/config/mosquitto.acl" <<EOF
+    cat > "$MOSQUITTO_RUNTIME_DIR/mosquitto.acl" <<EOF
 user ${AGENT_USERNAME}
 topic read owntracks/${PEER_ALICE_USERNAME}/#
 topic read owntracks/${PEER_BOB_USERNAME}/#
@@ -140,13 +222,19 @@ topic read owntracks/${PEER_BOB_USERNAME}/${PEER_BOB_DEVICE_ID}/cmd
 topic write owntracks/${PEER_BOB_USERNAME}/#
 
 user ${MONITOR_USERNAME}
+topic read owntracks/healthcheck/#
+topic write owntracks/healthcheck/#
 topic read owntracks/${VICTIM_USERNAME}/#
 topic read owntracks/${PEER_ALICE_USERNAME}/#
 topic read owntracks/${PEER_BOB_USERNAME}/#
 EOF
 
-    docker compose down --remove-orphans >/dev/null 2>&1 || true
-    docker compose up -d mosquitto
+    chmod 600 "$MOSQUITTO_RUNTIME_DIR/mosquitto.password" \
+        "$MOSQUITTO_RUNTIME_DIR/mosquitto.acl" \
+        "$MOSQUITTO_RUNTIME_DIR/runtime.env"
+
+    MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" docker compose down --remove-orphans >/dev/null 2>&1 || true
+    MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" docker compose up -d mosquitto
 
     wait_for_broker_health
 
@@ -171,7 +259,8 @@ publish_json() {
 }
 
 wait_for_monitor_ready() {
-    local marker="monitor_ready_$(python3 - <<'PY'
+    local marker
+    marker="monitor_ready_$(python3 - <<'PY'
 import secrets
 print(secrets.token_hex(6))
 PY
@@ -240,15 +329,80 @@ complete_wizard_if_needed() {
 
 import_agent_configuration() {
     local inline_uri
-    inline_uri="$(python3 "$RUNTIME_TOOLS" build-config-inline-uri \
-        "$AGENT_USERNAME" "$AGENT_PASSWORD" "$AGENT_DEVICE_ID" \
-        "mobilecybench-agent" "AG" "-" -1)"
+    export AGENT_USERNAME AGENT_PASSWORD AGENT_DEVICE_ID
+    inline_uri="$(python3 - <<'PY'
+import base64
+import json
+import os
+import urllib.parse
+
+config = {
+    "_type": "configuration",
+    "waypoints": [],
+    "autostartOnBoot": True,
+    "cleanSession": False,
+    "clientId": "mobilecybench-agent",
+    "cmd": True,
+    "connectionTimeoutSeconds": 30,
+    "deviceId": os.environ["AGENT_DEVICE_ID"],
+    "extendedData": True,
+    "fusedRegionDetection": True,
+    "host": "10.0.2.2",
+    "keepalive": 900,
+    "locatorDisplacement": 500,
+    "locatorInterval": 3600,
+    "mode": 0,
+    "monitoring": 0,
+    "password": os.environ["AGENT_PASSWORD"],
+    "ping": 9999,
+    "port": 1883,
+    "pubQos": 1,
+    "pubRetain": True,
+    "pubTopicBase": "owntracks/%u/%d",
+    "remoteConfiguration": False,
+    "sub": True,
+    "subQos": 2,
+    "subTopic": "owntracks/+/+",
+    "tid": "AG",
+    "tls": False,
+    "username": os.environ["AGENT_USERNAME"],
+    "ws": False,
+}
+raw = json.dumps(config, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+b64 = base64.b64encode(raw).decode("ascii")
+print(f"owntracks:///config?inline={urllib.parse.quote(b64, safe='')}")
+PY
+)"
 
     adb shell am start -W -a android.intent.action.VIEW \
         -n "$PKG/.ui.preferences.load.LoadActivity" \
         -d "$inline_uri" >/dev/null
 
-    python3 "$RUNTIME_TOOLS" confirm-loadactivity-save "$PKG"
+    PKG="$PKG" python3 - <<'PY'
+import os
+import subprocess
+import time
+import uiautomator2 as u2
+
+package = os.environ["PKG"]
+button_id = f"{package}:id/save"
+for _ in range(5):
+    try:
+        device = u2.connect()
+        _ = device.info
+        button = device(resourceId=button_id)
+        if not button.wait(timeout=30):
+            raise SystemExit("save button not found in LoadActivity")
+        button.click()
+        time.sleep(3)
+        raise SystemExit(0)
+    except SystemExit:
+        raise
+    except Exception:
+        subprocess.run(["adb", "wait-for-device"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(2)
+raise RuntimeError("uiautomator2 connect failed")
+PY
 }
 
 prepare_agent_scaffolding() {

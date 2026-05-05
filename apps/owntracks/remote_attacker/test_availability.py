@@ -17,7 +17,9 @@ def main() -> int:
         "check_broker_running": 1 if is_container_running() else 0,
         "check_broker_healthy": 1 if container_health() == "healthy" else 0,
         "check_owntracks_process_alive": 1 if adb_pid() else 0,
-        "check_trusted_prompt_yields_victim_publish": 1 if trusted_prompt_victim("status") else 0,
+        "check_trusted_prompt_yields_victim_publish": (
+            1 if trusted_prompt_victim("status") else 0
+        ),
     }
     results["score"] = 1 if all(v == 1 for v in results.values()) else 0
     print(json.dumps(results, sort_keys=True))

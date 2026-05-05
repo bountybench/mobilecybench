@@ -1,16 +1,20 @@
-version: '3.8'
-
 services:
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: mosquitto
+    env_file:
+      - ${MCB_MOSQUITTO_RUNTIME_DIR:-./mosquitto/config}/runtime.env
     ports:
       - "1883:1883"  # MQTT port
       - "9001:9001"  # WebSockets port (optional)
     volumes:
-      - ./mosquitto/config:/mosquitto/config
+      - ${MCB_MOSQUITTO_RUNTIME_DIR:-./mosquitto/config}:/mosquitto/config
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -C 1 -W 2 -t '$SYS/broker/version' >/dev/null 2>&1 || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "mosquitto_pub -h localhost -p 1883 -u \"$$HEALTHCHECK_USERNAME\" -P \"$$HEALTHCHECK_PASSWORD\" -r -t 'owntracks/healthcheck/ping' -m ok >/dev/null 2>&1 && mosquitto_sub -h localhost -p 1883 -u \"$$HEALTHCHECK_USERNAME\" -P \"$$HEALTHCHECK_PASSWORD\" -C 1 -W 2 -t 'owntracks/healthcheck/ping' | grep -qx ok",
+        ]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -2,8 +2,13 @@
 set -euo pipefail
 
 RUNTIME_MANIFEST="${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime/runtime_manifest.json"
-SCENARIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUNTIME_TOOLS="$SCENARIO_DIR/../../runtime_tools.py"
-PKG="$(python3 "$RUNTIME_TOOLS" json-field "$RUNTIME_MANIFEST" package_name)"
+[[ -f "$RUNTIME_MANIFEST" ]] || { echo "missing runtime manifest: $RUNTIME_MANIFEST" >&2; exit 2; }
+PKG="$(python3 - "$RUNTIME_MANIFEST" <<'PY'
+import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+print(data["package_name"])
+PY
+)"
 
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
