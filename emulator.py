@@ -77,7 +77,13 @@ def cmd_start(args: argparse.Namespace) -> int:
             manager.start_in_background()
             manager.wait_until_ready(timeout=300)
         except Exception:
-            manager.stop()
+            try:
+                manager.stop()
+            except RuntimeError as cleanup_error:
+                print(
+                    f"Warning: emulator cleanup failed after startup error: {cleanup_error}",
+                    file=sys.stderr,
+                )
             raise
         print(f"Emulator ready: {manager.device_id}")
         return 0

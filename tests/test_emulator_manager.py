@@ -141,6 +141,53 @@ def test_stop_raises_on_reset_nonzero(mock_logger, mock_run, emulator_manager):
     assert any("Failed to reset ADB" in str(c) for c in error_calls)
 
 
+@patch("utils.emulator_manager.subprocess.run")
+def test_stop_raises_on_reset_timeout(mock_run, emulator_manager):
+    """Test that ADB reset timeouts are surfaced as stop failures."""
+    emulator_manager.state = EmulatorState.RUNNING
+    emulator_manager.device_id = "emulator-5554"
+
+    mock_process = MagicMock()
+    mock_process.poll.return_value = None
+    emulator_manager.process = mock_process
+
+    call_count = 0
+
+    def run_side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return MagicMock(returncode=0)
+        if "kill-server" in str(args[0]):
+            raise subprocess.TimeoutExpired(args[0], timeout=10)
+        return MagicMock(returncode=0)
+
+    mock_run.side_effect = run_side_effect
+
+    with pytest.raises(RuntimeError, match="timed out after 10s"):
+        emulator_manager.stop()
+
+    assert emulator_manager.state == EmulatorState.STOPPED
+    assert emulator_manager.process is None
+
+
+@patch("utils.emulator_manager.logger")
+def test_context_exit_logs_stop_failure(mock_logger, emulator_manager):
+    """Context cleanup should not mask an exception from inside the with block."""
+    emulator_manager.state = EmulatorState.RUNNING
+
+    with patch.object(
+        emulator_manager, "stop", side_effect=RuntimeError("ADB reset failed")
+    ):
+        result = emulator_manager.__exit__(ValueError, ValueError("boom"), None)
+
+    assert result is False
+    error_calls = [c for c in mock_logger.error.call_args_list]
+    assert any(
+        "Emulator cleanup failed during context exit" in str(c) for c in error_calls
+    )
+
+
 ##########################################
 #      Device Detection Tests            #
 ##########################################

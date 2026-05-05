@@ -892,8 +892,12 @@ class EmulatorManager:
                 )
                 logger.error(message)
                 raise RuntimeError(message) from e
-            except Exception as e:
-                message = f"Failed to reset ADB server after emulator stop: {e}"
+            except subprocess.TimeoutExpired as e:
+                cmd = e.cmd if isinstance(e.cmd, str) else " ".join(e.cmd)
+                message = (
+                    "Failed to reset ADB server after emulator stop: "
+                    f"{cmd} timed out after {e.timeout}s"
+                )
                 logger.error(message)
                 raise RuntimeError(message) from e
 
@@ -1058,5 +1062,8 @@ class EmulatorManager:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.state in [EmulatorState.STARTING, EmulatorState.RUNNING]:
-            self.stop()
+            try:
+                self.stop()
+            except RuntimeError as e:
+                logger.error(f"Emulator cleanup failed during context exit: {e}")
         return False
