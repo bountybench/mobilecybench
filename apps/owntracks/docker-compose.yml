@@ -9,6 +9,12 @@ services:
       - "9001:9001"  # WebSockets port (optional)
     volumes:
       - ./mosquitto/config:/mosquitto/config
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -C 1 -W 2 -t '$SYS/broker/version' >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       - shared_net
       - private_net
@@ -19,4 +25,3 @@ networks:
     external: true
   private_net:
     driver: bridge
-
