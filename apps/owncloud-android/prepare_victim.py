@@ -110,11 +110,17 @@ def default_server_url():
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Log victim alex into ownCloud Android"
+        description="Log a user into ownCloud Android via OAuth"
     )
     parser.add_argument("--server-url", default=default_server_url())
     parser.add_argument("--username", default="alex")
     parser.add_argument("--password", default="oziXa8iprit")
+    parser.add_argument(
+        "--no-capture",
+        action="store_true",
+        help="Skip wait_for_settle + baseline capture. Used by agent_login, "
+        "where baselines belong to the victim epoch and must not be overwritten.",
+    )
     return parser.parse_args()
 
 
@@ -412,7 +418,10 @@ def _connect_uia2_with_retry(max_attempts=5):
 
 
 def main():
-    args = parse_args()
+    run(parse_args())
+
+
+def run(args):
     d = _connect_uia2_with_retry()
 
     # Belt-and-suspenders for ANR dismissal. The primary defense lives in
@@ -499,7 +508,11 @@ def main():
             log("stage: authorize app")
             authorize_app(d)
 
-        log("SUCCESS: alex logged in")
+        log(f"SUCCESS: {args.username} logged in")
+
+    if args.no_capture:
+        log("stage: done (no-capture)")
+        return
 
     log("stage: wait_for_settle (DB-stable signal)")
     wait_for_settle()
