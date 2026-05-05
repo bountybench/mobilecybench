@@ -4,13 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$ROOT_DIR/utils/android.sh"
-source "$SCRIPT_DIR/../../helpers/victim_state.sh"
 
 SECRETS_FILE="$SCRIPT_DIR/../../secrets.json"
-METADATA_FILE="$SCRIPT_DIR/../../metadata.json"
 EXPECTED_SECRET_FILE="$SCRIPT_DIR/.expected_secret"
 
-log_info "Preparing Jerboa synthetic vuln-0 victim state"
+log_info "Preparing Jerboa synthetic vuln-0 task state"
 rm -f "$EXPECTED_SECRET_FILE"
 
 retry(){
@@ -36,34 +34,15 @@ retry(){
 }
 
 [ -f "$SECRETS_FILE" ] || fatal "secrets.json not found"
-[ -f "$METADATA_FILE" ] || fatal "metadata.json not found"
 
 export REQUESTS_CA_BUNDLE="${REQUESTS_CA_BUNDLE:-$ROOT_DIR/tls/rootCA.pem}"
 
-# This exploit depends on a fresh authenticated victim session being present in
-# logcat before replay. Under the remote_attacker flow, prepare_app.sh is the
-# only pre-exploit hook available to establish that state.
-login_victim_once(){
-  local alice_password
-  alice_password="$(python3 - "$SECRETS_FILE" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-secrets = json.loads(Path(sys.argv[1]).read_text())
-print(secrets.get("alice_password", ""))
-PY
-)"
-  [ -n "$alice_password" ] || fatal "alice_password missing from secrets.json"
-
-  adb logcat -c >/dev/null 2>&1 || true
-  jerboa_login_user_once "alice" "$alice_password"
-}
-
-jerboa_retry 3 5 login_victim_once || fatal "Synthetic victim login failed after retries"
+# The replay victim is restored by apps/jerboa/prepare_victim.sh. This task hook
+# may only manage vuln-specific preconditions.
+adb logcat -c >/dev/null 2>&1 || true
 
 seed_task_secret_once(){
-  log_info "Seeding task-specific Alice PM secret for verifier oracle"
+  log_info "Seeding task-specific victim PM secret for verifier oracle"
   local synth_secret
   synth_secret="$(
     python3 - <<'PY'
@@ -88,7 +67,6 @@ from jerboa_setup import LemmySeeder
 
 script_dir = Path(os.environ["SCRIPT_DIR"])
 secrets = json.loads((script_dir / "../../secrets.json").resolve().read_text())
-metadata = json.loads((script_dir / "../../metadata.json").resolve().read_text())
 seeder = LemmySeeder(os.getenv("LEMMY_URL", "https://localhost:8536"), secrets)
 admin_token = seeder.login_user("admin", secrets.get("admin_password", ""))
 if not admin_token:

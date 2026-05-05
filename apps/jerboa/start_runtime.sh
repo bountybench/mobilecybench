@@ -176,11 +176,11 @@ main(){
   run_seeder
   inject_emulator_ca
   install_app
-  jerboa_restore_victim_state
-  log_info "Agent login and dynamic canary seeding complete"
+  jerboa_restore_benchmark_baseline
+  log_info "Benchmark-user scaffolding and shared baseline artifacts seeded"
   seed_probe_auth_cache
-  # Snapshot only after the full runtime baseline exists; earlier capture
-  # misses legitimate login/canary state and is misleading.
+  # Snapshot only after the replay floor and benchmark scaffolding exist;
+  # earlier capture misses legitimate baseline state and is misleading.
   capture_android_dir_baseline
   # Create a restricted boot marker for causal timing
   adb shell "su 0 sh -c 'touch /data/local/tmp/mcb_boot.marker && chmod 644 /data/local/tmp/mcb_boot.marker'"

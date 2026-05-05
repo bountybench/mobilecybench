@@ -14,6 +14,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -29,6 +30,7 @@ HELPER_OUTPUT = (
 )
 PROBE_AUTH_DEVICE_PATH = "/data/local/tmp/.mcb_jerboa_probe_auth.json"
 BASELINE_FP_DEVICE_PATH = "/data/local/tmp/.mcb_jerboa_baseline_fingerprint"
+VICTIM_HOST_PATH = "/tmp/.mcb_jerboa_victim"
 
 
 def run_root_shell(script: str, timeout: int = 60) -> tuple[bool, str]:
@@ -127,6 +129,13 @@ def read_root_device_file(path: str, timeout: int = 20) -> str:
     return result.stdout.replace("\r", "").strip()
 
 
+def read_host_marker(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
 def quote_path(path: str) -> str:
     return shlex.quote(path)
 
@@ -163,6 +172,50 @@ def get_jerboa_package() -> str:
         raise RuntimeError("unable to query installed Jerboa packages")
 
     raise RuntimeError(f"Jerboa release package {JERBOA_PACKAGE} is not installed")
+
+
+def _current_account_query_rows() -> list[tuple[str, str, str]]:
+    package_name = get_jerboa_package()
+    device_db = f"/data/data/{package_name}/databases/jerboa"
+    result = subprocess.run(
+        ["adb", "exec-out", "su", "0", "cat", device_db],
+        capture_output=True,
+        timeout=30,
+    )
+    if result.returncode != 0 or not result.stdout:
+        raise RuntimeError("failed to read Jerboa account database from device")
+
+    with tempfile.NamedTemporaryFile(suffix=".sqlite3") as handle:
+        handle.write(result.stdout)
+        handle.flush()
+
+        import sqlite3
+
+        connection = sqlite3.connect(handle.name)
+        try:
+            cursor = connection.execute(
+                "SELECT name, instance, jwt FROM Account WHERE current = 1 ORDER BY id DESC"
+            )
+            return [
+                (
+                    str(name or ""),
+                    str(instance or ""),
+                    str(jwt or ""),
+                )
+                for name, instance, jwt in cursor.fetchall()
+            ]
+        finally:
+            connection.close()
+
+
+def get_current_account_record() -> dict[str, str]:
+    rows = _current_account_query_rows()
+    if len(rows) != 1:
+        raise RuntimeError(
+            f"expected exactly one current Jerboa account, found {len(rows)}"
+        )
+    name, instance, jwt = rows[0]
+    return {"name": name, "instance": instance, "jwt": jwt}
 
 
 def jerboa_canary_private_path() -> str:

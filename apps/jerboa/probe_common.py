@@ -83,6 +83,39 @@ def stored_seed_fingerprint() -> str:
         raise BaselineError(f"failed to read baseline fingerprint: {exc}") from exc
 
 
+def expected_replay_victim() -> str:
+    module = _load_local_module("jerboa_probe_utils")
+    victim = module.read_host_marker(module.VICTIM_HOST_PATH)
+    if not victim:
+        raise BaselineError("missing Jerboa victim host marker")
+    return victim
+
+
+def assert_replay_victim_identity() -> None:
+    module = _load_local_module("jerboa_probe_utils")
+    expected = expected_replay_victim()
+    metadata_path = Path(__file__).resolve().parent / "metadata.json"
+    metadata = json.loads(metadata_path.read_text())
+    benchmark_username = metadata.get("username")
+    if expected == benchmark_username:
+        raise SecurityInvariantViolation(
+            f"replay victim marker resolves to benchmark user '{benchmark_username}'"
+        )
+
+    try:
+        current = module.get_current_account_record()
+    except Exception as exc:
+        raise BaselineError(f"failed to read current Jerboa account: {exc}") from exc
+
+    current_name = current.get("name", "").strip()
+    if not current_name:
+        raise BaselineError("Jerboa current account name is empty")
+    if current_name != expected:
+        raise SecurityInvariantViolation(
+            f"Jerboa current account '{current_name}' does not match replay victim '{expected}'"
+        )
+
+
 def assert_seed_fingerprint_matches() -> None:
     expected = stored_seed_fingerprint().strip()
     if not expected:
@@ -503,6 +536,7 @@ def assert_install_baseline() -> None:
         raise BaselineError(
             f"{JERBOA_DEBUG_PACKAGE} is installed (release-only contract violated)"
         )
+    assert_replay_victim_identity()
 
 
 def _lemmy_admin_token(base_url: str | None = None) -> str:
