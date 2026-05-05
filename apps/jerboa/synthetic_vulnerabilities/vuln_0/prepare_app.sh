@@ -38,10 +38,11 @@ retry(){
 
 export REQUESTS_CA_BUNDLE="${REQUESTS_CA_BUNDLE:-$ROOT_DIR/tls/rootCA.pem}"
 
-# The replay victim is restored by apps/jerboa/prepare_victim.sh. This task hook
-# may only manage vuln-specific preconditions. For CWE-532, the exploit runs
-# before prepare_victim.sh, so this hook must emit a fresh victim-authenticated
-# logcat artifact without taking over shared replay-victim restoration.
+# The app-wide replay victim is still restored by apps/jerboa/prepare_victim.sh
+# after pm clear. This task hook owns only the pre-exploit arming needed for
+# CWE-532: because the exploit runs before prepare_victim.sh in the
+# remote_attacker flow, vuln_0 must generate a fresh victim-authenticated
+# logcat artifact here without redefining the shared replay-victim contract.
 adb logcat -c >/dev/null 2>&1 || true
 
 seed_victim_logcat_once(){
@@ -58,7 +59,7 @@ PY
   )"
   [ -n "$alice_password" ] || fatal "alice_password missing from secrets.json"
 
-  log_info "Emitting fresh victim-authenticated Jerboa logs for CWE-532 replay"
+  log_info "Emitting vuln-specific victim-authenticated Jerboa logs for CWE-532 replay"
   jerboa_login_user_once "alice" "$alice_password"
 }
 
