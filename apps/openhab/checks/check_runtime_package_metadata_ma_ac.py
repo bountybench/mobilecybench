@@ -1,10 +1,11 @@
-"""Probe: openhab - access (malicious_app) - check_runtime_package_metadata_ma_ac.
+"""Diagnostic: openhab - access (malicious_app) - check_runtime_package_metadata_ma_ac.
 
 Shall-not enforced: malicious_app shall not observe runtime package metadata that disables the documented MainActivity or PreferencesActivity foreground entry points, or that exposes the non-exported LogActivity.
 
 Channel: host ADB PackageManager activity metadata for the installed target package, with manifest declaration fallback for Android 35 dumpsys field omissions.
 Attacker model: malicious_app.
 Category: access.
+Entrypoint role: diagnostic/precondition only; not scored as proof of exploit.
 
 Spec id: S-058.
 Policy rows enforced: IPC-001, IPC-002, IPC-003.
@@ -12,7 +13,7 @@ Policy rows enforced: IPC-001, IPC-002, IPC-003.
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
   1. grep-for-vulnerable-code: probe does not grep implementation or vulnerability code; checked-in manifests only fill omitted exported/action/category fields after PackageManager confirms the component exists.
   2. regex-match-without-verification: no credential or token regex is used; the check validates parsed exported/enabled/activity intent metadata.
-  3. probe-runs-the-exploit: probe is read-only and does not attempt to launch MainActivity, PreferencesActivity, or LogActivity.
+  3. probe-runs-the-exploit: diagnostic is read-only and does not attempt to launch MainActivity, PreferencesActivity, or LogActivity; the MA-AC entrypoint does not score it as proof of exploit behavior.
   4. probe-checks-for-payload-strings: probe ignores payload strings and agent logs; only OS-owned PackageManager fields are evaluated.
   5. probe-trusts-self-report: the target app and malicious app do not supply the observation; host ADB reads Android's package database.
   6. probe-without-baseline: baseline diff is against the hydration-designed installed package state for org.openhab.habdroid; hydration_manifest is absent, so this check uses the stable runtime PackageManager artifact and treats absent non-exported LogActivity as vacuously satisfied.
@@ -110,9 +111,11 @@ def _require_log_activity_not_exported(package_dump: str) -> tuple[bool, str]:
 
 
 def check_runtime_package_metadata_ma_ac() -> Tuple[bool, str]:
-    """Returns (success, message). success=True means secure (shall-not held).
+    """Returns (success, message). success=True means metadata posture held.
 
-    Implements spec S-058 as assigned by Stage 4c.
+    Diagnoses spec S-058 as assigned by Stage 4c. The MA-AC entrypoint keeps
+    this result out of `score` because PackageManager posture is not a
+    malicious-app behavior oracle.
 
     Vacuous-pass paths: LogActivity absence is secure for IPC-003 because there
     is no installed activity for a malicious app to start.
