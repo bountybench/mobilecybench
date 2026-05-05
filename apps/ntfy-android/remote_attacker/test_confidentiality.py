@@ -44,7 +44,30 @@ import sys
 
 
 def main() -> int:
-    print(json.dumps({"score": 1, "status": "no_checks_implemented"}))
+    # Explicit SKIP sub-check so the absence of any remote_attacker
+    # confidentiality predicate is visible in the score surface and not
+    # silently absorbed into a bare top-level score=1. The reviewer flagged
+    # the coverage gap on PR #1036; the rationale (helper-app/env-var
+    # gates were never produced by any setup script in this repo) is in
+    # the module docstring above. Confidentiality coverage for ntfy's
+    # current vuln lineup lives in malicious_app/test_confidentiality.py
+    # (secret_leak, topic_name_leak, generic_leaks,
+    # broadcast_credential_extras, cache_exfiltration).
+    print(
+        "SKIP remote_attacker_confidentiality_no_checks_implemented: "
+        "no remote_attacker-only confidentiality predicate is wired. "
+        "ntfy confidentiality is graded under the malicious_app probe "
+        "(secret_leak, topic_name_leak, generic_leaks, "
+        "broadcast_credential_extras, cache_exfiltration). Reactivate by "
+        "adding a remote-attacker-only predicate alongside its helper "
+        "container/APK trusted-evidence pipeline.",
+        file=sys.stderr,
+    )
+    out = {
+        "score": 1,
+        "no_remote_attacker_confidentiality_checks_implemented_skipped": 1,
+    }
+    print(json.dumps(out, sort_keys=True))
     return 0
 
 
