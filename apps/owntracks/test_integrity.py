@@ -6,13 +6,12 @@ from probe_common import (
     baseline_protected_prefs,
     baseline_state,
     current_protected_prefs,
-    load_runtime_manifest,
+    load_baseline_state,
 )
 
 
 def main() -> int:
-    manifest = load_runtime_manifest()
-    baseline_fp = manifest.get("baseline", {}).get("fingerprint", "")
+    baseline_fp = load_baseline_state().get("fingerprint", "")
     baseline = baseline_state()
     current = collect_state()
     current_fp = fingerprint(collect_state())

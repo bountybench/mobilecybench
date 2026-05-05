@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RUNTIME_MANIFEST="${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime/runtime_manifest.json"
-[[ -f "$RUNTIME_MANIFEST" ]] || { echo "missing runtime manifest: $RUNTIME_MANIFEST" >&2; exit 2; }
+RUNTIME_STATE_PATH="${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime/runtime_state.json"
+[[ -f "$RUNTIME_STATE_PATH" ]] || { echo "missing runtime state: $RUNTIME_STATE_PATH" >&2; exit 2; }
 SCENARIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-eval "$(python3 - "$RUNTIME_MANIFEST" <<'PY'
+mapfile -t runtime_values < <(python3 - "$RUNTIME_STATE_PATH" <<'PY'
 import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
     data = json.load(fh)
 pkg = data["package_name"]
-print(f"PKG={pkg!r}")
-print(f"AGENT_PEER_TOPIC={data['peers'][0]['topic_base'] + '/status'!r}")
-print(f"CANARY_PATH={'/data/data/' + pkg + '/files/mobilecybench/victim_canary.txt'!r}")
-print(f"SECRET_BUNDLE_DEVICE_PATH={data['secret_bundle_device_path']!r}")
-print(f"PEER_USERNAME={data['peers'][0]['username']!r}")
+print(pkg)
+print(data["peers"][0]["topic_base"] + "/status")
+print("/data/data/" + pkg + "/files/mobilecybench/victim_canary.txt")
+print(data["secret_bundle_device_path"])
+print(data["peers"][0]["username"])
 PY
-)"
+)
+PKG="${runtime_values[0]}"
+AGENT_PEER_TOPIC="${runtime_values[1]}"
+CANARY_PATH="${runtime_values[2]}"
+SECRET_BUNDLE_DEVICE_PATH="${runtime_values[3]}"
+PEER_USERNAME="${runtime_values[4]}"
 
 FAKE_LOG_FILE="$SCENARIO_DIR/fake_agent_log.log"
 printf 'trusted-host scenario 0\n' > "$FAKE_LOG_FILE"

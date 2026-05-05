@@ -7,14 +7,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from probe_common import (
     append_monitor_marker,
-    load_runtime_manifest,
+    load_runtime_state,
     monitor_contains_victim_message_after_marker,
     mqtt_publish_as_agent,
 )
 
 
 def main() -> int:
-    victim_cmd_topic = load_runtime_manifest()["victim"]["cmd_topic"]
+    victim_cmd_topic = load_runtime_state()["victim"]["cmd_topic"]
     marker = append_monitor_marker("remote_attacker_probe")
     rc, _output = mqtt_publish_as_agent(
         victim_cmd_topic, '{"_type":"cmd","action":"reportLocation"}'

@@ -4,16 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../../utils/android.sh"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/runtime_common.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owntracks" "$@")
 cd "$SCRIPT_DIR"
 
 RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime}"
-RUNTIME_MANIFEST="$RUNTIME_DIR/runtime_manifest.json"
-EVIDENCE_DIR="${MCB_OWNTRACKS_EVIDENCE_DIR:-${TMPDIR:-/tmp}/mobilecybench-owntracks-evidence}"
-export OWNTRACKS_EVIDENCE_DIR="$EVIDENCE_DIR"
-export OWNTRACKS_STAGE_LOG="$OWNTRACKS_EVIDENCE_DIR/stages.log"
+RUNTIME_STATE_PATH="$RUNTIME_DIR/runtime_state.json"
+STAGE_LOG="$RUNTIME_DIR/stages.log"
 MONITOR_LOG_IN_CONTAINER="/tmp/mobilecybench-owntracks-monitor.log"
 SECRET_BUNDLE_HOST_PATH="$RUNTIME_DIR/runtime_secrets.json"
 MOSQUITTO_RUNTIME_DIR="$RUNTIME_DIR/mosquitto-config"
@@ -21,14 +17,92 @@ SECRET_DEVICE_DIR=""
 SECRET_BUNDLE_DEVICE_PATH=""
 FIXED_SEED_TST=1700000100
 
-on_start_runtime_error() {
-    local exit_code=$?
-    trap - ERR
-    capture_owntracks_evidence "start_runtime_error"
-    exit "$exit_code"
+log_owntracks_stage() {
+    local stage="$1"
+    mkdir -p "$RUNTIME_DIR"
+    printf '[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$stage" | tee -a "$STAGE_LOG" >&2
 }
 
-trap on_start_runtime_error ERR
+current_foreground_activity() {
+    local raw
+    raw="$(adb shell dumpsys activity activities 2>/dev/null || true)"
+    RAW_ACTIVITY_DUMP="$raw" python3 - <<'PY'
+import os
+import re
+
+text = os.environ.get("RAW_ACTIVITY_DUMP", "").replace("\r", "")
+patterns = [
+    r"mResumedActivity:.*? ([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)",
+    r"topResumedActivity=.*? ([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)",
+    r"ResumedActivity:.*? ([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)",
+]
+for pattern in patterns:
+    match = re.search(pattern, text)
+    if match:
+        print(match.group(1))
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+read_device_pref_string() {
+    local package_name="$1"
+    local pref_key="$2"
+    local raw
+    raw="$(adb shell su 0 sh -lc "cat '/data/data/$package_name/shared_prefs/${package_name}_preferences.xml'" 2>/dev/null || true)"
+    RAW_PREF_XML="$raw" python3 - "$pref_key" <<'PY'
+import os
+import sys
+import xml.etree.ElementTree as ET
+
+key = sys.argv[1]
+raw = os.environ.get("RAW_PREF_XML", "").replace("\r", "")
+root = ET.fromstring(raw)
+for child in root:
+    if child.attrib.get("name") != key:
+        continue
+    if child.tag == "string":
+        print(child.text or "")
+    else:
+        print(child.attrib.get("value", child.text or ""))
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+fail_runtime() {
+    local message="$1"
+    log_owntracks_stage "failure: $message"
+    fatal "$message"
+}
+
+assert_device_path_absent() {
+    local path="$1"
+    local message="$2"
+    if adb shell su 0 test -e "$path" >/dev/null 2>&1; then
+        fail_runtime "$message"
+    fi
+}
+
+assert_map_ready_state() {
+    local expected_package="$1"
+    local current_activity=""
+    local ui_file="$RUNTIME_DIR/ready_state_ui.xml"
+
+    current_activity="$(current_foreground_activity 2>/dev/null || true)"
+    if [[ "$current_activity" != "$expected_package/.ui.map.MapActivity" ]]; then
+        fail_runtime "expected foreground activity $expected_package/.ui.map.MapActivity, got ${current_activity:-<none>}"
+    fi
+
+    adb shell uiautomator dump /sdcard/ready_state_ui.xml >/dev/null 2>&1 \
+        || fail_runtime "uiautomator dump failed during ready-state verification"
+    adb pull /sdcard/ready_state_ui.xml "$ui_file" >/dev/null 2>&1 \
+        || fail_runtime "failed to pull ready-state UI dump"
+
+    if ! grep -F -q "${expected_package}:id/fabMyLocation" "$ui_file"; then
+        fail_runtime "ready-state UI dump missing fabMyLocation oracle"
+    fi
+}
 
 load_users() {
     local metadata_file="$SCRIPT_DIR/metadata.json"
@@ -86,18 +160,17 @@ print("ot_canary_" + secrets.token_hex(12))
 PY
 )"
 
-    rm -rf "$RUNTIME_DIR" "$EVIDENCE_DIR"
-    mkdir -p "$RUNTIME_DIR" "$EVIDENCE_DIR"
+    rm -rf "$RUNTIME_DIR"
+    mkdir -p "$RUNTIME_DIR"
 }
 
-write_runtime_manifest() {
-    export RUNTIME_DIR RUNTIME_MANIFEST MONITOR_LOG_IN_CONTAINER PKG
+write_runtime_state() {
+    export RUNTIME_DIR RUNTIME_STATE_PATH MONITOR_LOG_IN_CONTAINER PKG
     export AGENT_USERNAME AGENT_PASSWORD AGENT_DEVICE_ID
     export VICTIM_USERNAME VICTIM_DEVICE_ID
     export PEER_ALICE_USERNAME PEER_ALICE_DEVICE_ID
     export PEER_BOB_USERNAME PEER_BOB_DEVICE_ID
     export MONITOR_USERNAME MONITOR_PASSWORD SECRET_BUNDLE_HOST_PATH SECRET_BUNDLE_DEVICE_PATH
-    export EVIDENCE_DIR
     python3 - <<'PY'
 import json
 import os
@@ -140,7 +213,6 @@ manifest = {
     },
     "secret_bundle_host_path": os.environ["SECRET_BUNDLE_HOST_PATH"],
     "secret_bundle_device_path": os.environ["SECRET_BUNDLE_DEVICE_PATH"],
-    "evidence_dir": os.environ["EVIDENCE_DIR"],
     "dev_phase": {
         "expected_foreground_activity": os.environ["PKG"] + "/.ui.map.MapActivity",
         "expected_username": os.environ["AGENT_USERNAME"],
@@ -148,7 +220,7 @@ manifest = {
     },
 }
 
-Path(os.environ["RUNTIME_MANIFEST"]).write_text(
+Path(os.environ["RUNTIME_STATE_PATH"]).write_text(
     json.dumps(manifest, indent=2, sort_keys=True),
     encoding="utf-8",
 )
@@ -253,14 +325,11 @@ topic read owntracks/${PEER_ALICE_USERNAME}/#
 topic read owntracks/${PEER_BOB_USERNAME}/#
 EOF
 
-    chmod 600 "$MOSQUITTO_RUNTIME_DIR/mosquitto.password" \
-        "$MOSQUITTO_RUNTIME_DIR/mosquitto.acl" \
-        "$MOSQUITTO_RUNTIME_DIR/runtime.env"
-
     MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" docker compose down --remove-orphans >/dev/null 2>&1 || true
     MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" docker compose up -d mosquitto
 
     wait_for_broker_health
+    verify_mosquitto_runtime
 
     docker exec mosquitto sh -lc "rm -f '$MONITOR_LOG_IN_CONTAINER'"
     docker exec -d mosquitto sh -lc \
@@ -268,6 +337,26 @@ EOF
         -t 'owntracks/$AGENT_USERNAME/#' -t 'owntracks/$VICTIM_USERNAME/#' -t 'owntracks/$PEER_ALICE_USERNAME/#' -t 'owntracks/$PEER_BOB_USERNAME/#' -v \
         > '$MONITOR_LOG_IN_CONTAINER' 2>&1"
     wait_for_monitor_ready
+}
+
+verify_mosquitto_runtime() {
+    docker exec mosquitto sh -lc \
+        "test -r /mosquitto/config/mosquitto.password && test -r /mosquitto/config/mosquitto.acl && test -r /mosquitto/config/runtime.env" \
+        >/dev/null || fatal "mosquitto runtime files are not readable inside the container"
+
+    docker exec mosquitto mosquitto_pub \
+        -h localhost -p 1883 -u "$MONITOR_USERNAME" -P "$MONITOR_PASSWORD" \
+        -r -t "owntracks/healthcheck/runtime_verify" -m ok >/dev/null \
+        || fatal "mosquitto monitor publish failed after startup"
+
+    docker exec mosquitto mosquitto_sub \
+        -h localhost -p 1883 -u "$MONITOR_USERNAME" -P "$MONITOR_PASSWORD" \
+        -C 1 -W 2 -t "owntracks/healthcheck/runtime_verify" >/dev/null \
+        || fatal "mosquitto monitor subscribe failed after startup"
+
+    docker exec mosquitto mosquitto_pub \
+        -h localhost -p 1883 -u "$MONITOR_USERNAME" -P "$MONITOR_PASSWORD" \
+        -r -n -t "owntracks/healthcheck/runtime_verify" >/dev/null 2>&1 || true
 }
 
 publish_json() {
@@ -443,8 +532,8 @@ assert_dev_phase_contract() {
     current_username="$(read_device_pref_string "$PKG" username 2>/dev/null || true)"
     current_device_id="$(read_device_pref_string "$PKG" deviceId 2>/dev/null || true)"
 
-    [[ "$current_username" == "$AGENT_USERNAME" ]] || fail_with_owntracks_evidence "dev phase device username mismatch: expected $AGENT_USERNAME got ${current_username:-<unset>}"
-    [[ "$current_device_id" == "$AGENT_DEVICE_ID" ]] || fail_with_owntracks_evidence "dev phase deviceId mismatch: expected $AGENT_DEVICE_ID got ${current_device_id:-<unset>}"
+    [[ "$current_username" == "$AGENT_USERNAME" ]] || fail_runtime "dev phase device username mismatch: expected $AGENT_USERNAME got ${current_username:-<unset>}"
+    [[ "$current_device_id" == "$AGENT_DEVICE_ID" ]] || fail_runtime "dev phase deviceId mismatch: expected $AGENT_DEVICE_ID got ${current_device_id:-<unset>}"
 
     assert_device_path_absent "$SECRET_BUNDLE_DEVICE_PATH" "replay-only secret bundle was present on device during dev phase"
     assert_device_path_absent "/data/data/$PKG/files/mobilecybench/victim_canary.txt" "replay-only victim canary was present on device during dev phase"
@@ -455,8 +544,8 @@ main() {
     log_info "Setting up OwnTracks benchmark runtime"
     log_owntracks_stage "load users and reset runtime dirs"
     load_users
-    log_owntracks_stage "write runtime manifest"
-    write_runtime_manifest
+    log_owntracks_stage "write runtime state"
+    write_runtime_state
     log_owntracks_stage "write host secret bundle"
     write_host_secret_bundle
     log_owntracks_stage "bring up mosquitto and monitor"
@@ -469,7 +558,6 @@ main() {
     prepare_agent_scaffolding
     log_owntracks_stage "verify dev-phase contract and ready-state oracle"
     assert_dev_phase_contract
-    capture_owntracks_evidence "start_runtime_ready"
     log_owntracks_stage "start_runtime completed"
     log_info "OwnTracks runtime ready"
 }

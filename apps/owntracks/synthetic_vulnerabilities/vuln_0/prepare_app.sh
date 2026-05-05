@@ -2,21 +2,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUNTIME_MANIFEST="${MCB_RUNTIME_MANIFEST:-${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime/runtime_manifest.json}"
-[[ -f "$RUNTIME_MANIFEST" ]] || { echo "missing runtime manifest: $RUNTIME_MANIFEST" >&2; exit 2; }
+RUNTIME_STATE_PATH="${MCB_OWNTRACKS_RUNTIME_DIR:-${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime}/runtime_state.json"
+[[ -f "$RUNTIME_STATE_PATH" ]] || { echo "missing runtime state: $RUNTIME_STATE_PATH" >&2; exit 2; }
 
 MARKER_PATH="${MCB_OUTPUT_DIR:-$SCRIPT_DIR}/synthetic_vuln_0_marker.txt"
 mkdir -p "$(dirname "$MARKER_PATH")"
-
-eval "$(python3 - "$RUNTIME_MANIFEST" <<'PY'
+MONITOR_LOG_IN_CONTAINER="$(python3 - "$RUNTIME_STATE_PATH" <<'PY'
 import json
-import shlex
 import sys
 
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-print(f"MONITOR_LOG_IN_CONTAINER={shlex.quote(data['monitor_log_in_container'])}")
+print(data["monitor_log_in_container"])
 PY
 )"
 
