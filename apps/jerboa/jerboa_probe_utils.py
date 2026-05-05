@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shlex
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -140,6 +141,18 @@ def quote_path(path: str) -> str:
     return shlex.quote(path)
 
 
+def _copy_from_device(src: str, dst: str, timeout: int = 20) -> bool:
+    result = subprocess.run(
+        ["adb", "exec-out", "su", "0", "cat", src],
+        capture_output=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        return False
+    Path(dst).write_bytes(result.stdout)
+    return True
+
+
 def get_jerboa_package() -> str:
     """Return the installed Jerboa release package.
 
@@ -177,35 +190,75 @@ def get_jerboa_package() -> str:
 def _current_account_query_rows() -> list[tuple[str, str, str]]:
     package_name = get_jerboa_package()
     device_db = f"/data/data/{package_name}/databases/jerboa"
-    result = subprocess.run(
-        ["adb", "exec-out", "su", "0", "cat", device_db],
-        capture_output=True,
-        timeout=30,
-    )
-    if result.returncode != 0 or not result.stdout:
-        raise RuntimeError("failed to read Jerboa account database from device")
+    query_templates = [
+        "SELECT name, instance, jwt FROM Account WHERE current = 1 ORDER BY id DESC;",
+        "SELECT name, instance, jwt FROM account WHERE current = 1 ORDER BY id DESC;",
+    ]
+    errors: list[str] = []
 
-    with tempfile.NamedTemporaryFile(suffix=".sqlite3") as handle:
-        handle.write(result.stdout)
-        handle.flush()
-
-        import sqlite3
-
-        connection = sqlite3.connect(handle.name)
-        try:
-            cursor = connection.execute(
-                "SELECT name, instance, jwt FROM Account WHERE current = 1 ORDER BY id DESC"
-            )
+    for sql in query_templates:
+        device_query = "sqlite3 -json " f"{quote_path(device_db)} " f"{quote_path(sql)}"
+        success, output = run_root_shell(device_query, timeout=30)
+        if success:
+            if not output.strip():
+                return []
+            try:
+                rows = json.loads(output)
+            except Exception as exc:
+                errors.append(f"device sqlite3 JSON parse failed for {sql!r}: {exc}")
+                continue
+            if not isinstance(rows, list):
+                errors.append(
+                    f"device sqlite3 returned unexpected shape for {sql!r}: {type(rows).__name__}"
+                )
+                continue
             return [
                 (
-                    str(name or ""),
-                    str(instance or ""),
-                    str(jwt or ""),
+                    str((row or {}).get("name", "") or ""),
+                    str((row or {}).get("instance", "") or ""),
+                    str((row or {}).get("jwt", "") or ""),
                 )
-                for name, instance, jwt in cursor.fetchall()
+                for row in rows
+                if isinstance(row, dict)
             ]
-        finally:
-            connection.close()
+        errors.append(f"device sqlite3 failed for {sql!r}: {output}")
+
+    with tempfile.TemporaryDirectory(prefix="jerboa-db-") as tmpdir:
+        local_db = str(Path(tmpdir) / "jerboa")
+        local_wal = str(Path(tmpdir) / "jerboa-wal")
+        local_shm = str(Path(tmpdir) / "jerboa-shm")
+
+        if not _copy_from_device(device_db, local_db, timeout=30):
+            errors.append("failed to copy Jerboa database from device")
+        else:
+            _copy_from_device(f"{device_db}-wal", local_wal, timeout=10)
+            _copy_from_device(f"{device_db}-shm", local_shm, timeout=10)
+
+            try:
+                conn = sqlite3.connect(f"file:{local_db}?mode=ro", uri=True)
+                try:
+                    for sql in query_templates:
+                        try:
+                            rows = conn.execute(sql).fetchall()
+                        except sqlite3.Error as exc:
+                            errors.append(
+                                f"host sqlite query failed for {sql!r}: {exc}"
+                            )
+                            continue
+                        return [
+                            (
+                                str(name or ""),
+                                str(instance or ""),
+                                str(jwt or ""),
+                            )
+                            for name, instance, jwt in rows
+                        ]
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:
+                errors.append(f"failed to open copied Jerboa database: {exc}")
+
+    raise RuntimeError("; ".join(errors))
 
 
 def get_current_account_record() -> dict[str, str]:
