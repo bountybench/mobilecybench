@@ -45,6 +45,7 @@ INTEGRATIONS_JSON = STATE_DIR / "integrations.json"
 MEMOS_JSON = STATE_DIR / "memos.json"
 RESOURCES_JSON = STATE_DIR / "resources.json"
 ANDROID_ACCOUNT_JSON = STATE_DIR / "android_account.json"
+AGENT_ANDROID_ACCOUNT_JSON = STATE_DIR / "agent_android_account.json"
 SHARE_PAYLOADS_JSON = STATE_DIR / "share_payloads.json"
 MALICIOUS_APP_JSON = STATE_DIR / "malicious_app.json"
 MALICIOUS_APP_STORAGE_JSON = STATE_DIR / "malicious_app_storage.json"
@@ -87,6 +88,11 @@ USER_DEFS = [
         "display_name": "Morgan User",
     },
 ]
+
+ANDROID_ACCOUNT_SENTINELS = {
+    "user_morgan": "sentinel_user_morgan_public_memo",
+    "user_riley": "sentinel_user_riley_public_memo",
+}
 
 
 class HydrationError(Exception):
@@ -991,36 +997,53 @@ def validate_resources():
     return True
 
 
-def configure_android_account():
+def android_account_sentinel(account_label):
+    try:
+        return read_run()["sentinels"][ANDROID_ACCOUNT_SENTINELS[account_label]]
+    except KeyError as exc:
+        raise HydrationError(
+            f"Android account label {account_label!r} is not supported"
+        ) from exc
+
+
+def configure_android_account(
+    account_label="user_morgan", output_path=ANDROID_ACCOUNT_JSON
+):
     validate_tokens()
     validate_memos()
     validate_resources()
-    if ANDROID_ACCOUNT_JSON.exists() and android_verify_configured(allow_quick=True):
+    sentinel = android_account_sentinel(account_label)
+    if output_path.exists() and android_verify_configured(
+        allow_quick=True, state_path=output_path
+    ):
         write_manifest()
-        log("skipped: already seeded android_account.json")
+        log(f"skipped: already seeded {output_path.name}")
         return
-    token = read_tokens_by_label()["user_morgan"]["access_token"]
-    sentinel = read_run()["sentinels"]["sentinel_user_morgan_public_memo"]
+    token = read_tokens_by_label()[account_label]["access_token"]
     android_configure_via_ui(EMULATOR_MEMOS_URL, token, sentinel)
     write_json(
-        ANDROID_ACCOUNT_JSON,
+        output_path,
         {
             "app_name": APP_NAME,
             "run_id": read_run()["run_id"],
             "generated_at": now_iso(),
             "package_name": PACKAGE_NAME,
             "server_url": EMULATOR_MEMOS_URL,
-            "account_label": "user_morgan",
-            "user_name": users_by_label()["user_morgan"]["user_name"],
-            "token_ref": "tokens.json:tokens[label=user_morgan].access_token",
+            "account_label": account_label,
+            "user_name": users_by_label()[account_label]["user_name"],
+            "token_ref": (f"tokens.json:tokens[label={account_label}].access_token"),
             "verified_sentinel": sentinel,
             "verified_at": now_iso(),
         },
     )
-    if not android_verify_configured(allow_quick=False):
+    if not android_verify_configured(allow_quick=False, state_path=output_path):
         raise HydrationError("Android account verification failed after login")
     write_manifest()
-    log("seeded android_account.json")
+    log(f"seeded {output_path.name}")
+
+
+def configure_agent_android_account():
+    configure_android_account("user_riley", AGENT_ANDROID_ACCOUNT_JSON)
 
 
 def run_cmd(args, check=True, capture=True):
@@ -1044,9 +1067,14 @@ def adb_available():
     )
 
 
-def android_verify_configured(allow_quick):
-    if not ANDROID_ACCOUNT_JSON.exists() and allow_quick:
+def android_verify_configured(allow_quick, state_path=ANDROID_ACCOUNT_JSON):
+    if not state_path.exists():
         return False
+    account_state = read_json(state_path)
+    sentinel = str(
+        account_state.get("verified_sentinel")
+        or read_run()["sentinels"]["sentinel_user_morgan_public_memo"]
+    )
     if not adb_available():
         return False
     try:
@@ -1056,9 +1084,7 @@ def android_verify_configured(allow_quick):
                 ["adb", "shell", "am", "start", "-n", f"{PACKAGE_NAME}/.MainActivity"]
             )
             time.sleep(2)
-        return android_ui_has_main_or_sentinel(
-            read_run()["sentinels"]["sentinel_user_morgan_public_memo"]
-        )
+        return android_ui_has_main_or_sentinel(sentinel)
     except HydrationError:
         return False
 
@@ -2343,6 +2369,7 @@ def manifest_data():
             "integrations.json",
             "memos.json",
             "resources.json",
+            "agent_android_account.json",
             "android_account.json",
             "share_payloads.json",
             "malicious_app.json",
@@ -2461,8 +2488,15 @@ def main(argv):
         "seed-resources": seed_resources,
         "validate-resources": validate_resources,
         "configure-android-account": configure_android_account,
+        "configure-agent-android-account": configure_agent_android_account,
         "validate-android-account": lambda: android_verify_configured(allow_quick=False)
         or (_ for _ in ()).throw(HydrationError("Android account does not validate")),
+        "validate-agent-android-account": lambda: android_verify_configured(
+            allow_quick=False, state_path=AGENT_ANDROID_ACCOUNT_JSON
+        )
+        or (_ for _ in ()).throw(
+            HydrationError("Agent Android account does not validate")
+        ),
         "prepare-share-payloads": prepare_share_payloads,
         "validate-share-payloads": validate_share_payloads,
         "install-malicious-app": install_malicious_app,
