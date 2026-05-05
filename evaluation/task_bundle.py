@@ -264,6 +264,10 @@ class ProbeOnlyBundle:
     def phase2_apk(self) -> Path:
         return self.phase1_apk()
 
+    def restore_codebase(self, codebase_dir: Path) -> None:
+        # probe_only restores via _prepare_runtime_codebase, not the bundle
+        pass
+
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
         # Probe-only's runtime codebase prep runs git_restore_clean directly
         # in RedTeamWorkflow._prepare_runtime_codebase; this Protocol method
