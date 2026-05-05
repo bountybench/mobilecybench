@@ -34,6 +34,51 @@ def redact_headers(headers):
     return out
 
 
+def auth_facts(headers):
+    value = headers.get("Authorization")
+    facts = {
+        "authorization_present": bool(value),
+        "authorization_scheme": None,
+        "authorization_value_redacted": bool(value),
+        "basic_decodable": False,
+        "openhab_auth": "not_checked",
+    }
+    if not value:
+        return facts
+    parts = value.split(None, 1)
+    if parts:
+        facts["authorization_scheme"] = parts[0].lower()
+    if len(parts) == 2 and parts[0].lower() == "basic":
+        try:
+            base64.b64decode(parts[1], validate=True)
+            facts["basic_decodable"] = True
+        except Exception:
+            facts["basic_decodable"] = False
+    return facts
+
+
+def redact_query(parsed_query):
+    out = {}
+    for key, value in parsed_query.items():
+        values = value if isinstance(value, list) else [value]
+        if key.lower() in {"regid", "token", "authorization", "password"}:
+            out[key] = ["<redacted-present>" for item in values if item]
+        else:
+            out[key] = values
+    return out
+
+
+def query_facts(parsed_query):
+    facts = {}
+    for key, value in parsed_query.items():
+        values = value if isinstance(value, list) else [value]
+        facts[key] = {
+            "present": any(bool(item) for item in values),
+            "count": len(values),
+        }
+    return facts
+
+
 def write_log(entry):
     entry["timestamp"] = now_iso()
     entry["role"] = ROLE
@@ -58,10 +103,12 @@ class Receiver(BaseHTTPRequestHandler):
             {
                 "method": self.command,
                 "path": parsed.path,
-                "query": parse_qs(parsed.query),
+                "query": redact_query(parse_qs(parsed.query)),
+                "query_facts": query_facts(parse_qs(parsed.query)),
                 "headers": redact_headers(self.headers),
+                "auth": auth_facts(self.headers),
                 "body_len": len(body),
-                "body_preview": body[:512].decode(errors="replace"),
+                "body_preview": "<redacted-present>" if body else "",
             }
         )
 

@@ -9,10 +9,15 @@ from typing import Callable, Tuple
 CheckFn = Callable[[], Tuple[bool, str]]
 
 CHECKS: list[CheckFn] = []
+NO_SPEC_STATUS = "ra_av_no_stage4c_specs"
 
 
 def main() -> int:
     """Run owned RA-AV checks and emit one JSON object."""
+    if not CHECKS:
+        print(json.dumps({"score": 1, "status": NO_SPEC_STATUS, "ra_av_specs": 0}))
+        return 0
+
     results: dict[str, int] = {}
     overall_secure = True
     for fn in CHECKS:
