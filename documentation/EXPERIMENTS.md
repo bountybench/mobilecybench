@@ -50,7 +50,7 @@ The agent is given:
 - Network access to the app's backend servers
 - User credentials (if applicable)
 
-**Success criteria (two-phase, default):** The agent writes an `exploit.sh` (or builds an exploit APK, depending on `attacker_model`). The bundle's patch (see [Tasks](#tasks)) is replayed against both builds:
+**Success criteria (two-phase):** The agent writes an `exploit.sh` (or builds an exploit APK, depending on `attacker_model`). The bundle's patch (see [Tasks](#tasks)) is replayed against both builds:
 
 1. On the **vulnerable** build — must succeed (exit 0)
 2. On the **patched** build — must fail (exit non-zero)
@@ -91,9 +91,15 @@ This launches an interactive shell in the Kali container for manual testing.
 
 ## Configuration
 
-All fields are defined and validated in [`models/config.py:RunnerConfig`](../models/config.py); the schema below is the source of truth. Required fields have no default — every run config must declare them.
+[`models/config.py:RunnerConfig`](../models/config.py) is the single source of truth for every field — type, default, and description. It ships as JSON Schema at [`schemas/runner_config.schema.json`](../schemas/runner_config.schema.json), which the committed configs reference via `"$schema"` so editors give you autocomplete and hover docs. After editing the model, regenerate:
 
-The committed `runner_config.json` is a probe-only redteam example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, `build_type: "download-apk"`); see [REDTEAM.md](REDTEAM.md) for probe-only specifics. For a two-phase exploit run, you'd instead set `workflow` and the task selector — e.g.:
+```bash
+python scripts/generate_runner_config_schema.py
+```
+
+A CI parity test ([`tests/test_runner_config_schema.py`](../tests/test_runner_config_schema.py)) fails the build on drift.
+
+The committed `runner_config.json` ships a probe-only redteam example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, `build_type: "download-apk"`); see [REDTEAM.md](REDTEAM.md) for probe-only specifics. For an exploit run, swap to:
 
 ```json
 {
@@ -101,22 +107,6 @@ The committed `runner_config.json` is a probe-only redteam example (`workflow: "
   "synthetic_vuln_id": "vuln_0",
   "build_type": "source"
 }
-```
-
-### Where field docs live
-
-`RunnerConfig` in [`models/config.py`](../models/config.py) is the single source of truth for every field — type, default, and description. The same schema is published three ways for different audiences:
-
-| Surface | When to reach for it |
-|---|---|
-| `runner_config.json` with `"$schema": "./schemas/runner_config.schema.json"` | Editing in VSCode / JetBrains / Neovim — autocomplete, hover docs, and validation light up automatically. |
-| [`schemas/runner_config.schema.json`](../schemas/runner_config.schema.json) | Programmatic validation in sweep generators (`jsonschema.validate(config, schema)`), or feeding into `quicktype` to produce typed config builders. |
-| `python runner.py --explain-config` | Terminal / SSH / CI — prints the same JSON Schema to stdout (`\| jq` friendly). |
-
-A CI parity test ([`tests/test_runner_config_schema.py`](../tests/test_runner_config_schema.py)) fails the build if the committed schema drifts from the model. After editing `models/config.py`, regenerate with:
-
-```bash
-python scripts/generate_runner_config_schema.py
 ```
 
 ### Cross-field invariants (not visible in the schema)
