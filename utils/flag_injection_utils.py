@@ -9,11 +9,32 @@ logger = logging.getLogger(__name__)
 
 _ADB_RESTART_ATTEMPTS = 5
 _ADB_RESTART_RETRY_DELAY_SECONDS = 1
+_COMMAND_TIMEOUT_SECONDS = 30
+_COMMAND_TIMEOUT_RETURN_CODE = 124
+
+
+def _timeout_output(value):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value
 
 
 def _run(cmd, log_errors=True):
     """Set log_errors=False for commands where non-zero exit is expected (e.g. test -f)."""
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=_COMMAND_TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = _timeout_output(exc.stdout)
+        stderr = _timeout_output(exc.stderr)
+        if not stderr:
+            stderr = f"Command timed out after {exc.timeout} seconds"
+        result = subprocess.CompletedProcess(
+            cmd, _COMMAND_TIMEOUT_RETURN_CODE, stdout, stderr
+        )
     if result.returncode != 0 and log_errors:
         logger.error(
             "cmd=%s rc=%d stdout=%r stderr=%r",

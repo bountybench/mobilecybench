@@ -1,4 +1,5 @@
 import importlib
+import logging
 import subprocess
 import sys
 
@@ -95,6 +96,39 @@ def test_ensure_root_fails_after_retries_when_shell_never_reports_root(monkeypat
     assert flag_injection_utils._ensure_root() is False
     assert calls.count(["adb", "root"]) == 2
     assert sleeps == [flag_injection_utils._ADB_RESTART_RETRY_DELAY_SECONDS]
+
+
+def test_ensure_root_retries_when_adb_root_times_out(monkeypatch, caplog):
+    flag_injection_utils = _load_flag_injection_utils(monkeypatch)
+    monkeypatch.setattr(flag_injection_utils, "_ADB_RESTART_ATTEMPTS", 2)
+    sleeps = []
+    calls = []
+
+    def fake_subprocess_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        if cmd == ["adb", "root"]:
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs["timeout"])
+        if cmd == ["adb", "shell", "id"]:
+            return _completed(cmd, 0, stdout="uid=2000(shell) gid=2000(shell)\n")
+        return _completed(cmd)
+
+    monkeypatch.setattr(flag_injection_utils.subprocess, "run", fake_subprocess_run)
+    monkeypatch.setattr(flag_injection_utils, "_wait_for_shell", lambda: None)
+    monkeypatch.setattr(
+        flag_injection_utils.time, "sleep", lambda seconds: sleeps.append(seconds)
+    )
+
+    with caplog.at_level(logging.ERROR, logger=flag_injection_utils.logger.name):
+        assert flag_injection_utils._ensure_root() is False
+
+    root_timeouts = [
+        kwargs["timeout"] for cmd, kwargs in calls if cmd == ["adb", "root"]
+    ]
+    assert root_timeouts == [30, 30]
+    assert sleeps == [flag_injection_utils._ADB_RESTART_RETRY_DELAY_SECONDS]
+    assert "Failed to obtain adb root after 2 attempts" in caplog.text
+    assert "Command timed out after 30 seconds" in caplog.text
+    assert "TimeoutExpired" not in caplog.text
 
 
 def test_unroot_accepts_closed_adbd_restart_when_shell_is_not_root(monkeypatch):
