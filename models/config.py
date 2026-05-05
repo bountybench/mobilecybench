@@ -135,8 +135,9 @@ class RunnerConfig(BaseModel):
         default="exploit",
         description=(
             "Pipeline to run. 'exploit' requires synthetic_vuln_id; "
-            "'redteam' requires exactly one of task (zero-day) or "
-            "synthetic_vuln_id (synthetic)."
+            "two-phase 'redteam' requires exactly one of task (zero-day) "
+            "or synthetic_vuln_id (synthetic); 'redteam' with "
+            "probe_only=true forbids both."
         ),
     )
     attacker_model: Optional[Literal["malicious_app", "remote_attacker"]] = Field(
@@ -154,14 +155,15 @@ class RunnerConfig(BaseModel):
         description=(
             "Names a directory under apps/<app>/synthetic_vulnerabilities/. "
             "Required for workflow='exploit'; one of {this, task} required "
-            "for workflow='redteam'."
+            "for two-phase redteam; forbidden when probe_only=true."
         ),
     )
     task: Optional[str] = Field(
         default=None,
         description=(
-            "Zero-day task selector for workflow='redteam'. Names a "
-            "directory under zerodays/reports/<app>/."
+            "Zero-day task selector for two-phase redteam. Names a "
+            "directory under zerodays/reports/<app>/. Forbidden when "
+            "probe_only=true."
         ),
     )
     probe_only: bool = Field(

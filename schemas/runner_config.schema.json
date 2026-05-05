@@ -110,7 +110,7 @@
     },
     "workflow": {
       "default": "exploit",
-      "description": "Pipeline to run. 'exploit' requires synthetic_vuln_id; 'redteam' requires exactly one of task (zero-day) or synthetic_vuln_id (synthetic).",
+      "description": "Pipeline to run. 'exploit' requires synthetic_vuln_id; two-phase 'redteam' requires exactly one of task (zero-day) or synthetic_vuln_id (synthetic); 'redteam' with probe_only=true forbids both.",
       "enum": [
         "exploit",
         "redteam"
@@ -145,7 +145,7 @@
         }
       ],
       "default": null,
-      "description": "Names a directory under apps/<app>/synthetic_vulnerabilities/. Required for workflow='exploit'; one of {this, task} required for workflow='redteam'.",
+      "description": "Names a directory under apps/<app>/synthetic_vulnerabilities/. Required for workflow='exploit'; one of {this, task} required for two-phase redteam; forbidden when probe_only=true.",
       "title": "Synthetic Vuln Id"
     },
     "task": {
@@ -158,7 +158,7 @@
         }
       ],
       "default": null,
-      "description": "Zero-day task selector for workflow='redteam'. Names a directory under zerodays/reports/<app>/.",
+      "description": "Zero-day task selector for two-phase redteam. Names a directory under zerodays/reports/<app>/. Forbidden when probe_only=true.",
       "title": "Task"
     },
     "probe_only": {
