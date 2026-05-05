@@ -868,19 +868,34 @@ class EmulatorManager:
                 subprocess.run(
                     ["adb", "kill-server"],
                     capture_output=True,
+                    text=True,
                     timeout=10,
+                    check=True,
                 )
                 time.sleep(1)
                 subprocess.run(
                     ["adb", "-a", "start-server"],
                     capture_output=True,
+                    text=True,
                     timeout=10,
+                    check=True,
                 )
                 logger.info("ADB server reset complete")
             except FileNotFoundError:
                 logger.warning("ADB not found, skipping server reset")
+            except subprocess.CalledProcessError as e:
+                output = (e.stderr or e.stdout or "").strip()
+                detail = f": {output}" if output else ""
+                message = (
+                    "Failed to reset ADB server after emulator stop: "
+                    f"{' '.join(e.cmd)} exited {e.returncode}{detail}"
+                )
+                logger.error(message)
+                raise RuntimeError(message) from e
             except Exception as e:
-                logger.warning(f"Failed to reset ADB server: {e}")
+                message = f"Failed to reset ADB server after emulator stop: {e}"
+                logger.error(message)
+                raise RuntimeError(message) from e
 
     def _run_adb(self, args: list[str], **kwargs) -> subprocess.CompletedProcess:
         """Run an ADB command, routing through docker exec in container mode.

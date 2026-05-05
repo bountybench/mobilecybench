@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -61,6 +62,14 @@ def test_stop_calls_adb_reset(mock_run, emulator_manager):
     assert any(
         "start-server" in str(c) for c in adb_calls
     ), "Should call adb start-server"
+    reset_calls = [
+        call
+        for call in mock_run.call_args_list
+        if call.args
+        and call.args[0] in (["adb", "kill-server"], ["adb", "-a", "start-server"])
+    ]
+    assert len(reset_calls) == 2
+    assert all(call.kwargs.get("check") is True for call in reset_calls)
 
 
 @patch("utils.emulator_manager.subprocess.run")
@@ -91,8 +100,8 @@ def test_stop_handles_missing_adb(mock_run, emulator_manager):
 
 @patch("utils.emulator_manager.subprocess.run")
 @patch("utils.emulator_manager.logger")
-def test_stop_continues_on_reset_failure(mock_logger, mock_run, emulator_manager):
-    """Test that emulator stops even if ADB reset fails"""
+def test_stop_raises_on_reset_nonzero(mock_logger, mock_run, emulator_manager):
+    """Test that emulator cleanup completes before surfacing ADB reset failure"""
     # Setup
     emulator_manager.state = EmulatorState.RUNNING
     emulator_manager.device_id = "emulator-5554"
@@ -111,21 +120,25 @@ def test_stop_continues_on_reset_failure(mock_logger, mock_run, emulator_manager
             return MagicMock(returncode=0)
         # kill-server fails
         elif "kill-server" in str(args[0]):
-            raise Exception("ADB server error")
+            raise subprocess.CalledProcessError(
+                1,
+                args[0],
+                stderr="ADB server error",
+            )
         return MagicMock(returncode=0)
 
     mock_run.side_effect = run_side_effect
 
     # Execute
-    emulator_manager.stop()
+    with pytest.raises(RuntimeError, match="Failed to reset ADB server"):
+        emulator_manager.stop()
 
-    # Verify emulator still stopped despite ADB reset failure
+    # Verify emulator stopped before ADB reset failure was surfaced
     assert emulator_manager.state == EmulatorState.STOPPED
     assert emulator_manager.process is None
 
-    # Should log warning about reset failure
-    warning_calls = [c for c in mock_logger.warning.call_args_list]
-    assert any("Failed to reset ADB" in str(c) for c in warning_calls)
+    error_calls = [c for c in mock_logger.error.call_args_list]
+    assert any("Failed to reset ADB" in str(c) for c in error_calls)
 
 
 ##########################################
