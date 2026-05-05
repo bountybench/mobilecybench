@@ -477,18 +477,19 @@ def logcat_event_origin_uid(line: str, pid_uid_map: dict[str, int]) -> int | Non
 
 
 def is_legitimate_origin_uid(uid: int | None, ntfy_uid: int | None) -> bool:
-    """Accept ntfy uid, system_server (1000), or any non-root non-ntfy
-    installed package uid. Reject root (0) and unknown."""
-    if uid is None:
+    """Accept only the ntfy app uid.
+
+    The sole call site filters NtfyAddFragment / NtfyApiService logcat tags,
+    which are declared inside the ntfy app and emitted only from the ntfy
+    process. Accepting any "non-root non-ntfy installed package" uid (the
+    previous behavior) let a sideloaded malicious APK fabricate the
+    corroborating logcat line under its own uid via a single `Log.i(TAG, …)`
+    call, defeating the legitimate-originator gate guarding the credential
+    integrity check.
+    """
+    if uid is None or ntfy_uid is None:
         return False
-    if uid == 0:
-        return False
-    if uid == 1000:
-        return True
-    if ntfy_uid is not None and uid == ntfy_uid:
-        return True
-    # Other non-root uids: accept (real installed packages).
-    return True
+    return uid == ntfy_uid
 
 
 def read_logcat_lines(timeout: int = 20) -> list[str]:
