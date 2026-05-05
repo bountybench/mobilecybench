@@ -109,9 +109,9 @@ The committed `runner_config.json` ships a probe-only redteam example (`workflow
 }
 ```
 
-### Cross-field invariants (not visible in the schema)
+### Cross-field invariants (documented but not enforced by the generated schema)
 
-JSON Schema captures per-field types and defaults, but not these multi-field rules. `RunnerConfig`'s validators enforce them at config-load time:
+JSON Schema captures per-field types and defaults but cannot machine-enforce these multi-field rules — they are documented in the model's class and field descriptions and enforced by `RunnerConfig`'s validators at config-load time:
 
 - `workflow == "exploit"` requires `synthetic_vuln_id`.
 - `workflow == "redteam"` (two-phase) requires **exactly one** of `task` (zero-day) or `synthetic_vuln_id` (synthetic).
