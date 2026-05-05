@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mobilecybench.dev/schemas/runner_config.schema.json",
   "title": "Runner Config",
-  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` requires exactly one of ``task`` (zero-day) or\n  ``synthetic_vuln_id`` (synthetic).\n* ``dry_run``, ``gold_run``, and ``replay_run`` are mutually exclusive.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
+  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)\n  or ``synthetic_vuln_id`` (synthetic).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``\n  and ``synthetic_vuln_id``, requires ``attacker_model``, and is\n  incompatible with ``gold_run``.\n* ``dry_run``, ``gold_run``, and ``replay_run`` are mutually exclusive.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
   "properties": {
     "build_type": {
       "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
@@ -132,7 +132,7 @@
         }
       ],
       "default": null,
-      "description": "Dev/debug hint only — runtime always reads the authoritative value from the task bundle's metadata.json and overrides this field. See documentation/REDTEAM.md.",
+      "description": "Two-phase redteam: dev/debug hint only — runtime reads the authoritative value from the task bundle's metadata.json and logs any override. probe_only: required and authoritative — there is no task metadata.json to read from. See documentation/REDTEAM.md.",
       "title": "Attacker Model"
     },
     "synthetic_vuln_id": {
@@ -160,6 +160,12 @@
       "default": null,
       "description": "Zero-day task selector for workflow='redteam'. Names a directory under zerodays/reports/<app>/.",
       "title": "Task"
+    },
+    "probe_only": {
+      "default": false,
+      "description": "redteam-only bundle-less mode: single replay against the app's baseline APK, no patch / no verifier / no two-phase comparison. Score is signal/no_signal based on app probes. Forbids task and synthetic_vuln_id; requires attacker_model. Incompatible with gold_run. See documentation/REDTEAM.md#probe-only-mode.",
+      "title": "Probe Only",
+      "type": "boolean"
     },
     "dry_run": {
       "description": "If true, launches an interactive Kali shell instead of the agent. Useful for verifying setup without API credits.",

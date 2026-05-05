@@ -293,11 +293,60 @@ determine_setup_modes() {
     echo "$selected_modes"
 }
 
+current_app_dir() {
+    local app_dir
+    app_dir=$(git rev-parse --show-prefix 2>/dev/null || true)
+    app_dir="${app_dir%/}"
+
+    if [[ -z "$app_dir" || "$app_dir" != apps/* ]]; then
+        echo -e "${ERROR} Could not determine app directory from current directory: $(pwd)" >&2
+        return 1
+    fi
+
+    echo "$app_dir"
+}
+
+init_app_submodules() {
+    local app_dir="${1:-}"
+    if [[ -z "$app_dir" ]]; then
+        app_dir=$(current_app_dir) || return 1
+    fi
+    app_dir="${app_dir%/}"
+
+    local app_prefix="${app_dir}/"
+    local submodule_paths=()
+    while IFS= read -r submodule_path; do
+        [[ -n "$submodule_path" ]] && submodule_paths+=("$submodule_path")
+    done < <(
+        git -C "$ROOT_DIR" config -f .gitmodules \
+            --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+            | awk -v prefix="$app_prefix" 'index($2, prefix) == 1 { print $2 }' \
+            || true
+    )
+
+    if [[ ${#submodule_paths[@]} -eq 0 ]]; then
+        echo -e "${ERROR} No submodules registered under ${app_prefix} in .gitmodules" >&2
+        return 1
+    fi
+
+    # Initialize every submodule registered under the app, not just codebase.
+    # Some apps ship auxiliary runtime submodules (for example Jitsi Docker
+    # assets) that start_runtime.sh needs, but only codebase is checked out to
+    # the app commit below.
+    for submodule_path in "${submodule_paths[@]}"; do
+        echo -e "${INFO} Initializing submodule: ${submodule_path}"
+        if ! git -C "$ROOT_DIR" submodule update --init "$submodule_path"; then
+            echo -e "${ERROR} Failed to initialize submodule: ${submodule_path}" >&2
+            return 1
+        fi
+    done
+}
+
 checkout_commit() {
     local commit_override="${1:-}"
     echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
-        commit="$commit_override"
+        local commit="$commit_override"
         if [[ -z "$commit" ]]; then
             commit=$(jq -r '.["commit_version"] // empty' "metadata.json")
         fi
@@ -305,7 +354,7 @@ checkout_commit() {
         if [[ -n "$commit" ]]; then
             echo "Found commit: $commit"
 
-            git submodule update --init codebase
+            init_app_submodules || exit 1
             echo "Cleaning repository to remove all changes and untracked files..."
 
             cd "codebase" || exit 1

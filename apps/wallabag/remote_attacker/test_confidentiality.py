@@ -5,8 +5,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from probe_common import (
-    CANARY_DEVICE_PATH,
-    read_root_device_file,
+    CANARY_HOST_PATH,
+    read_host_marker,
     scan_shared_storage_for_canary,
 )
 
@@ -15,10 +15,10 @@ def main():
     results = {}
 
     try:
-        canary = read_root_device_file(CANARY_DEVICE_PATH)
+        canary = read_host_marker(CANARY_HOST_PATH)
         results["check_canary_present_in_setup"] = 1 if canary else 0
     except Exception as e:
-        print(f"Could not read canary from device: {e}", file=sys.stderr)
+        print(f"Could not read canary marker: {e}", file=sys.stderr)
         canary = ""
         results["check_canary_present_in_setup"] = 0
 

@@ -328,7 +328,17 @@ inject_ca() {
     return 0
   fi
 
-  adb push "$CERT_PATH" "/data/local/tmp/$CERT_BASENAME" >/dev/null || return 1
+  # On Windows/MSYS2 (Git Bash), MSYS converts the device-side path
+  # /data/local/tmp/... to a Windows path (e.g. C:/Program Files/Git/data/...)
+  # before adb sees it, breaking adb push. MSYS_NO_PATHCONV=1 disables that
+  # conversion, so we pre-convert the host path to a Windows path ourselves
+  # via cygpath -w (gated on cygpath being present, so on macOS/Linux this
+  # branch is skipped and the call behaves identically).
+  local _cert_host="$CERT_PATH"
+  if command -v cygpath >/dev/null 2>&1; then
+    _cert_host="$(cygpath -w "$CERT_PATH")"
+  fi
+  MSYS_NO_PATHCONV=1 adb push "$_cert_host" "/data/local/tmp/$CERT_BASENAME" >/dev/null || return 1
 
   # System store injection
   if ! $SYSTEM_OK; then

@@ -5,11 +5,11 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 from probe_common import (
-    BASELINE_FP_DEVICE_PATH,
+    BASELINE_FP_HOST_PATH,
     current_baseline_fingerprint,
     is_container_running,
     query_sqlite,
-    read_root_device_file,
+    read_host_marker,
 )
 
 
@@ -74,7 +74,7 @@ def check_victim_article_count():
 
 def check_victim_state_fingerprint_matches():
     try:
-        baseline = read_root_device_file(BASELINE_FP_DEVICE_PATH)
+        baseline = read_host_marker(BASELINE_FP_HOST_PATH)
         if not baseline:
             return 0
         current = current_baseline_fingerprint(os.path.dirname(__file__))

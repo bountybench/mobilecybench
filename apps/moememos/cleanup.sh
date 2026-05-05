@@ -25,6 +25,12 @@ compose() {
 }
 
 if [[ -f "$COMPOSE_FILE" ]]; then
+  HYDRATION_CLEANUP="${SCRIPT_DIR}/scripts/hydration/unhydrate.sh"
+  if [[ -x "$HYDRATION_CLEANUP" ]]; then
+    info "Running hydration cleanup"
+    "$HYDRATION_CLEANUP" || warn "hydration cleanup failed"
+  fi
+
   info "Stopping memos-server"
   compose down --remove-orphans -v || warn "compose down failed"
 else
