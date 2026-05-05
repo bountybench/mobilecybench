@@ -19,6 +19,17 @@ docker volume prune -f
 echo "Removing generated files..."
 rm -f scores.json current_state.json agent.log prosody.hash
 
+# Verifier-owned baselines written by capture_verifier_baseline.py during
+# start_runtime.sh. Stale baselines from an earlier run can mismatch a fresh
+# emulator + docker stack (e.g. RKStorage default rows differ across SDK
+# versions, container PIDs change, logcat fence uuids no longer present in
+# the live ring buffer), causing probes to either false-fire or SKIP for the
+# wrong reason. Wipe between experiments; start_runtime.sh re-captures.
+if [ -d verifier_artifacts ]; then
+    echo "Removing stale verifier_artifacts/ baselines..."
+    rm -rf verifier_artifacts
+fi
+
 echo "Removing python attacker server if it exists"
 if [ -f /tmp/attacker_server.pid ]; then
     kill $(cat /tmp/attacker_server.pid) 2>/dev/null || true

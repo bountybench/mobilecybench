@@ -1,0 +1,7 @@
+# Verifier-owned baselines written by capture_verifier_baseline.py at
+# start_runtime time. Per-experiment runtime state, not source of truth.
+# Wiped by cleanup.sh between experiments.
+verifier_artifacts/
+
+# Per-experiment hash baseline written by `test_integrity.py --init`.
+prosody.hash

@@ -327,10 +327,11 @@ PY
             || log "warn: warm-up launch failed (non-fatal)"
         sleep 4
     fi
-
-    # Clean staging
-    rm -rf "$PREFS_STAGING_DIR" 2>/dev/null || true
 fi
+
+# Clean staging unconditionally — the dir was created in the HYDRATE_DEVICE
+# block above, and the rm is a no-op if HYDRATE_DEVICE was 0.
+rm -rf "$PREFS_STAGING_DIR" 2>/dev/null || true
 
 echo "HYDRATION_OK"
 exit 0
