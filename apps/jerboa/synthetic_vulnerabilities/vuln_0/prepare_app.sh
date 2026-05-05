@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$ROOT_DIR/utils/android.sh"
+source "$SCRIPT_DIR/../../helpers/victim_state.sh"
 
 SECRETS_FILE="$SCRIPT_DIR/../../secrets.json"
 EXPECTED_SECRET_FILE="$SCRIPT_DIR/.expected_secret"
@@ -38,8 +39,30 @@ retry(){
 export REQUESTS_CA_BUNDLE="${REQUESTS_CA_BUNDLE:-$ROOT_DIR/tls/rootCA.pem}"
 
 # The replay victim is restored by apps/jerboa/prepare_victim.sh. This task hook
-# may only manage vuln-specific preconditions.
+# may only manage vuln-specific preconditions. For CWE-532, the exploit runs
+# before prepare_victim.sh, so this hook must emit a fresh victim-authenticated
+# logcat artifact without taking over shared replay-victim restoration.
 adb logcat -c >/dev/null 2>&1 || true
+
+seed_victim_logcat_once(){
+  local alice_password
+  alice_password="$(
+    python3 - "$SECRETS_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+secrets = json.loads(Path(sys.argv[1]).read_text())
+print(secrets.get("alice_password", ""))
+PY
+  )"
+  [ -n "$alice_password" ] || fatal "alice_password missing from secrets.json"
+
+  log_info "Emitting fresh victim-authenticated Jerboa logs for CWE-532 replay"
+  jerboa_login_user_once "alice" "$alice_password"
+}
+
+retry 3 5 seed_victim_logcat_once || fatal "Synthetic victim log seeding failed after retries"
 
 seed_task_secret_once(){
   log_info "Seeding task-specific victim PM secret for verifier oracle"
