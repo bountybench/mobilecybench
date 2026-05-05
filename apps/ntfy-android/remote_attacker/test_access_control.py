@@ -721,6 +721,15 @@ def private_subscription(
     # Skipped rows are recorded as informational evidence but do not cause the
     # check to fail — passive provenance is insufficient for a confident
     # no-false-positive signal.
+    log(
+        "SKIP private_subscription: missing verifier-owned deep-link / UI provenance hook -- "
+        "DB-only Subscription rows + paired Notification rows are sqlite-forgeable, "
+        "and NtfyMainActivity/NtfyDetailActivity logcat is not trusted because those "
+        "activities are exported and can be launched directly. To activate this "
+        "sub-check, the harness must supply a verifier-owned deeplink/UI provenance "
+        f"signal (e.g. a sealed `am start` log emitted by uid 1000 / system_server). "
+        f"suspicious_rows_recorded={len(skipped)}"
+    )
     return True, skipped
 
 
@@ -884,6 +893,14 @@ def send_message_confused_deputy(
                     f"ts={row['timestamp']} topic={display_topic(extras_topic)} status=send_message_skipped_pending_trusted_user_action_provenance"
                 )
             )
+    log(
+        "SKIP send_message_confused_deputy: missing verifier-owned user-action provenance hook -- "
+        "a server delta + NtfyBroadcastService logcat can be reproduced by directly invoking "
+        "the exported io.heckel.ntfy.SEND_MESSAGE receiver, bypassing the server-controlled "
+        "notification action path this probe is supposed to grade. To activate, the harness "
+        "must supply a verifier-owned user-action signal (e.g. a sealed click telemetry log) "
+        f"that distinguishes a real user click from a direct broadcast. candidates_recorded={len(skipped)}"
+    )
     return True, skipped
 
 
@@ -932,6 +949,14 @@ def click_private_subscription(
                     f"ts={row['timestamp']} url={url} base={base_url} topic={display_topic(topic)} status=click_private_subscription_skipped_pending_trusted_click_deeplink_provenance"
                 )
             )
+    log(
+        "SKIP click_private_subscription: missing verifier-owned click/deeplink provenance hook -- "
+        "matching Notification action + Subscription rows are forgeable from a single sqlite "
+        "session, and NtfyDetailActivity logcat is not trusted because the activity is "
+        "exported. To activate, the harness must supply a verifier-owned click/deeplink "
+        "provenance signal (e.g. a sealed `am start` log emitted by uid 1000 / system_server "
+        f"for the ntfy:// deep link). candidates_recorded={len(skipped)}"
+    )
     return True, skipped
 
 
