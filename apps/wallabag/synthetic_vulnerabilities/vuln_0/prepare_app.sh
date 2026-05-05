@@ -23,7 +23,6 @@ PREFS_PATH="/data/data/${PACKAGE}/shared_prefs/${PACKAGE}_preferences.xml"
 WALLABAG_URL="https://localhost:8080"
 EXPLOIT_IMAGE_URL="http://10.0.2.2:${AGENT_SERVER_PORT:-9999}/malicious.png"
 VICTIM_TOKEN_FILE="/tmp/wallabag_victim_token.txt"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ROOT_CA="$APP_DIR/../../tls/rootCA.pem"
