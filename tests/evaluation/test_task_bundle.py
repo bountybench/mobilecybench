@@ -170,8 +170,10 @@ def test_phase_prep_transitions(
     bundle = bundle_factory(repo)
     monkeypatch.setattr(type(bundle), "patch", property(lambda _: patch), raising=True)
     (repo / "hello.txt").write_text("dirty\n")
+    (repo / "untracked.txt").write_text("leftover\n")
     getattr(bundle, prepare)(repo)
     assert (repo / "hello.txt").read_text() == expected
+    assert not (repo / "untracked.txt").exists()
 
 
 def test_synthetic_validate_build_artifacts_requires_both_apks(tmp_path):

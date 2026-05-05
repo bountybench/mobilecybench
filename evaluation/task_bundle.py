@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
+from utils.git_utils import git_restore_clean
+
 BundleKind = Literal["synthetic", "zeroday", "probe_only"]
 
 
@@ -61,6 +63,7 @@ class TaskBundle(Protocol):
     def phase2_apk(self) -> Path: ...
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None: ...
     def prepare_phase2_codebase(self, codebase_dir: Path) -> None: ...
+    def restore_codebase(self, codebase_dir: Path) -> None: ...
     def build_apks(
         self, app_name: str, project_root: Path, *, timeout: int
     ) -> None: ...
@@ -80,12 +83,6 @@ def _read_attacker_model_from_metadata(metadata_path: Path) -> str:
             f"in {metadata_path} (must be one of {_VALID_ATTACKER_MODELS})"
         )
     return am
-
-
-def _git_restore(codebase_dir: Path) -> None:
-    # TODO(#980): switch to utils.git_utils.git_restore_clean so untracked
-    # files from patches are also removed between phase transitions.
-    subprocess.run(["git", "checkout", "--", "."], cwd=codebase_dir, check=True)
 
 
 def _git_apply(codebase_dir: Path, patch: Path) -> None:
@@ -132,14 +129,18 @@ class SyntheticBundle:
         """Clean APK: the default build target."""
         return self.app_dir / "apk" / f"{self.app_dir.name}.apk"
 
+    def restore_codebase(self, codebase_dir: Path) -> None:
+        """Reset codebase to a clean state (HEAD + no untracked files)."""
+        git_restore_clean(codebase_dir)
+
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
         """Clean → vulnerable: apply the synthetic patch."""
-        _git_restore(codebase_dir)
+        self.restore_codebase(codebase_dir)
         _git_apply(codebase_dir, self.patch)
 
     def prepare_phase2_codebase(self, codebase_dir: Path) -> None:
         """Vulnerable → clean: revert to HEAD."""
-        _git_restore(codebase_dir)
+        self.restore_codebase(codebase_dir)
 
     def build_apks(self, app_name: str, project_root: Path, *, timeout: int) -> None:
         _run_build(project_root, [app_name], timeout)
@@ -195,13 +196,16 @@ class ZerodayBundle:
         """Patched APK: prebuilt and cached under artifacts/."""
         return self._hardened_apk
 
+    def restore_codebase(self, codebase_dir: Path) -> None:
+        git_restore_clean(codebase_dir)
+
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
         """Baseline is already vulnerable — ensure clean checkout."""
-        _git_restore(codebase_dir)
+        self.restore_codebase(codebase_dir)
 
     def prepare_phase2_codebase(self, codebase_dir: Path) -> None:
         """Vulnerable → patched: apply fix.patch."""
-        _git_restore(codebase_dir)
+        self.restore_codebase(codebase_dir)
         _git_apply(codebase_dir, self.patch)
 
     def build_apks(self, app_name: str, project_root: Path, *, timeout: int) -> None:
@@ -259,6 +263,10 @@ class ProbeOnlyBundle:
 
     def phase2_apk(self) -> Path:
         return self.phase1_apk()
+
+    def restore_codebase(self, codebase_dir: Path) -> None:
+        # probe_only restores via _prepare_runtime_codebase, not the bundle
+        pass
 
     def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
         # Probe-only's runtime codebase prep runs git_restore_clean directly
