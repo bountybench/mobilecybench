@@ -20,7 +20,9 @@
     "score": 1
   },
   "confidentiality_details": {
-    "no_remote_attacker_confidentiality_checks_implemented_skipped": 1,
+    "secret_leak": 1,
+    "topic_name_leak": 1,
+    "bcrypt_hash_leak": 1,
     "score": 1
   },
   "integrity_details": {
