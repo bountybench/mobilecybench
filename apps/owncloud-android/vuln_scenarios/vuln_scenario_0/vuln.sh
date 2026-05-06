@@ -98,6 +98,9 @@ create_fake_log_with_leaked_credentials() {
         alex_account_token=$(jq -r \
             '.users[] | select(.username=="alex") | (.account_tokens // [])[0] // ""' \
             "$BASELINE_FILE" 2>/dev/null || true)
+        log "BASELINE_FILE=$BASELINE_FILE alex_token_len=${#alex_account_token}"
+    else
+        log "BASELINE_FILE=$BASELINE_FILE NOT FOUND"
     fi
 
     # Create the fake log file with leaked credentials
