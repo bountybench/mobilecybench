@@ -14,7 +14,7 @@ def main() -> int:
     baseline_fp = load_baseline_state().get("fingerprint", "")
     baseline = baseline_state()
     current = collect_state()
-    current_fp = fingerprint(collect_state())
+    current_fp = fingerprint(current)
     results = {
         "check_victim_state_fingerprint": (
             1 if baseline_fp and baseline_fp == current_fp else 0

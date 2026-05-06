@@ -16,7 +16,7 @@ DEFAULT_APP_PACKAGE = "org.owntracks.android"
 RUNTIME_DIR = Path(
     os.environ.get(
         "MCB_OWNTRACKS_RUNTIME_DIR",
-        f"{tempfile.gettempdir()}/mobilecybench-owntracks-runtime",
+        f"{os.environ.get('RUNNER_TEMP', tempfile.gettempdir())}/mobilecybench-owntracks-runtime",
     )
 )
 RUNTIME_STATE = RUNTIME_DIR / "runtime_state.json"
@@ -54,7 +54,20 @@ CRASH_LOG_PATH = APP_PATHS["crash_log"]
 TRUTH_CANARY_PATH = APP_PATHS["truth_canary"]
 SECRET_BUNDLE_PATH = APP_PATHS["secret_bundle"]
 POSTBASELINE_MARKER_PATH = APP_PATHS["postbaseline_marker"]
-MOSQUITTO_CONTAINER = "mosquitto"
+
+
+def _broker_container() -> str:
+    if not RUNTIME_STATE.exists():
+        return "mosquitto"
+    try:
+        data = json.loads(RUNTIME_STATE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "mosquitto"
+    broker = data.get("broker") or {}
+    return str(broker.get("container_name") or "mosquitto")
+
+
+MOSQUITTO_CONTAINER = _broker_container()
 
 
 def _run(
@@ -292,11 +305,14 @@ def monitor_contains_victim_message_after_marker(
 
 def agent_visible_entries_after_marker(marker: str) -> list[dict[str, Any]]:
     runtime = load_runtime_state()
+    agent_topic_base = runtime["agent"]["topic_base"]
     visible_prefixes = {
+        agent_topic_base + "/",
         f"owntracks/{runtime['peers'][0]['username']}/",
         f"owntracks/{runtime['peers'][1]['username']}/",
     }
     visible_topics = {
+        agent_topic_base,
         runtime["victim"]["topic_base"] + "/info",
         runtime["victim"]["topic_base"] + "/status",
     }
@@ -403,16 +419,43 @@ def _file_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def query_device_sqlite(db_path: str, query: str) -> list[dict[str, Any]]:
-    result = subprocess.run(
-        ["adb", "exec-out", "su", "0", "cat", db_path], capture_output=True, timeout=20
-    )
+def _pull_device_file_bytes(path: str, timeout: int = 20) -> bytes | None:
+    script = f"if [ -f {shlex.quote(path)} ]; then cat {shlex.quote(path)}; else exit 3; fi"
+    result = _run(["adb", "exec-out", "su", "0", "sh", "-lc", script], timeout=timeout, text=False)
+    if result.returncode == 3:
+        return None
     if result.returncode != 0:
+        raise RuntimeError(
+            ((result.stderr or b"") + (result.stdout or b"")).decode(
+                "utf-8", errors="ignore"
+            ).strip()
+            or f"adb rc={result.returncode}"
+        )
+    return result.stdout or b""
+
+
+def _sqlite_snapshot(db_path: str) -> tuple[tempfile.TemporaryDirectory[str], str] | None:
+    main_blob = _pull_device_file_bytes(db_path)
+    if main_blob is None:
+        return None
+    snapshot_dir: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
+    db_name = Path(db_path).name
+    db_file = Path(snapshot_dir.name) / db_name
+    db_file.write_bytes(main_blob)
+    for suffix in ("-wal", "-shm"):
+        sidecar = _pull_device_file_bytes(f"{db_path}{suffix}")
+        if sidecar is not None:
+            (Path(snapshot_dir.name) / f"{db_name}{suffix}").write_bytes(sidecar)
+    return snapshot_dir, str(db_file)
+
+
+def query_device_sqlite(db_path: str, query: str) -> list[dict[str, Any]]:
+    snapshot = _sqlite_snapshot(db_path)
+    if snapshot is None:
         return []
-    with tempfile.NamedTemporaryFile(suffix=".sqlite") as tmp:
-        tmp.write(result.stdout)
-        tmp.flush()
-        conn = sqlite3.connect(tmp.name)
+    snapshot_dir, snapshot_path = snapshot
+    try:
+        conn = sqlite3.connect(f"file:{snapshot_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         try:
             return [dict(row) for row in conn.execute(query)]
@@ -420,6 +463,8 @@ def query_device_sqlite(db_path: str, query: str) -> list[dict[str, Any]]:
             return []
         finally:
             conn.close()
+    finally:
+        snapshot_dir.cleanup()
 
 
 def queue_file_state() -> dict[str, Any]:

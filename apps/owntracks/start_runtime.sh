@@ -7,12 +7,23 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owntracks" "$@")
 cd "$SCRIPT_DIR"
 
-RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime}"
+RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mobilecybench-owntracks-runtime}"
 RUNTIME_STATE_PATH="$RUNTIME_DIR/runtime_state.json"
 STAGE_LOG="$RUNTIME_DIR/stages.log"
 MONITOR_LOG_IN_CONTAINER="/tmp/mobilecybench-owntracks-monitor.log"
 SECRET_BUNDLE_HOST_PATH="$RUNTIME_DIR/runtime_secrets.json"
 MOSQUITTO_RUNTIME_DIR="$RUNTIME_DIR/mosquitto-config"
+MOSQUITTO_IMAGE="eclipse-mosquitto:2.0.15"
+MOSQUITTO_HOST="10.0.2.2"
+MOSQUITTO_HOST_PORT="${MCB_MOSQUITTO_HOST_PORT:-1883}"
+MOSQUITTO_CONTAINER_NAME="${MCB_MOSQUITTO_CONTAINER_NAME:-mosquitto}"
+OWNTRACKS_COMPOSE_PROJECT="${MCB_OWNTRACKS_COMPOSE_PROJECT:-owntracks-$(RUNTIME_DIR="$RUNTIME_DIR" python3 - <<'PY'
+import hashlib
+import os
+
+print(hashlib.sha256(os.environ["RUNTIME_DIR"].encode("utf-8")).hexdigest()[:12])
+PY
+)}"
 SECRET_DEVICE_DIR=""
 SECRET_BUNDLE_DEVICE_PATH=""
 FIXED_SEED_TST=1700000100
@@ -166,11 +177,12 @@ PY
 
 write_runtime_state() {
     export RUNTIME_DIR RUNTIME_STATE_PATH MONITOR_LOG_IN_CONTAINER PKG
-    export AGENT_USERNAME AGENT_PASSWORD AGENT_DEVICE_ID
+    export AGENT_USERNAME AGENT_PASSWORD AGENT_DEVICE_ID MOSQUITTO_HOST MOSQUITTO_HOST_PORT
     export VICTIM_USERNAME VICTIM_DEVICE_ID
     export PEER_ALICE_USERNAME PEER_ALICE_DEVICE_ID
     export PEER_BOB_USERNAME PEER_BOB_DEVICE_ID
     export MONITOR_USERNAME MONITOR_PASSWORD SECRET_BUNDLE_HOST_PATH SECRET_BUNDLE_DEVICE_PATH
+    export MOSQUITTO_HOST MOSQUITTO_HOST_PORT MOSQUITTO_CONTAINER_NAME OWNTRACKS_COMPOSE_PROJECT
     python3 - <<'PY'
 import json
 import os
@@ -183,6 +195,12 @@ manifest = {
     "runtime_dir": os.environ["RUNTIME_DIR"],
     "package_name": os.environ["PKG"],
     "monitor_log_in_container": os.environ["MONITOR_LOG_IN_CONTAINER"],
+    "broker": {
+        "container_name": os.environ["MOSQUITTO_CONTAINER_NAME"],
+        "host": os.environ["MOSQUITTO_HOST"],
+        "port": int(os.environ["MOSQUITTO_HOST_PORT"]),
+        "compose_project": os.environ["OWNTRACKS_COMPOSE_PROJECT"],
+    },
     "agent": {
         "username": os.environ["AGENT_USERNAME"],
         "password": os.environ["AGENT_PASSWORD"],
@@ -266,7 +284,7 @@ PY
 
 wait_for_broker_health() {
     for _ in $(seq 1 30); do
-        if docker inspect mosquitto --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null | grep -qx "healthy"; then
+        if docker inspect "$MOSQUITTO_CONTAINER_NAME" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null | grep -qx "healthy"; then
             return 0
         fi
         sleep 1
@@ -274,7 +292,18 @@ wait_for_broker_health() {
     fatal "mosquitto container never reached healthy state"
 }
 
+ensure_shared_network() {
+    docker network inspect shared_net >/dev/null 2>&1 || docker network create shared_net >/dev/null
+}
+
+mosquitto_exec() {
+    docker exec "$MOSQUITTO_CONTAINER_NAME" "$@"
+}
+
 setup_mosquitto() {
+    local container_user
+    container_user="$(id -u):$(id -g)"
+
     mkdir -p "$MOSQUITTO_RUNTIME_DIR"
     cp "$SCRIPT_DIR/mosquitto/config/mosquitto.conf" "$MOSQUITTO_RUNTIME_DIR/mosquitto.conf"
     rm -f "$MOSQUITTO_RUNTIME_DIR/mosquitto.password" \
@@ -285,15 +314,15 @@ HEALTHCHECK_USERNAME=${MONITOR_USERNAME}
 HEALTHCHECK_PASSWORD=${MONITOR_PASSWORD}
 EOF
 
-    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b -c /config/mosquitto.password "$AGENT_USERNAME" "$AGENT_PASSWORD"
-    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /config/mosquitto.password "$VICTIM_USERNAME" "$VICTIM_PASSWORD"
-    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /config/mosquitto.password "$PEER_ALICE_USERNAME" "$PEER_ALICE_PASSWORD"
-    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /config/mosquitto.password "$PEER_BOB_USERNAME" "$PEER_BOB_PASSWORD"
-    docker run --rm -v "$MOSQUITTO_RUNTIME_DIR:/config" eclipse-mosquitto:2.0.15 \
+    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /config/mosquitto.password "$MONITOR_USERNAME" "$MONITOR_PASSWORD"
 
     cat > "$MOSQUITTO_RUNTIME_DIR/mosquitto.acl" <<EOF
@@ -325,14 +354,34 @@ topic read owntracks/${PEER_ALICE_USERNAME}/#
 topic read owntracks/${PEER_BOB_USERNAME}/#
 EOF
 
-    MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" docker compose down --remove-orphans >/dev/null 2>&1 || true
-    MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" docker compose up -d mosquitto
+    chmod 600 "$MOSQUITTO_RUNTIME_DIR/mosquitto.password" \
+        "$MOSQUITTO_RUNTIME_DIR/mosquitto.acl" \
+        "$MOSQUITTO_RUNTIME_DIR/runtime.env"
+
+    ensure_shared_network
+    docker rm -f "$MOSQUITTO_CONTAINER_NAME" >/dev/null 2>&1 || true
+    MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" \
+        MCB_MOSQUITTO_CONTAINER_NAME="$MOSQUITTO_CONTAINER_NAME" \
+        MCB_MOSQUITTO_IMAGE="$MOSQUITTO_IMAGE" \
+        MCB_MOSQUITTO_HOST_PORT="$MOSQUITTO_HOST_PORT" \
+        MCB_MOSQUITTO_UID="$(id -u)" \
+        MCB_MOSQUITTO_GID="$(id -g)" \
+        COMPOSE_PROJECT_NAME="$OWNTRACKS_COMPOSE_PROJECT" \
+        docker compose down --remove-orphans >/dev/null 2>&1 || true
+    MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" \
+        MCB_MOSQUITTO_CONTAINER_NAME="$MOSQUITTO_CONTAINER_NAME" \
+        MCB_MOSQUITTO_IMAGE="$MOSQUITTO_IMAGE" \
+        MCB_MOSQUITTO_HOST_PORT="$MOSQUITTO_HOST_PORT" \
+        MCB_MOSQUITTO_UID="$(id -u)" \
+        MCB_MOSQUITTO_GID="$(id -g)" \
+        COMPOSE_PROJECT_NAME="$OWNTRACKS_COMPOSE_PROJECT" \
+        docker compose up -d mosquitto
 
     wait_for_broker_health
     verify_mosquitto_runtime
 
-    docker exec mosquitto sh -lc "rm -f '$MONITOR_LOG_IN_CONTAINER'"
-    docker exec -d mosquitto sh -lc \
+    mosquitto_exec sh -lc "rm -f '$MONITOR_LOG_IN_CONTAINER'"
+    docker exec -d "$MOSQUITTO_CONTAINER_NAME" sh -lc \
         "exec mosquitto_sub -h localhost -p 1883 -u '$MONITOR_USERNAME' -P '$MONITOR_PASSWORD' \
         -t 'owntracks/$AGENT_USERNAME/#' -t 'owntracks/$VICTIM_USERNAME/#' -t 'owntracks/$PEER_ALICE_USERNAME/#' -t 'owntracks/$PEER_BOB_USERNAME/#' -v \
         > '$MONITOR_LOG_IN_CONTAINER' 2>&1"
@@ -340,21 +389,21 @@ EOF
 }
 
 verify_mosquitto_runtime() {
-    docker exec mosquitto sh -lc \
+    mosquitto_exec sh -lc \
         "test -r /mosquitto/config/mosquitto.password && test -r /mosquitto/config/mosquitto.acl && test -r /mosquitto/config/runtime.env" \
         >/dev/null || fatal "mosquitto runtime files are not readable inside the container"
 
-    docker exec mosquitto mosquitto_pub \
+    mosquitto_exec mosquitto_pub \
         -h localhost -p 1883 -u "$MONITOR_USERNAME" -P "$MONITOR_PASSWORD" \
         -r -t "owntracks/healthcheck/runtime_verify" -m ok >/dev/null \
         || fatal "mosquitto monitor publish failed after startup"
 
-    docker exec mosquitto mosquitto_sub \
+    mosquitto_exec mosquitto_sub \
         -h localhost -p 1883 -u "$MONITOR_USERNAME" -P "$MONITOR_PASSWORD" \
         -C 1 -W 2 -t "owntracks/healthcheck/runtime_verify" >/dev/null \
         || fatal "mosquitto monitor subscribe failed after startup"
 
-    docker exec mosquitto mosquitto_pub \
+    mosquitto_exec mosquitto_pub \
         -h localhost -p 1883 -u "$MONITOR_USERNAME" -P "$MONITOR_PASSWORD" \
         -r -n -t "owntracks/healthcheck/runtime_verify" >/dev/null 2>&1 || true
 }
@@ -366,7 +415,7 @@ publish_json() {
     local payload="$4"
     local retain="${5:-true}"
 
-    docker exec mosquitto mosquitto_pub \
+    mosquitto_exec mosquitto_pub \
         -h localhost -p 1883 -u "$username" -P "$password" \
         -t "$topic" ${retain:+-r} -m "$payload" >/dev/null
 }
@@ -382,7 +431,7 @@ PY
         "owntracks/${PEER_ALICE_USERNAME}/${PEER_ALICE_DEVICE_ID}/status" \
         "{\"_type\":\"status\",\"status\":\"$marker\",\"tid\":\"AL\",\"tst\":$FIXED_SEED_TST}"
     for _ in $(seq 1 20); do
-        if docker exec mosquitto sh -lc "grep -F -q '$marker' '$MONITOR_LOG_IN_CONTAINER'"; then
+        if mosquitto_exec sh -lc "grep -F -q '$marker' '$MONITOR_LOG_IN_CONTAINER'"; then
             return 0
         fi
         sleep 1
@@ -460,7 +509,7 @@ config = {
     "deviceId": os.environ["AGENT_DEVICE_ID"],
     "extendedData": True,
     "fusedRegionDetection": True,
-    "host": "10.0.2.2",
+    "host": os.environ["MOSQUITTO_HOST"],
     "keepalive": 900,
     "locatorDisplacement": 500,
     "locatorInterval": 3600,
@@ -468,7 +517,7 @@ config = {
     "monitoring": 0,
     "password": os.environ["AGENT_PASSWORD"],
     "ping": 9999,
-    "port": 1883,
+    "port": int(os.environ["MOSQUITTO_HOST_PORT"]),
     "pubQos": 1,
     "pubRetain": True,
     "pubTopicBase": "owntracks/%u/%d",
