@@ -250,6 +250,16 @@ If the file is absent, the hook is a no-op (CI and the live runner both check). 
 
 Use the per-task `prepare_app.sh` for vuln-specific state and the per-app `prepare_victim.sh` for victim-identity state shared across vulns.
 
+### Per-app agent-login hook: `apps/<app>/agent_login.sh`
+
+Optional **per-app** pre-agent hook at `apps/<app>/agent_login.sh`. Drives the emulator UI to log the agent's account into the app once, before the agent starts seeing the env. Shared across all tasks for that app; runs for both attacker models and in probe-only mode.
+
+When it fires: last step of `setup_runtime_environment`, after `start_runtime.sh` and after the agent container is created. The agent container has not started running yet. Fires whenever the file exists, including under `dry_run` (so the interactive shell sees logged-in state) and `gold_run` / `replay_run` (the per-phase emulator restart wipes the state before replay anyway, so it's a no-op for scoring; running it keeps the contract uniform).
+
+Why it does not collide with `prepare_victim.sh`: the two run on different emulator epochs. `agent_login.sh` runs once on the emulator the agent observes; `evaluate()` then calls `_restart_runtime` per phase, wiping the device before `prepare_victim.sh` re-seeds victim state for replay. They never coexist.
+
+If the file is absent, the hook is a no-op. The runner exports `MCB_APP_DIR` and `MCB_ATTACKER_MODEL`. Hooks read agent credentials from `apps/<app>/metadata.json` (the same source the agent's prompt uses via `_agent_credentials`); for `remote_attacker`, prefer `remote_attacker_username` / `remote_attacker_password` when present.
+
 ### Author a malicious_app task
 
 `exploit_files/` layout:
@@ -316,7 +326,7 @@ Red-team-specific fields. For shared fields (`agent_mode`, `agent_image`, `model
 | `attacker_model` | `"malicious_app"` \| `"remote_attacker"` \| null | Two-phase: optional hint; the workflow reads the authoritative value from `task/metadata.json:attacker_model` via `bundle.attacker_model()` during `RedTeamWorkflow.__init__` and syncs the config (logs the override). Probe-only: required — config is authoritative because there is no task metadata. |
 | `probe_only` | bool | If true, run bundle-less probe-only mode (single baseline replay, no patch / no verifier). Forbids `task` and `synthetic_vuln_id`; requires `attacker_model`; incompatible with `gold_run`. See [Probe-only mode](#probe-only-mode). |
 | `gold_run` | bool | If true, replay `task/exploit_files/` instead of running the agent. Mutually exclusive with `dry_run`; incompatible with `probe_only`. |
-| `script_timeout` | int | Seconds for the verifier, `prepare_app.sh`, `prepare_victim.sh`, and `remote_attacker` exploit replay. |
+| `script_timeout` | int | Seconds for the verifier, `prepare_app.sh`, `prepare_victim.sh`, `agent_login.sh`, and `remote_attacker` exploit replay. |
 | `apk_timeout` | int | `am instrument` timeout for the `malicious_app` APK replay. |
 
 ### `task/metadata.json` fields
@@ -382,6 +392,7 @@ Two-phase redteam evaluation (`gold_run=false`, `dry_run=false`, `probe_only=fal
     - Wait for the emulator; inject system CA; configure emulator port forwards for container-emulator runs.
     - Install the original APK; start backend services.
     - Start the agent container. For `malicious_app`, inject `templates/malicious_app/` into `/app/agent_exploit/exploit_apk/`.
+    - If `apps/<app>/agent_login.sh` exists, run it once to seed the agent's logged-in state on the emulator.
 4. Run the agent, save `agent_exploit/` from the container, tear down the agent container.
 5. **Phase 1** (original APK): run the model-specific replay, then `verify_exploit.sh`, then probes.
     - `malicious_app`: uninstall previous exploit APK → (clear SSRF) → restart runtime with flags/SSRF → `prepare_app.sh` (per-task) → `prepare_victim.sh` (per-app) → replay APK via `am instrument`.
@@ -398,7 +409,7 @@ Probe-only evaluation (`probe_only=true`):
 
 1. `runner.py` resolves a `ProbeOnlyBundle` (no task on disk) and uses `config.attacker_model` directly (no metadata to read).
 2. `validate_arguments`: skips patch / verifier / task-metadata checks; loads `generic_probe_config.json` for `malicious_app`; confirms probe scripts exist.
-3. `setup_runtime_environment`: start the emulator, inject CA, install the app's baseline APK at `apps/<app>/apk/<app>.apk`, start the agent container. Resource mounts (agent and replay containers): see [Resource model](#resource-model).
+3. `setup_runtime_environment`: start the emulator, inject CA, install the app's baseline APK at `apps/<app>/apk/<app>.apk`, start the agent container, then run `agent_login.sh` if present. Resource mounts (agent and replay containers): see [Resource model](#resource-model).
 4. Run the agent, save `agent_exploit/`, tear down the agent container.
 5. **Single replay** under `replays/probe/`: per-task `prepare_app.sh` is **skipped**; verifier is **skipped**; probes run on the replay output.
 6. Score `signal` if probes triggered (score=1); otherwise `no_signal` (score=0). Schema fields are `phases.probe`, `probe_results.probe`.
@@ -406,6 +417,6 @@ Probe-only evaluation (`probe_only=true`):
 
 ### Environment variables
 
-The live redteam runner exports `MCB_APP_DIR` and `MCB_ATTACKER_MODEL` to `prepare_app.sh`, `prepare_victim.sh`, and the verifier. Nothing else.
+The live redteam runner exports `MCB_APP_DIR` and `MCB_ATTACKER_MODEL` to `prepare_app.sh`, `prepare_victim.sh`, `agent_login.sh`, and the verifier. Nothing else.
 
 The full `MCB_*` contract documented in [TASK.md](TASK.md#shared-environment-variables) is populated only by the validation/replay helpers in `scripts/task_runtime_common.sh`. Tasks that must run under both paths should rely on `MCB_APP_DIR` and `MCB_ATTACKER_MODEL` alone.

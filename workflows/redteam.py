@@ -551,6 +551,8 @@ class RedTeamWorkflow(Workflow):
 
         self._ops.setup_agent_extras(self)
 
+        self._run_agent_login()
+
     def _inject_apk_template(self) -> None:
         """Copy the malicious APK template into the agent's workspace at
         /app/agent_exploit/exploit_files/exploit_apk/."""
@@ -989,6 +991,20 @@ class RedTeamWorkflow(Workflow):
         self._run_setup_hook(
             hook=self._bundle.task_dir / "prepare_app.sh",
             label="prepare_app",
+        )
+
+    def _run_agent_login(self) -> None:
+        """Run <app_dir>/agent_login.sh — optional pre-agent login hook.
+
+        Drives the emulator UI to seed the agent's logged-in state once on
+        the emulator the agent will observe. The per-phase emulator restart
+        in evaluate() wipes this state before prepare_victim re-seeds the
+        victim, so agent_login never coexists with prepare_victim — the two
+        run on different emulator epochs. No-op if absent.
+        """
+        self._run_setup_hook(
+            hook=self.app_dir / "agent_login.sh",
+            label="agent_login",
         )
 
     def _run_prepare_victim(self) -> None:
