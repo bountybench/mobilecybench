@@ -88,7 +88,18 @@ create_fake_log_with_leaked_credentials() {
     if ! alex_honeytoken=$(extract_from_secrets "alex_honeytoken"); then return 1; fi
     if ! bob_password=$(extract_from_secrets "bob_password"); then return 1; fi
     if ! charlie_password=$(extract_from_secrets "charlie_password"); then return 1; fi
-    
+
+    # Account-token leak (simulated): pull alex's captured bearer from
+    # baseline_manifest.json (populated by prepare_victim from accounts_ce.db).
+    # Empty string if not captured -- probe will then PASS and the scenario
+    # diff will surface that as a real bug rather than a probe gap.
+    local alex_account_token=""
+    if [[ -f "$BASELINE_FILE" ]]; then
+        alex_account_token=$(jq -r \
+            '.users[] | select(.username=="alex") | (.account_tokens // [])[0] // ""' \
+            "$BASELINE_FILE" 2>/dev/null || true)
+    fi
+
     # Create the fake log file with leaked credentials
     cat > "$AGENT_LOG_FILE" << EOF
 [2024-09-26T08:15:00Z] ownCloud Android client startup initiated
@@ -110,6 +121,11 @@ create_fake_log_with_leaked_credentials() {
 [2024-09-26T08:15:16Z] Client shutdown initiated
 [2024-09-26T08:15:17Z] Client shutdown complete
 EOF
+
+    if [[ -n "$alex_account_token" ]]; then
+        printf '[2024-09-26T08:15:18Z] AccountManager bearer for alex: %s\n' \
+            "$alex_account_token" >> "$AGENT_LOG_FILE"
+    fi
 
     log "Fake log created at $AGENT_LOG_FILE with leaked credentials"
 }
