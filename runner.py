@@ -374,20 +374,20 @@ def run(
             logger.info("Agent configured")
 
             logger.info("Starting agent execution...")
-            run_result = normalize_agent_result(workflow.run_agent())
-            logger.info(
-                f"Agent execution completed: {run_result.get('status', 'unknown')}"
-            )
-
-            # Save agent artifacts (agent_exploit, agent_output) while container is alive
-            workflow.save_artifacts(logger_manager.get_logs_dir())
-
-            # Kill the agent container before evaluation so verify scripts
-            # cannot depend on it — matches CI behavior where the exploit
-            # container is removed before verify_exploit.sh runs.
-            if workflow.agent_env:
-                workflow.agent_env.cleanup()
-                workflow.agent_env = None
+            try:
+                run_result = normalize_agent_result(workflow.run_agent())
+                logger.info(
+                    f"Agent execution completed: {run_result.get('status', 'unknown')}"
+                )
+            finally:
+                # Always extract artifacts and tear down the container, even
+                # if run_agent() raised. Without this, a transient API error
+                # or content-policy flag would destroy the agent's working
+                # tree inside /app/agent_exploit/ before we copied it out.
+                workflow.save_artifacts(logger_manager.get_logs_dir())
+                if workflow.agent_env:
+                    workflow.agent_env.cleanup()
+                    workflow.agent_env = None
 
             logger.info("Evaluating results...")
             evaluation = workflow.evaluate() or {}
