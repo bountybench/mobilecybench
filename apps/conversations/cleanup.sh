@@ -13,7 +13,7 @@ rm -f *.log
 rm -f .runtime_integrity_state.json
 
 echo "Removing per-run probe nonce artifacts..."
-rm -f .b5_runtime_nonce .b9_hidden_jid .b17_runtime_nonce .app_pid_baseline
+rm -f .b9_hidden_jid .app_pid_baseline
 
 echo "Taking down containers..."
 docker compose down -v

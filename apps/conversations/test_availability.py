@@ -106,15 +106,19 @@ def check_no_recent_crash():
         crashlog = result.stdout if result.returncode == 0 else ""
     except Exception:
         crashlog = ""
-    if APP_PACKAGE in crashlog and "FATAL EXCEPTION" in crashlog:
-        # Extract the matching block(s) for the diagnostic.
-        offending = []
-        for block in crashlog.split("FATAL EXCEPTION"):
-            if APP_PACKAGE in block:
-                offending.append(block.splitlines()[0].strip())
+    # Walk only the post-`FATAL EXCEPTION` blocks (skip [0]: that's the
+    # buffer prefix before any FATAL marker). Restrict the package match
+    # to the top of each block so a stray APP_PACKAGE token elsewhere in
+    # the crash buffer can't cross-contaminate an unrelated stack.
+    offending = []
+    for block in crashlog.split("FATAL EXCEPTION")[1:]:
+        head = "\n".join(block.splitlines()[:10])
+        if APP_PACKAGE in head:
+            offending.append(block.splitlines()[0].strip())
+    if offending:
         return False, (
-            f"FATAL EXCEPTION found in `adb logcat -b crash` referencing "
-            f"{APP_PACKAGE}. Sample header(s): {offending[:2]}"
+            f"FATAL EXCEPTION block referencing {APP_PACKAGE} found in "
+            f"`adb logcat -b crash`. Sample header(s): {offending[:2]}"
         )
 
     return True, (

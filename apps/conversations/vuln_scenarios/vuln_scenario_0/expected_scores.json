@@ -28,8 +28,8 @@
     "app_omemo_own_fingerprints_match": 1,
     "app_omemo_peer_fingerprints_match": 1,
     "app_db_muc_baseline_body": 1,
-    "no_sent_message_with_b5_nonce": 1,
-    "no_planted_shortcut_with_b17_nonce": 1,
+    "no_new_sent_messages": 1,
+    "no_new_pinned_shortcuts": 1,
     "score": 1
   }
 }

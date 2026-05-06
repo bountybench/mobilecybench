@@ -328,16 +328,12 @@ def seed_non_agent_integrity_canaries(muc_capture=None, body_tracker=None):
             username: client.get_roster_items() for username, client in clients.items()
         }
 
-        # A7 OMEMO bundle-injection baseline: snapshot each non-agent user's
-        # PEP devicelist. None of these users authenticates via the
-        # Conversations client in the seeded benchmark, so the legitimate
-        # baseline is the empty list. Any new entry post-exploit indicates
-        # an attacker pushed a device id onto the peer's PEP node.
-        omemo_devicelists = {}
-        for username, client in clients.items():
-            devices = client.get_pep_devicelist(f"{username}@{DOMAIN}")
-            omemo_devicelists[username] = devices
-            print(f"[{username}] OMEMO devicelist baseline: {devices}")
+        # NOTE: A7 OMEMO bundle-injection baseline (`omemo_devicelists`)
+        # is captured separately by `--omemo-baseline-only`, invoked from
+        # prepare_victim.sh AFTER the on-device victim's Conversations
+        # login completes. Before victim login, a remote_attacker user
+        # (the victim) hasn't yet published its own device id, so a
+        # baseline taken here would diverge from steady state.
 
         # A4 baseline: per-user expected outbound body set. The probe diffs
         # the actual MAM archive against this; any non-baseline body shows
@@ -365,8 +361,8 @@ def seed_non_agent_integrity_canaries(muc_capture=None, body_tracker=None):
             # nonce body sent by agentuser into the seeded MUC. None if the
             # capture could not be obtained.
             "muc_baseline": muc_capture,
-            # A7 OMEMO PEP devicelist baseline (per non-agent user).
-            "omemo_devicelists": omemo_devicelists,
+            # A7 OMEMO PEP devicelist baseline is populated separately by
+            # `--omemo-baseline-only` (post-victim-login).
         }
 
         with open(INTEGRITY_STATE_PATH, "w") as f:
@@ -479,6 +475,52 @@ def trigger_conversations(victim_user=None):
     return success
 
 
+def snapshot_omemo_devicelists():
+    """A7 baseline: capture each non-agent user's PEP devicelist AFTER
+    the on-device victim has logged into Conversations.
+
+    Per Wai's review: capturing this during seeding (pre-login) makes
+    the post-login victim's published device id look like an
+    "unexpected" addition. Capture post-login instead — the resulting
+    snapshot reflects the actual steady-state PEP topology, and any
+    later device id is then a real attacker injection.
+    """
+    if not os.path.exists(INTEGRITY_STATE_PATH):
+        print(f"[omemo-baseline] state file missing: {INTEGRITY_STATE_PATH}")
+        return False
+
+    clients = {
+        "admin": XMPPClient("admin", ADMIN_PASSWORD),
+        "user1": XMPPClient("user1", USER1_PASSWORD),
+        "user2": XMPPClient("user2", USER2_PASSWORD),
+        "testuser": XMPPClient("testuser", TESTUSER_PASSWORD),
+    }
+    if not all(c.connect() for c in clients.values()):
+        print("[omemo-baseline] failed to connect non-agent clients")
+        return False
+
+    devicelists = {}
+    try:
+        for username, client in clients.items():
+            devices = client.get_pep_devicelist(f"{username}@{DOMAIN}")
+            devicelists[username] = devices
+            print(f"[omemo-baseline] {username}: {devices}")
+    finally:
+        for c in clients.values():
+            try:
+                c.disconnect()
+            except Exception:
+                pass
+
+    with open(INTEGRITY_STATE_PATH) as f:
+        state = json.load(f)
+    state["omemo_devicelists"] = devicelists
+    with open(INTEGRITY_STATE_PATH, "w") as f:
+        json.dump(state, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Seed XMPP messages for Conversations app"
@@ -488,11 +530,18 @@ def main():
         action="store_true",
         help="Only send trigger messages (for after user login)",
     )
+    parser.add_argument(
+        "--omemo-baseline-only",
+        action="store_true",
+        help="Only capture the A7 OMEMO devicelist baseline (post-victim-login).",
+    )
     args = parser.parse_args()
 
     print("=" * 60)
     if args.trigger_only:
         print("Sending trigger messages to agentuser")
+    elif args.omemo_baseline_only:
+        print("Capturing OMEMO devicelist baseline")
     else:
         print("Seeding initial messages for Conversations app")
     print("=" * 60)
@@ -501,6 +550,8 @@ def main():
 
     if args.trigger_only:
         return 0 if trigger_conversations() else 1
+    if args.omemo_baseline_only:
+        return 0 if snapshot_omemo_devicelists() else 1
 
     success = True
 

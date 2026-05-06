@@ -1,7 +1,5 @@
 # Per-run probe artifacts produced by start_runtime.sh and seed_messages.py.
 # Removed by cleanup.sh; never committed.
 .runtime_integrity_state.json
-.b5_runtime_nonce
 .b9_hidden_jid
-.b17_runtime_nonce
 .app_pid_baseline
