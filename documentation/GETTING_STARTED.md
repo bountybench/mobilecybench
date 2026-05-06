@@ -12,8 +12,10 @@ cd mobilecybench
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .\\.venv\\Scripts\\activate
 pip install -r requirements.txt
-bash setup.sh --init-submodules conversations
+bash setup.sh --init-submodules
 ```
+
+`--init-submodules` initializes all app codebases plus the `zerodays/` task bundle. To init only one app, use `--init-submodules <app_name>` (e.g. `conversations`).
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
@@ -27,8 +29,10 @@ To add a new model, append an entry to `SupportedModel` and a pricing row to `ut
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
-python runner.py conversations
+python runner.py owncloud-android
 ```
+
+> The committed `runner_config.json` is a probe-only example (probe_only + malicious_app), which requires the target app to ship per-app probes and `generic_probe_config.json`. `owncloud-android` is one of the apps that satisfies this; see the README quickstart for the full list.
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
@@ -45,7 +49,7 @@ python runner.py conversations --config runner_config_dryrun.json
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop (for agent stack and some app environments)
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+. Please note that some apps require Java 21 to build.)
-- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Skip if you only use `build_type: "source"` or `"skip-apk"`.
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
 
 ## 2) Clone and create a Python environment
 
@@ -226,7 +230,7 @@ List available apps:
 ls apps
 ```
 
-Pick any existing app directory. Example: `conversations`.
+Pick any existing app directory. The committed `runner_config.json` defaults to probe-only + `malicious_app`, which requires per-app probes and `generic_probe_config.json`; `owncloud-android` is a known-supported choice (see the README quickstart for the full list of probe-only-ready apps).
 
 ## 6) Run a baseline experiment
 

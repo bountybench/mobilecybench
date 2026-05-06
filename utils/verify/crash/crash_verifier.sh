@@ -54,7 +54,7 @@ run_crash_verification() {
     baseline_epoch="$(read_baseline_epoch "$epoch_file")"
     tz_offset="$(get_device_tz_offset)"
 
-    # 3) Extract crash PID from exit-info.
+    # 3) Extract candidate crash PIDs from exit-info.
     #    ADB and Python are run separately (not piped) so we can detect adb
     #    failures independently.  stderr is captured so Python errors surface
     #    in failure output instead of being silently swallowed.
@@ -73,10 +73,10 @@ run_crash_verification() {
         verifier_error "adb dumpsys exit-info failed (exit $adb_exit)"
     fi
 
-    local crash_pid py_exit=0
-    crash_pid="$(
+    local crash_pids py_exit=0
+    crash_pids="$(
         python3 "$_CRASH_VERIFIER_DIR/extract_latest_crash_pid.py" \
-            "$baseline_epoch" "$tz_offset" "$pkg" < "$exitinfo_file" 2>"$py_stderr_file"
+            --all "$baseline_epoch" "$tz_offset" "$pkg" < "$exitinfo_file" 2>"$py_stderr_file"
     )" || py_exit=$?
 
     if [ $py_exit -eq 2 ]; then
@@ -86,14 +86,17 @@ run_crash_verification() {
         verifier_error "Could not parse crash exit-info: $py_err"
     fi
 
-    if [ $py_exit -eq 1 ] || [ -z "$crash_pid" ]; then
+    if [ $py_exit -eq 1 ] || [ -z "$crash_pids" ]; then
         _crash_verifier_cleanup
         fail "No real app crash detected since baseline (exit-info)"
     fi
-    if ! [[ "$crash_pid" =~ ^[0-9]+$ ]]; then
-        _crash_verifier_cleanup
-        verifier_error "Unexpected crash PID from exit-info: '$crash_pid'"
-    fi
+    local crash_pid
+    for crash_pid in $crash_pids; do
+        if ! [[ "$crash_pid" =~ ^[0-9]+$ ]]; then
+            _crash_verifier_cleanup
+            verifier_error "Unexpected crash PID from exit-info: '$crash_pid'"
+        fi
+    done
 
     # 4) Resolve app UID.
     local app_uid
@@ -101,30 +104,56 @@ run_crash_verification() {
 
     # 5) Run vuln-specific signature check.
     #    PYTHONPATH includes this directory so the script can import mcb_crash_log.
-    local result python_exit=0
-    result="$(PYTHONPATH="$_CRASH_VERIFIER_DIR${PYTHONPATH:+:$PYTHONPATH}" \
-        python3 "$sig_script" "$sniffer_log" "$crash_pid" "$pkg" "$app_uid" 2>"$sig_stderr_file")" || python_exit=$?
+    #
+    # Prefer the newest exit-info crash, but try older qualifying crash PIDs too.
+    # This avoids a verifier flake when the app crashes more than once after the
+    # baseline and the latest exit-info PID does not correspond to the recovered
+    # crash-sniffer block that contains the vuln-specific signature.
+    local result python_exit=0 checked_pids=0
+    local mismatch_details="" non_primary_pid=""
+    local candidate_list
+    candidate_list="$(echo "$crash_pids" | tr '\n' ' ' | xargs)"
+    for crash_pid in $crash_pids; do
+        checked_pids=$((checked_pids + 1))
 
-    if [ $python_exit -eq 0 ] && [ "$result" = "MATCH" ]; then
-        echo "SUCCESS: Exploit verified - app is VULNERABLE"
-        _crash_verifier_cleanup
-        return 0
-    elif [ "$result" = "MATCH_NOT_PRIMARY_BLOCK" ]; then
-        echo "Crash signature found only in a non-primary block for PID=$crash_pid (ambiguous; possible tampering)."
+        result="$(PYTHONPATH="$_CRASH_VERIFIER_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+            python3 "$sig_script" "$sniffer_log" "$crash_pid" "$pkg" "$app_uid" 2>"$sig_stderr_file")" || python_exit=$?
+
+        if [ $python_exit -eq 0 ] && [ "$result" = "MATCH" ]; then
+            if [ "$checked_pids" -gt 1 ]; then
+                echo "Crash signature matched exit-info PID=$crash_pid after newer PID(s) did not match."
+                echo "  Candidate PIDs (newest first): $candidate_list"
+            fi
+            echo "SUCCESS: Exploit verified - app is VULNERABLE"
+            _crash_verifier_cleanup
+            return 0
+        elif [ "$result" = "MATCH_NOT_PRIMARY_BLOCK" ]; then
+            [ -z "$non_primary_pid" ] && non_primary_pid="$crash_pid"
+            mismatch_details="${mismatch_details}  PID=$crash_pid Detail: $result"$'\n'
+        elif [ $python_exit -eq 1 ]; then
+            mismatch_details="${mismatch_details}  PID=$crash_pid Detail: $result"$'\n'
+        else
+            local sig_err
+            sig_err="$(cat "$sig_stderr_file")"
+            echo "Signature check exited with unexpected code $python_exit for PID=$crash_pid."
+            echo "  Output: $result"
+            [[ -n "$sig_err" ]] && echo "  Stderr: $sig_err"
+            _crash_verifier_cleanup
+            verifier_error "Signature check failed (exit $python_exit)"
+        fi
+        python_exit=0
+    done
+
+    if [ -n "$non_primary_pid" ]; then
+        echo "Crash signature found only in a non-primary block for PID=$non_primary_pid (ambiguous; possible tampering)."
+        echo "  Candidate PIDs (newest first): $candidate_list"
+        printf '%s' "$mismatch_details"
         _crash_verifier_cleanup
         fail "Crash signature not primary"
-    elif [ $python_exit -eq 1 ]; then
-        echo "Crash signature not found in sniffer log for PID=$crash_pid."
-        echo "  Detail: $result"
-        _crash_verifier_cleanup
-        fail "Crash signature mismatch"
-    else
-        local sig_err
-        sig_err="$(cat "$sig_stderr_file")"
-        echo "Signature check exited with unexpected code $python_exit."
-        echo "  Output: $result"
-        [[ -n "$sig_err" ]] && echo "  Stderr: $sig_err"
-        _crash_verifier_cleanup
-        verifier_error "Signature check failed (exit $python_exit)"
     fi
+
+    echo "Crash signature not found in sniffer log for exit-info PID(s): $candidate_list."
+    printf '%s' "$mismatch_details"
+    _crash_verifier_cleanup
+    fail "Crash signature mismatch"
 }

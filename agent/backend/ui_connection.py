@@ -1,3 +1,4 @@
+import os
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List
@@ -6,14 +7,27 @@ from agent.backend.docker_ops import execute_adb_command_with_retry
 from utils.logger import logger
 
 
+def _adb_start_dir() -> str:
+    """Working dir for ADB commands inside the kali container.
+
+    Default to ``/app`` (always present) rather than ``/app/codebase``: under
+    no_codebase=True the codebase mount is omitted and the agent only sees
+    /app/apk, so a hard-coded /app/codebase would fail the wrapping
+    `cd ... && adb shell ...` and silently swallow the UI dump. Mirrors
+    docker_ops.execute_command_internal's START_DIR convention.
+    """
+    return os.getenv("START_DIR", "/app")
+
+
 def run_adb_shell(command: str) -> str:
     """
     Runs ADB shell commands for better seeing the screen state.
     Uses retry function for automatic reconnection.
     """
     try:
-        start_dir = "/app/codebase"
-        _, output, _ = execute_adb_command_with_retry(f"adb shell {command}", start_dir)
+        _, output, _ = execute_adb_command_with_retry(
+            f"adb shell {command}", _adb_start_dir()
+        )
         return output
     except Exception as e:
         logger.error(f"Error executing ADB shell command: {e}")
@@ -27,9 +41,8 @@ def run_adb_pull(remote_path: str, local_path: str) -> bool:
     Uses retry function for automatic reconnection.
     """
     try:
-        start_dir = "/app/codebase"
         exit_code, output, _ = execute_adb_command_with_retry(
-            f"adb shell cat {remote_path}", start_dir
+            f"adb shell cat {remote_path}", _adb_start_dir()
         )
 
         if exit_code != 0 or not output:

@@ -13,10 +13,13 @@ if __name__ == "__main__":
     """
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from unittest.mock import patch
+
 from utils.git_utils import (
     _get_main_branch,
     cleanup_git_branches,
     delete_non_current_branches,
+    ensure_zerodays_submodule,
     git_checkout,
     initialize_git_repository,
     onerror,
@@ -174,6 +177,27 @@ def test_onerror_readonly_file_removal():
         # assert the directory no longer exists
         assert not nested_dir.exists(), "Directory should be deleted"
     print("onerror handler works for read-only files")
+
+
+def test_ensure_zerodays_submodule_inits_when_registered_else_skips():
+    """Registered + empty → init; absent from .gitmodules → no-op."""
+    with tempfile.TemporaryDirectory() as temp:
+        repo = _create_basic_repo(Path(temp))
+
+        # No .gitmodules → skip (closed-source / partner checkout).
+        with patch("utils.git_utils._run_git_command") as mock_git:
+            ensure_zerodays_submodule(repo)
+        mock_git.assert_not_called()
+
+        # Registered + empty → exactly one init call with the right path.
+        (repo / ".gitmodules").write_text(
+            '[submodule "zerodays"]\n\tpath = zerodays\n\turl = ../x.git\n'
+        )
+        with patch("utils.git_utils._run_git_command") as mock_git:
+            ensure_zerodays_submodule(repo)
+        mock_git.assert_called_once_with(
+            repo, ["submodule", "update", "--init", "zerodays"]
+        )
 
 
 def test_cleanup_git_branches_main_reset():

@@ -12,5 +12,6 @@
   "container_names": [
     "memos-server",
     "token_catcher"
-  ]
+  ],
+  "generic_probes": ["access", "confidentiality", "integrity"]
 }

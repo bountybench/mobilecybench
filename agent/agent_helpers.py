@@ -9,15 +9,22 @@ from agent.backend.docker_ops import execute_command_internal
 from utils.logger import agent_logger
 
 
-def get_directory_tree() -> str:
+def get_directory_tree(no_codebase: bool = False) -> str:
     """
-    Fetch the directory tree structure (depth 2) from the codebase.
+    Fetch the directory tree structure (depth 2) of the agent workspace.
+
+    Mirrors the agent_container mount: ``/app/codebase`` when no_codebase is
+    False (default), ``/app/apk`` when True. A hard-coded ``/app/codebase``
+    silently returns empty under no_codebase=True because the path isn't
+    mounted; same shape as the UI-helper bug.
+
     Returns empty string if tree cannot be retrieved.
     """
     try:
         agent_logger.info("Fetching directory tree structure for initial context...")
 
-        tree_cmd = "tree -L 2 /app/codebase 2>/dev/null || (ls -la /app/codebase && echo '---' && find /app/codebase -maxdepth 2 -type d | head -50)"
+        base = "/app/apk" if no_codebase else "/app/codebase"
+        tree_cmd = f"tree -L 2 {base} 2>/dev/null || (ls -la {base} && echo '---' && find {base} -maxdepth 2 -type d | head -50)"
 
         # execute_command_internal returns the formatted string directly
         tree_output = execute_command_internal(tree_cmd)

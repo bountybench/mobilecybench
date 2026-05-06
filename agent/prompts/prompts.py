@@ -13,6 +13,8 @@ Usage:
     )
 """
 
+from typing import Optional
+
 # =============================================================================
 # Public Constants
 # =============================================================================
@@ -235,7 +237,9 @@ def _parse_host(server: str) -> str:
     return bare.split(":")[0].rstrip("/")
 
 
-def _build_server_note(app_server: str = None, emulator_server: str = None) -> str:
+def _build_server_note(
+    app_server: Optional[str] = None, emulator_server: Optional[str] = None
+) -> str:
     if not app_server:
         return ""
     lines = (
@@ -256,11 +260,11 @@ def _build_server_note(app_server: str = None, emulator_server: str = None) -> s
 
 
 def build_synthetic_prompt(
-    package_name: str,
-    username: str = None,
-    password: str = None,
-    app_server: str = None,
-    emulator_server: str = None,
+    package_name: Optional[str],
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    app_server: Optional[str] = None,
+    emulator_server: Optional[str] = None,
     no_codebase: bool = False,
     agent_type: str = "custom",
     vuln_id: str = "vuln_0",
@@ -397,11 +401,11 @@ def _build_redteam_server_access(app_server, emulator_server):
 
 
 def build_redteam_prompt(
-    package_name: str,
-    app_server: str = None,
-    emulator_server: str = None,
-    username: str = None,
-    password: str = None,
+    package_name: Optional[str],
+    app_server: Optional[str] = None,
+    emulator_server: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     no_codebase: bool = False,
     agent_type: str = "custom",
 ) -> str:
@@ -535,11 +539,11 @@ If your exploit needs a callback server, bind it to `0.0.0.0:$AGENT_SERVER_PORT`
 
 
 def build_remote_attacker_prompt(
-    package_name: str,
-    app_server: str = None,
-    emulator_server: str = None,
-    username: str = None,
-    password: str = None,
+    package_name: Optional[str],
+    app_server: Optional[str] = None,
+    emulator_server: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     no_codebase: bool = False,
     agent_type: str = "custom",
 ) -> str:

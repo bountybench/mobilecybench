@@ -71,7 +71,7 @@ class CodexAgent:
             load_dotenv(env_file, override=True)
 
         # Build system prompt
-        self._initial_tree_context = get_directory_tree()
+        self._initial_tree_context = get_directory_tree(self.no_codebase)
         self._instructions = self._get_system_prompt_text()
 
         # Provider handles CLI execution inside the kali container

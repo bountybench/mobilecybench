@@ -3,6 +3,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from typing import Optional
 
 import httpx
 import openai
@@ -75,21 +76,21 @@ class CustomAgent:
         max_model_response_tokens: int,
         screenshot_enabled: bool,
         app_name: str,
-        additional_context: str = None,
+        additional_context: Optional[str] = None,
         timeout_ms: int = DEFAULT_TIMEOUT_MS,
-        app_server: str = None,
-        emulator_server: str = None,
-        network_access: bool = True,
-        package_name: str = None,
-        reasoning_effort: str = None,
-        username: str = None,
-        password: str = None,
+        app_server: Optional[str] = None,
+        emulator_server: Optional[str] = None,
+        package_name: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
         allow_unregistered_models: bool = False,
         vuln_id: str = "vuln_0",
+        allowed_tools: list[str] | None = None,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
@@ -114,17 +115,17 @@ class CustomAgent:
         self.screenshot_enabled = screenshot_enabled
         self.app_server = app_server
         self.emulator_server = emulator_server
-        self.network_access = network_access
         self.app_name = app_name
         self.package_name = package_name
         self.username = username
         self.password = password
 
-        # Initialize ToolRuntime
-        self.runtime = ToolRuntime()
+        # Initialize ToolRuntime. allowed_tools=None exposes the full set;
+        # otherwise the registry is filtered to the named tools.
+        self.runtime = ToolRuntime(allowed_tools=allowed_tools)
 
         # Build system prompt
-        self._initial_tree_context = get_directory_tree()
+        self._initial_tree_context = get_directory_tree(self.no_codebase)
         self._instructions = self._get_system_prompt_text(additional_context)
 
         agent_logger.info("Agent initialized with system prompt instructions.")
@@ -168,7 +169,7 @@ class CustomAgent:
         agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
         agent_logger.info("=" * 80)
 
-    def _get_system_prompt_text(self, additional_context: str = None) -> str:
+    def _get_system_prompt_text(self, additional_context: Optional[str] = None) -> str:
         """Build the system prompt text based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
@@ -178,7 +179,7 @@ class CustomAgent:
             )
             full_prompt = builder(
                 package_name=self.package_name,
-                app_server=self.app_server if self.network_access else None,
+                app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 username=self.username,
                 password=self.password,
@@ -189,7 +190,7 @@ class CustomAgent:
                 package_name=self.package_name,
                 username=self.username,
                 password=self.password,
-                app_server=self.app_server if self.network_access else None,
+                app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 no_codebase=self.no_codebase,
                 vuln_id=self.vuln_id,
@@ -210,16 +211,32 @@ class CustomAgent:
         else:
             check_path = "/app/agent_exploit/exploit.sh"
 
+        # `test -f` exits 1 with empty stderr when the file is absent — the
+        # normal "no" answer to an existence check. Anything else (non-1 exit,
+        # or non-empty stderr like "No such container") is an operational
+        # failure of the check itself, not a missing file. We classify the two
+        # so that infra problems still surface as warnings while a legitimate
+        # missing artifact stays silent.
         try:
             result = CommandExecutor().run(
                 f"docker exec kali-container test -f {check_path}",
                 capture_output=True,
+                check=False,
                 timeout=self.timeout_ms // 1000,
             )
-            return result.returncode == 0
         except Exception as e:
             agent_logger.warning(f"Failed to check for exploit artifact: {e}")
             return False
+
+        if result.returncode == 0:
+            return True
+        if result.returncode != 1 or result.stderr.strip():
+            agent_logger.warning(
+                f"Could not check {check_path} in kali-container "
+                f"(exit_code={result.returncode}, "
+                f"stderr={result.stderr.strip()!r})"
+            )
+        return False
 
     def _check_exploit_script_for_blocked_patterns(self) -> tuple[bool, list]:
         """Pull all files under /app/agent_exploit/ from the container and check
@@ -285,7 +302,7 @@ class CustomAgent:
             )
             return False, []
 
-    def _finish_run(self, turns: int, final_message: str = None) -> dict:
+    def _finish_run(self, turns: int, final_message: Optional[str] = None) -> dict:
         """Log summary, archive conversation, and return the result dict."""
         exploit_exists = self._check_exploit_exists()
 

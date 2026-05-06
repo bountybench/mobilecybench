@@ -1,12 +1,12 @@
 import datetime
 import json
-import os
 import platform
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
+from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
 
@@ -85,15 +85,6 @@ def validate_schema(instance: dict, schema: Optional[dict], artifact_name: str) 
         _jsonschema_validate(instance=instance, schema=schema)
     except Exception as e:
         logger.warning("%s schema validation failed: %s", artifact_name, e)
-
-
-def _write_json_atomic(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    os.replace(tmp, path)
 
 
 def _timing_summary_from_calls(calls: list[Any]) -> dict:
