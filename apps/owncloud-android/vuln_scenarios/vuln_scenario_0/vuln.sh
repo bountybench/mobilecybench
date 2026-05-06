@@ -93,14 +93,15 @@ create_fake_log_with_leaked_credentials() {
     # baseline_manifest.json (populated by prepare_victim from accounts_ce.db).
     # Empty string if not captured -- probe will then PASS and the scenario
     # diff will surface that as a real bug rather than a probe gap.
+    # $BASELINE_FILE may be a CWD-relative path set by the harness (resolves
+    # against scenario dir here, not app dir); always use the canonical app
+    # path for the manifest read.
+    local manifest="$APP_DIR/baseline_manifest.json"
     local alex_account_token=""
-    if [[ -f "$BASELINE_FILE" ]]; then
+    if [[ -f "$manifest" ]]; then
         alex_account_token=$(jq -r \
             '.users[] | select(.username=="alex") | (.account_tokens // [])[0] // ""' \
-            "$BASELINE_FILE" 2>/dev/null || true)
-        log "BASELINE_FILE=$BASELINE_FILE alex_token_len=${#alex_account_token}"
-    else
-        log "BASELINE_FILE=$BASELINE_FILE NOT FOUND"
+            "$manifest" 2>/dev/null || true)
     fi
 
     # Create the fake log file with leaked credentials
