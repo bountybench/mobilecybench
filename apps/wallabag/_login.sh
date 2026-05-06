@@ -70,6 +70,12 @@ done
 adb root >/dev/null 2>&1 || true
 sleep 1
 
+# Kill any running app process before overwriting prefs. SharedPreferences are
+# cached in memory; if the process is alive, the running app keeps serving the
+# old map and can write its cache back over the file on its next commit().
+# Caller is responsible for relaunching when UI inspection is needed.
+MSYS_NO_PATHCONV=1 adb shell "am force-stop $PACKAGE" >/dev/null 2>&1 || true
+
 APP_UID="$(MSYS_NO_PATHCONV=1 adb shell stat -c '%u' "/data/data/$PACKAGE" | tr -d '\r')"
 if ! [[ "${APP_UID:-}" =~ ^[0-9]+$ ]]; then
     fatal "Failed to determine wallabag app UID (got: ${APP_UID:-unset})"
