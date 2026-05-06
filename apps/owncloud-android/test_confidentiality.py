@@ -87,7 +87,9 @@ def _collect_leak_sources(
         print(f"[WARN] logcat dump unavailable: {e}", file=sys.stderr)
     if include_server_log:
         try:
-            sources.append(("owncloud_server_log", probe_lib.read_owncloud_server_log()))
+            sources.append(
+                ("owncloud_server_log", probe_lib.read_owncloud_server_log())
+            )
         except Exception as e:
             print(f"[WARN] server log dump unavailable: {e}", file=sys.stderr)
     return sources
