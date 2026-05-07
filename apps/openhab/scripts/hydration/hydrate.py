@@ -270,15 +270,64 @@ def request(
 
 def wait_for_rest(username, password, timeout=180):
     deadline = time.time() + timeout
+    consecutive_successes = 0
     while time.time() < deadline:
         try:
-            request(
-                "GET", f"{SERVER_URL}/rest/items", username=username, password=password
+            _, _, payload = request(
+                "GET",
+                f"{SERVER_URL}/rest/items",
+                username=username,
+                password=password,
+                headers={"Accept": "application/json"},
             )
-            return
-        except HydrationError:
+            json.loads(payload.decode())
+            consecutive_successes += 1
+            if consecutive_successes >= 2:
+                return
+            time.sleep(2)
+        except (HydrationError, json.JSONDecodeError, UnicodeDecodeError):
+            consecutive_successes = 0
             time.sleep(2)
     raise HydrationError("openHAB REST API did not become ready")
+
+
+def is_transient_openhab_rest_failure(exc):
+    message = str(exc).lower()
+    transient_markers = (
+        "no service was found",
+        "unexpected http 502",
+        "unexpected http 503",
+        "unexpected http 504",
+        "connection refused",
+        "connection reset",
+        "remote end closed",
+        "timed out",
+        "timeout",
+    )
+    return any(marker in message for marker in transient_markers)
+
+
+def retry_openhab_rest(action_name, action, *, attempts=None, delay=None):
+    max_attempts = attempts or env_int("OPENHAB_REST_MUTATION_ATTEMPTS", 60)
+    retry_delay = (
+        delay
+        if delay is not None
+        else env_float("OPENHAB_REST_MUTATION_RETRY_DELAY", 2.0)
+    )
+    last_exc = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return action()
+        except HydrationError as exc:
+            last_exc = exc
+            if attempt >= max_attempts or not is_transient_openhab_rest_failure(exc):
+                raise
+            warn(
+                f"{action_name} failed while OpenHAB REST was warming up "
+                f"({attempt}/{max_attempts}): {exc}; retrying"
+            )
+            time.sleep(retry_delay)
+    raise last_exc
 
 
 def restart_openhab_container(reason):
@@ -524,25 +573,31 @@ def create_item(name, typ, label, groups=None, category=None, tags=None):
         payload["groupNames"] = groups
     if category:
         payload["category"] = category
-    request(
-        "PUT",
-        f"{SERVER_URL}/rest/items/{urllib.parse.quote(name)}",
-        username=user,
-        password=pw,
-        data=payload,
+    retry_openhab_rest(
+        f"create item {name}",
+        lambda: request(
+            "PUT",
+            f"{SERVER_URL}/rest/items/{urllib.parse.quote(name)}",
+            username=user,
+            password=pw,
+            data=payload,
+        ),
     )
 
 
 def set_item_state(name, state):
     user, pw = admin_auth()
-    request(
-        "POST",
-        f"{SERVER_URL}/rest/items/{urllib.parse.quote(name)}",
-        username=user,
-        password=pw,
-        data=str(state),
-        headers={"Content-Type": "text/plain"},
-        ok=(200, 202, 204),
+    retry_openhab_rest(
+        f"set item state {name}",
+        lambda: request(
+            "POST",
+            f"{SERVER_URL}/rest/items/{urllib.parse.quote(name)}",
+            username=user,
+            password=pw,
+            data=str(state),
+            headers={"Content-Type": "text/plain"},
+            ok=(200, 202, 204),
+        ),
     )
 
 

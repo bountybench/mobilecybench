@@ -100,6 +100,30 @@ def test_write_text_preserve_inode_if_changed(tmp_path, hydrate_module):
     assert hydrate_module.write_text_preserve_inode_if_changed(target, "new\n") is False
 
 
+def test_create_item_retries_transient_openhab_rest_warmup(monkeypatch, hydrate_module):
+    calls = []
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        if len(calls) == 1:
+            raise hydrate_module.HydrationError(
+                "unexpected HTTP 404 from PUT http://localhost:8080/rest/items/"
+                "Hydration_Item: <html><body>No service was found.</body></html>"
+            )
+        return 200, "application/json", b"{}"
+
+    monkeypatch.setattr(hydrate_module, "admin_auth", lambda: ("adminuser", "secret"))
+    monkeypatch.setattr(hydrate_module, "request", fake_request)
+    monkeypatch.setattr(hydrate_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setenv("OPENHAB_REST_MUTATION_ATTEMPTS", "2")
+    monkeypatch.setenv("OPENHAB_REST_MUTATION_RETRY_DELAY", "0")
+
+    hydrate_module.create_item("Hydration_Item", "String", "Hydration Item")
+
+    assert [call[0] for call in calls] == ["PUT", "PUT"]
+    assert calls[0][2]["data"]["name"] == "Hydration_Item"
+
+
 def test_write_android_config_reroots_after_victim_login(
     tmp_path, monkeypatch, hydrate_module
 ):
