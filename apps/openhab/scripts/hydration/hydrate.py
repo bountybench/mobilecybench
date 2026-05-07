@@ -980,11 +980,28 @@ def android_pref_path():
     return f"/data/data/{APP_PACKAGE}/shared_prefs/{APP_PACKAGE}_preferences.xml"
 
 
-def pull_file(device_path, host_path, required=True):
-    proc = adb("pull", device_path, str(host_path), check=False)
-    if required and proc.returncode != 0:
-        raise HydrationError(f"adb pull failed for {device_path}")
-    return proc.returncode == 0
+def pull_file(
+    device_path, host_path, required=True, attempts=1, reroot=False, delay=1.0
+):
+    last_proc = None
+    for attempt in range(1, attempts + 1):
+        if reroot:
+            adb_root()
+        proc = adb("pull", device_path, str(host_path), check=False)
+        if proc.returncode == 0:
+            return True
+        last_proc = proc
+        if attempt < attempts:
+            warn(f"adb pull failed for {device_path}; retrying ({attempt}/{attempts})")
+            time.sleep(delay)
+    if required:
+        detail = ""
+        if last_proc is not None:
+            output = (last_proc.stderr or last_proc.stdout or "").strip().splitlines()
+            if output:
+                detail = f": {output[-1]}"
+        raise HydrationError(f"adb pull failed for {device_path}{detail}")
+    return False
 
 
 def write_android_config_via_app_ui(user1_username, user1_password):
@@ -1053,9 +1070,8 @@ def write_android_config_via_app_ui(user1_username, user1_password):
         check=False,
     )
     time.sleep(5)
-    adb_root()
     pulled = STATE_DIR / "app_prefs_configured.xml"
-    pull_file(android_pref_path(), pulled)
+    pull_file(android_pref_path(), pulled, attempts=5, reroot=True, delay=2.0)
     text = pulled.read_text(errors="ignore")
     if user1_password in text:
         pulled.unlink(missing_ok=True)
@@ -1198,7 +1214,7 @@ def update_pulled_prefs(updates):
     host = tempfile.NamedTemporaryFile(delete=False)
     host.close()
     try:
-        pull_file(android_pref_path(), Path(host.name))
+        pull_file(android_pref_path(), Path(host.name), attempts=3, reroot=True)
         tree = parse_xml_map(Path(host.name))
         root = tree.getroot()
         for kind, name, value in updates:
@@ -1296,7 +1312,12 @@ def ensure_device_prefs(check=False):
         "allow",
         check=False,
     )
-    pull_file(android_pref_path(), STATE_DIR / "app_prefs_configured.xml")
+    pull_file(
+        android_pref_path(),
+        STATE_DIR / "app_prefs_configured.xml",
+        attempts=3,
+        reroot=True,
+    )
     write_json(
         device_path,
         {

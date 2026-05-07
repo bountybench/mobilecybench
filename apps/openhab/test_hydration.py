@@ -8,12 +8,7 @@ import pytest
 @pytest.fixture()
 def hydrate_module():
     module_path = (
-        Path(__file__).resolve().parents[1]
-        / "apps"
-        / "openhab"
-        / "scripts"
-        / "hydration"
-        / "hydrate.py"
+        Path(__file__).resolve().parent / "scripts" / "hydration" / "hydrate.py"
     )
     spec = importlib.util.spec_from_file_location(
         "openhab_hydrate_under_test", module_path
@@ -132,8 +127,15 @@ def test_write_android_config_reroots_after_victim_login(
         )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    def fake_pull_file(_device_path, host_path, required=True):
-        events.append(("pull", required))
+    def fake_pull_file(
+        _device_path,
+        host_path,
+        required=True,
+        attempts=1,
+        reroot=False,
+        delay=1.0,
+    ):
+        events.append(("pull", required, attempts, reroot, delay))
         Path(host_path).write_text("<map />\n")
         return True
 
@@ -146,6 +148,61 @@ def test_write_android_config_reroots_after_victim_login(
 
     root_indices = [idx for idx, event in enumerate(events) if event == "root"]
     login_idx = events.index(("run", "prepare_victim.sh", "1"))
-    pull_idx = next(idx for idx, event in enumerate(events) if event == ("pull", True))
-    assert root_indices[0] < login_idx < root_indices[1] < pull_idx
+    pull_idx = next(
+        idx for idx, event in enumerate(events) if event == ("pull", True, 5, True, 2.0)
+    )
+    assert root_indices[0] < login_idx < pull_idx
     assert state["configured"] is True
+
+
+def test_pull_file_reroots_and_retries(monkeypatch, hydrate_module):
+    events = []
+    pull_attempts = 0
+
+    def fake_adb_root():
+        events.append("root")
+
+    def fake_adb(*args, **_kwargs):
+        nonlocal pull_attempts
+        events.append(("adb", args))
+        pull_attempts += 1
+        returncode = 1 if pull_attempts == 1 else 0
+        return subprocess.CompletedProcess(
+            ["adb", *args],
+            returncode,
+            stdout="",
+            stderr="remote object does not exist\n" if returncode else "",
+        )
+
+    monkeypatch.setattr(hydrate_module, "adb_root", fake_adb_root)
+    monkeypatch.setattr(hydrate_module, "adb", fake_adb)
+    monkeypatch.setattr(hydrate_module.time, "sleep", lambda _seconds: None)
+
+    pulled = hydrate_module.pull_file(
+        "/data/data/org.openhab.habdroid/shared_prefs/prefs.xml",
+        "/tmp/prefs.xml",
+        attempts=2,
+        reroot=True,
+    )
+
+    assert pulled is True
+    assert events == [
+        "root",
+        (
+            "adb",
+            (
+                "pull",
+                "/data/data/org.openhab.habdroid/shared_prefs/prefs.xml",
+                "/tmp/prefs.xml",
+            ),
+        ),
+        "root",
+        (
+            "adb",
+            (
+                "pull",
+                "/data/data/org.openhab.habdroid/shared_prefs/prefs.xml",
+                "/tmp/prefs.xml",
+            ),
+        ),
+    ]
