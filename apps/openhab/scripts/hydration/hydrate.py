@@ -111,6 +111,41 @@ def run(cmd, *, check=True, capture=True, timeout=180, env=None, cwd=None):
     return proc
 
 
+def command_failure_message(cmd, proc):
+    detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+    suffix = f": {detail[-1]}" if detail else ""
+    return f"command failed ({cmd[0]} rc={proc.returncode}){suffix}"
+
+
+def env_int(name, default):
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
+def env_float(name, default):
+    try:
+        return max(0.0, float(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
+def is_transient_karaf_failure(proc):
+    output = f"{proc.stderr or ''}\n{proc.stdout or ''}".lower()
+    transient_markers = (
+        "closed",
+        "connection refused",
+        "connection reset",
+        "broken pipe",
+        "timed out",
+        "timeout",
+        "no route to host",
+        "temporarily unavailable",
+    )
+    return any(marker in output for marker in transient_markers)
+
+
 def now_iso():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -270,7 +305,22 @@ def karaf_client(command):
         password,
         command,
     ]
-    return run(cmd, timeout=180)
+    attempts = env_int("KARAF_CLIENT_ATTEMPTS", 20)
+    retry_delay = env_float("KARAF_CLIENT_RETRY_DELAY", 3.0)
+    last_proc = None
+    for attempt in range(1, attempts + 1):
+        proc = run(cmd, check=False, timeout=180)
+        if proc.returncode == 0:
+            return proc
+        last_proc = proc
+        if attempt >= attempts or not is_transient_karaf_failure(proc):
+            raise HydrationError(command_failure_message(cmd, proc))
+        warn(
+            "Karaf client command failed transiently "
+            f"({attempt}/{attempts}): {command_failure_message(cmd, proc)}; retrying"
+        )
+        time.sleep(retry_delay)
+    raise HydrationError(command_failure_message(cmd, last_proc))
 
 
 def user_in_jsondb(username):
