@@ -281,6 +281,13 @@ def wait_for_rest(username, password, timeout=180):
     raise HydrationError("openHAB REST API did not become ready")
 
 
+def restart_openhab_container(reason):
+    warn(f"{reason}; restarting OpenHAB container to reload file-mounted sitemap")
+    run(["docker", "restart", "openhab"], timeout=180)
+    user, pw = admin_auth()
+    wait_for_rest(user, pw, timeout=240)
+
+
 def verify_basic_auth(username, password):
     try:
         request("GET", f"{SERVER_URL}/rest/items", username=username, password=password)
@@ -905,6 +912,29 @@ def patch_sitemap(specs):
     )
 
 
+def seed_live_items(specs):
+    for spec in specs:
+        create_item(
+            spec["name"],
+            spec["type"],
+            spec["label"],
+            spec.get("groups"),
+            tags=["Hydration", spec.get("classification", "STATE")],
+        )
+        if spec.get("baseline_state") and spec["baseline_state"] != "UNDEF":
+            set_item_state(spec["name"], spec["baseline_state"])
+    for name in [
+        "AlarmSystem_Armed",
+        "FrontDoor_Lock",
+        "GarageDoor_Lock",
+        "BackDoor_Lock",
+    ]:
+        try:
+            set_item_state(name, "ON")
+        except HydrationError:
+            warn(f"security baseline item missing: {name}")
+
+
 def ensure_items(check=False):
     require_status()
     users = load_json(STATE_DIR / "users.json")
@@ -951,27 +981,10 @@ def ensure_items(check=False):
             )
 
     assert_fixed_integration_ports_available()
-    for spec in specs:
-        create_item(
-            spec["name"],
-            spec["type"],
-            spec["label"],
-            spec.get("groups"),
-            tags=["Hydration", spec.get("classification", "STATE")],
-        )
-        if spec.get("baseline_state") and spec["baseline_state"] != "UNDEF":
-            set_item_state(spec["name"], spec["baseline_state"])
-    for name in [
-        "AlarmSystem_Armed",
-        "FrontDoor_Lock",
-        "GarageDoor_Lock",
-        "BackDoor_Lock",
-    ]:
-        try:
-            set_item_state(name, "ON")
-        except HydrationError:
-            warn(f"security baseline item missing: {name}")
+    seed_live_items(specs)
     patch_sitemap(specs)
+    restart_openhab_container("hydration sitemap changed")
+    seed_live_items(specs)
     write_json(
         items_json, {"run_id": run_id(), "items": specs, "updated_at": now_iso()}
     )
