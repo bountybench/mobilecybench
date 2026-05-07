@@ -355,6 +355,10 @@ topic read owntracks/${VICTIM_USERNAME}/${VICTIM_DEVICE_ID}/status
 topic write owntracks/${AGENT_USERNAME}/#
 
 user ${VICTIM_USERNAME}
+topic read owntracks/+/+
+topic read owntracks/+/+/event
+topic read owntracks/+/+/info
+topic read owntracks/+/+/status
 topic read owntracks/${VICTIM_USERNAME}/${VICTIM_DEVICE_ID}/cmd
 topic write owntracks/${VICTIM_USERNAME}/#
 

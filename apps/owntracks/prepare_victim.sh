@@ -373,8 +373,8 @@ sys.path.insert(0, os.environ["SCRIPT_DIR"])
 
 from probe_common import WAYPOINT_DB_PATH, query_device_sqlite
 
-    rows = query_device_sqlite(WAYPOINT_DB_PATH, "SELECT COUNT(*) AS count FROM WaypointModel")
-    raise SystemExit(0 if rows and rows[0]["count"] == 1 else 1)
+rows = query_device_sqlite(WAYPOINT_DB_PATH, "SELECT COUNT(*) AS count FROM WaypointModel")
+raise SystemExit(0 if rows and rows[0]["count"] == 1 else 1)
 PY
     mosquitto_exec mosquitto_sub -C 1 -W 2 -h localhost -p 1883 -u "$MONITOR_USERNAME" -P "$MONITOR_PASSWORD" -t "$VICTIM_LOCATION_TOPIC" >/dev/null
     mosquitto_exec mosquitto_sub -C 1 -W 2 -h localhost -p 1883 -u "$MONITOR_USERNAME" -P "$MONITOR_PASSWORD" -t "$(read_runtime_field peers.0.topic_base)" >/dev/null

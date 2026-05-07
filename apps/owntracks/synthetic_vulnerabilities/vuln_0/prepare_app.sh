@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="${MCB_APP_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 RUNTIME_STATE_PATH="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mobilecybench-owntracks-runtime}/runtime_state.json"
 [[ -f "$RUNTIME_STATE_PATH" ]] || { echo "missing runtime state: $RUNTIME_STATE_PATH" >&2; exit 2; }
 
@@ -34,6 +36,7 @@ print("synthetic_vuln_0_" + secrets.token_hex(8))
 PY
 )"
 
+bash "$APP_DIR/prepare_victim.sh"
 timeout 20 docker exec "$MOSQUITTO_CONTAINER_NAME" sh -lc "printf 'MARKER synthetic_vuln_0 %s\n' '$TOKEN' >> '$MONITOR_LOG_IN_CONTAINER'"
 printf '%s\n' "$TOKEN" > "$MARKER_PATH"
 echo "[prepare_app] recorded monitor marker $TOKEN"
