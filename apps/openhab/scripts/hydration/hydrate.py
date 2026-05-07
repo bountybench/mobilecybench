@@ -93,6 +93,23 @@ def write_text_if_changed(path, text):
     return True
 
 
+def write_text_preserve_inode_if_changed(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.read_text() == text:
+        return False
+    if not path.exists():
+        path.write_text(text)
+        return True
+    with path.open("r+", encoding="utf-8") as f:
+        f.seek(0)
+        f.write(text)
+        f.truncate()
+        f.flush()
+        os.fsync(f.fileno())
+    os.utime(path, None)
+    return True
+
+
 def run(cmd, *, check=True, capture=True, timeout=180, env=None, cwd=None):
     kwargs = {
         "cwd": str(cwd or REPO_ROOT),
@@ -533,6 +550,86 @@ def get_item(name):
     return json.loads(data.decode())
 
 
+def get_item_state(name):
+    user, pw = admin_auth()
+    _, _, data = request(
+        "GET",
+        f"{SERVER_URL}/rest/items/{urllib.parse.quote(name, safe='')}/state",
+        username=user,
+        password=pw,
+        headers={"Accept": "text/plain"},
+    )
+    return data.decode(errors="replace").strip()
+
+
+def collect_named_items(value):
+    found = set()
+    if isinstance(value, dict):
+        name = value.get("name")
+        if isinstance(name, str):
+            found.add(name)
+        item = value.get("item")
+        if isinstance(item, dict):
+            item_name = item.get("name")
+            if isinstance(item_name, str):
+                found.add(item_name)
+        for child in value.values():
+            found.update(collect_named_items(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.update(collect_named_items(child))
+    return found
+
+
+def sitemap_definition(text):
+    header = re.search(
+        r'^\s*sitemap\s+([A-Za-z0-9_-]+)(?:\s+label="([^"]+)")?',
+        text,
+        re.M,
+    )
+    if header is None:
+        raise HydrationError("home.sitemap does not declare a sitemap name")
+    items = set(re.findall(r"\bitem=([A-Za-z0-9_:-]+)", text))
+    return header.group(1), header.group(2), items
+
+
+def live_sitemap_items(sitemap_name):
+    user, pw = admin_auth()
+    _, _, data = request(
+        "GET",
+        f"{SERVER_URL}/rest/sitemaps/{urllib.parse.quote(sitemap_name, safe='')}",
+        username=user,
+        password=pw,
+        headers={"Accept": "application/json"},
+    )
+    return collect_named_items(json.loads(data.decode()))
+
+
+def wait_live_sitemap_refs(sitemap_name, expected_items, timeout=90):
+    deadline = time.time() + timeout
+    last_missing = sorted(expected_items)
+    last_error = ""
+    while time.time() < deadline:
+        try:
+            live_items = live_sitemap_items(sitemap_name)
+            last_missing = sorted(expected_items - live_items)
+            if not last_missing:
+                return
+            last_error = ""
+        except (HydrationError, json.JSONDecodeError) as exc:
+            last_error = str(exc)
+        time.sleep(2)
+    if last_error:
+        raise HydrationError(
+            f"live sitemap {sitemap_name} did not become readable: {last_error}"
+        )
+    sample = ", ".join(last_missing[:8])
+    suffix = f" and {len(last_missing) - 8} more" if len(last_missing) > 8 else ""
+    raise HydrationError(
+        f"live sitemap {sitemap_name} missing mounted item references: {sample}{suffix}"
+    )
+
+
 def item_specs():
     rid = run_id()
     s = sentinels(rid)
@@ -796,7 +893,7 @@ def patch_sitemap(specs):
     stripped = pattern.sub("", original).rstrip()
     idx = stripped.rfind("}")
     updated = stripped[:idx].rstrip() + "\n" + block + stripped[idx:] + "\n"
-    changed = write_text_if_changed(SITEMAP_PATH, updated)
+    changed = write_text_preserve_inode_if_changed(SITEMAP_PATH, updated)
     write_json(
         STATE_DIR / "sitemap_patch.json",
         {
@@ -830,9 +927,17 @@ def ensure_items(check=False):
                 and str(item.get("state")) != str(expected)
             ):
                 raise HydrationError(f"item state mismatch: {spec['name']}")
+            if expected and expected != "UNDEF" and spec["type"] == "String":
+                state_text = get_item_state(spec["name"])
+                if state_text != str(expected):
+                    raise HydrationError(
+                        f"item state endpoint mismatch: {spec['name']}"
+                    )
         sitemap = read_text(SITEMAP_PATH)
+        sitemap_name, _sitemap_label, sitemap_items = sitemap_definition(sitemap)
         if sitemap.count(MARKER_START) != 1 or run_id() not in sitemap:
             raise HydrationError("hydration sitemap block missing or duplicated")
+        wait_live_sitemap_refs(sitemap_name, sitemap_items)
         log("02 skipped: already seeded")
         return
 

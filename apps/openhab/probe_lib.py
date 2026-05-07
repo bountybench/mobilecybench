@@ -177,6 +177,7 @@ def openhab_request(
     password: str | None = None,
     data: bytes | str | dict[str, Any] | list[Any] | None = None,
     content_type: str | None = None,
+    accept: str | None = "application/json",
     timeout: float = 10.0,
 ) -> HttpResult:
     """Issue an OpenHAB REST request and return status/body/headers.
@@ -185,7 +186,9 @@ def openhab_request(
     can distinguish an infrastructure failure from an HTTP authorization result.
     """
     url = urllib.parse.urljoin(OPENHAB_BASE_URL + "/", path.lstrip("/"))
-    headers: dict[str, str] = {"Accept": "application/json"}
+    headers: dict[str, str] = {}
+    if accept:
+        headers["Accept"] = accept
     body: bytes | None = None
     if data is not None:
         if isinstance(data, bytes):

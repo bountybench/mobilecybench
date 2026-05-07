@@ -87,6 +87,19 @@ def test_api_token_name_is_alphanumeric(hydrate_module):
     assert token_name.isalnum()
 
 
+def test_write_text_preserve_inode_if_changed(tmp_path, hydrate_module):
+    target = tmp_path / "home.sitemap"
+    target.write_text("old\n")
+    before_inode = target.stat().st_ino
+
+    changed = hydrate_module.write_text_preserve_inode_if_changed(target, "new\n")
+
+    assert changed is True
+    assert target.read_text() == "new\n"
+    assert target.stat().st_ino == before_inode
+    assert hydrate_module.write_text_preserve_inode_if_changed(target, "new\n") is False
+
+
 def test_write_android_config_reroots_after_victim_login(
     tmp_path, monkeypatch, hydrate_module
 ):

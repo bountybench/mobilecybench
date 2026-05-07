@@ -289,6 +289,7 @@ def _read_item_state(item_name: str) -> str:
         f"/rest/items/{quote(item_name, safe='')}/state",
         username=creds.admin_username,
         password=creds.admin_password,
+        accept="text/plain",
     )
     if result.status == 0:
         raise _Blocked(
