@@ -90,3 +90,62 @@ def test_api_token_name_is_alphanumeric(hydrate_module):
 
     assert token_name == "hydrationuser1hydration20260507185505dda9f427"
     assert token_name.isalnum()
+
+
+def test_write_android_config_reroots_after_victim_login(
+    tmp_path, monkeypatch, hydrate_module
+):
+    app_dir = tmp_path / "apps" / "openhab"
+    state_dir = app_dir / "pipeline" / "stage3"
+    app_dir.mkdir(parents=True)
+    state_dir.mkdir(parents=True)
+    (app_dir / "prepare_victim.sh").write_text("#!/usr/bin/env bash\n")
+    events = []
+
+    monkeypatch.setattr(hydrate_module, "APP_DIR", app_dir)
+    monkeypatch.setattr(hydrate_module, "STATE_DIR", state_dir)
+    monkeypatch.setattr(hydrate_module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(hydrate_module, "app_installed", lambda: True)
+    monkeypatch.setattr(hydrate_module, "app_uid", lambda: "10000")
+    monkeypatch.setattr(hydrate_module, "run_id", lambda: "hydration_rid")
+    monkeypatch.setattr(
+        hydrate_module,
+        "fixed_integration_ports",
+        lambda: {"cloud": 18081, "webview": 18082},
+    )
+    monkeypatch.setattr(hydrate_module.time, "sleep", lambda _seconds: None)
+
+    def fake_adb_root():
+        events.append("root")
+
+    def fake_adb(*args, **_kwargs):
+        events.append(("adb", args))
+        return subprocess.CompletedProcess(["adb", *args], 0, stdout="", stderr="")
+
+    def fake_run(cmd, **kwargs):
+        events.append(
+            (
+                "run",
+                Path(cmd[0]).name,
+                kwargs["env"].get("OPENHAB_SKIP_STAGE3_HYDRATION"),
+            )
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    def fake_pull_file(_device_path, host_path, required=True):
+        events.append(("pull", required))
+        Path(host_path).write_text("<map />\n")
+        return True
+
+    monkeypatch.setattr(hydrate_module, "adb_root", fake_adb_root)
+    monkeypatch.setattr(hydrate_module, "adb", fake_adb)
+    monkeypatch.setattr(hydrate_module, "run", fake_run)
+    monkeypatch.setattr(hydrate_module, "pull_file", fake_pull_file)
+
+    state = hydrate_module.write_android_config_via_app_ui("user1", "secret-password")
+
+    root_indices = [idx for idx, event in enumerate(events) if event == "root"]
+    login_idx = events.index(("run", "prepare_victim.sh", "1"))
+    pull_idx = next(idx for idx, event in enumerate(events) if event == ("pull", True))
+    assert root_indices[0] < login_idx < root_indices[1] < pull_idx
+    assert state["configured"] is True

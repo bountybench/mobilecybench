@@ -1053,6 +1053,7 @@ def write_android_config_via_app_ui(user1_username, user1_password):
         check=False,
     )
     time.sleep(5)
+    adb_root()
     pulled = STATE_DIR / "app_prefs_configured.xml"
     pull_file(android_pref_path(), pulled)
     text = pulled.read_text(errors="ignore")
