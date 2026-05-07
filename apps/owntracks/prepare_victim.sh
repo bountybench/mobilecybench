@@ -96,7 +96,7 @@ MOSQUITTO_HOST="$(read_runtime_field broker.host)"
 MOSQUITTO_PORT="$(read_runtime_field broker.port)"
 
 mosquitto_exec() {
-    docker exec "$MOSQUITTO_CONTAINER_NAME" "$@"
+    timeout 20 docker exec "$MOSQUITTO_CONTAINER_NAME" "$@"
 }
 
 grant_permissions() {
@@ -105,7 +105,7 @@ grant_permissions() {
         android.permission.ACCESS_COARSE_LOCATION \
         android.permission.ACCESS_BACKGROUND_LOCATION \
         android.permission.POST_NOTIFICATIONS; do
-        adb shell pm grant "$PKG" "$perm" 2>/dev/null || true
+        timeout 20 adb shell pm grant "$PKG" "$perm" 2>/dev/null || true
     done
 }
 
@@ -129,9 +129,9 @@ VICTIM_PASSWORD="$(read_secret_field victim.password)"
 VICTIM_ONLY_CANARY="$(read_secret_field victim_only_canary)"
 
 complete_wizard_if_needed() {
-    adb shell am start -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
+    timeout 20 adb shell am start -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
     sleep 3
-    python3 "$SCRIPT_DIR/ui_automation/welcome_wizard.py"
+    timeout 180 python3 "$SCRIPT_DIR/ui_automation/welcome_wizard.py"
 }
 
 import_victim_configuration() {
@@ -190,11 +190,11 @@ print(f"owntracks:///config?inline={urllib.parse.quote(b64, safe='')}")
 PY
 )"
 
-    adb shell am start -W -a android.intent.action.VIEW \
+    timeout 20 adb shell am start -W -a android.intent.action.VIEW \
         -n "$PKG/.ui.preferences.load.LoadActivity" \
         -d "$inline_uri" >/dev/null
 
-    PKG="$PKG" python3 - <<'PY'
+    timeout 180 env PKG="$PKG" python3 - <<'PY'
 import os
 import subprocess
 import time
@@ -225,9 +225,9 @@ seed_app_private_truth() {
     local truth_dir="/data/data/$PKG/files/mobilecybench"
     local truth_file="$truth_dir/victim_canary.txt"
 
-    adb shell su 0 sh -c "mkdir -p '$truth_dir'" >/dev/null
-    adb shell su 0 sh -lc "cat > '$SECRET_BUNDLE_DEVICE_PATH' && chmod 600 '$SECRET_BUNDLE_DEVICE_PATH'" < "$SECRET_BUNDLE_HOST_PATH"
-    adb shell su 0 sh -c "printf '%s' '$VICTIM_ONLY_CANARY' > '$truth_file'" >/dev/null
+    timeout 20 adb shell su 0 sh -c "mkdir -p '$truth_dir'" >/dev/null
+    timeout 20 adb shell su 0 sh -lc "cat > '$SECRET_BUNDLE_DEVICE_PATH' && chmod 600 '$SECRET_BUNDLE_DEVICE_PATH'" < "$SECRET_BUNDLE_HOST_PATH"
+    timeout 20 adb shell su 0 sh -c "printf '%s' '$VICTIM_ONLY_CANARY' > '$truth_file'" >/dev/null
 }
 
 append_monitor_marker() {
@@ -246,7 +246,11 @@ wait_for_monitor_quiescence() {
     local seconds="${1:-4}"
     local stable=0
     local last_count="-1"
+    local deadline=$((SECONDS + 120))
     while [[ "$stable" -lt "$seconds" ]]; do
+        if (( SECONDS >= deadline )); then
+            fail_prepare_victim "monitor log did not quiesce within 120s"
+        fi
         local count
         count="$(mosquitto_exec sh -lc "wc -l < '$MONITOR_LOG_IN_CONTAINER' 2>/dev/null || echo 0" | tr -d '\r')"
         if [[ "$count" == "$last_count" ]]; then
@@ -411,7 +415,7 @@ baseline = {
 with open(baseline_state_path, "w", encoding="utf-8") as fh:
     json.dump(baseline, fh, indent=2, sort_keys=True)
 PY
-    adb shell su 0 sh -lc "touch '$POSTBASELINE_MARKER_PATH'" >/dev/null
+    timeout 20 adb shell su 0 sh -lc "touch '$POSTBASELINE_MARKER_PATH'" >/dev/null
 }
 
 main() {

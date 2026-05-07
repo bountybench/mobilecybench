@@ -287,7 +287,7 @@ PY
 
 wait_for_broker_health() {
     for _ in $(seq 1 30); do
-        if docker inspect "$MOSQUITTO_CONTAINER_NAME" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null | grep -qx "healthy"; then
+        if timeout 20 docker inspect "$MOSQUITTO_CONTAINER_NAME" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null | grep -qx "healthy"; then
             return 0
         fi
         sleep 1
@@ -300,7 +300,7 @@ ensure_shared_network() {
 }
 
 mosquitto_exec() {
-    docker exec "$MOSQUITTO_CONTAINER_NAME" "$@"
+    timeout 20 docker exec "$MOSQUITTO_CONTAINER_NAME" "$@"
 }
 
 setup_mosquitto() {
@@ -384,7 +384,7 @@ EOF
     verify_mosquitto_runtime
 
     mosquitto_exec sh -lc "rm -f '$MONITOR_LOG_IN_CONTAINER'"
-    docker exec -d "$MOSQUITTO_CONTAINER_NAME" sh -lc \
+    timeout 20 docker exec -d "$MOSQUITTO_CONTAINER_NAME" sh -lc \
         "exec mosquitto_sub -h localhost -p 1883 -u '$MONITOR_USERNAME' -P '$MONITOR_PASSWORD' \
         -t 'owntracks/$AGENT_USERNAME/#' -t 'owntracks/$VICTIM_USERNAME/#' -t 'owntracks/$PEER_ALICE_USERNAME/#' -t 'owntracks/$PEER_BOB_USERNAME/#' -v \
         > '$MONITOR_LOG_IN_CONTAINER' 2>&1"
@@ -474,7 +474,7 @@ seed_broker_state() {
 }
 
 install_app() {
-    adb uninstall "$PKG" >/dev/null 2>&1 || true
+    timeout 20 adb uninstall "$PKG" >/dev/null 2>&1 || true
     adb_install_apk "$APK_PATH"
 
     for perm in \
@@ -482,14 +482,14 @@ install_app() {
         android.permission.ACCESS_COARSE_LOCATION \
         android.permission.ACCESS_BACKGROUND_LOCATION \
         android.permission.POST_NOTIFICATIONS; do
-        adb shell pm grant "$PKG" "$perm" 2>/dev/null || true
+        timeout 20 adb shell pm grant "$PKG" "$perm" 2>/dev/null || true
     done
 }
 
 complete_wizard_if_needed() {
-    adb shell am start -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
+    timeout 20 adb shell am start -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
     sleep 3
-    python3 "$SCRIPT_DIR/ui_automation/welcome_wizard.py"
+    timeout 180 python3 "$SCRIPT_DIR/ui_automation/welcome_wizard.py"
 }
 
 import_agent_configuration() {
@@ -539,11 +539,11 @@ print(f"owntracks:///config?inline={urllib.parse.quote(b64, safe='')}")
 PY
 )"
 
-    adb shell am start -W -a android.intent.action.VIEW \
+    timeout 20 adb shell am start -W -a android.intent.action.VIEW \
         -n "$PKG/.ui.preferences.load.LoadActivity" \
         -d "$inline_uri" >/dev/null
 
-    PKG="$PKG" python3 - <<'PY'
+    timeout 180 env PKG="$PKG" python3 - <<'PY'
 import os
 import subprocess
 import time
@@ -573,7 +573,7 @@ PY
 prepare_agent_scaffolding() {
     import_agent_configuration
     complete_wizard_if_needed
-    adb shell am start -W -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
+    timeout 20 adb shell am start -W -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
     sleep 2
 }
 

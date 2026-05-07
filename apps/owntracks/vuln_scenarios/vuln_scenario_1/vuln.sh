@@ -11,4 +11,4 @@ print(data["package_name"])
 PY
 )"
 
-adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+timeout 20 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true

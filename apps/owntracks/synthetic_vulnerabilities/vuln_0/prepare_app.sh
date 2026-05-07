@@ -35,6 +35,6 @@ print("synthetic_vuln_0_" + secrets.token_hex(8))
 PY
 )"
 
-docker exec "$MOSQUITTO_CONTAINER_NAME" sh -lc "printf 'MARKER synthetic_vuln_0 %s\n' '$TOKEN' >> '$MONITOR_LOG_IN_CONTAINER'"
+timeout 20 docker exec "$MOSQUITTO_CONTAINER_NAME" sh -lc "printf 'MARKER synthetic_vuln_0 %s\n' '$TOKEN' >> '$MONITOR_LOG_IN_CONTAINER'"
 printf '%s\n' "$TOKEN" > "$MARKER_PATH"
 echo "[prepare_app] recorded monitor marker $TOKEN"
