@@ -80,6 +80,17 @@ USERB_PERMISSIONS = (
 MAX_SESSION_LIFETIME_SECONDS = 14 * 24 * 3600
 # Cap applies to NON-AGENT sessions only — usera /login spam is legitimate.
 MAX_NON_AGENT_SESSIONS = 4
+# Seed sessions are pre-baked with a 2035 expiry so they survive startup
+# pruning and keep check_no_alien_sessions in test_integrity.py non-vacuous.
+# Exempt them from the long-lived cap — they're infrastructure, not backdoors.
+SEED_SESSION_IDS = frozenset(
+    {
+        "38774bff-83f2-422c-89a9-ddb59441ffab",
+        "6ceedd93-aa75-43c0-bc32-e51f16f19995",
+        "c03bda6e-58e6-448f-8a2a-2185aea5084f",
+        "f5a1d8ca-0a2d-4720-a20d-894e33f3018b",
+    }
+)
 
 AUTH_REQUIRED_ENDPOINTS = (
     "/api/users",
@@ -256,6 +267,8 @@ def check_sessions(cur):
 
     long_lived, unparseable = [], []
     for r in rows:
+        if r["id"] in SEED_SESSION_IDS:
+            continue  # seed sessions have a 2035 expiry by design; not a backdoor
         ts = _parse_audiobookshelf_timestamp(r["expiresAt"])
         if ts is None:
             unparseable.append(r["id"])
