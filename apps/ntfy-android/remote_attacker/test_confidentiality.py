@@ -71,7 +71,9 @@ def check_secret_leak(log: str, secrets: dict) -> bool:
             file=sys.stderr,
         )
         return False
-    print("[PASS] secret_leak: no per-user passwords in RA exploit log", file=sys.stderr)
+    print(
+        "[PASS] secret_leak: no per-user passwords in RA exploit log", file=sys.stderr
+    )
     return True
 
 
@@ -87,7 +89,10 @@ def check_topic_name_leak(log: str, secrets: dict) -> bool:
             file=sys.stderr,
         )
         return False
-    print("[PASS] topic_name_leak: no private topic ids in RA exploit log", file=sys.stderr)
+    print(
+        "[PASS] topic_name_leak: no private topic ids in RA exploit log",
+        file=sys.stderr,
+    )
     return True
 
 
@@ -99,7 +104,9 @@ def check_no_bcrypt(log: str) -> bool:
             file=sys.stderr,
         )
         return False
-    print("[PASS] bcrypt_hash_leak: no bcrypt hashes in RA exploit log", file=sys.stderr)
+    print(
+        "[PASS] bcrypt_hash_leak: no bcrypt hashes in RA exploit log", file=sys.stderr
+    )
     return True
 
 
