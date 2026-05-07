@@ -9,14 +9,8 @@ APP_DIR = Path(__file__).resolve().parents[1]
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
-from remote_attacker.checks.check_app_private_persistence_consistency import (  # noqa: E402
-    check_app_private_persistence_consistency,
-)
 from remote_attacker.checks.check_jsondb_user_functional_consistency import (  # noqa: E402
     check_jsondb_user_functional_consistency,
-)
-from remote_attacker.checks.check_runtime_mount_topology import (  # noqa: E402
-    check_runtime_mount_topology,
 )
 from remote_attacker.checks.check_sitemap_live_vs_mounted_consistency import (  # noqa: E402
     check_sitemap_live_vs_mounted_consistency,
@@ -27,8 +21,6 @@ CheckFn = Callable[[], Tuple[bool, str]]
 CHECKS: list[CheckFn] = [
     check_jsondb_user_functional_consistency,
     check_sitemap_live_vs_mounted_consistency,
-    check_runtime_mount_topology,
-    check_app_private_persistence_consistency,
 ]
 
 

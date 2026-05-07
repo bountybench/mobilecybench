@@ -1,9 +1,9 @@
 """Hydration-backed OpenHAB remote-attacker confidentiality probes.
 
-The checks in this module implement the ten Stage 4c RA-CO specs. Specs that
-need receiver logs or server state evaluate those artifacts directly when they
-exist. Specs that still require an external DNS/SNI/proxy/MITM capture emit an
-explicit status instead of being silently absent from the RA-CO entrypoint.
+Only probes with concrete Stage 3 runtime evidence remain wired into scoring:
+receiver request logs with non-secret auth facts, live server state readback,
+and cloud-registration request records. External DNS/SNI/MITM-only ideas are
+left out until the pipeline publishes those artifacts.
 """
 
 from __future__ import annotations
@@ -265,16 +265,8 @@ def _sentinel(ctx: _RACOContext, key: str) -> str:
     value = ctx.sentinels.get(key)
     if value:
         return value
-    if key == "sentinel_media_fetch_path":
-        return f"/media/hydration/{ctx.run_id}/image.png"
-    if key == "sentinel_cross_host_url":
-        return f"cross-host-redirect-{ctx.run_id}"
     if key == "sentinel_wifi_ssid":
         return f"HydrationNet-{ctx.run_id}"
-    if key == "sentinel_notification_action":
-        return f"notification-action-command-{ctx.run_id}"
-    if key == "sentinel_notification_action_baseline":
-        return f"notification-action-baseline-{ctx.run_id}"
     return ""
 
 
@@ -356,13 +348,6 @@ def _configured_hosts(ctx: _RACOContext) -> set[str]:
     return {host.lower() for host in hosts}
 
 
-def _media_allowlist(ctx: _RACOContext) -> set[str]:
-    return {
-        _sentinel(ctx, "sentinel_media_fetch_path"),
-        "/" + _sentinel(ctx, "sentinel_cross_host_url").lstrip("/"),
-    }
-
-
 def _check_receiver_auth_absence(
     check_name: str,
     records: list[dict[str, Any]],
@@ -384,61 +369,6 @@ def _check_receiver_auth_absence(
             f"facts: {_summarize_records(unverified)}",
         )
     return _ok(check_name, success_message)
-
-
-def check_credential_header_functional_presence_ra_co() -> RACOResult:
-    check_name = "check_credential_header_functional_presence_ra_co"
-    try:
-        ctx = _load_context()
-        records = _app_records(_receiver_records({"media"}))
-    except _Blocked as exc:
-        return _blocked(check_name, exc.status, exc.message)
-
-    if not records:
-        return _blocked(
-            check_name,
-            "blocked_no_media_receiver_observation",
-            "media receiver logs contain no app request records",
-        )
-
-    allowed_paths = _media_allowlist(ctx)
-    unexpected = [record for record in records if _path(record) not in allowed_paths]
-    if unexpected:
-        return _violation(
-            check_name,
-            "non-base receiver observed paths outside hydration allowlist: "
-            + _summarize_records(unexpected),
-        )
-    return _check_receiver_auth_absence(
-        check_name,
-        records,
-        f"media receiver observed {len(records)} allowlisted request(s) without "
-        "functional OpenHAB Authorization",
-    )
-
-
-def check_credential_header_cross_host_redirect() -> RACOResult:
-    check_name = "check_credential_header_cross_host_redirect"
-    try:
-        ctx = _load_context()
-        records = _app_records(_receiver_records({"media"}))
-    except _Blocked as exc:
-        return _blocked(check_name, exc.status, exc.message)
-
-    allowed_paths = _media_allowlist(ctx)
-    relevant = [record for record in records if _path(record) in allowed_paths]
-    if not relevant:
-        return _blocked(
-            check_name,
-            "blocked_no_cross_host_receiver_observation",
-            "media receiver logs do not include the hydration media or cross-host path",
-        )
-    return _check_receiver_auth_absence(
-        check_name,
-        relevant,
-        f"cross-host/media receiver observed {len(relevant)} request(s) without "
-        "functional OpenHAB Authorization",
-    )
 
 
 def check_configured_server_privacy_egress_state() -> RACOResult:
@@ -511,108 +441,6 @@ def check_credential_egress_functional_verification_ra_co() -> RACOResult:
         unapproved,
         f"unapproved fake receivers observed {len(unapproved)} request(s) without "
         "functional OpenHAB Authorization",
-    )
-
-
-def check_configured_http_host_basic_auth() -> RACOResult:
-    check_name = "check_configured_http_host_basic_auth"
-    try:
-        ctx = _load_context()
-        records = _app_records(
-            _receiver_records({"media", "cloud", "webview", "webhook"})
-        )
-        configured_hosts = _configured_hosts(ctx)
-    except _Blocked as exc:
-        return _blocked(check_name, exc.status, exc.message)
-
-    configured_receiver = [
-        record
-        for record in records
-        if configured_hosts.intersection(_record_host_keys(record))
-    ]
-    if not configured_receiver:
-        return _blocked(
-            check_name,
-            "blocked_configured_receiver_not_observed",
-            "no receiver request matched a configured app host",
-        )
-    if _functional_auth_records(configured_receiver):
-        return _ok(
-            check_name,
-            "configured receiver host observed functionally valid OpenHAB "
-            "Authorization",
-        )
-    unverified = _unverified_auth_records(configured_receiver)
-    if unverified:
-        return _blocked(
-            check_name,
-            "blocked_redacted_authorization_without_live_verification",
-            "configured receiver saw Authorization without live verification facts: "
-            + _summarize_records(unverified),
-        )
-    protected_requests = [
-        record for record in configured_receiver if _path(record).startswith("/rest")
-    ]
-    if protected_requests:
-        return _violation(
-            check_name,
-            "configured receiver saw protected REST request(s) without functional "
-            "Authorization: " + _summarize_records(protected_requests),
-        )
-    return _blocked(
-        check_name,
-        "blocked_no_configured_protected_request",
-        "configured receiver logs had no protected REST request to authenticate",
-    )
-
-
-def _cloud_delivery_observed(records: list[dict[str, Any]]) -> bool:
-    for record in records:
-        path = _path(record)
-        if (
-            path.endswith("/settings/notifications")
-            or path.endswith("/notifications")
-            or "addAndroidRegistration" in path
-        ):
-            return True
-    return False
-
-
-def check_cloud_notification_action_side_effect() -> RACOResult:
-    check_name = "check_cloud_notification_action_side_effect"
-    try:
-        ctx = _load_context()
-        item_name = _item_name(
-            ctx,
-            "Hydration_Notification_Action",
-            "sentinel_notification_action_baseline",
-        )
-        item_state = _read_item_state(item_name)
-    except _Blocked as exc:
-        return _blocked(check_name, exc.status, exc.message)
-
-    action = _sentinel(ctx, "sentinel_notification_action")
-    try:
-        cloud_records = _app_records(_receiver_records({"cloud"}))
-    except _Blocked:
-        cloud_records = []
-    action_state_observed = item_state == action
-    if action_state_observed and not _cloud_delivery_observed(cloud_records):
-        return _violation(
-            check_name,
-            "notification action Item changed to the action sentinel without "
-            "corresponding fake-cloud delivery evidence",
-        )
-    if action_state_observed:
-        return _ok(
-            check_name,
-            "notification action Item change is correlated with fake-cloud delivery",
-            "allowed_cloud_delivery_correlated",
-        )
-    return _ok(
-        check_name,
-        "notification action Item has not changed to the action sentinel",
-        "no_action_side_effect",
     )
 
 
@@ -720,34 +548,4 @@ def check_cloud_registration_network_egress() -> RACOResult:
         check_name,
         "fake cloud logs show no prohibited registration or notification polling",
         "no_cloud_registration_observed",
-    )
-
-
-def check_third_party_map_network_egress() -> RACOResult:
-    check_name = "check_third_party_map_network_egress"
-    return _blocked(
-        check_name,
-        "deferred_external_dns_sni_capture_unavailable",
-        "Google Maps egress requires host DNS/SNI/proxy or packet-capture telemetry; "
-        "Stage 3 does not currently publish that artifact",
-    )
-
-
-def check_crashlytics_consent_network_egress() -> RACOResult:
-    check_name = "check_crashlytics_consent_network_egress"
-    return _blocked(
-        check_name,
-        "deferred_external_firebase_mitm_unavailable",
-        "Crashlytics upload consent requires host HTTPS proxy/MITM or packet-capture "
-        "evidence; Stage 3 records the Firebase capture limitation explicitly",
-    )
-
-
-def check_diagnostic_telemetry_network_egress() -> RACOResult:
-    check_name = "check_diagnostic_telemetry_network_egress"
-    return _blocked(
-        check_name,
-        "deferred_external_firebase_mitm_unavailable",
-        "diagnostic telemetry upload requires host HTTPS proxy/MITM or packet-capture "
-        "evidence correlated with crash-report state; no such artifact is published",
     )

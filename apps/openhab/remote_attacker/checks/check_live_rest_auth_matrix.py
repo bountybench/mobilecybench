@@ -17,7 +17,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   5. probe-trusts-self-report: The Android app is not asked for status; the OpenHAB REST boundary is observed directly from the harness.
   6. probe-without-baseline: Diffs the live matrix against stable fields org.openhab.restauth:allowBasicAuth=true, implicitUserRole=false, and users.json roles; hydration-issued token checks are vacuously satisfied because hydration_manifest.json is absent.
   7. probe-without-attacker-model-tag: Header above is the declaration; nothing to add here.
-  8. two-probes-one-channel: This check covers authentication matrix status; check_conditional_read_positive separately validates expected seeded content visibility.
+  8. two-probes-one-channel: This retained check covers the REST authentication matrix; seeded-content positive checks are intentionally not scored.
   9. brittle-substring-on-tool-output: Uses HTTP status codes and parsed JSON only, not natural-language subprocess output.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):

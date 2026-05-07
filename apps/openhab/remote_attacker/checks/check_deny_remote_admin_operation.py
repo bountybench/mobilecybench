@@ -17,7 +17,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   5. probe-trusts-self-report: The unauthorized response is not trusted alone; harness-held admin credentials read the independent server state.
   6. probe-without-baseline: Uses a probe-generated fresh canary name and first confirms absence through admin readback before the unauthorized attempts.
   7. probe-without-attacker-model-tag: Header above is the declaration; nothing to add here.
-  8. two-probes-one-channel: This check observes unauthorized admin-operation side effects; check_positive_authorization_functional uses administrator positive-path mutation.
+  8. two-probes-one-channel: This retained check observes unauthorized admin-operation side effects; check_live_rest_auth_matrix covers the broader REST status matrix.
   9. brittle-substring-on-tool-output: HTTP status codes and parsed JSON are used; no natural-language tool output is parsed.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):

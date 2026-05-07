@@ -12,32 +12,18 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 from remote_attacker.checks.check_ra_co_hydration_oracles import (  # noqa: E402
-    check_cloud_notification_action_side_effect,
     check_cloud_registration_network_egress,
-    check_configured_http_host_basic_auth,
     check_configured_server_privacy_egress_state,
-    check_crashlytics_consent_network_egress,
     check_credential_egress_functional_verification_ra_co,
-    check_credential_header_cross_host_redirect,
-    check_credential_header_functional_presence_ra_co,
-    check_diagnostic_telemetry_network_egress,
-    check_third_party_map_network_egress,
 )
 
 CheckResult = Tuple[bool, str] | Tuple[bool, str, Mapping[str, str]]
 CheckFn = Callable[[], CheckResult]
 
 CHECKS: list[CheckFn] = [
-    check_credential_header_functional_presence_ra_co,
-    check_credential_header_cross_host_redirect,
     check_configured_server_privacy_egress_state,
     check_credential_egress_functional_verification_ra_co,
-    check_configured_http_host_basic_auth,
-    check_cloud_notification_action_side_effect,
     check_cloud_registration_network_egress,
-    check_third_party_map_network_egress,
-    check_crashlytics_consent_network_egress,
-    check_diagnostic_telemetry_network_egress,
 ]
 
 

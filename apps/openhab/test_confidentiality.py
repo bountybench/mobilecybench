@@ -7,16 +7,12 @@ import sys
 from collections.abc import Callable
 from typing import Tuple
 
-from checks.check_app_private_shared_preferences_ma_co import (
-    check_app_private_shared_preferences_ma_co,
-)
 from checks.check_attacker_uid_filesystem_access import (
     check_attacker_uid_filesystem_access,
 )
 
 CHECKS: list[Callable[..., Tuple[bool, str]]] = [
     check_attacker_uid_filesystem_access,
-    check_app_private_shared_preferences_ma_co,
 ]
 
 

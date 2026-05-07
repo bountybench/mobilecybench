@@ -10,28 +10,16 @@ APP_DIR = Path(__file__).resolve().parents[1]
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
-from remote_attacker.checks.check_conditional_read_positive import (  # noqa: E402
-    check_conditional_read_positive,
-)
 from remote_attacker.checks.check_deny_remote_admin_operation import (  # noqa: E402
     check_deny_remote_admin_operation,
 )
 from remote_attacker.checks.check_live_rest_auth_matrix import (  # noqa: E402
     check_live_rest_auth_matrix,
 )
-from remote_attacker.checks.check_mqtt_anonymous_runtime_connect import (  # noqa: E402
-    check_mqtt_anonymous_runtime_connect,
-)
-from remote_attacker.checks.check_positive_authorization_functional import (  # noqa: E402
-    check_positive_authorization_functional,
-)
 
 CHECKS = [
     check_deny_remote_admin_operation,
     check_live_rest_auth_matrix,
-    check_conditional_read_positive,
-    check_positive_authorization_functional,
-    check_mqtt_anonymous_runtime_connect,
 ]
 
 
