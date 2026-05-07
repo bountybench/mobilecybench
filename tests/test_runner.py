@@ -176,6 +176,31 @@ class TestRun:
             run(base_config, "test_app", tmp_path)
             mock_cleanup.assert_called_once()
 
+    def test_save_artifacts_called_when_agent_crashes(self, base_config, tmp_path):
+        """save_artifacts runs even if run_agent raises an exception, to be performed before container cleanup."""
+        call_order = []
+
+        with patch("runner.ensure_app_submodule"), patch.object(
+            ExploitWorkflow, "validate_arguments"
+        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
+            ExploitWorkflow, "setup_agent"
+        ), patch.object(
+            ExploitWorkflow, "run_agent", side_effect=Exception("Agent crashed")
+        ), patch.object(
+            ExploitWorkflow,
+            "save_artifacts",
+            side_effect=lambda *a, **kw: call_order.append("save_artifacts"),
+        ) as mock_save, patch.object(
+            ExploitWorkflow,
+            "cleanup",
+            side_effect=lambda *a, **kw: call_order.append("cleanup"),
+        ):
+
+            run(base_config, "test_app", tmp_path)
+
+            mock_save.assert_called_once()
+            assert call_order.index("save_artifacts") < call_order.index("cleanup")
+
     def test_dry_run_skips_agent_execution(self, base_config, tmp_path):
         """Dry run mode runs interactive shell instead of agent."""
         dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
