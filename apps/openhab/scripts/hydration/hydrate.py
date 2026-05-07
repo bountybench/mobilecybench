@@ -1035,7 +1035,13 @@ def write_android_config_via_app_ui(user1_username, user1_password):
         raise HydrationError(
             "prepare_victim.sh missing; cannot enter credentials through app UI"
         )
-    run([str(login_script), user1_username, user1_password, "explicit"], timeout=240)
+    env = os.environ.copy()
+    env["OPENHAB_SKIP_STAGE3_HYDRATION"] = "1"
+    run(
+        [str(login_script), user1_username, user1_password, "explicit"],
+        timeout=240,
+        env=env,
+    )
     adb(
         "shell",
         "monkey",

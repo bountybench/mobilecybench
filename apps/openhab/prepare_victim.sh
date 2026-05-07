@@ -406,7 +406,9 @@ log_info "Victim login complete"
 # manifest). cleanup.sh already calls scripts/hydration/unhydrate.sh, so teardown
 # pairing is in place.
 HYDRATION_RUN_ALL="$SCRIPT_DIR/scripts/hydration/run_all.sh"
-if [ -x "$HYDRATION_RUN_ALL" ]; then
+if [ "${OPENHAB_SKIP_STAGE3_HYDRATION:-0}" = "1" ]; then
+  log_info "Skipping stage 3 hydration by request"
+elif [ -x "$HYDRATION_RUN_ALL" ]; then
   log_info "Running stage 3 hydration..."
   if ! "$HYDRATION_RUN_ALL"; then
     log_warn "Hydration did not complete; probes that require hydration_manifest.json will infra-error"
