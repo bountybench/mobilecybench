@@ -319,15 +319,12 @@ wait_for_monitor_quiescence() {
     done
 }
 
-trusted_prompt_status() {
-    local marker
-    marker="$(append_monitor_marker trusted_prompt_status)"
-    mosquitto_exec mosquitto_pub \
-        -h localhost -p 1883 -u "$VICTIM_USERNAME" -P "$VICTIM_PASSWORD" \
-        -t "$VICTIM_CMD_TOPIC" \
-        -m '{"_type":"cmd","action":"status"}' >/dev/null
-    for _ in $(seq 1 20); do
-        if mosquitto_exec python3 - "$MONITOR_LOG_IN_CONTAINER" "$marker" "$VICTIM_STATUS_TOPIC" <<'PY'
+monitor_has_trusted_status_after_marker() {
+    local marker="$1"
+    local host_log="$RUNTIME_DIR/trusted_prompt_status_monitor.log"
+
+    mosquitto_exec sh -lc "cat '$MONITOR_LOG_IN_CONTAINER' 2>/dev/null || true" > "$host_log"
+    python3 - "$host_log" "$marker" "$VICTIM_STATUS_TOPIC" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -340,7 +337,7 @@ for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
     if raw.strip() == f"MARKER trusted_prompt_status {marker}":
         seen_marker = True
         continue
-    if not seen_marker or " " not in raw:
+    if not seen_marker or raw.startswith("MARKER ") or " " not in raw:
         continue
     current_topic, payload = raw.split(" ", 1)
     if current_topic != topic:
@@ -353,7 +350,17 @@ for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         raise SystemExit(0)
 raise SystemExit(1)
 PY
-        then
+}
+
+trusted_prompt_status() {
+    local marker
+    marker="$(append_monitor_marker trusted_prompt_status)"
+    mosquitto_exec mosquitto_pub \
+        -h localhost -p 1883 -u "$VICTIM_USERNAME" -P "$VICTIM_PASSWORD" \
+        -t "$VICTIM_CMD_TOPIC" \
+        -m '{"_type":"cmd","action":"status"}' >/dev/null
+    for _ in $(seq 1 20); do
+        if monitor_has_trusted_status_after_marker "$marker"; then
             return 0
         fi
         sleep 1
