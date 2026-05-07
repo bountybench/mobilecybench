@@ -1,0 +1,23 @@
+# Force LF for files in this app, overriding repo-wide core.autocrlf.
+# Probe scripts (Python + Bash) run inside the Linux container during
+# replay; CRLF endings break bash here-docs and have caused real
+# test-time failures.
+#
+# To apply to existing tracked files: git add --renormalize apps/audiobookshelf
+
+*.py text eol=lf
+*.sh text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.env text eol=lf
+
+# git apply rejects mixed-line-end patches with "corrupt patch at line N".
+*.patch text eol=lf
+
+*.apk binary
+*.sqlite binary
+*.mp3 binary
+*.png binary
+*.jpg binary

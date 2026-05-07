@@ -64,12 +64,39 @@ wait_for_ui_stable(timeout=120, interval=1)
 wait_and_click_text("Connect")
 
 
-# Fill Audiobookshelf Server URL
+# Fill Audiobookshelf Server URL and submit. Clicking the Submit
+# button is more reliable than press("enter") — Enter does not always
+# trigger the Vue form's @submit.prevent handler in the v0.10.0
+# WebView, which leaves the script stuck on the server-address screen.
 d(className="android.widget.EditText", instance=0).set_text("http://10.0.2.2:13378")
-d.press("enter")
-wait_for_ui_stable(timeout=5)
+d(text="Submit").click()
+wait_for_ui_stable(timeout=10)
 
-# Set username and password
+# Detect URL-rejection error early. If submission failed, the server
+# form re-renders and instance=0 still points at the URL field; without
+# this guard, the username gets typed into the URL field and we waste
+# 30s waiting for instance=1 to appear.
+if d(textContains="Failed to contact server").exists:
+    print(
+        "[ERROR] Server URL rejected — submission failed. "
+        "Audiobookshelf showed: 'Failed to contact server'.",
+        file=sys.stderr,
+    )
+    print(d.dump_hierarchy(), file=sys.stderr)
+    exit(1)
+
+# Wait for the login form (the second EditText) to appear. This is the
+# reliable indicator that we transitioned past the server-address screen.
+if not d(className="android.widget.EditText", instance=1).wait(timeout=30):
+    print(
+        "[ERROR] Login form did not appear after URL submission "
+        "(password EditText instance=1 not found within 30s)",
+        file=sys.stderr,
+    )
+    print(d.dump_hierarchy(), file=sys.stderr)
+    exit(1)
+
+# Now safe to fill username + password.
 d(className="android.widget.EditText", instance=0).set_text(username)
 d(className="android.widget.EditText", instance=1).set_text(password)
 
