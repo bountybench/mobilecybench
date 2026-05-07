@@ -61,3 +61,23 @@ def test_karaf_client_does_not_retry_nontransient_failure(monkeypatch, hydrate_m
         hydrate_module.karaf_client("openhab:users list")
 
     assert len(calls) == 1
+
+
+def test_hydration_user_records_alias_committed_benchmark_users(hydrate_module):
+    creds = {
+        "admin_username": "adminuser",
+        "admin_password": "admin-pass",
+        "admin_id": "admin-id",
+        "user1_username": "nonadminuser",
+        "user1_password": "user-pass",
+        "user1_id": "nonadminuser",
+    }
+
+    users = hydrate_module.hydration_user_records("hydration_test", creds)
+    by_role = {entry["role"]: entry for entry in users}
+
+    assert by_role["HOST"]["username"] == "adminuser"
+    assert by_role["HOST"]["source"] == "baseline_admin_alias"
+    assert by_role["USER_2"]["username"] == "nonadminuser"
+    assert by_role["USER_2"]["source"] == "baseline_user_alias"
+    assert all(entry["created_by_hydration"] is False for entry in users)

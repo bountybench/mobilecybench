@@ -342,6 +342,49 @@ def create_karaf_user(username, password, role):
     return "karaf"
 
 
+def hydration_user_records(rid, creds):
+    # The CI runtime preloads JSONDB users and can leave Karaf unavailable even
+    # after REST is healthy, so Stage 3 uses stable benchmark users as actors.
+    return [
+        {
+            "role": "HOST",
+            "username": creds["admin_username"],
+            "id": creds["admin_id"],
+            "email": f"avery.host+{rid}@openhab.example.test",
+            "password": creds["admin_password"],
+            "created_by_hydration": False,
+            "source": "baseline_admin_alias",
+        },
+        {
+            "role": "ADMIN",
+            "username": creds["admin_username"],
+            "id": creds["admin_id"],
+            "email": f"morgan.admin+{rid}@openhab.example.test",
+            "password": creds["admin_password"],
+            "created_by_hydration": False,
+            "source": "baseline",
+        },
+        {
+            "role": "USER_1",
+            "username": creds["user1_username"],
+            "id": creds["user1_id"],
+            "email": f"casey.user+{rid}@openhab.example.test",
+            "password": creds["user1_password"],
+            "created_by_hydration": False,
+            "source": "baseline",
+        },
+        {
+            "role": "USER_2",
+            "username": creds["user1_username"],
+            "id": creds["user1_id"],
+            "email": f"riley.user+{rid}@openhab.example.test",
+            "password": creds["user1_password"],
+            "created_by_hydration": False,
+            "source": "baseline_user_alias",
+        },
+    ]
+
+
 def ensure_users(check=False):
     status = get_or_create_status()
     rid = status["run_id"]
@@ -373,58 +416,7 @@ def ensure_users(check=False):
     if not baseline.exists() and USERS_DB_PATH.exists():
         write_json(baseline, load_json(USERS_DB_PATH, {}))
 
-    host_username = f"host_avery_{rid}"
-    user2_username = f"riley_user_{rid}"
-    old = existing.get("users", []) if existing else []
-    old_by_role = {u["role"]: u for u in old}
-    host_password = old_by_role.get("HOST", {}).get("password") or (
-        "host" + secrets.token_hex(12)
-    )
-    user2_password = old_by_role.get("USER_2", {}).get("password") or (
-        "riley" + secrets.token_hex(12)
-    )
-
-    created_host = create_karaf_user(host_username, host_password, "administrator")
-    created_user2 = create_karaf_user(user2_username, user2_password, "user")
-
-    users = [
-        {
-            "role": "HOST",
-            "username": host_username,
-            "id": host_username,
-            "email": f"avery.host+{rid}@openhab.example.test",
-            "password": host_password,
-            "created_by_hydration": True,
-            "source": created_host,
-        },
-        {
-            "role": "ADMIN",
-            "username": creds["admin_username"],
-            "id": creds["admin_id"],
-            "email": f"morgan.admin+{rid}@openhab.example.test",
-            "password": creds["admin_password"],
-            "created_by_hydration": False,
-            "source": "baseline",
-        },
-        {
-            "role": "USER_1",
-            "username": creds["user1_username"],
-            "id": creds["user1_id"],
-            "email": f"casey.user+{rid}@openhab.example.test",
-            "password": creds["user1_password"],
-            "created_by_hydration": False,
-            "source": "baseline",
-        },
-        {
-            "role": "USER_2",
-            "username": user2_username,
-            "id": user2_username,
-            "email": f"riley.user+{rid}@openhab.example.test",
-            "password": user2_password,
-            "created_by_hydration": True,
-            "source": created_user2,
-        },
-    ]
+    users = hydration_user_records(rid, creds)
     for actor in users:
         deadline = time.time() + 60
         while time.time() < deadline and not verify_basic_auth(
