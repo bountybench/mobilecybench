@@ -41,8 +41,6 @@ APP_PATHS = {
     "message_queue": f"/data/data/{APP_PACKAGE}/files/messageQueue.dat",
     "message_queue_head": f"/data/data/{APP_PACKAGE}/files/messageQueueHead.dat",
     "crash_log": f"/data/user/0/{APP_PACKAGE}/no_backup/crash.log",
-    "truth_canary": f"/data/data/{APP_PACKAGE}/files/mobilecybench/victim_canary.txt",
-    "secret_bundle": f"/data/data/{APP_PACKAGE}/files/mobilecybench/runtime_secrets.json",
     "postbaseline_marker": f"/data/data/{APP_PACKAGE}/files/mobilecybench/postbaseline.marker",
 }
 APP_PREFS_PATH = APP_PATHS["prefs"]
@@ -51,8 +49,6 @@ MQTT_DB_PATH = APP_PATHS["mqtt_db"]
 MESSAGE_QUEUE_PATH = APP_PATHS["message_queue"]
 MESSAGE_QUEUE_HEAD_PATH = APP_PATHS["message_queue_head"]
 CRASH_LOG_PATH = APP_PATHS["crash_log"]
-TRUTH_CANARY_PATH = APP_PATHS["truth_canary"]
-SECRET_BUNDLE_PATH = APP_PATHS["secret_bundle"]
 POSTBASELINE_MARKER_PATH = APP_PATHS["postbaseline_marker"]
 
 
@@ -160,7 +156,9 @@ def monitor_lines_since(offset: int) -> list[str]:
 
 
 def read_secret_bundle() -> dict[str, Any]:
-    return json.loads(read_root_device_file(SECRET_BUNDLE_PATH))
+    runtime = load_runtime_state()
+    path = Path(runtime["secret_bundle_host_path"])
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def parse_monitor_entries(lines: list[str]) -> list[dict[str, Any]]:
@@ -558,4 +556,4 @@ def runtime_secrets() -> list[str]:
 
 
 def read_truth_canary() -> str:
-    return read_root_device_file(TRUTH_CANARY_PATH).strip()
+    return str(read_secret_bundle().get("victim_only_canary", "")).strip()

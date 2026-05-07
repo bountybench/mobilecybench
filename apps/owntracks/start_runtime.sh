@@ -60,7 +60,7 @@ read_device_pref_string() {
     local package_name="$1"
     local pref_key="$2"
     local raw
-    raw="$(timeout 20 adb shell su 0 sh -lc "cat '/data/data/$package_name/shared_prefs/${package_name}_preferences.xml'" 2>/dev/null || true)"
+    raw="$(timeout 20 adb shell su 0 cat "/data/data/$package_name/shared_prefs/${package_name}_preferences.xml" 2>/dev/null || true)"
     RAW_PREF_XML="$raw" python3 - "$pref_key" <<'PY'
 import os
 import sys
@@ -504,96 +504,94 @@ install_app() {
     done
 }
 
-complete_wizard_if_needed() {
-    timeout 20 adb shell am start -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
-    sleep 3
-    timeout 180 python3 "$SCRIPT_DIR/ui_automation/welcome_wizard.py"
+app_uid() {
+    local uid
+    uid="$(timeout 20 adb shell su 0 stat -c %u "/data/data/$PKG" | tr -d '\r')"
+    [[ "$uid" =~ ^[0-9]+$ ]] || fail_runtime "could not resolve app uid for $PKG"
+    printf '%s\n' "$uid"
 }
 
-import_agent_configuration() {
-    local inline_uri
-    export AGENT_USERNAME AGENT_PASSWORD AGENT_DEVICE_ID
-    inline_uri="$(python3 - <<'PY'
-import base64
-import json
-import os
-import urllib.parse
-
-config = {
-    "_type": "configuration",
-    "waypoints": [],
-    "autostartOnBoot": True,
-    "cleanSession": False,
-    "clientId": "mobilecybench-agent",
-    "cmd": True,
-    "connectionTimeoutSeconds": 30,
-    "deviceId": os.environ["AGENT_DEVICE_ID"],
-    "extendedData": True,
-    "fusedRegionDetection": True,
-    "host": os.environ["MOSQUITTO_HOST"],
-    "keepalive": 900,
-    "locatorDisplacement": 500,
-    "locatorInterval": 3600,
-    "mode": 0,
-    "monitoring": 0,
-    "password": os.environ["AGENT_PASSWORD"],
-    "ping": 9999,
-    "port": int(os.environ["MOSQUITTO_HOST_PORT"]),
-    "pubQos": 1,
-    "pubRetain": True,
-    "pubTopicBase": "owntracks/%u/%d",
-    "remoteConfiguration": False,
-    "sub": True,
-    "subQos": 2,
-    "subTopic": "owntracks/+/+",
-    "tid": "AG",
-    "tls": False,
-    "username": os.environ["AGENT_USERNAME"],
-    "ws": False,
+initialize_app_storage() {
+    timeout 20 adb shell am start -W -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
+    sleep 2
+    timeout 20 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
 }
-raw = json.dumps(config, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-b64 = base64.b64encode(raw).decode("ascii")
-print(f"owntracks:///config?inline={urllib.parse.quote(b64, safe='')}")
-PY
-)"
 
-    timeout 20 adb shell am start -W -a android.intent.action.VIEW \
-        -n "$PKG/.ui.preferences.load.LoadActivity" \
-        -d "$inline_uri" >/dev/null
+write_agent_preferences() {
+    local pref_file="$RUNTIME_DIR/agent_preferences.xml"
+    local evidence_file="$RUNTIME_DIR/agent_preferences_device_evidence.txt"
+    local uid
 
-    timeout 180 env PKG="$PKG" python3 - <<'PY'
+    export AGENT_USERNAME AGENT_PASSWORD AGENT_DEVICE_ID MOSQUITTO_HOST MOSQUITTO_HOST_PORT
+    python3 - <<'PY' > "$pref_file"
 import os
-import subprocess
-import time
-import uiautomator2 as u2
+import xml.etree.ElementTree as ET
 
-package = os.environ["PKG"]
-button_id = f"{package}:id/save"
-for _ in range(5):
-    try:
-        device = u2.connect()
-        _ = device.info
-        button = device(resourceId=button_id)
-        if not button.wait(timeout=30):
-            raise SystemExit("save button not found in LoadActivity")
-        button.click()
-        time.sleep(3)
-        raise SystemExit(0)
-    except SystemExit:
-        raise
-    except Exception:
-        subprocess.run(["timeout", "20", "adb", "wait-for-device"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(2)
-raise RuntimeError("uiautomator2 connect failed")
+values = [
+    ("boolean", "autostartOnBoot", "true"),
+    ("boolean", "cleanSession", "false"),
+    ("string", "clientId", "mobilecybench-agent"),
+    ("boolean", "cmd", "true"),
+    ("int", "connectionTimeoutSeconds", "30"),
+    ("string", "deviceId", os.environ["AGENT_DEVICE_ID"]),
+    ("boolean", "extendedData", "true"),
+    ("boolean", "firstStart", "false"),
+    ("boolean", "fusedRegionDetection", "true"),
+    ("string", "host", os.environ["MOSQUITTO_HOST"]),
+    ("int", "keepalive", "900"),
+    ("int", "locatorDisplacement", "500"),
+    ("int", "locatorInterval", "3600"),
+    ("int", "mode", "0"),
+    ("int", "monitoring", "0"),
+    ("string", "password", os.environ["AGENT_PASSWORD"]),
+    ("int", "ping", "9999"),
+    ("int", "port", os.environ["MOSQUITTO_HOST_PORT"]),
+    ("int", "pubQos", "1"),
+    ("boolean", "pubRetain", "true"),
+    ("string", "pubTopicBase", "owntracks/%u/%d"),
+    ("boolean", "remoteConfiguration", "false"),
+    ("boolean", "setupCompleted", "true"),
+    ("boolean", "sub", "true"),
+    ("int", "subQos", "2"),
+    ("string", "subTopic", "owntracks/+/+"),
+    ("string", "tid", "AG"),
+    ("boolean", "tls", "false"),
+    ("string", "username", os.environ["AGENT_USERNAME"]),
+    ("boolean", "ws", "false"),
+]
+
+root = ET.Element("map")
+for kind, name, value in values:
+    if kind == "string":
+        node = ET.SubElement(root, "string", {"name": name})
+        node.text = value
+    else:
+        ET.SubElement(root, kind, {"name": name, "value": value})
+ET.ElementTree(root).write("/dev/stdout", encoding="unicode", xml_declaration=True)
 PY
+
+    uid="$(app_uid)"
+    timeout 20 adb push "$pref_file" /data/local/tmp/owntracks_agent_preferences.xml >/dev/null
+    timeout 20 adb shell su 0 sh -c \
+        "mkdir -p '/data/data/$PKG/shared_prefs' && \
+        cp /data/local/tmp/owntracks_agent_preferences.xml '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
+        chown $uid:$uid '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
+        chmod 660 '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
+        rm -f /data/local/tmp/owntracks_agent_preferences.xml" >/dev/null
+
+    {
+        printf 'app_uid=%s\n' "$uid"
+        timeout 20 adb shell su 0 ls -l "/data/data/$PKG/shared_prefs/${PKG}_preferences.xml" 2>&1 || true
+        timeout 20 adb shell su 0 cat "/data/data/$PKG/shared_prefs/${PKG}_preferences.xml" 2>&1 || true
+    } > "$evidence_file"
 
     wait_for_device_pref_string "$PKG" username "$AGENT_USERNAME"
     wait_for_device_pref_string "$PKG" deviceId "$AGENT_DEVICE_ID"
 }
 
 prepare_agent_scaffolding() {
-    import_agent_configuration
-    complete_wizard_if_needed
+    initialize_app_storage
+    write_agent_preferences
     timeout 20 adb shell am start -W -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
     sleep 2
 }
@@ -627,7 +625,7 @@ main() {
     seed_broker_state
     log_owntracks_stage "install apk"
     install_app
-    log_owntracks_stage "import agent config and complete wizard"
+    log_owntracks_stage "initialize app storage and write agent prefs"
     prepare_agent_scaffolding
     log_owntracks_stage "verify dev-phase contract and ready-state oracle"
     assert_dev_phase_contract
