@@ -32,7 +32,6 @@ score=1 → secure (no known secrets in log)
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
