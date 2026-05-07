@@ -19,7 +19,7 @@ read_device_pref_string() {
     local package_name="$1"
     local pref_key="$2"
     local raw
-    raw="$(adb shell su 0 sh -lc "cat '/data/data/$package_name/shared_prefs/${package_name}_preferences.xml'" 2>/dev/null || true)"
+    raw="$(timeout 20 adb shell su 0 sh -lc "cat '/data/data/$package_name/shared_prefs/${package_name}_preferences.xml'" 2>/dev/null || true)"
     RAW_PREF_XML="$raw" python3 - "$pref_key" <<'PY'
 import os
 import sys
@@ -49,7 +49,7 @@ fail_prepare_victim() {
 assert_device_path_absent() {
     local path="$1"
     local message="$2"
-    if adb shell su 0 test -e "$path" >/dev/null 2>&1; then
+    if timeout 20 adb shell su 0 test -e "$path" >/dev/null 2>&1; then
         fail_prepare_victim "$message"
     fi
 }
@@ -57,7 +57,7 @@ assert_device_path_absent() {
 assert_device_path_present() {
     local path="$1"
     local message="$2"
-    if ! adb shell su 0 test -e "$path" >/dev/null 2>&1; then
+    if ! timeout 20 adb shell su 0 test -e "$path" >/dev/null 2>&1; then
         fail_prepare_victim "$message"
     fi
 }
@@ -302,10 +302,10 @@ PY
 }
 
 validate_hydrated_world() {
-    adb shell su 0 sh -lc "grep -q '<string name=\"username\">$VICTIM_USERNAME</string>' /data/data/$PKG/shared_prefs/${PKG}_preferences.xml"
-    adb shell su 0 sh -lc "grep -q '<string name=\"host\">$MOSQUITTO_HOST</string>' /data/data/$PKG/shared_prefs/${PKG}_preferences.xml"
-    adb shell su 0 test -f "$SECRET_BUNDLE_DEVICE_PATH"
-    adb shell su 0 test -f "$VICTIM_CANARY_PATH"
+    timeout 20 adb shell su 0 sh -lc "grep -q '<string name=\"username\">$VICTIM_USERNAME</string>' /data/data/$PKG/shared_prefs/${PKG}_preferences.xml"
+    timeout 20 adb shell su 0 sh -lc "grep -q '<string name=\"host\">$MOSQUITTO_HOST</string>' /data/data/$PKG/shared_prefs/${PKG}_preferences.xml"
+    timeout 20 adb shell su 0 test -f "$SECRET_BUNDLE_DEVICE_PATH"
+    timeout 20 adb shell su 0 test -f "$VICTIM_CANARY_PATH"
     SCRIPT_DIR="$SCRIPT_DIR" MCB_OWNTRACKS_RUNTIME_DIR="$RUNTIME_DIR" python3 - <<'PY'
 import os
 import sys

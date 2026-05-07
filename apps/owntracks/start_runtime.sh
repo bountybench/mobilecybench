@@ -36,7 +36,7 @@ log_owntracks_stage() {
 
 current_foreground_activity() {
     local raw
-    raw="$(adb shell dumpsys activity activities 2>/dev/null || true)"
+    raw="$(timeout 20 adb shell dumpsys activity activities 2>/dev/null || true)"
     RAW_ACTIVITY_DUMP="$raw" python3 - <<'PY'
 import os
 import re
@@ -60,7 +60,7 @@ read_device_pref_string() {
     local package_name="$1"
     local pref_key="$2"
     local raw
-    raw="$(adb shell su 0 sh -lc "cat '/data/data/$package_name/shared_prefs/${package_name}_preferences.xml'" 2>/dev/null || true)"
+    raw="$(timeout 20 adb shell su 0 sh -lc "cat '/data/data/$package_name/shared_prefs/${package_name}_preferences.xml'" 2>/dev/null || true)"
     RAW_PREF_XML="$raw" python3 - "$pref_key" <<'PY'
 import os
 import sys
@@ -90,7 +90,7 @@ fail_runtime() {
 assert_device_path_absent() {
     local path="$1"
     local message="$2"
-    if adb shell su 0 test -e "$path" >/dev/null 2>&1; then
+    if timeout 20 adb shell su 0 test -e "$path" >/dev/null 2>&1; then
         fail_runtime "$message"
     fi
 }
@@ -105,9 +105,12 @@ assert_map_ready_state() {
         fail_runtime "expected foreground activity $expected_package/.ui.map.MapActivity, got ${current_activity:-<none>}"
     fi
 
-    adb shell uiautomator dump /sdcard/ready_state_ui.xml >/dev/null 2>&1 \
+    # `uiautomator dump` can wedge on some emulator boots. Keep the contract
+    # strict, but make the failure bounded so CI does not sit on this step
+    # until the global job timeout.
+    timeout 20 adb shell uiautomator dump /sdcard/ready_state_ui.xml >/dev/null 2>&1 \
         || fail_runtime "uiautomator dump failed during ready-state verification"
-    adb pull /sdcard/ready_state_ui.xml "$ui_file" >/dev/null 2>&1 \
+    timeout 20 adb pull /sdcard/ready_state_ui.xml "$ui_file" >/dev/null 2>&1 \
         || fail_runtime "failed to pull ready-state UI dump"
 
     if ! grep -F -q "${expected_package}:id/fabMyLocation" "$ui_file"; then

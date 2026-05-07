@@ -420,21 +420,27 @@ def _file_hash(data: bytes) -> str:
 
 
 def _pull_device_file_bytes(path: str, timeout: int = 20) -> bytes | None:
-    script = f"if [ -f {shlex.quote(path)} ]; then cat {shlex.quote(path)}; else exit 3; fi"
-    result = _run(["adb", "exec-out", "su", "0", "sh", "-lc", script], timeout=timeout, text=False)
+    script = (
+        f"if [ -f {shlex.quote(path)} ]; then cat {shlex.quote(path)}; else exit 3; fi"
+    )
+    result = _run(
+        ["adb", "exec-out", "su", "0", "sh", "-lc", script], timeout=timeout, text=False
+    )
     if result.returncode == 3:
         return None
     if result.returncode != 0:
         raise RuntimeError(
-            ((result.stderr or b"") + (result.stdout or b"")).decode(
-                "utf-8", errors="ignore"
-            ).strip()
+            ((result.stderr or b"") + (result.stdout or b""))
+            .decode("utf-8", errors="ignore")
+            .strip()
             or f"adb rc={result.returncode}"
         )
     return result.stdout or b""
 
 
-def _sqlite_snapshot(db_path: str) -> tuple[tempfile.TemporaryDirectory[str], str] | None:
+def _sqlite_snapshot(
+    db_path: str,
+) -> tuple[tempfile.TemporaryDirectory[str], str] | None:
     main_blob = _pull_device_file_bytes(db_path)
     if main_blob is None:
         return None
