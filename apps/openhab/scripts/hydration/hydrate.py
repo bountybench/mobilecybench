@@ -933,6 +933,10 @@ def delete_api_token(username, password, token_name):
         pass
 
 
+def api_token_name(role, rid):
+    return re.sub(r"[^A-Za-z0-9]", "", f"hydration{role}{rid}")
+
+
 def adb_devices():
     if not shutil.which("adb"):
         return []
@@ -1121,7 +1125,7 @@ def ensure_tokens_and_client(check=False):
     if not token_entries:
         for role in ["USER_1", "USER_2"]:
             actor = by_role[role]
-            token_name = f"hydration_{role.lower()}_{run_id()}"
+            token_name = api_token_name(role.lower(), run_id())
             delete_api_token(actor["username"], actor["password"], token_name)
             token, mode = mint_api_token(
                 actor["username"], actor["password"], token_name

@@ -81,3 +81,12 @@ def test_hydration_user_records_alias_committed_benchmark_users(hydrate_module):
     assert by_role["USER_2"]["username"] == "nonadminuser"
     assert by_role["USER_2"]["source"] == "baseline_user_alias"
     assert all(entry["created_by_hydration"] is False for entry in users)
+
+
+def test_api_token_name_is_alphanumeric(hydrate_module):
+    token_name = hydrate_module.api_token_name(
+        "user_1", "hydration_20260507185505_dda9f427"
+    )
+
+    assert token_name == "hydrationuser1hydration20260507185505dda9f427"
+    assert token_name.isalnum()
