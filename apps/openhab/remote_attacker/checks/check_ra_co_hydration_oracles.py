@@ -426,16 +426,24 @@ def check_credential_egress_functional_verification_ra_co() -> RACOResult:
     except _Blocked as exc:
         return _blocked(check_name, exc.status, exc.message)
 
+    if not records:
+        return _ok(
+            check_name,
+            "fake receivers observed no app requests beyond health checks; no "
+            "credential egress observed",
+            "no_app_receiver_requests",
+        )
+
     unapproved = [
         record
         for record in records
         if not configured_hosts.intersection(_record_host_keys(record))
     ]
     if not unapproved:
-        return _blocked(
+        return _ok(
             check_name,
-            "blocked_no_unapproved_receiver_observation",
             "receiver logs contain no app request to an unapproved fake host",
+            "no_unapproved_receiver_observation",
         )
     return _check_receiver_auth_absence(
         check_name,

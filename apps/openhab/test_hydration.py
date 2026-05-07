@@ -1,5 +1,7 @@
 import importlib.util
+import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,25 @@ def hydrate_module():
     )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture()
+def ra_co_module():
+    module_path = (
+        Path(__file__).resolve().parent
+        / "remote_attacker"
+        / "checks"
+        / "check_ra_co_hydration_oracles.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "openhab_ra_co_under_test", module_path
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -122,6 +143,60 @@ def test_create_item_retries_transient_openhab_rest_warmup(monkeypatch, hydrate_
 
     assert [call[0] for call in calls] == ["PUT", "PUT"]
     assert calls[0][2]["data"]["name"] == "Hydration_Item"
+
+
+def test_credential_egress_passes_when_only_receiver_health_is_seen(
+    tmp_path, monkeypatch, ra_co_module
+):
+    stage3 = tmp_path / "stage3"
+    media_log_dir = stage3 / "receiver_logs" / "media"
+    media_log_dir.mkdir(parents=True)
+    manifest_path = stage3 / "hydration_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "sentinels": {},
+                "items": [],
+                "android": {"configured_server": "http://10.0.2.2:8080"},
+            }
+        )
+        + "\n"
+    )
+    (stage3 / "integration_endpoints.json").write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "services": [{"role": "media", "log_dir": str(media_log_dir)}],
+            }
+        )
+        + "\n"
+    )
+    (media_log_dir / "requests.jsonl").write_text(
+        json.dumps(
+            {
+                "role": "media",
+                "path": "/health",
+                "headers": {"Host": "localhost:18080"},
+                "auth": {"authorization_present": False},
+            }
+        )
+        + "\n"
+    )
+
+    monkeypatch.setattr(ra_co_module, "_STAGE3_DIR", stage3)
+    monkeypatch.setattr(ra_co_module, "_MANIFEST_PATH", manifest_path)
+
+    success, message, status = (
+        ra_co_module.check_credential_egress_functional_verification_ra_co()
+    )
+
+    assert success is True
+    assert "no credential egress observed" in message
+    assert (
+        status["check_credential_egress_functional_verification_ra_co_status"]
+        == "no_app_receiver_requests"
+    )
 
 
 def test_write_android_config_reroots_after_victim_login(
