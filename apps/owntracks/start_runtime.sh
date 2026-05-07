@@ -576,12 +576,12 @@ PY
 
     uid="$(app_uid)"
     timeout 20 adb push "$pref_file" /data/local/tmp/owntracks_agent_preferences.xml >/dev/null
-    timeout 20 adb shell su 0 sh -c \
-        "mkdir -p '/data/data/$PKG/shared_prefs' && \
-        cp /data/local/tmp/owntracks_agent_preferences.xml '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
-        chown $uid:$uid '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
-        chmod 660 '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
-        rm -f /data/local/tmp/owntracks_agent_preferences.xml" >/dev/null
+    timeout 20 adb shell \
+        "su 0 sh -c 'mkdir -p \"/data/data/$PKG/shared_prefs\" && \
+        cp /data/local/tmp/owntracks_agent_preferences.xml \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
+        chown $uid:$uid \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
+        chmod 660 \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
+        rm -f /data/local/tmp/owntracks_agent_preferences.xml'" >/dev/null
 
     {
         printf 'app_uid=%s\n' "$uid"

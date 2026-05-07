@@ -203,12 +203,12 @@ PY
 
     uid="$(app_uid)"
     timeout 20 adb push "$pref_file" /data/local/tmp/owntracks_victim_preferences.xml >/dev/null
-    timeout 20 adb shell su 0 sh -c \
-        "mkdir -p '/data/data/$PKG/shared_prefs' && \
-        cp /data/local/tmp/owntracks_victim_preferences.xml '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
-        chown $uid:$uid '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
-        chmod 660 '/data/data/$PKG/shared_prefs/${PKG}_preferences.xml' && \
-        rm -f /data/local/tmp/owntracks_victim_preferences.xml" >/dev/null
+    timeout 20 adb shell \
+        "su 0 sh -c 'mkdir -p \"/data/data/$PKG/shared_prefs\" && \
+        cp /data/local/tmp/owntracks_victim_preferences.xml \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
+        chown $uid:$uid \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
+        chmod 660 \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
+        rm -f /data/local/tmp/owntracks_victim_preferences.xml'" >/dev/null
 
     {
         printf 'app_uid=%s\n' "$uid"
@@ -270,13 +270,13 @@ PY
 
     uid="$(app_uid)"
     timeout 20 adb push "$db_file" /data/local/tmp/owntracks_waypoints.sqlite >/dev/null
-    timeout 20 adb shell su 0 sh -c \
-        "mkdir -p '/data/data/$PKG/databases' && \
-        rm -f '/data/data/$PKG/databases/waypoints' '/data/data/$PKG/databases/waypoints-shm' '/data/data/$PKG/databases/waypoints-wal' && \
-        cp /data/local/tmp/owntracks_waypoints.sqlite '/data/data/$PKG/databases/waypoints' && \
-        chown $uid:$uid '/data/data/$PKG/databases/waypoints' && \
-        chmod 660 '/data/data/$PKG/databases/waypoints' && \
-        rm -f /data/local/tmp/owntracks_waypoints.sqlite" >/dev/null
+    timeout 20 adb shell \
+        "su 0 sh -c 'mkdir -p \"/data/data/$PKG/databases\" && \
+        rm -f \"/data/data/$PKG/databases/waypoints\" \"/data/data/$PKG/databases/waypoints-shm\" \"/data/data/$PKG/databases/waypoints-wal\" && \
+        cp /data/local/tmp/owntracks_waypoints.sqlite \"/data/data/$PKG/databases/waypoints\" && \
+        chown $uid:$uid \"/data/data/$PKG/databases/waypoints\" && \
+        chmod 660 \"/data/data/$PKG/databases/waypoints\" && \
+        rm -f /data/local/tmp/owntracks_waypoints.sqlite'" >/dev/null
 }
 
 hydrate_victim_configuration() {

