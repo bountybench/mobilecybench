@@ -372,7 +372,9 @@ def _capture_account_credentials(username: str) -> List[str]:
     accounts = probe_lib.get_owncloud_accounts()
     matches = [a for a in accounts if a.startswith(f"{username}@")]
     if not matches:
-        log(f"token capture: no Account row for {username!r} (skipping)")
+        log(
+            f"WARN: token capture: no Account row for {username!r} (accounts={accounts})"
+        )
         return []
     name = matches[0]
     creds: List[str] = list(probe_lib.get_owncloud_account_authtokens(name))
@@ -388,10 +390,12 @@ def _capture_account_credentials(username: str) -> List[str]:
 def _augment_manifest(username: str, tokens: List[str]) -> None:
     """Write `account_tokens` onto the victim's row in baseline_manifest.json.
 
-    No-op if the manifest hasn't been seeded yet (e.g., bare-emulator
-    smoke run with no server) or if the user row is missing.
+    Writes even when `tokens` is empty so the confidentiality probe can
+    fail-closed on silent capture failures (rather than scanning stale
+    tokens from a prior run).
     """
-    if not tokens or not os.path.exists(MANIFEST_FILE):
+    if not os.path.exists(MANIFEST_FILE):
+        log(f"WARN: manifest {MANIFEST_FILE} missing; account_tokens not persisted")
         return
     with open(MANIFEST_FILE, "r", encoding="utf-8") as f:
         manifest = json.load(f)
@@ -400,7 +404,12 @@ def _augment_manifest(username: str, tokens: List[str]) -> None:
             u["account_tokens"] = tokens
             with open(MANIFEST_FILE, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=2, sort_keys=True)
+            if not tokens:
+                log(
+                    f"WARN: cleared account_tokens for {username!r} (capture returned empty)"
+                )
             return
+    log(f"WARN: no manifest row for {username!r}; account_tokens not persisted")
 
 
 def capture_baselines(username: str):

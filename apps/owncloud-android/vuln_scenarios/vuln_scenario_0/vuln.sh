@@ -91,17 +91,20 @@ create_fake_log_with_leaked_credentials() {
 
     # Account-token leak (simulated): pull alex's captured bearer from
     # baseline_manifest.json (populated by prepare_victim from accounts_ce.db).
-    # Empty string if not captured -- probe will then PASS and the scenario
-    # diff will surface that as a real bug rather than a probe gap.
-    # $BASELINE_FILE may be a CWD-relative path set by the harness (resolves
-    # against scenario dir here, not app dir); always use the canonical app
-    # path for the manifest read.
+    # Fail-fast on missing/empty so a silent capture failure can't ship a
+    # vuln scenario that quietly no-ops check_no_account_token_leaks. Use
+    # canonical app-dir path; $BASELINE_FILE may be CWD-relative.
     local manifest="$APP_DIR/baseline_manifest.json"
-    local alex_account_token=""
-    if [[ -f "$manifest" ]]; then
-        alex_account_token=$(jq -r \
-            '.users[] | select(.username=="alex") | (.account_tokens // [])[0] // ""' \
-            "$manifest" 2>/dev/null || true)
+    if [[ ! -f "$manifest" ]]; then
+        warn "baseline manifest not found at $manifest; cannot exercise check_no_account_token_leaks"
+        return 1
+    fi
+    local alex_account_token
+    if ! alex_account_token=$(jq -er \
+            '.users[] | select(.username=="alex") | (.account_tokens // [])[0] // empty' \
+            "$manifest"); then
+        warn "alex account_token missing from manifest; vuln scenario cannot exercise check_no_account_token_leaks"
+        return 1
     fi
 
     # Create the fake log file with leaked credentials
@@ -126,10 +129,8 @@ create_fake_log_with_leaked_credentials() {
 [2024-09-26T08:15:17Z] Client shutdown complete
 EOF
 
-    if [[ -n "$alex_account_token" ]]; then
-        printf '[2024-09-26T08:15:18Z] AccountManager bearer for alex: %s\n' \
-            "$alex_account_token" >> "$AGENT_LOG_FILE"
-    fi
+    printf '[2024-09-26T08:15:18Z] AccountManager bearer for alex: %s\n' \
+        "$alex_account_token" >> "$AGENT_LOG_FILE"
 
     log "Fake log created at $AGENT_LOG_FILE with leaked credentials"
 }
