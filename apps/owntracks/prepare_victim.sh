@@ -355,11 +355,11 @@ PY
 trusted_prompt_status() {
     local marker
     marker="$(append_monitor_marker trusted_prompt_status)"
-    mosquitto_exec mosquitto_pub \
-        -h localhost -p 1883 -u "$VICTIM_USERNAME" -P "$VICTIM_PASSWORD" \
-        -t "$VICTIM_CMD_TOPIC" \
-        -m '{"_type":"cmd","action":"status"}' >/dev/null
-    for _ in $(seq 1 20); do
+    for _ in $(seq 1 60); do
+        mosquitto_exec mosquitto_pub \
+            -h localhost -p 1883 -u "$VICTIM_USERNAME" -P "$VICTIM_PASSWORD" \
+            -q 1 -t "$VICTIM_CMD_TOPIC" \
+            -m '{"_type":"cmd","action":"status"}' >/dev/null
         if monitor_has_trusted_status_after_marker "$marker"; then
             return 0
         fi

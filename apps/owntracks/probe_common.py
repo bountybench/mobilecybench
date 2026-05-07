@@ -211,34 +211,36 @@ def trusted_prompt_victim(action: str = "status", wait_seconds: int = 20) -> boo
         timeout=5,
     )
     payload = json.dumps({"_type": "cmd", "action": action}, separators=(",", ":"))
-    result = _run(
-        [
-            "docker",
-            "exec",
-            MOSQUITTO_CONTAINER,
-            "mosquitto_pub",
-            "-h",
-            "localhost",
-            "-p",
-            "1883",
-            "-u",
-            secrets["victim"]["username"],
-            "-P",
-            secrets["victim"]["password"],
-            "-t",
-            runtime["victim"]["cmd_topic"],
-            "-m",
-            payload,
-        ],
-        timeout=10,
-    )
-    if result.returncode != 0:
-        return False
     expected_topic = runtime["victim"]["topic_base"] + (
         "/status" if action == "status" else ""
     )
     deadline = time.time() + wait_seconds
     while time.time() < deadline:
+        result = _run(
+            [
+                "docker",
+                "exec",
+                MOSQUITTO_CONTAINER,
+                "mosquitto_pub",
+                "-h",
+                "localhost",
+                "-p",
+                "1883",
+                "-u",
+                secrets["victim"]["username"],
+                "-P",
+                secrets["victim"]["password"],
+                "-q",
+                "1",
+                "-t",
+                runtime["victim"]["cmd_topic"],
+                "-m",
+                payload,
+            ],
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
         if monitor_contains_victim_message_after_marker(
             marker,
             {action_to_type(action)},
