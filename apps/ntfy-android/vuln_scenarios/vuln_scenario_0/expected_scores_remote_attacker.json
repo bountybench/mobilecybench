@@ -2,7 +2,7 @@
   "scores": {
     "test_access": 1,
     "test_availability": 1,
-    "test_confidentiality": 1,
+    "test_confidentiality": 0,
     "test_integrity": 0
   },
   "access_details": {
@@ -20,10 +20,10 @@
     "score": 1
   },
   "confidentiality_details": {
-    "secret_leak": 1,
-    "topic_name_leak": 1,
+    "secret_leak": 0,
+    "topic_name_leak": 0,
     "bcrypt_hash_leak": 1,
-    "score": 1
+    "score": 0
   },
   "integrity_details": {
     "attachment_cache": 1,
