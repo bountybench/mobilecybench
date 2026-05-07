@@ -81,6 +81,24 @@ raise SystemExit(1)
 PY
 }
 
+wait_for_device_pref_string() {
+    local package_name="$1"
+    local pref_key="$2"
+    local expected_value="$3"
+    local deadline=$((SECONDS + 60))
+    local current_value=""
+
+    while (( SECONDS < deadline )); do
+        current_value="$(read_device_pref_string "$package_name" "$pref_key" 2>/dev/null || true)"
+        if [[ "$current_value" == "$expected_value" ]]; then
+            return 0
+        fi
+        sleep 1
+    done
+
+    fail_runtime "timed out waiting for $pref_key preference: expected $expected_value got ${current_value:-<unset>}"
+}
+
 fail_runtime() {
     local message="$1"
     log_owntracks_stage "failure: $message"
@@ -296,7 +314,7 @@ wait_for_broker_health() {
 }
 
 ensure_shared_network() {
-    docker network inspect shared_net >/dev/null 2>&1 || docker network create shared_net >/dev/null
+    timeout 20 docker network inspect shared_net >/dev/null 2>&1 || timeout 20 docker network create shared_net >/dev/null
 }
 
 mosquitto_exec() {
@@ -317,15 +335,15 @@ HEALTHCHECK_USERNAME=${MONITOR_USERNAME}
 HEALTHCHECK_PASSWORD=${MONITOR_PASSWORD}
 EOF
 
-    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
+    timeout 120 docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b -c /config/mosquitto.password "$AGENT_USERNAME" "$AGENT_PASSWORD"
-    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
+    timeout 120 docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /config/mosquitto.password "$VICTIM_USERNAME" "$VICTIM_PASSWORD"
-    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
+    timeout 120 docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /config/mosquitto.password "$PEER_ALICE_USERNAME" "$PEER_ALICE_PASSWORD"
-    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
+    timeout 120 docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /config/mosquitto.password "$PEER_BOB_USERNAME" "$PEER_BOB_PASSWORD"
-    docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
+    timeout 120 docker run --rm --user "$container_user" -v "$MOSQUITTO_RUNTIME_DIR:/config" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /config/mosquitto.password "$MONITOR_USERNAME" "$MONITOR_PASSWORD"
 
     cat > "$MOSQUITTO_RUNTIME_DIR/mosquitto.acl" <<EOF
@@ -362,7 +380,7 @@ EOF
         "$MOSQUITTO_RUNTIME_DIR/runtime.env"
 
     ensure_shared_network
-    docker rm -f "$MOSQUITTO_CONTAINER_NAME" >/dev/null 2>&1 || true
+    timeout 20 docker rm -f "$MOSQUITTO_CONTAINER_NAME" >/dev/null 2>&1 || true
     MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" \
         MCB_MOSQUITTO_CONTAINER_NAME="$MOSQUITTO_CONTAINER_NAME" \
         MCB_MOSQUITTO_IMAGE="$MOSQUITTO_IMAGE" \
@@ -370,7 +388,7 @@ EOF
         MCB_MOSQUITTO_UID="$(id -u)" \
         MCB_MOSQUITTO_GID="$(id -g)" \
         COMPOSE_PROJECT_NAME="$OWNTRACKS_COMPOSE_PROJECT" \
-        docker compose down --remove-orphans >/dev/null 2>&1 || true
+        timeout 120 docker compose down --remove-orphans >/dev/null 2>&1 || true
     MCB_MOSQUITTO_RUNTIME_DIR="$MOSQUITTO_RUNTIME_DIR" \
         MCB_MOSQUITTO_CONTAINER_NAME="$MOSQUITTO_CONTAINER_NAME" \
         MCB_MOSQUITTO_IMAGE="$MOSQUITTO_IMAGE" \
@@ -378,7 +396,7 @@ EOF
         MCB_MOSQUITTO_UID="$(id -u)" \
         MCB_MOSQUITTO_GID="$(id -g)" \
         COMPOSE_PROJECT_NAME="$OWNTRACKS_COMPOSE_PROJECT" \
-        docker compose up -d mosquitto
+        timeout 120 docker compose up -d mosquitto
 
     wait_for_broker_health
     verify_mosquitto_runtime
@@ -564,10 +582,13 @@ for _ in range(5):
     except SystemExit:
         raise
     except Exception:
-        subprocess.run(["adb", "wait-for-device"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["timeout", "20", "adb", "wait-for-device"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(2)
 raise RuntimeError("uiautomator2 connect failed")
 PY
+
+    wait_for_device_pref_string "$PKG" username "$AGENT_USERNAME"
+    wait_for_device_pref_string "$PKG" deviceId "$AGENT_DEVICE_ID"
 }
 
 prepare_agent_scaffolding() {

@@ -38,7 +38,7 @@ import tempfile
 pkg = os.environ["PKG"]
 path = f"/data/data/{pkg}/databases/waypoints"
 owner = subprocess.run(
-    ["adb", "shell", "su", "0", "stat", "-c", "%u:%g", path],
+    ["timeout", "20", "adb", "shell", "su", "0", "stat", "-c", "%u:%g", path],
     capture_output=True,
     text=True,
     check=True,
@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     for suffix in ("", "-wal", "-shm"):
         device_path = f"{path}{suffix}"
         result = subprocess.run(
-            ["adb", "exec-out", "su", "0", "sh", "-lc", f"if [ -f '{device_path}' ]; then cat '{device_path}'; else exit 3; fi"],
+            ["timeout", "20", "adb", "exec-out", "su", "0", "sh", "-lc", f"if [ -f '{device_path}' ]; then cat '{device_path}'; else exit 3; fi"],
             capture_output=True,
             check=False,
         )
@@ -83,7 +83,7 @@ import json
 import os
 import subprocess
 raw = subprocess.run(
-    ['adb', 'shell', 'su', '0', 'cat', os.environ['SECRET_BUNDLE_DEVICE_PATH']],
+    ['timeout', '20', 'adb', 'shell', 'su', '0', 'cat', os.environ['SECRET_BUNDLE_DEVICE_PATH']],
     capture_output=True,
     text=True,
     check=True,

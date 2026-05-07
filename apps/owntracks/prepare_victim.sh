@@ -40,6 +40,24 @@ raise SystemExit(1)
 PY
 }
 
+wait_for_device_pref_string() {
+    local package_name="$1"
+    local pref_key="$2"
+    local expected_value="$3"
+    local deadline=$((SECONDS + 60))
+    local current_value=""
+
+    while (( SECONDS < deadline )); do
+        current_value="$(read_device_pref_string "$package_name" "$pref_key" 2>/dev/null || true)"
+        if [[ "$current_value" == "$expected_value" ]]; then
+            return 0
+        fi
+        sleep 1
+    done
+
+    fail_prepare_victim "timed out waiting for $pref_key preference: expected $expected_value got ${current_value:-<unset>}"
+}
+
 fail_prepare_victim() {
     local message="$1"
     log_owntracks_stage "failure: $message"
@@ -215,10 +233,13 @@ for _ in range(5):
     except SystemExit:
         raise
     except Exception:
-        subprocess.run(["adb", "wait-for-device"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["timeout", "20", "adb", "wait-for-device"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(2)
 raise RuntimeError("uiautomator2 connect failed")
 PY
+
+    wait_for_device_pref_string "$PKG" username "$VICTIM_USERNAME"
+    wait_for_device_pref_string "$PKG" deviceId "$VICTIM_DEVICE_ID"
 }
 
 seed_app_private_truth() {
@@ -374,7 +395,7 @@ package_name = os.environ["PKG"]
 baseline_state_path = os.environ["BASELINE_STATE_PATH"]
 prefs_path = f"/data/data/{package_name}/shared_prefs/{package_name}_preferences.xml"
 raw = subprocess.run(
-    ["adb", "shell", "su", "0", "cat", prefs_path],
+    ["timeout", "20", "adb", "shell", "su", "0", "cat", prefs_path],
     capture_output=True,
     text=True,
     check=True,
