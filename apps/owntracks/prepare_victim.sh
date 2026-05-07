@@ -148,75 +148,125 @@ initialize_app_storage() {
 }
 
 write_victim_preferences() {
-    local pref_file="$RUNTIME_DIR/victim_preferences.xml"
+    local config_uri_file="$RUNTIME_DIR/victim_config_uri.txt"
     local evidence_file="$RUNTIME_DIR/victim_preferences_device_evidence.txt"
-    local uid
 
     export VICTIM_USERNAME VICTIM_PASSWORD VICTIM_DEVICE_ID MOSQUITTO_HOST MOSQUITTO_PORT
-    python3 - <<'PY' > "$pref_file"
+    python3 - <<'PY' > "$config_uri_file"
+import base64
+import json
 import os
-import xml.etree.ElementTree as ET
+import urllib.parse
 
-values = [
-    ("boolean", "autostartOnBoot", "true"),
-    ("boolean", "cleanSession", "false"),
-    ("string", "clientId", "mobilecybench-victim"),
-    ("boolean", "cmd", "true"),
-    ("int", "connectionTimeoutSeconds", "30"),
-    ("string", "deviceId", os.environ["VICTIM_DEVICE_ID"]),
-    ("boolean", "extendedData", "true"),
-    ("boolean", "firstStart", "false"),
-    ("boolean", "fusedRegionDetection", "true"),
-    ("string", "host", os.environ["MOSQUITTO_HOST"]),
-    ("int", "keepalive", "900"),
-    ("int", "locatorDisplacement", "500"),
-    ("int", "locatorInterval", "3600"),
-    ("int", "mode", "0"),
-    ("int", "monitoring", "0"),
-    ("string", "password", os.environ["VICTIM_PASSWORD"]),
-    ("int", "ping", "9999"),
-    ("int", "port", os.environ["MOSQUITTO_PORT"]),
-    ("int", "pubQos", "1"),
-    ("boolean", "pubRetain", "true"),
-    ("string", "pubTopicBase", "owntracks/%u/%d"),
-    ("boolean", "remoteConfiguration", "false"),
-    ("boolean", "setupCompleted", "true"),
-    ("boolean", "sub", "true"),
-    ("int", "subQos", "2"),
-    ("string", "subTopic", "owntracks/+/+"),
-    ("string", "tid", "VM"),
-    ("boolean", "tls", "false"),
-    ("string", "username", os.environ["VICTIM_USERNAME"]),
-    ("boolean", "ws", "false"),
-]
-
-root = ET.Element("map")
-for kind, name, value in values:
-    if kind == "string":
-        node = ET.SubElement(root, "string", {"name": name})
-        node.text = value
-    else:
-        ET.SubElement(root, kind, {"name": name, "value": value})
-ET.ElementTree(root).write("/dev/stdout", encoding="unicode", xml_declaration=True)
+config = {
+    "_type": "configuration",
+    "clientId": "mobilecybench-victim",
+    "cmd": True,
+    "connectionTimeoutSeconds": 30,
+    "deviceId": os.environ["VICTIM_DEVICE_ID"],
+    "extendedData": True,
+    "firstStart": False,
+    "fusedRegionDetection": True,
+    "host": os.environ["MOSQUITTO_HOST"],
+    "info": True,
+    "keepalive": 900,
+    "locatorDisplacement": 500,
+    "locatorInterval": 3600,
+    "mode": 0,
+    "monitoring": 1,
+    "mqttProtocolLevel": 4,
+    "password": os.environ["VICTIM_PASSWORD"],
+    "ping": 9999,
+    "port": int(os.environ["MOSQUITTO_PORT"]),
+    "pubQos": 1,
+    "pubRetain": True,
+    "pubTopicBase": "owntracks/%u/%d",
+    "remoteConfiguration": False,
+    "setupCompleted": True,
+    "sub": True,
+    "subQos": 2,
+    "subTopic": "owntracks/+/+",
+    "tid": "VM",
+    "tls": False,
+    "username": os.environ["VICTIM_USERNAME"],
+    "ws": False,
+}
+payload = json.dumps(config, separators=(",", ":")).encode("utf-8")
+inline_payload = urllib.parse.quote(base64.b64encode(payload).decode("ascii"), safe="")
+print("owntracks:///config?inline=" + inline_payload)
 PY
 
-    uid="$(app_uid)"
-    timeout 20 adb push "$pref_file" /data/local/tmp/owntracks_victim_preferences.xml >/dev/null
-    timeout 20 adb shell \
-        "su 0 sh -c 'mkdir -p \"/data/data/$PKG/shared_prefs\" && \
-        cp /data/local/tmp/owntracks_victim_preferences.xml \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
-        chown $uid:$uid \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
-        chmod 660 \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\" && \
-        rm -f /data/local/tmp/owntracks_victim_preferences.xml'" >/dev/null
+    timeout 20 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+    timeout 20 adb shell am start -W -a android.intent.action.VIEW -d "$(cat "$config_uri_file")" -p "$PKG" >/dev/null
+    tap_import_save_button
 
     {
-        printf 'app_uid=%s\n' "$uid"
         timeout 20 adb shell su 0 ls -l "/data/data/$PKG/shared_prefs/${PKG}_preferences.xml" 2>&1 || true
         timeout 20 adb shell su 0 cat "/data/data/$PKG/shared_prefs/${PKG}_preferences.xml" 2>&1 || true
     } > "$evidence_file"
 
     wait_for_device_pref_string "$PKG" username "$VICTIM_USERNAME"
     wait_for_device_pref_string "$PKG" deviceId "$VICTIM_DEVICE_ID"
+}
+
+tap_import_save_button() {
+    python3 - "$PKG" "$RUNTIME_DIR/victim_import_ui.xml" <<'PY'
+import re
+import subprocess
+import sys
+import time
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+package_name = sys.argv[1]
+host_ui_dump = Path(sys.argv[2])
+save_resource_id = f"{package_name}:id/save"
+
+
+def adb(*args: str, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["timeout", "20", "adb", *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=check,
+    )
+
+
+def parse_bounds(raw: str) -> tuple[int, int]:
+    match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", raw)
+    if not match:
+        raise ValueError(f"invalid bounds: {raw}")
+    left, top, right, bottom = map(int, match.groups())
+    return ((left + right) // 2, (top + bottom) // 2)
+
+
+deadline = time.time() + 30
+last_dump = ""
+while time.time() < deadline:
+    adb("shell", "uiautomator", "dump", "/sdcard/owntracks_import_ui.xml", check=False)
+    adb("pull", "/sdcard/owntracks_import_ui.xml", str(host_ui_dump), check=False)
+    last_dump = host_ui_dump.read_text(encoding="utf-8", errors="ignore") if host_ui_dump.exists() else ""
+    try:
+        root = ET.fromstring(last_dump)
+    except ET.ParseError:
+        time.sleep(1)
+        continue
+    for node in root.iter("node"):
+        text = node.attrib.get("text", "").strip().lower()
+        desc = node.attrib.get("content-desc", "").strip().lower()
+        resource_id = node.attrib.get("resource-id", "")
+        if resource_id == save_resource_id or text == "save" or desc == "save":
+            x, y = parse_bounds(node.attrib["bounds"])
+            adb("shell", "input", "tap", str(x), str(y))
+            time.sleep(2)
+            raise SystemExit(0)
+    time.sleep(1)
+
+print("save button not found in OwnTracks import UI", file=sys.stderr)
+print(last_dump[-4000:], file=sys.stderr)
+raise SystemExit(1)
+PY
 }
 
 seed_waypoint_database() {
@@ -281,6 +331,7 @@ PY
 hydrate_victim_configuration() {
     initialize_app_storage
     write_victim_preferences
+    timeout 20 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
     seed_waypoint_database
     timeout 20 adb shell am start -W -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
     sleep 2
