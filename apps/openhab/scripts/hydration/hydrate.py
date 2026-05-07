@@ -913,6 +913,25 @@ def patch_sitemap(specs):
 
 
 def seed_live_items(specs):
+    baseline_specs = [
+        ("gSecurity", "Group", "Security System", [], None),
+        ("gDoorLocks", "Group", "Door Locks", [], None),
+        ("AlarmSystem_Armed", "Switch", "Alarm System", ["gSecurity"], "ON"),
+        ("FrontDoor_Lock", "Switch", "Front Door Lock", ["gDoorLocks"], "ON"),
+        ("GarageDoor_Lock", "Switch", "Garage Door Lock", ["gDoorLocks"], "ON"),
+        ("BackDoor_Lock", "Switch", "Back Door Lock", ["gDoorLocks"], "ON"),
+    ]
+    for name, item_type, label, groups, state in baseline_specs:
+        create_item(
+            name,
+            item_type,
+            label,
+            groups,
+            tags=["HydrationBaseline"],
+        )
+        if state:
+            set_item_state(name, state)
+
     for spec in specs:
         create_item(
             spec["name"],
@@ -923,16 +942,6 @@ def seed_live_items(specs):
         )
         if spec.get("baseline_state") and spec["baseline_state"] != "UNDEF":
             set_item_state(spec["name"], spec["baseline_state"])
-    for name in [
-        "AlarmSystem_Armed",
-        "FrontDoor_Lock",
-        "GarageDoor_Lock",
-        "BackDoor_Lock",
-    ]:
-        try:
-            set_item_state(name, "ON")
-        except HydrationError:
-            warn(f"security baseline item missing: {name}")
 
 
 def ensure_items(check=False):
