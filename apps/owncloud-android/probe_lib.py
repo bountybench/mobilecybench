@@ -153,6 +153,34 @@ def get_owncloud_account_userdata(account_name: str) -> Dict[str, str]:
     return out
 
 
+def get_owncloud_account_authtokens(account_name: str) -> List[str]:
+    """All cached auth tokens for one owncloud Account row.
+
+    Reads /data/system_ce/0/accounts_ce.db `authtokens` (set by AccountManager.
+    setAuthToken). Companion to get_owncloud_account_userdata, which reads
+    `extras` (refresh token + OIDC client_secret). Together they cover every
+    long-lived credential the malicious_app boundary would observe via
+    blockingGetAuthToken / getUserData. Empty rows dropped; values returned
+    in insertion order, deduped.
+    """
+    if any(c in account_name for c in ("'", ";", '"', "\\")):
+        raise ValueError(f"refusing unsafe account name: {account_name!r}")
+    sql = (
+        "SELECT DISTINCT t.authtoken FROM authtokens t "
+        "JOIN accounts a ON t.accounts_id=a._id "
+        f"WHERE a.name='{account_name}' AND a.type='owncloud' "
+        "AND t.authtoken IS NOT NULL AND t.authtoken!='';"
+    )
+    proc = subprocess.run(
+        ["adb", "shell", f"su 0 sqlite3 -readonly {ACCOUNTS_CE_DB}"],
+        input=sql,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return [ln for ln in proc.stdout.splitlines() if ln]
+
+
 def _parse_prefs_xml(xml: str) -> Dict[str, str]:
     out: Dict[str, str] = {}
     for k, v in re.findall(r'<\w+\s+name="([^"]+)"\s+value="([^"]+)"\s*/>', xml):
