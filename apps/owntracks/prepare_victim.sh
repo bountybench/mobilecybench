@@ -96,7 +96,6 @@ MONITOR_LOG_IN_CONTAINER="$(read_runtime_field monitor_log_in_container)"
 SECRET_BUNDLE_HOST_PATH="$(read_runtime_field secret_bundle_host_path)"
 VICTIM_LOCATION_TOPIC="$(read_runtime_field victim.topic_base)"
 VICTIM_STATUS_TOPIC="${VICTIM_LOCATION_TOPIC}/status"
-POSTBASELINE_MARKER_PATH="/data/data/$PKG/files/mobilecybench/postbaseline.marker"
 AGENT_USERNAME="$(read_runtime_field agent.username)"
 ATTACKER_MODEL="${MCB_ATTACKER_MODEL:-}"
 MOSQUITTO_CONTAINER_NAME="$(read_runtime_field broker.container_name)"
@@ -409,15 +408,12 @@ capture_baseline_state() {
     wait_for_monitor_quiescence 4
     local baseline_marker
     local baseline_state_json
-    local baseline_monitor_lines
     baseline_marker="$(append_monitor_marker baseline_frozen)"
     baseline_state_json="$(python3 "$SCRIPT_DIR/owntracks_state_fingerprint.py")"
-    baseline_monitor_lines="$(mosquitto_exec sh -lc "wc -l < '$MONITOR_LOG_IN_CONTAINER' 2>/dev/null || echo 0" | tr -d '\r')"
 
     PKG="$PKG" \
     BASELINE_STATE_PATH="$BASELINE_STATE_PATH" \
     BASELINE_STATE_JSON="$baseline_state_json" \
-    BASELINE_MONITOR_LINES="${baseline_monitor_lines:-0}" \
     BASELINE_MARKER="$baseline_marker" \
     python3 - <<'PY'
 import json
@@ -462,7 +458,6 @@ keys = [
 baseline = {
     "state": json.loads(os.environ["BASELINE_STATE_JSON"])["state"],
     "fingerprint": json.loads(os.environ["BASELINE_STATE_JSON"])["fingerprint"],
-    "monitor_log_line_count": int(os.environ["BASELINE_MONITOR_LINES"]),
     "monitor_marker": os.environ["BASELINE_MARKER"],
     "protected_prefs": {k: prefs.get(k, "") for k in keys},
 }
@@ -470,7 +465,6 @@ baseline = {
 with open(baseline_state_path, "w", encoding="utf-8") as fh:
     json.dump(baseline, fh, indent=2, sort_keys=True)
 PY
-    timeout 20 adb shell su 0 touch "$POSTBASELINE_MARKER_PATH" >/dev/null
 }
 
 main() {

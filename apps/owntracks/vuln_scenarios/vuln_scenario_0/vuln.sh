@@ -87,8 +87,4 @@ PY
 )
 CANARY="${secret_values[0]}"
 PEER_PASSWORD="${secret_values[1]}"
-CANARY_FOR_SHELL="$(printf '%s' "$CANARY" | sed "s/'/'\\\\''/g")"
-timeout 20 adb shell \
-    "su 0 sh -c 'mkdir -p /sdcard/Download && printf %s '$CANARY_FOR_SHELL' > /sdcard/Download/owntracks_leak.txt'"
-timeout 20 adb shell log -t OwnTracksScenario "$CANARY" >/dev/null 2>&1 || true
 timeout 20 docker exec "$MOSQUITTO_CONTAINER_NAME" mosquitto_pub -h localhost -p 1883 -u "$PEER_USERNAME" -P "$PEER_PASSWORD" -t "$AGENT_PEER_TOPIC" -m "{\"_type\":\"status\",\"status\":\"$CANARY\",\"tst\":1700002001}" >/dev/null
