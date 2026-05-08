@@ -44,18 +44,12 @@ run_hydration() {
   "$SCRIPT_DIR/scripts/hydration/run_backend.sh"
 }
 
-configure_agent_account() {
-  log_info "Configuring MoeMemos with non-victim agent account"
-  python3 "$SCRIPT_DIR/scripts/hydration/hydrate.py" configure-agent-android-account
-}
-
 main() {
   log_info "Starting MoeMemos setup"
   start_stack
   wait_for_health
   install_app
   run_hydration
-  configure_agent_account
   log_info "MoeMemos setup complete! Server: $MEMOS_URL"
 }
 
