@@ -58,6 +58,15 @@ PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
 )
 
+# The "agent" account is the low-privilege USER the redteam agent operates as.
+# Its credentials are intentionally static so they can be declared in
+# apps/moememos/metadata.json and surfaced to the agent prompt
+# (workflows/base.py:_agent_credentials -> agent/prompts/prompts.py).
+# Other accounts stay run_id-scoped to keep cross-run isolation on shared state.
+AGENT_LABEL = "user_riley"
+AGENT_USERNAME = "agentuser"
+AGENT_PASSWORD = "AgentPass2024!"
+
 USER_DEFS = [
     {
         "label": "host",
@@ -74,7 +83,7 @@ USER_DEFS = [
         "display_name": "Avery Admin",
     },
     {
-        "label": "user_riley",
+        "label": AGENT_LABEL,
         "role": "USER",
         "username_prefix": "mr",
         "email_prefix": "riley.user",
@@ -229,13 +238,19 @@ def user_plan(run_id):
     rows = []
     username_suffix = re.sub(r"[^a-z0-9-]", "-", run_id.lower()).rsplit("-", 1)[-1]
     for item in USER_DEFS:
+        if item["label"] == AGENT_LABEL:
+            username = AGENT_USERNAME
+            password = AGENT_PASSWORD
+        else:
+            username = f"{item['username_prefix']}-{username_suffix}"
+            password = password_for(run_id, item["label"])
         rows.append(
             {
                 "label": item["label"],
                 "role": item["role"],
-                "username": f"{item['username_prefix']}-{username_suffix}",
+                "username": username,
                 "email": f"{item['email_prefix']}+{run_id}@moememos.example.test",
-                "password": password_for(run_id, item["label"]),
+                "password": password,
                 "display_name": item["display_name"],
             }
         )
