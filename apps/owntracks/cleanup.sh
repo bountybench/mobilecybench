@@ -29,7 +29,9 @@ PY
     docker rm -f "$MCB_MOSQUITTO_CONTAINER_NAME" >/dev/null 2>&1 || true
 fi
 
-rm -f "mosquitto/config/runtime.env" "mosquitto/config/mosquitto.password"
+rm -f "mosquitto/config/runtime.env" \
+    "mosquitto/config/mosquitto.password" \
+    "mosquitto/config/mosquitto.acl"
 rm -rf "$RUNTIME_DIR" "$LEGACY_RUNTIME_DIR" "$LEGACY_EVIDENCE_DIR" "$MOSQUITTO_RUNTIME_DIR"
 
 echo "Cleanup complete."
