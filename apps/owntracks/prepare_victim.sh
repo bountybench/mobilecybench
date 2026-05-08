@@ -333,7 +333,14 @@ hydrate_victim_configuration() {
     write_victim_preferences
     timeout 20 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
     seed_waypoint_database
+    start_victim_runtime
+}
+
+start_victim_runtime() {
     timeout 20 adb shell am start -W -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1 || true
+    # MapActivity starts this service in-app; invoke the exported service
+    # explicitly as well, while the broker-observed status remains the hard oracle.
+    timeout 20 adb shell am start-foreground-service -n "$PKG/.services.BackgroundService" >/dev/null 2>&1 || true
     sleep 2
 }
 
@@ -416,7 +423,32 @@ trusted_prompt_status() {
         fi
         sleep 1
     done
+    capture_victim_runtime_diagnostics "$marker"
     return 1
+}
+
+capture_victim_runtime_diagnostics() {
+    local marker="$1"
+    local diag_dir="$RUNTIME_DIR/victim_runtime_diagnostics"
+    mkdir -p "$diag_dir"
+
+    {
+        printf 'marker=%s\n' "$marker"
+        printf 'foreground_activity='
+        timeout 20 adb shell dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity' || true
+        printf '\npidof='
+        timeout 20 adb shell pidof "$PKG" 2>/dev/null | tr -d '\r' || true
+        printf '\nservices=\n'
+        timeout 20 adb shell dumpsys activity services "$PKG" 2>/dev/null || true
+    } > "$diag_dir/device_runtime.txt"
+
+    mosquitto_exec sh -lc "tail -n 200 '$MONITOR_LOG_IN_CONTAINER' 2>/dev/null || true" \
+        > "$diag_dir/monitor_tail.log" || true
+
+    printf '%s\n' "victim runtime diagnostics:"
+    sed -n '1,120p' "$diag_dir/device_runtime.txt" >&2 || true
+    printf '%s\n' "monitor tail:"
+    sed -n '1,120p' "$diag_dir/monitor_tail.log" >&2 || true
 }
 
 validate_hydrated_world() {
