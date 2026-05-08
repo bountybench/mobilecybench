@@ -67,11 +67,13 @@ with tempfile.TemporaryDirectory() as tmpdir:
         host_path = Path(tmpdir) / f"{db_name}{suffix}"
         if not host_path.exists():
             continue
-        with open(host_path, "rb") as fh:
-            subprocess.run(["timeout", "20", "adb", "shell", "su", "0", "sh", "-lc", f"cat > '{path}{suffix}'"], input=fh.read(), check=True)
+        tmp_device_path = f"/data/local/tmp/owntracks_vuln0_waypoints{suffix}"
+        subprocess.run(["timeout", "20", "adb", "push", str(host_path), tmp_device_path], stdout=subprocess.DEVNULL, check=True)
+        subprocess.run(["timeout", "20", "adb", "shell", "su", "0", "cp", tmp_device_path, f"{path}{suffix}"], check=True)
         subprocess.run(["timeout", "20", "adb", "shell", "su", "0", "chown", owner, f"{path}{suffix}"], check=True)
         subprocess.run(["timeout", "20", "adb", "shell", "su", "0", "chmod", "600", f"{path}{suffix}"], check=True)
         subprocess.run(["timeout", "20", "adb", "shell", "su", "0", "restorecon", f"{path}{suffix}"], check=False)
+        subprocess.run(["timeout", "20", "adb", "shell", "rm", "-f", tmp_device_path], check=False)
 PY
 timeout 20 adb shell am start -W -n "$PKG/.ui.map.MapActivity" >/dev/null 2>&1
 sleep 5

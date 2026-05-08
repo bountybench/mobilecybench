@@ -286,31 +286,64 @@ def adb_pid(package: str = APP_PACKAGE) -> str:
     return result.stdout.strip()
 
 
-def mqtt_publish_as_agent(topic: str, payload: str) -> tuple[int, str]:
+def mqtt_publish_as_agent(
+    topic: str, payload: str, *, qos: int | None = None, retain: bool = False
+) -> tuple[int, str]:
     runtime = load_runtime_state()
+    cmd = [
+        "docker",
+        "exec",
+        MOSQUITTO_CONTAINER,
+        "mosquitto_pub",
+        "-d",
+        "-h",
+        "localhost",
+        "-p",
+        "1883",
+        "-u",
+        runtime["agent"]["username"],
+        "-P",
+        runtime["agent"]["password"],
+        "-t",
+        topic,
+        "-m",
+        payload,
+    ]
+    if qos is not None:
+        cmd.extend(["-q", str(qos)])
+    if retain:
+        cmd.append("-r")
+    result = _run(cmd, timeout=10)
+    return result.returncode, (result.stderr or result.stdout or "").strip()
+
+
+def retained_topic_payload(topic: str) -> str:
+    runtime = load_runtime_state()
+    secrets = read_secret_bundle()
     result = _run(
         [
             "docker",
             "exec",
             MOSQUITTO_CONTAINER,
-            "mosquitto_pub",
-            "-d",
+            "mosquitto_sub",
+            "-C",
+            "1",
+            "-W",
+            "2",
             "-h",
             "localhost",
             "-p",
             "1883",
             "-u",
-            runtime["agent"]["username"],
+            runtime["monitor"]["username"],
             "-P",
-            runtime["agent"]["password"],
+            secrets["monitor"]["password"],
             "-t",
             topic,
-            "-m",
-            payload,
         ],
-        timeout=10,
+        timeout=5,
     )
-    return result.returncode, (result.stderr or result.stdout or "").strip()
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def _file_hash(data: bytes) -> str:

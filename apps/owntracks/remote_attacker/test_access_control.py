@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import time
+import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -10,16 +11,26 @@ from probe_common import (
     load_runtime_state,
     monitor_contains_victim_message_after_marker,
     mqtt_publish_as_agent,
+    retained_topic_payload,
 )
 
 
 def main() -> int:
     victim_cmd_topic = load_runtime_state()["victim"]["cmd_topic"]
     marker = append_monitor_marker("remote_attacker_probe")
-    rc, _output = mqtt_publish_as_agent(
-        victim_cmd_topic, '{"_type":"cmd","action":"reportLocation"}'
+    nonce = f"forged-{uuid.uuid4().hex}"
+    payload = json.dumps(
+        {"_type": "cmd", "action": "reportLocation", "nonce": nonce},
+        separators=(",", ":"),
     )
-    publish_blocked = rc != 0
+    _rc, _output = mqtt_publish_as_agent(
+        victim_cmd_topic,
+        payload,
+        qos=1,
+        retain=True,
+    )
+    retained = retained_topic_payload(victim_cmd_topic)
+    publish_blocked = nonce not in retained
     no_response = True
     deadline = time.time() + 8
     while time.time() < deadline:
