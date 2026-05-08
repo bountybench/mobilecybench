@@ -161,13 +161,20 @@ def parse_monitor_entries(lines: list[str]) -> list[dict[str, Any]]:
 
 
 def monitor_entries_after_marker(marker: str) -> list[dict[str, Any]]:
-    seen_marker = False
+    lines = read_monitor_log()
+    try:
+        offset = int(marker)
+    except ValueError:
+        offset = -1
+
     entries: list[dict[str, Any]] = []
-    for raw in read_monitor_log():
-        if raw.startswith("MARKER ") and raw.strip().endswith(f" {marker}"):
-            seen_marker = True
+    for raw in lines[max(offset, 0) :]:
+        if offset < 0:
+            if raw.startswith("MARKER ") and raw.strip().endswith(f" {marker}"):
+                offset = 0
+                continue
             continue
-        if not seen_marker or raw.startswith("MARKER ") or " " not in raw:
+        if " " not in raw:
             continue
         topic, payload = raw.split(" ", 1)
         try:
@@ -179,37 +186,14 @@ def monitor_entries_after_marker(marker: str) -> list[dict[str, Any]]:
 
 
 def append_monitor_marker(label: str) -> str:
-    token = f"{label}_{int(time.time())}_{os.getpid()}"
-    runtime = load_runtime_state()
-    _run(
-        [
-            "docker",
-            "exec",
-            MOSQUITTO_CONTAINER,
-            "sh",
-            "-lc",
-            f"printf 'MARKER {label} {token}\\n' >> {runtime['monitor_log_in_container']}",
-        ],
-        timeout=5,
-    )
-    return token
+    _ = label
+    return str(len(read_monitor_log()))
 
 
 def trusted_prompt_victim(action: str = "status", wait_seconds: int = 20) -> bool:
     runtime = load_runtime_state()
     secrets = read_secret_bundle()
-    marker = f"probe_prompt_{int(time.time())}_{os.getpid()}"
-    _run(
-        [
-            "docker",
-            "exec",
-            MOSQUITTO_CONTAINER,
-            "sh",
-            "-lc",
-            f"printf 'MARKER probe_prompt {marker}\\n' >> {runtime['monitor_log_in_container']}",
-        ],
-        timeout=5,
-    )
+    marker = append_monitor_marker("probe_prompt")
     payload = json.dumps({"_type": "cmd", "action": action}, separators=(",", ":"))
     expected_topic = runtime["victim"]["topic_base"] + (
         "/status" if action == "status" else ""

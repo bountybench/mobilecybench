@@ -346,14 +346,8 @@ start_victim_runtime() {
 
 append_monitor_marker() {
     local label="$1"
-    local token
-    token="$(python3 - <<'PY'
-import secrets
-print(secrets.token_hex(8))
-PY
-)"
-    mosquitto_exec sh -lc "printf 'MARKER ${label} ${token}\n' >> '$MONITOR_LOG_IN_CONTAINER'"
-    printf '%s\n' "$token"
+    log_owntracks_stage "monitor snapshot: $label"
+    mosquitto_exec sh -lc "wc -l < '$MONITOR_LOG_IN_CONTAINER' 2>/dev/null || echo 0" | tr -d '\r'
 }
 
 wait_for_monitor_quiescence() {
@@ -388,14 +382,10 @@ import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
-marker = sys.argv[2]
+offset = int(sys.argv[2])
 topic = sys.argv[3]
-seen_marker = False
-for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-    if raw.strip() == f"MARKER trusted_prompt_status {marker}":
-        seen_marker = True
-        continue
-    if not seen_marker or raw.startswith("MARKER ") or " " not in raw:
+for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines()[offset:]:
+    if " " not in raw:
         continue
     current_topic, payload = raw.split(" ", 1)
     if current_topic != topic:

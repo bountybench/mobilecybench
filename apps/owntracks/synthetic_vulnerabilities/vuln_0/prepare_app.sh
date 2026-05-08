@@ -30,13 +30,7 @@ print(data["broker"]["container_name"])
 PY
 )"
 
-TOKEN="$(python3 - <<'PY'
-import secrets
-print("synthetic_vuln_0_" + secrets.token_hex(8))
-PY
-)"
-
 bash "$APP_DIR/prepare_victim.sh"
-timeout 20 docker exec "$MOSQUITTO_CONTAINER_NAME" sh -lc "printf 'MARKER synthetic_vuln_0 %s\n' '$TOKEN' >> '$MONITOR_LOG_IN_CONTAINER'"
-printf '%s\n' "$TOKEN" > "$MARKER_PATH"
-echo "[prepare_app] recorded monitor marker $TOKEN"
+OFFSET="$(timeout 20 docker exec "$MOSQUITTO_CONTAINER_NAME" sh -lc "wc -l < '$MONITOR_LOG_IN_CONTAINER' 2>/dev/null || echo 0" | awk '{print $1}')"
+printf '%s\n' "$OFFSET" > "$MARKER_PATH"
+echo "[prepare_app] recorded monitor offset $OFFSET"
