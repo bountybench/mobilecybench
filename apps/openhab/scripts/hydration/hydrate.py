@@ -1000,10 +1000,9 @@ def seed_live_items(specs):
 
 
 def ensure_items(check=False):
-    require_status()
-    users = load_json(STATE_DIR / "users.json")
-    if not users:
-        raise HydrationError("users.json missing; run 01_seed_users.sh first")
+    get_or_create_status()
+    admin_username, admin_password = admin_auth()
+    wait_for_rest(admin_username, admin_password)
     specs = item_specs()
     items_json = STATE_DIR / "items.json"
     if check:
@@ -1044,7 +1043,7 @@ def ensure_items(check=False):
                 "items artifact exists but live verification failed; repairing hydration items"
             )
 
-    assert_fixed_integration_ports_available()
+    assert_fixed_integration_ports_available_or_hydrated()
     seed_live_items(specs)
     patch_sitemap(specs)
     restart_openhab_container("hydration sitemap changed")
@@ -1326,7 +1325,7 @@ def ensure_tokens_and_client(check=False):
         ensure_tokens_and_client(check=True)
         return
 
-    assert_fixed_integration_ports_available()
+    assert_fixed_integration_ports_available_or_hydrated()
     if not token_entries:
         for role in ["USER_1", "USER_2"]:
             actor = by_role[role]
@@ -1573,6 +1572,25 @@ def assert_fixed_integration_ports_available():
             "default hydration integration ports are unavailable; stop the conflicting service or update the reviewed design: "
             + ", ".join(busy)
         )
+
+
+def fixed_ports_owned_by_current_hydration():
+    endpoints = load_json(STATE_DIR / "integration_endpoints.json", {})
+    if not endpoints or endpoints.get("run_id") != run_id():
+        return False
+    ports = endpoints.get("ports")
+    if not isinstance(ports, dict):
+        return False
+    for name, port in DEFAULT_INTEGRATION_PORTS.items():
+        if ports.get(name) != port:
+            return False
+    return True
+
+
+def assert_fixed_integration_ports_available_or_hydrated():
+    if fixed_ports_owned_by_current_hydration():
+        return
+    assert_fixed_integration_ports_available()
 
 
 def choose_ports(existing=None):
@@ -2107,7 +2125,7 @@ SCRIPT_DEFS = [
     ),
     (
         "05_seed_integrations.sh",
-        ["02_seed_items_and_sitemap.sh", "03_mint_tokens_and_client_config.sh"],
+        ["02_seed_items_and_sitemap.sh"],
         [
             "integration_endpoints.json",
             "network_baseline.json",

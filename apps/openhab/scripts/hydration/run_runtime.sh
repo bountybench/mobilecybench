@@ -3,12 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Agent-visible runtime hydration only. Keep replay-only material such as
+# token minting, victim login, Android secret prefs, and verifier manifests in
+# run_all.sh / prepare_victim.sh.
 steps=(
-  "01_seed_users.sh"
-  "03_mint_tokens_and_client_config.sh"
-  "04_seed_device_prefs_permissions.sh"
-  "06_seed_malicious_app_substrate.sh"
-  "07_write_manifest.sh"
+  "02_seed_items_and_sitemap.sh"
+  "05_seed_integrations.sh"
 )
 
 run_step() {
@@ -24,12 +24,8 @@ run_step() {
 }
 
 for step in "${steps[@]}"; do
-  if [ "$step" = "03_mint_tokens_and_client_config.sh" ]; then
-    printf '[INFO] running shared runtime hydration\n' >&2
-    "$SCRIPT_DIR/run_runtime.sh"
-  fi
-  printf '[INFO] running %s\n' "$step" >&2
+  printf '[INFO] running runtime %s\n' "$step" >&2
   run_step "$step"
 done
 
-printf '[INFO] hydration complete\n' >&2
+printf '[INFO] runtime hydration complete\n' >&2

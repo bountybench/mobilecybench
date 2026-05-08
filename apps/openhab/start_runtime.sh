@@ -342,6 +342,21 @@ EOF
   log_info "App preconfigured with server URL: $emulator_server"
 }
 
+run_stage3_runtime_hydration() {
+  local hydration_runtime="$SCRIPT_DIR/scripts/hydration/run_runtime.sh"
+
+  if [ "${OPENHAB_SKIP_STAGE3_HYDRATION:-0}" = "1" ] || [ "${OPENHAB_SKIP_STAGE3_RUNTIME_HYDRATION:-0}" = "1" ]; then
+    log_info "Skipping stage 3 runtime hydration by request"
+  elif [ -x "$hydration_runtime" ]; then
+    log_info "Running stage 3 runtime hydration..."
+    if ! "$hydration_runtime"; then
+      log_warn "Runtime hydration did not complete; replay-only hydration may repair verifier artifacts later"
+    fi
+  else
+    log_info "No runtime hydration script at $hydration_runtime; skipping"
+  fi
+}
+
 create_env_file() {
   local env_file="$SCRIPT_DIR/.env"
   local state_dir="$SCRIPT_DIR/openhab_userdata/jsondb"
@@ -401,6 +416,11 @@ main() {
   # Seed items via REST API (idempotent — skips if already seeded)
   log_info "Seeding environment with sample data..."
   bash "$SCRIPT_DIR/seed_environment.sh"
+
+  # Shared, non-secret Stage 3 setup runs before the agent/exploit. Full
+  # replay-only hydration still runs from prepare_victim.sh so victim login,
+  # token minting, and verifier manifests stay out of the agent setup path.
+  run_stage3_runtime_hydration
 
   setup_apk_device
   preconfigure_app

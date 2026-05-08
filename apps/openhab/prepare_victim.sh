@@ -398,13 +398,13 @@ PYEOF
 
 log_info "Victim login complete"
 
-# Stage 3 hydration — produces apps/openhab/pipeline/stage3/hydration_manifest.json
-# and stands up the sibling fake-receiver containers that RA-CO probes consume.
-# Each numbered step is idempotent, so re-running here on top of seed_environment.sh
-# / preconfigure_app from start_runtime.sh short-circuits the overlapping pieces
-# and only does the genuinely new work (sibling receivers, attacker substrate,
-# manifest). cleanup.sh already calls scripts/hydration/unhydrate.sh, so teardown
-# pairing is in place.
+# Full Stage 3 replay hydration. start_runtime.sh already runs the shared
+# non-secret runtime setup so agent and replay see the same deterministic
+# items/sitemap/fake receivers. The full path here adds verifier-only material
+# that requires victim credentials, including token artifacts, Android secret
+# preference state, malicious-app fixtures, and hydration_manifest.json.
+# cleanup.sh already calls scripts/hydration/unhydrate.sh, so teardown pairing
+# is in place.
 HYDRATION_RUN_ALL="$SCRIPT_DIR/scripts/hydration/run_all.sh"
 if [ "${OPENHAB_SKIP_STAGE3_HYDRATION:-0}" = "1" ]; then
   log_info "Skipping stage 3 hydration by request"

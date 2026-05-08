@@ -7,6 +7,16 @@ from pathlib import Path
 import pytest
 
 
+def _shell_array_entries(script_path: Path, name: str) -> list[str]:
+    text = script_path.read_text()
+    block = text.split(f"{name}=(", 1)[1].split(")", 1)[0]
+    return [
+        line.strip().strip('"')
+        for line in block.splitlines()
+        if line.strip().startswith('"')
+    ]
+
+
 @pytest.fixture()
 def hydrate_module():
     module_path = (
@@ -106,6 +116,40 @@ def test_api_token_name_is_alphanumeric(hydrate_module):
 
     assert token_name == "hydrationuser1hydration20260507185505dda9f427"
     assert token_name.isalnum()
+
+
+def test_runtime_hydration_excludes_replay_only_secret_steps():
+    script_dir = Path(__file__).resolve().parent / "scripts" / "hydration"
+    steps = _shell_array_entries(script_dir / "run_runtime.sh", "steps")
+
+    assert steps == [
+        "02_seed_items_and_sitemap.sh",
+        "05_seed_integrations.sh",
+    ]
+    assert "03_mint_tokens_and_client_config.sh" not in steps
+    assert "04_seed_device_prefs_permissions.sh" not in steps
+    assert "06_seed_malicious_app_substrate.sh" not in steps
+    assert "07_write_manifest.sh" not in steps
+
+
+def test_full_hydration_reuses_runtime_setup_before_replay_only_steps():
+    script_dir = Path(__file__).resolve().parent / "scripts" / "hydration"
+    run_all = script_dir / "run_all.sh"
+    steps = _shell_array_entries(run_all, "steps")
+    text = run_all.read_text()
+
+    assert steps == [
+        "01_seed_users.sh",
+        "03_mint_tokens_and_client_config.sh",
+        "04_seed_device_prefs_permissions.sh",
+        "06_seed_malicious_app_substrate.sh",
+        "07_write_manifest.sh",
+    ]
+    assert '"$SCRIPT_DIR/run_runtime.sh"' in text
+    loop_body = text.split('for step in "${steps[@]}"; do', 1)[1]
+    assert loop_body.index('"$SCRIPT_DIR/run_runtime.sh"') < loop_body.index(
+        'run_step "$step"'
+    )
 
 
 def test_write_text_preserve_inode_if_changed(tmp_path, hydrate_module):
