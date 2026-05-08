@@ -3,7 +3,6 @@ set -euo pipefail
 
 RUNTIME_STATE_PATH="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mobilecybench-owntracks-runtime}/runtime_state.json"
 [[ -f "$RUNTIME_STATE_PATH" ]] || { echo "missing runtime state: $RUNTIME_STATE_PATH" >&2; exit 2; }
-SCENARIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mapfile -t runtime_values < <(python3 - "$RUNTIME_STATE_PATH" <<'PY'
 import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
@@ -21,9 +20,6 @@ AGENT_PEER_TOPIC="${runtime_values[1]}"
 SECRET_BUNDLE_HOST_PATH="${runtime_values[2]}"
 PEER_USERNAME="${runtime_values[3]}"
 MOSQUITTO_CONTAINER_NAME="${runtime_values[4]}"
-
-FAKE_LOG_FILE="$SCENARIO_DIR/fake_agent_log.log"
-printf 'trusted-host scenario 0\n' > "$FAKE_LOG_FILE"
 
 timeout 20 adb shell \
     "su 0 sh -c 'sed -i \"s#<boolean name=\\\"remoteConfiguration\\\" value=\\\"false\\\" */>#<boolean name=\\\"remoteConfiguration\\\" value=\\\"true\\\" />#\" \"/data/data/$PKG/shared_prefs/${PKG}_preferences.xml\"'"
