@@ -142,7 +142,6 @@ def test_full_hydration_reuses_runtime_setup_before_replay_only_steps():
         "01_seed_users.sh",
         "03_mint_tokens_and_client_config.sh",
         "04_seed_device_prefs_permissions.sh",
-        "06_seed_malicious_app_substrate.sh",
         "07_write_manifest.sh",
     ]
     assert '"$SCRIPT_DIR/run_runtime.sh"' in text
@@ -150,6 +149,22 @@ def test_full_hydration_reuses_runtime_setup_before_replay_only_steps():
     assert loop_body.index('"$SCRIPT_DIR/run_runtime.sh"') < loop_body.index(
         'run_step "$step"'
     )
+    assert not (script_dir / "06_seed_malicious_app_substrate.sh").exists()
+
+
+def test_hydration_does_not_define_dummy_attacker_package():
+    app_dir = Path(__file__).resolve().parent
+    checked_paths = [
+        app_dir / "probe_lib.py",
+        app_dir / "scripts" / "hydration" / "hydrate.py",
+        app_dir / "scripts" / "hydration" / "run_all.sh",
+    ]
+
+    for path in checked_paths:
+        text = path.read_text()
+        assert "dev.mobilecybench.openhab.attacker" not in text
+        assert "hydration_attacker_package" not in text
+        assert "attacker_package" not in text
 
 
 def test_write_text_preserve_inode_if_changed(tmp_path, hydrate_module):

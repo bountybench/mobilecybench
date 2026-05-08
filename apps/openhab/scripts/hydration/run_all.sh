@@ -7,7 +7,6 @@ steps=(
   "01_seed_users.sh"
   "03_mint_tokens_and_client_config.sh"
   "04_seed_device_prefs_permissions.sh"
-  "06_seed_malicious_app_substrate.sh"
   "07_write_manifest.sh"
 )
 

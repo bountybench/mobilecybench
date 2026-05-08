@@ -28,8 +28,6 @@ STATE_DIR = APP_DIR / "pipeline" / "stage3"
 MANIFEST_OUT = STATE_DIR / "hydration_manifest.json"
 STATUS_PATH = STATE_DIR / "hydration_status.json"
 APP_PACKAGE = "org.openhab.habdroid"
-EVAL_EXPLOIT_PACKAGE = "com.mobilecybench.exploit"
-HYDRATION_ATTACKER_PACKAGE = "dev.mobilecybench.openhab.attacker"
 SERVER_URL = "http://localhost:8080"
 EMULATOR_SERVER = "http://10.0.2.2:8080"
 SITEMAP_PATH = APP_DIR / "openhab_conf" / "sitemaps" / "home.sitemap"
@@ -1797,303 +1795,6 @@ def ensure_integrations(check=False):
     ensure_integrations(check=True)
 
 
-def build_attacker_apk(apk_path):
-    app_root = STATE_DIR / "attacker_app"
-    src = app_root / "src" / "dev" / "mobilecybench" / "openhab" / "attacker"
-    src.mkdir(parents=True, exist_ok=True)
-    write_text_if_changed(
-        app_root / "AndroidManifest.xml",
-        """<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.mobilecybench.openhab.attacker">
-    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <application android:label="OpenHAB Hydration Attacker" android:theme="@android:style/Theme.Material.Light.NoActionBar">
-        <activity android:name=".MainActivity" android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-        <receiver android:name=".ProbeReceiver" android:exported="true">
-            <intent-filter>
-                <action android:name="dev.mobilecybench.openhab.attacker.PROBE" />
-            </intent-filter>
-        </receiver>
-    </application>
-</manifest>
-""",
-    )
-    write_text_if_changed(
-        src / "MainActivity.java",
-        """package dev.mobilecybench.openhab.attacker;
-
-import android.app.Activity;
-import android.os.Bundle;
-
-public class MainActivity extends Activity {
-    @Override
-    protected void onCreate(Bundle bundle) {
-        super.onCreate(bundle);
-        finish();
-    }
-}
-""",
-    )
-    write_text_if_changed(
-        src / "ProbeReceiver.java",
-        """package dev.mobilecybench.openhab.attacker;
-
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-
-public class ProbeReceiver extends BroadcastReceiver {
-    @Override
-    public void onReceive(Context context, Intent intent) {
-        setResultCode(0);
-    }
-}
-""",
-    )
-    android_home = os.environ.get("ANDROID_HOME")
-    if not android_home:
-        raise HydrationError("ANDROID_HOME is required to build attacker APK")
-    build_tools_root = Path(android_home) / "build-tools"
-    platform_root = Path(android_home) / "platforms"
-    build_tools = sorted([p for p in build_tools_root.iterdir() if p.is_dir()])[-1]
-    platform = sorted([p for p in platform_root.iterdir() if p.is_dir()])[-1]
-    android_jar = platform / "android.jar"
-    build = app_root / "build"
-    classes = build / "classes"
-    dex = build / "dex"
-    dist = app_root / "dist"
-    shutil.rmtree(build, ignore_errors=True)
-    dist.mkdir(parents=True, exist_ok=True)
-    classes.mkdir(parents=True)
-    dex.mkdir(parents=True)
-    java_files = [str(p) for p in src.glob("*.java")]
-    run(
-        [
-            "javac",
-            "-source",
-            "17",
-            "-target",
-            "17",
-            "-classpath",
-            str(android_jar),
-            "-d",
-            str(classes),
-            *java_files,
-        ],
-        timeout=120,
-    )
-    class_files = [str(p) for p in classes.rglob("*.class")]
-    run(
-        [
-            str(build_tools / "d8"),
-            "--min-api",
-            "26",
-            "--lib",
-            str(android_jar),
-            "--output",
-            str(dex),
-            *class_files,
-        ],
-        timeout=120,
-    )
-    unaligned = dist / "attacker-unaligned.apk"
-    aligned = dist / "attacker-aligned.apk"
-    run(
-        [
-            str(build_tools / "aapt"),
-            "package",
-            "-f",
-            "-M",
-            str(app_root / "AndroidManifest.xml"),
-            "-I",
-            str(android_jar),
-            "-F",
-            str(unaligned),
-        ],
-        timeout=120,
-    )
-    if not unaligned.exists() or unaligned.stat().st_size == 0:
-        raise HydrationError("aapt failed to create unaligned attacker APK")
-    run(["zip", "-q", str(unaligned), "classes.dex"], timeout=120, cwd=dex)
-    run(
-        [str(build_tools / "zipalign"), "-f", "4", str(unaligned), str(aligned)],
-        timeout=120,
-    )
-    keystore = app_root / "debug.keystore"
-    if not keystore.exists():
-        run(
-            [
-                "keytool",
-                "-genkeypair",
-                "-v",
-                "-keystore",
-                str(keystore),
-                "-storepass",
-                "android",
-                "-alias",
-                "androiddebugkey",
-                "-keypass",
-                "android",
-                "-keyalg",
-                "RSA",
-                "-keysize",
-                "2048",
-                "-validity",
-                "3650",
-                "-dname",
-                "CN=Android Debug,O=Android,C=US",
-            ],
-            timeout=120,
-        )
-    run(
-        [
-            str(build_tools / "apksigner"),
-            "sign",
-            "--ks",
-            str(keystore),
-            "--ks-pass",
-            "pass:android",
-            "--key-pass",
-            "pass:android",
-            "--ks-key-alias",
-            "androiddebugkey",
-            "--out",
-            str(apk_path),
-            str(aligned),
-        ],
-        timeout=120,
-    )
-    shutil.rmtree(build, ignore_errors=True)
-
-
-def sha256_file(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def package_installed(package):
-    if not adb_devices():
-        return False
-    proc = adb("shell", "pm", "list", "packages", package, check=False)
-    return f"package:{package}" in (proc.stdout or "")
-
-
-def requested_permissions(package):
-    proc = adb("shell", "dumpsys", "package", package, check=False)
-    text = proc.stdout or ""
-    req = []
-    capture = False
-    for line in text.splitlines():
-        if "requested permissions:" in line:
-            capture = True
-            continue
-        if capture:
-            if not line.startswith("      "):
-                break
-            req.append(line.strip())
-    return sorted(set(req))
-
-
-def ensure_malicious_substrate(check=False):
-    require_status()
-    state_path = STATE_DIR / "malicious_app_state.json"
-    if check:
-        state = load_json(state_path)
-        if not state or state.get("run_id") != run_id():
-            raise HydrationError("malicious_app_state.json missing or run_id mismatch")
-        if not package_installed(HYDRATION_ATTACKER_PACKAGE):
-            raise HydrationError("hydration attacker package not installed")
-        log("06 skipped: already seeded")
-        return
-
-    if state_path.exists():
-        try:
-            ensure_malicious_substrate(check=True)
-            return
-        except HydrationError:
-            warn(
-                "malicious substrate artifact exists but verification failed; repairing attacker fixtures"
-            )
-
-    if not app_installed():
-        raise HydrationError("Android target app is not installed")
-    apk_path = STATE_DIR / "attacker_app" / "dist" / "openhab-hydration-attacker.apk"
-    if not apk_path.exists():
-        build_attacker_apk(apk_path)
-    apk_hash = sha256_file(apk_path)
-    adb("install", "-r", str(apk_path), timeout=180)
-    rid = run_id()
-    ext_dir = f"/sdcard/Android/data/{APP_PACKAGE}/files/hydration/{rid}"
-    adb("shell", "mkdir", "-p", ext_dir, check=False)
-    adb(
-        "shell",
-        "sh",
-        "-c",
-        f"printf '%s' '{sentinels(rid)['sentinel_external_storage_file']}' > '{ext_dir}/sentinel.txt'",
-        check=False,
-    )
-    endpoints = load_json(STATE_DIR / "integration_endpoints.json", {})
-    write_json(
-        STATE_DIR / "intent_fixtures.json",
-        {
-            "run_id": rid,
-            "tasker": {
-                "action": "com.twofortyfouram.locale.intent.action.FIRE_SETTING",
-                "item": item_name("Hydration_Tasker_Target"),
-                "payload": sentinels(rid)["sentinel_tasker_payload"],
-            },
-            "nfc": {
-                "uri": f"openhab://item?name={item_name('Hydration_Nfc_Target')}&state={urllib.parse.quote(sentinels(rid)['sentinel_nfc_payload'])}",
-                "payload": sentinels(rid)["sentinel_nfc_payload"],
-            },
-            "preferences_activity": f"{APP_PACKAGE}/.ui.preference.PreferencesActivity",
-        },
-    )
-    write_json(
-        STATE_DIR / "external_storage_fixtures.json",
-        {
-            "run_id": rid,
-            "path": f"{ext_dir}/sentinel.txt",
-            "sentinel": sentinels(rid)["sentinel_external_storage_file"],
-        },
-    )
-    write_json(
-        STATE_DIR / "content_uri_fixtures.json",
-        {
-            "run_id": rid,
-            "fileprovider_authorities": [],
-            "note": "Baseline manifest declares no FileProvider authorities",
-        },
-    )
-    write_json(
-        state_path,
-        {
-            "run_id": rid,
-            "package": HYDRATION_ATTACKER_PACKAGE,
-            "hydration_attacker_package": HYDRATION_ATTACKER_PACKAGE,
-            "evaluation_exploit_package": EVAL_EXPLOIT_PACKAGE,
-            "role": "hydration_substrate_not_evaluation_exploit",
-            "apk_path": rel(apk_path),
-            "apk_sha256": apk_hash,
-            "requested_permissions": requested_permissions(HYDRATION_ATTACKER_PACKAGE),
-            "target_requested_permissions": requested_permissions(APP_PACKAGE),
-            "fake_endpoint_strategy": endpoints.get(
-                "fake_endpoint_strategy", "not_recorded"
-            ),
-            "updated_at": now_iso(),
-        },
-    )
-    ensure_malicious_substrate(check=True)
-
-
 SCRIPT_DEFS = [
     ("01_seed_users.sh", [], ["users.csv", "users.json", "users_db_baseline.json"]),
     (
@@ -2134,20 +1835,6 @@ SCRIPT_DEFS = [
         ],
     ),
     (
-        "06_seed_malicious_app_substrate.sh",
-        [
-            "03_mint_tokens_and_client_config.sh",
-            "04_seed_device_prefs_permissions.sh",
-            "05_seed_integrations.sh",
-        ],
-        [
-            "malicious_app_state.json",
-            "intent_fixtures.json",
-            "external_storage_fixtures.json",
-            "content_uri_fixtures.json",
-        ],
-    ),
-    (
         "07_write_manifest.sh",
         [
             "01_seed_users.sh",
@@ -2155,7 +1842,6 @@ SCRIPT_DEFS = [
             "03_mint_tokens_and_client_config.sh",
             "04_seed_device_prefs_permissions.sh",
             "05_seed_integrations.sh",
-            "06_seed_malicious_app_substrate.sh",
         ],
         ["hydration_manifest.json", "hydration_status.json"],
     ),
@@ -2262,7 +1948,6 @@ def write_manifest(check=False):
         "android_client_state.json",
         "device_state.json",
         "integration_endpoints.json",
-        "malicious_app_state.json",
     ]
     missing = [name for name in required if not (STATE_DIR / name).exists()]
     if missing:
@@ -2285,9 +1970,6 @@ def write_manifest(check=False):
         "items": load_json(STATE_DIR / "items.json", {}).get("items", []),
         "android": {
             "target_package": APP_PACKAGE,
-            "attacker_package": HYDRATION_ATTACKER_PACKAGE,
-            "hydration_attacker_package": HYDRATION_ATTACKER_PACKAGE,
-            "evaluation_exploit_package": EVAL_EXPLOIT_PACKAGE,
             "configured_server": EMULATOR_SERVER,
             "fake_endpoint_strategy": endpoints.get(
                 "fake_endpoint_strategy", "adb_hosts_or_host_lan_ip"
@@ -2299,9 +1981,6 @@ def write_manifest(check=False):
                 "reason": "preserve URL host inequality when adb hosts-file edits are unavailable",
             },
             "permission_matrix_path": "permissions_matrix.json",
-            "content_uri_fixtures": load_json(
-                STATE_DIR / "content_uri_fixtures.json", {}
-            ),
         },
         "containers_started_by_hydration": [
             "fake-media-receiver",
@@ -2408,17 +2087,6 @@ def unhydrate(_check=False):
             report["removed"].append("mqtt_retained_sentinel")
 
     if adb_devices():
-        adb("uninstall", HYDRATION_ATTACKER_PACKAGE, check=False)
-        report["removed"].append(f"android_package:{HYDRATION_ATTACKER_PACKAGE}")
-        if rid:
-            adb(
-                "shell",
-                "rm",
-                "-rf",
-                f"/sdcard/Android/data/{APP_PACKAGE}/files/hydration/{rid}",
-                check=False,
-            )
-            report["removed"].append("external_storage_fixture")
         adb("shell", "am", "force-stop", APP_PACKAGE, check=False)
     else:
         report["skipped"].append("adb_no_device")
@@ -2451,7 +2119,6 @@ COMMANDS = {
     "tokens": ensure_tokens_and_client,
     "device": ensure_device_prefs,
     "integrations": ensure_integrations,
-    "malicious": ensure_malicious_substrate,
     "manifest": write_manifest,
     "unhydrate": unhydrate,
 }

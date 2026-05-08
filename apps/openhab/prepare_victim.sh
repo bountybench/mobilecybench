@@ -402,7 +402,7 @@ log_info "Victim login complete"
 # non-secret runtime setup so agent and replay see the same deterministic
 # items/sitemap/fake receivers. The full path here adds verifier-only material
 # that requires victim credentials, including token artifacts, Android secret
-# preference state, malicious-app fixtures, and hydration_manifest.json.
+# preference state, and hydration_manifest.json.
 # cleanup.sh already calls scripts/hydration/unhydrate.sh, so teardown pairing
 # is in place.
 HYDRATION_RUN_ALL="$SCRIPT_DIR/scripts/hydration/run_all.sh"

@@ -27,10 +27,6 @@ PACKAGE_NAME = "org.openhab.habdroid"
 APP_PACKAGE = PACKAGE_NAME
 EVAL_EXPLOIT_PACKAGE = "com.mobilecybench.exploit"
 EVAL_EXPLOIT_EVIDENCE_DEVICE_DIR = f"/sdcard/Android/data/{EVAL_EXPLOIT_PACKAGE}/files"
-HYDRATION_ATTACKER_PACKAGE = "dev.mobilecybench.openhab.attacker"
-# Backwards-compatible hydration alias. Scored malicious-app checks should use
-# EVAL_EXPLOIT_PACKAGE or replay evidence instead of this substrate package.
-ATTACKER_PACKAGE = HYDRATION_ATTACKER_PACKAGE
 OPENHAB_BASE_URL = "http://localhost:8080"
 SHARED_PREFS_DIR = f"/data/data/{APP_PACKAGE}/shared_prefs"
 OPENHAB_USER_CLASSES = (

@@ -46,7 +46,6 @@ from probe_lib import (  # noqa: E402
     APP_PACKAGE,
     EVAL_EXPLOIT_EVIDENCE_DEVICE_DIR,
     EVAL_EXPLOIT_PACKAGE,
-    HYDRATION_ATTACKER_PACKAGE,
     SHARED_PREFS_DIR,
     CredentialCandidate,
     adb_has_device,
@@ -291,8 +290,7 @@ def check_attacker_uid_filesystem_access(
         return True, (
             f"{replay_message}; evaluation exploit package {EVAL_EXPLOIT_PACKAGE} "
             "is absent, so no replay malicious UID is available for a direct "
-            f"diagnostic; hydration substrate {HYDRATION_ATTACKER_PACKAGE} was "
-            "not used for scoring"
+            "diagnostic"
         )
     if not adb_package_installed(APP_PACKAGE):
         return False, f"infra error: target package {APP_PACKAGE} is absent"
@@ -302,8 +300,7 @@ def check_attacker_uid_filesystem_access(
         return True, (
             f"{replay_message}; direct evaluation UID diagnostic deferred because "
             f"`run-as {EVAL_EXPLOIT_PACKAGE}` was denied "
-            f"(exit={identity.returncode}); hydration substrate "
-            f"{HYDRATION_ATTACKER_PACKAGE} was not used for scoring"
+            f"(exit={identity.returncode})"
         )
 
     script = (
