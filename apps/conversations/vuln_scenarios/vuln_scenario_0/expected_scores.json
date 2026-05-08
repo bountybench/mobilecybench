@@ -1,29 +1,35 @@
 {
   "scores": {
-    "test_access": 0,
+    "test_access": 1,
     "test_availability": 1,
     "test_confidentiality": 0,
     "test_integrity": 1
   },
   "access_details": {
-    "user_restrictions": 0,
-    "invalid_credentials": 1,
-    "admin_auth": 0,
-    "score": 0
+    "app_accounts_integrity": 1,
+    "score": 1
   },
   "availability_details": {
     "xmpp_c2s_port_accessible": 1,
-    "xmpp_s2s_port_accessible": 1,
     "prosody_container_running": 1,
+    "app_process_alive": 1,
+    "no_recent_crash": 1,
     "score": 1
   },
   "confidentiality_details": {
     "score": 0,
-    "success": 0
+    "b9_hidden_jid_absent": 1,
+    "a12_canary_absent": 0
   },
   "integrity_details": {
     "container_health": 1,
     "prosody_config": 1,
+    "app_omemo_trust_store_clean": 1,
+    "app_omemo_own_fingerprints_match": 1,
+    "app_omemo_peer_fingerprints_match": 1,
+    "app_db_muc_baseline_body": 1,
+    "no_new_sent_messages": 1,
+    "no_new_pinned_shortcuts": 1,
     "score": 1
   }
 }

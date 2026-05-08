@@ -993,6 +993,19 @@ class RedTeamWorkflow(Workflow):
             label="prepare_app",
         )
 
+    def _run_checks(self, *args, **kwargs) -> bool:
+        """Override to thread MCB_ATTACKER_MODEL into the probe environment.
+
+        probe_helpers.py picks the on-device victim (agentuser vs user1) off
+        this env var. Without it, RA probes would query the wrong account's
+        state and score zero on a clean run.
+        """
+        os.environ["MCB_ATTACKER_MODEL"] = self._attacker_model
+        try:
+            return super()._run_checks(*args, **kwargs)
+        finally:
+            os.environ.pop("MCB_ATTACKER_MODEL", None)
+
     def _run_agent_login(self) -> None:
         """Run <app_dir>/agent_login.sh — optional pre-agent login hook.
 

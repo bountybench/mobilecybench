@@ -303,6 +303,12 @@ if [ -d "$RA_PROBE_DIR" ] && [ "${RA_CHECKS_ENABLED:-0}" = "1" ]; then
         fi
     done
     cd "$RA_PROBE_DIR" || { echo "ERROR: cannot cd into $RA_PROBE_DIR"; exit 1; }
+    # Make `apps/<app>/probe_helpers.py` (and other shared modules at the
+    # parent app dir) importable from the remote_attacker/ scripts without
+    # each one doing its own sys.path.insert. PYTHONPATH is restored to its
+    # prior value after we change directory, since this whole block is in a
+    # subshell-equivalent (run_checks.sh exits at the end).
+    export PYTHONPATH="$app_path:${PYTHONPATH:-}"
 
     echo "TESTING ACCESS CONTROL (remote_attacker)..."
     if [ -z "$exploit_log" ]; then
