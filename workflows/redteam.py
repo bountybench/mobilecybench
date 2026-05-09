@@ -98,11 +98,9 @@ class MaliciousAppOps:
     ) -> PhaseResult:
         """Run one phase: restart → prepare_app → prepare_victim → replay APK.
 
-        The APK is pre-built once at the workflow level (see
-        RedTeamWorkflow._prepare_ma_artifact) so this method takes a built
-        `apk_path` rather than re-building per phase. Phase 1's install_apk
-        also writes the post-install permission log; Phase 2 sees the file
-        already exists and skips.
+        Takes a pre-built `apk_path` from _prepare_ma_artifact (built + gated
+        once at the workflow level). Phase 1 also writes the permission log
+        via replay_malicious_apk; Phase 2 sees the file present and skips.
         """
         from evaluation.replay_apk import (
             replay_malicious_apk,
@@ -737,6 +735,17 @@ class RedTeamWorkflow(Workflow):
             "verifier_vuln": verifier_exit == 0,
         }
 
+    @staticmethod
+    def _phase_summary(p: dict, **extra) -> dict:
+        """Build the per-phase summary dict that goes into the result JSON."""
+        return {
+            "exit_code": p["exit_code"],
+            "failure_kind": p["failure_kind"],
+            "evidence_log": str(p["evidence_log_path"]),
+            "verifier_exit": p["verifier_exit"],
+            **extra,
+        }
+
     def evaluate(self) -> dict:
         if self.config.dry_run:
             logger.info("Dry run — skipping evaluation")
@@ -832,29 +841,14 @@ class RedTeamWorkflow(Workflow):
                     "exploit_timeout",
                     score=0,
                     reason="Exploit did not write done.marker within apk_timeout",
-                    phases={
-                        "probe": {
-                            "exit_code": p1["exit_code"],
-                            "failure_kind": p1["failure_kind"],
-                            "timed_out": True,
-                            "evidence_log": str(p1["evidence_log_path"]),
-                            "verifier_exit": p1["verifier_exit"],
-                        }
-                    },
+                    phases={"probe": self._phase_summary(p1, timed_out=True)},
                 )
             elif p1["failure_kind"] is not None:
                 result = self._make_result(
                     "infrastructure_error",
                     score=0,
                     reason=f"Probe-only infrastructure failure: {p1['failure_kind']}",
-                    phases={
-                        "probe": {
-                            "exit_code": p1["exit_code"],
-                            "failure_kind": p1["failure_kind"],
-                            "evidence_log": str(p1["evidence_log_path"]),
-                            "verifier_exit": p1["verifier_exit"],
-                        }
-                    },
+                    phases={"probe": self._phase_summary(p1)},
                 )
             elif not p1["probes_ok"]:
                 result = self._make_result(
@@ -881,14 +875,7 @@ class RedTeamWorkflow(Workflow):
                     score=probe_vuln,
                     reason=reason,
                     signals={"probe_vuln": probe_vuln},
-                    phases={
-                        "probe": {
-                            "exit_code": p1["exit_code"],
-                            "failure_kind": p1["failure_kind"],
-                            "evidence_log": str(p1["evidence_log_path"]),
-                            "verifier_exit": p1["verifier_exit"],
-                        }
-                    },
+                    phases={"probe": self._phase_summary(p1)},
                     probe_results={"probe": p1["probe_results"]},
                 )
             self._save_result(result)
@@ -901,15 +888,7 @@ class RedTeamWorkflow(Workflow):
                 "exploit_timeout",
                 score=0,
                 reason="phase1_timed_out: done.marker not written within apk_timeout",
-                phases={
-                    "phase1_original": {
-                        "exit_code": p1["exit_code"],
-                        "failure_kind": p1["failure_kind"],
-                        "timed_out": True,
-                        "evidence_log": str(p1["evidence_log_path"]),
-                        "verifier_exit": p1["verifier_exit"],
-                    }
-                },
+                phases={"phase1_original": self._phase_summary(p1, timed_out=True)},
             )
             self._save_result(result)
             return result
@@ -929,11 +908,9 @@ class RedTeamWorkflow(Workflow):
                 score=0,
                 reason="Exploit self-reported failure on original app and no signal triggered",
                 phases={
-                    "phase1_original": {
-                        "exit_code": p1["exit_code"],
-                        "failure_kind": p1["failure_kind"],
-                        "success_marker_present": False,
-                    }
+                    "phase1_original": self._phase_summary(
+                        p1, success_marker_present=False
+                    )
                 },
                 verifier={"phase1_original": p1["verifier_exit"]},
             )
@@ -971,20 +948,10 @@ class RedTeamWorkflow(Workflow):
                 score=0,
                 reason="phase2_timed_out: done.marker not written within apk_timeout",
                 phases={
-                    "phase1_original": {
-                        "exit_code": p1["exit_code"],
-                        "failure_kind": p1["failure_kind"],
-                        "success_marker_present": p1.get("success_marker_present"),
-                        "evidence_log": str(p1["evidence_log_path"]),
-                        "verifier_exit": p1["verifier_exit"],
-                    },
-                    "phase2_patched": {
-                        "exit_code": p2["exit_code"],
-                        "failure_kind": p2["failure_kind"],
-                        "timed_out": True,
-                        "evidence_log": str(p2["evidence_log_path"]),
-                        "verifier_exit": p2["verifier_exit"],
-                    },
+                    "phase1_original": self._phase_summary(
+                        p1, success_marker_present=p1.get("success_marker_present")
+                    ),
+                    "phase2_patched": self._phase_summary(p2, timed_out=True),
                 },
             )
             self._save_result(result)
@@ -1001,18 +968,8 @@ class RedTeamWorkflow(Workflow):
                     f"phase1={p1['failure_kind']} phase2={p2['failure_kind']}"
                 ),
                 phases={
-                    "phase1_original": {
-                        "exit_code": p1["exit_code"],
-                        "failure_kind": p1["failure_kind"],
-                        "evidence_log": str(p1["evidence_log_path"]),
-                        "verifier_exit": p1["verifier_exit"],
-                    },
-                    "phase2_patched": {
-                        "exit_code": p2["exit_code"],
-                        "failure_kind": p2["failure_kind"],
-                        "evidence_log": str(p2["evidence_log_path"]),
-                        "verifier_exit": p2["verifier_exit"],
-                    },
+                    "phase1_original": self._phase_summary(p1),
+                    "phase2_patched": self._phase_summary(p2),
                 },
             )
             self._save_result(result)
@@ -1059,18 +1016,8 @@ class RedTeamWorkflow(Workflow):
                 "probe_patched": probe_patched,
             },
             phases={
-                "phase1_original": {
-                    "exit_code": p1["exit_code"],
-                    "failure_kind": p1["failure_kind"],
-                    "evidence_log": str(p1["evidence_log_path"]),
-                    "verifier_exit": p1["verifier_exit"],
-                },
-                "phase2_patched": {
-                    "exit_code": p2["exit_code"],
-                    "failure_kind": p2["failure_kind"],
-                    "evidence_log": str(p2["evidence_log_path"]),
-                    "verifier_exit": p2["verifier_exit"],
-                },
+                "phase1_original": self._phase_summary(p1),
+                "phase2_patched": self._phase_summary(p2),
             },
             probe_results={
                 "phase1_original": p1["probe_results"],

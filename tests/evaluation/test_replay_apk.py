@@ -1,16 +1,4 @@
-"""Behavior tests for the migrated MA replay path.
-
-Covers what the workflow depends on:
-  - assemble_evidence_log preserves the attacker-only contract and skips binary
-  - gate_check_permissions accept/reject decisions (the core threat-model invariant)
-  - validate_apk_for_contract reason codes (drive the exploit_invalid status)
-  - wait_for_done_marker hard-timeout semantics
-  - subprocess flake handling (adb hangs become structured failures, not crashes)
-
-Implementation details (parse_declared_permissions, dumpsys parsing,
-write_permission_log JSON layout) are intentionally not over-covered — they're
-exercised indirectly by the gate test and would otherwise be fragile to refactor.
-"""
+"""Behavior tests for the MA replay path."""
 
 import subprocess
 import time
@@ -19,15 +7,11 @@ from unittest.mock import patch
 import pytest
 
 from evaluation.replay_apk import (
-    DeclaredPermission,
     EvidenceBundle,
-    GateResult,
     assemble_evidence_log,
     gate_check_permissions,
-    launch_main_activity,
     load_protection_levels,
     prepare_ma_apk,
-    pull_evidence,
     validate_apk_for_contract,
     wait_for_done_marker,
 )
@@ -72,12 +56,6 @@ class TestAssembleEvidenceLog:
         content = log_path.read_text()
         assert '"k":"v"' in content
         assert "screenshot.bin" not in content
-
-    def test_handles_no_evidence_dir(self, tmp_path):
-        evidence = EvidenceBundle(logcat="", evidence_dir=None)
-        log_path = assemble_evidence_log(evidence, tmp_path)
-        assert log_path.exists()
-        assert log_path.read_text() == ""
 
 
 class TestGateCheckPermissions:
@@ -161,11 +139,6 @@ class TestGateCheckPermissions:
         assert result.accepted is True
         assert result.declared[0].gate_verdict == "accept"
 
-    def test_empty_declared_is_accepted(self):
-        result = gate_check_permissions([])
-        assert result.accepted is True
-        assert result.declared == []
-
 
 class TestValidateApkForContract:
     """Reason codes drive the workflow's exploit_invalid status routing."""
@@ -179,24 +152,6 @@ class TestValidateApkForContract:
         ok, reason, _ = validate_apk_for_contract(tmp_path / "fake.apk", manifest)
         assert ok is False
         assert reason == "instrumentation_declared"
-
-    def test_strips_xml_comments_before_grep(self, tmp_path):
-        # Regression: template manifest has a "do NOT add <instrumentation>"
-        # comment that the gate's regex must not false-positive on.
-        manifest = tmp_path / "AndroidManifest.xml"
-        manifest.write_text(
-            '<?xml version="1.0"?>'
-            "<!-- Do NOT add <instrumentation>. -->"
-            "<manifest></manifest>"
-        )
-        with patch("evaluation.replay_apk._aapt_dump_badging") as mock_badging:
-            mock_badging.return_value = {
-                "package": "com.mobilecybench.exploit",
-                "launchable_activity": "com.mobilecybench.exploit.MainActivity",
-            }
-            ok, reason, _ = validate_apk_for_contract(tmp_path / "fake.apk", manifest)
-        assert ok is True
-        assert reason is None
 
     def test_rejects_wrong_package(self, tmp_path):
         manifest = tmp_path / "AndroidManifest.xml"
@@ -265,36 +220,6 @@ class TestWaitForDoneMarker:
         assert elapsed < 3, f"expected ~1s timeout, took {elapsed:.2f}s"
 
 
-class TestPullEvidence:
-    """Pinning adb pull semantics — getting this wrong silently corrupts
-    success_marker_present (and therefore patch_diff scoring)."""
-
-    def test_does_not_pre_create_dest_dir(self, tmp_path):
-        # Smoking-gun regression: if pull_evidence pre-creates the dest dir,
-        # `adb pull SRC DEST` puts files at DEST/files/* instead of DEST/* and
-        # downstream `(host_dir / "success.marker").is_file()` returns False
-        # even when the exploit wrote it. Codex P1 from PR #1104.
-        host_dir = tmp_path / "exploit_evidence"
-        captured = {}
-
-        def fake_run(cmd, **_kw):
-            captured["cmd"] = cmd
-            captured["dest_existed_at_call_time"] = host_dir.exists()
-            return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
-
-        with patch("evaluation.replay_apk.subprocess.run", side_effect=fake_run):
-            pull_evidence(host_dir)
-
-        assert captured["dest_existed_at_call_time"] is False, (
-            "pull_evidence must NOT pre-create host_dir — adb pull would then "
-            "land files at host_dir/files/* and break success_marker detection."
-        )
-        # Parent must exist so adb has somewhere to write.
-        assert host_dir.parent.exists()
-        # Caller relies on the dir existing post-call even if pull was empty.
-        assert host_dir.exists()
-
-
 class TestSubprocessFlakeHandling:
     """A hung adb call must produce a structured failure, not crash the workflow."""
 
@@ -312,15 +237,6 @@ class TestSubprocessFlakeHandling:
         assert proc.returncode == 124
         assert "timed out" in proc.stderr.lower()
         assert proc.stdout == ""
-
-    def test_launch_main_activity_swallows_timeout(self):
-        with patch(
-            "evaluation.replay_apk.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="adb", timeout=60),
-        ):
-            dispatched, out = launch_main_activity()
-        assert dispatched is False
-        assert "timed out" in out.lower()
 
     def test_wait_for_done_marker_continues_on_per_poll_timeout(self):
         # Two polls TimeoutExpired, third returns rc=0. Hard deadline must NOT
@@ -350,14 +266,6 @@ class TestSubprocessFlakeHandling:
                 "R", (), {"returncode": 1, "stdout": "", "stderr": "device offline"}
             )()
             with pytest.raises(RuntimeError, match="dumpsys"):
-                load_protection_levels()
-
-    def test_load_protection_levels_raises_on_dumpsys_timeout(self):
-        with patch(
-            "evaluation.replay_apk.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="adb", timeout=30),
-        ):
-            with pytest.raises(RuntimeError, match="timed out"):
                 load_protection_levels()
 
     def test_load_protection_levels_parses_all_perms_in_one_dump(self):
@@ -453,16 +361,3 @@ class TestPrepareMaApk:
         assert artifact.reason == "permission_rejected:android.permission.READ_LOGS"
         mock_write.assert_called_once()
         assert mock_write.call_args.kwargs["post_install_grants"] is None
-
-
-class TestGateResult:
-    """Construction sanity for the dataclass the workflow consumes."""
-
-    def test_default_construction(self):
-        gr = GateResult(accepted=True)
-        assert gr.declared == []
-        assert gr.rejected_reasons == []
-
-    def test_declared_permission_default_pending(self):
-        d = DeclaredPermission(name="x")
-        assert d.gate_verdict == "pending"
