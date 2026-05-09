@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from evaluation.replay_apk import GateResult, MaArtifact
 from models.config import RunnerConfig
 from utils.logger import logger_manager
 from workflows.redteam import (
@@ -14,6 +15,10 @@ from workflows.redteam import (
     PhaseResult,
     RedTeamWorkflow,
     RemoteAttackerOps,
+)
+
+_FAKE_MA_ARTIFACT = MaArtifact(
+    apk_path=Path("/tmp/fake-test.apk"), gate=GateResult(accepted=True)
 )
 
 _BASE_CONFIG = {
@@ -57,12 +62,26 @@ def _probe_result(triggered: bool) -> dict:
     }
 
 
-def _phase_result(exit_code: int, phase_dir: Path, failure_kind=None) -> PhaseResult:
+def _phase_result(
+    exit_code: int,
+    phase_dir: Path,
+    failure_kind=None,
+    timed_out: bool = False,
+) -> PhaseResult:
     phase_dir.mkdir(parents=True, exist_ok=True)
     evidence = phase_dir / "replay_evidence.log"
     evidence.write_text(str(exit_code))
+    # success_marker_present mirrors the agent's self-reported success:
+    # MA writes success.marker only on success branch; RA's exit_code == 0
+    # is reflected as success. Either way, exit_code 0 ↔ success_marker_present.
     return PhaseResult(
-        exit_code=exit_code, evidence_log_path=evidence, failure_kind=failure_kind
+        exit_code=exit_code,
+        evidence_log_path=evidence,
+        failure_kind=failure_kind,
+        timed_out=timed_out,
+        success_marker_present=(
+            exit_code == 0 and not timed_out and failure_kind is None
+        ),
     )
 
 
@@ -167,7 +186,15 @@ def _run_evaluate(wf, ops_cls, exits, probes, *, verifier=(1, 1)):
     probe_i = iter(probes)
     verifier_i = iter(verifier)
 
+    # _prepare_ma_artifact runs build + gate before any phase. Phase-level
+    # scoring tests don't need to re-prove the gate (see test_replay_apk.py),
+    # so short-circuit to "accepted, here's a fake artifact."
     with (
+        patch.object(
+            RedTeamWorkflow,
+            "_prepare_ma_artifact",
+            return_value=(_FAKE_MA_ARTIFACT, None),
+        ),
         patch.object(
             ops_cls,
             "run_phase",
@@ -263,6 +290,11 @@ def test_phase1_probe_parse_failure_is_not_no_impact(redteam_config, tmp_path):
 
     with (
         patch.object(
+            RedTeamWorkflow,
+            "_prepare_ma_artifact",
+            return_value=(_FAKE_MA_ARTIFACT, None),
+        ),
+        patch.object(
             MaliciousAppOps,
             "run_phase",
             side_effect=[
@@ -310,6 +342,11 @@ def test_phase2_restore_runs_even_on_exception(redteam_config, tmp_path):
         raise RuntimeError("phase 2 infra crash")
 
     with (
+        patch.object(
+            RedTeamWorkflow,
+            "_prepare_ma_artifact",
+            return_value=(_FAKE_MA_ARTIFACT, None),
+        ),
         patch.object(MaliciousAppOps, "run_phase", side_effect=fail_on_second_run),
         patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
         patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
@@ -805,6 +842,10 @@ def test_malicious_app_replay_error_sets_failure_kind(redteam_config, tmp_path):
             wf,
             tmp_path / "phase",
             apk_project_dir=tmp_path / "exploit_apk",
+            apk_path=tmp_path
+            / "exploit_apk"
+            / "dist"
+            / "com.mobilecybench.exploit.apk",
             target_apk=Path("apk/test.apk"),
         )
 
@@ -885,6 +926,10 @@ def test_malicious_app_prepare_app_crash_does_not_propagate(redteam_config, tmp_
             wf,
             tmp_path / "phase",
             apk_project_dir=tmp_path / "exploit_apk",
+            apk_path=tmp_path
+            / "exploit_apk"
+            / "dist"
+            / "com.mobilecybench.exploit.apk",
             target_apk=Path("apk/test.apk"),
         )
 
@@ -912,6 +957,11 @@ def test_phase2_replay_runtime_error_short_circuits_to_infrastructure_error(
     phase_i = iter(phases)
 
     with (
+        patch.object(
+            RedTeamWorkflow,
+            "_prepare_ma_artifact",
+            return_value=(_FAKE_MA_ARTIFACT, None),
+        ),
         patch.object(
             MaliciousAppOps,
             "run_phase",
@@ -1057,6 +1107,10 @@ def test_malicious_app_run_phase_orders_both_hooks_pre_exploit(
             wf,
             tmp_path / "phase",
             apk_project_dir=tmp_path / "exploit_apk",
+            apk_path=tmp_path
+            / "exploit_apk"
+            / "dist"
+            / "com.mobilecybench.exploit.apk",
             target_apk=Path("apk/test.apk"),
         )
 
@@ -1086,6 +1140,10 @@ def test_malicious_app_prepare_victim_crash_short_circuits_replay(
             wf,
             tmp_path / "phase",
             apk_project_dir=tmp_path / "exploit_apk",
+            apk_path=tmp_path
+            / "exploit_apk"
+            / "dist"
+            / "com.mobilecybench.exploit.apk",
             target_apk=Path("apk/test.apk"),
         )
 

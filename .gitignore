@@ -34,6 +34,7 @@ token_test.jsonl
 *.sock
 submodule_size_report.txt
 benchmark.keystore
+templates/malicious_app/debug.keystore
 agent_codebase/
 agent_output/
 apps/*/static_vuln_reports/
