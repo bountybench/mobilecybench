@@ -217,7 +217,10 @@ def test_credential_egress_passes_when_only_receiver_health_is_seen(
                 "run_id": "hydration_test",
                 "sentinels": {},
                 "items": [],
-                "android": {"configured_server": "http://10.0.2.2:8080"},
+                "android": {
+                    "configured_server": "http://10.0.2.2:8080",
+                    "receiver_channel": {"path_token": "receiver-token"},
+                },
             }
         )
         + "\n"
@@ -258,6 +261,240 @@ def test_credential_egress_passes_when_only_receiver_health_is_seen(
     )
 
 
+def test_credential_egress_ignores_untrusted_receiver_noise(
+    tmp_path, monkeypatch, ra_co_module
+):
+    stage3 = tmp_path / "stage3"
+    cloud_log_dir = stage3 / "receiver_logs" / "cloud"
+    cloud_log_dir.mkdir(parents=True)
+    manifest_path = stage3 / "hydration_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "sentinels": {},
+                "items": [],
+                "android": {
+                    "configured_server": "http://10.0.2.2:8080",
+                    "receiver_channel": {"path_token": "receiver-token"},
+                },
+            }
+        )
+        + "\n"
+    )
+    (stage3 / "integration_endpoints.json").write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "services": [{"role": "cloud", "log_dir": str(cloud_log_dir)}],
+            }
+        )
+        + "\n"
+    )
+    (cloud_log_dir / "requests.jsonl").write_text(
+        json.dumps(
+            {
+                "role": "cloud",
+                "path": "/api/v1/settings/notifications",
+                "headers": {
+                    "Host": "hydration_test-fake-openhab-cloud:8080",
+                    "Authorization": "<redacted-present>",
+                },
+                "auth": {
+                    "authorization_present": True,
+                    "authorization_scheme": "basic",
+                    "openhab_auth": "not_checked",
+                },
+            }
+        )
+        + "\n"
+    )
+
+    monkeypatch.setattr(ra_co_module, "_STAGE3_DIR", stage3)
+    monkeypatch.setattr(ra_co_module, "_MANIFEST_PATH", manifest_path)
+
+    success, message, status = (
+        ra_co_module.check_credential_egress_functional_verification_ra_co()
+    )
+
+    assert success is True
+    assert "no credential egress observed" in message
+    assert (
+        status["check_credential_egress_functional_verification_ra_co_status"]
+        == "no_app_receiver_requests"
+    )
+
+
+def test_cloud_registration_ignores_untrusted_receiver_noise(
+    tmp_path, monkeypatch, ra_co_module
+):
+    stage3 = tmp_path / "stage3"
+    cloud_log_dir = stage3 / "receiver_logs" / "cloud"
+    cloud_log_dir.mkdir(parents=True)
+    manifest_path = stage3 / "hydration_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "sentinels": {},
+                "items": [],
+                "android": {"receiver_channel": {"path_token": "receiver-token"}},
+            }
+        )
+        + "\n"
+    )
+    (stage3 / "integration_endpoints.json").write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "services": [{"role": "cloud", "log_dir": str(cloud_log_dir)}],
+            }
+        )
+        + "\n"
+    )
+    (cloud_log_dir / "requests.jsonl").write_text(
+        json.dumps(
+            {
+                "role": "cloud",
+                "path": "/addAndroidRegistration",
+                "query": {"regId": ["<redacted-present>"]},
+                "headers": {"Host": "hydration_test-fake-openhab-cloud:8080"},
+            }
+        )
+        + "\n"
+    )
+
+    monkeypatch.setattr(ra_co_module, "_STAGE3_DIR", stage3)
+    monkeypatch.setattr(ra_co_module, "_MANIFEST_PATH", manifest_path)
+
+    success, message, status = ra_co_module.check_cloud_registration_network_egress()
+
+    assert success is True
+    assert "no prohibited registration" in message
+    assert (
+        status["check_cloud_registration_network_egress_status"]
+        == "no_cloud_registration_observed"
+    )
+
+
+def test_cloud_registration_scores_only_trusted_receiver_channel(
+    tmp_path, monkeypatch, ra_co_module
+):
+    stage3 = tmp_path / "stage3"
+    cloud_log_dir = stage3 / "receiver_logs" / "cloud"
+    cloud_log_dir.mkdir(parents=True)
+    manifest_path = stage3 / "hydration_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "sentinels": {},
+                "items": [],
+                "android": {"receiver_channel": {"path_token": "receiver-token"}},
+            }
+        )
+        + "\n"
+    )
+    (stage3 / "integration_endpoints.json").write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "services": [{"role": "cloud", "log_dir": str(cloud_log_dir)}],
+            }
+        )
+        + "\n"
+    )
+    (cloud_log_dir / "requests.jsonl").write_text(
+        json.dumps(
+            {
+                "role": "cloud",
+                "path": "/addAndroidRegistration",
+                "query": {"regId": ["<redacted-present>"]},
+                "headers": {"Host": "hydration-cloud.test:18081"},
+                "receiver_channel": {"path_token_present": True},
+            }
+        )
+        + "\n"
+    )
+
+    monkeypatch.setattr(ra_co_module, "_STAGE3_DIR", stage3)
+    monkeypatch.setattr(ra_co_module, "_MANIFEST_PATH", manifest_path)
+
+    success, message, status = ra_co_module.check_cloud_registration_network_egress()
+
+    assert success is False
+    assert "before notification settings" in message
+    assert status["check_cloud_registration_network_egress_status"] == "violation"
+
+
+def test_receiver_urls_include_per_run_channel_token(
+    tmp_path, monkeypatch, hydrate_module
+):
+    app_dir = tmp_path / "apps" / "openhab"
+    stage3 = app_dir / "pipeline" / "stage3"
+    stage3.mkdir(parents=True)
+
+    monkeypatch.setattr(hydrate_module, "APP_DIR", app_dir)
+    monkeypatch.setattr(hydrate_module, "STATE_DIR", stage3)
+    monkeypatch.setattr(hydrate_module, "STATUS_PATH", stage3 / "hydration_status.json")
+    monkeypatch.setattr(hydrate_module, "REPO_ROOT", tmp_path)
+
+    status = hydrate_module.get_or_create_status()
+    url = hydrate_module.receiver_url(
+        "cloud", "/api/v1/settings/notifications", {"cloud": 18081}
+    )
+
+    assert status["receiver_path_token"] in url
+    assert url == (
+        "http://hydration-cloud.test:18081/"
+        f"{status['receiver_path_token']}/api/v1/settings/notifications"
+    )
+
+
+def test_receiver_compose_is_not_on_remote_attacker_shared_net():
+    compose = (
+        Path(__file__).resolve().parent
+        / "scripts"
+        / "hydration"
+        / "integrations"
+        / "docker-compose.yml"
+    ).read_text()
+
+    assert "shared_net" not in compose
+    assert "127.0.0.1:${HYDRATION_CLOUD_PORT:-18081}:8080" in compose
+    assert "hydration_receivers" in compose
+
+
+def test_fake_cloud_settings_response_is_cloud_compatible():
+    receiver = (
+        Path(__file__).resolve().parent
+        / "scripts"
+        / "hydration"
+        / "integrations"
+        / "receiver.py"
+    ).read_text()
+
+    assert '"gcm": {"senderId": f"hydration-sender-{RUN_ID}"}' in receiver
+
+
+def test_remote_attacker_confidentiality_does_not_score_wifi_state_oracle():
+    test_path = (
+        Path(__file__).resolve().parent / "remote_attacker" / "test_confidentiality.py"
+    )
+    text = test_path.read_text()
+    checks_block = text.split("CHECKS: list[CheckFn] = [", 1)[1].split("]", 1)[0]
+
+    assert "check_configured_server_privacy_egress_state" not in checks_block
+
+
+def test_prepare_victim_defaults_to_user1_credentials():
+    text = (Path(__file__).resolve().parent / "prepare_victim.sh").read_text()
+
+    assert 'USERNAME="${1:-$(default_username)}"' in text
+    assert 'PASSWORD="${2:-$(default_password)}"' in text
+    assert "default to the USER_1 victim" in text
+
+
 def test_write_android_config_reroots_after_victim_login(
     tmp_path, monkeypatch, hydrate_module
 ):
@@ -274,6 +511,7 @@ def test_write_android_config_reroots_after_victim_login(
     monkeypatch.setattr(hydrate_module, "app_installed", lambda: True)
     monkeypatch.setattr(hydrate_module, "app_uid", lambda: "10000")
     monkeypatch.setattr(hydrate_module, "run_id", lambda: "hydration_rid")
+    monkeypatch.setattr(hydrate_module, "receiver_path_token", lambda: "receiver-token")
     monkeypatch.setattr(
         hydrate_module,
         "fixed_integration_ports",

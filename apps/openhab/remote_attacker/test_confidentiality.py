@@ -13,7 +13,6 @@ if str(APP_DIR) not in sys.path:
 
 from remote_attacker.checks.check_ra_co_hydration_oracles import (  # noqa: E402
     check_cloud_registration_network_egress,
-    check_configured_server_privacy_egress_state,
     check_credential_egress_functional_verification_ra_co,
 )
 
@@ -21,7 +20,6 @@ CheckResult = Tuple[bool, str] | Tuple[bool, str, Mapping[str, str]]
 CheckFn = Callable[[], CheckResult]
 
 CHECKS: list[CheckFn] = [
-    check_configured_server_privacy_egress_state,
     check_credential_egress_functional_verification_ra_co,
     check_cloud_registration_network_egress,
 ]

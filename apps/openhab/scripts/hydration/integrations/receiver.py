@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 ROLE = os.environ.get("HYDRATION_ROLE", "receiver")
 RUN_ID = os.environ.get("HYDRATION_RUN_ID", "hydration_unknown")
+RECEIVER_TOKEN = os.environ.get("HYDRATION_RECEIVER_TOKEN", "")
 MEDIA_PORT = os.environ.get("HYDRATION_MEDIA_PORT", "18080")
 LOG_DIR = Path("/logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -79,6 +80,22 @@ def query_facts(parsed_query):
     return facts
 
 
+def normalize_path(path):
+    if not RECEIVER_TOKEN:
+        return path, False
+    prefix = f"/{RECEIVER_TOKEN}"
+    if path == prefix:
+        return "/", True
+    if path.startswith(prefix + "/"):
+        return path[len(prefix) :], True
+    return path, False
+
+
+def channel_path(path):
+    normalized = path if path.startswith("/") else f"/{path}"
+    return f"/{RECEIVER_TOKEN}{normalized}" if RECEIVER_TOKEN else normalized
+
+
 def write_log(entry):
     entry["timestamp"] = now_iso()
     entry["role"] = ROLE
@@ -99,14 +116,16 @@ class Receiver(BaseHTTPRequestHandler):
 
     def record(self, body=b""):
         parsed = urlparse(self.path)
+        normalized_path, token_present = normalize_path(parsed.path)
         write_log(
             {
                 "method": self.command,
-                "path": parsed.path,
+                "path": normalized_path,
                 "query": redact_query(parse_qs(parsed.query)),
                 "query_facts": query_facts(parse_qs(parsed.query)),
                 "headers": redact_headers(self.headers),
                 "auth": auth_facts(self.headers),
+                "receiver_channel": {"path_token_present": token_present},
                 "body_len": len(body),
                 "body_preview": "<redacted-present>" if body else "",
             }
@@ -131,7 +150,7 @@ class Receiver(BaseHTTPRequestHandler):
     def do_GET(self):
         self.record()
         parsed = urlparse(self.path)
-        path = parsed.path
+        path, _token_present = normalize_path(parsed.path)
         if path == "/health":
             self.send_json({"ok": True, "role": ROLE, "run_id": RUN_ID})
             return
@@ -166,6 +185,7 @@ class Receiver(BaseHTTPRequestHandler):
             self.send_json(
                 {
                     "enabled": True,
+                    "gcm": {"senderId": f"hydration-sender-{RUN_ID}"},
                     "polling": True,
                     "run_id": RUN_ID,
                     "message": f"cloud-notification-{RUN_ID}",
@@ -179,7 +199,7 @@ class Receiver(BaseHTTPRequestHandler):
                         "id": f"hydration-{RUN_ID}",
                         "message": f"cloud-notification-{RUN_ID}",
                         "created": now_iso(),
-                        "icon": f"http://hydration-attacker.test:{MEDIA_PORT}/media/hydration/{RUN_ID}/image.png",
+                        "icon": f"http://hydration-attacker.test:{MEDIA_PORT}{channel_path(f'/media/hydration/{RUN_ID}/image.png')}",
                         "actions": [
                             {
                                 "label": "Hydration action",
@@ -203,8 +223,8 @@ class Receiver(BaseHTTPRequestHandler):
 <head><meta charset="utf-8"><title>openHAB hydration {RUN_ID}</title></head>
 <body>
 <h1>webview-js-bridge-{RUN_ID}</h1>
-<a id="same-host" href="/webview/hydration/{RUN_ID}/same-host">same-host</a>
-<a id="cross-host" href="http://hydration-attacker.test:{MEDIA_PORT}/cross-host-redirect-{RUN_ID}">cross-host</a>
+<a id="same-host" href="{channel_path(f'/webview/hydration/{RUN_ID}/same-host')}">same-host</a>
+<a id="cross-host" href="http://hydration-attacker.test:{MEDIA_PORT}{channel_path(f'/cross-host-redirect-{RUN_ID}')}">cross-host</a>
 <script>
 window.hydrationRunId = "{RUN_ID}";
 function callBridge(name, args) {{
@@ -213,7 +233,7 @@ function callBridge(name, args) {{
       return window.OHApp[name].apply(window.OHApp, args || []);
     }}
   }} catch (e) {{
-    fetch("/bridge-error/{RUN_ID}?method=" + encodeURIComponent(name) + "&message=" + encodeURIComponent(String(e)));
+    fetch("{channel_path(f'/bridge-error/{RUN_ID}')}?method=" + encodeURIComponent(name) + "&message=" + encodeURIComponent(String(e)));
   }}
 }}
 callBridge("setScreenOn", [true]);
@@ -221,7 +241,7 @@ callBridge("getVersion", []);
 callBridge("nonExposedHydrationMethod", ["webview-js-bridge-{RUN_ID}"]);
 if (location.pathname.indexOf("/permission") === 0 && navigator.mediaDevices) {{
   navigator.mediaDevices.getUserMedia({{audio: true, video: true}}).catch(function(err) {{
-    fetch("/permission-result/{RUN_ID}?error=" + encodeURIComponent(String(err)));
+    fetch("{channel_path(f'/permission-result/{RUN_ID}')}?error=" + encodeURIComponent(String(err)));
   }});
 }}
 </script>

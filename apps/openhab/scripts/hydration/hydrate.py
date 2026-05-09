@@ -169,6 +169,9 @@ def get_or_create_status():
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     status = load_json(STATUS_PATH)
     if status and status.get("run_id"):
+        if not status.get("receiver_path_token"):
+            status["receiver_path_token"] = secrets.token_hex(16)
+            write_json(STATUS_PATH, status)
         return status
     run_id = (
         "hydration_"
@@ -182,6 +185,7 @@ def get_or_create_status():
         "created_at": now_iso(),
         "state_dir": rel(STATE_DIR),
         "design": rel(STATE_DIR / "hydration_design.md"),
+        "receiver_path_token": secrets.token_hex(16),
     }
     write_json(STATUS_PATH, status)
     return status
@@ -198,6 +202,21 @@ def require_status():
 
 def run_id():
     return require_status()["run_id"]
+
+
+def receiver_path_token():
+    status = require_status()
+    token = status.get("receiver_path_token")
+    if isinstance(token, str) and token:
+        return token
+    token = secrets.token_hex(16)
+    status["receiver_path_token"] = token
+    write_json(STATUS_PATH, status)
+    return token
+
+
+def receiver_path_prefix():
+    return f"/{receiver_path_token()}"
 
 
 def rel(path):
@@ -909,7 +928,9 @@ def item_specs():
                 "classification": "PUBLIC",
                 "owner_role": "USER_1",
                 "sentinel": "sentinel_media_fetch_path",
-                "baseline_state": f"http://hydration-attacker.test:{ports['media']}{s['sentinel_media_fetch_path']}",
+                "baseline_state": receiver_url(
+                    "media", s["sentinel_media_fetch_path"], ports
+                ),
             },
         ]
     )
@@ -930,7 +951,7 @@ def sitemap_block(specs):
             lines.append(f"        Text item={spec['name']} label=\"{spec['label']}\"")
     lines.extend(
         [
-            f"        Image url=\"http://hydration-attacker.test:{ports['media']}{s['sentinel_media_fetch_path']}\" label=\"Hydration Media\" refresh=10",
+            f"        Image url=\"{receiver_url('media', s['sentinel_media_fetch_path'], ports)}\" label=\"Hydration Media\" refresh=10",
             f"        Mapview item={item_name('Hydration_MapLocation')} label=\"Hydration Map\" height=5",
             "    }",
             f"    {MARKER_END} {rid}",
@@ -1198,9 +1219,9 @@ def write_android_config_via_app_ui(user1_username, user1_password):
     <int name="primary_server_id" value="1" />
     <string name="server_name_1">openHAB Hydration</string>
     <string name="local_url_1">{EMULATOR_SERVER}</string>
-    <string name="remote_url_1">http://hydration-cloud.test:{ports['cloud']}</string>
-    <string name="frontail_url_1">http://hydration-webview.test:{ports['webview']}/frontail/{rid}</string>
-    <string name="main_ui_start_page_1">http://hydration-webview.test:{ports['webview']}/webview/hydration/{rid}</string>
+    <string name="remote_url_1">{receiver_base_url('cloud', ports)}</string>
+    <string name="frontail_url_1">{receiver_url('webview', f'/frontail/{rid}', ports)}</string>
+    <string name="main_ui_start_page_1">{receiver_url('webview', f'/webview/hydration/{rid}', ports)}</string>
     <string name="default_sitemap_name_1">home</string>
     <string name="default_sitemap_label_1">Smart Home</string>
     <string name="sslclientcert_1">{s['sentinel_ssl_client_alias']}</string>
@@ -1559,6 +1580,27 @@ def fixed_integration_ports():
     return dict(DEFAULT_INTEGRATION_PORTS)
 
 
+def receiver_host(role):
+    if role in ("media", "webhook"):
+        return "hydration-attacker.test"
+    if role == "cloud":
+        return "hydration-cloud.test"
+    if role == "webview":
+        return "hydration-webview.test"
+    raise HydrationError(f"unknown hydration receiver role: {role}")
+
+
+def receiver_base_url(role, ports=None):
+    selected_ports = ports or fixed_integration_ports()
+    return (
+        f"http://{receiver_host(role)}:{selected_ports[role]}{receiver_path_prefix()}/"
+    )
+
+
+def receiver_url(role, path, ports=None):
+    return receiver_base_url(role, ports) + path.lstrip("/")
+
+
 def assert_fixed_integration_ports_available():
     busy = [
         f"{name}:{port}"
@@ -1633,6 +1675,7 @@ def compose_env(ports):
     env_path = STATE_DIR / "integration_compose.env"
     lines = [
         f"HYDRATION_RUN_ID={run_id()}",
+        f"HYDRATION_RECEIVER_TOKEN={receiver_path_token()}",
         f"HYDRATION_MEDIA_PORT={ports['media']}",
         f"HYDRATION_CLOUD_PORT={ports['cloud']}",
         f"HYDRATION_WEBVIEW_PORT={ports['webview']}",
@@ -1744,7 +1787,7 @@ def ensure_integrations(check=False):
                 "name": name,
                 "role": role,
                 "container_name": f"{run_id()}-{name}",
-                "base_url": f"http://hydration-{('attacker' if role in ('media', 'webhook') else 'cloud' if role == 'cloud' else 'webview')}.test:{port}",
+                "base_url": receiver_base_url(role, ports),
                 "host_url": f"http://localhost:{port}",
                 "health_url": health,
                 "log_dir": rel(STATE_DIR / "receiver_logs" / role),
@@ -1756,13 +1799,18 @@ def ensure_integrations(check=False):
         endpoint_path,
         {
             "run_id": run_id(),
-            "fake_endpoint_strategy": "adb_hosts_or_host_lan_ip",
+            "fake_endpoint_strategy": "adb_hosts_to_host_loopback",
             "fake_hosts": {
                 "hydration-attacker.test": "10.0.2.2",
                 "hydration-cloud.test": "10.0.2.2",
                 "hydration-webview.test": "10.0.2.2",
             },
             "ports": ports,
+            "receiver_channel": {
+                "path_token": receiver_path_token(),
+                "path_prefix": receiver_path_prefix(),
+                "purpose": "distinguish victim-app traffic from direct remote-attacker requests",
+            },
             "services": service_records,
             "https_self_signed": https_ready,
             "mqtt": {"topic": topic, "retained": True},
@@ -1775,7 +1823,8 @@ def ensure_integrations(check=False):
             "run_id": run_id(),
             "openhab_ports": [8080, 8443, 8101, 5007],
             "mosquitto_port": 1883,
-            "shared_net": "shared_net",
+            "receiver_host_bind": "127.0.0.1",
+            "receiver_network": f"openhab_hydration_{run_id()}_hydration_receivers",
             "hydration_containers": sorted(
                 n for n in docker_ps_names() if n.startswith(run_id())
             ),
@@ -1972,14 +2021,15 @@ def write_manifest(check=False):
             "target_package": APP_PACKAGE,
             "configured_server": EMULATOR_SERVER,
             "fake_endpoint_strategy": endpoints.get(
-                "fake_endpoint_strategy", "adb_hosts_or_host_lan_ip"
+                "fake_endpoint_strategy", "adb_hosts_to_host_loopback"
             ),
             "fake_hosts": endpoints.get("fake_hosts", {}),
             "fake_endpoint_fallback": {
                 "openhab_host": "10.0.2.2",
-                "receiver_host": "host_lan_ip",
-                "reason": "preserve URL host inequality when adb hosts-file edits are unavailable",
+                "receiver_host": "10.0.2.2",
+                "reason": "fake receivers bind host loopback only; adb host aliases preserve URL host inequality",
             },
+            "receiver_channel": endpoints.get("receiver_channel", {}),
             "permission_matrix_path": "permissions_matrix.json",
         },
         "containers_started_by_hydration": [

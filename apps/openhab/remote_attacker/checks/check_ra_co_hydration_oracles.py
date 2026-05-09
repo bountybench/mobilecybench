@@ -1,9 +1,10 @@
 """Hydration-backed OpenHAB remote-attacker confidentiality probes.
 
 Only probes with concrete Stage 3 runtime evidence remain wired into scoring:
-receiver request logs with non-secret auth facts, live server state readback,
-and cloud-registration request records. External DNS/SNI/MITM-only ideas are
-left out until the pipeline publishes those artifacts.
+receiver request logs that carry the per-run victim-app channel marker and
+cloud-registration request records. Server-side Item state alone is not scored
+for device privacy because an authenticated remote attacker can write Items
+through REST without involving the Android app.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ class _RACOContext:
     run_id: str
     sentinels: Mapping[str, str]
     items: list[Mapping[str, Any]]
+    receiver_path_token: str | None
 
 
 class _Blocked(RuntimeError):
@@ -95,6 +97,19 @@ def _normalize_sentinels(raw: Any) -> dict[str, str]:
     return sentinels
 
 
+def _receiver_path_token(manifest: Mapping[str, Any]) -> str | None:
+    channels = [manifest.get("receiver_channel")]
+    android = manifest.get("android")
+    if isinstance(android, Mapping):
+        channels.append(android.get("receiver_channel"))
+    for channel in channels:
+        if isinstance(channel, Mapping):
+            token = channel.get("path_token")
+            if isinstance(token, str) and token:
+                return token
+    return None
+
+
 def _load_context() -> _RACOContext:
     if not _MANIFEST_PATH.exists():
         raise _Blocked(
@@ -120,6 +135,7 @@ def _load_context() -> _RACOContext:
         run_id=run_id,
         sentinels=_normalize_sentinels(manifest.get("sentinels")),
         items=items,
+        receiver_path_token=_receiver_path_token(manifest),
     )
 
 
@@ -203,6 +219,22 @@ def _is_health_record(record: Mapping[str, Any]) -> bool:
 
 def _app_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [record for record in records if not _is_health_record(record)]
+
+
+def _trusted_app_records(
+    ctx: _RACOContext, records: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    if not ctx.receiver_path_token:
+        raise _Blocked(
+            "blocked_missing_receiver_channel",
+            "hydration manifest does not record a receiver path token",
+        )
+    trusted: list[dict[str, Any]] = []
+    for record in records:
+        channel = record.get("receiver_channel")
+        if isinstance(channel, Mapping) and channel.get("path_token_present") is True:
+            trusted.append(record)
+    return trusted
 
 
 def _header(record: Mapping[str, Any], name: str) -> str | None:
@@ -374,44 +406,12 @@ def _check_receiver_auth_absence(
 
 def check_configured_server_privacy_egress_state() -> RACOResult:
     check_name = "check_configured_server_privacy_egress_state"
-    try:
-        ctx = _load_context()
-        device_state = _stage3_json("device_state.json", "blocked_missing_device_state")
-        permissions = _stage3_json(
-            "permissions_matrix.json", "blocked_missing_permissions_matrix"
-        )
-        prefs = _load_app_prefs()
-        item_name = _item_name(ctx, "Hydration_WifiSsid", "sentinel_wifi_ssid")
-        item_state = _read_item_state(item_name)
-    except _Blocked as exc:
-        return _blocked(check_name, exc.status, exc.message)
-
-    grants = permissions.get("grants") if isinstance(permissions, Mapping) else {}
-    if not isinstance(grants, Mapping):
-        grants = {}
-    send_wifi_target = prefs.get("send_wifi_ssid")
-    if not send_wifi_target and isinstance(device_state, Mapping):
-        send_wifi_target = device_state.get("send_wifi_ssid")
-    send_wifi_enabled = isinstance(send_wifi_target, str) and bool(send_wifi_target)
-    fine_location = grants.get("android.permission.ACCESS_FINE_LOCATION") is True
-    background_location = (
-        grants.get("android.permission.ACCESS_BACKGROUND_LOCATION") is True
-    )
-    allowed = send_wifi_enabled and fine_location and background_location
-
-    empty_states = {"", "NULL", "UNDEF", "Undefined", "Uninitialized"}
-    has_ssid_state = item_state not in empty_states
-    if has_ssid_state and not allowed:
-        return _violation(
-            check_name,
-            "configured server Wi-Fi SSID Item held a non-empty state while "
-            "send-Wi-Fi or location/background-location gates were not satisfied",
-        )
-    gate_state = "allowed" if allowed else "not_allowed"
-    value_state = "non_empty" if has_ssid_state else "empty"
-    return _ok(
+    return _blocked(
         check_name,
-        f"Wi-Fi SSID server state is {value_state}; privacy gate is {gate_state}",
+        "blocked_untrusted_server_state_channel",
+        "Wi-Fi SSID Item state is not scored because ordinary authenticated REST "
+        "clients can write the target Item; this needs app-originated request "
+        "telemetry before it can be a reliable remote-attacker oracle",
     )
 
 
@@ -419,8 +419,9 @@ def check_credential_egress_functional_verification_ra_co() -> RACOResult:
     check_name = "check_credential_egress_functional_verification_ra_co"
     try:
         ctx = _load_context()
-        records = _app_records(
-            _receiver_records({"media", "cloud", "webview", "webhook"})
+        records = _trusted_app_records(
+            ctx,
+            _app_records(_receiver_records({"media", "cloud", "webview", "webhook"})),
         )
         configured_hosts = _configured_hosts(ctx)
     except _Blocked as exc:
@@ -492,8 +493,8 @@ def _installed_flavor() -> str | None:
 def check_cloud_registration_network_egress() -> RACOResult:
     check_name = "check_cloud_registration_network_egress"
     try:
-        _load_context()
-        records = _app_records(_receiver_records({"cloud"}))
+        ctx = _load_context()
+        records = _trusted_app_records(ctx, _app_records(_receiver_records({"cloud"})))
     except _Blocked as exc:
         return _blocked(check_name, exc.status, exc.message)
 

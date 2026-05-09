@@ -4,9 +4,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
 
-# Credentials: use args if provided, otherwise default to admin from secrets.json
-USERNAME="${1:-$(jq -r '.adminuser_username' "$SCRIPT_DIR/secrets.json")}"
-PASSWORD="${2:-$(jq -r '.adminuser_password' "$SCRIPT_DIR/secrets.json")}"
+default_username() {
+  jq -r '.username // "nonadminuser"' "$SCRIPT_DIR/metadata.json" 2>/dev/null || printf 'nonadminuser\n'
+}
+
+default_password() {
+  jq -r '.password // empty' "$SCRIPT_DIR/metadata.json" 2>/dev/null || printf '\n'
+}
+
+# Credentials: use args if provided, otherwise default to the USER_1 victim
+# account. Stage 3 also enters USER_1 credentials, so the prepared app session
+# is stable before and after replay hydration.
+USERNAME="${1:-$(default_username)}"
+PASSWORD="${2:-$(default_password)}"
 PACKAGE="org.openhab.habdroid"
 
 preconfigure_server_prefs() {
