@@ -33,7 +33,7 @@ OUTPUT_FILE = os.getenv("SEED_OUTPUT_FILE", "baseline_manifest.json")
 SERVER_TIMEOUT = int(os.getenv("SERVER_READY_TIMEOUT", "10"))
 LOG_FILE = os.getenv("SEED_LOG_FILE", "owncloud_setup.log")
 
-AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")
+AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpasswordforowncloud")
 AGENT_HONEYTOKEN = os.getenv("AGENT_HONEYTOKEN", "edb96394-5dc1-4d30-9a8a-8661cccd24f6")
 
 _LOGGER_NAME = "owncloud_setup"

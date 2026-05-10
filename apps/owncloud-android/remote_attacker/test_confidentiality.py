@@ -169,7 +169,7 @@ def load_context() -> Dict[str, Any]:
         baseline = json.load(f)
     server_base_url = os.getenv("OWNCLOUD_URL")
     agent_username = os.getenv("AGENT_USERNAME", "agent")
-    agent_password = os.getenv("AGENT_PASSWORD", "agentpass")
+    agent_password = os.getenv("AGENT_PASSWORD", "agentpasswordforowncloud")
     return {
         "baseline_file": BASELINE_PATH,
         "baseline": baseline,

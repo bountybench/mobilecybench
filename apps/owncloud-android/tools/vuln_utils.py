@@ -37,7 +37,7 @@ class Env:
     )
     db_password: str = os.getenv("OWNCLOUD_DB_PASSWORD", "owncloud")
     agent_username: str = os.getenv("AGENT_USERNAME", "agent")
-    agent_password: str = os.getenv("AGENT_PASSWORD", "agentpass")
+    agent_password: str = os.getenv("AGENT_PASSWORD", "agentpasswordforowncloud")
 
 
 INTERNAL_APP_ARTIFACTS = [
