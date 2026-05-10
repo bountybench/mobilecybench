@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "audiobookshelf_mobile_marquee_xss",
+  "title": "Stored XSS in WrappingMarquee.js via Audiobook Metadata",
+  "attacker_model": "remote_attacker",
+  "baseline": {
+    "commit": "v0.10.0-beta"
+  },
+  "runtime": {
+    "package_name": "com.audiobookshelf.app"
+  }
+}
