@@ -163,6 +163,19 @@ def docker_exec_sha256(container: str, path: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def docker_exec_yaml_parse(container: str, path: str) -> Any:
+    """Parse a YAML file inside a docker container as JSON-compatible data."""
+    script = (
+        "import json, sys, yaml; "
+        "data = yaml.safe_load(open(sys.argv[1], encoding='utf-8')); "
+        "print(json.dumps([] if data is None else data, sort_keys=True))"
+    )
+    result = docker_exec(container, ["python3", "-c", script, path])
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"could not parse {path}")
+    return json.loads(result.stdout)
+
+
 # ---------------------------------------------------------------------------
 # Auth-store helpers
 # ---------------------------------------------------------------------------
@@ -285,6 +298,43 @@ def http_json(
         except json.JSONDecodeError:
             parsed = raw
         return exc.code, parsed
+    except urllib.error.URLError as exc:
+        return 0, str(exc.reason)
+    except (TimeoutError, socket.timeout) as exc:
+        return 0, f"timeout: {exc}"
+
+
+def post_ha_webhook(
+    webhook_id: str, payload: dict[str, Any], timeout: int = 10
+) -> tuple[int, Any]:
+    """POST JSON to /api/webhook/<webhook_id> and return (status, parsed body)."""
+    body = json.dumps(payload).encode("utf-8")
+    escaped_webhook_id = urllib.parse.quote(webhook_id, safe="")
+    request = urllib.request.Request(
+        f"{HA_BASE_URL}/api/webhook/{escaped_webhook_id}",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=timeout, context=_ssl_unverified_context()
+        ) as response:
+            raw = response.read().decode("utf-8")
+            if not raw:
+                return response.status, None
+            try:
+                return response.status, json.loads(raw)
+            except json.JSONDecodeError:
+                return response.status, raw
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8")
+        if not raw:
+            return exc.code, None
+        try:
+            return exc.code, json.loads(raw)
+        except json.JSONDecodeError:
+            return exc.code, raw
     except urllib.error.URLError as exc:
         return 0, str(exc.reason)
     except (TimeoutError, socket.timeout) as exc:
@@ -554,6 +604,46 @@ def open_websocket(access_token: str) -> BufferedSocket:
     return ws_sock
 
 
+def websocket_auth_result(access_token: str) -> dict[str, Any]:
+    """Open a HA WebSocket and return the structured post-auth response frame."""
+    raw_sock = socket.create_connection(("localhost", 8123), timeout=10)
+    context = _ssl_unverified_context()
+    sock = context.wrap_socket(raw_sock, server_hostname="localhost")
+    try:
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        request = (
+            "GET /api/websocket HTTP/1.1\r\n"
+            "Host: localhost:8123\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        )
+        sock.sendall(request.encode("ascii"))
+        response = bytearray()
+        while b"\r\n\r\n" not in response:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise RuntimeError("websocket handshake failed")
+            response.extend(chunk)
+        headers, _, initial_payload = bytes(response).partition(b"\r\n\r\n")
+        ws_sock = BufferedSocket(sock, initial_payload)
+        status_line = headers.split(b"\r\n", 1)[0]
+        if b" 101 " not in status_line:
+            raise RuntimeError(f"websocket handshake rejected: {status_line!r}")
+
+        auth_required = websocket_recv_json(ws_sock)
+        if auth_required.get("type") != "auth_required":
+            raise RuntimeError(
+                f"unexpected websocket pre-auth frame: {auth_required!r}"
+            )
+        websocket_send_json(ws_sock, {"type": "auth", "access_token": access_token})
+        return websocket_recv_json(ws_sock)
+    finally:
+        sock.close()
+
+
 def websocket_subscribe_event(
     sock: BufferedSocket, event_type: str, message_id: int = 1
 ) -> bool:
@@ -718,6 +808,116 @@ def sqlite_select(database_bytes: bytes, query: str) -> list[tuple[Any, ...]]:
         finally:
             connection.close()
     return rows
+
+
+def _state_by_domain(states: list[Any], domain: str) -> dict[str, str | None]:
+    result: dict[str, str | None] = {}
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if isinstance(entity_id, str) and entity_id.startswith(f"{domain}."):
+            state = entry.get("state")
+            result[entity_id] = state if isinstance(state, str) else None
+    return result
+
+
+def _entity_ids_by_domain(states: list[Any], domain: str) -> list[str]:
+    return sorted(_state_by_domain(states, domain).keys())
+
+
+def _device_tracker_snapshot(states: list[Any]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if not isinstance(entity_id, str) or not entity_id.startswith(
+            "device_tracker."
+        ):
+            continue
+        attributes = entry.get("attributes") if isinstance(entry, dict) else {}
+        attributes = attributes if isinstance(attributes, dict) else {}
+        result[entity_id] = {
+            "state": entry.get("state"),
+            "latitude": attributes.get("latitude"),
+            "longitude": attributes.get("longitude"),
+        }
+    return result
+
+
+def _battery_snapshot(states: list[Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for entry in states:
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("entity_id")
+        if (
+            isinstance(entity_id, str)
+            and entity_id.startswith("sensor.")
+            and "battery" in entity_id.lower()
+        ):
+            result[entity_id] = entry.get("state")
+    return result
+
+
+def compare_states_to_baseline(
+    states: list[Any], baseline: dict[str, Any]
+) -> list[str]:
+    """Return HA state drift descriptions for the retained baseline fields."""
+    failures: list[str] = []
+    for field, domain in (
+        ("expected_lock_states", "lock"),
+        ("expected_alarm_states", "alarm_control_panel"),
+        ("expected_cover_states", "cover"),
+    ):
+        expected = baseline.get(field, {})
+        if not isinstance(expected, dict):
+            continue
+        live = _state_by_domain(states, domain)
+        for entity_id, snapshot in expected.items():
+            expected_state = (
+                snapshot.get("state") if isinstance(snapshot, dict) else snapshot
+            )
+            if live.get(entity_id) != expected_state:
+                failures.append(
+                    f"{field}.{entity_id}: expected {expected_state!r}, got {live.get(entity_id)!r}"
+                )
+
+    for field, domain in (
+        ("expected_automation_entities", "automation"),
+        ("expected_script_entities", "script"),
+        ("expected_scene_entities", "scene"),
+    ):
+        expected = baseline.get(field, [])
+        if not isinstance(expected, list):
+            continue
+        live = _entity_ids_by_domain(states, domain)
+        if sorted(expected) != live:
+            added = sorted(set(live) - set(expected))
+            removed = sorted(set(expected) - set(live))
+            failures.append(f"{field}: added={added!r} removed={removed!r}")
+
+    expected_trackers = baseline.get("expected_device_tracker_states", {})
+    if isinstance(expected_trackers, dict):
+        live_trackers = _device_tracker_snapshot(states)
+        for entity_id, expected in expected_trackers.items():
+            if live_trackers.get(entity_id) != expected:
+                failures.append(
+                    f"expected_device_tracker_states.{entity_id}: "
+                    f"expected {expected!r}, got {live_trackers.get(entity_id)!r}"
+                )
+
+    expected_batteries = baseline.get("expected_battery_sensor_states", {})
+    if isinstance(expected_batteries, dict):
+        live_batteries = _battery_snapshot(states)
+        for entity_id, expected in expected_batteries.items():
+            if live_batteries.get(entity_id) != expected:
+                failures.append(
+                    f"expected_battery_sensor_states.{entity_id}: "
+                    f"expected {expected!r}, got {live_batteries.get(entity_id)!r}"
+                )
+    return failures
 
 
 # ---------------------------------------------------------------------------

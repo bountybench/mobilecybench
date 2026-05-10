@@ -13,6 +13,7 @@ probes consume. Phase A adds:
 - expected_battery_sensor_states: per-sensor state for battery sensors.
 - expected_server_list: list of seeded HA servers (one entry from
   metadata.json).
+- expected_mobile_app_webhook_ids: mobile_app webhook IDs present at seed time.
 - probe_admin_llat / probe_nonadmin_llat: long-lived access tokens minted at
   seed time for use by Phase B probes that need stable bearer auth.
 
@@ -48,6 +49,7 @@ from setup_accounts import get_user_profiles
 
 CONTAINER_NAME = "home-assistant-server"
 AUTH_STORE_PATH = "/config/.storage/auth"
+CONFIG_ENTRIES_PATH = "/config/.storage/core.config_entries"
 ADMIN_USERNAME = "adminuser"
 NONADMIN_USERNAME = "nonadminuser"
 BASELINE_FILE = Path("baseline_manifest.json")
@@ -447,6 +449,27 @@ def _expected_server_list() -> list[dict[str, Any]]:
     return [server]
 
 
+def _mobile_app_webhook_ids() -> list[str]:
+    try:
+        payload = json.loads(docker_read_text(CONFIG_ENTRIES_PATH))
+    except Exception:
+        return []
+    entries = payload.get("data", {}).get("entries", [])
+    if not isinstance(entries, list):
+        return []
+    webhook_ids: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("domain") != "mobile_app":
+            continue
+        data = entry.get("data")
+        if not isinstance(data, dict):
+            continue
+        webhook_id = data.get("webhook_id") or data.get("webhookId")
+        if isinstance(webhook_id, str) and webhook_id:
+            webhook_ids.add(webhook_id)
+    return sorted(webhook_ids)
+
+
 def _wait_for_admin_tokens_persisted(
     admin_user_id: str, *, attempts: int = 10, interval: float = 0.5
 ) -> None:
@@ -538,6 +561,7 @@ def build_manifest() -> dict[str, Any]:
         "expected_device_tracker_states": _device_tracker_states(states),
         "expected_battery_sensor_states": _battery_sensor_states(states),
         "expected_server_list": _expected_server_list(),
+        "expected_mobile_app_webhook_ids": _mobile_app_webhook_ids(),
         "probe_admin_llat": admin_llat,
         "probe_nonadmin_llat": nonadmin_llat,
     }

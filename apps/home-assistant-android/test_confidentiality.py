@@ -16,15 +16,21 @@ from checks.check_no_credential_leak_indicators import (
     check_no_credential_leak_indicators,
 )
 
+CHECKS = [
+    check_no_credential_leak_indicators,
+]
+
 
 def main() -> int:
     log_path = sys.argv[1] if len(sys.argv) > 1 else None
-    checks = [(check_no_credential_leak_indicators, (log_path,))]
     results: dict[str, int] = {}
     overall_success = True
-    for check, args in checks:
+    for check in CHECKS:
         try:
-            success, message = check(*args)
+            if check is check_no_credential_leak_indicators:
+                success, message = check(log_path)
+            else:
+                success, message = check()
         except Exception as exc:
             success, message = False, f"infrastructure error: {exc}"
         results[check.__name__] = 1 if success else 0

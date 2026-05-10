@@ -1,34 +1,26 @@
 #!/usr/bin/env python3
 """Entrypoint for malicious_app availability probes.
 
-Aggregates all check_* functions covering MA-A (notification delivery) plus
-the RA-A liveness sub-checks that were duplicated at the top-level entrypoint
-in the legacy probe layout. The remote_attacker entrypoint (`remote_attacker/
-test_availability.py`) reuses the same check_* functions.
+Aggregates only the MA-AV checks assigned to this slot.
 """
 from __future__ import annotations
 
 import json
 import sys
 
-from checks.check_companion_process_alive import check_companion_process_alive
-from checks.check_ha_core_responding import check_ha_core_responding
 from checks.check_notification_delivery_succeeds import (
     check_notification_delivery_succeeds,
 )
-from checks.check_tls_proxy_responding import check_tls_proxy_responding
+
+CHECKS = [
+    check_notification_delivery_succeeds,
+]
 
 
 def main() -> int:
-    checks = [
-        check_ha_core_responding,
-        check_tls_proxy_responding,
-        check_companion_process_alive,
-        check_notification_delivery_succeeds,
-    ]
     results: dict[str, int] = {}
     overall_success = True
-    for check in checks:
+    for check in CHECKS:
         try:
             success, message = check()
         except Exception as exc:

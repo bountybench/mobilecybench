@@ -1,11 +1,13 @@
-"""Check (LEGACY): No declared secret indicators appear in the exploit log.
+"""Probe: Home Assistant Android - confidentiality (malicious_app) - check_no_credential_leak_indicators.
 
-Shall-not enforced: MA-C — "The companion app shall not leak the HA server URL,
-refresh token, or webhook ID to a co-installed app via an exported activity,
-broadcast receiver, content provider, or implicit intent return value."
+Shall-not enforced: Declared secret indicators shall not appear in the malicious-app exploit log.
+
 Channel: textual scan of the agent's exploit log for declared secret values.
 Attacker model: malicious_app.
 Category: confidentiality.
+
+Spec id: S-020.
+Policy rows enforced: IPC-001, IPC-003, IPC-004, DATA-005, PERSIST-002, PERSIST-003.
 
 DOCUMENTED COVERAGE GAP — this is the legacy MA-C probe. The threat model and
 `probe_config_rationale.md` already note that grep-based log inspection is a

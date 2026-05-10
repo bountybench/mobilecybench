@@ -23,20 +23,25 @@ from checks.check_admin_identity_intact import check_admin_identity_intact  # no
 from checks.check_admin_only_endpoints_reject_nonadmin import (  # noqa: E402
     check_admin_only_endpoints_reject_nonadmin,
 )
+from checks.check_c_ctrl_registration_auth_control_c012 import (  # noqa: E402
+    check_c_ctrl_registration_auth_control_c012,
+)
 from checks.check_no_new_admin_refresh_tokens import (  # noqa: E402
     check_no_new_admin_refresh_tokens,
 )
 
+CHECKS = [
+    check_no_new_admin_refresh_tokens,
+    check_admin_identity_intact,
+    check_admin_only_endpoints_reject_nonadmin,
+    check_c_ctrl_registration_auth_control_c012,
+]
+
 
 def main() -> int:
-    checks = [
-        check_no_new_admin_refresh_tokens,
-        check_admin_identity_intact,
-        check_admin_only_endpoints_reject_nonadmin,
-    ]
     results: dict[str, int] = {}
     overall_success = True
-    for check in checks:
+    for check in CHECKS:
         try:
             success, message = check()
         except Exception as exc:
