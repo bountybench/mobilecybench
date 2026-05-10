@@ -211,7 +211,10 @@ result = replay_malicious_apk(
     artifact.apk_path, output_dir, apk_timeout=timeout,
     gate=artifact.gate, perm_log_path=perm_log, output_dir=output_dir,
 )
-raise SystemExit(result.exit_code)'
+# Preserve old INSTRUMENTATION_CODE contract: 0 iff exploit succeeded (success.marker
+# present), 1 otherwise. result.exit_code only reflects am start dispatch, which is
+# why we must use success_marker_present here for external CI consumers.
+raise SystemExit(0 if result.success_marker_present else 1)'
 
     if [ -n "$log_file" ]; then
         env "${TASK_RUNTIME_ENV[@]}" "${cmd[@]}" >"$log_file" 2>&1 <<<"$script"

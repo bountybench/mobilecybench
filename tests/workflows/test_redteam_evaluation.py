@@ -284,6 +284,68 @@ def test_malicious_app_early_stop(redteam_config, tmp_path):
     assert result["score"] == 0
 
 
+def test_gate_rejection_routes_to_exploit_invalid(redteam_config, tmp_path):
+    """Gate rejection short-circuits before any phase — no install, no replay,
+    no probe. Status must be exploit_invalid with the offending perm in reason."""
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    rejected_artifact = MaArtifact(
+        apk_path=None,
+        gate=GateResult(accepted=False),
+        reason="permission_rejected:android.permission.READ_LOGS",
+        detail="signature/privileged",
+    )
+    err_result = wf._make_result(
+        "exploit_invalid",
+        score=0,
+        reason=rejected_artifact.reason,
+        detail=rejected_artifact.detail,
+    )
+
+    with (
+        patch.object(
+            RedTeamWorkflow,
+            "_prepare_ma_artifact",
+            return_value=(rejected_artifact, err_result),
+        ),
+        patch.object(MaliciousAppOps, "run_phase") as mock_run_phase,
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "exploit_invalid"
+    assert result["reason"] == "permission_rejected:android.permission.READ_LOGS"
+    mock_run_phase.assert_not_called()
+
+
+def test_exploit_timeout_routes_before_probe_evaluator_error(redteam_config, tmp_path):
+    """timed_out=True must beat downstream probe failures (precedence:
+    exploit_timeout > probe_evaluator_error). Otherwise we'd misattribute
+    the root cause to the probes that couldn't run."""
+    wf = _make_workflow(redteam_config, tmp_path)
+    wf.config.probe_only = True
+    _write_agent_artifact("malicious_app")
+
+    with (
+        patch.object(
+            RedTeamWorkflow,
+            "_prepare_ma_artifact",
+            return_value=(_FAKE_MA_ARTIFACT, None),
+        ),
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            return_value=_phase_result(0, tmp_path / "probe", timed_out=True),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=False),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "exploit_timeout"
+    assert "apk_timeout" in result["reason"]
+
+
 def test_phase1_probe_parse_failure_is_not_no_impact(redteam_config, tmp_path):
     wf = _make_workflow(redteam_config, tmp_path)
     _write_agent_artifact("malicious_app")

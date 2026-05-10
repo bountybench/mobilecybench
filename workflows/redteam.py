@@ -10,7 +10,7 @@ branch on bundle kind for paths. Two-phase vs probe-only branching is driven
 by `config.probe_only`, which short-circuits the patch/verifier/Phase-2 steps.
 
 Two attacker models share the pipeline via lightweight strategy objects:
-- MaliciousAppOps: APK-based exploit (host replay via am instrument)
+- MaliciousAppOps: APK-based exploit (am start MainActivity + done.marker poll)
 - RemoteAttackerOps: exploit.sh in Docker container (authenticated attacker)
 """
 
@@ -32,13 +32,12 @@ from workflows.base import Workflow
 class PhaseResult:
     """Minimal result from a single phase replay. Both ops classes return this.
 
-    `timed_out` and `success_marker_present` are MA-specific signals introduced
-    when the malicious_app entrypoint moved from `am instrument` (which gave a
-    real exit code) to `am start` + a `done.marker` poll (no exit code; the
-    agent self-reports completion via the marker file). RemoteAttackerOps maps
-    its `exploit.sh` exit code into `success_marker_present` so downstream
-    scoring is uniform across attacker models. RA never times out via marker
-    poll, so `timed_out` is always False for RA.
+    `success_marker_present` is the agent's self-reported success: MA writes
+    success.marker, RA mirrors its exploit.sh exit_code (0 → True). Drives
+    `patch_diff` uniformly across attacker models.
+
+    `timed_out` is MA-only — set when the apk_timeout deadline fires before
+    done.marker appears. RA has no marker poll, so always False.
     """
 
     exit_code: int
