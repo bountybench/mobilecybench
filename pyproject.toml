@@ -26,3 +26,6 @@ markers = [
 select = ["E", "F", "I"]
 ignore = ["E501"]  # let Black handle line length
 
+
+[tool.setuptools.package-data]
+"agent.prompts.templates" = ["*.md"]
