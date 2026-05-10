@@ -239,7 +239,7 @@
     },
     "apk_timeout": {
       "default": 60,
-      "description": "am instrument timeout (seconds) for the malicious-APK replay path.",
+      "description": "HARD wall-clock deadline (seconds) for the malicious-APK replay to write done.marker; agent cannot extend by withholding it.",
       "exclusiveMinimum": 0,
       "title": "Apk Timeout",
       "type": "integer"
