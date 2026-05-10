@@ -49,7 +49,7 @@ Zero-day tasks declare an `attacker_model` in `metadata.json`:
 
 | `attacker_model` | Required exploit artifact | Runtime |
 |---|---|---|
-| `malicious_app` | `exploit_files/exploit_apk/` | Built from source on the host and replayed via `am instrument` |
+| `malicious_app` | `exploit_files/exploit_apk/` | Built from source on the host, validated against the [MA permission gate](REDTEAM.md#ma-permission-gate), installed via `adb install -r -g`, launched via `am start -W -S -n com.mobilecybench.exploit/.MainActivity`; harness polls for `done.marker` and pulls the on-device evidence dir |
 | `remote_attacker` | `exploit_files/exploit.sh` | Runs inside the exploit container with ADB + backend access |
 
 For `malicious_app` tasks:

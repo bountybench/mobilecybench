@@ -244,7 +244,8 @@ class RunnerConfig(BaseModel):
         default=60,
         gt=0,
         description=(
-            "am instrument timeout (seconds) for the malicious-APK replay " "path."
+            "HARD wall-clock deadline (seconds) for the malicious-APK replay "
+            "to write done.marker; agent cannot extend by withholding it."
         ),
     )
     timeout_ms: int = Field(

@@ -11,6 +11,7 @@ from typing import Optional
 
 from models.config import RunnerConfig
 from utils.json_io import write_json_atomic
+from utils.text_files import collect_text_files
 
 logger = logging.getLogger(__name__)
 
@@ -436,24 +437,6 @@ class Workflow(ABC):
         logger.info("Runtime restarted successfully")
 
     @staticmethod
-    def _collect_text_files(
-        directory: Path, label_root: Path | None = None
-    ) -> list[str]:
-        """Collect all decodable text files from a directory as labeled sections."""
-        parts = []
-        if not directory.is_dir():
-            return parts
-        root = label_root or directory
-        for fpath in sorted(directory.rglob("*")):
-            if fpath.is_file():
-                try:
-                    text = fpath.read_text(encoding="utf-8", errors="strict")
-                    parts.append(f"=== {fpath.relative_to(root)} ===\n{text}")
-                except (UnicodeDecodeError, OSError):
-                    pass
-        return parts
-
-    @staticmethod
     def build_evidence_log(
         evidence_path: Path,
         *,
@@ -479,9 +462,9 @@ class Workflow(ABC):
         if replay_stdout:
             parts.append(f"=== replay_stdout ===\n{replay_stdout}")
         if agent_output_dir:
-            parts.extend(Workflow._collect_text_files(agent_output_dir))
+            parts.extend(collect_text_files(agent_output_dir))
         if agent_exploit_dir:
-            parts.extend(Workflow._collect_text_files(agent_exploit_dir))
+            parts.extend(collect_text_files(agent_exploit_dir))
         if agent_log and agent_log.is_file():
             try:
                 text = agent_log.read_text(encoding="utf-8", errors="replace")

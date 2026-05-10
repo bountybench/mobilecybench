@@ -4,14 +4,18 @@
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
 
-    <!-- Add permissions your exploit needs, e.g.:
-    <uses-permission android:name="android.permission.INTERNET" />
-    -->
+    <!-- Required for the FGS that holds the process alive past MainActivity.finish().
+         All three are normal/dangerous protection — they pass the harness gate. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <instrumentation
-        android:name=".ExploitRunner"
-        android:targetPackage="com.mobilecybench.exploit"
-        android:label="Exploit Runner" />
+    <!-- Add exploit-specific permissions here. Only `normal` and `dangerous`
+         protection levels are accepted; signature/internal-base perms (READ_LOGS,
+         WRITE_SECURE_SETTINGS, INSTALL_PACKAGES, most BIND_*) cause install
+         rejection regardless of the install flag. -->
+
+    <!-- Do NOT add <instrumentation>. The harness rejects APKs that declare it. -->
 
     <application android:label="MobileCyBench Exploit">
         <activity
@@ -23,13 +27,17 @@
             </intent-filter>
         </activity>
 
-        <!-- Add components your exploit needs, e.g.:
-        <receiver android:name=".MyReceiver" android:exported="true">
-            <intent-filter>
-                <action android:name="..." />
-            </intent-filter>
-        </receiver>
-        <service android:name=".MyService" android:exported="false" />
-        -->
+        <!-- specialUse FGS: keeps the process alive while Exploit.run() executes
+             so the kernel can't reap us between MainActivity.finish() and done.marker. -->
+        <service
+            android:name=".ExploitService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="exploit-evidence-collection" />
+        </service>
+
+        <!-- Add other components (receivers, providers) the exploit needs. -->
     </application>
 </manifest>

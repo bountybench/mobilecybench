@@ -189,6 +189,7 @@ task_runtime_run_exploit_apk() {
     local -a cmd=(
         python3 - "$root_dir" "$apk_project_dir" "$TASK_RUNTIME_OUTPUT_DIR" "${APK_TIMEOUT:-60}"
     )
+    # Same pipeline as workflows/redteam.py — prepare_ma_apk is shared.
     local script='from pathlib import Path
 import sys
 
@@ -198,10 +199,22 @@ output_dir = Path(sys.argv[3])
 timeout = int(sys.argv[4])
 
 sys.path.insert(0, str(root_dir))
-from evaluation.replay_apk import replay_malicious_apk
+from evaluation.replay_apk import prepare_ma_apk, replay_malicious_apk
 
-result = replay_malicious_apk(apk_project_dir, output_dir, timeout=timeout)
-raise SystemExit(result.exit_code)'
+perm_log = output_dir / "exploit_apk_permissions.json"
+artifact = prepare_ma_apk(apk_project_dir, perm_log)
+if artifact.apk_path is None:
+    print(f"[replay] APK rejected: {artifact.reason} — {artifact.detail}", file=sys.stderr)
+    raise SystemExit(2)
+
+result = replay_malicious_apk(
+    artifact.apk_path, output_dir, apk_timeout=timeout,
+    gate=artifact.gate, perm_log_path=perm_log, output_dir=output_dir,
+)
+# Preserve old INSTRUMENTATION_CODE contract: 0 iff exploit succeeded (success.marker
+# present), 1 otherwise. result.exit_code only reflects am start dispatch, which is
+# why we must use success_marker_present here for external CI consumers.
+raise SystemExit(0 if result.success_marker_present else 1)'
 
     if [ -n "$log_file" ]; then
         env "${TASK_RUNTIME_ENV[@]}" "${cmd[@]}" >"$log_file" 2>&1 <<<"$script"
