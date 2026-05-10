@@ -21,10 +21,11 @@ Passive-only gate:
     files/artifacts.
 
 Output contract:
-    Always exits 0. Emits one JSON object on stdout with overall `score`
-    (1 = secure/no impact detected; 0 = impact detected). Readout/infra
-    errors are reported separately in `infra_errors`/`skipped` and do not by
-    themselves make the availability score fail.
+    Emits one JSON object on stdout with overall `score`
+    (1 = secure/no impact detected; 0 = impact detected). Infra errors
+    (e.g. adb_unavailable) are reported in `infra_errors` and cause exit 2
+    so run_checks.sh propagates probes_ok=False rather than manufacturing a
+    false probe_diff on an ADB-unavailable run.
 """
 
 from __future__ import annotations

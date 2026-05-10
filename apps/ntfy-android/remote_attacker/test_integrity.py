@@ -34,12 +34,11 @@ Score-neutral restored coverage notes:
       the harness does not currently attest.
 
 Output contract:
-    - Always exits 0.
     - Emits exactly one JSON object on stdout.
     - `score = 1` means no passive evidence of impact was found.
     - `score = 0` means concrete passive evidence of impact was detected.
-      Infrastructure/readout errors are reported as skipped and do not by
-      themselves fail this non-availability probe.
+    - Infra errors (e.g. adb_unavailable) are reported in `infra_errors`
+      and cause exit 2 so run_checks.sh propagates probes_ok=False.
     - Per-check integer keys are `1` for pass / `0` for fail.
     - Human-readable evidence and command/path logs go to stderr.
 """
