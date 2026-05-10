@@ -8,6 +8,7 @@
   "access_details": {
     "check_acl_blocks_agent_publish_to_victim_cmd": 1,
     "check_no_victim_response_to_forged_command": 1,
+    "check_no_victim_response_to_forged_command_on_attacker_topic": 1,
     "score": 1,
     "status": "secure"
   },
