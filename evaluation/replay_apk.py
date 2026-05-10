@@ -472,6 +472,9 @@ def install_apk(apk_path: Path, *, package: str = PACKAGE) -> None:
     proc = _run(["adb", "install"] + INSTALL_FLAGS + [str(apk_path)], timeout=60)
     if proc.returncode != 0:
         raise RuntimeError(f"adb install failed: {proc.stderr or proc.stdout}")
+    # Wipe leftover evidence so a stale success.marker can't be misread as
+    # this run's (uninstall above is best-effort; errors are swallowed).
+    _run(["adb", "shell", "rm", "-rf", EVIDENCE_DEVICE_DIR])
 
 
 def launch_main_activity(
