@@ -126,7 +126,7 @@ def test_agent_vuln_id_distinct_per_value(cls, vuln_id):
 
 @pytest.mark.parametrize("cls", [CodexAgent, ClaudeCodeAgent])
 def test_agent_vuln_id_irrelevant_in_redteam_workflow(cls):
-    """Redteam prompts (`build_redteam_prompt`, `build_remote_attacker_prompt`)
+    """Redteam prompts (`build_malicious_app_prompt`, `build_remote_attacker_prompt`)
     do not reference verify_files — that path is only relevant for the
     synthetic exploit workflow. Setting vuln_id should not leak into the
     redteam prompt one way or the other."""
