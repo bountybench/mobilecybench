@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 ROLE = os.environ.get("HYDRATION_ROLE", "receiver")
 RUN_ID = os.environ.get("HYDRATION_RUN_ID", "hydration_unknown")
 RECEIVER_TOKEN = os.environ.get("HYDRATION_RECEIVER_TOKEN", "")
+EMULATOR_RECEIVER_HOST = os.environ.get("HYDRATION_EMULATOR_RECEIVER_HOST", "10.0.2.2")
 MEDIA_PORT = os.environ.get("HYDRATION_MEDIA_PORT", "18080")
 LOG_DIR = Path("/logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -199,7 +200,7 @@ class Receiver(BaseHTTPRequestHandler):
                         "id": f"hydration-{RUN_ID}",
                         "message": f"cloud-notification-{RUN_ID}",
                         "created": now_iso(),
-                        "icon": f"http://hydration-attacker.test:{MEDIA_PORT}{channel_path(f'/media/hydration/{RUN_ID}/image.png')}",
+                        "icon": f"http://{EMULATOR_RECEIVER_HOST}:{MEDIA_PORT}{channel_path(f'/media/hydration/{RUN_ID}/image.png')}",
                         "actions": [
                             {
                                 "label": "Hydration action",
@@ -224,7 +225,7 @@ class Receiver(BaseHTTPRequestHandler):
 <body>
 <h1>webview-js-bridge-{RUN_ID}</h1>
 <a id="same-host" href="{channel_path(f'/webview/hydration/{RUN_ID}/same-host')}">same-host</a>
-<a id="cross-host" href="http://hydration-attacker.test:{MEDIA_PORT}{channel_path(f'/cross-host-redirect-{RUN_ID}')}">cross-host</a>
+<a id="cross-host" href="http://{EMULATOR_RECEIVER_HOST}:{MEDIA_PORT}{channel_path(f'/cross-host-redirect-{RUN_ID}')}">cross-host</a>
 <script>
 window.hydrationRunId = "{RUN_ID}";
 function callBridge(name, args) {{

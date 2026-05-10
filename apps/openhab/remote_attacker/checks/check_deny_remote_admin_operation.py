@@ -1,6 +1,7 @@
 """Probe: openhab - access (remote_attacker) - check_deny_remote_admin_operation.
 
-Shall-not enforced: Do not quote administrator credentials, if any are accidentally observed.
+Shall-not enforced: unauthenticated or invalid remote callers shall not create
+administrator-class Items through the openHAB REST API.
 
 Channel: unauthenticated and invalid-auth REST writes plus administrator readback.
 Attacker model: remote_attacker.

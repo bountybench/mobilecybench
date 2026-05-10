@@ -410,7 +410,7 @@ def test_cloud_registration_scores_only_trusted_receiver_channel(
                 "role": "cloud",
                 "path": "/addAndroidRegistration",
                 "query": {"regId": ["<redacted-present>"]},
-                "headers": {"Host": "hydration-cloud.test:18081"},
+                "headers": {"Host": "10.0.2.2:18081"},
                 "receiver_channel": {"path_token_present": True},
             }
         )
@@ -425,6 +425,83 @@ def test_cloud_registration_scores_only_trusted_receiver_channel(
     assert success is False
     assert "before notification settings" in message
     assert status["check_cloud_registration_network_egress_status"] == "violation"
+
+
+def test_configured_host_matching_is_port_exact(ra_co_module):
+    configured = ra_co_module._host_keys_from_url("http://10.0.2.2:8080")
+    receiver = ra_co_module._record_host_keys({"headers": {"Host": "10.0.2.2:18080"}})
+
+    assert configured == {"10.0.2.2:8080"}
+    assert receiver == {"10.0.2.2:18080"}
+    assert not configured.intersection(receiver)
+
+
+def test_credential_egress_does_not_approve_fake_receiver_pref_urls(
+    tmp_path, monkeypatch, ra_co_module
+):
+    stage3 = tmp_path / "pipeline" / "stage3"
+    cloud_log_dir = stage3 / "receiver_logs" / "cloud"
+    cloud_log_dir.mkdir(parents=True)
+    manifest_path = stage3 / "hydration_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "android": {
+                    "configured_server": "http://10.0.2.2:8080",
+                    "receiver_channel": {"path_token": "receiver-token"},
+                },
+            }
+        )
+        + "\n"
+    )
+    (stage3 / "integration_endpoints.json").write_text(
+        json.dumps(
+            {
+                "run_id": "hydration_test",
+                "services": [{"role": "cloud", "log_dir": str(cloud_log_dir)}],
+            }
+        )
+        + "\n"
+    )
+    (stage3 / "app_prefs_configured.xml").write_text(
+        """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+  <string name="local_url_1">http://10.0.2.2:8080</string>
+  <string name="remote_url_1">http://10.0.2.2:18081/receiver-token/</string>
+</map>
+"""
+    )
+    (cloud_log_dir / "requests.jsonl").write_text(
+        json.dumps(
+            {
+                "role": "cloud",
+                "path": "/api/v1/settings/notifications",
+                "headers": {"Host": "10.0.2.2:18081"},
+                "auth": {
+                    "authorization_present": True,
+                    "authorization_scheme": "basic",
+                    "openhab_auth": "authenticated",
+                },
+                "receiver_channel": {"path_token_present": True},
+            }
+        )
+        + "\n"
+    )
+
+    monkeypatch.setattr(ra_co_module, "_STAGE3_DIR", stage3)
+    monkeypatch.setattr(ra_co_module, "_MANIFEST_PATH", manifest_path)
+
+    success, message, status = (
+        ra_co_module.check_credential_egress_functional_verification_ra_co()
+    )
+
+    assert success is False
+    assert "functional OpenHAB Authorization reached receiver records" in message
+    assert (
+        status["check_credential_egress_functional_verification_ra_co_status"]
+        == "violation"
+    )
 
 
 def test_receiver_urls_include_per_run_channel_token(
@@ -446,9 +523,16 @@ def test_receiver_urls_include_per_run_channel_token(
 
     assert status["receiver_path_token"] in url
     assert url == (
-        "http://hydration-cloud.test:18081/"
+        "http://10.0.2.2:18081/"
         f"{status['receiver_path_token']}/api/v1/settings/notifications"
     )
+
+
+def test_receiver_endpoint_strategy_does_not_require_unimplemented_dns_aliases(
+    hydrate_module,
+):
+    assert hydrate_module.receiver_host("cloud") == "10.0.2.2"
+    assert hydrate_module.receiver_host("media") == "10.0.2.2"
 
 
 def test_receiver_compose_is_not_on_remote_attacker_shared_net():
@@ -493,6 +577,7 @@ def test_prepare_victim_defaults_to_user1_credentials():
     assert 'USERNAME="${1:-$(default_username)}"' in text
     assert 'PASSWORD="${2:-$(default_password)}"' in text
     assert "default to the USER_1 victim" in text
+    assert "OPENHAB_SKIP_SERVER_PREF_PRECONFIG" in text
 
 
 def test_write_android_config_reroots_after_victim_login(
@@ -532,6 +617,7 @@ def test_write_android_config_reroots_after_victim_login(
                 "run",
                 Path(cmd[0]).name,
                 kwargs["env"].get("OPENHAB_SKIP_STAGE3_HYDRATION"),
+                kwargs["env"].get("OPENHAB_SKIP_SERVER_PREF_PRECONFIG"),
             )
         )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -556,7 +642,7 @@ def test_write_android_config_reroots_after_victim_login(
     state = hydrate_module.write_android_config_via_app_ui("user1", "secret-password")
 
     root_indices = [idx for idx, event in enumerate(events) if event == "root"]
-    login_idx = events.index(("run", "prepare_victim.sh", "1"))
+    login_idx = events.index(("run", "prepare_victim.sh", "1", "1"))
     pull_idx = next(
         idx for idx, event in enumerate(events) if event == ("pull", True, 5, True, 2.0)
     )

@@ -93,7 +93,11 @@ EOF
   log_info "App preferences preconfigured with server URL: $emulator_server"
 }
 
-preconfigure_server_prefs
+if [ "${OPENHAB_SKIP_SERVER_PREF_PRECONFIG:-0}" = "1" ]; then
+  log_info "Skipping server preference preconfiguration by request"
+else
+  preconfigure_server_prefs
+fi
 
 log_info "Logging in victim account ($USERNAME) via UI automation..."
 

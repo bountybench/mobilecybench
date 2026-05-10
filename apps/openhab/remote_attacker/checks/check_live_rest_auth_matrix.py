@@ -15,7 +15,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   3. probe-runs-the-exploit: The probe sends negative-control unauthenticated and invalid requests plus valid known-role requests; it does not replay captured artifacts.
   4. probe-checks-for-payload-strings: No agent-entered payload strings are used as evidence; the oracle is live REST authorization behavior.
   5. probe-trusts-self-report: The Android app is not asked for status; the OpenHAB REST boundary is observed directly from the harness.
-  6. probe-without-baseline: Diffs the live matrix against stable fields org.openhab.restauth:allowBasicAuth=true, implicitUserRole=false, and users.json roles; hydration-issued token checks are vacuously satisfied because hydration_manifest.json is absent.
+  6. probe-without-baseline: Diffs the live matrix against stable fields org.openhab.restauth:allowBasicAuth=true, implicitUserRole=false, and users.json roles; hydration-issued tokens are not scored here because they are verifier-created artifacts, not remote-attacker evidence.
   7. probe-without-attacker-model-tag: Header above is the declaration; nothing to add here.
   8. two-probes-one-channel: This retained check covers the REST authentication matrix; seeded-content positive checks are intentionally not scored.
   9. brittle-substring-on-tool-output: Uses HTTP status codes and parsed JSON only, not natural-language subprocess output.
@@ -54,8 +54,8 @@ def check_live_rest_auth_matrix() -> Tuple[bool, str]:
 
     Implements spec S-007 as assigned by Stage 4c.
 
-    Vacuous-pass paths: hydration-issued token checks are skipped because
-    hydration_manifest.json and token artifacts are absent in this assignment.
+    Hydration-issued tokens are deliberately skipped here because they are
+    verifier-created artifacts, not remote-attacker evidence.
     """
     auth_config = load_runtime_restauth_config()
     if auth_config.get("org.openhab.restauth:allowBasicAuth") is not True:

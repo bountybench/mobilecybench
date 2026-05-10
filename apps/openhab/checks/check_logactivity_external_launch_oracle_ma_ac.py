@@ -18,7 +18,7 @@ Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A
   5. probe-trusts-self-report: the malicious app cannot normally write `/data/data/org.openhab.habdroid/files/log_activity_snapshot.txt`; the host reads the file through Android's app-private storage boundary.
   6. probe-without-baseline: absence of the snapshot file is the baseline for a non-exported LogActivity; if a snapshot exists, the header and owner are checked before treating it as exploit evidence.
   7. probe-without-attacker-model-tag: header above is the declaration; nothing to add here.
-  8. two-probes-one-channel: this is the only scored MA-AC post-exploit snapshot oracle; PackageManager posture checks are diagnostics in the entrypoint.
+  8. two-probes-one-channel: this is the only scored MA-AC post-exploit snapshot oracle; server-side auth/role checks use a separate JSONDB plus REST channel.
   9. brittle-substring-on-tool-output: ADB exit codes gate infrastructure errors; snapshot parsing uses explicit key/value header fields, device stat output, and integer timestamp parsing.
 
 Citations (all citations are doc URLs / contract paths / schema versions; NEVER commit-pinned source URLs):
@@ -154,8 +154,8 @@ def check_logactivity_external_launch_oracle_ma_ac() -> Tuple[bool, str]:
     """Returns (success, message). success=True means no exploit evidence found.
 
     This check intentionally scores only target-owned post-exploit state. The
-    PackageManager posture checks remain useful diagnostics, but they are not
-    proof that a malicious app actually reached LogActivity.
+    Server-side auth/role checks remain useful for the access-control score, but
+    they are not proof that a malicious app actually reached LogActivity.
     """
 
     if not adb_has_device():

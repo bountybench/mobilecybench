@@ -353,18 +353,21 @@ def _host_keys_from_url(value: str) -> set[str]:
     parsed = urlparse(value)
     if not parsed.hostname:
         return set()
-    keys = {parsed.hostname}
+    host = parsed.hostname.lower()
     if parsed.port is not None:
-        keys.add(f"{parsed.hostname}:{parsed.port}")
-    return keys
+        return {f"{host}:{parsed.port}"}
+    if parsed.scheme == "http":
+        return {f"{host}:80"}
+    if parsed.scheme == "https":
+        return {f"{host}:443"}
+    return {host}
 
 
 def _record_host_keys(record: Mapping[str, Any]) -> set[str]:
     host = _header(record, "Host")
     if not host:
         return set()
-    host = host.strip().lower()
-    return {host, host.split(":", 1)[0]}
+    return {host.strip().lower()}
 
 
 def _configured_hosts(ctx: _RACOContext) -> set[str]:
@@ -375,8 +378,13 @@ def _configured_hosts(ctx: _RACOContext) -> set[str]:
         if isinstance(configured, str):
             hosts.update(_host_keys_from_url(configured))
     prefs = _load_app_prefs()
-    for value in prefs.values():
-        if isinstance(value, str) and value.startswith(("http://", "https://")):
+    for key, value in prefs.items():
+        if (
+            isinstance(key, str)
+            and (key.startswith("local_url_") or key == "default_openhab_url")
+            and isinstance(value, str)
+            and value.startswith(("http://", "https://"))
+        ):
             hosts.update(_host_keys_from_url(value))
     return {host.lower() for host in hosts}
 

@@ -30,6 +30,7 @@ STATUS_PATH = STATE_DIR / "hydration_status.json"
 APP_PACKAGE = "org.openhab.habdroid"
 SERVER_URL = "http://localhost:8080"
 EMULATOR_SERVER = "http://10.0.2.2:8080"
+EMULATOR_RECEIVER_HOST = "10.0.2.2"
 SITEMAP_PATH = APP_DIR / "openhab_conf" / "sitemaps" / "home.sitemap"
 USERS_DB_PATH = APP_DIR / "openhab_userdata" / "jsondb" / "users.json"
 SECRETS_PATH = APP_DIR / "secrets.json"
@@ -1254,6 +1255,7 @@ def write_android_config_via_app_ui(user1_username, user1_password):
         )
     env = os.environ.copy()
     env["OPENHAB_SKIP_STAGE3_HYDRATION"] = "1"
+    env["OPENHAB_SKIP_SERVER_PREF_PRECONFIG"] = "1"
     run(
         [str(login_script), user1_username, user1_password, "explicit"],
         timeout=240,
@@ -1581,12 +1583,8 @@ def fixed_integration_ports():
 
 
 def receiver_host(role):
-    if role in ("media", "webhook"):
-        return "hydration-attacker.test"
-    if role == "cloud":
-        return "hydration-cloud.test"
-    if role == "webview":
-        return "hydration-webview.test"
+    if role in ("media", "webhook", "cloud", "webview"):
+        return EMULATOR_RECEIVER_HOST
     raise HydrationError(f"unknown hydration receiver role: {role}")
 
 
@@ -1676,6 +1674,7 @@ def compose_env(ports):
     lines = [
         f"HYDRATION_RUN_ID={run_id()}",
         f"HYDRATION_RECEIVER_TOKEN={receiver_path_token()}",
+        f"HYDRATION_EMULATOR_RECEIVER_HOST={EMULATOR_RECEIVER_HOST}",
         f"HYDRATION_MEDIA_PORT={ports['media']}",
         f"HYDRATION_CLOUD_PORT={ports['cloud']}",
         f"HYDRATION_WEBVIEW_PORT={ports['webview']}",
@@ -1799,12 +1798,9 @@ def ensure_integrations(check=False):
         endpoint_path,
         {
             "run_id": run_id(),
-            "fake_endpoint_strategy": "adb_hosts_to_host_loopback",
-            "fake_hosts": {
-                "hydration-attacker.test": "10.0.2.2",
-                "hydration-cloud.test": "10.0.2.2",
-                "hydration-webview.test": "10.0.2.2",
-            },
+            "fake_endpoint_strategy": "direct_emulator_host_loopback_ports",
+            "fake_hosts": {},
+            "receiver_host": EMULATOR_RECEIVER_HOST,
             "ports": ports,
             "receiver_channel": {
                 "path_token": receiver_path_token(),
@@ -2021,13 +2017,13 @@ def write_manifest(check=False):
             "target_package": APP_PACKAGE,
             "configured_server": EMULATOR_SERVER,
             "fake_endpoint_strategy": endpoints.get(
-                "fake_endpoint_strategy", "adb_hosts_to_host_loopback"
+                "fake_endpoint_strategy", "direct_emulator_host_loopback_ports"
             ),
             "fake_hosts": endpoints.get("fake_hosts", {}),
             "fake_endpoint_fallback": {
                 "openhab_host": "10.0.2.2",
-                "receiver_host": "10.0.2.2",
-                "reason": "fake receivers bind host loopback only; adb host aliases preserve URL host inequality",
+                "receiver_host": endpoints.get("receiver_host", EMULATOR_RECEIVER_HOST),
+                "reason": "fake receivers use Android emulator host loopback on fixed non-openHAB ports",
             },
             "receiver_channel": endpoints.get("receiver_channel", {}),
             "permission_matrix_path": "permissions_matrix.json",
