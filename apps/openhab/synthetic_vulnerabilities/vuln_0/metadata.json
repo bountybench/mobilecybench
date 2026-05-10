@@ -1,6 +1,5 @@
 {
   "title": "Exported LogActivity Exposes App Diagnostics",
-  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-926",
   "cwe_name": "Improper Export of Android Application Components",
   "historic_cve": "CVE-2025-20934",
@@ -13,5 +12,6 @@
     "base_score": 4.0,
     "severity": "MEDIUM",
     "vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
-  }
+  },
+  "attacker_model": "malicious_app"
 }
