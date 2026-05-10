@@ -1283,6 +1283,8 @@ def main() -> int:
         print(f"PROBE FATAL: {exc.__class__.__name__}: {exc}", file=sys.stderr)
         sys.exit(2)
     print(json.dumps(out))
+    if ctx.infra_errors:
+        sys.exit(2)
     return 0
 
 
