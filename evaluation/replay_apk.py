@@ -491,17 +491,22 @@ def launch_main_activity(
 def wait_for_done_marker(timeout_s: int) -> bool:
     """Poll for done.marker. True if seen, False on HARD wall-clock timeout.
 
-    Agent cannot extend by withholding the marker. Per-poll adb stalls
-    degrade to rc=124 (via _run) and the next poll retries until deadline.
+    Per-poll timeout is clamped to remaining time so a hung adb near the
+    deadline can't push total wall time past `timeout_s`.
     """
     deadline = time.monotonic() + timeout_s
     device_path = f"{EVIDENCE_DEVICE_DIR}/{DONE_MARKER}"
-    while time.monotonic() < deadline:
-        proc = _run(["adb", "shell", "test", "-f", device_path], timeout=10)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        proc = _run(
+            ["adb", "shell", "test", "-f", device_path],
+            timeout=max(1, min(10, int(remaining))),
+        )
         if proc.returncode == 0:
             return True
         time.sleep(DONE_MARKER_POLL_INTERVAL_S)
-    return False
 
 
 def pull_evidence(host_dir: Path) -> None:
