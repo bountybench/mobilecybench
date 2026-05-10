@@ -1753,6 +1753,8 @@ def main() -> int:
     if infra_errors:
         out["infra_errors"] = infra_errors
     print(json.dumps(out, sort_keys=True))
+    if infra_errors:
+        sys.exit(2)
     return 0
 
 
