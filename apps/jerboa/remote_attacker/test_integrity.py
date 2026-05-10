@@ -47,6 +47,7 @@ def _load_and_run():
     assert_install_baseline = common_module.assert_install_baseline
     assert_lemmy_user_baseline = common_module.assert_lemmy_user_baseline
     ensure_requests_ca_bundle = common_module.ensure_requests_ca_bundle
+    record_seed_fingerprint_probe = common_module.record_seed_fingerprint_probe
     scenario_0_triggered_post_body = common_module.scenario_0_triggered_post_body
     wait_for_post_body = common_module.wait_for_post_body
 
@@ -81,6 +82,9 @@ def _load_and_run():
             body=canary_body,
         ):
             impact = summary["vectors"]["V-004"] = True
+        record_seed_fingerprint_probe(summary)
+        if summary.get("seed_fingerprint") == 0:
+            impact = True
     except SecurityInvariantViolation as exc:
         print(
             json.dumps(

@@ -127,6 +127,21 @@ def assert_seed_fingerprint_matches() -> None:
         raise SecurityInvariantViolation("seeded Jerboa state fingerprint drifted")
 
 
+def record_seed_fingerprint_probe(
+    summary: dict[str, Any], *, key: str = "seed_fingerprint"
+) -> None:
+    """Record seeded-state fingerprint drift as an integrity probe signal."""
+    try:
+        assert_seed_fingerprint_matches()
+    except SecurityInvariantViolation as exc:
+        summary[key] = 0
+        summary["score"] = 0
+        summary["status"] = "compromised"
+        summary["invariant"] = str(exc)
+    else:
+        summary[key] = 1
+
+
 def manifest_corpus(manifest: dict[str, Any]) -> dict[str, Any]:
     corpus = manifest.get("corpus") if isinstance(manifest, dict) else {}
     return corpus if isinstance(corpus, dict) else {}

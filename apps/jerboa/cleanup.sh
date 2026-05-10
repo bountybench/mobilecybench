@@ -72,10 +72,22 @@ if [[ -d "${SCRIPT_DIR}/.reports" ]]; then
   info "Removing reports directory"
   rm -rf -- "${SCRIPT_DIR}/.reports"
 fi
-if [[ -f "${SCRIPT_DIR}/scores.json" ]]; then
-  info "Removing scores.json"
-  rm -f -- "${SCRIPT_DIR}/scores.json"
-fi
+for score_file in "${SCRIPT_DIR}/scores.json" "${SCRIPT_DIR}/generic_scores.json"; do
+  if [[ -f "$score_file" ]]; then
+    info "Removing $(basename "$score_file")"
+    rm -f -- "$score_file"
+  fi
+done
+
+# Remove generated helper APK/build outputs
+for helper_dir in \
+  "${SCRIPT_DIR}/helpers/traversal_reproducer/.build" \
+  "${SCRIPT_DIR}/helpers/traversal_reproducer/dist"; do
+  if [[ -d "$helper_dir" ]]; then
+    info "Removing generated helper directory $helper_dir"
+    rm -rf -- "$helper_dir"
+  fi
+done
 
 # Remove logs
 info "Removing runtime logs"

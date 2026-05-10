@@ -21,6 +21,7 @@ from probe_common import (
     assert_install_baseline,
     assert_lemmy_user_baseline,
     ensure_requests_ca_bundle,
+    record_seed_fingerprint_probe,
     scenario_0_triggered_post_body,
     wait_for_post_body,
 )
@@ -62,6 +63,7 @@ def _load_and_run() -> int:
         ):
             summary["v004"] = 0
             summary["score"] = 0
+        record_seed_fingerprint_probe(summary)
     except SecurityInvariantViolation as exc:
         print(
             json.dumps(
