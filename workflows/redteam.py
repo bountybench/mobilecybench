@@ -929,6 +929,9 @@ class RedTeamWorkflow(Workflow):
                     self._bundle.phase2_apk(),
                     needs_flags=needs_flags,
                     needs_ssrf=needs_ssrf,
+                    apk_path=ma_artifact.apk_path if ma_artifact else None,
+                    gate=ma_artifact.gate if ma_artifact else None,
+                    perm_log_path=ma_perm_log_path,
                 ),
             )
         finally:
