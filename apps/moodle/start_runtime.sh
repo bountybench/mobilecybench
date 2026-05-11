@@ -120,6 +120,13 @@ login_student(){
   fi
 }
 
+seed_baselines(){
+  if [ -x "$SCRIPT_DIR/prepare_victim.sh" ]; then
+    log_info "Seeding probe baselines (pre-exploit)..."
+    bash "$SCRIPT_DIR/prepare_victim.sh" || log_warn "prepare_victim seed failed (non-fatal at start_runtime; probes will fail-closed)"
+  fi
+}
+
 main(){
   setup_moodle_server
   configure_webserver
@@ -127,6 +134,7 @@ main(){
   install_moodle
   launch_moodle
   login_student
+  seed_baselines
   log_info "Moodle setup complete"
 }
 
