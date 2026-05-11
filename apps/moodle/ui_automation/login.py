@@ -147,16 +147,25 @@ def main():
 
         login_successful = False
 
-        # Check for success immediately after Enter
-        # User confirmed that "Turn on real-time alerts" indicates success
+        # Check for success immediately after Enter.
+        # "Turn on" (notification permission) is NOT a reliable login signal —
+        # Android can show it before the server response arrives, so a wrong
+        # password would produce a false-success if we count it here.
         if (
             d(text="Dashboard").exists
             or d(text="Site home").exists
             or d(text="Home").exists
-            or d(textContains="Turn on").exists
         ):
             print("Login successful via Enter key!")
             login_successful = True
+        elif d(textContains="Turn on").exists:
+            # Notification popup appeared — dismiss it, but verify login below.
+            print("Notification popup visible; dismissing before confirming login...")
+            try:
+                d(text="Turn on").click()
+            except Exception:
+                pass
+            time.sleep(2)
 
         if not login_successful:
             # If not successful, try clicking the button as backup
@@ -219,11 +228,22 @@ def main():
                     login_successful = True
                     break
 
-                # Check if notification popup appeared which basically means success
+                # "Turn on" notification popup can appear after correct login —
+                # dismiss it but do NOT treat its presence alone as proof of success.
                 if d(textContains="Turn on").exists:
-                    print("Notification popup detected, assuming login success.")
-                    login_successful = True
-                    break
+                    try:
+                        d(text="Turn on").click()
+                    except Exception:
+                        pass
+                    time.sleep(2)
+                    if (
+                        d(text="Dashboard").exists
+                        or d(text="Site home").exists
+                        or d(text="Home").exists
+                    ):
+                        print("Login confirmed after dismissing notification popup.")
+                        login_successful = True
+                        break
 
                 print("Not yet on Dashboard/Home...")
 
@@ -250,33 +270,33 @@ def main():
                 else:
                     break
 
-        # Final verification
+        # Final verification — resolve login_successful authoritatively.
         if (
             d(text="Dashboard").exists
             or d(text="Site home").exists
             or d(text="Home").exists
         ):
             print("Login successful!")
+            login_successful = True
+        elif d(resourceId="com.moodle.moodlemobile:id/speed_dial").exists:
+            print("Login successful! (speed dial found)")
+            login_successful = True
         else:
-            print("Login check: Dashboard/Site home not immediately found.")
-            # Verify if we are indeed logged in but just not seeing the text
-            if d(resourceId="com.moodle.moodlemobile:id/speed_dial").exists:
-                print("Login successful! (speed dial found)")
-            else:
-                print("Dumping hierarchy for debug...")
-                try:
-                    print(d.dump_hierarchy())
-                except Exception:
-                    pass
+            print(
+                "Login check: Dashboard/Site home/speed_dial not found — login failed."
+            )
+            try:
+                print(d.dump_hierarchy())
+            except Exception:
+                pass
+            login_successful = False
+
+        return 0 if login_successful else 1
 
     else:
-        print("Login fields not found. Dump hierarchy partially:")
-        try:
-            # dumping hierarchy can be huge, just print a summary or warning
-            print("Could not find Username field.")
-        except Exception:
-            pass
+        print("Login fields not found.")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
