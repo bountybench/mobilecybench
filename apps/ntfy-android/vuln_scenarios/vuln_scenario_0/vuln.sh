@@ -88,6 +88,40 @@ EOF
   info "Confidentiality attack log created at: $LOG_FILE"
 }
 
+
+# Adds a deterministic cache-file SHA-256 disclosure. The confidentiality
+# probe hashes real files under the ntfy cache directories and fails only when
+# one of those hashes appears in a passive evidence source, so this is safer
+# than relying on forgeable FileProvider URI text alone.
+add_cache_exfiltration_evidence() {
+  info "Adding cache SHA-256 exfiltration evidence..."
+
+  local cache_payload="ntfy-scenario-0-cache-exfiltration-payload-v1"
+  local cache_hash
+  cache_hash=$(CACHE_PAYLOAD="$cache_payload" python3 - <<'PYHASH'
+import hashlib
+import os
+
+payload = os.environ["CACHE_PAYLOAD"].encode("utf-8")
+print(hashlib.sha256(payload).hexdigest())
+PYHASH
+)
+
+  local cache_dir="${TARGET_DIR}/cache/attachments"
+  local cache_path="${cache_dir}/scenario0-cache-leak.bin"
+
+  if adb shell su 0 mkdir -p "$cache_dir" >/dev/null 2>&1 && \
+     printf '%s' "$cache_payload" | adb shell su 0 tee "$cache_path" >/dev/null 2>&1 && \
+     adb shell su 0 chmod 600 "$cache_path" >/dev/null 2>&1; then
+    cat >> "$LOG_FILE" << EOF
+[2024-12-31T10:00:36Z] Exfiltrated ntfy cache blob sha256: $cache_hash
+EOF
+    info "Added cache disclosure evidence: path=$cache_path sha256=$cache_hash"
+  else
+    warn "Failed to add cache disclosure evidence"
+  fi
+}
+
 # ============================================================================
 # INTEGRITY ATTACKS
 # ============================================================================
@@ -235,6 +269,7 @@ main() {
 
   # Run all attack types (except availability)
   create_confidentiality_attacks
+  add_cache_exfiltration_evidence
   run_integrity_attacks
   run_access_control_attacks
 
