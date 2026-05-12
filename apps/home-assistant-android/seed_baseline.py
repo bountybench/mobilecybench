@@ -511,27 +511,50 @@ def _mobile_app_webhook_ids() -> list[str]:
 
 
 def _wait_for_admin_tokens_persisted(
-    admin_user_id: str, *, attempts: int = 10, interval: float = 0.5
+    admin_user_id: str,
+    *,
+    attempts: int = 30,
+    interval: float = 0.5,
+    required_stable: int = 4,
+    initial_wait: float = 1.5,
 ) -> None:
-    """Poll the on-disk auth store until the admin's refresh-token set
-    stabilizes between two successive reads.
+    """Poll the on-disk auth store until the admin's refresh-token set is
+    confirmed stable across `required_stable` consecutive reads.
 
-    HA's AuthStore schedules saves with `delay_save=1`, so newly minted
-    tokens (from login_flow + LLAT) may not appear in /config/.storage/auth
-    immediately. We poll until two consecutive reads return the same set,
-    then return. Best-effort: never raises, just returns when stable or
-    after the budget elapses.
+    HA's AuthStore schedules saves with `delay_save=1`, and the debounce
+    extends with each new mint, so when seed_baseline.py runs four mints
+    in quick succession (admin login_flow + admin LLAT + nonadmin login_flow
+    + nonadmin LLAT) the actual fsync can land more than a second after the
+    last mint. The previous heuristic required only one repeated observation
+    and could return after seeing a partial intermediate save, leaving the
+    manifest with a subset of the admin tokens HA had actually issued. That
+    in turn caused `check_no_new_admin_refresh_tokens` to flag the
+    late-persisted token as "new" at probe time on a clean baseline run.
+
+    We now (1) sleep `initial_wait` up front so HA's debounce has a chance
+    to fire at least once before the first poll, (2) require
+    `required_stable` consecutive equal non-empty reads at `interval`
+    apart (`required_stable=4` at `interval=0.5s` = 1.5s of confirmed
+    quiet), and (3) extend the total budget to `attempts * interval`
+    (defaults: 30 * 0.5 = 15s). Best-effort: never raises, returns when
+    stable or after the budget elapses.
     """
     import time
 
+    time.sleep(initial_wait)
     previous: set[str] | None = None
+    stable_count = 1  # first observation counts toward the streak
     for _ in range(attempts):
         try:
             ids = set(admin_refresh_token_ids(load_auth_store(), admin_user_id))
         except Exception:
             ids = set()
         if previous is not None and ids == previous and ids:
-            return
+            stable_count += 1
+            if stable_count >= required_stable:
+                return
+        else:
+            stable_count = 1
         previous = ids
         time.sleep(interval)
 
