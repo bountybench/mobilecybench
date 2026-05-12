@@ -42,3 +42,6 @@ apps/*/zero_day_vulnerabilities/artifacts/
 synthetic_scores.json
 .apk_backup_path
 .claude
+.vscode/
+gke-retest-gcs/
+gke-retest2-gcs/

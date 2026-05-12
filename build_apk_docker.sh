@@ -47,8 +47,9 @@ fi
 git submodule update --init "apps/$APP_NAME/codebase" 2>/dev/null || true
 
 docker run --rm \
+    --entrypoint bash \
     -v "$PROJECT_ROOT:/mobilecybench" \
     -v mobilecybench-gradle-cache:/root/.gradle \
     -w /mobilecybench \
     "$IMAGE" \
-    bash -c './build_apk.sh "$@"' -- "$@"
+    -c './build_apk.sh "$@"' -- "$@"
