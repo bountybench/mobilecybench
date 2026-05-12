@@ -3,7 +3,7 @@
   "version": 1,
   "generic_probe_applicability": {
     "access.ssrf_detected": false,
-    "confidentiality.secrets": true,
+    "confidentiality.secrets": false,
     "confidentiality.app_flag": true,
     "confidentiality.container_flag": false,
     "integrity.app_flag": true,

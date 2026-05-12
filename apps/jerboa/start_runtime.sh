@@ -61,17 +61,6 @@ install_app(){
   sleep 2
 }
 
-inject_emulator_ca(){
-  local ca_script="$ROOT_DIR/utils/inject_system_ca.sh"
-  if [[ ! -x "$ca_script" ]]; then
-    fatal "CA injection script not found: $ca_script"
-  fi
-
-  log_info "Injecting repo CA into emulator trust store"
-  "$ca_script" || fatal "Failed to inject emulator CA"
-  wait_for_device_boot 120 || fatal "Device not ready after CA injection"
-}
-
 capture_android_dir_baseline(){
   log_info "Capturing Android directory baseline -> $ANDROID_BASELINE_FILE"
   if adb shell su 0 find "$TARGET_DIR" 2>/dev/null \
@@ -174,7 +163,6 @@ seed_probe_auth_cache(){
 main(){
   start_stack
   run_seeder
-  inject_emulator_ca
   install_app
   jerboa_restore_benchmark_baseline
   log_info "Benchmark-user scaffolding and shared baseline artifacts seeded"
