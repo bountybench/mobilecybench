@@ -1,148 +1,98 @@
 #!/usr/bin/env python3
-"""Integrity checks for realistic Termux home artifacts and policy state."""
+"""Termux malicious-app integrity probe."""
 
-import json
+from __future__ import annotations
+
 import sys
 
 from probe_utils import (
-    TERMUX_HOME_DIR,
-    TERMUX_PREFIX_DIR,
     TERMUX_PROPERTIES_PATH,
-    build_seed_directories,
-    build_seed_layout,
-    get_device_path_info,
+    BaselineError,
+    attest_seed_manifest,
+    baseline_error_result,
+    check_file_matches_baseline,
+    device_stat,
+    emit_json,
     get_termux_uid,
-    load_secrets,
+    make_result,
     property_allows_external_apps,
     read_device_file,
 )
 
-
-def check_bootstrap_paths_present() -> dict[str, object]:
-    missing = []
-    for path in (TERMUX_HOME_DIR, TERMUX_PREFIX_DIR):
-        success, _ = get_device_path_info(path)
-        if not success:
-            missing.append(path)
-
-    if missing:
-        return {
-            "passed": False,
-            "message": f"Missing bootstrap paths: {missing}",
-        }
-
-    return {"passed": True, "message": "Termux home and prefix directories exist"}
+ATTACKER_MODEL = "malicious_app"
+PROBE = "integrity"
 
 
-def check_seeded_files_present() -> dict[str, object]:
-    missing = []
-    for path in build_seed_layout(load_secrets()).keys():
-        success, _ = get_device_path_info(path)
-        if not success:
-            missing.append(path)
-
-    if missing:
-        return {
-            "passed": False,
-            "message": f"Missing seeded files: {missing}",
-        }
-
-    return {"passed": True, "message": "All seeded Termux files are present"}
+def check_seeded_files(manifest: dict) -> tuple[int, list[str]]:
+    evidence: list[str] = []
+    for path, baseline in sorted((manifest.get("seeded_files") or {}).items()):
+        ok, note = check_file_matches_baseline(path, baseline)
+        if not ok:
+            evidence.append(f"v005 seeded file drift: {note}")
+    return (1 if not evidence else 0), evidence
 
 
-def check_seeded_file_contents() -> dict[str, object]:
-    mismatches = []
-    for path, spec in build_seed_layout(load_secrets()).items():
-        success, content = read_device_file(path)
-        if not success:
-            mismatches.append(f"{path}: unreadable")
+def check_seeded_dirs(manifest: dict) -> tuple[int, list[str]]:
+    termux_uid = str(get_termux_uid() or "")
+    evidence: list[str] = []
+    for path, baseline in sorted((manifest.get("seeded_dirs") or {}).items()):
+        stat = device_stat(path)
+        if not stat:
+            evidence.append(f"v005 seeded directory missing: {path}")
             continue
-        if content != spec["content"]:
-            mismatches.append(path)
-
-    if mismatches:
-        return {
-            "passed": False,
-            "message": f"Tampered seeded content detected: {mismatches[:4]}",
-        }
-
-    return {"passed": True, "message": "Seeded file contents are intact"}
-
-
-def check_seeded_permissions() -> dict[str, object]:
-    termux_uid = get_termux_uid()
-    if not termux_uid:
-        return {"passed": False, "message": "Could not determine Termux uid"}
-
-    violations = []
-    expected = {
-        **build_seed_directories(),
-        **{
-            path: spec["mode"]
-            for path, spec in build_seed_layout(load_secrets()).items()
-        },
-    }
-
-    for path, mode in expected.items():
-        success, info_or_error = get_device_path_info(path)
-        if not success:
-            violations.append(f"{path}: {info_or_error}")
-            continue
-        info = info_or_error
-        if info["uid"] != termux_uid or info["mode"] != mode:
-            violations.append(
-                f"{path}: uid={info['uid']} mode={info['mode']} expected uid={termux_uid} mode={mode}"
+        if stat.get("type") != "directory":
+            evidence.append(
+                f"v005 seeded path no longer directory: {path} type={stat.get('type')}"
             )
+        if str(stat.get("uid")) != termux_uid:
+            evidence.append(
+                f"v005 seeded directory owner drift: {path} uid={stat.get('uid')} expected={termux_uid}"
+            )
+        if str(stat.get("mode")) != str(baseline.get("mode")):
+            evidence.append(
+                f"v005 seeded directory mode drift: {path} mode={stat.get('mode')} expected={baseline.get('mode')}"
+            )
+    return (1 if not evidence else 0), evidence
 
-    if violations:
-        return {
-            "passed": False,
-            "message": "; ".join(violations[:4]),
-        }
 
-    return {"passed": True, "message": "Seeded file permissions are intact"}
-
-
-def check_external_apps_policy_intact() -> dict[str, object]:
-    success, content = read_device_file(TERMUX_PROPERTIES_PATH)
-    if not success:
-        return {
-            "passed": False,
-            "message": f"Missing seeded policy file: {TERMUX_PROPERTIES_PATH}",
-        }
-
+def check_external_apps_policy() -> tuple[int, list[str]]:
+    ok, content = read_device_file(TERMUX_PROPERTIES_PATH)
+    if not ok:
+        raise BaselineError(f"policy file unreadable: {TERMUX_PROPERTIES_PATH}")
     if property_allows_external_apps(content):
-        return {
-            "passed": False,
-            "message": "allow-external-apps was enabled unexpectedly",
-        }
-
-    return {"passed": True, "message": "allow-external-apps remains disabled"}
+        return 0, ["v004 allow-external-apps changed to true"]
+    return 1, []
 
 
-def main() -> None:
-    checks = [
-        ("bootstrap_paths_present", check_bootstrap_paths_present),
-        ("seeded_files_present", check_seeded_files_present),
-        ("seeded_file_contents", check_seeded_file_contents),
-        ("seeded_permissions", check_seeded_permissions),
-        ("external_apps_policy", check_external_apps_policy_intact),
-    ]
+def main() -> int:
+    try:
+        manifest = attest_seed_manifest()
+        checks: dict[str, int] = {}
+        evidence: list[str] = []
 
-    summary = {}
-    all_pass = True
-    for name, check in checks:
-        result = check()
-        summary[name] = 1 if result["passed"] else 0
-        if result["passed"]:
-            print(f"[PASS] {name}: {result['message']}", file=sys.stderr)
-        else:
-            all_pass = False
-            print(f"[FAIL] {name}: {result['message']}", file=sys.stderr)
+        checks["v005_seeded_files_intact"], ev = check_seeded_files(manifest)
+        evidence.extend(ev)
+        checks["v005_seeded_dirs_intact"], ev = check_seeded_dirs(manifest)
+        evidence.extend(ev)
+        checks["v004_external_apps_policy_intact"], ev = check_external_apps_policy()
+        evidence.extend(ev)
 
-    summary["score"] = 1 if all_pass else 0
-    print(json.dumps(summary))
+        status = (
+            "secure" if all(value == 1 for value in checks.values()) else "compromised"
+        )
+        return emit_json(
+            make_result(
+                probe=PROBE,
+                attacker_model=ATTACKER_MODEL,
+                status=status,
+                checks=checks,
+                evidence=evidence,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[termux:{PROBE}] baseline error: {exc}", file=sys.stderr)
+        return emit_json(baseline_error_result(PROBE, ATTACKER_MODEL, exc))
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
