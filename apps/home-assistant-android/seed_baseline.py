@@ -34,11 +34,13 @@ import base64
 import hashlib
 import json
 import os
+import secrets
 import socket
 import ssl
 import struct
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -304,6 +306,11 @@ def _mint_llat(access_token: str, name: str) -> str | None:
 
     Reference: https://developers.home-assistant.io/docs/auth_api/.
     Returns the LLAT string on success, or None on failure.
+
+    Note: HA rejects `auth/long_lived_access_token` with
+    `ValueError: <client_name> already exists` if a refresh token with that
+    `client_name` is already present for the user. Callers must therefore
+    pass a `name` unique to this invocation; see _unique_llat_name.
     """
     raw_sock = socket.create_connection(("localhost", 8123), timeout=10)
     context = _ssl_unverified_context()
@@ -324,19 +331,32 @@ def _mint_llat(access_token: str, name: str) -> str | None:
         while b"\r\n\r\n" not in response:
             chunk = sock.recv(4096)
             if not chunk:
+                print("[WARN] LLAT mint: WS upgrade closed by server", file=sys.stderr)
                 return None
             response.extend(chunk)
         headers, _, initial = bytes(response).partition(b"\r\n\r\n")
         prebuffer = bytearray(initial)
         if b" 101 " not in headers.split(b"\r\n", 1)[0]:
+            print(
+                f"[WARN] LLAT mint: WS upgrade rejected: {headers.split(b'\r\n', 1)[0]!r}",
+                file=sys.stderr,
+            )
             return None
 
         auth_required = _ws_recv_json(sock, prebuffer)
         if auth_required.get("type") != "auth_required":
+            print(
+                f"[WARN] LLAT mint: expected auth_required, got {auth_required!r}",
+                file=sys.stderr,
+            )
             return None
         _ws_send_json(sock, {"type": "auth", "access_token": access_token})
         auth_ok = _ws_recv_json(sock, prebuffer)
         if auth_ok.get("type") != "auth_ok":
+            print(
+                f"[WARN] LLAT mint: WS auth failed: {auth_ok!r}",
+                file=sys.stderr,
+            )
             return None
         _ws_send_json(
             sock,
@@ -353,6 +373,11 @@ def _mint_llat(access_token: str, name: str) -> str | None:
             or result.get("success") is not True
             or not isinstance(result.get("result"), str)
         ):
+            print(
+                f"[WARN] LLAT mint: HA rejected create with client_name={name!r}: "
+                f"{result!r}",
+                file=sys.stderr,
+            )
             return None
         return result["result"]
     except Exception as exc:
@@ -363,6 +388,21 @@ def _mint_llat(access_token: str, name: str) -> str | None:
             sock.close()
         except Exception:
             pass
+
+
+def _unique_llat_name(username: str) -> str:
+    """Return a client_name unique per seed_baseline.py invocation.
+
+    HA rejects auth/long_lived_access_token with `<client_name> already exists`
+    when a refresh token with the same name is already in the auth store. The
+    workflow re-invokes seed_baseline.py between phases (and the baseline
+    manifest is overwritten each time), so we must never collide with a prior
+    mint. Timestamp+randomness keeps the name human-recognizable while
+    guaranteeing uniqueness across re-runs.
+    """
+    return (
+        f"{LLAT_NAME_PREFIX} ({username}) " f"{int(time.time())}-{secrets.token_hex(4)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -505,7 +545,7 @@ def _capture_states_and_llat(
     status, states = _call_api("/api/states", access_token)
     if status != 200 or not isinstance(states, list):
         states = []
-    llat = _mint_llat(access_token, f"{LLAT_NAME_PREFIX} ({username})")
+    llat = _mint_llat(access_token, _unique_llat_name(username))
     return states, llat
 
 
