@@ -18,7 +18,7 @@ load_dotenv()
 OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
 AVAIL_TIMEOUT = int(os.getenv("AVAIL_TIMEOUT", "5"))
 AGENT_USERNAME = os.getenv("AGENT_USERNAME", "agent")
-AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")
+AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpasswordforowncloud")
 ADB_BIN = os.getenv("ADB_BIN", "adb")
 ANDROID_APP_PACKAGE = "com.owncloud.android"
 OC_CONTAINER_NAMES = [

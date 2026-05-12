@@ -18,7 +18,7 @@ _ = _paths  # silence pyright unused-symbol while preserving the side-effect imp
 OWNCLOUD_URL = os.getenv("OWNCLOUD_URL", "https://localhost:8080")
 AVAIL_TIMEOUT = int(os.getenv("AVAIL_TIMEOUT", "5"))
 AGENT_USERNAME = os.getenv("AGENT_USERNAME", "agent")
-AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpass")
+AGENT_PASSWORD = os.getenv("AGENT_PASSWORD", "agentpasswordforowncloud")
 OC_CONTAINER_NAMES = [
     name.strip()
     for name in os.getenv(
