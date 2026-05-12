@@ -411,6 +411,11 @@ def run(
                 outcome = "failure"
                 exit_reason = "completed"
                 exit_code = 1
+            elif config.workflow == "redteam":
+                # Redteam evaluation must always produce a top-level score.
+                outcome = "failure"
+                exit_reason = "missing_evaluation"
+                exit_code = 1
             else:
                 # No evaluation score (non-exploit workflow or eval skipped)
                 outcome = "success"

@@ -204,6 +204,7 @@ def _detect_inconsistencies(
     exit_reason: str,
     run_result: dict,
     evaluation: dict,
+    workflow_name: str,
 ) -> list:
     """Return a list of human-readable strings when sub-statuses disagree."""
     issues: list[str] = []
@@ -218,6 +219,15 @@ def _detect_inconsistencies(
         issues.append(f"agent_status is '{agent_status}' but evaluation scored 1")
     if outcome == "success" and eval_score is not None and eval_score != 1:
         issues.append(f"outcome is 'success' but evaluation score is {eval_score}")
+    if (
+        workflow_name == "redteam"
+        and eval_score is None
+        and (
+            exit_reason in ("completed", "missing_evaluation")
+            or exit_reason.endswith("_run_completed")
+        )
+    ):
+        issues.append("redteam evaluation did not produce a score")
     return issues
 
 
@@ -372,7 +382,7 @@ def write_run_summary(
             ),
             "scores": scores,
             "inconsistencies": _detect_inconsistencies(
-                outcome, exit_reason, run_result, evaluation
+                outcome, exit_reason, run_result, evaluation, config.workflow
             ),
         },
         "artifacts": {
