@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "audiobookshelf_mobile_search_xss",
+  "title": "Stored XSS in ItemSearchCard.vue via Audiobook Metadata",
+  "attacker_model": "remote_attacker",
+  "baseline": {
+    "commit": "v0.10.0-beta"
+  },
+  "runtime": {
+    "package_name": "com.audiobookshelf.app"
+  }
+}

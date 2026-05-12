@@ -32,9 +32,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install "black==24.10.0" "ruff==0.13.0"
           BASE_REF="origin/${{ github.base_ref }}"
+          # Zero-day publication trees under apps/<app>/zero_day_vulnerabilities/
+          # are vendored snapshots of task bundles from the private
+          # mobilecybench-zerodays repo (see documentation/ZERODAY_TASKS.md and
+          # zerodays/docs/PUBLICATION.md). They must stay byte-identical to the
+          # private source, so formatting enforcement lives upstream.
           MODIFIED_PY_FILES=$(git diff --name-only --diff-filter=d "$BASE_REF" HEAD \
             | grep ".py$" \
             | grep -v "codebase" \
+            | grep -v "zero_day_vulnerabilities" \
             || echo "")
           if [ -n "$MODIFIED_PY_FILES" ]; then
             echo "Running ruff (E,F,I) with --fix on modified files..."
