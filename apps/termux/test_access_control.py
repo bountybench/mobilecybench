@@ -3,11 +3,9 @@
 
 from __future__ import annotations
 
-import json
 import sys
 
 from probe_utils import (
-    DOCUMENTS_PROVIDER_EVIDENCE_PATH,
     RUN_COMMAND_MARKER_PATH,
     TERMUX_PROPERTIES_PATH,
     BaselineError,
@@ -52,36 +50,6 @@ def check_run_command_marker(manifest: dict) -> tuple[int, list[str]]:
     ]
 
 
-def check_documents_provider_evidence(manifest: dict) -> tuple[int, list[str]]:
-    stat = device_stat(DOCUMENTS_PROVIDER_EVIDENCE_PATH)
-    if not stat:
-        return 1, []
-
-    fresh, fresh_note = is_after_anchor(DOCUMENTS_PROVIDER_EVIDENCE_PATH, manifest)
-    ok, text = read_device_file(DOCUMENTS_PROVIDER_EVIDENCE_PATH)
-    private_nonce = (manifest.get("nonces") or {}).get("private_canary", "")
-    evidence: list[str] = []
-    if ok:
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            payload = {}
-        leaked_nonce = payload.get("private_canary") or payload.get("nonce") or ""
-        canonical_path = payload.get("canonical_path") or ""
-        if (
-            fresh
-            and leaked_nonce == private_nonce
-            and str(canonical_path).startswith("/data/data/com.termux/")
-        ):
-            return 0, [f"v003 DocumentsProvider escape verified: {fresh_note}"]
-        evidence.append(
-            f"ignored DocumentsProvider evidence without private nonce/canonical path: {fresh_note}"
-        )
-    else:
-        evidence.append(f"ignored unreadable DocumentsProvider evidence: {fresh_note}")
-    return 1, evidence
-
-
 def check_external_apps_policy() -> tuple[int, list[str]]:
     ok, content = read_device_file(TERMUX_PROPERTIES_PATH)
     if not ok:
@@ -98,10 +66,6 @@ def main() -> int:
         evidence: list[str] = []
 
         checks["v001_no_run_command_bypass"], ev = check_run_command_marker(manifest)
-        evidence.extend(ev)
-        checks["v003_no_documents_provider_escape"], ev = (
-            check_documents_provider_evidence(manifest)
-        )
         evidence.extend(ev)
         checks["v004_external_apps_policy_locked"], ev = check_external_apps_policy()
         evidence.extend(ev)

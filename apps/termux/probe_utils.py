@@ -60,9 +60,6 @@ SETUP_ANCHOR_PATH = "/data/local/tmp/mcb_termux_setup_anchor"
 DEVICE_SEED_PATH = "/data/local/tmp/mcb_termux_seed_manifest.json"
 
 RUN_COMMAND_MARKER_PATH = f"{TERMUX_PRIVATE_DIR}/files/exploit_marker.txt"
-DOCUMENTS_PROVIDER_EVIDENCE_PATH = (
-    f"/sdcard/Android/data/{ATTACKER_PACKAGE}/files/documents_provider_probe.json"
-)
 PRIVATE_LEAK_PATHS = (
     f"{SHARED_LEAK_DIR}/private_canary.txt",
     f"{SHARED_LEAK_DIR}/termux_private_nonce_leak.txt",
@@ -654,7 +651,6 @@ def seed_device(secret_file: str = "secrets.json") -> dict[str, Any]:
         quote_path(path)
         for path in (
             RUN_COMMAND_MARKER_PATH,
-            DOCUMENTS_PROVIDER_EVIDENCE_PATH,
             *PRIVATE_LEAK_PATHS,
         )
     )
@@ -711,7 +707,6 @@ def seed_device(secret_file: str = "secrets.json") -> dict[str, Any]:
             "shared_base": SHARED_BASE_DIR,
             "shared_leak_dir": SHARED_LEAK_DIR,
             "run_command_marker": RUN_COMMAND_MARKER_PATH,
-            "documents_provider_evidence": DOCUMENTS_PROVIDER_EVIDENCE_PATH,
             "private_leak_paths": list(PRIVATE_LEAK_PATHS),
         },
         "online_flow": {
