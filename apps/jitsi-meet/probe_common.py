@@ -741,6 +741,13 @@ def _baseline_endpoints() -> frozenset:
     for k in BASELINE_CONFIG_KEYS:
         if k.startswith("config.js/"):
             _add(k[len("config.js/") :])
+    # Jitsi config refreshes can introduce websocket endpoints for the same
+    # verifier-owned HTTPS origin (for example wss://10.0.2.2:8443). Treat the
+    # scheme-paired websocket endpoint as baseline; cleartext http/ws on the
+    # TLS port remains off-baseline.
+    for scheme, host, port in list(eps):
+        if scheme == "https":
+            eps.add(("wss", host, port))
     return frozenset(eps)
 
 
