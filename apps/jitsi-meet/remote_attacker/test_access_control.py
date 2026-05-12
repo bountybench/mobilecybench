@@ -94,6 +94,8 @@ def check_https_link_coercion(checks, infra_errors):
             "system_server_https_action_view_lines="
             f"{len(provenance['action_view_lines'])} matched_state={matched[:8]}",
         )
+    except _c.LogcatFenceMissingError as e:
+        _c.fence_fail(checks, key, e, infra_errors)
     except Exception as e:
         _c.infra_fail(checks, key, e, infra_errors)
 

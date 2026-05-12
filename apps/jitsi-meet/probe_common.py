@@ -10,11 +10,16 @@ state) so probes can compose them as needed.
 
 Two error classes are exported:
 
-* ``InfraError`` — agent-influenceable readout failed (logcat overflow, ADB
-  glitch, transient device IO). Probes treat this as inconclusive (SKIP→1).
+* ``InfraError`` — readout failed (ADB glitch, transient device IO). Probes
+  treat this as inconclusive (SKIP→1).
+* ``LogcatFenceMissingError`` — the verifier-owned logcat fence was present in
+  baseline metadata but is gone from current logcat. Fence-backed access-control
+  probes treat this as score-affecting failure, not a clean skip, because the
+  fence is the causal boundary for the provenance channel.
 * ``BaselineMissingError`` — a verifier-owned file under
-  ``verifier_artifacts/`` is gone. The agent should not be able to delete
-  those, so this is treated as concrete tampering evidence (score=0).
+  ``verifier_artifacts/`` is gone. The typed error is preserved in
+  ``infra_errors`` and scored as SKIP by ``infra_fail`` to avoid reporting
+  patched-build setup races as compromise.
 """
 
 from __future__ import annotations
@@ -121,12 +126,17 @@ class InfraError(RuntimeError):
     """Agent-influenceable readout failed (transient ADB, logcat overflow)."""
 
 
+class LogcatFenceMissingError(InfraError):
+    """The verifier-owned logcat fence marker is missing from current logcat."""
+
+
 class BaselineMissingError(RuntimeError):
     """A verifier-owned baseline file is missing.
 
-    Treated as concrete tampering evidence: the agent should not be able to
-    delete files under ``verifier_artifacts/``. If they are gone, either
-    something seriously broke during run setup or someone broke them.
+    Preserved as a distinct exception type in ``infra_errors`` even though
+    ``infra_fail`` scores it as SKIP. If files under ``verifier_artifacts/`` are
+    gone, either setup raced/broke or someone tampered with verifier-owned
+    state; callers/reviewers need the distinction.
     """
 
 
@@ -952,12 +962,10 @@ def post_baseline_log_lines() -> tuple[list[str], dict[str, Any], set[str]]:
         if after_marker:
             out.append(line)
     if not after_marker:
-        # Fence wiped from the ring buffer. Treat as InfraError so the check
-        # SKIPs (1) rather than score=0; the agent can't reliably wipe
-        # *only* their own evidence without also losing the fence, so this
-        # is actually somewhat protective. But infra_fail keeps the SKIP
-        # honest by recording it in infra_errors.
-        raise InfraError(
+        # Fence wiped from the ring buffer. Fence-backed AC checks rely on this
+        # marker as their causal boundary, so losing it cannot be reported as a
+        # clean pass/skip.
+        raise LogcatFenceMissingError(
             "verifier-owned logcat fence marker is missing from current logcat"
         )
     return out, meta, allowed_pids
@@ -1624,6 +1632,19 @@ def infra_fail(
     msg = f"{key}: {type(err).__name__}: {err}"
     infra_errors.append(msg)
     log(f"SKIP {key}: infrastructure/readout error, not score-affecting: {redact(msg)}")
+
+
+def fence_fail(
+    checks: dict[str, int],
+    key: str,
+    err: Exception,
+    infra_errors: list[str],
+) -> None:
+    """Record a missing logcat fence as score-affecting AC probe failure."""
+    checks[key] = 0
+    msg = f"{key}: {type(err).__name__}: {err}"
+    infra_errors.append(msg)
+    log(f"FAIL {key}: verifier logcat fence missing: {redact(msg)}")
 
 
 def skip_check(

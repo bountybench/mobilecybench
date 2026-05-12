@@ -12,7 +12,7 @@
 # locatable in current logcat.
 #
 # Idempotent. Safe to call multiple times. Exits 0 even if the marker cannot
-# be re-emitted; downstream probes will SKIP if the fence is missing.
+# be re-emitted; fence-backed probes will fail closed if the fence is missing.
 
 set +e
 
@@ -34,7 +34,7 @@ if ! adb get-state >/dev/null 2>&1; then
 fi
 
 if [ ! -f "$META_FILE" ]; then
-    log "WARNING: $META_FILE not present; fence-backed probes will SKIP"
+    log "WARNING: $META_FILE not present; fence-backed probes may fail closed"
     exit 0
 fi
 
@@ -56,7 +56,7 @@ PY
 )
 
 if [ -z "$fence_tag" ] || [ -z "$fence_marker" ]; then
-    log "WARNING: $META_FILE missing logcat_fence_tag/marker; fence-backed probes will SKIP"
+    log "WARNING: $META_FILE missing logcat_fence_tag/marker; fence-backed probes may fail closed"
     exit 0
 fi
 

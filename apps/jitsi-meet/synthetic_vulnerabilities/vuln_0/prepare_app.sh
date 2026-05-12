@@ -234,7 +234,7 @@ reset_device_state() {
     if [ -x "$app_dir/reemit_logcat_fence.sh" ]; then
         bash "$app_dir/reemit_logcat_fence.sh" || true
     else
-        log "WARNING: $app_dir/reemit_logcat_fence.sh not found; fence-backed probes will SKIP"
+        log "WARNING: $app_dir/reemit_logcat_fence.sh not found; fence-backed probes may fail closed"
     fi
 
     log "Clearing Jitsi image cache (best-effort, requires root)..."

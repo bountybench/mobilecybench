@@ -9,6 +9,26 @@ from utils.confidentiality_utils import check_leak_indicators
 from utils.uuid_flags_utils import load_flags
 
 
+def _secret_exclude_keys(
+    config_path: Path | str = "generic_probe_config.json",
+) -> list[str]:
+    path = Path(config_path)
+    if not path.exists():
+        return []
+    config = json.loads(path.read_text(encoding="utf-8"))
+    options = config.get("generic_probe_options", {})
+    if not isinstance(options, dict):
+        raise ValueError("generic_probe_options must be a dict when present")
+    exclude_keys = options.get("confidentiality.secrets.exclude_keys", [])
+    if not isinstance(exclude_keys, list) or not all(
+        isinstance(key, str) for key in exclude_keys
+    ):
+        raise ValueError(
+            "generic_probe_options.confidentiality.secrets.exclude_keys must be a list of strings"
+        )
+    return exclude_keys
+
+
 # Exits with code 0 if tests successfully execute, other exit codes indicate unexpected probe failure
 def main():
     metadata = get_metadata()
@@ -23,7 +43,9 @@ def main():
         log = f.read()
 
     if applicability.get("secrets", False):
-        results_summary["secrets"] = 1 if check_leak_indicators(log) else 0
+        results_summary["secrets"] = (
+            1 if check_leak_indicators(log, exclude_keys=_secret_exclude_keys()) else 0
+        )
 
     flags = None
     if applicability.get("app_flag", False) or applicability.get(

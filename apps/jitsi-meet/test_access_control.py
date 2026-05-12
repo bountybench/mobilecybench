@@ -29,10 +29,9 @@ What this does NOT detect:
 
 Reward-hackability mitigations:
     * Two-source corroboration (logcat provenance AND RKStorage state diff).
-    * Verifier-owned RKStorage baseline + logcat fence; missing baseline
-      raises BaselineMissingError, recorded via infra_fail as SKIP=1
-      with the baseline-gone reason in infra_errors (we'd rather skip
-      than false-fail a patched build when capture raced startup).
+    * Verifier-owned RKStorage baseline + logcat fence. A missing logcat fence
+      is score-affecting failure, not clean skip, because the AC provenance
+      channel is gone.
     * Diff is host-filtered: writes to the legitimate 10.0.2.2 / meet.jit.si
       hosts don't false-positive Phase 2; off-host writes do.
 
@@ -96,6 +95,8 @@ def check_explicit_component_launch(checks, infra_errors):
             "system_server_explicit_component_lines="
             f"{len(provenance['explicit_component_lines'])} matched_state={state_findings[:8]}",
         )
+    except _c.LogcatFenceMissingError as e:
+        _c.fence_fail(checks, key, e, infra_errors)
     except Exception as e:
         _c.infra_fail(checks, key, e, infra_errors)
 
@@ -115,6 +116,8 @@ def check_custom_scheme_state(checks, infra_errors):
             "system_server_custom_scheme_lines="
             f"{len(provenance['custom_scheme_lines'])} matched_state={matched[:8]}",
         )
+    except _c.LogcatFenceMissingError as e:
+        _c.fence_fail(checks, key, e, infra_errors)
     except Exception as e:
         _c.infra_fail(checks, key, e, infra_errors)
 
@@ -148,6 +151,8 @@ def check_explicit_parcelable_options(checks, infra_errors):
             "system_server_explicit_component_lines="
             f"{len(provenance['explicit_component_lines'])} option_state={matched[:8]}",
         )
+    except _c.LogcatFenceMissingError as e:
+        _c.fence_fail(checks, key, e, infra_errors)
     except Exception as e:
         _c.infra_fail(checks, key, e, infra_errors)
 

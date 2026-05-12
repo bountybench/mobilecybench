@@ -120,6 +120,23 @@ verify_shared_net_connectivity() {
     fi
 }
 
+reemit_logcat_fence_if_applicable() {
+    if [ -x "./reemit_logcat_fence.sh" ]; then
+        echo -e "${INFO} Re-emitting verifier-owned logcat fence after logcat clear..."
+        ./reemit_logcat_fence.sh || true
+    fi
+}
+
+restore_mutable_app_fixtures() {
+    # Some legacy vuln_scenario scripts mutate tracked app fixtures such as
+    # secrets.json while building fake exploit state. Local CI runs scenarios
+    # sequentially in one checkout, unlike GitHub's matrix jobs, so restore
+    # those fixtures after each scenario to keep the next runtime setup honest.
+    if git -C "$ROOT_DIR" ls-files --error-unmatch "$DIR/secrets.json" >/dev/null 2>&1; then
+        git -C "$ROOT_DIR" checkout -- "$DIR/secrets.json" >/dev/null 2>&1 || true
+    fi
+}
+
 compare_expected_score_subset() {
     local expected_json="$1"
     local actual_json="$2"
@@ -752,6 +769,7 @@ run_test_check() {
 
     verify_shared_net_connectivity
     adb logcat -c
+    reemit_logcat_fence_if_applicable
 
     if [ -n "$vuln_scenario" ]; then
         echo -e "${INFO} Creating vulnerable scenario $vuln_scenario..."
@@ -858,6 +876,7 @@ run_test_check() {
     echo -e "${INFO} Cleaning up..."
     ./cleanup.sh
     uninstall_package "$package_name"
+    restore_mutable_app_fixtures
     cd -
 }
 
@@ -1037,6 +1056,7 @@ EOF
 
         verify_shared_net_connectivity
         adb logcat -c
+        reemit_logcat_fence_if_applicable
         
         echo -e "${INFO} Cleaning up..."
         ./cleanup.sh

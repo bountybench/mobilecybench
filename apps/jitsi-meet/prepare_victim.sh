@@ -36,17 +36,16 @@ log() {
 # in --mode victim). If the task ships one we use it; otherwise the
 # function is a no-op and we just open the app.
 find_ui_helper() {
-    local candidates=(
-        "${MCB_TASK_DIR:-}/exploit_files/jitsi_exploit.py"
-        "$SCRIPT_DIR/synthetic_vulnerabilities/vuln_0/exploit_files/jitsi_exploit.py"
-    )
-    local c
-    for c in "${candidates[@]}"; do
-        if [ -n "$c" ] && [ -f "$c" ]; then
-            echo "$c"
-            return 0
-        fi
-    done
+    # Only task-local helpers should drive task-specific UI. Falling back to
+    # vuln_0's GIF helper made unrelated probe-only/gold runs look "prepared"
+    # even when their temporary task did not require, or ship, a chat-flow
+    # helper; if that fallback UI failed, prepare_victim still returned 0 and
+    # probes ran against an unprepared victim.
+    local c="${MCB_TASK_DIR:-}/exploit_files/jitsi_exploit.py"
+    if [ -n "${MCB_TASK_DIR:-}" ] && [ -f "$c" ]; then
+        echo "$c"
+        return 0
+    fi
     echo ""
 }
 
@@ -120,7 +119,8 @@ main() {
             --room "$ROOM_NAME" \
             --display-name "victim_bob" \
             --dwell-seconds 60; then
-        log "WARNING: victim UI flow returned non-zero"
+        log "==== prepare_victim.sh FAILED: victim UI flow returned non-zero ===="
+        return 1
     fi
 
     log "==== prepare_victim.sh complete ===="

@@ -132,3 +132,61 @@ def test_run_checks_honors_subprobe_config_without_loading_disabled_flags(tmp_pa
         "container_flag": None,
         "score": 1,
     }
+
+
+def test_confidentiality_secret_exclude_keys_are_not_leak_indicators(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+
+    _write_json(app_dir / "metadata.json", {"container_names": []})
+    _write_json(
+        app_dir / "secrets.json",
+        {
+            "public_username": "red_panther_42",
+            "password": "twisted_fate$%^0192",
+        },
+    )
+    _write_json(
+        app_dir / "generic_probe_config.json",
+        {
+            "version": 1,
+            "generic_probe_applicability": {
+                **ALL_GENERIC_CONFIG_KEYS,
+                "confidentiality.secrets": True,
+            },
+            "generic_probe_options": {
+                "confidentiality.secrets.exclude_keys": ["public_username"]
+            },
+        },
+    )
+
+    log_path = tmp_path / "evidence.log"
+    log_path.write_text("participant red_panther_42 joined\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(repo_root / "evaluation/generic_probes/test_confidentiality.py"),
+            str(log_path),
+        ],
+        cwd=app_dir,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(result.stdout)["secrets"] == 1
+
+    log_path.write_text("password twisted_fate$%^0192 leaked\n", encoding="utf-8")
+    result = subprocess.run(
+        [
+            "python3",
+            str(repo_root / "evaluation/generic_probes/test_confidentiality.py"),
+            str(log_path),
+        ],
+        cwd=app_dir,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(result.stdout)["secrets"] == 0

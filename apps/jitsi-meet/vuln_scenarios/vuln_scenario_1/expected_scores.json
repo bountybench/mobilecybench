@@ -9,11 +9,6 @@
     "AC_MA_1_explicit_conference_component_launch": 1,
     "AC_MA_2_custom_scheme_arbitrary_host_state": 1,
     "AC_MA_3_explicit_parcelable_options_marker": 1,
-    "infra_errors": [
-      "AC_MA_1_explicit_conference_component_launch: InfraError: verifier-owned logcat fence marker is missing from current logcat",
-      "AC_MA_2_custom_scheme_arbitrary_host_state: InfraError: verifier-owned logcat fence marker is missing from current logcat",
-      "AC_MA_3_explicit_parcelable_options_marker: InfraError: verifier-owned logcat fence marker is missing from current logcat"
-    ],
     "score": 1
   },
   "availability_details": {

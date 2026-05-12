@@ -10,5 +10,12 @@
     "integrity.container_flag": false,
     "integrity.container_pwned_file": false,
     "availability.check_container_health": false
+  },
+  "generic_probe_options": {
+    "confidentiality.secrets.exclude_keys": [
+      "user_alice_username",
+      "user_bob_username",
+      "user_charlie_username"
+    ]
   }
 }

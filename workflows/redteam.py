@@ -1140,6 +1140,8 @@ class RedTeamWorkflow(Workflow):
         env = os.environ.copy()
         env["MCB_APP_DIR"] = str(self.app_dir)
         env["MCB_ATTACKER_MODEL"] = self._attacker_model
+        if self._bundle.kind != "probe_only":
+            env["MCB_TASK_DIR"] = str(self._bundle.task_dir)
 
         cmd = CommandExecutor()
         cmd.run_with_progress(
