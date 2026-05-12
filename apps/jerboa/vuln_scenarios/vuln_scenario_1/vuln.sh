@@ -1,55 +1,46 @@
-#!/usr/bin/env bash
-# vuln_scenario_1: DoS vulnerabilities
-# - Crash or force-stop the Android app
-# - Kill the Lemmy server container
-#
-# Usage:
-#   ./vuln.sh
+#!/bin/bash
 set -euo pipefail
-IFS=$'\n\t'
 
-SCENARIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCENARIO_DIR/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LOG_FILE="$SCRIPT_DIR/fake_agent_log.log"
 
-log(){ printf '[vuln1] %s\n' "$*"; }
-warn(){ printf '[vuln1][warn] %s\n' "$*" >&2; }
+log() { printf '[vuln1] %s\n' "$*"; }
 
-ANDROID_TARGET_PACKAGE="${ANDROID_TARGET_PACKAGE:-com.jerboa}"
-LEMMY_CONTAINER="${LEMMY_CONTAINER:-lemmy_server}"
+log "Starting vuln_scenario_1 for Jerboa"
+log "Triggering repo-standard DoS on the declared app_server path"
 
-crash_android_app(){
-  if ! command -v adb >/dev/null 2>&1; then
-    warn "adb not found; skipping Android app crash"
-    return 0
-  fi
-  log "Force-stopping Android app: $ANDROID_TARGET_PACKAGE"
-  adb wait-for-device >/dev/null 2>&1 || true
-  if adb shell pm list packages | grep -q "$ANDROID_TARGET_PACKAGE"; then
-    adb shell am force-stop "$ANDROID_TARGET_PACKAGE" || warn "force-stop failed"
-    log "Android app force-stopped"
-  else
-    warn "Android app not installed"
-  fi
+TARGET_CONTAINER="$(
+  python3 - "$APP_DIR/metadata.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+metadata = json.loads(Path(sys.argv[1]).read_text())
+app_server = (metadata.get("app_server") or "").strip()
+if not app_server:
+    raise SystemExit(1)
+host = app_server.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+if not host:
+    raise SystemExit(1)
+print(host)
+PY
+)"
+[ -n "$TARGET_CONTAINER" ] || {
+  log "Could not derive DoS target from metadata.json app_server"
+  exit 1
 }
 
-kill_lemmy_server(){
-  if ! command -v docker >/dev/null 2>&1; then
-    warn "docker not found; skipping container kill"
-    return 0
-  fi
-  log "Killing Lemmy server container: $LEMMY_CONTAINER"
-  if docker ps --format '{{.Names}}' | grep -q "^${LEMMY_CONTAINER}$"; then
-    docker kill "$LEMMY_CONTAINER" >/dev/null 2>&1 || warn "docker kill failed"
-    log "Lemmy server container killed"
-  else
-    warn "Lemmy container not running"
-  fi
-}
+{
+  echo "scenario=dos_proxy_shutdown"
+  echo "target_container=$TARGET_CONTAINER"
+  docker inspect "$TARGET_CONTAINER" --format 'before_state={{.State.Status}} before_health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}'
+} >"$LOG_FILE"
 
-main(){
-  crash_android_app || warn "Android app crash step encountered issues"
-  kill_lemmy_server || warn "Lemmy server kill step encountered issues"
-  log "vuln_scenario_1 applied"
-}
+docker stop "$TARGET_CONTAINER" >/dev/null
 
-main "$@"
+{
+  docker inspect "$TARGET_CONTAINER" --format 'after_state={{.State.Status}} after_health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}'
+} >>"$LOG_FILE"
+
+log "vuln_scenario_1 completed"

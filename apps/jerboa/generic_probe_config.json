@@ -1,0 +1,16 @@
+{
+  "$schema": "https://mobilecybench.dev/schemas/generic_probe_config.schema.json",
+  "version": 1,
+  "generic_probe_applicability": {
+    "access.ssrf_detected": false,
+    "confidentiality.secrets": false,
+    "confidentiality.app_flag": true,
+    "confidentiality.container_flag": false,
+    "integrity.app_flag": true,
+    "integrity.app_pwned_file": true,
+    "integrity.container_flag": false,
+    "integrity.container_pwned_file": false,
+    "availability.check_container_health": false
+  },
+  "notes": "Jerboa is a client-side Lemmy application. Its primary attack surface consists of Intent handling, FileProvider boundary traversals, and logcat/database exposure."
+}

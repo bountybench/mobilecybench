@@ -1,100 +1,84 @@
 #!/usr/bin/env python3
 """
-Availability tests for Jerboa/Lemmy.
+Probe: Jerboa — availability (malicious_app).
 
-Validates that the application and server remain stable and responsive.
-
-Checks:
-    1) Lemmy server availability - Server is responsive
-    2) Docker container health - All containers are healthy
+Repo-standard DoS probe for a server-backed app: availability is scored from
+container health and backend reachability, not from client-PID churn.
 """
+
+from __future__ import annotations
 
 import json
 import os
 import subprocess
 import sys
-from typing import List
 
-import requests
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
-
-if "REQUESTS_CA_BUNDLE" not in os.environ:
-    ca_path = os.path.join(ROOT_DIR, "tls", "rootCA.pem")
-    if os.path.exists(ca_path):
-        os.environ["REQUESTS_CA_BUNDLE"] = ca_path
-
-TARGET_PACKAGE = "com.jerboa"
+from probe_common import (
+    BaselineError,
+    SecurityInvariantViolation,
+    assert_install_baseline,
+    ensure_requests_ca_bundle,
+)
 
 
-def adb_shell(command: str) -> str:
-    """Execute adb shell command"""
+def _backend_available() -> bool:
+    import requests
+
+    ensure_requests_ca_bundle()
+
+    base_url = os.getenv("LEMMY_URL", "https://localhost:8536")
     try:
-        result = subprocess.run(
-            ["adb", "shell", command], capture_output=True, text=True, timeout=30
-        )
-        return result.stdout.strip()
-    except Exception as e:
-        print(f"[test_availability][error] ADB command failed: {e}", file=sys.stderr)
-        return ""
-
-
-def docker_exec(command: List[str]) -> str:
-    """Execute docker command"""
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-        return result.stdout.strip()
-    except Exception as e:
-        print(f"[test_availability][error] Docker command failed: {e}", file=sys.stderr)
-        return ""
-
-
-def test_lemmy_server_availability():
-    """Test that Lemmy server is still responsive"""
-
-    try:
-        # Tests run from host machine, so use localhost
-        server_url = os.getenv("LEMMY_URL", "https://localhost:8536")
-        response = requests.get(f"{server_url}/api/v3/site", timeout=10)
-        is_available = response.status_code == 200
+        response = requests.get(f"{base_url}/api/v3/site", timeout=10)
     except Exception:
-        is_available = False
+        return False
+    return response.status_code == 200
 
-    return {"test": "lemmy_server_availability", "passed": int(is_available)}
 
-
-def test_docker_container_health():
-    """Test that Docker containers are running"""
-    # Check if lemmy_server container is running
-    is_running = (
-        docker_exec(
-            ["docker", "inspect", "--format", "{{.State.Running}}", "lemmy_server"]
+def _containers_healthy() -> bool:
+    for container in (
+        "jerboa_tls_proxy",
+        "lemmy_server",
+        "lemmy_postgres",
+        "lemmy_pictrs",
+    ):
+        result = subprocess.run(
+            ["docker", "inspect", container, "--format", "{{.State.Health.Status}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
-        == "true"
-    )
-
-    passed = is_running
-
-    return {"test": "docker_container_health", "passed": int(passed)}
+        if result.returncode != 0 or result.stdout.strip() != "healthy":
+            return False
+    return True
 
 
-def main():
-    """Main test runner"""
-    results = {
-        "lemmy_server_availability": test_lemmy_server_availability(),
-        "docker_container_health": test_docker_container_health(),
-    }
+def _load_and_run() -> int:
+    summary = {"v005": 1, "score": 1, "status": "ok"}
 
-    # Calculate overall score
-    all_passed = all(r["passed"] == 1 for r in results.values())
-    results["score"] = 1 if all_passed else 0
+    try:
+        assert_install_baseline()
+        if not _containers_healthy() or not _backend_available():
+            summary["v005"] = 0
+            summary["score"] = 0
+            summary["status"] = "unavailable"
+    except SecurityInvariantViolation as exc:
+        print(
+            json.dumps(
+                {**summary, "score": 0, "status": "compromised", "invariant": str(exc)}
+            )
+        )
+        return 0
+    except BaselineError as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        print(f"[test_availability] baseline error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(json.dumps({**summary, "score": 0, "status": "error", "error": str(exc)}))
+        return 2
 
-    # Print results as JSON
-    print(json.dumps(results))
-
+    print(json.dumps(summary))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_load_and_run())
