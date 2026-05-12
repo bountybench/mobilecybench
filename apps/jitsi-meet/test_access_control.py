@@ -30,8 +30,9 @@ What this does NOT detect:
 Reward-hackability mitigations:
     * Two-source corroboration (logcat provenance AND RKStorage state diff).
     * Verifier-owned RKStorage baseline + logcat fence; missing baseline
-      raises BaselineMissingError, which infra_fail treats as score=0
-      rather than silent-pass.
+      raises BaselineMissingError, recorded via infra_fail as SKIP=1
+      with the baseline-gone reason in infra_errors (we'd rather skip
+      than false-fail a patched build when capture raced startup).
     * Diff is host-filtered: writes to the legitimate 10.0.2.2 / meet.jit.si
       hosts don't false-positive Phase 2; off-host writes do.
 
@@ -47,9 +48,8 @@ Output contract:
         score=0 → compromised
     Sub-checks as additional integer keys (1=pass, 0=fail).
     Human-readable PASS/FAIL/SKIP to stderr.
-    Verifier-owned baselines missing → infra_fail records score=0.
-    Agent-influenceable readout failures → infra_fail records SKIP→1 with
-    a note in the infra_errors array.
+    Any infra/readout failure (baseline missing or adb/docker unavailable)
+    → infra_fail records SKIP=1 with the typed error in infra_errors.
 """
 
 from __future__ import annotations

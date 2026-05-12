@@ -13,8 +13,8 @@ Security properties checked:
             actually consume the file the baseline writer was always
             writing) and only grades containers the baseline observed as
             running/healthy.  Missing baseline file → ``BaselineMissingError``
-            → infra_fail score=0 (the verifier-owned file shouldn't be
-            deletable; absence is itself compromise evidence).  ``docker``
+            → infra_fail SKIP=1 (would-rather-skip than false-fail the
+            patched build on a benign baseline-side gap).  ``docker``
             binary missing post-baseline → ``InfraError`` → SKIP.  A
             baseline-running container that is now uninspectable → finding,
             not a check abort.

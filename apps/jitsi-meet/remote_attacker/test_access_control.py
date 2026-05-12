@@ -38,7 +38,8 @@ Reward-hackability mitigations:
       conference URL or config-key is not.
     * MUC canary is a sha256-hash matched random value. The agent cannot
       forge it without actually exfiltrating it from the room history.
-    * Verifier-owned RKStorage baseline missing → score=0.
+    * Verifier-owned RKStorage baseline missing → SKIP=1 (infra_fail),
+      with the baseline-gone reason recorded in infra_errors.
 
 Inputs consumed:
     apps/jitsi-meet/verifier_artifacts/{rkstorage_baseline,

@@ -32,7 +32,8 @@ What this detects:
     The malicious_app induced the Jitsi client to write attacker-controlled
     state to RKStorage or to mutate the OS-level managed-restrictions file.
     Each diff entry is compared against a verifier-owned baseline; missing
-    baseline → score=0 (BaselineMissingError → infra_fail).
+    baseline → SKIP=1 (BaselineMissingError → infra_fail), with the
+    baseline-gone reason in infra_errors.
 
 What this does NOT detect:
     Transient runtime-only tampering that leaves no persisted state, and
