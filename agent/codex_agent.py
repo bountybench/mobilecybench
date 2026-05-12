@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    build_auth_attacker_prompt,
     build_redteam_prompt,
+    build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
 from utils.logger import agent_logger, logger, logger_manager
@@ -40,11 +40,12 @@ class CodexAgent:
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_app",
+        attacker_model: str = "malicious_app",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
         model: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
+        vuln_id: str = "vuln_0",
     ):
         self.app_name = app_name
         self.dry_run = dry_run
@@ -56,11 +57,12 @@ class CodexAgent:
         self.password = password
         self.include_ssrf = include_ssrf
         self.workflow = workflow
-        self.attack_model = attack_model
+        self.attacker_model = attacker_model
         self.additional_context = additional_context
         self.no_codebase = no_codebase
         self.model = model
         self.reasoning_effort = reasoning_effort
+        self.vuln_id = vuln_id
 
         # Load environment variables
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -69,7 +71,7 @@ class CodexAgent:
             load_dotenv(env_file, override=True)
 
         # Build system prompt
-        self._initial_tree_context = get_directory_tree()
+        self._initial_tree_context = get_directory_tree(self.no_codebase)
         self._instructions = self._get_system_prompt_text()
 
         # Provider handles CLI execution inside the kali container
@@ -122,8 +124,8 @@ class CodexAgent:
         """Build the system prompt based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
-                build_auth_attacker_prompt
-                if self.attack_model == "auth_attacker"
+                build_remote_attacker_prompt
+                if self.attacker_model == "remote_attacker"
                 else build_redteam_prompt
             )
             prompt = builder(
@@ -144,6 +146,7 @@ class CodexAgent:
                 emulator_server=self.emulator_server,
                 no_codebase=self.no_codebase,
                 agent_type="codex",
+                vuln_id=self.vuln_id,
             )
 
         if self.additional_context:
@@ -296,7 +299,7 @@ class CodexAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_apk":
+        if self.workflow == "redteam" and self.attacker_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )

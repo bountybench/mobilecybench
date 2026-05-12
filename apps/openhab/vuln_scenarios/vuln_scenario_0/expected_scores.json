@@ -6,23 +6,17 @@
     "test_integrity": 0
   },
   "access_details": {
-    "admin_has_administrator_role": 1,
-    "nonadmin_lacks_administrator_role": 0,
-    "no_unexpected_users": 1,
-    "no_unauthorized_admin_tokens": 1,
-    "nonadmin_password_intact": 1,
-    "admin_can_access_things": 0,
-    "nonadmin_blocked_from_things": 0,
-    "invalid_creds_rejected": 1,
-    "score": 0
+    "score": 0,
+    "check_jsondb_user_roles_and_auth": 0,
+    "check_logactivity_external_launch_oracle_ma_ac": 1
   },
   "availability_details": {
     "check_container_health": 1,
     "score": 1
   },
   "confidentiality_details": {
-    "leaked_secrets": ["admin_password", "admin_user_id"],
-    "score": 0
+    "score": 0,
+    "check_attacker_uid_filesystem_access": 0
   },
   "integrity_details": {
     "state_AlarmSystem_Armed": 0,

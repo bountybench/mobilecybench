@@ -8,6 +8,11 @@
       "minLength": 1,
       "description": "Short name for the vulnerability"
     },
+    "attacker_model": {
+      "type": "string",
+      "enum": ["malicious_app", "remote_attacker"],
+      "description": "Attacker model the synthetic vulnerability is designed to be exploited by. 'malicious_app' = a user is logged in on the victim device and the agent builds a malicious APK with a MainActivity that sends IPC commands; 'remote_attacker' = agent has ADB/root/UI automation but no preseeded user on device, and exploit.sh targets backend/network."
+    },
     "cwe_id": {
       "type": "string",
       "pattern": "^CWE-[0-9]+$",
@@ -66,6 +71,7 @@
   },
   "required": [
     "title",
+    "attacker_model",
     "cwe_id",
     "cwe_name",
     "historic_cve",

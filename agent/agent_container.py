@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import tarfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import docker
 import docker.errors
@@ -44,6 +44,8 @@ class AgentEnvironment:
         vuln_id: Optional[str] = None,
         include_git_history: bool = True,
         no_codebase: bool = False,
+        post_checkout_hook: Optional[Callable[[Path], None]] = None,
+        apk_path: Optional[Path] = None,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -57,6 +59,16 @@ class AgentEnvironment:
         self.vuln_id = vuln_id
         self.include_git_history = include_git_history
         self.no_codebase = no_codebase
+        # APK to stage for the agent when no_codebase=True. Kept separate from
+        # vuln_id because vuln_id also gates verify_files mounting, which
+        # redteam must never do.
+        self.apk_path = apk_path
+        # Optional callback invoked inside _setup_agent_codebase against the
+        # staged copy before it is moved to agent_codebase/. Redteam+synthetic
+        # uses this to apply vulnerability.patch so the agent sees the Phase 1
+        # target source instead of the clean baseline without dirtying the
+        # host app's working tree.
+        self.post_checkout_hook = post_checkout_hook
 
         import traceback
 
@@ -83,13 +95,11 @@ class AgentEnvironment:
             # no need to raise if container doesn't exist
             pass
 
-        print(f"Checking for image {self.image_name}...")
         logger.info(f"Ensuring image {self.image_name} is available...")
 
         # First check if image exists locally
         try:
             self.client.images.get(self.image_name)
-            print(f"Image {self.image_name} found locally")
             logger.info(f"Image {self.image_name} found locally, skipping pull")
         except docker.errors.ImageNotFound:
             # Image not found locally, try to pull it
@@ -108,8 +118,9 @@ class AgentEnvironment:
                         layer_id = line.get("id", "")
 
                         if status == "Pulling fs layer" and not pulling_started:
-                            print(
-                                "Image not cached locally, pulling from registry (this may take several minutes for large images)..."
+                            logger.info(
+                                "Image not cached locally, pulling from registry "
+                                "(this may take several minutes for large images)..."
                             )
                             pulling_started = True
 
@@ -123,12 +134,11 @@ class AgentEnvironment:
                             status_key = f"{layer_id}:{status}"
                             if status_key not in seen_statuses:
                                 if layer_id:
-                                    print(f"  {layer_id}: {status}")
+                                    logger.info(f"  {layer_id}: {status}")
                                 else:
-                                    print(f"  {status}")
+                                    logger.info(f"  {status}")
                                 seen_statuses.add(status_key)
 
-                print(f"Image {self.image_name} ready")
                 logger.info(f"Image {self.image_name} ready")
             except docker.errors.APIError as e:
                 logger.error(f"Failed to pull image {self.image_name}: {e}")
@@ -344,6 +354,10 @@ class AgentEnvironment:
             logger.info("Copying codebase without git history")
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
+            if self.post_checkout_hook is not None:
+                logger.info("Running post_checkout_hook on %s", staging_dir)
+                self.post_checkout_hook(staging_dir)
+
             # Initialize fresh git repo so agent can still use git commands
             logger.info("Initializing fresh git repository in staging directory")
             initialize_git_repository(staging_dir)
@@ -402,6 +416,10 @@ class AgentEnvironment:
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
 
+            if self.post_checkout_hook is not None:
+                logger.info("Running post_checkout_hook on %s", staging_dir)
+                self.post_checkout_hook(staging_dir)
+
         # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
             logger.info(f"Removing existing agent_codebase at {agent_codebase}")
@@ -420,14 +438,16 @@ class AgentEnvironment:
     def _setup_agent_apk(self) -> Optional[dict]:
         """Copy the built APK into a staging directory for the agent.
 
-        Looks for the APK at the standard path (clean or vuln-specific)
-        and returns a volume mapping to bind-mount at /app/apk/.
+        The caller is the source of truth for which APK to stage — exploit
+        passes the vuln APK, redteam passes the bundle's phase-1 APK.
+        Returns a volume mapping to bind-mount at /app/apk/.
         """
-        if self.vuln_id:
-            apk_path = self.app_dir / "apk" / self.vuln_id / f"{self.app_name}.apk"
-        else:
-            apk_path = self.app_dir / "apk" / f"{self.app_name}.apk"
-
+        if self.apk_path is None:
+            raise ValueError(
+                "apk_path must be provided to setup_agent_environment when "
+                "no_codebase=True"
+            )
+        apk_path = self.apk_path
         if not apk_path.exists():
             raise FileNotFoundError(
                 f"APK not found at {apk_path}. "
@@ -836,16 +856,23 @@ def _disable_emulator_root() -> None:
             pass
 
 
-def _load_claude_code_credentials() -> Optional[str]:
-    """Load Claude Code OAuth credentials from environment variables.
+def _load_claude_code_auth() -> Tuple[Dict[str, str], Optional[str]]:
+    """Load Claude Code auth from ``agent/.env``.
 
-    Expects ``CLAUDE_CODE_OAUTH_TOKEN`` (required) and optionally
-    ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN`` to be set in ``agent/.env``.
-    See ``agent/.env.example`` for details.
+    Returns ``(env_vars, snapshot_json)``. Two shapes, mutually exclusive:
 
-    Returns the raw JSON string to write into
-    ``~/.claude/.credentials.json`` inside the container, or *None* if
-    no credentials were found.
+    1. ``CLAUDE_CODE_OAUTH_TOKEN`` only → forwarded as a container env
+       var (CLI auth precedence #5). For long-lived tokens from
+       ``claude setup-token``. Recommended.
+    2. ``CLAUDE_CODE_OAUTH_TOKEN`` + ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN``
+       → synthesized into ``~/.claude/.credentials.json`` inside the
+       container. Legacy rotating-pair flow; refresh rotates the pair
+       globally for the account.
+
+    Env var (precedence #5) wins over file (#6), so the legacy path
+    deliberately does not also set the env var.
+
+    See https://code.claude.com/docs/en/authentication.
     """
     # Ensure agent/.env is loaded before reading credentials.
     # This function is called during setup_runtime_environment(), which
@@ -858,7 +885,16 @@ def _load_claude_code_credentials() -> Optional[str]:
 
     token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     refresh = os.environ.get("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "")
-    if token:
+
+    if not token:
+        logger.warning(
+            "No Claude Code credentials found. Set CLAUDE_CODE_OAUTH_TOKEN "
+            "in agent/.env (run `claude setup-token` to generate one)."
+        )
+        return {}, None
+
+    if refresh:
+        # Legacy: rotating subscription pair. Build snapshot blob.
         creds = {
             "claudeAiOauth": {
                 "accessToken": token,
@@ -871,13 +907,21 @@ def _load_claude_code_credentials() -> Optional[str]:
                 ],
             }
         }
-        logger.info("Built Claude Code credentials from environment variables")
-        return json.dumps(creds)
+        logger.warning(
+            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN is set; using legacy "
+            "rotating-pair OAuth path. Tokens rotate globally and may "
+            "401 if Claude Code is used interactively during a run. "
+            "To switch: run `claude setup-token`, paste into "
+            "CLAUDE_CODE_OAUTH_TOKEN, delete the REFRESH_TOKEN line."
+        )
+        return {}, json.dumps(creds)
 
-    logger.warning(
-        "No Claude Code credentials found. " "Set CLAUDE_CODE_OAUTH_TOKEN in agent/.env"
+    # setup-token path: forward the env var, no file.
+    logger.info(
+        "Forwarding CLAUDE_CODE_OAUTH_TOKEN to agent container "
+        "(long-lived setup-token; no credentials file written)."
     )
-    return None
+    return {"CLAUDE_CODE_OAUTH_TOKEN": token}, None
 
 
 def setup_agent_environment(
@@ -888,6 +932,8 @@ def setup_agent_environment(
     vuln_id: Optional[str] = None,
     agent_mode: str = "custom",
     no_codebase: bool = False,
+    post_checkout_hook: Optional[Callable[[Path], None]] = None,
+    apk_path: Optional[Path] = None,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -900,6 +946,8 @@ def setup_agent_environment(
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
         no_codebase: Whether to copy the built APK into the agent environment
+        post_checkout_hook: Optional callback run on the staged codebase
+        apk_path: APK to copy into the agent environment when no_codebase=True
 
     Returns:
         AgentEnvironment instance
@@ -934,9 +982,10 @@ def setup_agent_environment(
         if codex_key:
             env_vars["CODEX_API_KEY"] = codex_key
     elif agent_mode == "claude-code":
-        # Load OAuth credentials for injection into the container.
-        # Prefer the macOS Keychain (canonical source); fall back to env vars.
-        claude_creds = _load_claude_code_credentials()
+        # See _load_claude_code_auth() for the two supported shapes
+        # (long-lived setup-token env var vs. legacy rotating-pair file).
+        extra_env, claude_creds = _load_claude_code_auth()
+        env_vars.update(extra_env)
         if claude_creds:
             env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
 
@@ -958,6 +1007,8 @@ def setup_agent_environment(
         vuln_id=vuln_id if workflow == "exploit" else None,
         include_git_history=(workflow != "exploit"),
         no_codebase=no_codebase,
+        post_checkout_hook=post_checkout_hook,
+        apk_path=apk_path,
     )
 
     agent_env.setup()

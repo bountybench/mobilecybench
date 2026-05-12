@@ -1,12 +1,12 @@
 import datetime
 import json
-import os
 import platform
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
+from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
 
@@ -85,15 +85,6 @@ def validate_schema(instance: dict, schema: Optional[dict], artifact_name: str) 
         _jsonschema_validate(instance=instance, schema=schema)
     except Exception as e:
         logger.warning("%s schema validation failed: %s", artifact_name, e)
-
-
-def _write_json_atomic(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    os.replace(tmp, path)
 
 
 def _timing_summary_from_calls(calls: list[Any]) -> dict:
@@ -314,6 +305,18 @@ def write_run_summary(
                 except Exception as e:
                     logger.warning("Failed to copy %s: %s", score_file, e)
 
+    # Cost: claude-code surfaces it at run_result top-level; the custom
+    # and codex agents nest it inside token_totals via TokenTracker. Read
+    # the top-level first (so an agent that wants to report a different
+    # number — e.g. CLI-reported subscription cost vs. API-priced — wins),
+    # then fall back to the nested value so downstream consumers always
+    # see a populated metric when one exists.
+    cost_top = run_result.get("cost_usd")
+    cost_nested = (
+        token_totals.get("cost_usd") if isinstance(token_totals, dict) else None
+    )
+    cost_usd = cost_top if cost_top is not None else cost_nested
+
     run_summary = {
         "run_id": run_id,
         "outcome": outcome,
@@ -326,9 +329,8 @@ def write_run_summary(
         "context": {
             "app_name": app_name,
             "workflow": config.workflow,
-            "vuln_id": (
-                config.synthetic_vuln_id if config.workflow == "exploit" else None
-            ),
+            "vuln_id": config.synthetic_vuln_id,
+            "task": config.task,
             "agent_type": run_result.get("agent_type", "custom"),
             "model": config.model,
         },
@@ -359,7 +361,7 @@ def write_run_summary(
             "unique_tools": sorted({str(tool) for tool in unique_tools}),
             "error_count": max(0, logger_manager.get_error_count() - start_error_count),
             "token_totals": token_totals,
-            "cost_usd": run_result.get("cost_usd"),
+            "cost_usd": cost_usd,
             "timing": timing_summary,
         },
         "results": {
@@ -381,6 +383,11 @@ def write_run_summary(
             ),
             "conversation_jsonl": conversation_path,
             "system_prompt_file": system_prompt_path,
+            "screenshots_dir": (
+                str(logs_dir / "screenshots")
+                if (logs_dir / "screenshots").is_dir()
+                else None
+            ),
             **_score_artifact_paths(config.workflow, logs_dir, workflow),
             "logs_dir": str(logs_dir),
         },

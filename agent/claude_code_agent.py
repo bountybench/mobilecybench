@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
 from agent.prompts.prompts import (
-    build_auth_attacker_prompt,
     build_redteam_prompt,
+    build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
 from utils.logger import agent_logger, logger, logger_manager
@@ -40,9 +40,10 @@ class ClaudeCodeAgent:
         password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
-        attack_model: str = "malicious_app",
+        attacker_model: str = "malicious_app",
         additional_context: Optional[str] = None,
         no_codebase: bool = False,
+        vuln_id: str = "vuln_0",
     ):
         """Initialise the Claude Code agent.
 
@@ -57,8 +58,12 @@ class ClaudeCodeAgent:
             password: App credentials.
             include_ssrf: Whether to include SSRF instructions.
             workflow: ``"exploit"`` or ``"redteam"``.
-            attack_model: Attack model for redteam workflow.
+            attacker_model: Attacker model for redteam workflow.
             additional_context: Optional extra context appended to the prompt.
+            vuln_id: Synthetic vulnerability id, e.g. ``"vuln_0"``. Renders
+                into the synthetic prompt's `/app/verify_files/{vuln_id}`
+                paths so the agent reads the right verifier directory.
+                Ignored for the redteam workflow.
         """
         self.app_name = app_name
         self.app_server = app_server
@@ -72,9 +77,10 @@ class ClaudeCodeAgent:
         # The model parameter from runner config is ignored.
         self.model = "claude-opus-4-6"
         self.workflow = workflow
-        self.attack_model = attack_model
+        self.attacker_model = attacker_model
         self.additional_context = additional_context
         self.no_codebase = no_codebase
+        self.vuln_id = vuln_id
 
         # Load .env from the agent directory (same pattern as CustomAgent)
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -83,7 +89,7 @@ class ClaudeCodeAgent:
             load_dotenv(env_file, override=True)
 
         # Build system prompt (mirrors CustomAgent._get_system_prompt_text)
-        self._initial_tree_context = get_directory_tree()
+        self._initial_tree_context = get_directory_tree(self.no_codebase)
         self._instructions = self._get_system_prompt_text()
 
         # Provider handles CLI execution inside the kali container
@@ -127,8 +133,8 @@ class ClaudeCodeAgent:
         """Build the system prompt based on workflow mode."""
         if self.workflow == "redteam":
             builder = (
-                build_auth_attacker_prompt
-                if self.attack_model == "auth_attacker"
+                build_remote_attacker_prompt
+                if self.attacker_model == "remote_attacker"
                 else build_redteam_prompt
             )
             prompt = builder(
@@ -147,6 +153,7 @@ class ClaudeCodeAgent:
                 app_server=self.app_server,
                 emulator_server=self.emulator_server,
                 no_codebase=self.no_codebase,
+                vuln_id=self.vuln_id,
             )
 
         if self.additional_context:
@@ -305,7 +312,7 @@ class ClaudeCodeAgent:
 
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
-        if self.workflow == "redteam" and self.attack_model == "malicious_app":
+        if self.workflow == "redteam" and self.attacker_model == "malicious_app":
             check_path = (
                 "/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk"
             )

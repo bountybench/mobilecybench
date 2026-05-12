@@ -12,7 +12,6 @@ Flow:
 
 Usage:
     python login.py --username admin --password secretpass
-    python login.py --username admin --user-key admin_password
 """
 
 import argparse
@@ -30,7 +29,6 @@ PACKAGE = "com.nextcloud.talk2"
 BROWSER_PACKAGE = "com.android.chrome"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_SECRETS_PATH = os.path.join(SCRIPT_DIR, "../secrets.json")
 DEFAULT_METADATA_PATH = os.path.join(SCRIPT_DIR, "../metadata.json")
 
 
@@ -57,24 +55,10 @@ def current_package(d):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Nextcloud Talk login automation")
-    parser.add_argument("--username", default="admin")
-    parser.add_argument("--password", default=None, help="Direct password")
-    parser.add_argument("--user-key", default=None, help="Key in secrets.json")
-    parser.add_argument("--secrets", default=DEFAULT_SECRETS_PATH)
+    parser.add_argument("--username", required=True)
+    parser.add_argument("--password", required=True)
     parser.add_argument("--server-url", default=get_default_server_url())
     return parser.parse_args()
-
-
-def get_password(args):
-    if args.password:
-        return args.password
-    key = args.user_key or "admin_password"
-    with open(args.secrets) as f:
-        secrets = json.load(f)
-    if key not in secrets:
-        log(f"ERROR: Key '{key}' not found in {args.secrets}")
-        sys.exit(1)
-    return secrets[key]
 
 
 def is_logged_in(d):
@@ -329,7 +313,6 @@ def handle_grant_access(d):
 
 def main():
     args = parse_args()
-    password = get_password(args)
 
     log(f"Logging in {args.username} on {PACKAGE}")
 
@@ -351,7 +334,7 @@ def main():
     wait_for_browser(d)
     handle_chrome_first_run(d)
     handle_connect_page(d)
-    handle_login_form(d, args.username, password)
+    handle_login_form(d, args.username, args.password)
     handle_grant_access(d)
 
     log("SUCCESS: Login complete")

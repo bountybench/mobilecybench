@@ -14,6 +14,7 @@ ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
 ROOT_DIR=$(pwd)
+PYTHON_CMD=$("${ROOT_DIR}/utils/detect_python.sh") || exit 1
 source "${ROOT_DIR}/utils/android.sh"
 source "${ROOT_DIR}/utils/wait.sh"
 source "${ROOT_DIR}/utils/local_error_logger.sh"
@@ -117,6 +118,12 @@ verify_shared_net_connectivity() {
     else
         echo "No metadata.json found, skipping connectivity check"
     fi
+}
+
+compare_expected_score_subset() {
+    local expected_json="$1"
+    local actual_json="$2"
+    python3 "$ROOT_DIR/scripts/compare_score_subset.py" "$expected_json" "$actual_json"
 }
 
 # Start SSRF listener container
@@ -286,11 +293,60 @@ determine_setup_modes() {
     echo "$selected_modes"
 }
 
+current_app_dir() {
+    local app_dir
+    app_dir=$(git rev-parse --show-prefix 2>/dev/null || true)
+    app_dir="${app_dir%/}"
+
+    if [[ -z "$app_dir" || "$app_dir" != apps/* ]]; then
+        echo -e "${ERROR} Could not determine app directory from current directory: $(pwd)" >&2
+        return 1
+    fi
+
+    echo "$app_dir"
+}
+
+init_app_submodules() {
+    local app_dir="${1:-}"
+    if [[ -z "$app_dir" ]]; then
+        app_dir=$(current_app_dir) || return 1
+    fi
+    app_dir="${app_dir%/}"
+
+    local app_prefix="${app_dir}/"
+    local submodule_paths=()
+    while IFS= read -r submodule_path; do
+        [[ -n "$submodule_path" ]] && submodule_paths+=("$submodule_path")
+    done < <(
+        git -C "$ROOT_DIR" config -f .gitmodules \
+            --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+            | awk -v prefix="$app_prefix" 'index($2, prefix) == 1 { print $2 }' \
+            || true
+    )
+
+    if [[ ${#submodule_paths[@]} -eq 0 ]]; then
+        echo -e "${ERROR} No submodules registered under ${app_prefix} in .gitmodules" >&2
+        return 1
+    fi
+
+    # Initialize every submodule registered under the app, not just codebase.
+    # Some apps ship auxiliary runtime submodules (for example Jitsi Docker
+    # assets) that start_runtime.sh needs, but only codebase is checked out to
+    # the app commit below.
+    for submodule_path in "${submodule_paths[@]}"; do
+        echo -e "${INFO} Initializing submodule: ${submodule_path}"
+        if ! git -C "$ROOT_DIR" submodule update --init "$submodule_path"; then
+            echo -e "${ERROR} Failed to initialize submodule: ${submodule_path}" >&2
+            return 1
+        fi
+    done
+}
+
 checkout_commit() {
     local commit_override="${1:-}"
     echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
-        commit="$commit_override"
+        local commit="$commit_override"
         if [[ -z "$commit" ]]; then
             commit=$(jq -r '.["commit_version"] // empty' "metadata.json")
         fi
@@ -298,7 +354,7 @@ checkout_commit() {
         if [[ -n "$commit" ]]; then
             echo "Found commit: $commit"
 
-            git submodule update --init codebase
+            init_app_submodules || exit 1
             echo "Cleaning repository to remove all changes and untracked files..."
 
             cd "codebase" || exit 1
@@ -362,10 +418,21 @@ load_vuln_test_settings() {
         return 1
     fi
 
-    VULN_CLEAN_APK_MODE=$(jq -r '.clean_apk_mode // "default"' "$VULN_METADATA_FILE")
     VULN_BASELINE_COMMIT=$(jq -r '.baseline.commit // empty' "$VULN_METADATA_FILE")
     VULN_TASK_ID=$(jq -r '.task_id // .task_slug // empty' "$VULN_METADATA_FILE")
     VULN_PACKAGE_NAME=$(jq -r '.runtime.package_name // .app_metadata_overrides.package_name // empty' "$VULN_METADATA_FILE")
+    VULN_ATTACKER_MODEL=$(jq -r '.attacker_model // empty' "$VULN_METADATA_FILE")
+    case "$VULN_ATTACKER_MODEL" in
+        malicious_app|remote_attacker) ;;
+        "")
+            echo -e "${ERROR} metadata.json missing attacker_model (expected: malicious_app, remote_attacker): $VULN_METADATA_FILE"
+            return 1
+            ;;
+        *)
+            echo -e "${ERROR} metadata.json attacker_model=\"$VULN_ATTACKER_MODEL\" is invalid (expected: malicious_app, remote_attacker): $VULN_METADATA_FILE"
+            return 1
+            ;;
+    esac
     if [ -z "$VULN_PACKAGE_NAME" ] || [ "$VULN_PACKAGE_NAME" = "null" ]; then
         VULN_PACKAGE_NAME=$(jq -r '.package_name // empty' "$ROOT_DIR/$app_dir/metadata.json")
     fi
@@ -456,6 +523,7 @@ VULN_CLEAN_APK_MODE="default"
 VULN_TASK_ID=""
 VULN_BASELINE_COMMIT=""
 VULN_PACKAGE_NAME=""
+VULN_ATTACKER_MODEL=""
 declare -a VULN_BUILD_ENV_ARGS=()
 
 show_usage() {
@@ -614,6 +682,20 @@ uninstall_package() {
     fi
 }
 
+# Run prepare_victim.sh when the app provides one. Invoked after
+# inject_flags.sh so post-login baselines reflect the flag-injected app
+# state, mirroring redteam's _restart_runtime(inject_flags=...) →
+# _run_prepare_victim() ordering.
+# Bails on failure: missing victim setup = probes operate on wrong state.
+run_prepare_victim_if_applicable() {
+    if [ ! -x "./prepare_victim.sh" ]; then
+        echo -e "${INFO} No prepare_victim.sh in $(pwd); skipping"
+        return 0
+    fi
+    echo -e "${INFO} Running prepare_victim.sh..."
+    ./prepare_victim.sh || { echo -e "${ERROR} prepare_victim.sh failed"; return 1; }
+}
+
 # Function to run test checks
 run_test_check() {
     local test_name="$1"
@@ -660,11 +742,14 @@ run_test_check() {
 
     echo -e "${INFO} Generating flags..."
     cd "$ROOT_DIR"
-    { python -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+    { "$PYTHON_CMD" -m utils.uuid_flags_utils "$DIR"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
     cd "$DIR"
 
     echo -e "${INFO} Injecting flags..."
     { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+
+    run_prepare_victim_if_applicable || exit 1
+
     verify_shared_net_connectivity
     adb logcat -c
 
@@ -679,6 +764,10 @@ run_test_check() {
     echo -e "${INFO} Running checks..."
     # Set PYTHONPATH for local testing so generic probes can find utils module
     export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
+    # Opt this caller in to the remote_attacker probe block in run_checks.sh.
+    # workflows/base.py:_run_checks (the redteam phase runner) does not set
+    # this, so its MA-mode phases skip the RA block.
+    export RA_CHECKS_ENABLED=1
     if [ "$use_fake_agent_log" = "true" ] && [ -n "$vuln_scenario" ]; then
         "$ROOT_DIR/run_checks.sh" . "vuln_scenarios/vuln_scenario_$vuln_scenario/fake_agent_log.log"
     else
@@ -686,7 +775,7 @@ run_test_check() {
     fi
 
     if [ -n "$vuln_scenario" ]; then
-        # Compare with expected scores
+        # Compare with expected scores (malicious_app probes)
         score1="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores.json"
         score2="scores.json"
 
@@ -695,6 +784,31 @@ run_test_check() {
         else
             echo -e "${ERROR} Scores do not match"
             cat scores.json
+            echo -e "${INFO} Cleaning up..."
+            ./cleanup.sh
+            uninstall_package "$package_name"
+            exit 1
+        fi
+
+        # Compare remote_attacker scores when both file and expectation exist.
+        # The expected fixture is a stable subset of the actual score file:
+        # score-affecting probe keys must match exactly, while dynamic
+        # diagnostic details may be present only in the actual output.
+        ra_expected="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores_remote_attacker.json"
+        ra_actual="scores_remote_attacker.json"
+        if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
+            if compare_expected_score_subset "$ra_expected" "$ra_actual"; then
+                echo -e "${SUCCESS} remote_attacker scores match"
+            else
+                echo -e "${ERROR} remote_attacker scores do not match"
+                cat "$ra_actual"
+                echo -e "${INFO} Cleaning up..."
+                ./cleanup.sh
+                uninstall_package "$package_name"
+                exit 1
+            fi
+        elif [ -f "$ra_expected" ] && [ ! -f "$ra_actual" ]; then
+            echo -e "${ERROR} expected_scores_remote_attacker.json present but scores_remote_attacker.json was not produced"
             echo -e "${INFO} Cleaning up..."
             ./cleanup.sh
             uninstall_package "$package_name"
@@ -722,6 +836,23 @@ run_test_check() {
             exit 1
         fi
         echo -e "${SUCCESS} All generic scores are 1."
+
+        # If the app ships remote_attacker probes, clean-build must also score
+        # all 1s. We check only the top-level .scores object (the four CIA
+        # dimensions); probe detail blocks are diagnostic and may legitimately
+        # contain numeric counts (e.g. extracted_refresh_token_count) that are
+        # 0 in a secure state.
+        if [ -f scores_remote_attacker.json ]; then
+            if ! jq -e '.scores | to_entries | all(.value == 1)' scores_remote_attacker.json > /dev/null; then
+                echo -e "${ERROR} scores_remote_attacker.json top-level scores are not all 1s."
+                cat scores_remote_attacker.json
+                echo -e "${INFO} Cleaning up..."
+                ./cleanup.sh
+                uninstall_package "$package_name"
+                exit 1
+            fi
+            echo -e "${SUCCESS} All remote_attacker scores are 1."
+        fi
     fi
 
     echo -e "${INFO} Cleaning up..."
@@ -739,17 +870,19 @@ run_tests_for_mode() {
     
     cd "$ROOT_DIR/$dir"
     
-    # Skip this step if you want to persist your apk
-    checkout_commit "$dir"
+    # Reset the app submodule to the commit declared by this app's metadata.
+    # The previous argument here was the app directory, which was then treated
+    # as a commit and made `git checkout apps/<app>` fail under normal probe CI.
+    checkout_commit
     
     # Check if test_X.py exists to determine test strategy and required scripts
     if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then
         echo -e "${INFO} test_X.py probe found - running full vulnerability scenario tests"
-        local has_probes=true
+        HAS_PROBES=true
         required_files=("start_runtime.sh" "cleanup.sh" "test_access_control.py" "test_availability.py" "test_confidentiality.py" "test_integrity.py" "secrets.json")
     else
         echo -e "${INFO} test_X.py probe not found - running simplified APK installation test"
-        local has_probes=false
+        HAS_PROBES=false
         required_files=("start_runtime.sh" "cleanup.sh")
     fi
     
@@ -772,7 +905,7 @@ run_tests_for_mode() {
         if [ "$APK_COUNT" -eq 0 ]; then
             echo -e "${INFO} No local APKs found, attempting download from download_link..."
             cd "$ROOT_DIR"
-            if python download_apk.py "$app_name"; then
+            if "$PYTHON_CMD" download_apk.py "$app_name"; then
                 echo -e "${SUCCESS} Downloaded APKs successfully"
             else
                 echo -e "${ERROR} No local APKs and download failed."
@@ -790,7 +923,7 @@ run_tests_for_mode() {
         echo -e "${INFO} Setting up app from APK link."
         app_name=$(basename "$dir")
         cd "$ROOT_DIR"
-        { python download_apk.py "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
+        { "$PYTHON_CMD" download_apk.py "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source using build_apk.sh..."
@@ -820,7 +953,7 @@ run_tests_for_mode() {
 
     cd "$ROOT_DIR"
     
-    if [ "$has_probes" = true ]; then
+    if [ "$HAS_PROBES" = true ]; then
         # Create dummy file for test confidentiality
         cat > "$ROOT_DIR/dummy_log.log" <<'EOF'
 # Dummy log file for testing purposes
@@ -894,11 +1027,14 @@ EOF
 
         echo -e "${INFO} Generating flags..."
         cd "$ROOT_DIR"
-        { python -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
+        { "$PYTHON_CMD" -m utils.uuid_flags_utils "$dir"; } || { echo -e "${ERROR} Flag generation failed"; exit 1; }
         cd "$dir"
 
         echo -e "${INFO} Injecting flags..."
         { ../../inject_flags.sh; } || { echo -e "${ERROR} inject_flags.sh failed"; exit 1; }
+
+        run_prepare_victim_if_applicable || exit 1
+
         verify_shared_net_connectivity
         adb logcat -c
         
@@ -917,6 +1053,58 @@ EOF
     print_header "$GREEN" "SETUP MODE $setup_mode COMPLETED SUCCESSFULLY"
 }
 
+# Enforce the structural contract between a synth vuln's attacker_model and
+# the exploit files it ships. Keep in lockstep with zero_day_task_common.sh
+# so the two runtimes accept/reject the same shapes.
+validate_vuln_exploit_format() {
+    local vuln_abs_dir="$1"
+    local attacker_model="$2"
+    local exploit_script="$vuln_abs_dir/exploit_files/exploit.sh"
+    local exploit_apk_dir="$vuln_abs_dir/exploit_files/exploit_apk"
+
+    if [ -d "$vuln_abs_dir/exploit_files/attacker_app" ]; then
+        echo -e "${ERROR} Legacy exploit APK directory is not supported: rename exploit_files/attacker_app to exploit_files/exploit_apk"
+        return 1
+    fi
+
+    case "$attacker_model" in
+        malicious_app)
+            if [ -f "$exploit_script" ]; then
+                echo -e "${ERROR} attacker_model=malicious_app must not ship exploit_files/exploit.sh (use exploit_files/exploit_apk/)"
+                return 1
+            fi
+            if [ ! -d "$exploit_apk_dir" ]; then
+                echo -e "${ERROR} attacker_model=malicious_app requires exploit APK directory: $exploit_apk_dir"
+                return 1
+            fi
+            if ! find "$exploit_apk_dir" -name 'AndroidManifest.xml' -type f -print -quit | grep -q .; then
+                echo -e "${ERROR} Exploit APK directory missing AndroidManifest.xml: $exploit_apk_dir"
+                return 1
+            fi
+            if ! find "$exploit_apk_dir" -name '*.java' -type f -print -quit | grep -q .; then
+                echo -e "${ERROR} Exploit APK directory must contain at least one .java source file: $exploit_apk_dir"
+                return 1
+            fi
+            ;;
+        remote_attacker)
+            if [ -d "$exploit_apk_dir" ]; then
+                echo -e "${ERROR} attacker_model=remote_attacker must not ship exploit_files/exploit_apk/ (use exploit_files/exploit.sh)"
+                return 1
+            fi
+            if [ ! -f "$exploit_script" ]; then
+                echo -e "${ERROR} attacker_model=remote_attacker requires exploit script: $exploit_script"
+                return 1
+            fi
+            ;;
+        *)
+            echo -e "${ERROR} validate_vuln_exploit_format: unknown attacker_model '$attacker_model'"
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
 # Test a synthetic vulnerability task - both clean and vulnerable builds.
 run_vuln_test() {
     local vuln_dir="$1"
@@ -931,19 +1119,14 @@ run_vuln_test() {
     # Validate synthetic vulnerability structure
     echo -e "${INFO} Validating synthetic vulnerability structure..."
 
-    local patch_file="$ROOT_DIR/$app_dir/$vuln_dir/vulnerability.patch"
-    local exploit_script="$ROOT_DIR/$app_dir/$vuln_dir/exploit_files/exploit.sh"
-    local verify_script="$ROOT_DIR/$app_dir/$vuln_dir/verify_files/verify_exploit.sh"
-    local metadata_file="$ROOT_DIR/$app_dir/$vuln_dir/metadata.json"
-    local clean_apk_mode="default"
-
+    local vuln_abs_dir="$ROOT_DIR/$app_dir/$vuln_dir"
+    local patch_file="$vuln_abs_dir/vulnerability.patch"
+    local exploit_script="$vuln_abs_dir/exploit_files/exploit.sh"
+    local exploit_apk_dir="$vuln_abs_dir/exploit_files/exploit_apk"
+    local verify_script="$vuln_abs_dir/verify_files/verify_exploit.sh"
+    local metadata_file="$vuln_abs_dir/metadata.json"
     if [ ! -f "$patch_file" ]; then
         echo -e "${ERROR} Patch file not found: $patch_file"
-        exit 1
-    fi
-
-    if [ ! -f "$exploit_script" ]; then
-        echo -e "${ERROR} Exploit script not found: $exploit_script"
         exit 1
     fi
 
@@ -959,7 +1142,10 @@ run_vuln_test() {
     if ! load_vuln_test_settings "$vuln_dir" "$app_dir"; then
         exit 1
     fi
-    clean_apk_mode="$VULN_CLEAN_APK_MODE"
+
+    if ! validate_vuln_exploit_format "$vuln_abs_dir" "$VULN_ATTACKER_MODEL"; then
+        exit 1
+    fi
 
     echo -e "${INFO} Validating metadata.json schema..."
     if ! (cd "$ROOT_DIR" && python3 -m pytest --no-header -q         tests/test_synthetic_vuln_metadata.py::test_synthetic_vuln_metadata         --dirs "$(dirname "$metadata_file")"); then
@@ -987,13 +1173,7 @@ run_vuln_test() {
     local APK_DIR="$ROOT_DIR/$app_dir/apk"
     local VULN_APK_DIR="$APK_DIR/$vuln_id"
     local CLEAN_APK_DIR="$APK_DIR"
-    local clean_apk="apk/${app_name}.apk"
     local skip_build=false
-
-    if [ "$clean_apk_mode" = "security_patch" ]; then
-        CLEAN_APK_DIR="$ROOT_DIR/zerodays/patches/$app_name/hardened"
-        clean_apk="$ROOT_DIR/zerodays/patches/$app_name/hardened/${app_name}.apk"
-    fi
 
     if [ "$SKIP_APK" = true ]; then
         echo -e "${INFO} --skip-apk: checking for existing APKs..."
@@ -1006,7 +1186,7 @@ run_vuln_test() {
         if [ "$base_apk_count" -eq 0 ] || [ "$vuln_apk_count" -eq 0 ]; then
             echo -e "${INFO} Missing APKs (base: $base_apk_count, vuln: $vuln_apk_count), attempting download..."
             cd "$ROOT_DIR"
-            if python download_apk.py "$app_name" 2>/dev/null; then
+            if "$PYTHON_CMD" download_apk.py "$app_name" 2>/dev/null; then
                 echo -e "${SUCCESS} Downloaded APKs"
             fi
             cd "$ROOT_DIR/$app_dir"
@@ -1023,13 +1203,8 @@ run_vuln_test() {
             echo -e "${ERROR} Base APK: $CLEAN_APK_DIR/*.apk ($base_apk_count found)"
             echo -e "${ERROR} Vuln APK: $VULN_APK_DIR/*.apk ($vuln_apk_count found)"
             echo -e "${ERROR} To fix: build APKs and publish:"
-            if [ "$clean_apk_mode" = "security_patch" ]; then
-                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --hardened"
-                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
-            else
-                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name"
-                echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
-            fi
+            echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name"
+            echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
             echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
             exit 1
         fi
@@ -1040,18 +1215,10 @@ run_vuln_test() {
 
         cd "$ROOT_DIR"
 
-        if [ "$clean_apk_mode" = "security_patch" ]; then
-            echo -e "${INFO} Building clean hardened APK using build_apk.sh --hardened..."
-            if ! run_build_apk_with_vuln_env "$app_name" --hardened; then
-                echo -e "${ERROR} Failed to build hardened clean APK"
-                exit 1
-            fi
-        else
-            echo -e "${INFO} Building clean APK using build_apk.sh..."
-            if ! run_build_apk_with_vuln_env "$app_name"; then
-                echo -e "${ERROR} Failed to build clean APK"
-                exit 1
-            fi
+        echo -e "${INFO} Building clean APK using build_apk.sh..."
+        if ! run_build_apk_with_vuln_env "$app_name"; then
+            echo -e "${ERROR} Failed to build clean APK"
+            exit 1
         fi
 
         echo -e "${INFO} Building vulnerable APK using build_apk.sh --vuln $vuln_dir..."
@@ -1080,7 +1247,7 @@ run_vuln_test() {
         fix_patch_path="$task_abs_path/fix.patch"
     fi
 
-    task_validation_set_context \
+    if ! task_validation_set_context \
         "$ROOT_DIR" \
         "$ROOT_DIR/$app_dir" \
         "$task_abs_path" \
@@ -1090,17 +1257,17 @@ run_vuln_test() {
         "$package_name" \
         "${VULN_TASK_ID:-$vuln_id}" \
         "${VULN_BASELINE_COMMIT:-}" \
+        "${VULN_ATTACKER_MODEL:-}" \
         "$fix_patch_path" \
         "" \
         "flat" \
-        "true"
+        "true"; then
+        echo -e "${ERROR} Failed to initialize task validation context"
+        exit 1
+    fi
 
     print_header "$CYAN" "PHASE 1: Testing Clean Build (Baseline)"
-    local phase1_apk_arg=""
-    if [ "$clean_apk_mode" = "security_patch" ]; then
-        phase1_apk_arg="$clean_apk"
-    fi
-    if ! task_validation_run_phase "Clean build" "secure" "$phase1_apk_arg" "false"; then
+    if ! task_validation_run_phase "Clean build" "secure" "" "false"; then
         echo -e "${ERROR} Phase 1 failed: Clean build verification failed"
         task_validation_cleanup_runtime
         exit 1

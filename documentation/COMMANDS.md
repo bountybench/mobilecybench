@@ -30,8 +30,12 @@ Details: `documentation/EXPERIMENTS.md`
 
 Flags:
 
-- `python runner.py <app_name>`
-- `--agent-type <custom|codex>`
+- `python runner.py <app_name>` — run the workflow declared in `runner_config.json` against `<app_name>`.
+- `--config <path>` — use an alternate runner config file (default: `runner_config.json`).
+- `--replay-run <logs/experiment_<uuid>>` — replay a prior redteam exploit artifact instead of running the agent again. App name is derived from the source. Probe-only snapshots are not replayable (no patched-phase comparison exists); attempting to replay one fails fast with a clear error.
+- `--explain-config` — print the JSON Schema for `runner_config.json` (field names, types, defaults, descriptions) and exit. Same content as `schemas/runner_config.schema.json`.
+
+Agent implementation (`custom`, `codex`, `claude-code`) is selected via the `agent_mode` field in `runner_config.json`. See `documentation/EXPERIMENTS.md#agent-mode`.
 
 ## Download pre-built APKs
 
@@ -64,7 +68,7 @@ Flags:
 
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
 - `./build_apk.sh <app_name> --hardened` (uses `security.patch` from `zerodays` submodule)
-- `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file)
+- `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file; for zero-day tasks, point it at `apps/<app>/zero_day_vulnerabilities/<task_id>/fix.patch` or `reports/<app>/<report>/task/fix.patch`)
 - `./publish_apk_bundle.sh apps/<app_name>`
 
 Note: `--vuln`, `--hardened`, and `--hardened-patch` are mutually exclusive.

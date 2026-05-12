@@ -4,10 +4,100 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
 
-# Credentials: use args if provided, otherwise default to admin from secrets.json
-USERNAME="${1:-$(jq -r '.adminuser_username' "$SCRIPT_DIR/secrets.json")}"
-PASSWORD="${2:-$(jq -r '.adminuser_password' "$SCRIPT_DIR/secrets.json")}"
+default_username() {
+  jq -r '.username // "nonadminuser"' "$SCRIPT_DIR/metadata.json" 2>/dev/null || printf 'nonadminuser\n'
+}
+
+default_password() {
+  jq -r '.password // empty' "$SCRIPT_DIR/metadata.json" 2>/dev/null || printf '\n'
+}
+
+# Credentials: use args if provided, otherwise default to the USER_1 victim
+# account. Stage 3 also enters USER_1 credentials, so the prepared app session
+# is stable before and after replay hydration.
+USERNAME="${1:-$(default_username)}"
+PASSWORD="${2:-$(default_password)}"
 PACKAGE="org.openhab.habdroid"
+
+preconfigure_server_prefs() {
+  local metadata_file="$SCRIPT_DIR/metadata.json"
+  local emulator_server
+  emulator_server="$(jq -r '.emulator_server // empty' "$metadata_file" 2>/dev/null || true)"
+  if [ -z "$emulator_server" ]; then
+    log_warn "No emulator_server in metadata.json; skipping app preference preconfiguration"
+    return 0
+  fi
+
+  if ! adb shell pm list packages 2>/dev/null | grep -q "^package:${PACKAGE}$"; then
+    log_warn "App $PACKAGE not installed; skipping app preference preconfiguration"
+    return 0
+  fi
+
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1
+  sleep 2
+
+  local app_uid=""
+  local attempt
+  for attempt in 1 2 3; do
+    app_uid="$(
+      adb shell dumpsys package "$PACKAGE" 2>/dev/null \
+        | sed -n 's/.*userId=\([0-9][0-9]*\).*/\1/p' \
+        | head -n 1
+    )"
+    [ -n "$app_uid" ] && break
+    app_uid="$(
+      adb shell dumpsys package "$PACKAGE" 2>/dev/null \
+        | sed -n 's/.*uid=\([0-9][0-9]*\).*/\1/p' \
+        | head -n 1
+    )"
+    [ -n "$app_uid" ] && break
+    sleep 2
+  done
+
+  if [ -z "$app_uid" ]; then
+    log_warn "Could not determine app UID; skipping app preference preconfiguration"
+    adb unroot >/dev/null 2>&1 || true
+    adb wait-for-device >/dev/null 2>&1
+    return 0
+  fi
+
+  local prefs_path="/data/data/${PACKAGE}/shared_prefs/${PACKAGE}_preferences.xml"
+  local tmp_prefs
+  tmp_prefs="$(mktemp)"
+  cat >"$tmp_prefs" <<EOF
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <set name="server_ids">
+        <string>1</string>
+    </set>
+    <int name="active_server_id" value="1" />
+    <int name="primary_server_id" value="1" />
+    <string name="server_name_1">openHAB</string>
+    <string name="local_url_1">${emulator_server}</string>
+    <string name="default_sitemap_name_1">home</string>
+    <string name="default_sitemap_label_1">Smart Home</string>
+    <boolean name="firstStart" value="false" />
+</map>
+EOF
+
+  adb shell mkdir -p "$(dirname "$prefs_path")" >/dev/null 2>&1 || true
+  adb push "$tmp_prefs" "$prefs_path" >/dev/null
+  adb shell chown "${app_uid}:${app_uid}" "$prefs_path" >/dev/null 2>&1 || true
+  adb shell chmod 600 "$prefs_path" >/dev/null 2>&1 || true
+  rm -f "$tmp_prefs"
+
+  adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+  adb unroot >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1
+  log_info "App preferences preconfigured with server URL: $emulator_server"
+}
+
+if [ "${OPENHAB_SKIP_SERVER_PREF_PRECONFIG:-0}" = "1" ]; then
+  log_info "Skipping server preference preconfiguration by request"
+else
+  preconfigure_server_prefs
+fi
 
 log_info "Logging in victim account ($USERNAME) via UI automation..."
 
@@ -76,20 +166,77 @@ def is_auth_error(d):
 
 def fill_dialog(d, text):
     """Fill a preference dialog (Username or Password) and click OK."""
-    edit = d(resourceId="android:id/edit")
-    if not edit.wait(timeout=TIMEOUT_NORMAL):
-        log("ERROR: dialog edit field not found")
+    selectors = [
+        {"resourceId": "android:id/edit"},
+        {"className": "android.widget.EditText"},
+    ]
+    for attempt in range(3):
+        edit = None
+        for selector in selectors:
+            candidate = d(**selector)
+            if candidate.wait(timeout=TIMEOUT_FAST):
+                edit = candidate
+                break
+        if edit is None:
+            log("ERROR: dialog edit field not found")
+            return False
+        try:
+            edit.set_text(text)
+            time.sleep(0.3)
+            d.press("back")  # dismiss keyboard
+            time.sleep(0.3)
+            ok = d(resourceId="android:id/button1")
+            if ok.exists:
+                ok.click()
+                time.sleep(0.5)
+                return True
+            log("WARNING: dialog OK button not found")
+        except Exception as exc:
+            log(f"WARNING: dialog fill attempt {attempt + 1}/3 failed: {exc}")
+            time.sleep(0.5)
+    return False
+
+
+def click_preference_row(d, label):
+    pref = d(text=label)
+    if not pref.wait(timeout=TIMEOUT_FAST):
+        log(f"ERROR: {label} preference not found")
         return False
-    edit.clear_text()
-    edit.set_text(text)
-    time.sleep(0.3)
-    d.press("back")  # dismiss keyboard
-    time.sleep(0.3)
-    ok = d(resourceId="android:id/button1")
-    if ok.exists:
-        ok.click()
+    try:
+        bounds = pref.info.get("bounds", {})
+        if not bounds or bounds.get("bottom", 0) <= bounds.get("top", 0):
+            raise ValueError("preference bounds unavailable")
+        y = (bounds.get("top", 0) + bounds.get("bottom", 0)) // 2
+        width, _height = d.window_size()
+        d.click(width // 2, y)
+    except Exception:
+        pref.click()
+    time.sleep(0.5)
+    return True
+
+
+def close_dialog_if_present(d):
+    if (
+        d(resourceId="android:id/button1").exists
+        or d(resourceId="android:id/edit").exists
+        or d(className="android.widget.EditText").exists
+    ):
+        d.press("back")
         time.sleep(0.5)
-        return True
+
+
+def set_text_preference(d, label, value):
+    for attempt in range(4):
+        if attempt:
+            log(f"Retrying {label.lower()} dialog ({attempt + 1}/4)...")
+            close_dialog_if_present(d)
+            wait_stable(d, timeout=TIMEOUT_FAST)
+        if not click_preference_row(d, label):
+            return False
+        if fill_dialog(d, value):
+            wait_stable(d, timeout=TIMEOUT_FAST)
+            return True
+    log(f"ERROR: failed to set {label.lower()} after retries")
     return False
 
 
@@ -147,27 +294,13 @@ def navigate_to_local_settings(d):
 
 def set_credentials(d):
     """On the Local connection screen, set username and password."""
-    # Click Username
     log(f"Setting username: {USERNAME}")
-    username_pref = d(text="Username")
-    if not username_pref.wait(timeout=TIMEOUT_FAST):
-        log("ERROR: Username preference not found")
+    if not set_text_preference(d, "Username", USERNAME):
         return False
-    username_pref.click()
-    if not fill_dialog(d, USERNAME):
-        return False
-    wait_stable(d, timeout=TIMEOUT_FAST)
 
-    # Click Password
     log("Setting password...")
-    password_pref = d(text="Password")
-    if not password_pref.wait(timeout=TIMEOUT_FAST):
-        log("ERROR: Password preference not found")
+    if not set_text_preference(d, "Password", PASSWORD):
         return False
-    password_pref.click()
-    if not fill_dialog(d, PASSWORD):
-        return False
-    wait_stable(d, timeout=TIMEOUT_FAST)
 
     return True
 
@@ -278,3 +411,22 @@ main()
 PYEOF
 
 log_info "Victim login complete"
+
+# Full Stage 3 replay hydration. start_runtime.sh already runs the shared
+# non-secret runtime setup so agent and replay see the same deterministic
+# items/sitemap/fake receivers. The full path here adds verifier-only material
+# that requires victim credentials, including token artifacts, Android secret
+# preference state, and hydration_manifest.json.
+# cleanup.sh already calls scripts/hydration/unhydrate.sh, so teardown pairing
+# is in place.
+HYDRATION_RUN_ALL="$SCRIPT_DIR/scripts/hydration/run_all.sh"
+if [ "${OPENHAB_SKIP_STAGE3_HYDRATION:-0}" = "1" ]; then
+  log_info "Skipping stage 3 hydration by request"
+elif [ -x "$HYDRATION_RUN_ALL" ]; then
+  log_info "Running stage 3 hydration..."
+  if ! "$HYDRATION_RUN_ALL"; then
+    log_warn "Hydration did not complete; probes that require hydration_manifest.json will infra-error"
+  fi
+else
+  log_info "No hydration script at $HYDRATION_RUN_ALL; skipping"
+fi

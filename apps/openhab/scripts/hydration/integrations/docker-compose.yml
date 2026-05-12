@@ -1,0 +1,101 @@
+services:
+  fake-media-receiver:
+    build: .
+    container_name: "${HYDRATION_RUN_ID}-fake-media-receiver"
+    environment:
+      HYDRATION_ROLE: "media"
+      HYDRATION_RUN_ID: "${HYDRATION_RUN_ID}"
+      HYDRATION_RECEIVER_TOKEN: "${HYDRATION_RECEIVER_TOKEN}"
+      HYDRATION_EMULATOR_RECEIVER_HOST: "${HYDRATION_EMULATOR_RECEIVER_HOST:-10.0.2.2}"
+      HYDRATION_MEDIA_PORT: "${HYDRATION_MEDIA_PORT:-18080}"
+      HYDRATION_CLOUD_PORT: "${HYDRATION_CLOUD_PORT:-18081}"
+      HYDRATION_WEBVIEW_PORT: "${HYDRATION_WEBVIEW_PORT:-18082}"
+      HYDRATION_WEBHOOK_PORT: "${HYDRATION_WEBHOOK_PORT:-18083}"
+    ports:
+      - "127.0.0.1:${HYDRATION_MEDIA_PORT:-18080}:8080"
+    volumes:
+      - ../../../pipeline/stage3/receiver_logs/media:/logs
+    networks:
+      - hydration_receivers
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  fake-openhab-cloud:
+    build: .
+    container_name: "${HYDRATION_RUN_ID}-fake-openhab-cloud"
+    environment:
+      HYDRATION_ROLE: "cloud"
+      HYDRATION_RUN_ID: "${HYDRATION_RUN_ID}"
+      HYDRATION_RECEIVER_TOKEN: "${HYDRATION_RECEIVER_TOKEN}"
+      HYDRATION_EMULATOR_RECEIVER_HOST: "${HYDRATION_EMULATOR_RECEIVER_HOST:-10.0.2.2}"
+      HYDRATION_MEDIA_PORT: "${HYDRATION_MEDIA_PORT:-18080}"
+      HYDRATION_CLOUD_PORT: "${HYDRATION_CLOUD_PORT:-18081}"
+      HYDRATION_WEBVIEW_PORT: "${HYDRATION_WEBVIEW_PORT:-18082}"
+      HYDRATION_WEBHOOK_PORT: "${HYDRATION_WEBHOOK_PORT:-18083}"
+    ports:
+      - "127.0.0.1:${HYDRATION_CLOUD_PORT:-18081}:8080"
+    volumes:
+      - ../../../pipeline/stage3/receiver_logs/cloud:/logs
+    networks:
+      - hydration_receivers
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  fake-webview-origin:
+    build: .
+    container_name: "${HYDRATION_RUN_ID}-fake-webview-origin"
+    environment:
+      HYDRATION_ROLE: "webview"
+      HYDRATION_RUN_ID: "${HYDRATION_RUN_ID}"
+      HYDRATION_RECEIVER_TOKEN: "${HYDRATION_RECEIVER_TOKEN}"
+      HYDRATION_EMULATOR_RECEIVER_HOST: "${HYDRATION_EMULATOR_RECEIVER_HOST:-10.0.2.2}"
+      HYDRATION_MEDIA_PORT: "${HYDRATION_MEDIA_PORT:-18080}"
+      HYDRATION_CLOUD_PORT: "${HYDRATION_CLOUD_PORT:-18081}"
+      HYDRATION_WEBVIEW_PORT: "${HYDRATION_WEBVIEW_PORT:-18082}"
+      HYDRATION_WEBHOOK_PORT: "${HYDRATION_WEBHOOK_PORT:-18083}"
+    ports:
+      - "127.0.0.1:${HYDRATION_WEBVIEW_PORT:-18082}:8080"
+      - "127.0.0.1:${HYDRATION_WEBVIEW_HTTPS_PORT:-18443}:8443"
+    volumes:
+      - ../../../pipeline/stage3/receiver_logs/webview:/logs
+      - ../../../pipeline/stage3/certs:/certs:ro
+    networks:
+      - hydration_receivers
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  fake-webhook-receiver:
+    build: .
+    container_name: "${HYDRATION_RUN_ID}-fake-webhook-receiver"
+    environment:
+      HYDRATION_ROLE: "webhook"
+      HYDRATION_RUN_ID: "${HYDRATION_RUN_ID}"
+      HYDRATION_RECEIVER_TOKEN: "${HYDRATION_RECEIVER_TOKEN}"
+      HYDRATION_EMULATOR_RECEIVER_HOST: "${HYDRATION_EMULATOR_RECEIVER_HOST:-10.0.2.2}"
+      HYDRATION_MEDIA_PORT: "${HYDRATION_MEDIA_PORT:-18080}"
+      HYDRATION_CLOUD_PORT: "${HYDRATION_CLOUD_PORT:-18081}"
+      HYDRATION_WEBVIEW_PORT: "${HYDRATION_WEBVIEW_PORT:-18082}"
+      HYDRATION_WEBHOOK_PORT: "${HYDRATION_WEBHOOK_PORT:-18083}"
+    ports:
+      - "127.0.0.1:${HYDRATION_WEBHOOK_PORT:-18083}:8080"
+    volumes:
+      - ../../../pipeline/stage3/receiver_logs/webhook:/logs
+    networks:
+      - hydration_receivers
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+networks:
+  hydration_receivers:

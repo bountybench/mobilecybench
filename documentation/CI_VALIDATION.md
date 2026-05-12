@@ -32,18 +32,23 @@ Requires: `codebase/`, `metadata.json`, `build.sh`, `start_runtime.sh`
 
 Requires all simple CI files plus: `secrets.json`, `cleanup.sh`, four probe scripts (`test_*.py`), and `vuln_scenarios/`. See `documentation/ADDING_APPS.md` for the complete file tree.
 
+`run_checks.sh` writes runtime score files separately: app-specific scores to `scores.json`, generic scores to `generic_scores.json`, and remote-attacker scores to `scores_remote_attacker.json` when enabled.
+
 **Process:**
 1. File tree schema validation
 2. Baseline CIA check (no vulnerabilities)
    - `./start_runtime.sh`
-   - `../../run_checks.sh .` → `scores.json`
-   - Validate all numeric fields in `scores.json` are `1`
+   - `../../run_checks.sh .` → `scores.json` and `generic_scores.json`
+   - Validate all numeric fields in `scores.json` and `generic_scores.json` are `1`
+   - If remote-attacker probes are enabled and produce `scores_remote_attacker.json`, validate its top-level scores are `1`
 3. Vulnerable Scenario 0 (non‑DoS)
    - `./start_runtime.sh`
    - Run `vuln_scenarios/vuln_scenario_0/vuln.sh`
    - Run checks with injected log:
      - `../../run_checks.sh . vuln_scenarios/vuln_scenario_0/fake_agent_log.log`
-   - Compare `scores.json` with `expected_scores.json`
+   - Compare runtime `scores.json` with reference `expected_scores.json`
+   - Generic runtime output remains separate in `generic_scores.json`; these scenario steps compare app-specific scores
+   - If remote-attacker probes are enabled and reference `expected_scores_remote_attacker.json` is present, compare it with runtime `scores_remote_attacker.json`
 4. Vulnerable Scenario 1 (DoS) — **optional**
    - Only runs if `metadata.json` has a non‑empty `app_server`
    - If no server, leave `app_server` empty and omit Scenario 1
@@ -51,7 +56,9 @@ Requires all simple CI files plus: `secrets.json`, `cleanup.sh`, four probe scri
      - `./start_runtime.sh`
      - Run `vuln_scenarios/vuln_scenario_1/vuln.sh`
      - `../../run_checks.sh .`
-     - Compare `scores.json` with `expected_scores.json`
+     - Compare runtime `scores.json` with reference `expected_scores.json`
+     - Generic runtime output remains separate in `generic_scores.json`; these scenario steps compare app-specific scores
+     - If remote-attacker probes are enabled and reference `expected_scores_remote_attacker.json` is present, compare it with runtime `scores_remote_attacker.json`
 
 ## CI Trigger and Local Testing
 
@@ -137,11 +144,27 @@ Local and external zero-day entry points share the same zero-day runner. `run_ci
   --report-dir /path/to/reports/app-name/report-n
 ```
 
+The supported hardened-build layout today is either the report-style checkout
+above or the public-tree snapshot layout under
+`apps/<app>/zero_day_vulnerabilities/<task_id>/`. In the report-style layout,
+the validator uses `<report-dir>/artifacts/`; in the public-tree layout, it
+uses `apps/<app>/zero_day_vulnerabilities/artifacts/<task_id>/`.
+The task source itself remains source-only in both cases.
+
 Compared with the current synthetic local CI path, zero-day validation:
-1. runs from a temporary copy of the task directory, so runtime artifacts do
+1. runs from a temporary copy of the task directory so runtime artifacts do
    not get written back into the task checkout
-2. builds the secure comparator from `fix.patch`
-3. builds the vulnerable comparator from the unpatched `baseline.commit`
+2. uses the report or public-tree artifact root for `artifacts/` outputs and
+   the hardened build manifest
+3. builds the secure comparator from `fix.patch`
+4. builds the vulnerable comparator from the unpatched `baseline.commit`
+
+That validation path treats the task bundle as the primary execution source of
+truth, while still keeping backward-compatible fallbacks to app metadata for
+`package_name` and `commit_version`. It does not depend on any maintainer-
+release timeline or disclosure schedule; publication metadata such as
+`public_on` is handled separately by the disclosure pipeline in
+`mobilecybench-zerodays` and is ignored by the validator.
 
 ## Flag injection utilities
 

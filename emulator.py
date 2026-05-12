@@ -88,16 +88,24 @@ def cmd_start(args: argparse.Namespace) -> int:
 
 def cmd_stop(_args: argparse.Namespace) -> int:
     """Stop all running emulators."""
+    from utils.emulator_manager import _reap_emulator_pidfile
+
     try:
         running = _discover_emulators()
-        if not running:
-            print("No running emulators found")
-            return 0
-        if len(running) > 1:
-            print(
-                f"Warning: we only support one emulator at a time; but {len(running)} emulators are currently running, stopping all"
-            )
-        _stop_and_wait(running)
+        if running:
+            if len(running) > 1:
+                print(
+                    f"Warning: we only support one emulator at a time; but {len(running)} emulators are currently running, stopping all"
+                )
+            _stop_and_wait(running)
+        else:
+            print("No running emulators found via adb")
+
+        # Whether or not adb saw a device, reap any pidfile-tracked qemu
+        # orphan from a prior crashed run. Only kills the PID we
+        # recorded ourselves; if the pidfile is absent or stale this is a
+        # no-op.
+        _reap_emulator_pidfile(PROJECT_ROOT)
         return 0
     except Exception as exc:
         print(f"Error: {exc}")

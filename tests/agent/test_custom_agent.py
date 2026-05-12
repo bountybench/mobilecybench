@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -102,6 +103,62 @@ class TestCustomAgentMaxIterations:
         # Parse the final_message to check for command
         final_message_parsed = json.loads(result["final_message"])
         assert final_message_parsed["command"] == "FinalSubmissionCommand"
+
+    def _exploit_check_agent(self):
+        return CustomAgent(
+            model="gpt-5.2",
+            max_iterations=1,
+            max_model_response_tokens=1000,
+            screenshot_enabled=False,
+            app_name="test_app",
+            package_name="com.test.app",
+        )
+
+    def test_check_exploit_exists_silent_when_artifact_absent(
+        self, mock_agent_dependencies, caplog
+    ):
+        """A legitimately missing artifact (`test -f` exit 1, empty stderr) is
+        the normal "no" answer to an existence check. It must return False
+        without emitting any ERROR record — otherwise healthy runs gain a
+        false entry in errors.log / ERROR SUMMARY."""
+        from agent import custom_agent as ca_mod
+
+        agent = self._exploit_check_agent()
+        absent = type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+        ca_mod.agent_logger.reset_mock()
+        with caplog.at_level("ERROR"):
+            with patch("subprocess.run", return_value=absent):
+                assert agent._check_exploit_exists() is False
+
+        assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
+        assert not ca_mod.agent_logger.warning.called
+
+    def test_check_exploit_exists_warns_on_operational_failure(
+        self, mock_agent_dependencies
+    ):
+        """An infra failure (`docker exec` non-zero with stderr) must surface
+        as an agent-logger warning so triage can distinguish it from a
+        legitimately missing artifact, even though the function still
+        returns False either way."""
+        from agent import custom_agent as ca_mod
+
+        agent = self._exploit_check_agent()
+        infra_fail = type(
+            "R",
+            (),
+            {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "Error response from daemon: No such container: kali-container",
+            },
+        )()
+
+        ca_mod.agent_logger.reset_mock()
+        with patch("subprocess.run", return_value=infra_fail):
+            assert agent._check_exploit_exists() is False
+
+        assert ca_mod.agent_logger.warning.called
 
     def test_single_iteration(self, mock_agent_dependencies):
         """Test agent with max_iterations=1."""
@@ -243,9 +300,59 @@ class TestModelProviderRouting:
                 provider, LiteLLMProvider
             ), f"{model.value.api_id} should use LiteLLMProvider"
 
-    def test_unsupported_model_raises_error(self):
+    def test_unknown_model_blocks_by_default(self):
+        """Unknown models are rejected unless allow_unregistered=True.
+
+        Default deny protects cost telemetry: until a model is added to
+        SupportedModel and utils/token_pricing.json, cost_usd would read
+        as zero. We force operators to opt in explicitly.
+        """
         with pytest.raises(ValueError, match="Unsupported model"):
             get_model_provider("some-random-model", instructions="test")
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    def test_unknown_model_with_opt_in_routes_to_litellm_with_warning(self, caplog):
+        """allow_unregistered=True falls through to LiteLLM with a WARNING.
+
+        Intended for short experiments only; cost telemetry is incorrect
+        until the model is registered in token_pricing.json.
+        """
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="MobileCyBench"):
+            provider = get_model_provider(
+                "some-random-model", instructions="test", allow_unregistered=True
+            )
+
+        assert isinstance(provider, LiteLLMProvider)
+        # The default detection rule (no substring match) routes to OPENAI_API_KEY.
+        assert provider._rule.env_var == "OPENAI_API_KEY"
+        warning_messages = [r.getMessage() for r in caplog.records]
+        assert any(
+            "some-random-model" in m and "SupportedModel" in m for m in warning_messages
+        ), warning_messages
+        # Warning must mention the cost-tracking gap so it isn't silently lost.
+        assert any(
+            "cost_usd" in m and "$0" in m for m in warning_messages
+        ), warning_messages
+        assert any(
+            "token_pricing.json" in m for m in warning_messages
+        ), warning_messages
+
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=False)
+    def test_unknown_claude_model_with_opt_in_auto_detects_anthropic(self, caplog):
+        """With opt-in, a substring-recognised model id (e.g. 'claude') routes
+        to the matching provider's env var via LiteLLM."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="MobileCyBench"):
+            provider = get_model_provider(
+                "claude-future-model", instructions="test", allow_unregistered=True
+            )
+
+        assert isinstance(provider, LiteLLMProvider)
+        assert provider._rule.env_var == "ANTHROPIC_API_KEY"
+        assert any("claude-future-model" in r.getMessage() for r in caplog.records)
 
 
 class TestLiteLLMProviderUsagePassthrough:

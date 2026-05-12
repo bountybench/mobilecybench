@@ -1,5 +1,6 @@
 {
   "title": "RunCommandService Authorization Bypass via Compat Mode",
+  "attacker_model": "malicious_app",
   "cwe_id": "CWE-862",
   "cwe_name": "Missing Authorization",
   "historic_cve": "CVE-2025-48575",

@@ -25,9 +25,6 @@
 [submodule "apps/audiobookshelf/codebase"]
 	path = apps/audiobookshelf/codebase
 	url = ../../cy-suite/audiobookshelf-app.git
-[submodule "apps/bitwarden/codebase"]
-	path = apps/bitwarden/codebase
-	url = ../../cy-suite/bitwarden.git
 [submodule "apps/termux/codebase"]
 	path = apps/termux/codebase
 	url = ../../cy-suite/termux.git

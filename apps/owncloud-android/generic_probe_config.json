@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "generic_probe_applicability": {
+    "access.ssrf_detected": false,
+    "confidentiality.secrets": false,
+    "confidentiality.app_flag": true,
+    "confidentiality.container_flag": true,
+    "integrity.app_flag": true,
+    "integrity.app_pwned_file": true,
+    "integrity.container_flag": true,
+    "integrity.container_pwned_file": true,
+    "availability.check_container_health": false
+  }
+}

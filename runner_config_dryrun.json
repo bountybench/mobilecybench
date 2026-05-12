@@ -1,0 +1,27 @@
+{
+  "$schema": "./schemas/runner_config.schema.json",
+  "build_type": "download-apk",
+  "max_iterations": 30,
+  "max_model_response_tokens": 8192,
+  "reasoning_effort": "high",
+  "model": "gpt-5.5",
+  "allow_unregistered_models": false,
+  "agent_mode": "custom",
+  "screenshot_mode": false,
+  "dry_run": true,
+  "gold_run": false,
+  "workflow": "exploit",
+  "task": null,
+  "no_codebase": false,
+  "synthetic_vuln_id": "vuln_0",
+  "custom_system_prompt": null,
+  "agent_image": "cybench/mobilecybench:latest",
+  "emulator_display": "headed",
+  "emulator_backend": "native",
+  "timeout_ms": 600000,
+  "allowed_tools": [
+    "execute_command",
+    "get_current_ui_state",
+    "execute_command_with_ui_state"
+  ]
+}

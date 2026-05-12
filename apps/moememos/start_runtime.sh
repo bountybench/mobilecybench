@@ -39,27 +39,9 @@ install_app() {
   adb_install_apk "$APK_PATH"
 }
 
-configure_exploit_host_ip() {
-  log_info "Configuring exploit scripts with host IP"
-
-  local host_ip
-  host_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
-
-  if [[ -z "$host_ip" ]]; then
-    log_warn "Could not detect host IP, exploit may not work"
-    return
-  fi
-
-  log_info "Detected host IP: $host_ip"
-
-  local exploit_script="${SCRIPT_DIR}/synthetic_vulnerabilities/vuln_0/exploit_files/exploit.sh"
-  if [[ -f "$exploit_script" ]]; then
-    sed -i.bak "s/HOST_IP_PLACEHOLDER/$host_ip/g" "$exploit_script"
-    rm -f "${exploit_script}.bak"
-    log_info "Updated exploit script with host IP: $host_ip"
-  else
-    log_warn "Exploit script not found at $exploit_script"
-  fi
+run_hydration() {
+  log_info "Hydrating MoeMemos backend benchmark state"
+  "$SCRIPT_DIR/scripts/hydration/run_backend.sh"
 }
 
 main() {
@@ -67,7 +49,7 @@ main() {
   start_stack
   wait_for_health
   install_app
-  configure_exploit_host_ip
+  run_hydration
   log_info "MoeMemos setup complete! Server: $MEMOS_URL"
 }
 

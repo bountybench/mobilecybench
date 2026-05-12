@@ -4,21 +4,15 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+# Redirect logs to a temp dir BEFORE importing anything that touches utils.logger.
+# The LoggerManager singleton inspects these env vars at construction time, and
+# the agent imports below transitively import utils.logger.
+os.environ.setdefault("MOBILECYBENCH_LOGS_DIR", tempfile.mkdtemp(prefix="pytest_logs_"))
+os.environ.setdefault("MOBILECYBENCH_SESSION_ID", "pytest_session")
+
 import pytest
 
 from agent.model_providers.base import FunctionCall, ProviderResponse
-
-
-def pytest_configure(config):
-    """Set up test environment before any tests run.
-
-    Redirects logs to a temp directory to avoid polluting the project logs folder.
-    """
-    # Create a temp directory for test logs
-    test_logs_dir = tempfile.mkdtemp(prefix="pytest_logs_")
-    os.environ["MOBILECYBENCH_LOGS_DIR"] = test_logs_dir
-    # Set a fixed session ID to avoid timestamp-based folder creation
-    os.environ["MOBILECYBENCH_SESSION_ID"] = "pytest_session"
 
 
 def pytest_addoption(parser):

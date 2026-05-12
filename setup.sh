@@ -63,11 +63,26 @@ except:
 # Warn user about old SDK versions and ask for confirmation
 warn_old_sdk_version() {
     local sdk_version="$1"
-    local context="${2:-Android SDK}"  
-    
+    local context="${2:-Android SDK}"
+
     if [[ $sdk_version -lt 30 ]]; then
         echo "Warning: $context $sdk_version is quite old."
         echo "Old SDK versions may have compatibility issues with modern devices."
+
+        # Non-interactive shells (CI, docker build, `bash setup.sh < /dev/null`)
+        # default to "no" so the script never hangs waiting for input. Set
+        # MOBILECYBENCH_NONINTERACTIVE=1 to force this behavior even on a tty,
+        # or pass --yes-old-sdk on the command line to opt in unattended.
+        if [[ -n "${MOBILECYBENCH_YES_OLD_SDK:-}" ]]; then
+            echo "MOBILECYBENCH_YES_OLD_SDK is set — proceeding."
+            return 0
+        fi
+        if [[ -n "${MOBILECYBENCH_NONINTERACTIVE:-}" ]] || ! [ -t 0 ]; then
+            echo "Non-interactive shell detected; cancelling setup. Set"
+            echo "MOBILECYBENCH_YES_OLD_SDK=1 to proceed unattended."
+            exit 0
+        fi
+
         read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -166,7 +181,6 @@ else
                 echo ""
                 echo "Mode 1: Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
                 echo "Mode 2: Auto-configure from app metadata (Recommended)"
-                echo "Mode 3: Manual SDK and system image configuration"
                 echo ""
                 echo "Arguments:"
                 echo "  APP_NAME                       App name from apps/ directory (uses SDK from metadata)"
@@ -196,7 +210,6 @@ else
                 echo "  $0 conversations                      # Use conversations app (SDK 35, google_apis)"
                 echo "  $0 owncloud-android                   # Use owncloud-android app (SDK 34, google_apis)"
                 echo "  $0 wordpress                          # Use wordpress app (SDK 35, google_apis)"
-                echo "  $0 --sdk 30                           # Use SDK 30 with default system image"
                 exit 0
                 ;;
             *)
@@ -260,14 +273,36 @@ init_submodules() {
 
     # TODO: switch submodule URLs to SSH instead of HTTPS
     if [[ -n "$INIT_SUBMODULE_APP" ]]; then
-        local submodule_path="apps/${INIT_SUBMODULE_APP}/codebase"
         if [[ ! -d "${SCRIPT_DIR}/apps/${INIT_SUBMODULE_APP}" ]]; then
             log "ERROR: App directory not found: apps/${INIT_SUBMODULE_APP}"
             return 1
         fi
-        log "Initializing submodule: ${submodule_path}"
-        git submodule update --init "$submodule_path"
-        log "Submodule initialized: ${submodule_path}"
+
+        # Initialize every submodule registered under apps/<app>/ in .gitmodules.
+        # Most apps have a single `codebase` submodule, but some (e.g. jitsi-meet)
+        # ship additional infra submodules like `jitsi-docker` that must also
+        # be initialized for start_runtime.sh to succeed.
+        local app_prefix="apps/${INIT_SUBMODULE_APP}/"
+        local submodule_paths=()
+        while IFS= read -r submodule_path; do
+            [[ -n "$submodule_path" ]] && submodule_paths+=("$submodule_path")
+        done < <(
+            git -C "$SCRIPT_DIR" config -f .gitmodules \
+                --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+                | awk '{ print $2 }' \
+                | grep "^${app_prefix}" || true
+        )
+
+        if [[ ${#submodule_paths[@]} -eq 0 ]]; then
+            log "ERROR: No submodules registered under ${app_prefix} in .gitmodules"
+            return 1
+        fi
+
+        for submodule_path in "${submodule_paths[@]}"; do
+            log "Initializing submodule: ${submodule_path}"
+            git -C "$SCRIPT_DIR" submodule update --init "$submodule_path"
+            log "Submodule initialized: ${submodule_path}"
+        done
     else
         log "Initializing all submodules (recursive)..."
         git submodule update --init --recursive
@@ -358,6 +393,15 @@ check_apktool() {
             echo "  3. Rename the jar to apktool.jar"
             echo "  4. Place both files in C:\\Windows\\System32 or add to PATH"
             echo ""
+
+            # Non-interactive shells: fail loudly instead of hanging on input.
+            # The Windows manual-install path can't be automated; the partner
+            # has to install apktool themselves and re-run setup.sh.
+            if [[ -n "${MOBILECYBENCH_NONINTERACTIVE:-}" ]] || ! [ -t 0 ]; then
+                error_exit "apktool not installed and shell is non-interactive. \
+Install apktool (see options above) and re-run setup.sh."
+            fi
+
             read -p "Press Enter after installing apktool to continue..."
 
             if ! command_exists apktool; then
@@ -373,6 +417,32 @@ check_apktool() {
     else
         error_exit "Failed to install apktool"
     fi
+}
+
+check_gh_auth() {
+    if [[ -n "${MOBILECYBENCH_SKIP_GH_CHECK:-}" ]]; then
+        log "Skipping gh auth check (MOBILECYBENCH_SKIP_GH_CHECK set)"
+        return 0
+    fi
+
+    log "Checking GitHub CLI authentication..."
+
+    if ! command_exists gh; then
+        error_exit "GitHub CLI ('gh') not found. Required by default build_type='download-apk'.
+  macOS:   brew install gh
+  Linux:   sudo apt install gh   (or see https://cli.github.com/)
+  Windows: choco install gh
+Then run: gh auth login
+(Building only from source / skip-apk? Set MOBILECYBENCH_SKIP_GH_CHECK=1 to skip this check.)"
+    fi
+
+    # Also accepts GH_TOKEN / GITHUB_TOKEN env auth (CI/Docker, no `gh auth login`).
+    if ! gh auth status >/dev/null 2>&1; then
+        error_exit "gh CLI installed but not authenticated. Run: gh auth login
+(or set GH_TOKEN / GITHUB_TOKEN in your environment for non-interactive use)"
+    fi
+
+    log "gh CLI authenticated"
 }
 
 # Detect OS and architecture
@@ -610,9 +680,29 @@ create_avd() {
     done
 }
 
+# Resolve which pip to install the project with. In order of preference:
+#
+#   1. The active venv (`$VIRTUAL_ENV/bin/pip`) — what the README path
+#      yields and what subprocesses inheriting an activated PATH get.
+#   2. `$PYTHON -m pip` — pairs with the python the rest of the script
+#      uses, regardless of which `pip` happens to be earlier in PATH.
+#
+# Avoids:
+#   - Bare `pip` resolving to a different python than `$PYTHON` when
+#     the user has e.g. system pip on PATH ahead of a venv pip.
+#   - Spurious PEP 668 failures on Homebrew macOS when the runner
+#     subprocess inherits a non-activated PATH but $VIRTUAL_ENV is set.
+install_self_package() {
+    if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/pip" ]]; then
+        "${VIRTUAL_ENV}/bin/pip" install -e .
+    else
+        "$PYTHON" -m pip install -e .
+    fi
+}
+
 # Main setup function
 main() {
-    pip install -e .
+    install_self_package
 
     log "Starting Android Emulator Setup"
     log_supported_sdks "This script will install & prepare an emulator for the following Android SDK Versions"
@@ -636,7 +726,9 @@ main() {
 
     # Check and install apktool
     check_apktool
-    
+
+    check_gh_auth
+
     # Install Android SDK if not present
     if [[ ! -d "$ANDROID_HOME/cmdline-tools" ]]; then
         install_android_sdk "$os"

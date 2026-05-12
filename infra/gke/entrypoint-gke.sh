@@ -98,8 +98,15 @@ if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
     RUN_ID="${RUN_ID:-$(date +%s)}"
     GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"
     echo "Uploading results to $GCS_PATH"
-    gsutil -m cp -r "$MOBILECYBENCH_LOGS_DIR"/experiment_* "$GCS_PATH" 2>/dev/null || \
-        echo "WARNING: GCS upload failed or no experiment logs found"
+    # Real runs land at logs/experiment_*; gold runs at logs/gold/experiment_*_gold (see utils/logger.py).
+    shopt -s nullglob
+    dirs=("$MOBILECYBENCH_LOGS_DIR"/experiment_* "$MOBILECYBENCH_LOGS_DIR"/gold/experiment_*)
+    shopt -u nullglob
+    if [ ${#dirs[@]} -gt 0 ]; then
+        gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
+    else
+        echo "WARNING: no experiment logs found to upload"
+    fi
 fi
 
 exit $EXIT_CODE

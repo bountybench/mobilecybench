@@ -3,6 +3,7 @@
   "commit_version": "23766ac",
   "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-home-assistant-android-v2/apk-bundle.zip",
   "sdk": "35",
+  "system_image": "google_apis",
   "java": "17",
   "emulator_server": "https://10.0.2.2:8123",
   "app_server": "home-assistant_tls_proxy:443",
@@ -11,6 +12,8 @@
   ],
   "username": "testuser",
   "password": "536b824b-5251-4ed8-9f6e-d6640b02c83c",
+  "remote_attacker_username": "nonadminuser",
+  "remote_attacker_password": "9839237d-5b0f-454e-a053-35c0c464d116",
   "package_name": "io.homeassistant.companion.android",
   "container_names": [
     "home-assistant_tls_proxy",
