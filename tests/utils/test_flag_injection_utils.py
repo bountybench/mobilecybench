@@ -104,7 +104,9 @@ def test_ensure_root_retries_when_adb_root_times_out(monkeypatch, caplog):
     # _run rewrites cmd[0] from "adb" to an absolute path via _tool_bin to
     # block PATH-hijack reward hacks; stub the resolver here so the test
     # doesn't depend on a real adb binary being installed.
-    monkeypatch.setattr(flag_injection_utils, "_tool_bin", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        flag_injection_utils, "_tool_bin", lambda name: f"/usr/bin/{name}"
+    )
     sleeps = []
     calls = []
     expected_timeout = flag_injection_utils._ADB_CMD_TIMEOUT_SECONDS
