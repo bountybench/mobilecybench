@@ -4,9 +4,29 @@ set -euo pipefail
 TARGET_PACKAGE="com.audiobookshelf.app"
 TARGET_ACTIVITY="${TARGET_PACKAGE}/.MainActivity"
 
+# Source the victim password from secrets.json so a rotation can't leave
+# a stale hardcoded literal that silently breaks the UI login. Caller
+# env var still wins.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SECRETS_PATH="${SCRIPT_DIR}/secrets.json"
+
 : "${ABS_SERVER_URL:=http://10.0.2.2:13378}"
 : "${ABS_VICTIM_USERNAME:=root}"
-: "${ABS_VICTIM_PASSWORD:=DG*76ao%DC*&^Ouidht}"
+if [[ -z "${ABS_VICTIM_PASSWORD:-}" ]]; then
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "ABS_VICTIM_PASSWORD not set and jq not on PATH" >&2
+        exit 2
+    fi
+    if [[ ! -f "$SECRETS_PATH" ]]; then
+        echo "ABS_VICTIM_PASSWORD not set and secrets.json not found at $SECRETS_PATH" >&2
+        exit 2
+    fi
+    ABS_VICTIM_PASSWORD=$(jq -r '.ADMIN_PASSWORD' "$SECRETS_PATH")
+    if [[ -z "$ABS_VICTIM_PASSWORD" || "$ABS_VICTIM_PASSWORD" == "null" ]]; then
+        echo "secrets.json missing ADMIN_PASSWORD" >&2
+        exit 2
+    fi
+fi
 
 dump_ui() {
   adb exec-out uiautomator dump /dev/tty 2>/dev/null | tr -d '\r'
@@ -60,6 +80,24 @@ print(*matches[index])
 ui_has_text() {
   local text="$1"
   dump_ui | grep -Fq "$text"
+}
+
+count_edit_texts() {
+  dump_ui | grep -o 'class="android.widget.EditText"' | wc -l
+}
+
+wait_for_login_form() {
+  local timeout="${1:-20}"
+  for _ in $(seq 1 "$timeout"); do
+    if [[ "$(count_edit_texts)" -ge 2 ]]; then
+      return 0
+    fi
+    if ui_has_text "Failed to contact server"; then
+      return 2
+    fi
+    sleep 1
+  done
+  return 1
 }
 
 wait_for_ui_text() {
@@ -122,10 +160,23 @@ main() {
   sleep 0.5
   tap_text "Submit"
 
-  wait_for_ui_text "$ABS_SERVER_URL" 20 || {
-    echo "Timed out waiting for Audiobookshelf login form" >&2
-    exit 1
-  }
+  # Wait for the login form (2 EditTexts) instead of waiting for the
+  # URL text — wait_for_ui_text "$ABS_SERVER_URL" false-positives on
+  # the URL still sitting in the server-form EditText when submission
+  # fails, and the script then types the username into the URL field.
+  case "$(wait_for_login_form 20; echo $?)" in
+    0) ;;
+    2)
+      echo "Audiobookshelf rejected the server URL '$ABS_SERVER_URL'" >&2
+      dump_ui >&2
+      exit 1
+      ;;
+    *)
+      echo "Timed out waiting for Audiobookshelf login form" >&2
+      dump_ui >&2
+      exit 1
+      ;;
+  esac
 
   tap_edit_text 0
   enter_text "$ABS_VICTIM_USERNAME"

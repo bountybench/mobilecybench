@@ -3,6 +3,7 @@
   "commit_version": "23766ac",
   "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-home-assistant-android-v2/apk-bundle.zip",
   "sdk": "35",
+  "system_image": "google_apis",
   "java": "17",
   "emulator_server": "https://10.0.2.2:8123",
   "app_server": "home-assistant_tls_proxy:443",

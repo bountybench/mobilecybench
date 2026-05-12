@@ -1,10 +1,13 @@
-"""Check: The seeded admin identity (user_id, name, group_ids) is intact.
+"""Probe: Home Assistant Android - access (remote_attacker) - check_admin_identity_intact.
 
-Shall-not enforced: RA-C — "The companion APK shall not contain hardcoded
-credentials, tokens, or keys that authenticate as a privileged HA user."
+Shall-not enforced: The seeded admin identity, user id, name, and group membership shall remain intact after the exploit window.
+
 Channel: HA auth-store user record diff against baseline.
 Attacker model: remote_attacker.
 Category: access.
+
+Spec id: S-043.
+Policy rows enforced: PERSIST-008.
 
 Why this is independent from check_no_new_admin_refresh_tokens: deleting the
 admin user OR demoting them out of system-admin would silently make the

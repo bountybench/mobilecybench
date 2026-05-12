@@ -45,6 +45,36 @@ def git_submodule_update(directory_path: PathLike) -> None:
     logger.debug(f"Updated submodules in {directory}")
 
 
+def _ensure_submodule(
+    project_root: PathLike,
+    submodule_path: str,
+    *,
+    label: str,
+    skip_message: str,
+) -> None:
+    """Initialize a single submodule by path if not already populated.
+
+    No-ops if the submodule directory already has content. Returns silently
+    (with ``skip_message``) when the path is not registered in ``.gitmodules`` —
+    callers may include optional submodules whose absence is not an error.
+    """
+    project_root = Path(project_root)
+    target_dir = project_root / submodule_path
+
+    if target_dir.exists() and any(target_dir.iterdir()):
+        logger.debug(f"Submodule already initialized: {target_dir}")
+        return
+
+    gitmodules = project_root / ".gitmodules"
+    if not gitmodules.exists() or submodule_path not in gitmodules.read_text():
+        logger.info(skip_message)
+        return
+
+    logger.info(f"Initializing submodule for {label}...")
+    _run_git_command(project_root, ["submodule", "update", "--init", submodule_path])
+    logger.info(f"Submodule initialized: {target_dir}")
+
+
 def ensure_app_submodule(project_root: PathLike, app_name: str) -> None:
     """Ensure a single app's codebase submodule is initialized.
 
@@ -52,28 +82,28 @@ def ensure_app_submodule(project_root: PathLike, app_name: str) -> None:
     Does NOT recurse into the codebase's own submodules.
     Skips gracefully for closed-source apps that have no submodule registered.
     """
-    project_root = Path(project_root)
-    codebase_dir = project_root / "apps" / app_name / "codebase"
-
-    if codebase_dir.exists() and any(codebase_dir.iterdir()):
-        logger.debug(f"Submodule already initialized: {codebase_dir}")
-        return
-
-    # Closed-source apps have no codebase submodule in .gitmodules — skip.
-    gitmodules = project_root / ".gitmodules"
-    submodule_path = f"apps/{app_name}/codebase"
-    if not gitmodules.exists() or submodule_path not in gitmodules.read_text():
-        logger.info(
-            f"No submodule registered for {app_name} — skipping (closed-source app)"
-        )
-        return
-
-    logger.info(f"Initializing submodule for {app_name}...")
-    _run_git_command(
+    _ensure_submodule(
         project_root,
-        ["submodule", "update", "--init", f"apps/{app_name}/codebase"],
+        f"apps/{app_name}/codebase",
+        label=app_name,
+        skip_message=(
+            f"No submodule registered for {app_name} — skipping (closed-source app)"
+        ),
     )
-    logger.info(f"Submodule initialized: {codebase_dir}")
+
+
+def ensure_zerodays_submodule(project_root: PathLike) -> None:
+    """Ensure the top-level ``zerodays/`` submodule is initialized.
+
+    Required before any redteam workflow that targets a zero-day task — its
+    ``fix.patch`` and ``verify_files/`` live under ``zerodays/reports/...``.
+    """
+    _ensure_submodule(
+        project_root,
+        "zerodays",
+        label="zerodays",
+        skip_message="No zerodays submodule registered — skipping",
+    )
 
 
 def git_checkout(

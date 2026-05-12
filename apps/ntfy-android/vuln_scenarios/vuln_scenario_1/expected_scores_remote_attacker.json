@@ -1,0 +1,38 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "private_subscription": 1,
+    "anonymous_auth_add": 1,
+    "send_message_confused_deputy": 1,
+    "click_private_subscription": 1,
+    "score": 1
+  },
+  "availability_details": {
+    "auto_attachment_over_cap": 1,
+    "expired_attachment_auto_download": 1,
+    "user_mediated_oversized_download": 1,
+    "exact_alarm_wsreconnect_denied": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "secret_leak": 1,
+    "topic_name_leak": 1,
+    "bcrypt_hash_leak": 1,
+    "score": 1
+  },
+  "integrity_details": {
+    "attachment_cache": 1,
+    "icon_cache": 1,
+    "http_action": 1,
+    "broadcast_action": 1,
+    "duplicate_server_id": 1,
+    "topic_spoof": 1,
+    "vuln1_filesystem_traversal": 1,
+    "score": 1
+  }
+}

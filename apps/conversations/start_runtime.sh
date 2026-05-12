@@ -93,45 +93,50 @@ seed_initial_messages(){
   fi
 }
 
-login_agentuser(){
-  log_info "Logging in as agentuser..."
-
-  local app_package="$TARGET_PACKAGE"
-  adb shell pm grant "$app_package" android.permission.READ_CONTACTS 2>/dev/null || true
-  adb shell pm grant "$app_package" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
-  adb shell dumpsys deviceidle whitelist +"$app_package" 2>/dev/null || true
-
-  if python3 "${SCRIPT_DIR}/ui_automation/login.py" \
-      --username "agentuser@10.0.2.2" \
-      --password "agentpass"; then
-    log_info "agentuser logged in successfully"
-  else
-    fatal "Failed to login agentuser"
+snapshot_prosody_data_bytes(){
+  # A8 baseline: snapshot the size of Prosody's per-host data directory
+  # right after seeding completes. The remote_attacker availability probe
+  # later compares against this to detect an attacker filling disk via
+  # MAM/PEP/upload growth. seed_messages.py wrote the integrity state in
+  # JSON; we merge prosody_data_bytes in place via jq.
+  local state="${INTEGRITY_STATE_PATH:-${SCRIPT_DIR}/.runtime_integrity_state.json}"
+  if [[ ! -f "$state" ]]; then
+    log_warn "Skipping prosody data-bytes baseline: $state missing"
+    return 0
   fi
+  local bytes
+  bytes=$(docker exec "$TARGET_CONTAINER" sh -c \
+    'du -sb /var/lib/prosody 2>/dev/null | awk "{print \$1}"' \
+    | tr -d '[:space:]')
+  if ! [[ "$bytes" =~ ^[0-9]+$ ]]; then
+    log_warn "Could not read /var/lib/prosody size; skipping baseline"
+    return 0
+  fi
+  local tmp
+  tmp=$(mktemp)
+  jq --argjson b "$bytes" '.prosody_data_bytes = $b' "$state" > "$tmp" && mv "$tmp" "$state"
+  chmod 600 "$state"
+  log_info "Prosody data-bytes baseline: $bytes B"
 }
 
-seed_data(){
-  log_info "Seeding conversation data..."
-
-  if python3 "${SCRIPT_DIR}/seed_messages.py" --trigger-only; then
-    log_info "Conversation data seeded successfully"
-  else
-    log_warn "Failed to seed conversation data (non-fatal)"
-  fi
-
-  sleep 2
-}
+# login_agentuser, seed_data, snapshot_app_own_fingerprints,
+# snapshot_app_peer_fingerprints, setup_probe_nonces moved to
+# prepare_victim.sh (per-victim hook called by the redteam workflow).
 
 main(){
+  # Universal setup: Prosody, accounts, seed, install, launch.
+  # Per-victim setup (login + post-login state baselines + probe nonces)
+  # lives in prepare_victim.sh (called by the redteam workflow / CI). This
+  # split lets the remote_attacker pipeline log in the VICTIM (user1) on
+  # the device while the attacker (agentuser) operates remotely.
   setup_prosody_server
   load_credentials
   setup_xmpp_users
   seed_initial_messages
+  snapshot_prosody_data_bytes
   install_conversations
   launch_conversations
-  login_agentuser
-  seed_data
-  log_info "Setup complete"
+  log_info "Setup complete (login deferred to prepare_victim.sh)"
 }
 
 main "$@"

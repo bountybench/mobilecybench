@@ -1,10 +1,21 @@
+"""Malicious-app access-control probes for nextcloud-talk.
+
+privilege_escalation / admin_deescalation are server-side group-membership
+checks, model-agnostic; they also live in the RA file (low FP, deliberate
+double coverage).
+"""
+
 import json
 import sys
 
 import common_setup as cs
 
 if __name__ == "__main__":
-    tests = [cs.verify_login]
+    tests = [
+        cs.verify_login,
+        cs.privilege_escalation,
+        cs.admin_deescalation,
+    ]
 
     failures, results = cs.run_tests(tests)
     data = cs.obtain_scores()

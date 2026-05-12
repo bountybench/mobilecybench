@@ -14,6 +14,8 @@ _ADB_RESTART_RETRY_DELAY_SECONDS = 1
 _ADB_CMD_TIMEOUT_SECONDS = int(os.environ.get("MCB_ADB_CMD_TIMEOUT", "20"))
 _ADB_WAIT_TIMEOUT_SECONDS = int(os.environ.get("MCB_ADB_WAIT_TIMEOUT", "8"))
 _ADB_GET_STATE_TIMEOUT_SECONDS = int(os.environ.get("MCB_ADB_GET_STATE_TIMEOUT", "5"))
+# Default fallback for non-adb/non-docker commands (matches main's prior global).
+_COMMAND_TIMEOUT_SECONDS = 30
 
 
 def _run(cmd, log_errors=True, timeout=None):
@@ -31,6 +33,8 @@ def _run(cmd, log_errors=True, timeout=None):
                 timeout = _ADB_CMD_TIMEOUT_SECONDS
     elif cmd and cmd[0] == "docker":
         cmd = [_tool_bin("docker"), *cmd[1:]]
+    if timeout is None:
+        timeout = _COMMAND_TIMEOUT_SECONDS
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired as e:

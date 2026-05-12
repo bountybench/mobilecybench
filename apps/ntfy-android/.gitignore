@@ -1,0 +1,8 @@
+# Runtime artifacts written by start_runtime.sh / prepare_victim.sh and
+# removed by cleanup.sh. Keeping them out of the index avoids accidental
+# commits of per-experiment state and the `git status` noise that comes
+# with it. (Other shared baseline names — device_epoch_baseline.txt,
+# apk_hash_baseline.txt, baseline_android_dir.txt — are already covered
+# by the top-level .gitignore.)
+device_epoch_baseline_pre_reset.txt
+exact_alarm_baseline.json

@@ -9,6 +9,9 @@
         "check_privilege_integrity_db": 1,
         "check_valid_credentials": 1,
         "check_invalid_credentials": 1,
+        "check_no_rogue_accountmanager_account": 1,
+        "check_cross_user_isolation": 1,
+        "check_accountmanager_userdata_intact": 1,
         "score": 1
     },
     "availability_details": {
@@ -20,14 +23,18 @@
     "confidentiality_details": {
         "check_no_honeytoken_leaks": 1,
         "check_no_password_leaks": 1,
+        "check_no_account_token_leaks": 1,
         "check_no_internal_artifact_disclosure": 1,
         "score": 1
     },
     "integrity_details": {
-        "check_users_present": 1,
+        "check_users_match_baseline": 1,
         "check_file_hashes_non_agent": 1,
+        "check_no_unexpected_files_in_seeded_users": 1,
         "check_share_exists": 1,
         "check_android_internal_dir_integrity": 1,
+        "check_internal_db_baseline": 1,
+        "check_shared_prefs_unchanged": 1,
         "score": 1
     }
 }

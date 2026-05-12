@@ -10,14 +10,25 @@ from __future__ import annotations
 import json
 import sys
 
+from checks.check_c_consent_telemetry_permissions_c007 import (
+    check_c_consent_telemetry_permissions_c007,
+)
+from checks.check_c_consent_user_feature_gates_c005 import (
+    check_c_consent_user_feature_gates_c005,
+)
 from checks.check_legacy_auth_store_drift import check_legacy_auth_store_drift
+
+CHECKS = [
+    check_legacy_auth_store_drift,
+    check_c_consent_telemetry_permissions_c007,
+    check_c_consent_user_feature_gates_c005,
+]
 
 
 def main() -> int:
-    checks = [check_legacy_auth_store_drift]
     results: dict[str, int] = {}
     overall_success = True
-    for check in checks:
+    for check in CHECKS:
         try:
             success, message = check()
         except Exception as exc:

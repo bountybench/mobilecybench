@@ -55,9 +55,23 @@ install_and_launch(){
 hide_secrets(){
   log_info "Hiding secrets on device"
   adb root || true
+  adb wait-for-device || true
   sleep 2
   adb_hide_secret_files "$SCRIPT_DIR/secrets.json" /data/cache /data/misc /data/local/tmp
+  # `adb unroot` returns the daemon to non-root mode; on emulators the
+  # transition can briefly drop the connection, leaving the device
+  # marked offline for the next caller (the post-script package check).
+  # `wait-for-device` blocks until the daemon is reachable again. The
+  # extra `adb shell true` polls past any "device offline" state that
+  # wait-for-device alone may not clear.
   adb unroot || true
+  adb wait-for-device || true
+  for _ in 1 2 3 4 5; do
+    if adb shell true >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
 }
 
 main(){

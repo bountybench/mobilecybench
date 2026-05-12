@@ -270,6 +270,11 @@ adb_cleanup() {
 
 # Users are pre-committed in openhab_userdata/jsondb/users.json — no need
 # to remove them via Karaf. Just tear down the containers.
+if [ -x "$ROOT_DIR/scripts/hydration/unhydrate.sh" ]; then
+  LOG "Running hydration cleanup"
+  "$ROOT_DIR/scripts/hydration/unhydrate.sh" || LOG "Warning: hydration cleanup failed; continuing with baseline cleanup"
+fi
+
 docker_cleanup
 
 # Uninstall the app from emulator (only if one is connected)

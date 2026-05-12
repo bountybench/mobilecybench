@@ -1,10 +1,13 @@
-"""Check: HA companion Android process is alive.
+"""Probe: Home Assistant Android - availability (remote_attacker) - check_companion_process_alive.
 
-Shall-not enforced: RA-A — "A remote attacker shall not be able to crash or
-hang the companion app or HA Core, leaving the user unable to control devices."
+Shall-not enforced: A remote attacker shall not crash or hang the companion app process.
+
 Channel: ADB shell `pidof <package>`.
-Attacker model: remote_attacker (also exercised under malicious_app).
+Attacker model: remote_attacker.
 Category: availability.
+
+Spec id: S-049.
+Policy rows enforced: NET-008.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: probe never inspects source.

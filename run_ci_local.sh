@@ -120,6 +120,12 @@ verify_shared_net_connectivity() {
     fi
 }
 
+compare_expected_score_subset() {
+    local expected_json="$1"
+    local actual_json="$2"
+    python3 "$ROOT_DIR/scripts/compare_score_subset.py" "$expected_json" "$actual_json"
+}
+
 # Start SSRF listener container
 start_ssrf_listener() {
     echo -e "${INFO} Starting SSRF listener container..."
@@ -287,11 +293,60 @@ determine_setup_modes() {
     echo "$selected_modes"
 }
 
+current_app_dir() {
+    local app_dir
+    app_dir=$(git rev-parse --show-prefix 2>/dev/null || true)
+    app_dir="${app_dir%/}"
+
+    if [[ -z "$app_dir" || "$app_dir" != apps/* ]]; then
+        echo -e "${ERROR} Could not determine app directory from current directory: $(pwd)" >&2
+        return 1
+    fi
+
+    echo "$app_dir"
+}
+
+init_app_submodules() {
+    local app_dir="${1:-}"
+    if [[ -z "$app_dir" ]]; then
+        app_dir=$(current_app_dir) || return 1
+    fi
+    app_dir="${app_dir%/}"
+
+    local app_prefix="${app_dir}/"
+    local submodule_paths=()
+    while IFS= read -r submodule_path; do
+        [[ -n "$submodule_path" ]] && submodule_paths+=("$submodule_path")
+    done < <(
+        git -C "$ROOT_DIR" config -f .gitmodules \
+            --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+            | awk -v prefix="$app_prefix" 'index($2, prefix) == 1 { print $2 }' \
+            || true
+    )
+
+    if [[ ${#submodule_paths[@]} -eq 0 ]]; then
+        echo -e "${ERROR} No submodules registered under ${app_prefix} in .gitmodules" >&2
+        return 1
+    fi
+
+    # Initialize every submodule registered under the app, not just codebase.
+    # Some apps ship auxiliary runtime submodules (for example Jitsi Docker
+    # assets) that start_runtime.sh needs, but only codebase is checked out to
+    # the app commit below.
+    for submodule_path in "${submodule_paths[@]}"; do
+        echo -e "${INFO} Initializing submodule: ${submodule_path}"
+        if ! git -C "$ROOT_DIR" submodule update --init "$submodule_path"; then
+            echo -e "${ERROR} Failed to initialize submodule: ${submodule_path}" >&2
+            return 1
+        fi
+    done
+}
+
 checkout_commit() {
     local commit_override="${1:-}"
     echo "Current directory: $(pwd)"
     if [[ -f "metadata.json" ]]; then
-        commit="$commit_override"
+        local commit="$commit_override"
         if [[ -z "$commit" ]]; then
             commit=$(jq -r '.["commit_version"] // empty' "metadata.json")
         fi
@@ -299,7 +354,7 @@ checkout_commit() {
         if [[ -n "$commit" ]]; then
             echo "Found commit: $commit"
 
-            git submodule update --init codebase
+            init_app_submodules || exit 1
             echo "Cleaning repository to remove all changes and untracked files..."
 
             cd "codebase" || exit 1
@@ -736,12 +791,13 @@ run_test_check() {
         fi
 
         # Compare remote_attacker scores when both file and expectation exist.
-        # Opt-in: scenarios without an expected_scores_remote_attacker.json
-        # remain MA-only.
+        # The expected fixture is a stable subset of the actual score file:
+        # score-affecting probe keys must match exactly, while dynamic
+        # diagnostic details may be present only in the actual output.
         ra_expected="vuln_scenarios/vuln_scenario_$vuln_scenario/expected_scores_remote_attacker.json"
         ra_actual="scores_remote_attacker.json"
         if [ -f "$ra_expected" ] && [ -f "$ra_actual" ]; then
-            if diff <(jq -S . "$ra_expected") <(jq -S . "$ra_actual") >/dev/null; then
+            if compare_expected_score_subset "$ra_expected" "$ra_actual"; then
                 echo -e "${SUCCESS} remote_attacker scores match"
             else
                 echo -e "${ERROR} remote_attacker scores do not match"
@@ -814,8 +870,10 @@ run_tests_for_mode() {
     
     cd "$ROOT_DIR/$dir"
     
-    # Skip this step if you want to persist your apk
-    checkout_commit "$dir"
+    # Reset the app submodule to the commit declared by this app's metadata.
+    # The previous argument here was the app directory, which was then treated
+    # as a commit and made `git checkout apps/<app>` fail under normal probe CI.
+    checkout_commit
     
     # Check if test_X.py exists to determine test strategy and required scripts
     if [ -f "test_access_control.py" ] || [ -f "test_availability.py" ] || [ -f "test_confidentiality.py" ] || [ -f "test_integrity.py" ]; then

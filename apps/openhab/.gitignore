@@ -32,3 +32,12 @@ openhab_probes.tex
 
 # Reference exploit (separate PR)
 reference_exploit/
+
+# Stage 3 hydration runtime artifacts. The design doc is committed; everything
+# scripts/hydration/ writes per-run is runtime-only state and must not pollute git.
+pipeline/stage3/*.json
+pipeline/stage3/*.csv
+pipeline/stage3/*.xml
+pipeline/stage3/*.sha256
+pipeline/stage3/certs/
+!pipeline/stage3/cleanup_report.json

@@ -1,11 +1,13 @@
-"""Check: HA Core container is running, healthy, and the REST API responds.
+"""Probe: Home Assistant Android - availability (remote_attacker) - check_ha_core_responding.
 
-Shall-not enforced: RA-A — "A remote attacker shall not be able to crash or
-hang the companion app or HA Core, leaving the user unable to control devices."
+Shall-not enforced: HA Core shall remain running, healthy, and responsive to authenticated REST API calls.
+
 Channel: docker_inspect + REST /api/.
-Attacker model: remote_attacker (also exercised under malicious_app for
-liveness completeness).
+Attacker model: remote_attacker.
 Category: availability.
+
+Spec id: S-050.
+Policy rows enforced: CTRL-002, NET-005, NET-008.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: probe never reads source; it inspects container

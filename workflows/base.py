@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Optional
 
 from models.config import RunnerConfig
+from utils.json_io import write_json_atomic
+from utils.text_files import collect_text_files
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +111,10 @@ class Workflow(ABC):
 
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
 
+        # TODO: `config.allowed_tools` is currently honored only by the
+        # custom agent. Codex and Claude Code agents drive their own CLI
+        # tool surfaces (Codex's native `shell`, Claude Code's built-in
+        # tools) and would need a separate filter pass — wire when needed.
         if agent_mode == "claude-code":
             from agent.claude_code_agent import ClaudeCodeAgent
 
@@ -171,6 +177,7 @@ class Workflow(ABC):
                 no_codebase=self.config.no_codebase,
                 allow_unregistered_models=self.config.allow_unregistered_models,
                 vuln_id=self.config.synthetic_vuln_id or "vuln_0",
+                allowed_tools=self.config.allowed_tools,
             )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
@@ -430,24 +437,6 @@ class Workflow(ABC):
         logger.info("Runtime restarted successfully")
 
     @staticmethod
-    def _collect_text_files(
-        directory: Path, label_root: Path | None = None
-    ) -> list[str]:
-        """Collect all decodable text files from a directory as labeled sections."""
-        parts = []
-        if not directory.is_dir():
-            return parts
-        root = label_root or directory
-        for fpath in sorted(directory.rglob("*")):
-            if fpath.is_file():
-                try:
-                    text = fpath.read_text(encoding="utf-8", errors="strict")
-                    parts.append(f"=== {fpath.relative_to(root)} ===\n{text}")
-                except (UnicodeDecodeError, OSError):
-                    pass
-        return parts
-
-    @staticmethod
     def build_evidence_log(
         evidence_path: Path,
         *,
@@ -473,9 +462,9 @@ class Workflow(ABC):
         if replay_stdout:
             parts.append(f"=== replay_stdout ===\n{replay_stdout}")
         if agent_output_dir:
-            parts.extend(Workflow._collect_text_files(agent_output_dir))
+            parts.extend(collect_text_files(agent_output_dir))
         if agent_exploit_dir:
-            parts.extend(Workflow._collect_text_files(agent_exploit_dir))
+            parts.extend(collect_text_files(agent_exploit_dir))
         if agent_log and agent_log.is_file():
             try:
                 text = agent_log.read_text(encoding="utf-8", errors="replace")
@@ -492,16 +481,40 @@ class Workflow(ABC):
         exploit_image: str,
         app_server: str = None,
         *,
-        codebase_dir: Path,
+        codebase_dir: Path | None,
+        replay_apk: Path | None,
         logs_dir: Path | None = None,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
+        Replay mirrors the agent container's resource model: callers pass
+        exactly one of ``codebase_dir`` (no_codebase=False; mounts
+        /app/codebase) or ``replay_apk`` (no_codebase=True; the single APK
+        file to stage and mount at /app/apk so exploit.sh resolves the same
+        path the agent had during the agent phase). The codebase mount is
+        the security-load-bearing one — replay must not expose source the
+        agent never had. The APK mount is for path-symmetry with the agent
+        phase.
+
         Connectivity (ADB + app server) is checked by the script itself.
         """
+        if (codebase_dir is None) == (replay_apk is None):
+            raise ValueError("exactly one of codebase_dir or replay_apk must be set")
+
         if output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Stage the per-phase APK into a sibling dir of output_dir so it
+        # survives the rmtree above, mirroring the agent's single-APK staging
+        # at /app/apk (one APK only — never apps/<app>/apk wholesale).
+        apk_mount_dir: Path | None = None
+        if replay_apk is not None:
+            apk_mount_dir = output_dir.parent / f"{output_dir.name}_apk"
+            if apk_mount_dir.exists():
+                shutil.rmtree(apk_mount_dir)
+            apk_mount_dir.mkdir(parents=True)
+            shutil.copy2(replay_apk, apk_mount_dir / replay_apk.name)
 
         replay_cmd = [
             "bash",
@@ -517,7 +530,10 @@ class Workflow(ABC):
         ]
         if app_server:
             replay_cmd += ["--app-server", app_server]
-        replay_cmd += ["--codebase-dir", str(codebase_dir)]
+        if codebase_dir is not None:
+            replay_cmd += ["--codebase-dir", str(codebase_dir)]
+        if apk_mount_dir is not None:
+            replay_cmd += ["--apk-dir", str(apk_mount_dir)]
         proc = subprocess.Popen(
             replay_cmd,
             cwd=self.project_root,
@@ -579,8 +595,7 @@ class Workflow(ABC):
 
     def _save_result(self, result: dict) -> None:
         scores_file = self.app_dir / self.SCORE_FILE
-        with open(scores_file, "w") as f:
-            json.dump(result, f, indent=2)
+        write_json_atomic(scores_file, result)
         logger.info(f"Result saved to {scores_file}")
 
     def _run_checks(
@@ -637,7 +652,7 @@ class Workflow(ABC):
                     logger.error(f"Invalid JSON in {path}")
                     return False
             else:
-                logger.warning(f"Expected score file not produced: {path}")
+                logger.warning(f"Score output file not produced: {path}")
 
         return True
 

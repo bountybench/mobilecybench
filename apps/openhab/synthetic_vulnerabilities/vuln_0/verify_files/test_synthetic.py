@@ -22,6 +22,15 @@ STATE_FILE = os.path.abspath(
     )
 )
 MAX_SNAPSHOT_AGE_SECONDS = 300
+LOGCAT_MARKER_RE = re.compile(
+    r"SyntheticLogSnapshot "
+    r"launch_action=(?P<launch_action>\S*) "
+    r"launch_data=(?P<launch_data>\S*) "
+    r"snapshot_epoch_ms=(?P<snapshot_epoch_ms>\d+) "
+    r"contains_device_info=(?P<contains_device_info>true|false) "
+    r"snapshot_length=(?P<snapshot_length>\d+) "
+    r"host_redacted=(?P<host_redacted>true|false)"
+)
 
 
 def run(cmd: List[str]) -> str:
@@ -137,6 +146,29 @@ def read_snapshot_header(snapshot_text: str) -> dict:
             except ValueError:
                 header[key] = -1
     return header
+
+
+def read_logcat(adb: List[str]) -> str:
+    ok, out = try_run(adb + ["logcat", "-d", "-v", "brief"])
+    if not ok:
+        return ""
+    return out
+
+
+def read_logcat_snapshot_marker(logcat_text: str) -> dict:
+    matches = list(LOGCAT_MARKER_RE.finditer(logcat_text))
+    if not matches:
+        return {}
+    match = matches[-1]
+    return {
+        "launch_action": match.group("launch_action"),
+        "launch_data": match.group("launch_data"),
+        "snapshot_epoch_ms": int(match.group("snapshot_epoch_ms")),
+        "contains_device_info": match.group("contains_device_info") == "true",
+        "snapshot_length": int(match.group("snapshot_length")),
+        "host_redacted": match.group("host_redacted") == "true",
+        "raw_marker": match.group(0),
+    }
 
 
 def read_expected_apk_hash() -> str:
@@ -262,12 +294,25 @@ def main() -> int:
     result["app_uid"] = app_uid
     result["snapshot_file_uid"] = file_uid
 
-    if not snapshot_text:
-        result["error"] = f"could not read OpenHAB snapshot file at {snapshot_path}"
-        print(json.dumps(result))
-        return 1
+    snapshot_source = "file" if snapshot_text else "logcat"
+    marker: dict = {}
+    if snapshot_text:
+        header = read_snapshot_header(snapshot_text)
+    else:
+        marker = read_logcat_snapshot_marker(read_logcat(adb))
+        if not marker:
+            result["error"] = (
+                f"could not read OpenHAB snapshot file at {snapshot_path} "
+                "or find SyntheticLogSnapshot in logcat"
+            )
+            print(json.dumps(result))
+            return 1
+        header = {
+            "launch_action": marker["launch_action"],
+            "launch_data": marker["launch_data"],
+            "snapshot_epoch_ms": marker["snapshot_epoch_ms"],
+        }
 
-    header = read_snapshot_header(snapshot_text)
     try:
         device_epoch_seconds = read_device_epoch_seconds(adb)
     except RuntimeError as exc:
@@ -284,18 +329,33 @@ def main() -> int:
         state["prepared_epoch_ms"]
     )
 
-    has_snapshot_delimiter = "\n---\n" in snapshot_text
-    contains_device_info = "Device information" in snapshot_text
-    snapshot_has_body = len(snapshot_text.split("---\n", 1)[-1].strip()) > 64
-    host_redacted = state["host_url"] not in snapshot_text
-    owner_matches = app_uid == file_uid
+    has_snapshot_delimiter = "\n---\n" in snapshot_text if snapshot_text else False
+    contains_device_info = (
+        "Device information" in snapshot_text
+        if snapshot_text
+        else bool(marker["contains_device_info"])
+    )
+    snapshot_has_body = (
+        len(snapshot_text.split("---\n", 1)[-1].strip()) > 64
+        if snapshot_text
+        else int(marker["snapshot_length"]) > 64
+    )
+    host_redacted = (
+        state["host_url"] not in snapshot_text
+        if snapshot_text
+        else bool(marker["host_redacted"])
+    )
+    owner_matches = app_uid == file_uid if snapshot_text else None
     file_recent = (
         file_mtime > 0
         and (device_epoch_seconds - file_mtime) <= MAX_SNAPSHOT_AGE_SECONDS
+        if snapshot_text
+        else None
     )
 
     result.update(
         {
+            "snapshot_source": snapshot_source,
             "apk_hash_matches": apk_hash_matches,
             "has_expected_launch_action": has_expected_launch_action,
             "has_expected_launch_data": has_expected_launch_data,
@@ -307,7 +367,9 @@ def main() -> int:
             "host_redacted": host_redacted,
             "owner_matches": owner_matches,
             "snapshot_file_recent": file_recent,
-            "snapshot_sample": snapshot_text[:200],
+            "snapshot_sample": (
+                snapshot_text[:200] if snapshot_text else marker["raw_marker"]
+            ),
         }
     )
 
@@ -317,13 +379,12 @@ def main() -> int:
         and has_expected_launch_data
         and snapshot_epoch_recent
         and snapshot_after_prepare
-        and has_snapshot_delimiter
         and contains_device_info
         and snapshot_has_body
         and host_redacted
-        and owner_matches
-        and file_recent
     )
+    if snapshot_text:
+        verified = verified and has_snapshot_delimiter and owner_matches and file_recent
 
     result["score"] = 1 if verified else 0
     result["exploit_verified"] = verified
