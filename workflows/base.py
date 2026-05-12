@@ -704,7 +704,10 @@ class Workflow(ABC):
                 )
         if self.emulator:
             logger.info("Stopping emulator...")
-            self.emulator.stop()
+            try:
+                self.emulator.stop()
+            except RuntimeError as e:
+                logger.error(f"Emulator cleanup failed: {e}")
         if self.agent_env:
             logger.info("Cleaning up agent environment...")
             self.agent_env.cleanup()

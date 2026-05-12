@@ -868,19 +868,38 @@ class EmulatorManager:
                 subprocess.run(
                     ["adb", "kill-server"],
                     capture_output=True,
+                    text=True,
                     timeout=10,
+                    check=True,
                 )
                 time.sleep(1)
                 subprocess.run(
                     ["adb", "-a", "start-server"],
                     capture_output=True,
+                    text=True,
                     timeout=10,
+                    check=True,
                 )
                 logger.info("ADB server reset complete")
             except FileNotFoundError:
                 logger.warning("ADB not found, skipping server reset")
-            except Exception as e:
-                logger.warning(f"Failed to reset ADB server: {e}")
+            except subprocess.CalledProcessError as e:
+                output = (e.stderr or e.stdout or "").strip()
+                detail = f": {output}" if output else ""
+                message = (
+                    "Failed to reset ADB server after emulator stop: "
+                    f"{' '.join(e.cmd)} exited {e.returncode}{detail}"
+                )
+                logger.error(message)
+                raise RuntimeError(message) from e
+            except subprocess.TimeoutExpired as e:
+                cmd = e.cmd if isinstance(e.cmd, str) else " ".join(e.cmd)
+                message = (
+                    "Failed to reset ADB server after emulator stop: "
+                    f"{cmd} timed out after {e.timeout}s"
+                )
+                logger.error(message)
+                raise RuntimeError(message) from e
 
     def _run_adb(self, args: list[str], **kwargs) -> subprocess.CompletedProcess:
         """Run an ADB command, routing through docker exec in container mode.
@@ -1043,5 +1062,8 @@ class EmulatorManager:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.state in [EmulatorState.STARTING, EmulatorState.RUNNING]:
-            self.stop()
+            try:
+                self.stop()
+            except RuntimeError as e:
+                logger.error(f"Emulator cleanup failed during context exit: {e}")
         return False

@@ -2,7 +2,7 @@
 
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -224,6 +224,25 @@ class TestWorkflowRuntimeCleanup:
 
         assert state_file.exists()
         assert state_file.read_text().strip() == "test_app"
+
+    def test_cleanup_continues_after_emulator_stop_failure(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        codebase_dir = app_dir / "codebase"
+        agent_codebase = app_dir / "agent_codebase"
+        codebase_dir.mkdir(parents=True)
+        agent_codebase.mkdir(parents=True)
+
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow.emulator = MagicMock()
+        workflow.emulator.stop.side_effect = RuntimeError("ADB reset failed")
+        workflow.agent_env = MagicMock()
+
+        with patch("utils.git_utils.git_restore_clean") as mock_restore:
+            workflow.cleanup()
+
+        workflow.agent_env.cleanup.assert_called_once()
+        mock_restore.assert_called_once_with(codebase_dir)
+        assert not agent_codebase.exists()
 
     def test_restart_runtime_marks_backend_active_before_install(self, tmp_path):
         app_dir = tmp_path / "apps" / "test_app"
