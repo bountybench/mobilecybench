@@ -1567,22 +1567,31 @@ def victim_offhost_fetch_findings() -> list[str]:
     if not nongiphy_lines:
         return []
     # Verifier-only root read for the cache.
+    #
+    # Do not use `adb shell find ... -exec ... ;` as argv tokens here.  Unlike
+    # the shell form used by verify_exploit.sh, adb's multi-argument shell mode
+    # does not preserve the escaped terminator reliably on Android/toybox, and
+    # toybox reports `find: -exec without \;`.  That turns the intended
+    # three-channel C-RA-1 signal into a skip/pass even when the verifier has
+    # already observed the victim fetch.  Use a single verifier-owned shell
+    # script and a read loop instead; no attacker-controlled input is
+    # interpolated unquoted.
     run_cmd(["adb", "root"], timeout=20, text=True)
     cache_dir = f"/data/data/{package_name()}/cache/image_cache/"
+    cache_dir_q = shlex.quote(cache_dir)
+    owner_script = (
+        f"if [ -d {cache_dir_q} ]; then "
+        f"find {cache_dir_q} -type f -name '*.cnt' -print 2>/dev/null | "
+        "while IFS= read -r f; do "
+        "stat -c '%u' \"$f\" 2>/dev/null || true; "
+        "done; "
+        "fi"
+    )
     owner_cp = run_cmd(
         [
             "adb",
             "shell",
-            "find",
-            cache_dir,
-            "-name",
-            "*.cnt",
-            "-exec",
-            "stat",
-            "-c",
-            "%u",
-            "{}",
-            ";",
+            owner_script,
         ],
         timeout=20,
         text=True,
