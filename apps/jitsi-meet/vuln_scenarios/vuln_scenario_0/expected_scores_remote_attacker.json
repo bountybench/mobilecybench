@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 1
+  },
+  "confidentiality_details": {
+    "C_RA_3_recording_oauth_or_secret_artifact_leak": 0,
+    "score": 0
+  }
+}

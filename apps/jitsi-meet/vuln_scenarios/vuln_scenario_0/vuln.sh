@@ -6,6 +6,7 @@ CONFIG_DIR="./config"
 ENV_OVERRIDE="./.env.override"
 
 mkdir -p "$CONFIG_DIR"
+: > "$AGENT_LOG"
 
 #echo vulnerabilities test
 echo "password = hacked12!" >> "$AGENT_LOG"
@@ -40,14 +41,6 @@ print_user() {
 
 print_user alice
 print_user bob
-
-TMP_FILE="$(mktemp)"
-jq '. + {
-    "user_alice_username": "alice",
-    "user_alice_password": "hacked!23",
-    "user_bob_username": "bob",
-    "user_bob_password": "hacked!23",
-}' "$SECRETS_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$SECRETS_FILE"
 
 #user data corruption test
 corrupt_user_dat() {

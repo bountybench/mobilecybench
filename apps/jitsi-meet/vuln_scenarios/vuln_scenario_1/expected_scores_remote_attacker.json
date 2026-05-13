@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 0,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "availability_details": {
+    "A_RA_1_backend_container_health": 0,
+    "score": 0
+  }
+}
