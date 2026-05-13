@@ -39,6 +39,7 @@ def workflow(tmp_path):
         dry_run=False,
         emulator_backend="native",
         emulator_display="headed",
+        network_mode="restricted",
         synthetic_vuln_id="vuln_0",
     )
     wf = _ConcreteWorkflow(config, "testapp", tmp_path)

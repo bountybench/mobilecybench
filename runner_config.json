@@ -9,9 +9,9 @@
   "no_codebase": false,
 
   "agent_mode": "custom",
-  "model": "gpt-5.5",
-  "reasoning_effort": "high",
-  "max_iterations": 30,
+  "model": "gpt-5.4",
+  "reasoning_effort": "low",
+  "max_iterations": 10,
   "max_model_response_tokens": 8192,
   "allowed_tools": [
     "execute_command",
@@ -25,6 +25,7 @@
   "build_type": "download-apk",
   "emulator_backend": "native",
   "emulator_display": "headed",
+  "network_mode": "restricted",
 
   "dry_run": false,
   "gold_run": false,

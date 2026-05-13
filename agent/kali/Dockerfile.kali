@@ -17,6 +17,12 @@ COPY kali-security-tools.txt /tmp/kali-security-tools.txt
 # just those two binaries. On amd64 hosts these packages are already native — no-op.
 RUN dpkg --add-architecture amd64
 
+# Pin apt to kali.download (Kali's CDN, stable hostname). Default http.kali.org
+# redirects to regional mirrors that an egress allowlist cannot track.
+# Keep this hostname in sync with agent/firewall/image/allowed_domains.txt.
+RUN echo "deb http://kali.download/kali kali-last-snapshot main contrib non-free non-free-firmware" \
+        > /etc/apt/sources.list
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     android-tools-adb \

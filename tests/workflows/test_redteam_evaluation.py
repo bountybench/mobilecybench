@@ -31,6 +31,7 @@ _BASE_CONFIG = {
     "dry_run": False,
     "emulator_backend": "native",
     "emulator_display": "headed",
+    "network_mode": "restricted",
     "workflow": "redteam",
     "task": "report-0",
     "synthetic_vuln_id": None,
@@ -174,7 +175,11 @@ def _write_agent_artifact(attacker_model: str, *, present: bool = True) -> Path:
 
 def _patch_agent_container(*, create_network=None, setup_agent=None):
     fake_module = types.ModuleType("agent.agent_container")
-    fake_module.create_docker_network = create_network or (lambda name: None)
+    fake_module.SHARED_NET = "shared_net"
+    fake_module.AGENT_NET = "agent_net"
+    fake_module.create_docker_network = create_network or (
+        lambda name, **kwargs: None
+    )
     fake_module.setup_agent_environment = setup_agent or (
         lambda **kwargs: MagicMock(container=MagicMock())
     )
@@ -713,7 +718,7 @@ def test_setup_runtime_environment_preflights_forwards_and_marks_before_install(
         "port_forwards"
     )
 
-    def fake_create_network(name: str) -> None:
+    def fake_create_network(name: str, **kwargs) -> None:
         call_order.append(f"create_network:{name}")
 
     def fake_install(*args, **kwargs):
@@ -755,7 +760,7 @@ def test_setup_runtime_environment_creates_shared_net_before_install(
     wf = _make_workflow(redteam_config, tmp_path)
     call_order: list[str] = []
 
-    def fake_create_network(name: str) -> None:
+    def fake_create_network(name: str, **kwargs) -> None:
         call_order.append(f"create_network:{name}")
 
     def fake_install(*args, **kwargs):

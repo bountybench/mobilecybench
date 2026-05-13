@@ -223,6 +223,15 @@
       "title": "Emulator Boot Timeout Seconds",
       "type": "integer"
     },
+    "network_mode": {
+      "description": "Squid egress policy. 'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). 'permissive' (debug only): any host. Kernel routing (agent_net internal:true) applies in both.",
+      "enum": [
+        "restricted",
+        "permissive"
+      ],
+      "title": "Network Mode",
+      "type": "string"
+    },
     "script_timeout": {
       "default": 600,
       "description": "Seconds for long-running scripts (exploit, verify, setup, prepare_app).",
@@ -266,7 +275,8 @@
     "max_iterations",
     "max_model_response_tokens",
     "dry_run",
-    "screenshot_mode"
+    "screenshot_mode",
+    "network_mode"
   ],
   "type": "object"
 }

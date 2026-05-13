@@ -41,6 +41,7 @@ def base_config():
         agent_image="test-image:latest",
         emulator_display="headed",
         emulator_backend="native",
+        network_mode="restricted",
         workflow="exploit",
         synthetic_vuln_id="vuln_0",
     )
