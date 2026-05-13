@@ -177,9 +177,7 @@ def _patch_agent_container(*, create_network=None, setup_agent=None):
     fake_module = types.ModuleType("agent.agent_container")
     fake_module.SHARED_NET = "shared_net"
     fake_module.AGENT_NET = "agent_net"
-    fake_module.create_docker_network = create_network or (
-        lambda name, **kwargs: None
-    )
+    fake_module.create_docker_network = create_network or (lambda name, **kwargs: None)
     fake_module.setup_agent_environment = setup_agent or (
         lambda **kwargs: MagicMock(container=MagicMock())
     )

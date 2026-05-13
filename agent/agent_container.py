@@ -731,7 +731,9 @@ class AgentEnvironment:
         firewall.stop()
 
 
-def create_docker_network(network_name: str = SHARED_NET, internal: bool = False) -> None:
+def create_docker_network(
+    network_name: str = SHARED_NET, internal: bool = False
+) -> None:
     """Create a Docker network if absent.
 
     Fails hard if an existing network has ``Internal=False`` when the caller
@@ -743,7 +745,9 @@ def create_docker_network(network_name: str = SHARED_NET, internal: bool = False
         existing = client.networks.get(network_name)
     except docker.errors.NotFound:
         client.networks.create(network_name, driver="bridge", internal=internal)
-        logger.info(f"Created network '{network_name}'{' (internal)' if internal else ''}")
+        logger.info(
+            f"Created network '{network_name}'{' (internal)' if internal else ''}"
+        )
         return
 
     actual_internal = existing.attrs.get("Internal", False)
@@ -770,7 +774,9 @@ def _start_adb_proxy() -> None:
     client = docker.from_env()
     _stop_adb_proxy()
 
-    proxy_script = Path(__file__).resolve().parent.parent / "utils" / "adb_filter_proxy.py"
+    proxy_script = (
+        Path(__file__).resolve().parent.parent / "utils" / "adb_filter_proxy.py"
+    )
     patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
 
     proxy_container = client.containers.run(

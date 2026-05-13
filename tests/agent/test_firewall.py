@@ -70,19 +70,19 @@ class TestSquidPolicyRegressions:
     def test_denies_rfc1918_and_loopback_destinations(self, conf):
         text = (IMAGE_DIR / conf).read_text()
         assert "rfc1918" in text, f"{conf} missing rfc1918 deny rule"
-        assert "to_localhost" in text or "loopback" in text, (
-            f"{conf} missing loopback deny rule"
-        )
+        assert (
+            "to_localhost" in text or "loopback" in text
+        ), f"{conf} missing loopback deny rule"
 
     @pytest.mark.parametrize("conf", ["squid_restricted.conf", "squid_permissive.conf"])
     def test_restricts_connect_to_ssl_ports(self, conf):
         text = (IMAGE_DIR / conf).read_text()
-        assert "SSL_ports" in text and "CONNECT" in text, (
-            f"{conf} missing CONNECT/SSL_ports gating"
-        )
+        assert (
+            "SSL_ports" in text and "CONNECT" in text
+        ), f"{conf} missing CONNECT/SSL_ports gating"
 
     def test_restricted_uses_allowed_domains_file(self):
         text = (IMAGE_DIR / "squid_restricted.conf").read_text()
-        assert "allowed_domains.txt" in text, (
-            "restricted mode must load the exact-FQDN allowlist"
-        )
+        assert (
+            "allowed_domains.txt" in text
+        ), "restricted mode must load the exact-FQDN allowlist"
