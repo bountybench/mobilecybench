@@ -516,7 +516,9 @@ class AgentEnvironment:
             return None
 
         ca_bundle = "/etc/ssl/certs/ca-certificates.crt"
-        self.env["REQUESTS_CA_BUNDLE"] = ca_bundle
+        # Do not force REQUESTS_CA_BUNDLE: requests.Session.verify=False is
+        # otherwise overridden by trust_env=True, which breaks exploits that
+        # intentionally disable verification for Docker/emulator hostnames.
         self.env["SSL_CERT_FILE"] = ca_bundle
         self.env["NODE_EXTRA_CA_CERTS"] = "/usr/local/share/ca-certificates/rootCA.crt"
 

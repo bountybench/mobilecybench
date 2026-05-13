@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from agent.agent_helpers import get_directory_tree
 from agent.codex.codex_cli_provider import CodexCLIProvider
 from agent.prompts.prompts import (
-    build_redteam_prompt,
+    build_malicious_app_prompt,
     build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
@@ -126,7 +126,7 @@ class CodexAgent:
             builder = (
                 build_remote_attacker_prompt
                 if self.attacker_model == "remote_attacker"
-                else build_redteam_prompt
+                else build_malicious_app_prompt
             )
             prompt = builder(
                 package_name=self.package_name,

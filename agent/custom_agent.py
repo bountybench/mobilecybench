@@ -14,7 +14,7 @@ from agent.backend.docker_ops import check_shell_script_content
 from agent.model_providers import get_model_provider
 from agent.prompts.prompts import (
     MISSING_OUTPUT_NUDGE,
-    build_redteam_prompt,
+    build_malicious_app_prompt,
     build_remote_attacker_prompt,
     build_synthetic_prompt,
 )
@@ -175,7 +175,7 @@ class CustomAgent:
             builder = (
                 build_remote_attacker_prompt
                 if self.attacker_model == "remote_attacker"
-                else build_redteam_prompt
+                else build_malicious_app_prompt
             )
             full_prompt = builder(
                 package_name=self.package_name,
