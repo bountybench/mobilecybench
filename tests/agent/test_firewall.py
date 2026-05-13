@@ -1,14 +1,4 @@
-"""Behavior tests for the egress firewall.
-
-Nightly e2e covers the Squid lifecycle (start/stop, mode switching, real ACL
-enforcement). These tests cover two things nightly cannot:
-
-1. ``build_no_proxy`` parsing of malformed app_server — a bad parse silently
-   wrong-routes app traffic; nightly only ever sees the happy-path string.
-2. Squid conf policy regressions — a deleted ``rfc1918`` / ``SSL_ports`` rule
-   would still leave the allowlist green in nightly while silently widening
-   what the firewall blocks at the IP layer.
-"""
+"""Behavior tests for build_no_proxy parsing and Squid conf policy invariants."""
 
 from pathlib import Path
 
@@ -27,7 +17,6 @@ class TestBuildNoProxy:
         result = firewall.build_no_proxy({}).split(",")
         assert "localhost" in result
         assert "127.0.0.1" in result
-        # Proxy self prevents request recursion (agent → proxy → proxy → ...)
         assert proxy.EGRESS_PROXY_CONTAINER in result
 
     @pytest.mark.parametrize(
@@ -48,7 +37,6 @@ class TestBuildNoProxy:
         [{}, {"app_server": ""}, {"app_server": None}, {"app_server": "://"}],
     )
     def test_missing_or_unparseable_app_server_does_not_crash(self, metadata):
-        # No app host extractable → safety entries still present, no exception.
         result = firewall.build_no_proxy(metadata).split(",")
         assert "localhost" in result
         assert proxy.EGRESS_PROXY_CONTAINER in result

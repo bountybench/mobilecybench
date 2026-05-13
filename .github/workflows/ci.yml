@@ -786,10 +786,7 @@ jobs:
           pip install -e .
 
       - name: Create Docker Networks
-        # shared_net: today's app bridge.
-        # agent_net (internal:true): kernel-level egress firewall for the agent
-        # container (PR-2). Apps that declare `agent_net: external: true` in
-        # their docker-compose.yml fail to `docker compose up` without it.
+        # agent_net is internal:true; the agent's only L3 egress is the Squid sidecar.
         run: |
           docker network create shared_net || true
           docker network create --internal agent_net || true
@@ -1563,12 +1560,11 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -wipe-data -no-window -gpu swiftshader -noaudio -no-boot-anim -memory 2048 -read-only
           disable-animations: true
-          # The test harness needs ADB to listen on all interfaces so the
-          # adb-proxy sidecar (dual-homed on agent_net + bridge) can reach
-          # host:5037 from its bridge foot. Start the server before the
-          # emulator launches; restarting ADB after the runner has booted
-          # the emulator races with the runner's own ADB commands and can
-          # leave two daemons fighting for port 5037.
+          # ADB must listen on all interfaces so the adb-proxy sidecar can
+          # reach host:5037 via its second NIC on Docker's default bridge.
+          # Start the server before the emulator launches; restarting ADB
+          # after the runner has booted the emulator races with the runner's
+          # own ADB commands and can leave two daemons fighting for port 5037.
           pre-emulator-launch-script: |
             adb kill-server || true
             adb -a -P 5037 start-server

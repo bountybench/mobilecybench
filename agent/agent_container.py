@@ -795,7 +795,7 @@ def _start_adb_proxy() -> None:
         tar.add(str(patterns_module), arcname="adb_blocked_patterns.py")
     buf.seek(0)
     proxy_container.put_archive("/opt", buf)
-    # Restart so the freshly-copied script becomes argv[1].
+    # Restart so the interpreter reads the script that was copied in after start.
     proxy_container.restart()
     logger.info(f"ADB proxy started (:{ADB_PROXY_PORT} → host adbd)")
 
@@ -913,9 +913,7 @@ def setup_agent_environment(
     Returns:
         AgentEnvironment instance
     """
-    # Networks are created earlier by workflows.base._ensure_docker_networks
-    # (which runs preflight, before any app compose). Don't re-create here.
-
+    # Networks are created earlier in preflight; don't re-create here.
     _start_adb_proxy()
     firewall.start(network_mode)
 

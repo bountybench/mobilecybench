@@ -17,8 +17,6 @@ import docker.errors
 
 from utils.logger import logger
 
-# Topology — this module owns the names. agent_container and workflows import
-# them from here so renaming is a one-file change.
 AGENT_NET = "agent_net"
 SHARED_NET = "shared_net"
 EXTERNAL_BRIDGE = "bridge"  # Docker's default bridge — the sidecar's path to internet
@@ -32,11 +30,7 @@ _IMAGE_BUILD_CONTEXT = Path(__file__).parent / "image"
 
 
 def _ensure_image(client) -> None:
-    """Build the image locally if absent.
-
-    Squid policy lives in this repo, so the image is the policy. Building
-    from the in-tree context keeps the running firewall in sync with source.
-    """
+    """Build the image locally if absent."""
     try:
         client.images.get(EGRESS_PROXY_IMAGE)
         return
@@ -90,9 +84,10 @@ def build_no_proxy(metadata: dict, extra_aliases: Iterable[str] = ()) -> str:
     """Compose ``NO_PROXY``: in-cluster targets the agent reaches DIRECTLY.
 
     Python HTTP clients match by hostname suffix; CIDR isn't supported.
-    Always includes loopback and the proxy itself (preventing recursion).
-    The app host is parsed from ``metadata['app_server']``; callers append
-    other in-cluster sidecars via ``extra_aliases``.
+    Always includes loopback and the proxy hostname (so clients don't
+    tunnel proxy→proxy). The app host is parsed from
+    ``metadata['app_server']``; callers append other in-cluster sidecars
+    via ``extra_aliases``.
     """
     parts = ["localhost", "127.0.0.1", EGRESS_PROXY_CONTAINER, *extra_aliases]
     app_host = _parse_host(metadata.get("app_server"))
