@@ -8,6 +8,7 @@ Squid policy lives in ``agent/firewall/image/``; the ``mode`` argument to
 :func:`start` selects the conf the image's entrypoint loads.
 """
 
+import hashlib
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlsplit
@@ -22,22 +23,31 @@ SHARED_NET = "shared_net"
 EXTERNAL_BRIDGE = "bridge"  # Docker's default bridge — the sidecar's path to internet
 
 EGRESS_PROXY_CONTAINER = "egress-proxy"
-EGRESS_PROXY_IMAGE = "cybench/squid-firewall:latest"
+EGRESS_PROXY_REPO = "cybench/agent-firewall"
 EGRESS_PROXY_PORT = 3128
 VALID_NETWORK_MODES = ("restricted", "permissive")
 
 _IMAGE_BUILD_CONTEXT = Path(__file__).parent / "image"
 
 
-def _ensure_image(client) -> None:
+def _image_tag() -> str:
+    """Tag derived from the build context, so a policy edit invalidates the cache."""
+    h = hashlib.sha256()
+    for path in sorted(_IMAGE_BUILD_CONTEXT.rglob("*")):
+        if path.is_file():
+            h.update(path.read_bytes())
+    return f"{EGRESS_PROXY_REPO}:{h.hexdigest()[:12]}"
+
+
+def _ensure_image(client, tag: str) -> None:
     """Build the image locally if absent."""
     try:
-        client.images.get(EGRESS_PROXY_IMAGE)
+        client.images.get(tag)
         return
     except docker.errors.ImageNotFound:
         pass
-    logger.info(f"Building {EGRESS_PROXY_IMAGE} from {_IMAGE_BUILD_CONTEXT}")
-    client.images.build(path=str(_IMAGE_BUILD_CONTEXT), tag=EGRESS_PROXY_IMAGE, rm=True)
+    logger.info(f"Building {tag} from {_IMAGE_BUILD_CONTEXT}")
+    client.images.build(path=str(_IMAGE_BUILD_CONTEXT), tag=tag, rm=True)
 
 
 def start(mode: str) -> None:
@@ -50,11 +60,12 @@ def start(mode: str) -> None:
         raise ValueError(f"network_mode={mode!r} not in {VALID_NETWORK_MODES}")
 
     client = docker.from_env()
-    _ensure_image(client)
+    tag = _image_tag()
+    _ensure_image(client, tag)
     stop()
 
     container = client.containers.run(
-        image=EGRESS_PROXY_IMAGE,
+        image=tag,
         name=EGRESS_PROXY_CONTAINER,
         environment={"SQUID_MODE": mode},
         detach=True,
