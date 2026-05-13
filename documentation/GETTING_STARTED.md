@@ -107,82 +107,22 @@ To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner confi
 npm install -g @anthropic-ai/claude-code
 ```
 
-**Step 2: Generate a long-lived OAuth token (recommended)**
+**Step 2: Generate a long-lived OAuth token**
 
-Run [`claude setup-token`](https://code.claude.com/docs/en/authentication#generate-a-long-lived-token) to mint a token specifically scoped for headless / CI use. It is valid for ~1 year, has no paired refresh token, and is **decoupled from any interactive `claude` session you may run on this host**, so it will not be invalidated when you use Claude Code interactively while a sweep is in flight.
+Run [`claude setup-token`](https://code.claude.com/docs/en/authentication#generate-a-long-lived-token) to mint a token scoped for headless / CI use. It is valid for ~1 year and independent of your interactive `claude` sessions, so concurrent interactive use will not invalidate it mid-sweep.
 
 ```bash
 claude setup-token
 # walks through OAuth in your browser, then prints a token to the terminal
 ```
 
-Copy the printed token into `agent/.env` as `CLAUDE_CODE_OAUTH_TOKEN`. Leave `CLAUDE_CODE_OAUTH_REFRESH_TOKEN` unset — its presence switches the runner to the legacy rotating-pair flow described below.
+Copy the printed token into `agent/.env` as `CLAUDE_CODE_OAUTH_TOKEN`:
 
 ```bash
 echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste-token-here>' >> agent/.env
 ```
 
-The runner forwards `CLAUDE_CODE_OAUTH_TOKEN` directly into the agent container's environment; the in-container Claude Code CLI picks it up via its documented [auth precedence #5](https://code.claude.com/docs/en/authentication#authentication-precedence). No credentials file is written.
-
-**Step 3: Configure `runner_config.json`** (continues below)
-
----
-
-#### Fallback: rotating subscription pair
-
-If you cannot run `claude setup-token`, you can extract the rotating subscription pair from your OS secret store. We recommend avoiding this path if possible — the access token is short-lived (~1 hour), the CLI inside the container will refresh it on first inference, and refreshing rotates the pair globally for your account, which invalidates the token for any other Claude Code client (including an interactive `claude` window on this host). Sweeps die mid-iteration whenever the pair is rotated by another client. 
-
-First log in interactively:
-
-```bash
-claude auth login   # browser flow; credentials land in the OS secret
-                    # store (macOS Keychain / Linux
-                    # ~/.claude/.credentials.json / Windows Credential
-                    # Manager).
-```
-
-Then extract both fields into `agent/.env`:
-
-**macOS** (Keychain):
-
-```bash
-CREDS=$(security find-generic-password -s "Claude Code-credentials" -w)
-echo "$CREDS" | python3 -c "
-import json, sys
-c = json.load(sys.stdin)['claudeAiOauth']
-print(f'CLAUDE_CODE_OAUTH_TOKEN={c[\"accessToken\"]}')
-print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
-" >> agent/.env
-```
-
-**Linux** (credentials file under `~/.claude/`):
-
-```bash
-python3 -c "
-import json, pathlib, sys
-path = pathlib.Path.home() / '.claude' / '.credentials.json'
-if not path.exists():
-    sys.exit(f'Credentials file not found at {path}; run \"claude auth login\" first.')
-c = json.loads(path.read_text())['claudeAiOauth']
-print(f'CLAUDE_CODE_OAUTH_TOKEN={c[\"accessToken\"]}')
-print(f'CLAUDE_CODE_OAUTH_REFRESH_TOKEN={c[\"refreshToken\"]}')
-" >> agent/.env
-```
-
-If your distribution stores credentials in a system secret manager (GNOME Keyring, KWallet) instead of the JSON file, export them via that tool first and adapt the snippet to read from `subprocess` output.
-
-**Windows** (Credential Manager via PowerShell):
-
-```powershell
-$cred = Get-StoredCredential -Target "Claude Code-credentials"
-$json = ConvertFrom-Json $cred.GetNetworkCredential().Password
-"CLAUDE_CODE_OAUTH_TOKEN=$($json.claudeAiOauth.accessToken)"           | Out-File -Encoding utf8 -Append agent/.env
-"CLAUDE_CODE_OAUTH_REFRESH_TOKEN=$($json.claudeAiOauth.refreshToken)"  | Out-File -Encoding utf8 -Append agent/.env
-```
-
-`Get-StoredCredential` requires the [`CredentialManager` module](https://www.powershellgallery.com/packages/CredentialManager). If unavailable, open `Control Panel → User Accounts → Credential Manager → Windows Credentials`, expand the `Claude Code-credentials` entry, and copy the `accessToken` / `refreshToken` fields manually.
-
-Tokens expire periodically — re-run the extraction before each session. Migrating to `claude setup-token` (above) eliminates this re-extraction ritual.
+The runner forwards `CLAUDE_CODE_OAUTH_TOKEN` directly into the agent container's environment, and the in-container CLI reads it from there. No credentials file is written. See the [Claude Code authentication docs](https://code.claude.com/docs/en/authentication) for the full source-precedence order.
 
 **Step 3: Configure `runner_config.json`**
 

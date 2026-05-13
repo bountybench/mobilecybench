@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import tarfile
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
 import docker
 import docker.errors
@@ -245,18 +245,6 @@ class AgentEnvironment:
                     logger.error(f"Codex login failed: {result.output.decode()}")
             elif self.mode == "claude-code":
                 self.container.exec_run("mkdir -p /root/.claude")
-
-                # Write credentials file inside the container
-                creds_json = self.env.get("_CLAUDE_CODE_CREDENTIALS_JSON", "")
-                if creds_json:
-                    self.container.exec_run(
-                        [
-                            "bash",
-                            "-c",
-                            f"cat > /root/.claude/.credentials.json << 'CREDS_EOF'\n{creds_json}\nCREDS_EOF",
-                        ]
-                    )
-                    logger.info("Wrote Claude Code credentials to container")
 
                 # Pre-allow all tools so the CLI doesn't prompt for
                 # permissions (--dangerously-skip-permissions refuses to
@@ -858,23 +846,14 @@ def _disable_emulator_root() -> None:
             pass
 
 
-def _load_claude_code_auth() -> Tuple[Dict[str, str], Optional[str]]:
-    """Load Claude Code auth from ``agent/.env``.
+def _load_claude_code_auth() -> Dict[str, str]:
+    """Load the long-lived ``CLAUDE_CODE_OAUTH_TOKEN`` from ``agent/.env``.
 
-    Returns ``(env_vars, snapshot_json)``. Two shapes, mutually exclusive:
-
-    1. ``CLAUDE_CODE_OAUTH_TOKEN`` only → forwarded as a container env
-       var (CLI auth precedence #5). For long-lived tokens from
-       ``claude setup-token``. Recommended.
-    2. ``CLAUDE_CODE_OAUTH_TOKEN`` + ``CLAUDE_CODE_OAUTH_REFRESH_TOKEN``
-       → synthesized into ``~/.claude/.credentials.json`` inside the
-       container. Legacy rotating-pair flow; refresh rotates the pair
-       globally for the account.
-
-    Env var (precedence #5) wins over file (#6), so the legacy path
-    deliberately does not also set the env var.
-
-    See https://code.claude.com/docs/en/authentication.
+    Returned env is forwarded to the container; the in-container CLI
+    reads ``CLAUDE_CODE_OAUTH_TOKEN`` directly from its environment, so
+    no credentials file is written. Generate the token with
+    ``claude setup-token``. Auth-source precedence is documented at
+    https://code.claude.com/docs/en/authentication.
     """
     # Ensure agent/.env is loaded before reading credentials.
     # This function is called during setup_runtime_environment(), which
@@ -886,44 +865,14 @@ def _load_claude_code_auth() -> Tuple[Dict[str, str], Optional[str]]:
         load_dotenv(agent_env_file, override=True)
 
     token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
-    refresh = os.environ.get("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "")
-
     if not token:
         logger.warning(
             "No Claude Code credentials found. Set CLAUDE_CODE_OAUTH_TOKEN "
             "in agent/.env (run `claude setup-token` to generate one)."
         )
-        return {}, None
+        return {}
 
-    if refresh:
-        # Legacy: rotating subscription pair. Build snapshot blob.
-        creds = {
-            "claudeAiOauth": {
-                "accessToken": token,
-                "refreshToken": refresh,
-                "expiresAt": 0,
-                "scopes": [
-                    "user:inference",
-                    "user:profile",
-                    "user:sessions:claude_code",
-                ],
-            }
-        }
-        logger.warning(
-            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN is set; using legacy "
-            "rotating-pair OAuth path. Tokens rotate globally and may "
-            "401 if Claude Code is used interactively during a run. "
-            "To switch: run `claude setup-token`, paste into "
-            "CLAUDE_CODE_OAUTH_TOKEN, delete the REFRESH_TOKEN line."
-        )
-        return {}, json.dumps(creds)
-
-    # setup-token path: forward the env var, no file.
-    logger.info(
-        "Forwarding CLAUDE_CODE_OAUTH_TOKEN to agent container "
-        "(long-lived setup-token; no credentials file written)."
-    )
-    return {"CLAUDE_CODE_OAUTH_TOKEN": token}, None
+    return {"CLAUDE_CODE_OAUTH_TOKEN": token}
 
 
 def setup_agent_environment(
@@ -984,12 +933,7 @@ def setup_agent_environment(
         if codex_key:
             env_vars["CODEX_API_KEY"] = codex_key
     elif agent_mode == "claude-code":
-        # See _load_claude_code_auth() for the two supported shapes
-        # (long-lived setup-token env var vs. legacy rotating-pair file).
-        extra_env, claude_creds = _load_claude_code_auth()
-        env_vars.update(extra_env)
-        if claude_creds:
-            env_vars["_CLAUDE_CODE_CREDENTIALS_JSON"] = claude_creds
+        env_vars.update(_load_claude_code_auth())
 
     commit_id: Optional[str] = None
     if not no_codebase:
