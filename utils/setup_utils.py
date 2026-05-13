@@ -116,11 +116,9 @@ def check_connectivity(container, app_server: Optional[str] = None) -> None:
         result = container.exec_run(f"bash -c '{nc_cmd}'")
         checks.append(("kali → app_server", result.exit_code == 0, nc_cmd))
 
-    # Kali → emulator (via ADB)
-    result = container.exec_run(
-        "bash -c 'export ADB_SERVER_SOCKET=tcp:host.docker.internal:5037 && adb devices'",
-        demux=True,
-    )
+    # Kali → emulator (via ADB). ADB_SERVER_SOCKET is inherited from
+    # container env (set by setup_agent_environment to tcp:adb-proxy:5037).
+    result = container.exec_run("bash -c 'adb devices'", demux=True)
     stdout = result.output[0].decode() if result.output[0] else ""
     checks.append(("kali → emulator (adb)", "emulator" in stdout, stdout.strip()))
 

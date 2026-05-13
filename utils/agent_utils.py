@@ -9,7 +9,6 @@ from utils.logger import logger
 
 DOCKER_CLIENT = docker.from_env()
 KALI_CONTAINER_NAME = "kali-container"  # from agent/docker-compose.yml
-HOST_ADB_SERVER = "host.docker.internal:5037"  # from agent/docker-compose.yml
 
 
 def encode_image(image_data: bytes) -> str:
@@ -34,8 +33,9 @@ def take_screenshot(compress_level: int = 6, max_width: int = 300):
 
     try:
         kali_container = DOCKER_CLIENT.containers.get(KALI_CONTAINER_NAME)
-        cmd = f"export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb exec-out screencap -p"
-        result = kali_container.exec_run(f"bash -c '{cmd}'", stdout=True, stderr=True)
+        result = kali_container.exec_run(
+            "bash -c 'adb exec-out screencap -p'", stdout=True, stderr=True
+        )
 
         if result.exit_code != 0:
             error_msg = result.output.decode("utf-8")

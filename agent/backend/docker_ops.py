@@ -4,7 +4,7 @@ import shlex
 import time
 from functools import lru_cache
 
-from agent.backend.docker_setup import HOST_ADB_SERVER, get_kali
+from agent.backend.docker_setup import get_kali
 from tools.token_truncator import TokenTruncator
 from utils.adb_blocked_patterns import BLOCKED_SERVICES, BLOCKED_SHELL_PATTERNS
 from utils.logger import logger
@@ -115,8 +115,9 @@ def execute_adb_command_with_retry(
         Exception: If command fails after all retries
     """
     container = get_kali()
-    # Wrap command with timeout to prevent hanging
-    full_cmd_base = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && timeout {timeout}s {command}"
+    # Wrap with timeout to prevent hanging. ADB_SERVER_SOCKET is inherited
+    # from container env (set by setup_agent_environment).
+    full_cmd_base = f"cd {start_dir} && timeout {timeout}s {command}"
     last_exception = None
 
     for attempt in range(max_retries + 1):
@@ -163,7 +164,7 @@ def execute_adb_command_with_retry(
                     f"ADB connection issue detected (attempt {attempt + 1}/{max_retries + 1}), retrying..."
                 )
                 # Try to reconnect by starting server and waiting
-                reconnect_cmd = f"cd {start_dir} && export ADB_SERVER_SOCKET=tcp:{HOST_ADB_SERVER} && adb -a start-server && sleep 1"
+                reconnect_cmd = f"cd {start_dir} && adb -a start-server && sleep 1"
                 container.exec_run(
                     f"bash -c {shlex.quote(reconnect_cmd)}",
                     stdout=True,
