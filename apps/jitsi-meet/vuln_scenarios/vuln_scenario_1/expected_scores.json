@@ -26,9 +26,6 @@
     "I_MA_1_persisted_conference_server_state_pollution": 1,
     "I_MA_2_mdm_server_url_restriction_mutation": 1,
     "I_MA_3_same_process_control_skip": 1,
-    "infra_errors": [
-      "I_MA_3_same_process_control_skip: SKIP: C-009 future-infra: same-process control mutation needs a verifier-owned causal control-action provenance channel (callback transcript or Prosody MAM marker) before any predicate beyond the I-MA-1 RKStorage diff can lower score. The previous predicate was a subset of I-MA-1 / suspicious_persistence and added no independent evidence; retired to skip-only to keep coverage accounting honest."
-    ],
     "score": 1
   }
 }

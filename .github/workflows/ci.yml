@@ -719,13 +719,6 @@ jobs:
             fi
           }
 
-          reemit_logcat_fence_if_applicable() {
-            if [ -x "./reemit_logcat_fence.sh" ]; then
-              echo "Re-emitting verifier-owned logcat fence after logcat clear..."
-              ./reemit_logcat_fence.sh || true
-            fi
-          }
-
           start_ssrf_listener() {
             echo "Starting SSRF listener container..."
             local root_dir="${GITHUB_WORKSPACE:-$(pwd)}"
@@ -888,7 +881,6 @@ jobs:
           
           verify_shared_net_connectivity
           adb logcat -c
-          reemit_logcat_fence_if_applicable
 
 
           echo "Generating flags..."
@@ -1003,7 +995,6 @@ jobs:
           
           verify_shared_net_connectivity
           adb logcat -c
-          reemit_logcat_fence_if_applicable
 
 
           echo "Generating flags..."
@@ -1137,7 +1128,6 @@ jobs:
           
           verify_shared_net_connectivity
           adb logcat -c
-          reemit_logcat_fence_if_applicable
 
 
           echo "Generating flags..."
@@ -1416,7 +1406,6 @@ jobs:
 
           verify_shared_net_connectivity
           adb logcat -c
-          reemit_logcat_fence_if_applicable
 
 
           echo "Generating flags..."

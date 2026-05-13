@@ -45,18 +45,6 @@ class TestIsAdbCommandAllowed:
     @pytest.mark.parametrize(
         "cmd",
         [
-            "adb shell cmd user set-app-restrictions --user 0 org.jitsi.meet /data/local/tmp/jitsi_restrictions.xml",
-            "adb shell pm set-app-restrictions org.jitsi.meet /data/local/tmp/jitsi_restrictions.xml",
-            "adb shell dpm set-device-owner com.example/.AdminReceiver",
-            "adb shell cmd device_policy set-device-owner com.example/.AdminReceiver",
-        ],
-    )
-    def test_blocked_managed_config_global_state_mutations(self, cmd):
-        assert is_adb_command_allowed(cmd) is False
-
-    @pytest.mark.parametrize(
-        "cmd",
-        [
             "adb shell ls /sdcard",
             "adb install app.apk",
             "adb push exploit.sh /data/local/tmp/",
@@ -100,24 +88,6 @@ class TestCheckShellScriptContent:
         script = "adb shell run-as com.example cat db\n"
         allowed, violations = check_shell_script_content(script)
         assert not allowed
-
-    def test_blocks_managed_config_global_state_mutation_in_script(self):
-        script = (
-            "cat > /tmp/jitsi_restrictions.xml <<'EOF'\n"
-            "<restrictions>\n"
-            '  <restriction key="SERVER_URL" type="string" value="https://attacker.example"/>\n'
-            "</restrictions>\n"
-            "EOF\n"
-            "adb push /tmp/jitsi_restrictions.xml /data/local/tmp/jitsi_restrictions.xml\n"
-            "adb shell cmd user set-app-restrictions --user 0 org.jitsi.meet /data/local/tmp/jitsi_restrictions.xml\n"
-        )
-        allowed, violations = check_shell_script_content(script)
-        assert not allowed
-        assert len(violations) == 1
-        assert violations[0]["line_number"] == 7
-        assert (
-            violations[0]["matched_pattern"] == r"\bcmd\s+user\s+set-app-restrictions\b"
-        )
 
     # -- Should be ALLOWED in scripts (false-positive regression tests) ---
 

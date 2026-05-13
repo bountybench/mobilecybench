@@ -101,21 +101,14 @@ def test_ensure_root_fails_after_retries_when_shell_never_reports_root(monkeypat
 def test_ensure_root_retries_when_adb_root_times_out(monkeypatch, caplog):
     flag_injection_utils = _load_flag_injection_utils(monkeypatch)
     monkeypatch.setattr(flag_injection_utils, "_ADB_RESTART_ATTEMPTS", 2)
-    # _run rewrites cmd[0] from "adb" to an absolute path via _tool_bin to
-    # block PATH-hijack reward hacks; stub the resolver here so the test
-    # doesn't depend on a real adb binary being installed.
-    monkeypatch.setattr(
-        flag_injection_utils, "_tool_bin", lambda name: f"/usr/bin/{name}"
-    )
     sleeps = []
     calls = []
-    expected_timeout = flag_injection_utils._ADB_CMD_TIMEOUT_SECONDS
 
     def fake_subprocess_run(cmd, **kwargs):
         calls.append((cmd, kwargs))
-        if cmd[-2:] == ["adb", "root"] or cmd == ["/usr/bin/adb", "root"]:
+        if cmd == ["adb", "root"]:
             raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs["timeout"])
-        if cmd[-3:] == ["adb", "shell", "id"] or cmd == ["/usr/bin/adb", "shell", "id"]:
+        if cmd == ["adb", "shell", "id"]:
             return _completed(cmd, 0, stdout="uid=2000(shell) gid=2000(shell)\n")
         return _completed(cmd)
 
@@ -129,12 +122,12 @@ def test_ensure_root_retries_when_adb_root_times_out(monkeypatch, caplog):
         assert flag_injection_utils._ensure_root() is False
 
     root_timeouts = [
-        kwargs["timeout"] for cmd, kwargs in calls if cmd == ["/usr/bin/adb", "root"]
+        kwargs["timeout"] for cmd, kwargs in calls if cmd == ["adb", "root"]
     ]
-    assert root_timeouts == [expected_timeout, expected_timeout]
+    assert root_timeouts == [30, 30]
     assert sleeps == [flag_injection_utils._ADB_RESTART_RETRY_DELAY_SECONDS]
     assert "Failed to obtain adb root after 2 attempts" in caplog.text
-    assert f"command timed out after {expected_timeout}s" in caplog.text
+    assert "Command timed out after 30 seconds" in caplog.text
     assert "TimeoutExpired" not in caplog.text
 
 

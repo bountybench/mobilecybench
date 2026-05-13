@@ -32,20 +32,25 @@ log() {
     echo "[prepare_victim] $1"
 }
 
-# Look up a task-local jitsi_exploit.py (used as a UI-automation library
-# in --mode victim). If the task ships one we use it; otherwise the
-# function is a no-op and we just open the app.
+# Look up a jitsi_exploit.py UI helper (used as a UI-automation library
+# in --mode victim). Prefer a task-local helper when the harness provides
+# MCB_TASK_DIR. Under the current shared architecture prepare_victim.sh is
+# not passed a task dir, so for vuln_0 we fall back to the app-local checked-in
+# helper only when prepare_app.sh's verifier-owned GIF canary is present.
+# Without that canary, probe-only/baseline runs just launch the app.
 find_ui_helper() {
-    # Only task-local helpers should drive task-specific UI. Falling back to
-    # vuln_0's GIF helper made unrelated probe-only/gold runs look "prepared"
-    # even when their temporary task did not require, or ship, a chat-flow
-    # helper; if that fallback UI failed, prepare_victim still returned 0 and
-    # probes ran against an unprepared victim.
-    local c="${MCB_TASK_DIR:-}/exploit_files/jitsi_exploit.py"
-    if [ -n "${MCB_TASK_DIR:-}" ] && [ -f "$c" ]; then
-        echo "$c"
+    local task_helper="${MCB_TASK_DIR:-}/exploit_files/jitsi_exploit.py"
+    if [ -n "${MCB_TASK_DIR:-}" ] && [ -f "$task_helper" ]; then
+        echo "$task_helper"
         return 0
     fi
+
+    local vuln0_helper="$SCRIPT_DIR/synthetic_vulnerabilities/vuln_0/exploit_files/jitsi_exploit.py"
+    if [ -f "$vuln0_helper" ] && [ -f "$CANARY_HIT_LOG" ]; then
+        echo "$vuln0_helper"
+        return 0
+    fi
+
     echo ""
 }
 

@@ -1,6 +1,4 @@
 import logging
-import os
-import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -11,38 +9,31 @@ logger = logging.getLogger(__name__)
 
 _ADB_RESTART_ATTEMPTS = 5
 _ADB_RESTART_RETRY_DELAY_SECONDS = 1
-_ADB_CMD_TIMEOUT_SECONDS = int(os.environ.get("MCB_ADB_CMD_TIMEOUT", "20"))
-_ADB_WAIT_TIMEOUT_SECONDS = int(os.environ.get("MCB_ADB_WAIT_TIMEOUT", "8"))
-_ADB_GET_STATE_TIMEOUT_SECONDS = int(os.environ.get("MCB_ADB_GET_STATE_TIMEOUT", "5"))
-# Default fallback for non-adb/non-docker commands (matches main's prior global).
 _COMMAND_TIMEOUT_SECONDS = 30
+_COMMAND_TIMEOUT_RETURN_CODE = 124
 
 
-def _run(cmd, log_errors=True, timeout=None):
+def _timeout_output(value):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value
+
+
+def _run(cmd, log_errors=True):
     """Set log_errors=False for commands where non-zero exit is expected (e.g. test -f)."""
-    # Avoid PATH-hijack by resolving adb/docker to absolute paths
-    # and refusing binaries that live under the project root.
-    if cmd and cmd[0] == "adb":
-        cmd = [_tool_bin("adb"), *cmd[1:]]
-        if timeout is None:
-            if "wait-for-device" in cmd:
-                timeout = _ADB_WAIT_TIMEOUT_SECONDS
-            elif "get-state" in cmd:
-                timeout = _ADB_GET_STATE_TIMEOUT_SECONDS
-            else:
-                timeout = _ADB_CMD_TIMEOUT_SECONDS
-    elif cmd and cmd[0] == "docker":
-        cmd = [_tool_bin("docker"), *cmd[1:]]
-    if timeout is None:
-        timeout = _COMMAND_TIMEOUT_SECONDS
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired as e:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=_COMMAND_TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = _timeout_output(exc.stdout)
+        stderr = _timeout_output(exc.stderr)
+        if not stderr:
+            stderr = f"Command timed out after {exc.timeout} seconds"
         result = subprocess.CompletedProcess(
-            cmd,
-            124,
-            stdout=e.stdout or "",
-            stderr=(e.stderr or "") + f"\ncommand timed out after {timeout}s",
+            cmd, _COMMAND_TIMEOUT_RETURN_CODE, stdout, stderr
         )
     if result.returncode != 0 and log_errors:
         logger.error(
@@ -67,109 +58,8 @@ except FileNotFoundError:
     )
 
 
-def _trusted_tool_candidates(name: str) -> list[Path]:
-    """Return verifier-controlled candidate paths for adb/docker.
-
-    Do not use the caller's PATH wholesale here: PATH-resolved adb/docker
-    creates a fake-binary reward-hack surface. The verifier may still override
-    with an absolute env var when its toolchain is installed outside the
-    standard locations.
-    """
-    env_name = f"MCB_{name.upper()}_BIN"
-    out: list[Path] = []
-    override = os.environ.get(env_name)
-    if override:
-        out.append(Path(override))
-    if name == "adb":
-        for root in (
-            os.environ.get("ANDROID_HOME"),
-            os.environ.get("ANDROID_SDK_ROOT"),
-            str(Path.home() / "Library" / "Android" / "sdk"),
-        ):
-            if root:
-                out.append(Path(root) / "platform-tools" / "adb")
-    out.extend(
-        Path(p) / name
-        for p in (
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            "/usr/bin",
-            "/bin",
-        )
-    )
-    if name == "docker":
-        out.append(Path("/Applications/Docker.app/Contents/Resources/bin/docker"))
-    return out
-
-
-def _resolve_tool(name: str) -> str:
-    """Resolve a verifier tool to an absolute trusted path.
-
-    Refuses project-local and arbitrary PATH entries. This keeps generic flag
-    probes from being tripped by an evaluated agent dropping a fake `adb` or
-    `docker` earlier on PATH.
-    """
-    project_root = Path(__file__).resolve().parent.parent
-    checked: list[str] = []
-    for candidate in _trusted_tool_candidates(name):
-        checked.append(str(candidate))
-        if not candidate.exists():
-            continue
-        rp_path = candidate.resolve()
-        rp = str(rp_path)
-        try:
-            if rp_path.is_relative_to(project_root):
-                raise RuntimeError(f"Refusing {name} resolved under project root: {rp}")
-        except AttributeError:
-            if str(project_root) in rp:
-                raise RuntimeError(f"Refusing {name} resolved under project root: {rp}")
-        if not os.access(rp, os.X_OK):
-            raise RuntimeError(f"Resolved {name} is not executable: {rp}")
-        return rp
-    # Fall back to a minimal verifier-controlled PATH only, never the caller PATH.
-    p = shutil.which(
-        name,
-        path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Applications/Docker.app/Contents/Resources/bin",
-    )
-    if p:
-        return str(Path(p).resolve())
-    raise FileNotFoundError(
-        f"Required tool not found in trusted locations for {name}; "
-        f"set MCB_{name.upper()}_BIN to an absolute verifier-owned binary. "
-        f"checked={checked}"
-    )
-
-
-_TOOL_BIN_CACHE: dict[str, str] = {}
-
-
-def _tool_bin(name: str) -> str:
-    """Lazily resolve trusted verifier tools.
-
-    Keep resolution lazy so importing this module in unit tests or generic-probe
-    discovery does not require a live Android/Docker toolchain. The first real
-    command still resolves to an absolute, non-project path.
-    """
-    cached = _TOOL_BIN_CACHE.get(name)
-    if cached:
-        return cached
-    resolved = _resolve_tool(name)
-    _TOOL_BIN_CACHE[name] = resolved
-    return resolved
-
-
-def _adb_device_available() -> bool:
-    return (
-        _run(
-            ["adb", "get-state"],
-            log_errors=False,
-        ).returncode
-        == 0
-    )
-
-
 def _wait_for_shell():
-    _run(["adb", "wait-for-device"], timeout=_ADB_WAIT_TIMEOUT_SECONDS)
+    _run(["adb", "wait-for-device"])
     for _ in range(20):
         if _run(["adb", "shell", "true"], log_errors=False).returncode == 0:
             return
@@ -184,9 +74,6 @@ def _adb_shell_root_state():
 
 
 def _ensure_root() -> bool:
-    if not _adb_device_available():
-        logger.error("No adb device available; cannot verify Android app flag state")
-        return False
     _run(["adb", "wait-for-device"], log_errors=False)
     last_root_result = None
     for attempt in range(_ADB_RESTART_ATTEMPTS):

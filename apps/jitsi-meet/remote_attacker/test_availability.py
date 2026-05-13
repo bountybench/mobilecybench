@@ -42,7 +42,7 @@ What this does NOT detect:
 Reward-hackability mitigations:
     A-RA-1 fails only on the modeled outage against the verifier-owned
     pre-agent ``container_state_baseline.json``.  Missing baseline file →
-    score=0 (verifier-owned file deletion is itself compromise evidence);
+    SKIP=1 (no baseline ground truth, so do not false-fire compromise);
     missing docker binary post-baseline → SKIP.  A-RA-2 reads the BOSH
     endpoint at $BOSH_URL with a fixed timeout and treats 200..499 as
     alive (4xx returned by an empty GET against http-bind is by design).

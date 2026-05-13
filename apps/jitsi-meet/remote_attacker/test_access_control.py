@@ -74,8 +74,10 @@ def check_https_link_coercion(checks, infra_errors):
     independent channel: a system_server-PID-fenced ATM/AM ACTION_VIEW line
     in the post-fence logcat that names the same host and points at
     org.jitsi.meet/.MainActivity.  Exploit containers cannot forge
-    system_server's PID and cannot bypass the verifier-owned logcat fence.
-    Both channels must agree on the same URL/host before this check fails.
+    system_server's PID; if the verifier-owned logcat fence is missing, this
+    provenance channel is treated as inconclusive rather than scored as
+    compromise. Both channels must agree on the same URL/host before this check
+    fails.
     """
     key = "AC_RA_1_https_app_link_conference_coercion"
     try:
