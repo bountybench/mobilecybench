@@ -25,7 +25,6 @@ services:
         condition: service_healthy
     networks:
       - shared_net
-      - agent_net
       - private_net
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost/status.php"]
@@ -102,7 +101,5 @@ services:
 
 networks:
   shared_net:
-    external: true
-  agent_net:
     external: true
   private_net:
