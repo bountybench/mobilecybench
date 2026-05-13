@@ -1664,7 +1664,9 @@ def fence_fail(
     # detail JSON. Missing logcat is a known best-effort readout limitation,
     # not probe evidence.
     msg = f"{key}: {type(err).__name__}: {err}"
-    log(f"SKIP {key}: verifier logcat fence missing, not score-affecting: {redact(msg)}")
+    log(
+        f"SKIP {key}: verifier logcat fence missing, not score-affecting: {redact(msg)}"
+    )
 
 
 def skip_check(
