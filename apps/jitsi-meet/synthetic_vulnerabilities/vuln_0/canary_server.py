@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Verifier-owned GIF canary server for jitsi-meet vuln_0.
 
-The exploit posts ``gif[http://10.0.2.2:<port>/...]`` into MUC history.  A
-clean client should reject that non-i.giphy.com URL before fetching it; the
-vulnerable client fetches it when the victim replays chat history.  This tiny
-server records every request to a host-side log that is *not* mounted into the
-exploit container.
+The exploit posts ``gif[https://10.0.2.2:8443/...]`` into MUC history.
+``prepare_app.sh`` routes that TLS-proxy path to this verifier-owned canary
+container. A clean client should reject the non-i.giphy.com hostname before
+fetching it; the vulnerable client fetches it when the victim replays chat
+history. This tiny server records every request to a host-side log that is *not*
+mounted into the exploit container.
 """
 
 from __future__ import annotations

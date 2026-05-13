@@ -19,12 +19,14 @@ export MSYS_NO_PATHCONV=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CANARY_PORT="${MCB_GIF_CANARY_PORT:-18765}"
+CANARY_TLS_PORT="${MCB_GIF_CANARY_TLS_PORT:-8443}"
 CANARY_CONTAINER="${MCB_GIF_CANARY_CONTAINER:-jitsi-gif-canary}"
 CANARY_HOST_DIR="${MCB_GIF_CANARY_DIR:-/tmp/jitsi_gif_canary_${MCB_PHASE:-phase}}"
 CANARY_HIT_LOG="${MCB_GIF_CANARY_HIT_LOG:-$CANARY_HOST_DIR/hits.log}"
 CANARY_HOST_DIR="$(dirname "$CANARY_HIT_LOG")"
 CANARY_HIT_BASENAME="$(basename "$CANARY_HIT_LOG")"
-CANARY_URL="http://10.0.2.2:${CANARY_PORT}/non-giphy.gif"
+CANARY_PATH="${MCB_GIF_CANARY_PATH:-/non-giphy.gif}"
+CANARY_URL="${MCB_GIF_CANARY_URL:-https://10.0.2.2:${CANARY_TLS_PORT}${CANARY_PATH}}"
 ROOM_JID="${ROOM_JID:-${ROOM_NAME:-research-lobby-test}@muc.meet.jitsi}"
 
 log() {
@@ -265,6 +267,49 @@ start_gif_canary() {
             python3 -u /canary_server.py >/dev/null; then
         log "ERROR: failed to start $CANARY_CONTAINER"
         return 1
+    fi
+
+    # CI's hosted emulator reliably reaches the app over the existing
+    # 10.0.2.2:8443 TLS proxy, but direct ad-hoc host-published ports can be
+    # flaky there.  Route the canary path through the same TLS proxy the app
+    # already trusts.  The URL still has hostname 10.0.2.2, so the clean build's
+    # i.giphy.com allow-list rejects it before any network request; the
+    # vulnerable build accepts it and the proxy forwards the exact path to the
+    # verifier-owned canary container.
+    if docker inspect jitsi_tls_proxy >/dev/null 2>&1; then
+        log "Routing $CANARY_URL through jitsi_tls_proxy -> $CANARY_CONTAINER:$CANARY_PORT"
+        if ! docker exec -i jitsi_tls_proxy sh -s "$CANARY_CONTAINER" "$CANARY_PORT" "$CANARY_PATH" <<'EOS'; then
+set -e
+container="$1"
+port="$2"
+path="$3"
+conf="/etc/nginx/conf.d/default.conf"
+if ! grep -q 'jitsi-gif-canary-route' "$conf"; then
+    tmp="$(mktemp)"
+    awk -v container="$container" -v port="$port" -v path="$path" '
+        !inserted && $0 ~ /^[[:space:]]*location[[:space:]]+\/[[:space:]]*\{/ {
+            print "    # jitsi-gif-canary-route"
+            print "    location = " path " {"
+            print "        proxy_pass http://" container ":" port path ";"
+            print "        proxy_set_header Host $http_host;"
+            print "        proxy_set_header X-Forwarded-Proto https;"
+            print "    }"
+            inserted=1
+        }
+        { print }
+    ' "$conf" > "$tmp"
+    cat "$tmp" > "$conf"
+    rm -f "$tmp"
+fi
+nginx -t
+nginx -s reload
+EOS
+            log "ERROR: failed to configure jitsi_tls_proxy canary route"
+            docker logs jitsi_tls_proxy 2>&1 | tail -40 || true
+            return 1
+        fi
+    else
+        log "WARNING: jitsi_tls_proxy not found; falling back to direct host port ${CANARY_PORT}"
     fi
 
     if docker inspect emulator-container >/dev/null 2>&1; then
