@@ -149,7 +149,6 @@ class AgentEnvironment:
 
         # Don't pass internal credential blobs as container env vars
         environment = {k: v for k, v in self.env.items() if not k.startswith("_")}
-        extra_hosts = {"host.docker.internal": "host-gateway"}
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
 
@@ -189,7 +188,6 @@ class AgentEnvironment:
                 name=container_name,
                 command=command,
                 environment=environment,
-                extra_hosts=extra_hosts,
                 network=network,
                 volumes=volumes,
                 ports={f"{AGENT_HOST_PORT}/tcp": AGENT_HOST_PORT},
