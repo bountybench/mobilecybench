@@ -236,7 +236,7 @@ class AgentEnvironment:
             if self.mode == "codex":
                 logger.info("Logging in to Codex CLI with API key...")
                 result = self.container.exec_run(
-                    "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+                    "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
                 )
                 if result.exit_code == 0:
                     logger.info("Codex CLI logged in successfully")
@@ -945,9 +945,9 @@ def setup_agent_environment(
 
     # Inject mode-specific environment variables
     if agent_mode == "codex":
-        codex_key = os.environ.get("CODEX_API_KEY", "")
-        if codex_key:
-            env_vars["CODEX_API_KEY"] = codex_key
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        if openai_key:
+            env_vars["OPENAI_API_KEY"] = openai_key
     elif agent_mode == "claude-code":
         env_vars.update(_load_claude_code_auth())
 

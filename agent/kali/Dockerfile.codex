@@ -1,6 +1,8 @@
-FROM cybench/mobilecybench-kali:latest
+FROM cybench/mobilecybench-kali:v0.1.0
 
-# Install OpenAI Codex CLI
-RUN npm install -g @openai/codex@0.77.0
+RUN npm install -g @openai/codex@0.130.0
 
-ENV ADB_SERVER_SOCKET=tcp:host.docker.internal:5037
+# Plugin / apps marketplace fetches github.com + chatgpt.com on startup;
+# restricted egress denies them. Silence to keep Squid logs clean.
+RUN mkdir -p /root/.codex && \
+    printf '[features]\nplugins = false\napps = false\n' > /root/.codex/config.toml
