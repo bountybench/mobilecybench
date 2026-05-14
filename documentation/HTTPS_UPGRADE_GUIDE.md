@@ -54,6 +54,7 @@ tls_proxy:
       condition: service_healthy
   networks:
     - shared_net
+    - agent_net
     - private_net
   healthcheck:
     test: ["CMD", "curl", "-fsk", "https://localhost"]
@@ -67,6 +68,8 @@ tls_proxy:
 - `<HOST_PORT>`: the port the emulator currently connects to (keep it the same so the app config doesn't break)
 - `<backend_container>:<backend_internal_port>`: where nginx forwards to internally (e.g., `simplelogin-api:7777`)
 - `<backend_service>`: the docker-compose service name of your backend
+
+The `tls_proxy` joins three networks: `shared_net` (existing emulator-side reach), `agent_net` (so the agent on `agent_net: internal: true` can reach the public service), and `private_net` (to talk to the backend). Add `agent_net: external: true` to the top-level `networks:` block (see `apps/owncloud-android/docker-compose.yml` or `apps/wallabag/docker-compose.yml` for a working reference). Without `agent_net`, the runtime preflight skip-guard fails the run.
 
 ### 2. Remove `ports` and `shared_net` from the backend service
 

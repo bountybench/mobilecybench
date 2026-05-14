@@ -16,54 +16,106 @@
 
 ## Runtime Architecture
 
+The agent runs on a single Docker network — `agent_net`, declared `internal: true`. The kernel drops every packet whose destination isn't on this network, so the agent has **no** default route to the host or the internet. Two dual-homed sidecars carry the only outbound traffic:
+
 ```
-                  Host Machine (local) / Orchestrator Pod (GKE)
-  ┌──────────────────────────────────────────────────────────────┐
-  │                                                              │
-  │   runner.py / Workflow             ADB Server                │
-  │         │                              ▲                     │
-  │         │ docker exec                  │                     │
-  │         │                              │                     │
-  │         │       Android Emulator ──────┘                     │
-  │         │       (host process, or container on GKE)          │
-  │         │                                                    │
-  └─────────┼────────────────────────────────────────────────────┘
-            │                              ▲
-            │                              │ ADB (tcp)
-            │                   ┌──────────┴─────────┐
-            │                   │    ADB Proxy       │
-            │                   │  Blocks root/su    │
-            ▼                   └──────────▲─────────┘
-                                       ADB │
-  ┌─────────────────────┐                  │      ┌───────────────────┐
-  │   Kali Container    │──────────────────┘      │  App Containers   │
-  │   (sandbox)         │                         │                   │
-  │ - Agent commands    │◄───── shared_net ──────►│  TLS proxies      │
-  │   execute here      │                         │    │ private_net  │
-  │ - /app/codebase     │                         │    ▼              │
-  │   mounted           │                         │  Backends / DBs   │
-  └─────────────────────┘                         └───────────────────┘
+                                              ┌──────────────────────┐
+                                              │      Internet        │
+                                              │  (allowlisted FQDNs  │
+                                              │   in restricted mode)│
+                                              └──────────▲───────────┘
+                                                         │ Squid CONNECT
+                                              ┌──────────┴───────────┐
+                                              │   egress-proxy       │
+                                              │   (Squid; FQDN ACL)  │
+                                              └──────────▲───────────┘
+                                                         │ HTTPS_PROXY=
+                                                         │ http://egress-proxy:3128
+   ╔═════════ agent_net (internal: true) ════════════════╪════════════════════╗
+   ║          kernel deny-all egress; agent's ONLY network                    ║
+   ║                                                     │                    ║
+   ║                            ┌────────────────────────┴─────────┐          ║
+   ║                            │           kali agent              │          ║
+   ║                            │  (custom / claude-code / codex)   │          ║
+   ║                            └────┬──────────────────────────┬───┘          ║
+   ║                                 │ ADB                      │ HTTPS         ║
+   ║                                 │ (ADB_SERVER_SOCKET=      │ direct        ║
+   ║                                 │  tcp:adb-proxy:5037)     │ (NO_PROXY)    ║
+   ║                                 ▼                          ▼               ║
+   ║                         ┌──────────────┐          ┌──────────────────┐    ║
+   ║                         │  adb-proxy   │          │  app tls_proxy   │    ║
+   ║                         │ (filter L7:  │          │   (frontend)     │    ║
+   ║                         │ blocks root: │          └────────┬─────────┘    ║
+   ║                         │  shell:su …) │                   │              ║
+   ║                         └──────┬───────┘                   │              ║
+   ╚════════════════════════════════╪═══════════════════════════╪══════════════╝
+                                    │ host.docker.internal      │
+                                    │ (on the sidecar only)     │
+                                    ▼                           │
+                            ┌──────────────────┐    ┌───────────┴───────┐    ┌────────────────────┐
+                            │ host adbd :5037  │    │   shared_net      │    │ <app>_private_net  │
+                            │ (native; or      │    │ - tls_proxy (also)│    │  backend / mariadb │
+                            │  emulator-       │    │ - emulator-       │    │  / redis / …       │
+                            │  container       │    │   container       │    │ (agent: NO L3 path)│
+                            │  publishes)      │    │   (CONTAINER mode)│    │                    │
+                            └──────────────────┘    └───────────────────┘    └────────────────────┘
 ```
 
-**Host Machine**
-- Runs runner.py and Workflow orchestration
-- Runs ADB server
-- Runs Android emulator (local) or connects to emulator container (GCP only)
-- Controls containers via `docker exec`
+### Network membership
 
-**ADB Proxy** (sidecar container on `shared_net`)
-- Sits between the Kali container and the host ADB server
-- Inspects ADB protocol messages and blocks dangerous operations (`root:`, `unroot:`, `backup:`, `su`, `run-as`, interactive shells)
-- Blocked patterns defined in `utils/adb_blocked_patterns.py`
-- Additionally, `su` is disabled on the emulator via a bind mount over `/system/xbin/su`
-- Used during both the agent phase and exploit replay (`run_exploit_container.sh`)
+The agent reaches a peer only if both share a network. Each container is on exactly the networks listed below.
 
-**Kali Container** (agent phase, on `shared_net`)
-- Sandboxed environment where agent commands execute
-- App codebase mounted at `/app/codebase` (default), or APK only at `/app/apk` when `no_codebase=true`
-- ADB traffic routes through the proxy sidecar (`ADB_SERVER_SOCKET` env var)
-- Tools execute via ToolRuntime
-- Restarted before evaluation begins (only `agent_exploit` dir is preserved)
+| Container                       | `agent_net` | `bridge` (default) | `shared_net` | `<app>_private_net` |
+|---------------------------------|:-:|:-:|:-:|:-:|
+| kali agent                      | ✓ |   |   |   |
+| egress-proxy (Squid)            | ✓ | ✓ |   |   |
+| adb-proxy                       | ✓ | ✓ |   |   |
+| app `tls_proxy` (frontend)      | ✓ |   | ✓ | ✓ |
+| app backend / DB / redis        |   |   |   | ✓ |
+| `emulator-container` (CONTAINER mode) |   |   | ✓ |   |
+
+Defined in `agent/firewall/proxy.py` (`AGENT_NET`, `EXTERNAL_BRIDGE`), `agent/agent_container.py:_start_adb_proxy` (adb-proxy dual-homing), and each migrated app's `apps/<app>/docker-compose.yml` (`tls_proxy.networks: [shared_net, agent_net, private_net]`).
+
+### Modes (single topology, conf swap inside the image)
+
+`network_mode` is a required `RunnerConfig` field (`models/config.py`):
+
+| Mode         | Squid allowlist                                              | Use case                                                   |
+|--------------|--------------------------------------------------------------|------------------------------------------------------------|
+| `restricted` | Exact-FQDN allowlist (LLM APIs + apt/pip mirrors)            | Paper-grade eval runs, CI; provable "no training-data lookup" |
+| `permissive` | Any public host (`http_access allow all CONNECT`)            | Runs that need the agent to reach arbitrary public hosts (e.g. operator-allowed web fetches) |
+
+Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies apply in **both** modes. Only the L7 hostname ACL toggles. The two policies are baked into the `cybench/agent-firewall:v0.1.0` image (`agent/firewall/image/squid_{restricted,permissive}.conf`); the entrypoint picks one via the `SQUID_MODE` env var (`agent/firewall/proxy.py:start`).
+
+### Host Machine
+
+- Runs `runner.py` and Workflow orchestration (`workflows/base.py`, `workflows/exploit.py`, `workflows/redteam.py`)
+- Runs the host ADB server on `:5037`
+- Runs the Android emulator as a host process (`emulator_backend: native`) or as `emulator-container` on `shared_net` (`emulator_backend: container`)
+- Controls containers via `docker exec` (`agent/backend/docker_ops.py`)
+
+### Egress proxy / Squid sidecar
+
+- Defined in `agent/firewall/proxy.py`; image source in `agent/firewall/image/` (`Dockerfile`, two confs, `allowed_domains.txt`, `entrypoint.sh`).
+- Dual-homed: foot on `agent_net` (agent reaches it via `HTTPS_PROXY=http://egress-proxy:3128`), foot on Docker's default `bridge` (Squid's path to the internet).
+- Image lifecycle: `_ensure_image` cascades local-cache → registry-pull (`cybench/agent-firewall:v0.1.0`) → in-tree build from `agent/firewall/image/`.
+- `build_no_proxy()` composes `NO_PROXY` from `metadata.app_server` + sidecar aliases, so direct in-cluster traffic (kali → `tls_proxy`) bypasses Squid.
+
+### ADB proxy sidecar
+
+- `agent/agent_container.py:_start_adb_proxy`. Image `python:3.11-slim`; the script `utils/adb_filter_proxy.py` is copied in.
+- Dual-homed: foot on `agent_net` (the agent's only network), foot on Docker's default `bridge`. The sidecar — not the agent — gets `extra_hosts: host.docker.internal: host-gateway`, so the proxy hairpins out to the host's `adbd` on `:5037`.
+- Filters ADB protocol messages and blocks dangerous operations (`root:`, `unroot:`, `backup:`, `su`, `run-as`, interactive shells); blocked patterns in `utils/adb_blocked_patterns.py`.
+- The agent's `ADB_SERVER_SOCKET=tcp:adb-proxy:5037` is set in container env by `setup_agent_environment` (`agent/agent_container.py:setup_agent_environment`).
+- `su` is also disabled on the emulator via a bind mount over `/system/xbin/su` (`agent/agent_container.py:_disable_emulator_root`).
+
+### Kali (agent) container
+
+- Joined to `[agent_net]` only — `agent_container.py:setup_agent_environment` passes `docker_networks=[AGENT_NET]`.
+- No `extra_hosts` mapping, no host-gateway alias, no default route off `agent_net`.
+- App codebase mounted at `/app/codebase` (default), or APK only at `/app/apk` when `no_codebase=true`.
+- Tools execute via `ToolRuntime`. Restarted before evaluation begins (only `agent_exploit` dir is preserved).
+- Mode-specific runtime: `agent_mode` ∈ {`custom`, `claude-code`, `codex`} picks the CLI and auth wiring (`agent/agent_container.py:AgentEnvironment.setup`).
 
 
 ## Agent Environment
@@ -93,10 +145,14 @@
 **Can do:**
 - Create and execute files in the Kali sandbox
 - Execute shell commands via ToolRuntime
-- Interact with emulator via ADB (as `shell` user)
-- Network access to app containers via `shared_net`
+- Interact with emulator via ADB through `adb-proxy` (as `shell` user)
+- Reach the app's `tls_proxy` over HTTPS directly on `agent_net` (NO_PROXY bypasses Squid)
+- Reach LLM provider APIs (and apt/pip mirrors) via Squid in `restricted` mode; any public host in `permissive` mode
 
-**Cannot do (enforced by ADB proxy + emulator lockdown):**
+**Cannot do (enforced by kernel routing + ADB proxy + emulator lockdown):**
+- Reach the host directly (`host.docker.internal` is absent from `agent_net`; no route)
+- Reach the host's ADB server, `emulator-container:5037`, or any peer on `shared_net` / private nets (no L3 path)
+- Reach any FQDN not on the Squid allowlist in `restricted` mode (deny-by-default)
 - `adb root`, `adb unroot`, `adb backup` (blocked ADB services)
 - `su`, `run-as` (blocked shell commands; `su` binary also disabled via bind mount)
 - Interactive shells via `adb shell sh`/`bash` (proxy-only restriction)
