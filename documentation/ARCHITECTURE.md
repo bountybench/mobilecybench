@@ -19,46 +19,48 @@
 The agent runs on a single Docker network — `agent_net`, declared `internal: true`. The kernel drops every packet whose destination isn't on this network, so the agent has **no** default route to the host or the internet. Two dual-homed sidecars carry the only outbound traffic:
 
 ```
-                                              ┌──────────────────────┐
-                                              │      Internet        │
-                                              │  (allowlisted FQDNs  │
-                                              │   in restricted mode)│
-                                              └──────────▲───────────┘
-                                                         │ Squid CONNECT
-                                              ┌──────────┴───────────┐
-                                              │   egress-proxy       │
-                                              │   (Squid; FQDN ACL)  │
-                                              └──────────▲───────────┘
-                                                         │ HTTPS_PROXY=
-                                                         │ http://egress-proxy:3128
-   ╔═════════ agent_net (internal: true) ════════════════╪════════════════════╗
-   ║          kernel deny-all egress; agent's ONLY network                    ║
-   ║                                                     │                    ║
-   ║                            ┌────────────────────────┴─────────┐          ║
-   ║                            │           kali agent              │          ║
-   ║                            │  (custom / claude-code / codex)   │          ║
-   ║                            └────┬──────────────────────────┬───┘          ║
-   ║                                 │ ADB                      │ HTTPS         ║
-   ║                                 │ (ADB_SERVER_SOCKET=      │ direct        ║
-   ║                                 │  tcp:adb-proxy:5037)     │ (NO_PROXY)    ║
-   ║                                 ▼                          ▼               ║
-   ║                         ┌──────────────┐          ┌──────────────────┐    ║
-   ║                         │  adb-proxy   │          │  app tls_proxy   │    ║
-   ║                         │ (filter L7:  │          │   (frontend)     │    ║
-   ║                         │ blocks root: │          └────────┬─────────┘    ║
-   ║                         │  shell:su …) │                   │              ║
-   ║                         └──────┬───────┘                   │              ║
-   ╚════════════════════════════════╪═══════════════════════════╪══════════════╝
-                                    │ host.docker.internal      │
-                                    │ (on the sidecar only)     │
-                                    ▼                           │
-                            ┌──────────────────┐    ┌───────────┴───────┐    ┌────────────────────┐
-                            │ host adbd :5037  │    │   shared_net      │    │ <app>_private_net  │
-                            │ (native; or      │    │ - tls_proxy (also)│    │  backend / mariadb │
-                            │  emulator-       │    │ - emulator-       │    │  / redis / …       │
-                            │  container       │    │   container       │    │ (agent: NO L3 path)│
-                            │  publishes)      │    │   (CONTAINER mode)│    │                    │
-                            └──────────────────┘    └───────────────────┘    └────────────────────┘
+                                       ┌──────────────────────┐
+                                       │       Internet       │
+                                       │ (allowlisted FQDNs   │
+                                       │  in restricted mode) │
+                                       └──────────▲───────────┘
+                                                  │ Squid CONNECT
+   ╔══════ agent_net (internal: true) ════════════╪═══════════════════════╗
+   ║  kernel deny-all egress; agent's ONLY network                        ║
+   ║                                              │                       ║
+   ║                                   ┌──────────┴─────────────┐         ║
+   ║                                   │  egress-proxy (Squid)  │         ║
+   ║                                   │  FQDN allowlist        │         ║
+   ║                                   └──────────▲─────────────┘         ║
+   ║                                              │ HTTPS_PROXY=          ║
+   ║                                              │ http://egress-proxy   ║
+   ║                                              │           :3128       ║
+   ║                                   ┌──────────┴─────────────┐         ║
+   ║                                   │         agent          │         ║
+   ║                                   │ (custom / claude-code  │         ║
+   ║                                   │  / codex)              │         ║
+   ║                                   └──┬─────────────────┬───┘         ║
+   ║                                      │ ADB             │ HTTPS       ║
+   ║                                      │ tcp:adb-proxy   │ direct      ║
+   ║                                      │       :5037     │ (NO_PROXY)  ║
+   ║                                      ▼                 ▼             ║
+   ║                            ┌──────────────────┐  ┌──────────────────┐║
+   ║                            │   adb-proxy      │  │  app tls_proxy   │║
+   ║                            │ filter L7;       │  │  (frontend)      │║
+   ║                            │ blocks root:/su  │  └──────────────────┘║
+   ║                            └─────────┬────────┘                      ║
+   ╚══════════════════════════════════════╪═══════════════════════════════╝
+                                          │ via bridge +
+                                          │ host.docker.internal
+                                          │ (set on the sidecar; NOT the agent)
+                                          ▼
+   ┌──────────────────┐         ┌─────────────────────┐         ┌────────────────────┐
+   │ host adbd :5037  │         │  shared_net         │         │ <app>_private_net  │
+   │ (native; or      │         │ - tls_proxy (also)  │         │  backend / mariadb │
+   │  emulator-       │         │ - emulator-         │         │  / redis / …       │
+   │  container       │         │   container         │         │ (agent: NO L3 path)│
+   │  publishes)      │         │   (CONTAINER mode)  │         │                    │
+   └──────────────────┘         └─────────────────────┘         └────────────────────┘
 ```
 
 ### Network membership
@@ -67,7 +69,7 @@ The agent reaches a peer only if both share a network. Each container is on exac
 
 | Container                       | `agent_net` | `bridge` (default) | `shared_net` | `<app>_private_net` |
 |---------------------------------|:-:|:-:|:-:|:-:|
-| kali agent                      | ✓ |   |   |   |
+| agent                           | ✓ |   |   |   |
 | egress-proxy (Squid)            | ✓ | ✓ |   |   |
 | adb-proxy                       | ✓ | ✓ |   |   |
 | app `tls_proxy` (frontend)      | ✓ |   | ✓ | ✓ |
@@ -80,10 +82,10 @@ Defined in `agent/firewall/proxy.py` (`AGENT_NET`, `EXTERNAL_BRIDGE`), `agent/ag
 
 `network_mode` is a required `RunnerConfig` field (`models/config.py`):
 
-| Mode         | Squid allowlist                                              | Use case                                                   |
-|--------------|--------------------------------------------------------------|------------------------------------------------------------|
-| `restricted` | Exact-FQDN allowlist (LLM APIs + apt/pip mirrors)            | Paper-grade eval runs, CI; provable "no training-data lookup" |
-| `permissive` | Any public host (`http_access allow all CONNECT`)            | Runs that need the agent to reach arbitrary public hosts (e.g. operator-allowed web fetches) |
+| Mode         | Squid allowlist                                              |
+|--------------|--------------------------------------------------------------|
+| `restricted` | Exact-FQDN allowlist (LLM APIs + apt/pip mirrors)            |
+| `permissive` | Any public host (`http_access allow all CONNECT`)            |
 
 Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies apply in **both** modes. Only the L7 hostname ACL toggles. The two policies are baked into the `cybench/agent-firewall:v0.1.0` image (`agent/firewall/image/squid_{restricted,permissive}.conf`); the entrypoint picks one via the `SQUID_MODE` env var (`agent/firewall/proxy.py:start`).
 
@@ -109,7 +111,7 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 - The agent's `ADB_SERVER_SOCKET=tcp:adb-proxy:5037` is set in container env by `setup_agent_environment` (`agent/agent_container.py:setup_agent_environment`).
 - `su` is also disabled on the emulator via a bind mount over `/system/xbin/su` (`agent/agent_container.py:_disable_emulator_root`).
 
-### Kali (agent) container
+### Agent container
 
 - Joined to `[agent_net]` only — `agent_container.py:setup_agent_environment` passes `docker_networks=[AGENT_NET]`.
 - No `extra_hosts` mapping, no host-gateway alias, no default route off `agent_net`.
