@@ -25,6 +25,7 @@ services:
       - ../../tls/server.key:/etc/prosody/certs/10.0.2.2.key:ro
     networks:
       - shared_net
+      - agent_net
       - private_net
     healthcheck:
       test: ["CMD", "prosodyctl", "status"]
@@ -34,5 +35,7 @@ services:
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true
   private_net:
