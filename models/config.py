@@ -232,7 +232,7 @@ class RunnerConfig(BaseModel):
         ...,
         description=(
             "Squid egress policy. 'restricted': exact-FQDN allowlist "
-            "(LLM APIs + apt/pip mirrors). 'permissive' (debug only): any host. "
+            "(LLM APIs + apt/pip mirrors). 'permissive': any public host. "
             "Kernel routing (agent_net internal:true) applies in both."
         ),
     )

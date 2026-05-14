@@ -224,7 +224,7 @@
       "type": "integer"
     },
     "network_mode": {
-      "description": "Squid egress policy. 'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). 'permissive' (debug only): any host. Kernel routing (agent_net internal:true) applies in both.",
+      "description": "Squid egress policy. 'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). 'permissive': any public host. Kernel routing (agent_net internal:true) applies in both.",
       "enum": [
         "restricted",
         "permissive"
