@@ -415,7 +415,7 @@ class TestAgentContainerModeHandling:
             agent_env.setup()
 
         mock_container.exec_run.assert_any_call(
-            "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+            "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
         )
 
     @patch("agent.agent_container.docker.from_env")
@@ -450,7 +450,7 @@ class TestAgentContainerModeHandling:
 
         exec_calls = [call.args[0] for call in mock_container.exec_run.call_args_list]
         assert (
-            "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+            "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
             not in exec_calls
         )
 
