@@ -25,6 +25,7 @@ if [ $timeout -eq 0 ]; then
 fi
 
 docker network create shared_net || true
+docker network create --internal agent_net || true
 
 # Docker Hub auth (optional — avoids rate limits on image pulls)
 if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ "${DOCKERHUB_USERNAME}" != "placeholder" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then

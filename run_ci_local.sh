@@ -1303,10 +1303,13 @@ run_vuln_test() {
     print_header "$GREEN" "SYNTHETIC VULNERABILITY TEST COMPLETE: $vuln_dir"
 }
 
-# Create shared Docker network for SSRF / app-service connectivity checks.
-print_header "$CYAN" "CREATING DOCKER NETWORK"
+# Create Docker networks before any app compose runs. agent_net is internal
+# (kernel-level egress firewall); pilot apps declare it as external.
+print_header "$CYAN" "CREATING DOCKER NETWORKS"
 echo -e "${INFO} Creating shared_net network..."
 docker network create shared_net || echo -e "${INFO} shared_net network already exists"
+echo -e "${INFO} Creating agent_net network (internal)..."
+docker network create --internal agent_net || echo -e "${INFO} agent_net network already exists"
 
 # Start SSRF Listener
 print_header "$CYAN" "STARTING SSRF LISTENER"

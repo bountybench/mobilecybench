@@ -292,6 +292,7 @@ docker run "${DOCKER_RUN_ARGS[@]}" \
         fi
 
         docker network create shared_net || true
+        docker network create --internal agent_net || true
 
         # Get emulator image into DinD (container mode only)
         if [ -f /tmp/emulator-image.tar ]; then
