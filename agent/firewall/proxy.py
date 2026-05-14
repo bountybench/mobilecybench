@@ -8,7 +8,6 @@ Squid policy lives in ``agent/firewall/image/``; the ``mode`` argument to
 :func:`start` selects the conf the image's entrypoint loads.
 """
 
-import hashlib
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlsplit
@@ -24,30 +23,29 @@ EXTERNAL_BRIDGE = "bridge"  # Docker's default bridge — the sidecar's path to 
 
 EGRESS_PROXY_CONTAINER = "egress-proxy"
 EGRESS_PROXY_REPO = "cybench/agent-firewall"
+EGRESS_PROXY_TAG = "v0.1.0"
 EGRESS_PROXY_PORT = 3128
 VALID_NETWORK_MODES = ("restricted", "permissive")
 
 _IMAGE_BUILD_CONTEXT = Path(__file__).parent / "image"
 
 
-def _image_tag() -> str:
-    """Tag derived from the build context, so a policy edit invalidates the cache."""
-    h = hashlib.sha256()
-    for path in sorted(_IMAGE_BUILD_CONTEXT.rglob("*")):
-        if path.is_file():
-            h.update(path.read_bytes())
-    return f"{EGRESS_PROXY_REPO}:{h.hexdigest()[:12]}"
-
-
-def _ensure_image(client, tag: str) -> None:
-    """Build the image locally if absent."""
+def _ensure_image(client) -> str:
+    """Cascade: local cache → registry pull → in-tree build."""
+    tag = f"{EGRESS_PROXY_REPO}:{EGRESS_PROXY_TAG}"
     try:
         client.images.get(tag)
-        return
+        return tag
     except docker.errors.ImageNotFound:
         pass
-    logger.info(f"Building {tag} from {_IMAGE_BUILD_CONTEXT}")
+    try:
+        logger.info(f"Pulling {tag}")
+        client.images.pull(EGRESS_PROXY_REPO, tag=EGRESS_PROXY_TAG)
+        return tag
+    except (docker.errors.ImageNotFound, docker.errors.APIError) as e:
+        logger.info(f"Pull failed ({e}); building {tag} from {_IMAGE_BUILD_CONTEXT}")
     client.images.build(path=str(_IMAGE_BUILD_CONTEXT), tag=tag, rm=True)
+    return tag
 
 
 def start(mode: str) -> None:
@@ -60,8 +58,7 @@ def start(mode: str) -> None:
         raise ValueError(f"network_mode={mode!r} not in {VALID_NETWORK_MODES}")
 
     client = docker.from_env()
-    tag = _image_tag()
-    _ensure_image(client, tag)
+    tag = _ensure_image(client)
     stop()
 
     container = client.containers.run(
