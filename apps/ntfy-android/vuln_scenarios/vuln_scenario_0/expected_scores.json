@@ -10,6 +10,7 @@
     "up_package_mismatch": 1,
     "linkactivity_filter_bypass": 1,
     "shareactivity_unsupported_publish": 1,
+    "send_message_receiver_publish": 1,
     "subscription_authorization": 0,
     "notification_access": 1,
     "legitimate_present": 1,
