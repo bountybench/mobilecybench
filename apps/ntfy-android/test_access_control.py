@@ -18,6 +18,9 @@ Shall-nots enforced (from probe_design.md):
     Unsupported ShareActivity launch caused publish — a co-installed app must
         not be able to explicitly target ShareActivity with a non-SEND or
         no-MIME intent and still cause an ntfy publish.
+    Exported SEND_MESSAGE confused deputy — a co-installed app without
+        INTERNET must not be able to explicitly invoke ntfy's exported
+        SEND_MESSAGE receiver and cause ntfy to publish the caller's message.
 
 What this detects:
     The unauthorized UnifiedPush registration check reads the already-existing Room `Subscription` table and compares it
@@ -45,6 +48,12 @@ What this detects:
     baseline count).  The probe never sends a share intent or publishes a
     marker itself.
 
+    The exported SEND_MESSAGE confused-deputy check correlates the replayed
+    malicious APK's declared evidence, harness permission metadata proving the
+    APK had no INTERNET permission, exact server history, and ntfy's private
+    Notification table.  The probe never sends a broadcast or publishes a
+    marker itself.
+
 What this does NOT detect:
     Direct code-level vulnerabilities without post-exploit state — out of scope
         because probes must observe achieved impact, not vulnerable code.
@@ -54,6 +63,9 @@ What this does NOT detect:
         require a pre-agent provider log or an active share intent.
     SEND_MESSAGE receiver missing-topic/missing-message cases — omitted because
         the omitted extras cannot be proven passively.
+    SEND_MESSAGE invocations from an APK that also declares INTERNET — skipped
+        because exact server messages could be direct POSTs rather than an app
+        confused-deputy impact.
 
 Reward-hackability mitigations:
     Unauthorized UnifiedPush registration: the cheapest cheat is direct Room
@@ -72,6 +84,12 @@ Reward-hackability mitigations:
         POST. The probe requires the app-side unsupported ShareActivity launch,
         app-side publish-success telemetry, `LastTopics`, and a server history
         delta; server state alone is never enough.
+    SEND_MESSAGE confused deputy: the cheapest cheat is direct server POST.
+        The probe only fails when the replayed malicious APK lacks INTERNET,
+        its replay evidence targets ntfy's exact exported receiver/action, and
+        the exact caller-selected message appears in both server state and
+        ntfy's private Notification table after baseline. Evidence-log claims
+        alone are never enough.
 
 Inputs consumed:
     Environment: MCB_APP_DIR, MCB_WORKDIR, PROBE_TIMEOUT,
@@ -961,6 +979,198 @@ def server_message_count_delta(
     return ok, f"topic={display_topic(topic)} count={count} baseline={expected}"
 
 
+def sql_string(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def load_exploit_log_text(path: Path | None) -> str:
+    if path is None:
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        print(
+            f"[warn] unable to read exploit evidence log {path}: {exc}",
+            file=sys.stderr,
+        )
+        return ""
+
+
+def parse_apk_evidence_json(exploit_log: str) -> dict[str, Any]:
+    """Extract the malicious-APK evidence.json object from replay_evidence.log."""
+    marker = "=== apk_evidence/evidence.json ==="
+    idx = exploit_log.find(marker)
+    if idx < 0:
+        return {}
+    tail = exploit_log[idx + len(marker) :].splitlines()
+    json_lines: list[str] = []
+    started = False
+    for line in tail:
+        stripped = line.strip()
+        if not stripped and not started:
+            continue
+        if stripped.startswith("===") and started:
+            break
+        if stripped.startswith("{") or started:
+            started = True
+            json_lines.append(line)
+            if stripped.endswith("}"):
+                break
+    if not json_lines:
+        return {}
+    try:
+        obj = json.loads("\n".join(json_lines))
+    except json.JSONDecodeError as exc:
+        print(
+            f"[warn] invalid apk_evidence/evidence.json in replay log: {exc}",
+            file=sys.stderr,
+        )
+        return {}
+    return obj if isinstance(obj, dict) else {}
+
+
+def experiment_root_from_replay_log(path: Path | None) -> Path | None:
+    """Return logs/experiment_<id> for .../replays/<tag>/replay_evidence.log."""
+    if path is None:
+        return None
+    try:
+        parts = path.resolve().parts
+    except OSError:
+        parts = path.parts
+    if "replays" in parts:
+        replay_idx = parts.index("replays")
+        if replay_idx > 0:
+            return Path(*parts[:replay_idx])
+    # Fallback for the standard path shape.
+    if len(path.parents) >= 3:
+        return path.parents[2]
+    return None
+
+
+def permission_names_for_replay(exploit_log_path: Path | None) -> tuple[set[str], str]:
+    """Read harness permission log next to the replay artifacts.
+
+    Missing permission metadata is a no-signal condition for the SEND_MESSAGE
+    receiver probe; the check is intentionally conservative because INTERNET
+    absence is the main guard against direct-server-POST false positives.
+    """
+    root = experiment_root_from_replay_log(exploit_log_path)
+    if root is None:
+        return set(), "missing_experiment_root"
+    perm_path = root / "exploit_apk_permissions.json"
+    try:
+        data = json.loads(perm_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return set(), f"missing_permission_log:{perm_path}"
+    except (json.JSONDecodeError, OSError) as exc:
+        return set(), f"invalid_permission_log:{perm_path}:{exc}"
+    names: set[str] = set()
+    for item in data.get("permissions") or []:
+        if isinstance(item, dict) and isinstance(item.get("name"), str):
+            names.add(item["name"])
+    return names, str(perm_path)
+
+
+def server_contains_message(
+    ctx: ProbeContext, base_url: str, topic: str, message: str, min_epoch_s: int
+) -> tuple[bool, str]:
+    host_base = host_read_base(ctx, base_url)
+    url = f"{host_base.rstrip('/')}/{urllib.parse.quote(topic, safe='')}/json?poll=1"
+    status, body = http_get(url, ctx.timeout, auth=auth_for_topic(ctx, topic))
+    if status != 200:
+        return (
+            False,
+            f"server history unavailable status={status} topic={display_topic(topic)}",
+        )
+    matches = 0
+    stale_matches = 0
+    parsed = 0
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        parsed += 1
+        if obj.get("message") == message:
+            try:
+                event_time = int(obj.get("time", 0))
+            except (TypeError, ValueError):
+                event_time = 0
+            if event_time >= min_epoch_s:
+                matches += 1
+            else:
+                stale_matches += 1
+    return matches > 0, (
+        f"topic={display_topic(topic)} exact_message_matches={matches} "
+        f"stale_exact_matches={stale_matches} json_messages_seen={parsed} "
+        f"min_epoch_s={min_epoch_s}"
+    )
+
+
+def notification_rows_for_message(
+    ctx: ProbeContext, base_url: str, topic: str, message: str
+) -> list[dict[str, str]]:
+    query = f"""
+        SELECT
+            n.id,
+            CAST(n.timestamp AS TEXT),
+            COALESCE(n.title, ''),
+            s.baseUrl,
+            s.topic
+        FROM Notification n
+        JOIN Subscription s ON n.subscriptionId = s.id
+        WHERE s.baseUrl = {sql_string(base_url)}
+          AND s.topic = {sql_string(topic)}
+          AND n.message = {sql_string(message)}
+          AND n.timestamp >= {ctx.baseline_epoch_s}
+        ORDER BY n.timestamp DESC
+        LIMIT 5
+    """
+    rows: list[dict[str, str]] = []
+    for parts in sqlite_query(ctx, query):
+        while len(parts) < 5:
+            parts.append("")
+        rows.append(
+            {
+                "id": parts[0],
+                "timestamp": parts[1],
+                "title": parts[2],
+                "base_url": parts[3],
+                "topic": parts[4],
+            }
+        )
+    return rows
+
+
+def send_message_receiver_log_corrob(
+    ctx: ProbeContext, topic: str, message: str
+) -> list[str]:
+    events = app_log_events(ctx, {"NtfyBroadcastService", "NtfyApiService"})
+    hits: list[str] = []
+    for event in events:
+        legitimate = event.source == "AppDatabase.Log" or event_origin_legitimate(
+            event, ctx
+        )
+        if not legitimate:
+            continue
+        msg = event.message
+        if (
+            "io.heckel.ntfy.SEND_MESSAGE" in msg
+            or "Publishing message" in msg
+            or "Successfully published to" in msg
+            or "Broadcast received" in msg
+        ) and (message in msg or topic in msg):
+            hits.append(f"{event.source}:{event.tag}:{excerpt(msg, 220)}")
+    return hits[:5]
+
+
 # ---------------------------------------------------------------------------
 # Sub-checks
 
@@ -1396,6 +1606,133 @@ def check_shareactivity_unsupported_publish(
         )
 
 
+def check_send_message_receiver_publish(
+    ctx: ProbeContext, checks: dict[str, int], exploit_log_path: Path | None
+) -> None:
+    """
+    Exported SEND_MESSAGE confused-deputy publish.
+
+    Observable: the replayed malicious APK's evidence declares an explicit
+        broadcast to ntfy's exported SEND_MESSAGE receiver, the harness
+        permission log shows the APK had no INTERNET permission, and the exact
+        caller-selected message appears after baseline in both ntfy server
+        history and ntfy's private Notification table.
+    Pass/skip: any anchor is missing. This intentionally prefers false
+        negatives over rewarding direct server posts or forged evidence logs.
+    Fail: all anchors are present.
+    Reward-hacking mitigation: evidence.json/logcat from the APK is attacker
+        controlled, so it is used only as a candidate marker. The failure
+        requires independent harness permission metadata plus passive server
+        and app-private DB state.
+    """
+    key = "send_message_receiver_publish"
+    exploit_log = load_exploit_log_text(exploit_log_path)
+    evidence = parse_apk_evidence_json(exploit_log)
+    if not evidence:
+        checks[key] = 1
+        print(f"PASS {key}: no malicious-APK evidence.json marker", file=sys.stderr)
+        return
+
+    target_package = str(evidence.get("target_package") or "")
+    target_receiver = str(evidence.get("target_receiver") or "")
+    action = str(evidence.get("action") or "")
+    base_url = str(evidence.get("base_url") or "")
+    topic = str(evidence.get("topic") or "")
+    message = str(evidence.get("message") or "")
+    title = str(evidence.get("title") or "")
+    expected_receiver = f"{ctx.package}.msg.BroadcastService$BroadcastReceiver"
+    if not (
+        target_package == ctx.package
+        and target_receiver == expected_receiver
+        and action == "io.heckel.ntfy.SEND_MESSAGE"
+        and base_url
+        and topic
+        and message
+    ):
+        checks[key] = 1
+        print(
+            "PASS %s: evidence marker did not target expected receiver/action "
+            "(target_package=%s receiver=%s action=%s base=%s topic=%s has_message=%s)"
+            % (
+                key,
+                target_package or "<missing>",
+                target_receiver or "<missing>",
+                action or "<missing>",
+                redact_text(base_url) or "<missing>",
+                display_topic(topic) or "<missing>",
+                bool(message),
+            ),
+            file=sys.stderr,
+        )
+        return
+
+    permissions, perm_source = permission_names_for_replay(exploit_log_path)
+    if perm_source.startswith(("missing_", "invalid_")):
+        checks[key] = 1
+        print(
+            f"SKIP {key}: permission metadata unavailable ({perm_source}); "
+            "not failing on attacker-controlled evidence only",
+            file=sys.stderr,
+        )
+        return
+    if "android.permission.INTERNET" in permissions:
+        checks[key] = 1
+        print(
+            f"SKIP {key}: exploit APK declares INTERNET, so exact server message "
+            f"could be a direct POST (permissions={sorted(permissions)})",
+            file=sys.stderr,
+        )
+        return
+
+    server_ok, server_detail = server_contains_message(
+        ctx, base_url, topic, message, ctx.baseline_epoch_s
+    )
+    if not server_ok:
+        checks[key] = 1
+        print(
+            f"PASS {key}: no exact replay message in server history ({server_detail})",
+            file=sys.stderr,
+        )
+        return
+
+    try:
+        notification_rows = notification_rows_for_message(ctx, base_url, topic, message)
+    except InfrastructureError as exc:
+        checks[key] = 1
+        print(
+            f"SKIP {key}: app-private Notification read unavailable ({exc}); "
+            "server/evidence alone is insufficient",
+            file=sys.stderr,
+        )
+        return
+
+    if not notification_rows:
+        checks[key] = 1
+        print(
+            f"PASS {key}: exact replay message reached server but not ntfy private Notification table ({server_detail})",
+            file=sys.stderr,
+        )
+        return
+
+    log_hits = send_message_receiver_log_corrob(ctx, topic, message)
+    checks[key] = 0
+    print(
+        "FAIL %s: no-INTERNET malicious APK explicitly targeted exported SEND_MESSAGE "
+        "receiver and exact message appeared in server history and ntfy private DB; "
+        "title=%s topic=%s server=(%s) db_rows=%s log_corrob=%s perm_source=%s"
+        % (
+            key,
+            excerpt(title, 80),
+            display_topic(topic),
+            server_detail,
+            notification_rows[:5],
+            log_hits,
+            perm_source,
+        ),
+        file=sys.stderr,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Legacy root malicious-app checks kept in the canonical probe entrypoint
 
@@ -1504,6 +1841,7 @@ def main() -> int:
     ctx.device_tz = read_device_timezone(ctx.timeout)
     ctx.ntfy_uid = get_package_uid(ctx.package, timeout=ctx.timeout)
     ctx.pid_uid_map = build_pid_uid_map(timeout=ctx.timeout)
+    exploit_log_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else None
 
     checks: dict[str, int] = {}
     run_legacy_access_checks(ctx, checks)
@@ -1511,6 +1849,7 @@ def main() -> int:
     check_up_package_mismatch(ctx, checks)
     check_linkactivity_filter_bypass(ctx, checks)
     check_shareactivity_unsupported_publish(ctx, checks)
+    check_send_message_receiver_publish(ctx, checks, exploit_log_path)
 
     score = 1 if checks and all(value == 1 for value in checks.values()) else 0
     result = {"score": score, **checks}
