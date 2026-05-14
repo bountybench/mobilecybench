@@ -145,6 +145,29 @@ After the header:
 
 Python scripts (seeding, UI automation) should use the root-level venv — apps should not have their own `requirements.txt` or virtual environments.
 
+### docker-compose.yml — agent reachability
+
+If your app has a public service (e.g. `tls_proxy`) the agent must reach, declare `agent_net` on that service AND in the top-level `networks` block. Private backends (DB, redis, etc.) stay on `private_net` only.
+
+```yaml
+services:
+  tls_proxy:
+    networks:
+      - shared_net   # emulator-side reach
+      - agent_net    # agent-side reach (egress firewall)
+      - private_net  # talks to backend
+
+networks:
+  shared_net:
+    external: true
+  agent_net:
+    external: true
+  private_net:
+    driver: bridge
+```
+
+Without `agent_net`, the runtime preflight skip-guard hard-fails the run with a self-describing error. See `apps/owncloud-android/docker-compose.yml` or `apps/wallabag/docker-compose.yml` for working references.
+
 ## 8) Ensure HTTPS access to the app
 
 - Follow [HTTPS Upgrade Guide](HTTPS_UPGRADE_GUIDE.md).

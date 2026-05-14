@@ -129,7 +129,7 @@ The runner forwards `CLAUDE_CODE_OAUTH_TOKEN` directly into the agent container'
 ```json
 {
   "agent_mode": "claude-code",
-  "agent_image": "cybench/mobilecybench:claudecode",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
   "agent_timeout": 1800
 }
 ```
@@ -151,7 +151,7 @@ echo OPENAI_API_KEY="sk-..." >> agent/.env
 ```json
 {
   "agent_mode": "codex",
-  "agent_image": "cybench/mobilecybench-codex:latest",
+  "agent_image": "cybench/mobilecybench:codex_0.130.0",
   "agent_timeout": 1800,
   "model": "gpt-5.5",
   "reasoning_effort": "high"
