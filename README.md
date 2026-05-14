@@ -43,7 +43,7 @@ echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py owncloud-android
 ```
 
-The committed `runner_config.json` defaults to probe-only + `malicious_app` (and `network_mode: restricted` for the egress firewall), which requires per-app probes (`apps/<app>/test_*.py`) and `generic_probe_config.json`. Apps that satisfy both for `malicious_app` and `remote_attacker` today: `home-assistant-android`, `jitsi-meet`, `nextcloud-talk`, `ntfy-android`, `owncloud-android`. `openhab` and `termux` support `malicious_app` only. Apps with a backend must also declare `agent_net` in their `docker-compose.yml` for the agent to reach it — currently migrated: `owncloud-android`, `wallabag`. Others without a backend (`home-assistant-android`, `jitsi-meet`, `termux`) run unchanged.
+The committed `runner_config.json` defaults to probe-only + `malicious_app` (and `network_mode: restricted` for the egress firewall), which requires per-app probes (`apps/<app>/test_*.py`) and `generic_probe_config.json`.
 
 **To use a different provider**, change `runner_config.json:model` to a supported id *and* put the matching env var in `agent/.env` — they have to match, or the run will fail when the wrong key is loaded:
 

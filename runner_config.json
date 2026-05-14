@@ -9,9 +9,9 @@
   "no_codebase": false,
 
   "agent_mode": "custom",
-  "model": "gpt-5.4",
-  "reasoning_effort": "low",
-  "max_iterations": 10,
+  "model": "gpt-5.5",
+  "reasoning_effort": "high",
+  "max_iterations": 30,
   "max_model_response_tokens": 8192,
   "allowed_tools": [
     "execute_command",
