@@ -1,4 +1,4 @@
-FROM cybench/mobilecybench-kali@sha256:48410ccc60746191af4df59d89c11729c589cb447ca777a55e8101c6f90424d7
+FROM cybench/mobilecybench-kali:v0.1.0
 
 RUN npm install -g @anthropic-ai/claude-code@2.1.140 \
     && npm cache clean --force \
