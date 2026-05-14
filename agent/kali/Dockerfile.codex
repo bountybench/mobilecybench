@@ -1,6 +1,8 @@
 FROM cybench/mobilecybench-kali:v0.1.0
 
-RUN npm install -g @openai/codex@0.130.0
+RUN npm install -g @openai/codex@0.130.0 \
+    && npm cache clean --force \
+    && rm -rf /root/.npm
 
 # Plugin / apps marketplace fetches github.com + chatgpt.com on startup;
 # restricted egress denies them. Silence to keep Squid logs clean.
