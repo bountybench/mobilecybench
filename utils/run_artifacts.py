@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -160,6 +161,28 @@ def _existing_path(path_value: Optional[str]) -> Optional[str]:
         return None
     candidate = Path(path_value)
     return str(candidate) if candidate.exists() else None
+
+
+def _relative_artifact_path(
+    path_value: Optional[str | Path], artifact_root: Path
+) -> Optional[str]:
+    """Return an artifact path relative to run_summary.json's directory."""
+    if not path_value:
+        return None
+
+    path = Path(path_value)
+    if not path.is_absolute():
+        if path.exists():
+            path = path.resolve()
+        else:
+            return path.as_posix()
+
+    try:
+        return Path(os.path.relpath(path, artifact_root)).as_posix()
+    except ValueError:
+        # Different Windows drives cannot be relativized. Keep the original
+        # value rather than dropping the artifact pointer entirely.
+        return str(path)
 
 
 # Maps artifact key → filename, and which workflows produce each file.
@@ -326,6 +349,12 @@ def write_run_summary(
         token_totals.get("cost_usd") if isinstance(token_totals, dict) else None
     )
     cost_usd = cost_top if cost_top is not None else cost_nested
+    score_artifact_paths = {
+        key: _relative_artifact_path(path, logs_dir)
+        for key, path in _score_artifact_paths(
+            config.workflow, logs_dir, workflow
+        ).items()
+    }
 
     run_summary = {
         "run_id": run_id,
@@ -386,20 +415,26 @@ def write_run_summary(
             ),
         },
         "artifacts": {
-            "log_file": logger_manager.get_log_file_name(),
-            "agent_log_file": logger_manager.get_agent_log_file_name(),
-            "token_usage_jsonl": (
-                str(token_usage_path) if token_usage_path.exists() else None
+            "log_file": _relative_artifact_path(
+                logger_manager.get_log_file_name(), logs_dir
             ),
-            "conversation_jsonl": conversation_path,
-            "system_prompt_file": system_prompt_path,
+            "agent_log_file": _relative_artifact_path(
+                logger_manager.get_agent_log_file_name(), logs_dir
+            ),
+            "token_usage_jsonl": (
+                _relative_artifact_path(token_usage_path, logs_dir)
+                if token_usage_path.exists()
+                else None
+            ),
+            "conversation_jsonl": _relative_artifact_path(conversation_path, logs_dir),
+            "system_prompt_file": _relative_artifact_path(system_prompt_path, logs_dir),
             "screenshots_dir": (
-                str(logs_dir / "screenshots")
+                _relative_artifact_path(logs_dir / "screenshots", logs_dir)
                 if (logs_dir / "screenshots").is_dir()
                 else None
             ),
-            **_score_artifact_paths(config.workflow, logs_dir, workflow),
-            "logs_dir": str(logs_dir),
+            **score_artifact_paths,
+            "logs_dir": _relative_artifact_path(logs_dir, logs_dir),
         },
         "app": app_metadata,
     }
