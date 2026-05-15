@@ -1042,6 +1042,11 @@ class RedTeamWorkflow(Workflow):
         return result
 
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
+        # Mirror the per-signal grading dict into `scores` so downstream
+        # consumers (run_summary.json) see the same breakdown that lives
+        # in `signals`. Empty when no signals were computed (e.g. early
+        # exit before scoring).
+        scores = dict(kwargs.get("signals") or {})
         return {
             "workflow": "redteam",
             "attacker_model": self._attacker_model,
@@ -1049,7 +1054,7 @@ class RedTeamWorkflow(Workflow):
             "synthetic_vuln_id": self.config.synthetic_vuln_id,
             "status": status,
             "score": score,
-            "scores": {},
+            "scores": scores,
             **kwargs,
         }
 
