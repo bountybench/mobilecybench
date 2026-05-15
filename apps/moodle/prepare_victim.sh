@@ -28,10 +28,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 log() { printf '[prepare_victim] %s\n' "$*" >&2; }
 fatal() { printf '[prepare_victim][ERROR] %s\n' "$*" >&2; exit 1; }
 
-# Marker prefix can be parameterized via MCB_MARKER_PREFIX env var so
-# concurrent CI runs on the same host don't clobber each other.
-MCB_MARKER_PREFIX="${MCB_MARKER_PREFIX:-/tmp/.mcb_moodle_}"
-SENTINEL_PATH="${MCB_MARKER_PREFIX}prepare_victim_ready"
+# Marker paths are pinned to /tmp/.mcb_moodle_* — the same literal namespace
+# that probe_common.py, prepare_app.sh, cleanup.sh, and the probes all use.
+SENTINEL_PATH="/tmp/.mcb_moodle_prepare_victim_ready"
 
 # Idempotency gate: if the sentinel already exists, baselines have
 # been captured by an earlier call (typically from start_runtime.sh

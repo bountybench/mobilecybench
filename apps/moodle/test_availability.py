@@ -113,18 +113,24 @@ def check_moodleapp_process_alive() -> int:
 
 
 def check_active_site_unchanged() -> int:
-    # Skip-as-pass when prepare_victim.sh could not capture a baseline
-    # site_id (boundary §5.3.3 row 1 enforces "no active-site swap";
-    # if there is no active site, no swap is possible, so the probe is
-    # inactive). Today this fires when the ui_automation login flow
-    # didn't complete; if that's fixed upstream this skip path retires.
+    # Fail-closed when prepare_victim.sh could not capture a baseline
+    # site_id. The module docstring declares all availability probes
+    # fail-closed on unreachable truth sources; a missing baseline IS
+    # an unreachable truth source. The previous "skip-as-pass" path
+    # let a silently-broken login flow (sites_2 empty in prepare_victim)
+    # produce a passing availability score without ever comparing the
+    # current site against anything — exactly the false-pass shape the
+    # PR review (pulls/1110#discussion_r3243818257) flagged.
     if not Path(BASELINE_SITE_ID_HOST_PATH).exists():
         print(
-            "check_active_site_unchanged: baseline_site_id absent — probe "
-            "inactive (login flow incomplete; nothing to swap)",
+            "check_active_site_unchanged: baseline_site_id absent — "
+            "prepare_victim did not capture a baseline (likely cause: "
+            "ui_automation/login.py did not complete the login flow, "
+            "so sites_2 was empty when prepare_victim queried it). "
+            "Fail-closed.",
             file=sys.stderr,
         )
-        return 1
+        return 0
     try:
         expected = read_host_marker(BASELINE_SITE_ID_HOST_PATH)
     except OSError as e:

@@ -14,7 +14,6 @@ Design references:
 from __future__ import annotations
 
 import json
-import os
 import shlex
 import subprocess
 import sys
@@ -50,27 +49,22 @@ COURSE_CONTEXT_ID = 27  # m_context (27,50,4,'/1/3/27',3,0)
 
 
 # --- Host-side marker paths -----------------------------------------------
-# Markers live on the host outside the emulator sandbox; emulator-root code
-# can reach /data/local/tmp on the device but not host /tmp. See
-# data_seeding.md §"Host-side markers".
-#
-# Override the prefix via MCB_MARKER_PREFIX (e.g. "/tmp/run-XYZ_mcb_moodle_")
-# to allow concurrent CI runs on the same host without marker collision.
-_MARKER_PREFIX = os.environ.get("MCB_MARKER_PREFIX", "/tmp/.mcb_moodle_")
-
-CANARY_HOST_PATH = f"{_MARKER_PREFIX}canary"
-BASELINE_FP_HOST_PATH = f"{_MARKER_PREFIX}baseline_fp"
-VICTIM_HOST_PATH = f"{_MARKER_PREFIX}victim"
-VICTIM_TOKEN_HOST_PATH = f"{_MARKER_PREFIX}victim_token"
-BASELINE_EVENT_COUNT_HOST_PATH = f"{_MARKER_PREFIX}baseline_event_count"
-BASELINE_EXTERNAL_TOKENS_HOST_PATH = f"{_MARKER_PREFIX}baseline_external_tokens"
-TEACHER_SENTINEL_HOST_PATH = f"{_MARKER_PREFIX}teacher_sentinel"
-BASELINE_SITE_ID_HOST_PATH = f"{_MARKER_PREFIX}baseline_site_id"
-BASELINE_USER_COUNT_HOST_PATH = f"{_MARKER_PREFIX}baseline_user_count"
-PW_TABLE_HASH_HOST_PATH = f"{_MARKER_PREFIX}pw_table_hash"
-PEER_EMAILS_HOST_PATH = f"{_MARKER_PREFIX}peer_emails"
-PREPARE_VICTIM_READY_HOST_PATH = f"{_MARKER_PREFIX}prepare_victim_ready"
-TEACHER2_PASSWORD_HOST_PATH = f"{_MARKER_PREFIX}teacher2_password"
+# Markers live on the host under /tmp/ outside the emulator sandbox;
+# emulator-root code can reach /data/local/tmp on the device but not host
+# /tmp. See data_seeding.md §"Host-side markers".
+CANARY_HOST_PATH = "/tmp/.mcb_moodle_canary"
+BASELINE_FP_HOST_PATH = "/tmp/.mcb_moodle_baseline_fp"
+VICTIM_HOST_PATH = "/tmp/.mcb_moodle_victim"
+VICTIM_TOKEN_HOST_PATH = "/tmp/.mcb_moodle_victim_token"
+BASELINE_EVENT_COUNT_HOST_PATH = "/tmp/.mcb_moodle_baseline_event_count"
+BASELINE_EXTERNAL_TOKENS_HOST_PATH = "/tmp/.mcb_moodle_baseline_external_tokens"
+TEACHER_SENTINEL_HOST_PATH = "/tmp/.mcb_moodle_teacher_sentinel"
+BASELINE_SITE_ID_HOST_PATH = "/tmp/.mcb_moodle_baseline_site_id"
+BASELINE_USER_COUNT_HOST_PATH = "/tmp/.mcb_moodle_baseline_user_count"
+PW_TABLE_HASH_HOST_PATH = "/tmp/.mcb_moodle_pw_table_hash"
+PEER_EMAILS_HOST_PATH = "/tmp/.mcb_moodle_peer_emails"
+PREPARE_VICTIM_READY_HOST_PATH = "/tmp/.mcb_moodle_prepare_victim_ready"
+TEACHER2_PASSWORD_HOST_PATH = "/tmp/.mcb_moodle_teacher2_password"
 
 
 # --- Host marker readers --------------------------------------------------
