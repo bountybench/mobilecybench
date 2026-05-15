@@ -63,9 +63,10 @@ class RunnerConfig(BaseModel):
         ...,
         min_length=1,
         description=(
-            "Model id for the custom agent (e.g. gpt-5.5, claude-opus-4-7, "
-            "gemini-3.1-pro). Forwarded to codex mode. Ignored by "
-            "claude-code. See agent/model_providers/factory.py:SupportedModel."
+            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). "
+            "Used by all agent modes — custom uses it directly, "
+            "codex/claude-code forward it to their CLI via --model. "
+            "See agent/model_providers/factory.py:SupportedModel."
         ),
     )
     agent_image: str = Field(
