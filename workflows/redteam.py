@@ -24,6 +24,7 @@ from typing import Literal, Optional, Protocol
 from evaluation.replay_apk import MaArtifact
 from evaluation.scoring import compute_redteam_score
 from evaluation.task_bundle import TaskBundle, resolve_bundle
+from utils.artifact_paths import relative_artifact_path
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
 
@@ -737,10 +738,16 @@ class RedTeamWorkflow(Workflow):
     @staticmethod
     def _phase_summary(p: dict, **extra) -> dict:
         """Build the per-phase summary dict that goes into the result JSON."""
+        evidence_log_path = p["evidence_log_path"]
+        evidence_log = str(evidence_log_path)
+        logs_dir = logger_manager.get_logs_dir()
+        if evidence_log_path is not None and logs_dir is not None:
+            evidence_log = relative_artifact_path(evidence_log_path, logs_dir)
+
         return {
             "exit_code": p["exit_code"],
             "failure_kind": p["failure_kind"],
-            "evidence_log": str(p["evidence_log_path"]),
+            "evidence_log": evidence_log,
             "verifier_exit": p["verifier_exit"],
             **extra,
         }

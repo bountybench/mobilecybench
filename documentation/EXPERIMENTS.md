@@ -168,6 +168,8 @@ A symlink to the most recent run is maintained at `logs/latest/`.
 
 **The `run_summary.json` file is the recommended starting point for automated analysis.** It contains the `outcome`, `exit_reason`, and a `metrics` block with timing and token data.
 
+Paths in `run_summary.json["artifacts"]` are relative to the directory containing `run_summary.json`; downstream scripts should resolve them from that directory.
+
 **Exploit mode:**
 
 - Success is indicated by `outcome: "success"` in `run_summary.json` and a passing score in `synthetic_scores.json`.

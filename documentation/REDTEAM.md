@@ -103,7 +103,7 @@ There is no differential build to vouch for the probe's specificity, so the sche
     "probe": {
       "exit_code": <int>,
       "failure_kind": <str | null>,
-      "evidence_log": "<.../replays/probe/replay_evidence.log>",
+      "evidence_log": "replays/probe/replay_evidence.log",
       "verifier_exit": null
     }
   },
