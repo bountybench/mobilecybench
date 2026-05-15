@@ -415,6 +415,7 @@ class CodexAgent:
 
         return {
             "agent_type": "codex",
+            "model": self.model,
             "status": status,
             "turns_taken": turns,
             "max_turns": 0,  # CLI manages its own turn limit

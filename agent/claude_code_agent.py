@@ -48,7 +48,9 @@ class ClaudeCodeAgent:
         """Initialise the Claude Code agent.
 
         Args:
-            model: Ignored — Claude Code always uses Opus 4.6.
+            model: Model id passed to ``claude --model`` (e.g.
+                ``claude-opus-4-7``, ``claude-sonnet-4-6``, or aliases
+                like ``opus``/``sonnet``). Sourced from runner config.
             timeout_ms: Timeout for the CLI execution in milliseconds.
             app_name: Name of the app under test.
             app_server: Optional backend server URL (reachable from kali container).
@@ -73,9 +75,7 @@ class ClaudeCodeAgent:
         self.username = username
         self.password = password
         self.include_ssrf = include_ssrf
-        # Claude Code CLI always uses its default model (Opus 4.6).
-        # The model parameter from runner config is ignored.
-        self.model = "claude-opus-4-6"
+        self.model = model
         self.workflow = workflow
         self.attacker_model = attacker_model
         self.additional_context = additional_context
@@ -198,6 +198,11 @@ class ClaudeCodeAgent:
 
             # Parse the CLI result payload into token_totals
             token_totals = self._parse_result_payload(result.result_payload)
+            # Wall-clock from the provider is always populated, even when
+            # the CLI is killed before emitting its `result` event (which
+            # carries the more-precise duration_api_ms / duration_ms).
+            if result.execution_time and "duration_ms" not in token_totals:
+                token_totals["duration_ms"] = int(result.execution_time * 1000)
 
             if not result.success:
                 # Distinguish timeout (exit_code == -1) from real errors
@@ -418,15 +423,27 @@ class ClaudeCodeAgent:
         if final_message:
             agent_logger.info(f"Final message: {final_message}")
 
+        # The CLI bypasses time_tracker, so surface its own timing fields
+        # here. run_artifacts merges this into metrics.timing.
+        timing: Dict[str, Any] = {}
+        totals = token_totals or {}
+        if isinstance(totals, dict):
+            if totals.get("api_duration_ms") is not None:
+                timing["api_duration_ms"] = totals["api_duration_ms"]
+            if totals.get("duration_ms") is not None:
+                timing["duration_ms"] = totals["duration_ms"]
+
         return {
             "agent_type": "claude-code",
+            "model": self.model,
             "status": status,
             "turns_taken": turns,
             "max_turns": 0,  # CLI manages its own turn limit
             "exploit_exists": exploit_exists,
             "final_message": final_message,
-            "token_totals": token_totals or {},
+            "token_totals": totals,
             "cost_usd": cost_usd,
+            "timing": timing,
             "log_file": self.log_file,
             "conversation_file": self._conversation_file,
             "system_prompt_file": self._system_prompt_file,

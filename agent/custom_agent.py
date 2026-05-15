@@ -317,6 +317,7 @@ class CustomAgent:
 
         return {
             "agent_type": "custom",
+            "model": self.model,
             "status": "completed",
             "turns_taken": turns,
             "max_turns": self.max_iterations,

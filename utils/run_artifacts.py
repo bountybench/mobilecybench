@@ -273,6 +273,9 @@ def write_run_summary(
         )
         conversation_path = str(fallback_path) if fallback_path else None
 
+    # Only the custom agent streams per-call usage to token_usage.jsonl.
+    # CLI agents (codex, claude-code) report aggregates via token_totals
+    # and never write this file — token_usage_jsonl stays null for them.
     token_usage_path = logs_dir / "token_usage.jsonl"
     llm_calls_this_run = time_tracker.llm_calls[timing_start_idx:]
 
@@ -342,7 +345,11 @@ def write_run_summary(
             "vuln_id": config.synthetic_vuln_id,
             "task": config.task,
             "agent_type": run_result.get("agent_type", "custom"),
-            "model": config.model,
+            # Prefer the model the agent actually invoked; fall back to
+            # config.model. claude-code historically ignored config.model
+            # and pinned to a hardcoded model, so config.model lied. The
+            # agent is now the authoritative source.
+            "model": run_result.get("model") or config.model,
         },
         "config": {
             "build_type": config.build_type,
@@ -367,6 +374,10 @@ def write_run_summary(
         },
         "metrics": {
             "turn_count": int(run_result.get("turns_taken") or 0),
+            # The agent's effective turn cap. CLI-managed loops (codex,
+            # claude-code) return 0 here — they enforce their own limit
+            # and config.max_iterations does not apply.
+            "max_turns": int(run_result.get("max_turns") or 0),
             "tool_call_count": int(run_result.get("tool_call_count") or 0),
             "unique_tools": sorted({str(tool) for tool in unique_tools}),
             "error_count": max(0, logger_manager.get_error_count() - start_error_count),

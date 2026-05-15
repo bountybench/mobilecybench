@@ -88,6 +88,7 @@
       ],
       "properties": {
         "turn_count": { "type": "integer", "minimum": 0 },
+        "max_turns": { "type": "integer", "minimum": 0 },
         "tool_call_count": { "type": "integer", "minimum": 0 },
         "unique_tools": { "type": "array", "items": { "type": "string" } },
         "error_count": { "type": "integer", "minimum": 0 },
@@ -121,7 +122,10 @@
       "properties": {
         "log_file": { "type": "string", "minLength": 1 },
         "agent_log_file": { "type": "string", "minLength": 1 },
-        "token_usage_jsonl": { "type": ["string", "null"] },
+        "token_usage_jsonl": {
+          "type": ["string", "null"],
+          "description": "Path to per-call token-usage JSONL. Only produced by the custom agent (it streams to TokenTracker); null for CLI agents (codex, claude-code) — their token totals live in metrics.token_totals."
+        },
         "conversation_jsonl": { "type": ["string", "null"] },
         "system_prompt_file": { "type": ["string", "null"] },
         "screenshots_dir": { "type": ["string", "null"] },
