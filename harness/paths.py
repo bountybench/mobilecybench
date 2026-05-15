@@ -1,10 +1,4 @@
-"""Container paths defined by the BYO-agent contract.
-
-Python-side constants so call sites don't drift across files. Shell scripts
-inside agent images repeat the same string literals (Python and bash cannot
-share constants); the canonical cross-language record is documentation/
-BRING_YOUR_OWN_AGENT.md plus schemas/{task,result}.schema.json.
-"""
+"""Container paths defined by the BYO-agent contract. See schemas/task.schema.json."""
 
 TASK_JSON = "/app/task.json"
 EXPLOIT_DIR = "/app/agent_exploit"

@@ -24,33 +24,22 @@ from utils.run_artifacts import normalize_agent_result
 
 logger = logging.getLogger(__name__)
 
-# How often to poll exec_inspect during agent execution. 250ms balances
-# responsiveness on the SIGKILL deadline against Docker daemon round-trip cost.
-_POLL_INTERVAL_SECONDS = 0.25
+# Matches utils.docker_utils.run_command_in_container's polling cadence.
+_POLL_INTERVAL_SECONDS = 1.0
 
 
 def _put_task_json(container, task_dict: dict[str, Any]) -> None:
-    """Deliver task_dict to ``paths.TASK_JSON`` inside the running container.
-
-    No bind-mount: ``put_archive`` writes the file post-start so the task
-    contents are decoupled from container creation ordering.
-    """
-    target_path = Path(paths.TASK_JSON)
-    target_dir = str(target_path.parent)
-    target_name = target_path.name
-
+    """Deliver task_dict to paths.TASK_JSON via put_archive (no bind-mount)."""
+    target = Path(paths.TASK_JSON)
     payload = json.dumps(task_dict, indent=2).encode("utf-8")
 
     tar_stream = io.BytesIO()
     with tarfile.open(fileobj=tar_stream, mode="w") as tar:
-        info = tarfile.TarInfo(name=target_name)
+        info = tarfile.TarInfo(name=target.name)
         info.size = len(payload)
         info.mode = 0o644
         tar.addfile(info, io.BytesIO(payload))
-    tar_stream.seek(0)
-
-    # put_archive extracts the tar into the target directory.
-    container.put_archive(path=target_dir, data=tar_stream.getvalue())
+    container.put_archive(path=str(target.parent), data=tar_stream.getvalue())
 
 
 def _wait_for_exec(api, exec_id: str, deadline: float) -> tuple[bool, int | None]:
@@ -69,14 +58,7 @@ def _wait_for_exec(api, exec_id: str, deadline: float) -> tuple[bool, int | None
 
 
 def _pull_artifacts(env, host_artifact_dir: Path) -> None:
-    """Extract all three contract directories in priority order.
-
-    Order matters: agent_run/ first (carries result.json, conversation.jsonl,
-    agent.log — the diagnostic trail we need even when other extraction
-    fails), then agent_exploit/ (work-product), then agent_output/
-    (evidence). Each call wrapped so a partial failure doesn't block
-    the others (matches today's save_artifacts best-effort pattern).
-    """
+    """agent_run/ first so the diagnostic trail survives partial failure."""
     for fn in (env.save_agent_run, env.save_agent_exploit, env.save_agent_output):
         try:
             fn(host_artifact_dir)
@@ -107,17 +89,13 @@ def _synthesize_result(
     decoder_error: str | None,
     daemon_error: str | None,
 ) -> dict[str, Any]:
-    """Build a result dict when the agent didn't write a valid result.json.
-
-    Status precedence: daemon_error > decoder_error > timeout > error.
-    """
+    """Build a result dict when the agent didn't write a valid result.json."""
     if daemon_error:
         return {"status": "error", "error_traceback": daemon_error, "turns_taken": 0}
     if decoder_error:
         return {"status": "error", "error_traceback": decoder_error, "turns_taken": 0}
     if timed_out:
         return {"status": "timeout", "turns_taken": 0}
-    # Process exited but no result.json. Treat as error with exit code.
     return {
         "status": "error",
         "error_traceback": f"agent exited (code={exit_code}) without writing result.json",
@@ -132,28 +110,9 @@ def run_agent(
     task_dict: dict[str, Any],
     host_artifact_dir: Path,
 ) -> dict[str, Any]:
-    """Run an external agent and return its normalized result.
+    """Run an external agent inside ``env.container`` and return its normalized result.
 
-    Lifecycle (see ``documentation/proposals/agent_decoupling/06_design.md`` §2.4):
-
-    1. ``put_archive`` delivers ``task_dict`` as JSON to ``/app/task.json``.
-    2. Detached ``docker exec /run-agent.sh``; poll until exit or deadline.
-    3. On deadline: ``container.kill(signal="SIGKILL")``. Hard kill pid 1;
-       Docker doesn't propagate signals reliably, so we don't try grace.
-    4. ``finally``: pull agent_run/, agent_exploit/, agent_output/ in
-       priority order. Each call wrapped so partial failure preserves
-       what we can salvage.
-    5. Read result.json, validate + normalize.
-
-    Args:
-        env: ``AgentEnvironment`` with a live ``env.container``.
-        task_dict: Validated task dict from ``harness.task.build_task_dict``.
-        host_artifact_dir: Destination for pulled artifacts (typically
-            ``logs/experiment_<uuid>/``).
-
-    Returns:
-        Normalized result dict with ``status``, ``turns_taken``, plus
-        ``agent_image``, ``agent_image_digest``, and ``host_paths``.
+    See ``documentation/proposals/agent_decoupling/06_design.md`` §2.4 for the lifecycle.
     """
     container = env.container
     api = container.client.api  # type: ignore[attr-defined]

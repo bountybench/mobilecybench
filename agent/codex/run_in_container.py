@@ -1,18 +1,14 @@
 """In-container entrypoint for the codex BYO-contract image.
 
-Invoked by ``/run-agent.sh`` (thin bash bootstrap). Reads ``/app/task.json``,
-spawns ``codex exec`` as a subprocess, streams its JSONL events through
-the shared ``CodexEventParser``, emits ``/app/agent_run/conversation.jsonl``
-per turn, and writes ``/app/agent_run/result.json`` atomically.
-
-Parser is shared with the legacy ``CodexCLIProvider`` (host-side docker
-SDK path) — one source of truth (see ``agent/codex/event_parser.py``).
+Reads /app/task.json, spawns `codex exec` as a subprocess, streams its
+JSONL events through the shared CodexEventParser, emits conversation.jsonl
+per turn, and writes result.json atomically.
 """
 
 from __future__ import annotations
 
+import datetime
 import json
-import os
 import subprocess
 import sys
 import time
@@ -22,25 +18,27 @@ from typing import Any
 import jsonschema
 
 from agent.codex.event_parser import CodexEventParser
+from utils.json_io import write_json_atomic
 
-# Image layout (Dockerfile.codex COPYs into /opt/{agent,schemas}/). One
-# parent up from this file is /opt/agent/codex; two up is /opt.
-_TASK_SCHEMA_PATH = Path(__file__).resolve().parent.parent.parent / "schemas" / "task.schema.json"
+# Schema lives at /opt/schemas/ in the image (Dockerfile.codex COPYs it
+# alongside agent/). Load at import; both the validator and the schema
+# itself are read-only.
+_TASK_SCHEMA_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "schemas" / "task.schema.json"
+)
+with _TASK_SCHEMA_PATH.open(encoding="utf-8") as _f:
+    _TASK_VALIDATOR = jsonschema.Draft202012Validator(json.load(_f))
 
 TASK_JSON = "/app/task.json"
 EXPLOIT_DIR = "/app/agent_exploit"
 RUN_DIR = "/app/agent_run"
 CONVERSATION_PATH = f"{RUN_DIR}/conversation.jsonl"
-RESULT_PATH = f"{RUN_DIR}/result.json"
 
 
 def _load_task(task_path: str) -> dict[str, Any]:
-    """Read + schema-validate task.json."""
     with open(task_path, encoding="utf-8") as f:
         task = json.load(f)
-    with _TASK_SCHEMA_PATH.open(encoding="utf-8") as sf:
-        schema = json.load(sf)
-    jsonschema.Draft202012Validator(schema).validate(task)
+    _TASK_VALIDATOR.validate(task)
     return task
 
 
@@ -92,30 +90,14 @@ def _build_codex_command(task: dict[str, Any]) -> list[str]:
     return cmd
 
 
-def _utc_now_iso() -> str:
-    import datetime
-
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
-
-
-def _write_atomic(path: str, contents: str) -> None:
-    """Atomic write via tmpfile + rename (same filesystem)."""
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(contents)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
-
-
 def _emit_conversation_turns(task: dict[str, Any], parser: CodexEventParser) -> None:
-    """Materialize parser.conversation_events to /app/agent_run/conversation.jsonl.
+    """Materialize parser.conversation_events to conversation.jsonl.
 
     Adds the schema fields the harness-side conversation_turn schema expects
     (run_id, timestamp, role=assistant, response_id=None, reasoning_summary).
     """
     run_id = task["run_id"]
-    timestamp = _utc_now_iso()
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     with open(CONVERSATION_PATH, "w", encoding="utf-8") as f:
         for ev in parser.conversation_events:
             turn_event = {
@@ -139,18 +121,18 @@ def main(argv: list[str]) -> int:
     Path(RUN_DIR).mkdir(parents=True, exist_ok=True)
     Path(EXPLOIT_DIR).mkdir(parents=True, exist_ok=True)
 
+    result_path = Path(RUN_DIR) / "result.json"
+
     try:
         task = _load_task(task_path)
     except (jsonschema.ValidationError, json.JSONDecodeError, OSError) as e:
-        _write_atomic(
-            RESULT_PATH,
-            json.dumps(
-                {
-                    "status": "error",
-                    "turns_taken": 0,
-                    "error_traceback": f"task.json validation failed: {e}",
-                }
-            ),
+        write_json_atomic(
+            result_path,
+            {
+                "status": "error",
+                "turns_taken": 0,
+                "error_traceback": f"task.json validation failed: {e}",
+            },
         )
         return 1
 
@@ -173,15 +155,13 @@ def main(argv: list[str]) -> int:
         parser.flush()
         exit_code = proc.wait()
     except Exception as e:
-        _write_atomic(
-            RESULT_PATH,
-            json.dumps(
-                {
-                    "status": "error",
-                    "turns_taken": parser.turn_count,
-                    "error_traceback": f"codex subprocess error: {e}",
-                }
-            ),
+        write_json_atomic(
+            result_path,
+            {
+                "status": "error",
+                "turns_taken": parser.turn_count,
+                "error_traceback": f"codex subprocess error: {e}",
+            },
         )
         return 1
 
@@ -205,7 +185,7 @@ def main(argv: list[str]) -> int:
             f"codex exit_code={exit_code}, elapsed={elapsed:.1f}s"
         )
 
-    _write_atomic(RESULT_PATH, json.dumps(result, indent=2))
+    write_json_atomic(result_path, result)
     return exit_code
 
 

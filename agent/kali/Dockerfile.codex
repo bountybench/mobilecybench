@@ -27,6 +27,7 @@ COPY agent/codex/event_parser.py /opt/agent/codex/event_parser.py
 COPY agent/codex/run_in_container.py /opt/agent/codex/run_in_container.py
 COPY utils/__init__.py /opt/utils/__init__.py
 COPY utils/logger.py /opt/utils/logger.py
+COPY utils/json_io.py /opt/utils/json_io.py
 COPY schemas/task.schema.json /opt/schemas/task.schema.json
 COPY agent/kali/run-agent.sh.codex /run-agent.sh
 RUN chmod +x /run-agent.sh
