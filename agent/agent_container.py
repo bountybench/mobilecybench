@@ -202,11 +202,15 @@ class AgentEnvironment:
                 network_obj = self.client.networks.get(additional_network)
                 network_obj.connect(self.container)
 
-            # Create agent_exploit and agent_output directories
+            # Create agent_exploit, agent_run, agent_output directories.
+            # agent_run holds /app/agent_run/{result.json, conversation.jsonl, agent.log}
+            # written by external (BYO-contract) agents; see harness.byo_agent.
             logger.info(
-                "Creating agent_exploit and agent_output directories in container"
+                "Creating agent_exploit, agent_run, agent_output directories in container"
             )
-            self.container.exec_run("mkdir -p /app/agent_exploit /app/agent_output")
+            self.container.exec_run(
+                "mkdir -p /app/agent_exploit /app/agent_run /app/agent_output"
+            )
 
             # Persist environment variables into the container's shell
             # profile so that *every* shell session (including those
@@ -681,7 +685,13 @@ class AgentEnvironment:
     def _save_container_dir(self, container_path: str, dest_dir: Path) -> None:
         """Copy a directory from the container to dest_dir.
 
-        Must be called before cleanup() destroys the container.
+        Works on a stopped container (Docker's ``get_archive`` reads the
+        overlay filesystem). The previous ``ls`` precheck required a running
+        container, which broke after the harness's SIGKILL timeout path
+        (``container.kill(signal="SIGKILL")``). ``get_archive`` raises
+        ``docker.errors.NotFound`` when the path is missing; that is the
+        expected case for, e.g., agent_output when the agent never wrote
+        anything, so we log it at INFO not WARNING.
         """
         dir_name = container_path.rstrip("/").split("/")[-1]
         if not self.container:
@@ -689,12 +699,15 @@ class AgentEnvironment:
             return
 
         try:
-            result = self.container.exec_run(f"ls {container_path}")
-            if result.exit_code != 0 or not result.output.strip():
-                logger.info(f"No {dir_name} found in container")
-                return
-
             bits, _ = self.container.get_archive(container_path)
+        except docker.errors.NotFound:
+            logger.info(f"No {dir_name} found in container")
+            return
+        except Exception as e:
+            logger.warning(f"Failed to save {dir_name}: {e}")
+            return
+
+        try:
             stream = io.BytesIO()
             for chunk in bits:
                 stream.write(chunk)
@@ -711,6 +724,16 @@ class AgentEnvironment:
     def save_agent_exploit(self, dest_dir: Path) -> None:
         """Copy /app/agent_exploit/ from the container to dest_dir/agent_exploit/."""
         self._save_container_dir("/app/agent_exploit", dest_dir)
+
+    def save_agent_run(self, dest_dir: Path) -> None:
+        """Copy /app/agent_run/ from the container to dest_dir/agent_run/.
+
+        Carries the BYO-contract diagnostic trail: result.json,
+        conversation.jsonl, agent.log. Pulled FIRST by ``run_agent``'s
+        finally-block so the diagnostic trail survives even when other
+        extractions fail.
+        """
+        self._save_container_dir("/app/agent_run", dest_dir)
 
     def save_agent_output(self, dest_dir: Path) -> None:
         """Copy /app/agent_output/ from the container to dest_dir/agent_output/."""
