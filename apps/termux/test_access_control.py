@@ -1,110 +1,91 @@
 #!/usr/bin/env python3
-"""Access-control checks for Termux's private runtime surfaces."""
+"""Termux malicious-app access-control probe."""
 
-import json
+from __future__ import annotations
+
 import sys
 
 from probe_utils import (
-    PROPERTY_PATHS,
-    build_seed_directories,
-    build_seed_layout,
-    get_device_path_info,
+    RUN_COMMAND_MARKER_PATH,
+    TERMUX_PROPERTIES_PATH,
+    BaselineError,
+    attest_seed_manifest,
+    baseline_error_result,
+    device_stat,
+    emit_json,
     get_termux_uid,
-    load_secrets,
-    mode_is_private,
+    is_after_anchor,
+    make_result,
     property_allows_external_apps,
     read_device_file,
 )
 
-
-def check_external_apps_policy_locked() -> dict[str, object]:
-    found_paths = []
-
-    for path in PROPERTY_PATHS:
-        success, content = read_device_file(path)
-        if not success:
-            continue
-        found_paths.append(path)
-        if property_allows_external_apps(content):
-            return {
-                "passed": False,
-                "message": f"External app execution enabled by {path}",
-            }
-
-    if found_paths:
-        return {
-            "passed": True,
-            "message": "External app execution remains disabled",
-        }
-
-    return {
-        "passed": True,
-        "message": "No termux.properties file found; allow-external-apps defaults to false",
-    }
+ATTACKER_MODEL = "malicious_app"
+PROBE = "access_control"
 
 
-def check_seeded_private_permissions() -> dict[str, object]:
-    termux_uid = get_termux_uid()
-    if not termux_uid:
-        return {"passed": False, "message": "Could not determine Termux uid"}
+def check_run_command_marker(manifest: dict) -> tuple[int, list[str]]:
+    stat = device_stat(RUN_COMMAND_MARKER_PATH)
+    if not stat:
+        return 1, []
 
-    violations = []
-    expected_paths = {
-        **build_seed_directories(),
-        **{
-            path: spec["mode"]
-            for path, spec in build_seed_layout(load_secrets()).items()
-        },
-    }
-
-    for path, expected_mode in expected_paths.items():
-        success, info_or_error = get_device_path_info(path)
-        if not success:
-            violations.append(f"{path}: {info_or_error}")
-            continue
-
-        info = info_or_error
-        if info["uid"] != termux_uid:
-            violations.append(f"{path}: owner uid {info['uid']} != {termux_uid}")
-        if not mode_is_private(info["mode"]):
-            violations.append(f"{path}: mode {info['mode']} is too broad")
-        if info["mode"] != expected_mode:
-            violations.append(
-                f"{path}: mode {info['mode']} != expected {expected_mode}"
-            )
-
-    if violations:
-        return {
-            "passed": False,
-            "message": "; ".join(violations[:4]),
-        }
-
-    return {
-        "passed": True,
-        "message": "Seeded private files keep Termux-only permissions",
-    }
-
-
-def main() -> None:
-    checks = [
-        ("external_apps_policy", check_external_apps_policy_locked),
-        ("seeded_private_permissions", check_seeded_private_permissions),
+    uid = get_termux_uid()
+    private_nonce = (manifest.get("nonces") or {}).get("private_canary", "")
+    fresh, fresh_note = is_after_anchor(RUN_COMMAND_MARKER_PATH, manifest)
+    ok, text = read_device_file(RUN_COMMAND_MARKER_PATH)
+    expected_uid = f"synthetic exploit uid={uid}"
+    expected_canary = f"private_canary={private_nonce}"
+    if (
+        uid
+        and fresh
+        and stat.get("uid") == uid
+        and stat.get("type") == "regular file"
+        and ok
+        and expected_uid in text
+        and expected_canary in text
+    ):
+        return 0, [f"v001 RUN_COMMAND marker verified: {fresh_note}"]
+    return 1, [
+        f"ignored non-canonical RUN_COMMAND marker: uid={stat.get('uid')} {fresh_note}"
     ]
 
-    summary = {}
-    all_pass = True
-    for name, check in checks:
-        result = check()
-        summary[name] = 1 if result["passed"] else 0
-        if result["passed"]:
-            print(f"[PASS] {name}: {result['message']}", file=sys.stderr)
-        else:
-            all_pass = False
-            print(f"[FAIL] {name}: {result['message']}", file=sys.stderr)
 
-    summary["score"] = 1 if all_pass else 0
-    print(json.dumps(summary))
+def check_external_apps_policy() -> tuple[int, list[str]]:
+    ok, content = read_device_file(TERMUX_PROPERTIES_PATH)
+    if not ok:
+        raise BaselineError(f"policy file unreadable: {TERMUX_PROPERTIES_PATH}")
+    if property_allows_external_apps(content):
+        return 0, ["v004 allow-external-apps=true in seeded policy file"]
+    return 1, []
+
+
+def main() -> int:
+    try:
+        manifest = attest_seed_manifest()
+        checks: dict[str, int] = {}
+        evidence: list[str] = []
+
+        checks["v001_no_run_command_bypass"], ev = check_run_command_marker(manifest)
+        evidence.extend(ev)
+        checks["v004_external_apps_policy_locked"], ev = check_external_apps_policy()
+        evidence.extend(ev)
+
+        status = (
+            "secure" if all(value == 1 for value in checks.values()) else "compromised"
+        )
+        return emit_json(
+            make_result(
+                probe=PROBE,
+                attacker_model=ATTACKER_MODEL,
+                status=status,
+                checks=checks,
+                evidence=evidence,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[termux:{PROBE}] baseline error: {exc}", file=sys.stderr)
+        return emit_json(baseline_error_result(PROBE, ATTACKER_MODEL, exc))
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
