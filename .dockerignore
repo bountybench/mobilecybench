@@ -1,0 +1,42 @@
+# Applies to builds whose context is the repo root (codex / claudecode
+# derived images per agent_decoupling/06_design.md §4.2). The legacy kali
+# base build uses context=agent/kali/ and is unaffected.
+#
+# CRITICAL: this file is created BEFORE the first repo-root COPY in any
+# Dockerfile. A .dockerignore added AFTER a layer is built does not
+# retroact on history; the secret would be permanently in the published image.
+
+# --- Secrets (blocking) ---
+**/.env
+**/.env.*
+!**/.env.example
+**/credentials.json
+**/secrets.json
+**/*.pem
+**/*.key
+**/.aws/
+**/.netrc
+**/.ssh/
+
+# Explicit: agent/.env exists on operator hosts and is read by
+# agent/custom_agent.py via load_dotenv. Never bake into images.
+agent/.env
+
+# --- Bloat (excludes large/irrelevant trees from the build context) ---
+.git/
+logs/
+lab/
+research/
+documentation/
+.obsidian/
+RELEASE_READINESS.md
+.pytest_cache/
+.ruff_cache/
+**/*.egg-info/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Apps' built artifacts (recompiled at runtime if needed)
+apps/*/exploit/
+apps/*/apk/
