@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilecybench.dev/schemas/result.schema.json",
+  "title": "Agent Result",
+  "description": "Contract output written by a BYO agent to /app/agent_run/result.json. The harness pulls this back into logs/experiment_<uuid>/agent_run/result.json and feeds it through utils.run_artifacts.normalize_agent_result. See documentation/proposals/agent_decoupling/06_design.md for the full contract.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "description": "Run terminal status. 'completed' = agent finished cleanly. 'timeout' = harness wall-clock kill fired. 'error' = agent or harness raised.",
+      "enum": ["completed", "timeout", "error"]
+    },
+    "turns_taken": {
+      "description": "Number of agent loop iterations. CLI agents that don't expose a turn count may report 1 (single CLI invocation).",
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "cost_usd": {
+      "description": "Total LLM cost for this run in USD.",
+      "type": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "model": {
+      "description": "Model id actually used (echoes task.json.model unless the CLI/provider remapped it).",
+      "type": "string",
+      "default": ""
+    },
+    "final_message": {
+      "description": "Last assistant message text. Source per agent: codex CodexCLIResult.output_text; claude-code last assistant event; custom final assistant message.",
+      "type": "string",
+      "default": ""
+    },
+    "error_traceback": {
+      "description": "Populated only when status='error'. Stack trace or decoder message for malformed result.json.",
+      "type": "string",
+      "default": ""
+    },
+    "tool_call_count": {
+      "description": "Total number of tool invocations across the run.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "unique_tools": {
+      "description": "Distinct tool names invoked during the run.",
+      "type": "array",
+      "items": {"type": "string"},
+      "default": []
+    },
+    "token_totals": {
+      "description": "Aggregate token counts. Required for cost analysis even when cost_usd is 0 (unregistered models).",
+      "type": "object",
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 0, "default": 0},
+        "output_tokens": {"type": "integer", "minimum": 0, "default": 0},
+        "reasoning_tokens": {"type": "integer", "minimum": 0, "default": 0},
+        "cached_input_tokens": {"type": "integer", "minimum": 0, "default": 0},
+        "cache_creation_tokens": {"type": "integer", "minimum": 0, "default": 0}
+      },
+      "additionalProperties": false,
+      "default": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+        "cache_creation_tokens": 0
+      }
+    },
+    "exit_code": {
+      "description": "Process exit code for the agent's /run-agent.sh. Useful when status='error'.",
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "required": ["status", "turns_taken"],
+  "additionalProperties": false
+}
