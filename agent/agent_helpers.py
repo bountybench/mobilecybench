@@ -1,8 +1,9 @@
-"""
-Shared helper functions for agent implementations.
+"""Shared helper functions for the in-process CustomAgent loop.
 
-This module contains utility functions that are used across different agent types
-(CustomAgent, CodexAgent, etc.) to avoid code duplication.
+CodexAgent / ClaudeCodeAgent (legacy in-process wrappers) were deleted in
+the BYO-contract consolidation; codex + claude-code now run inside their
+own images via harness.byo_agent.run_agent. CustomAgent is the only
+remaining caller.
 """
 
 from agent.backend.docker_ops import execute_command_internal

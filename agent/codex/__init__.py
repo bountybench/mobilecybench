@@ -1,5 +1,5 @@
-"""Codex CLI integration module for MobileCyBench."""
+"""Codex BYO-contract agent: event parser + in-container entrypoint."""
 
-from agent.codex.codex_cli_provider import CodexCLIProvider
+from agent.codex.event_parser import CodexEventParser
 
-__all__ = ["CodexCLIProvider"]
+__all__ = ["CodexEventParser"]

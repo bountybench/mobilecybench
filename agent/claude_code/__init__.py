@@ -1,5 +1,5 @@
-"""Claude Code CLI integration module for MobileCyBench."""
+"""Claude Code BYO-contract agent: event parser + in-container entrypoint."""
 
-from agent.claude_code.claude_code_cli_provider import ClaudeCodeCLIProvider
+from agent.claude_code.event_parser import ClaudeCodeEventParser
 
-__all__ = ["ClaudeCodeCLIProvider"]
+__all__ = ["ClaudeCodeEventParser"]

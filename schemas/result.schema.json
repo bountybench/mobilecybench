@@ -16,10 +16,9 @@
       "default": 0
     },
     "cost_usd": {
-      "description": "Total LLM cost for this run in USD.",
+      "description": "Total LLM cost for this run in USD. No default: write_run_summary distinguishes 'unset' from 'zero' when picking between top-level and token_totals.cost_usd.",
       "type": "number",
-      "minimum": 0,
-      "default": 0
+      "minimum": 0
     },
     "model": {
       "description": "Model id actually used (echoes task.json.model unless the CLI/provider remapped it).",
@@ -49,7 +48,7 @@
       "default": []
     },
     "token_totals": {
-      "description": "Aggregate token counts. Required for cost analysis even when cost_usd is 0 (unregistered models).",
+      "description": "Aggregate token counts. Required for cost analysis even when cost_usd is 0 (unregistered models). Open shape: existing agents may emit extra keys (e.g., cost_usd, per_request_usage); we tolerate them for back-compat.",
       "type": "object",
       "properties": {
         "input_tokens": {"type": "integer", "minimum": 0, "default": 0},
@@ -58,7 +57,7 @@
         "cached_input_tokens": {"type": "integer", "minimum": 0, "default": 0},
         "cache_creation_tokens": {"type": "integer", "minimum": 0, "default": 0}
       },
-      "additionalProperties": false,
+      "additionalProperties": true,
       "default": {
         "input_tokens": 0,
         "output_tokens": 0,

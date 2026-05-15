@@ -521,14 +521,18 @@ class TestSaveAgentExploit:
         agent_env.save_agent_exploit(tmp_path / "logs")
         assert not (tmp_path / "logs" / "agent_exploit").exists()
 
-    def test_empty_agent_exploit_skipped(self, tmp_path):
-        """No extraction when agent_exploit directory is empty in container."""
+    def test_missing_agent_exploit_skipped(self, tmp_path):
+        """No extraction when agent_exploit does not exist in container.
+
+        Post-BYO-consolidation: get_archive raises NotFound on missing paths;
+        _save_container_dir downgrades that to INFO and writes nothing. The
+        legacy ``ls``-based precheck (which required a running container) is
+        gone — see harness.byo_agent's SIGKILL timeout path."""
         agent_env = self._create_agent_env(tmp_path)
         agent_env.container = MagicMock()
-        agent_env.container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
+        agent_env.container.get_archive.side_effect = docker.errors.NotFound("no path")
 
         agent_env.save_agent_exploit(tmp_path / "logs")
-        agent_env.container.get_archive.assert_not_called()
         assert not (tmp_path / "logs" / "agent_exploit").exists()
 
     def test_copies_to_agent_exploit_dir(self, tmp_path):

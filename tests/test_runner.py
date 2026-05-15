@@ -411,6 +411,10 @@ class TestRun:
             ExploitWorkflow,
             "run_agent",
             return_value={
+                # agent_type is now passed-through (no auto-inference from
+                # conversation_history shape, per the BYO consolidation in
+                # utils/run_artifacts.py:normalize_agent_result).
+                "agent_type": "codex",
                 "status": "completed",
                 "turns_taken": 1,
                 "conversation_history": [
