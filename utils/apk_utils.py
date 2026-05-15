@@ -150,7 +150,7 @@ def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> 
     if extracted:
         logger.info("Extracted %d file(s) to %s", len(extracted), apk_dir)
     if skipped:
-        logger.warning(
+        logger.info(
             "Skipped %d existing file(s) in %s: %s (use --force to overwrite)",
             len(skipped),
             apk_dir,
