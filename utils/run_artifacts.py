@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
+import jsonschema
+
 from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
@@ -14,6 +16,16 @@ try:
     from jsonschema import validate as _jsonschema_validate
 except Exception:  # pragma: no cover
     _jsonschema_validate = None
+
+
+# Schema-validated result normalization. Schema lives at <repo>/schemas/;
+# this module is <repo>/utils/. One parent up.
+_RESULT_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "result.schema.json"
+
+with _RESULT_SCHEMA_PATH.open() as _f:
+    _RESULT_SCHEMA: dict[str, Any] = json.load(_f)
+
+_RESULT_VALIDATOR = jsonschema.Draft202012Validator(_RESULT_SCHEMA)
 
 
 def utc_now_iso() -> str:
@@ -31,26 +43,44 @@ def jsonable(value: Any) -> Any:
 
 
 def normalize_agent_result(result: Optional[dict]) -> dict:
-    normalized = dict(result or {})
-    turns_taken = normalized.get("turns_taken")
-    if turns_taken is None:
-        turns_taken = normalized.get("turns", 0)
+    """Validate + normalize an agent's result dict.
 
-    if "agent_type" not in normalized:
-        if isinstance(normalized.get("conversation_history"), list) and normalized.get(
-            "conversation_history"
-        ):
-            normalized["agent_type"] = "codex"
-        else:
-            normalized["agent_type"] = "custom"
+    Single normalizer for both dispatch paths (custom in-process and external
+    BYO via harness.byo_agent.run_agent). The result schema lives at
+    ``schemas/result.schema.json`` and gates the required fields (``status``,
+    ``turns_taken``). Missing optional fields get explicit defaults pulled
+    from the schema where declared; legacy keys produced by today's
+    in-process agents (``agent_type``, ``conversation_file``,
+    ``system_prompt_file``, ``conversation_history``, ``log_file``, etc.)
+    pass through unmodified — ``additionalProperties: true`` in the schema.
+
+    If the input dict is None or empty, treats as an unknown harness-internal
+    state (matches the legacy fallback). The auto-inference of ``agent_type``
+    from ``conversation_history`` is removed; ``agent_image`` and
+    ``agent_image_digest`` (stamped by ``run_agent``) replace it.
+    """
+    normalized = dict(result or {})
+
+    # Legacy callers (and a few tests) used a ``turns`` key instead of
+    # ``turns_taken``; honor the alias so they don't fail validation.
+    if "turns_taken" not in normalized and "turns" in normalized:
+        normalized["turns_taken"] = normalized["turns"]
+
+    # Defensive fallback for harness-internal code paths that pass empty
+    # dicts (e.g., a workflow returning {} on a swallowed exception).
+    # Without status / turns_taken, schema validation fails; default to
+    # an explicit "unknown" so the failure mode is consistent across
+    # legacy and contract paths.
     normalized.setdefault("status", "unknown")
-    normalized["turns_taken"] = int(turns_taken or 0)
-    normalized.setdefault("tool_call_count", 0)
-    normalized.setdefault("unique_tools", [])
-    normalized.setdefault("token_totals", {})
-    normalized.setdefault("conversation_file", None)
-    normalized.setdefault("system_prompt_file", None)
-    normalized.setdefault("conversation_history", [])
+    normalized.setdefault("turns_taken", 0)
+    normalized["turns_taken"] = int(normalized["turns_taken"] or 0)
+
+    # Apply schema-defined defaults for documented optional fields.
+    for key, spec in _RESULT_SCHEMA["properties"].items():
+        if "default" in spec and key not in normalized:
+            normalized[key] = spec["default"]
+
+    _RESULT_VALIDATOR.validate(normalized)
     return normalized
 
 

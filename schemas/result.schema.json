@@ -6,8 +6,8 @@
   "type": "object",
   "properties": {
     "status": {
-      "description": "Run terminal status. 'completed' = agent finished cleanly. 'timeout' = harness wall-clock kill fired. 'error' = agent or harness raised.",
-      "enum": ["completed", "timeout", "error"]
+      "description": "Run terminal status. 'completed' = agent finished cleanly. 'timeout' = harness wall-clock kill fired. 'error' = agent or harness raised. 'dry_run' and 'unknown' are harness-internal statuses accepted for back-compat with non-contract code paths.",
+      "enum": ["completed", "timeout", "error", "dry_run", "unknown"]
     },
     "turns_taken": {
       "description": "Number of agent loop iterations. CLI agents that don't expose a turn count may report 1 (single CLI invocation).",
@@ -74,5 +74,5 @@
     }
   },
   "required": ["status", "turns_taken"],
-  "additionalProperties": false
+  "additionalProperties": true
 }
