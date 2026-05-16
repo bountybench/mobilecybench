@@ -10,7 +10,9 @@ from typing import Callable, Dict, List, Optional
 import docker
 import docker.errors
 
+from agent import firewall
 from agent.backend.docker_setup import AGENT_HOST_PORT
+from agent.firewall import AGENT_NET, EXTERNAL_BRIDGE, SHARED_NET
 from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
@@ -22,9 +24,8 @@ from utils.git_utils import (
 )
 from utils.logger import logger
 
-# ---------------------------------------------------------------------------
-# ADB proxy sidecar constants
-# ---------------------------------------------------------------------------
+# ADB filter proxy sidecar. Joined to agent_net (the agent's only network);
+# the proxy dual-homes onto the default bridge to reach the host's adb daemon.
 ADB_PROXY_CONTAINER = "adb-proxy"
 ADB_PROXY_IMAGE = "python:3.11-slim"
 ADB_PROXY_PORT = 5037
@@ -149,7 +150,6 @@ class AgentEnvironment:
 
         # Don't pass internal credential blobs as container env vars
         environment = {k: v for k, v in self.env.items() if not k.startswith("_")}
-        extra_hosts = {"host.docker.internal": "host-gateway"}
         command = '/bin/bash -c "while true; do sleep 30; done"'
         network = self.docker_networks[0] if self.docker_networks else None
 
@@ -189,7 +189,6 @@ class AgentEnvironment:
                 name=container_name,
                 command=command,
                 environment=environment,
-                extra_hosts=extra_hosts,
                 network=network,
                 volumes=volumes,
                 ports={f"{AGENT_HOST_PORT}/tcp": AGENT_HOST_PORT},
@@ -237,7 +236,7 @@ class AgentEnvironment:
             if self.mode == "codex":
                 logger.info("Logging in to Codex CLI with API key...")
                 result = self.container.exec_run(
-                    "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+                    "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
                 )
                 if result.exit_code == 0:
                     logger.info("Codex CLI logged in successfully")
@@ -729,67 +728,79 @@ class AgentEnvironment:
                 logger.warning(f"Error cleaning up container: {e}")
         self.container = None
         _stop_adb_proxy()
+        firewall.stop()
 
 
-def create_docker_network(network_name: str = "shared_net") -> None:
-    """Create Docker network if it doesn't exist."""
+def create_docker_network(
+    network_name: str = SHARED_NET, internal: bool = False
+) -> None:
+    """Create a Docker network if absent.
+
+    Fails hard if an existing network has ``Internal=False`` when the caller
+    asked for ``internal=True`` — otherwise the kernel egress firewall would
+    be silently defeated. The reverse mismatch only warns.
+    """
     client = docker.from_env()
-
     try:
-        client.networks.get(network_name)
-        logger.info(f"Docker network '{network_name}' already exists")
+        existing = client.networks.get(network_name)
     except docker.errors.NotFound:
-        client.networks.create(network_name, driver="bridge")
-        logger.info(f"Created Docker network '{network_name}'")
+        client.networks.create(network_name, driver="bridge", internal=internal)
+        logger.info(
+            f"Created network '{network_name}'{' (internal)' if internal else ''}"
+        )
+        return
+
+    actual_internal = existing.attrs.get("Internal", False)
+    if internal and not actual_internal:
+        raise RuntimeError(
+            f"Network '{network_name}' exists with Internal=False; "
+            f"this defeats the kernel egress firewall. "
+            f"Remove it: `docker network rm {network_name}`."
+        )
+    if actual_internal != internal:
+        logger.warning(
+            f"Network '{network_name}' has Internal={actual_internal}, expected {internal}"
+        )
 
 
 def _start_adb_proxy() -> None:
-    """Start the ADB filtering proxy sidecar container.
+    """Start the ADB filtering proxy sidecar.
 
-    The proxy sits on ``shared_net`` between the kali container and the
-    host ADB server.  It filters ADB protocol messages, blocking
-    ``root:``, ``unroot:``, and ``shell:su``.
+    On agent_net so the agent reaches it; second foot on Docker's default
+    bridge (host.docker.internal:host-gateway) so the proxy itself hairpins
+    out to host's adbd. Filters ADB messages: blocks ``root:``, ``unroot:``,
+    ``shell:su``, etc.
     """
     client = docker.from_env()
-
-    # Remove any stale proxy container
     _stop_adb_proxy()
 
     proxy_script = (
         Path(__file__).resolve().parent.parent / "utils" / "adb_filter_proxy.py"
     )
-    if not proxy_script.exists():
-        raise FileNotFoundError(f"ADB filter proxy script not found: {proxy_script}")
+    patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
+    for f in (proxy_script, patterns_module):
+        if not f.exists():
+            raise FileNotFoundError(f"ADB filter proxy source missing: {f}")
 
-    logger.info("Starting ADB proxy sidecar...")
     proxy_container = client.containers.run(
         image=ADB_PROXY_IMAGE,
         name=ADB_PROXY_CONTAINER,
         command="python3 /opt/adb_filter_proxy.py",
         detach=True,
-        network="shared_net",
+        network=AGENT_NET,
         extra_hosts={"host.docker.internal": "host-gateway"},
     )
-
-    # Copy the filter script and shared patterns into the container
-    import tarfile as _tarfile
-
-    patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
+    client.networks.get(EXTERNAL_BRIDGE).connect(proxy_container)
 
     buf = io.BytesIO()
-    with _tarfile.open(fileobj=buf, mode="w") as tar:
+    with tarfile.open(fileobj=buf, mode="w") as tar:
         tar.add(str(proxy_script), arcname="adb_filter_proxy.py")
         tar.add(str(patterns_module), arcname="adb_blocked_patterns.py")
     buf.seek(0)
     proxy_container.put_archive("/opt", buf)
-
-    # Restart so it picks up the script (command was set at creation)
+    # Restart so the interpreter reads the script that was copied in after start.
     proxy_container.restart()
-
-    logger.info(
-        f"ADB proxy sidecar started "
-        f"(:{ADB_PROXY_PORT} -> host.docker.internal:{ADB_PROXY_PORT})"
-    )
+    logger.info(f"ADB proxy started (:{ADB_PROXY_PORT} → host adbd)")
 
 
 def _stop_adb_proxy() -> None:
@@ -879,6 +890,7 @@ def setup_agent_environment(
     app_dir: Path,
     agent_image: str,
     metadata: dict,
+    network_mode: str,
     workflow: str = "exploit",
     vuln_id: Optional[str] = None,
     agent_mode: str = "custom",
@@ -896,6 +908,7 @@ def setup_agent_environment(
         workflow: Evaluation workflow type ("exploit" or "redteam")
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
+        network_mode: Squid policy ("restricted" or "permissive")
         no_codebase: Whether to copy the built APK into the agent environment
         post_checkout_hook: Optional callback run on the staged codebase
         apk_path: APK to copy into the agent environment when no_codebase=True
@@ -903,21 +916,27 @@ def setup_agent_environment(
     Returns:
         AgentEnvironment instance
     """
-    # Create shared_net docker network
-    create_docker_network()
-
-    # Start ADB filtering proxy sidecar on shared_net
+    # Networks are created earlier in preflight; don't re-create here.
     _start_adb_proxy()
+    firewall.start(network_mode)
 
-    # Drop root on the emulator (setup phase already injected certs as root)
     _disable_emulator_root()
     logger.info("Emulator root privileges disabled")
 
-    # ADB routes through the proxy sidecar on shared_net (not directly to host)
+    # ADB → adb-proxy sidecar; HTTP/HTTPS → Squid; in-cluster targets bypass
+    # via NO_PROXY (Python HTTP clients match by hostname suffix, not CIDR).
+    egress_url = firewall.proxy_url()
+    no_proxy = firewall.build_no_proxy(metadata, extra_aliases=[ADB_PROXY_CONTAINER])
     env_vars = {
         "ANDROID_ADB_SERVER_PORT": "5037",
         "ADB_SERVER_SOCKET": f"tcp:{ADB_PROXY_CONTAINER}:{ADB_PROXY_PORT}",
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
+        "HTTPS_PROXY": egress_url,
+        "HTTP_PROXY": egress_url,
+        "https_proxy": egress_url,
+        "http_proxy": egress_url,
+        "NO_PROXY": no_proxy,
+        "no_proxy": no_proxy,
     }
 
     # Ensure agent/.env is loaded so mode-specific keys are available.
@@ -929,9 +948,9 @@ def setup_agent_environment(
 
     # Inject mode-specific environment variables
     if agent_mode == "codex":
-        codex_key = os.environ.get("CODEX_API_KEY", "")
-        if codex_key:
-            env_vars["CODEX_API_KEY"] = codex_key
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        if openai_key:
+            env_vars["OPENAI_API_KEY"] = openai_key
     elif agent_mode == "claude-code":
         env_vars.update(_load_claude_code_auth())
 
@@ -943,7 +962,7 @@ def setup_agent_environment(
 
     agent_env = AgentEnvironment(
         app_dir=app_dir,
-        docker_networks=["shared_net"],
+        docker_networks=[AGENT_NET],
         image_name=agent_image,
         env=env_vars,
         commit_id=commit_id,

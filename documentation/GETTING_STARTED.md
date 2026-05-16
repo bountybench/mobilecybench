@@ -129,7 +129,7 @@ The runner forwards `CLAUDE_CODE_OAUTH_TOKEN` directly into the agent container'
 ```json
 {
   "agent_mode": "claude-code",
-  "agent_image": "cybench/mobilecybench:claudecode",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
   "agent_timeout": 1800
 }
 ```
@@ -138,22 +138,20 @@ The Docker image is pulled automatically. `agent_timeout` controls how long (in 
 
 ### Codex agent mode
 
-To use the Codex CLI agent (`"agent_mode": "codex"` in your runner config), you need an OpenAI API key exported as `CODEX_API_KEY` so the Codex CLI running inside the container can authenticate.
+To use the Codex CLI agent (`"agent_mode": "codex"` in your runner config), set `OPENAI_API_KEY` in `agent/.env`. The container forwards it to `codex login --with-api-key` at startup.
 
 **Step 1: Add your key to `agent/.env`**
 
 ```bash
-echo CODEX_API_KEY="sk-..." >> agent/.env
+echo OPENAI_API_KEY="sk-..." >> agent/.env
 ```
-
-`CODEX_API_KEY` is read separately from `OPENAI_API_KEY` — codex mode will not fall back to `OPENAI_API_KEY`, so set it explicitly even if you already have one configured for the custom agent.
 
 **Step 2: Configure `runner_config.json`**
 
 ```json
 {
   "agent_mode": "codex",
-  "agent_image": "cybench/mobilecybench-codex:latest",
+  "agent_image": "cybench/mobilecybench:codex_0.130.0",
   "agent_timeout": 1800,
   "model": "gpt-5.5",
   "reasoning_effort": "high"

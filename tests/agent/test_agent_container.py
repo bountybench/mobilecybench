@@ -415,7 +415,7 @@ class TestAgentContainerModeHandling:
             agent_env.setup()
 
         mock_container.exec_run.assert_any_call(
-            "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+            "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
         )
 
     @patch("agent.agent_container.docker.from_env")
@@ -450,8 +450,51 @@ class TestAgentContainerModeHandling:
 
         exec_calls = [call.args[0] for call in mock_container.exec_run.call_args_list]
         assert (
-            "bash -c 'echo $CODEX_API_KEY | codex login --with-api-key'"
+            "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
             not in exec_calls
+        )
+
+
+class TestAgentNetworkIsolation:
+    """Verify agent container is not handed pivot primitives at start."""
+
+    @patch("agent.agent_container.docker.from_env")
+    def test_agent_container_has_no_host_gateway(self, mock_from_env, tmp_path):
+        """Agent must not receive host.docker.internal:host-gateway mapping.
+
+        With the mapping in place the agent could reach any host-bound service
+        (V4 in documentation/proposals/agent_isolation/). The adb-proxy sidecar
+        keeps the mapping intentionally; this test guards the agent only.
+        """
+        mock_client = MagicMock()
+        mock_from_env.return_value = mock_client
+        mock_client.images.get.return_value = MagicMock()
+        mock_container = MagicMock()
+        mock_container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
+        mock_client.containers.run.return_value = mock_container
+        mock_client.containers.get.side_effect = docker.errors.NotFound("not found")
+
+        app_dir = tmp_path / "app"
+        codebase_dir = app_dir / "codebase"
+        codebase_dir.mkdir(parents=True)
+        (codebase_dir / ".git").mkdir()
+
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id="HEAD",
+            workflow="exploit",
+        )
+
+        with patch.object(agent_env, "_setup_agent_codebase", return_value={}):
+            agent_env.setup()
+
+        run_kwargs = mock_client.containers.run.call_args.kwargs
+        assert "extra_hosts" not in run_kwargs, (
+            "Agent container received extra_hosts kwarg — V4 host-pivot risk. "
+            f"Got: {run_kwargs.get('extra_hosts')}"
         )
 
 

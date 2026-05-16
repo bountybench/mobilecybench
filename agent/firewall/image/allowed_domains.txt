@@ -1,0 +1,18 @@
+# Exact-FQDN allowlist (no wildcards).
+# Add a new entry only when a real workflow needs it; review carefully.
+
+# LLM provider APIs.
+# Update agent/model_providers/factory.py:SupportedModel in lockstep.
+api.anthropic.com
+api.openai.com
+generativelanguage.googleapis.com
+api.together.xyz
+
+# pip / pypi
+pypi.org
+files.pythonhosted.org
+
+# Kali apt mirror. Agent image's sources.list is pinned to kali.download
+# (Kali's CDN, stable hostname) in agent/kali/Dockerfile.kali. http.kali.org
+# redirects to regional mirrors that an allowlist cannot track — don't add it.
+kali.download

@@ -123,18 +123,18 @@ JSON Schema captures per-field types and defaults but cannot machine-enforce the
 
 Set `"agent_mode"` in your `runner_config.json` to select an agent implementation:
 
-| Mode           | Description                                              | Docker Image                                |
-| -------------- | -------------------------------------------------------- | ------------------------------------------- |
-| `custom`       | Built-in agent with per-turn model calls (default)       | `cybench/mobilecybench:latest`              |
-| `codex`        | OpenAI Codex CLI agent                                   | `cybench/mobilecybench-codex:latest`        |
-| `claude-code`  | Claude Code CLI agent (requires OAuth tokens)            | `cybench/mobilecybench:claudecode`           |
+| Mode           | Description                                              | Docker Image                                  |
+| -------------- | -------------------------------------------------------- | --------------------------------------------- |
+| `custom`       | Built-in agent with per-turn model calls (default)       | `cybench/mobilecybench:latest`                |
+| `codex`        | OpenAI Codex CLI agent                                   | `cybench/mobilecybench:codex_0.130.0`         |
+| `claude-code`  | Claude Code CLI agent (requires OAuth tokens)            | `cybench/mobilecybench:claudecode_2.1.140`    |
 
 Example config for Claude Code (uses Opus 4.6 by default):
 
 ```json
 {
   "agent_mode": "claude-code",
-  "agent_image": "cybench/mobilecybench:claudecode",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
   "agent_timeout": 1800
 }
 ```

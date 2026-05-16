@@ -575,6 +575,7 @@ class RedTeamWorkflow(Workflow):
             workflow=self.config.workflow,
             agent_mode=self.config.agent_mode,
             no_codebase=self.config.no_codebase,
+            network_mode=self.config.network_mode,
             post_checkout_hook=self._prepare_runtime_codebase,
             apk_path=runtime_apk,
         )

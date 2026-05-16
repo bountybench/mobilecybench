@@ -33,7 +33,7 @@ bash setup.sh --init-submodules
 To verify your environment without spending tokens, run against the bundled dry-run config — it launches an interactive Kali shell instead of invoking the agent:
 
 ```bash
-python runner.py conversations --config runner_config_dryrun.json
+python runner.py owncloud-android --config runner_config_dryrun.json
 ```
 
 To run the agent for real, set the API key for the model in `runner_config.json`. The default is `gpt-5.5` (OpenAI), so the simplest path is:
@@ -43,7 +43,7 @@ echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py owncloud-android
 ```
 
-The committed `runner_config.json` defaults to probe-only + `malicious_app`, which requires per-app probes (`apps/<app>/test_*.py`) and `generic_probe_config.json`. Apps that satisfy both for `malicious_app` and `remote_attacker` today: `home-assistant-android`, `jitsi-meet`, `nextcloud-talk`, `ntfy-android`, `owncloud-android`. `openhab` and `termux` support `malicious_app` only.
+The committed `runner_config.json` defaults to probe-only + `malicious_app` (and `network_mode: permissive` — kernel routing via `agent_net` still applies; flip to `restricted` to enforce the Squid FQDN allowlist), which requires per-app probes (`apps/<app>/test_*.py`) and `generic_probe_config.json`.
 
 **To use a different provider**, change `runner_config.json:model` to a supported id *and* put the matching env var in `agent/.env` — they have to match, or the run will fail when the wrong key is loaded:
 

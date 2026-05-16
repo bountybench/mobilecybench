@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
+import yaml
+
 from models.config import RunnerConfig
 from utils.json_io import write_json_atomic
 from utils.text_files import collect_text_files
@@ -248,17 +250,22 @@ class Workflow(ABC):
             f"{type(self).__name__} must implement _build_apks_from_source()"
         )
 
+    _COMPOSE_FILENAMES = (
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+    )
+
+    def _existing_compose_files(self):
+        """Yield the app's Docker Compose files (any of the standard names)."""
+        for name in self._COMPOSE_FILENAMES:
+            path = self.app_dir / name
+            if path.exists():
+                yield path
+
     def _compose_file_exists(self) -> bool:
-        """Return whether the app directory has a Docker Compose file."""
-        return any(
-            (self.app_dir / name).exists()
-            for name in (
-                "docker-compose.yml",
-                "docker-compose.yaml",
-                "compose.yml",
-                "compose.yaml",
-            )
-        )
+        return any(self._existing_compose_files())
 
     def _backend_runtime_state_file(self) -> Path:
         """Path to the marker file recording the last active app backend."""
@@ -335,19 +342,45 @@ class Workflow(ABC):
                 logger.error(f"cleanup.sh stderr:\n{e.stderr.strip()}")
             raise
 
-    def _ensure_shared_docker_network(self) -> None:
-        """Ensure ``shared_net`` exists before any app's docker-compose runs."""
-        # Lazy import to keep workflow construction free of docker side-effects.
-        from agent.agent_container import create_docker_network
+    def _ensure_docker_networks(self) -> None:
+        """Ensure shared_net and agent_net exist before any app's compose runs.
 
-        create_docker_network("shared_net")
+        Apps declare both as ``external: true``; if either is missing, compose
+        aborts. agent_net is ``internal: true`` (kernel-level egress firewall).
+        """
+        from agent.agent_container import AGENT_NET, SHARED_NET, create_docker_network
+
+        self._require_app_on_agent_net()
+        create_docker_network(SHARED_NET)
+        create_docker_network(AGENT_NET, internal=True)
+
+    def _require_app_on_agent_net(self) -> None:
+        """Hard-fail if the app has a backend but it is unreachable from agent_net.
+
+        The agent runs on agent_net (internal:true); to reach the app, the
+        app's frontend service must declare agent_net. Apps with no compose
+        file have no backend to reach.
+        """
+        composes = list(self._existing_compose_files())
+        if not composes:
+            return
+        for p in composes:
+            doc = yaml.safe_load(p.read_text()) or {}
+            for svc in (doc.get("services") or {}).values():
+                if "agent_net" in (svc.get("networks") or {}):
+                    return
+        raise RuntimeError(
+            f"App '{self.app_name}' backend is not on agent_net. "
+            f"Add `agent_net` (external: true) to the app's frontend service "
+            f"and to its top-level networks block."
+        )
 
     def _preflight_cleanup_app_runtime(self) -> None:
         """Best-effort clean slate for stale containers before setup."""
         # Network must exist before any cleanup.sh / start_runtime.sh runs
         # `docker compose up`, otherwise compose aborts on the external
         # network reference.
-        self._ensure_shared_docker_network()
+        self._ensure_docker_networks()
         stale_app_dir = self._get_stale_backend_app_dir()
         if stale_app_dir is not None:
             logger.info(

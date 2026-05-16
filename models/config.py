@@ -227,6 +227,16 @@ class RunnerConfig(BaseModel):
         description="How long to wait for the emulator to be ready (seconds).",
     )
 
+    # ---- Network --------------------------------------------------------------
+    network_mode: Literal["restricted", "permissive"] = Field(
+        ...,
+        description=(
+            "Squid egress policy. 'restricted': exact-FQDN allowlist "
+            "(LLM APIs + apt/pip mirrors). 'permissive': any public host. "
+            "Kernel routing (agent_net internal:true) applies in both."
+        ),
+    )
+
     # ---- Timeouts -----------------------------------------------------------
     script_timeout: int = Field(
         default=600,

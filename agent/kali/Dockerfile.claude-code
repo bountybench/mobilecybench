@@ -1,6 +1,9 @@
-FROM cybench/mobilecybench-kali:latest
+FROM cybench/mobilecybench-kali:v0.1.0
 
-# Install Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @anthropic-ai/claude-code@2.1.140 \
+    && npm cache clean --force \
+    && rm -rf /root/.npm
 
-ENV ADB_SERVER_SOCKET=tcp:host.docker.internal:5037
+# Suppress Datadog log uploads + Anthropic event_logging / eval pre-flight,
+# all of which the restricted-mode egress firewall would deny.
+ENV DISABLE_TELEMETRY=1

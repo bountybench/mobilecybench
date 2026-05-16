@@ -23,6 +23,7 @@ def _config(**overrides) -> RunnerConfig:
         "dry_run": False,
         "emulator_display": "headed",
         "emulator_backend": "native",
+        "network_mode": "restricted",
         "script_timeout": 600,
         "synthetic_vuln_id": "vuln_0",
     }
@@ -302,7 +303,7 @@ class TestWorkflowRuntimeCleanup:
 
         call_order: list[str] = []
 
-        def fake_create_network(name: str) -> None:
+        def fake_create_network(name: str, **kwargs) -> None:
             call_order.append(f"create_network:{name}")
 
         def fake_run(*args, **kwargs):
@@ -329,14 +330,55 @@ class TestWorkflowRuntimeCleanup:
             "cleanup.sh" in call_order
         ), "cleanup.sh should still run after network create"
 
-    def test_ensure_shared_docker_network_calls_create_helper(self, tmp_path):
-        """_ensure_shared_docker_network delegates to agent.agent_container.create_docker_network('shared_net')."""
+    def test_ensure_docker_networks_creates_shared_and_agent_nets(self, tmp_path):
+        """_ensure_docker_networks creates shared_net and agent_net (internal=True)
+        before any app's compose runs.
+        """
+        from unittest.mock import call
+
         workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
 
         with patch("agent.agent_container.create_docker_network") as mock_create:
-            workflow._ensure_shared_docker_network()
+            workflow._ensure_docker_networks()
 
-        mock_create.assert_called_once_with("shared_net")
+        assert mock_create.call_args_list == [
+            call("shared_net"),
+            call("agent_net", internal=True),
+        ]
+
+    def test_skip_guard_passes_when_compose_declares_agent_net(self, tmp_path):
+        """App with a backend that joined agent_net is allowed through."""
+        app_dir = tmp_path / "apps" / "pilot_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "docker-compose.yml").write_text(
+            "services:\n  tls_proxy:\n    networks: [agent_net]\n"
+        )
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "pilot_app", tmp_path)
+
+        with patch("agent.agent_container.create_docker_network"):
+            workflow._ensure_docker_networks()  # must not raise
+
+    def test_skip_guard_passes_when_no_compose_file(self, tmp_path):
+        """App with no backend (no compose) has nothing to reach — allowed."""
+        (tmp_path / "apps" / "no_backend").mkdir(parents=True)
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "no_backend", tmp_path)
+
+        with patch("agent.agent_container.create_docker_network"):
+            workflow._ensure_docker_networks()  # must not raise
+
+    def test_skip_guard_fails_when_compose_missing_agent_net(self, tmp_path):
+        """App backend on shared_net only is unreachable from the agent — fail fast."""
+        app_dir = tmp_path / "apps" / "legacy_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "docker-compose.yml").write_text(
+            "services:\n  backend:\n    networks: [shared_net]\n"
+        )
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "legacy_app", tmp_path)
+
+        with patch("agent.agent_container.create_docker_network"), pytest.raises(
+            RuntimeError, match="not on agent_net"
+        ):
+            workflow._ensure_docker_networks()
 
     def test_restart_runtime_resets_compose_volumes_before_install(self, tmp_path):
         app_dir = tmp_path / "apps" / "test_app"
