@@ -4,7 +4,7 @@ import shlex
 import time
 from functools import lru_cache
 
-from agent.backend.docker_setup import get_kali
+from agent.custom.backend.docker_setup import get_kali
 from tools.token_truncator import TokenTruncator
 from utils.adb_blocked_patterns import BLOCKED_SERVICES, BLOCKED_SHELL_PATTERNS
 from utils.logger import logger
@@ -209,7 +209,7 @@ def get_ui_state() -> dict:
     Get current UI state with all interactive elements from the Android emulator.
     Returns UI elements with coordinates for interaction.
     """
-    from agent.backend.ui_connection import get_ui_state as _get_ui_state
+    from agent.custom.backend.ui_connection import get_ui_state as _get_ui_state
 
     return _get_ui_state()
 

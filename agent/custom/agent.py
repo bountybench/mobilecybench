@@ -9,16 +9,11 @@ import httpx
 import openai
 from dotenv import load_dotenv
 
-from agent.agent_helpers import get_directory_tree
-from agent.backend.docker_ops import check_shell_script_content
-from agent.model_providers import get_model_provider
-from agent.prompts.prompts import (
-    MISSING_OUTPUT_NUDGE,
-    build_malicious_app_prompt,
-    build_remote_attacker_prompt,
-    build_synthetic_prompt,
-)
-from agent.tools.runtime import ToolRuntime
+from agent.custom.backend.docker_ops import check_shell_script_content
+from agent.custom.codebase_tree import get_directory_tree
+from agent.custom.model_providers import get_model_provider
+from agent.custom.tools.runtime import ToolRuntime
+from agent.prompts.prompts import MISSING_OUTPUT_NUDGE
 from utils.agent_utils import take_screenshot
 from utils.command_executor import CommandExecutor
 from utils.logger import agent_logger, logger_manager
@@ -76,27 +71,19 @@ class CustomAgent:
         max_model_response_tokens: int,
         screenshot_enabled: bool,
         app_name: str,
-        additional_context: Optional[str] = None,
-        timeout_ms: int = DEFAULT_TIMEOUT_MS,
-        app_server: Optional[str] = None,
-        emulator_server: Optional[str] = None,
-        package_name: Optional[str] = None,
+        instructions: str,
+        llm_request_timeout_ms: int = DEFAULT_TIMEOUT_MS,
         reasoning_effort: Optional[str] = None,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
         allow_unregistered_models: bool = False,
-        vuln_id: str = "vuln_0",
-        allowed_tools: list[str] | None = None,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
         self.attacker_model = attacker_model
         self.no_codebase = no_codebase
-        self.vuln_id = vuln_id
 
         # Load environment variables from .env file in the agent directory
         agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -111,22 +98,14 @@ class CustomAgent:
         self.model = model
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
-        self.timeout_ms = timeout_ms
+        self.llm_request_timeout_ms = llm_request_timeout_ms
         self.screenshot_enabled = screenshot_enabled
-        self.app_server = app_server
-        self.emulator_server = emulator_server
         self.app_name = app_name
-        self.package_name = package_name
-        self.username = username
-        self.password = password
 
-        # Initialize ToolRuntime. allowed_tools=None exposes the full set;
-        # otherwise the registry is filtered to the named tools.
-        self.runtime = ToolRuntime(allowed_tools=allowed_tools)
+        self.runtime = ToolRuntime()
 
-        # Build system prompt
         self._initial_tree_context = get_directory_tree(self.no_codebase)
-        self._instructions = self._get_system_prompt_text(additional_context)
+        self._instructions = instructions
 
         agent_logger.info("Agent initialized with system prompt instructions.")
 
@@ -136,7 +115,7 @@ class CustomAgent:
             instructions=self._instructions,
             tools=self.runtime.get_tool_definitions(),
             max_output_tokens=max_model_response_tokens,
-            timeout_ms=timeout_ms,
+            timeout_ms=llm_request_timeout_ms,
             reasoning_effort=reasoning_effort,
             allow_unregistered=allow_unregistered_models,
         )
@@ -169,39 +148,6 @@ class CustomAgent:
         agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
         agent_logger.info("=" * 80)
 
-    def _get_system_prompt_text(self, additional_context: Optional[str] = None) -> str:
-        """Build the system prompt text based on workflow mode."""
-        if self.workflow == "redteam":
-            builder = (
-                build_remote_attacker_prompt
-                if self.attacker_model == "remote_attacker"
-                else build_malicious_app_prompt
-            )
-            full_prompt = builder(
-                package_name=self.package_name,
-                app_server=self.app_server,
-                emulator_server=self.emulator_server,
-                username=self.username,
-                password=self.password,
-                no_codebase=self.no_codebase,
-            )
-        else:
-            full_prompt = build_synthetic_prompt(
-                package_name=self.package_name,
-                username=self.username,
-                password=self.password,
-                app_server=self.app_server,
-                emulator_server=self.emulator_server,
-                no_codebase=self.no_codebase,
-                vuln_id=self.vuln_id,
-            )
-
-        # Append additional context if provided
-        if additional_context:
-            full_prompt = full_prompt + "\n\n" + additional_context
-
-        return full_prompt
-
     def _check_exploit_exists(self) -> bool:
         """Check whether the expected exploit artifact exists in the kali container."""
         if self.workflow == "redteam" and self.attacker_model == "malicious_app":
@@ -222,7 +168,7 @@ class CustomAgent:
                 f"docker exec kali-container test -f {check_path}",
                 capture_output=True,
                 check=False,
-                timeout=self.timeout_ms // 1000,
+                timeout=self.llm_request_timeout_ms // 1000,
             )
         except Exception as e:
             agent_logger.warning(f"Failed to check for exploit artifact: {e}")
@@ -254,7 +200,7 @@ class CustomAgent:
             ls_result = CommandExecutor().run(
                 "docker exec kali-container find /app/agent_exploit -type f",
                 capture_output=True,
-                timeout=self.timeout_ms // 1000,
+                timeout=self.llm_request_timeout_ms // 1000,
             )
 
             if ls_result.returncode != 0:
@@ -281,7 +227,7 @@ class CustomAgent:
                     ["docker", "exec", "kali-container", "cat", container_path],
                     capture_output=True,
                     text=True,
-                    timeout=self.timeout_ms // 1000,
+                    timeout=self.llm_request_timeout_ms // 1000,
                 )
                 if cat_result.returncode != 0:
                     agent_logger.warning(
@@ -316,7 +262,6 @@ class CustomAgent:
         self._archive_conversation()
 
         return {
-            "agent_type": "custom",
             "status": "completed",
             "turns_taken": turns,
             "max_turns": self.max_iterations,

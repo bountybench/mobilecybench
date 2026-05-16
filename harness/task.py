@@ -39,8 +39,7 @@ def build_task_dict(
         "attacker_model": config.attacker_model or "",
         "model": config.model,
         "prompt": prompt,
-        # `agent_timeout` is the legacy field name; phase 1.3 renames it.
-        "agent_wallclock_seconds": config.agent_timeout,
+        "agent_wallclock_seconds": config.agent_wallclock_seconds,
         "reasoning_effort": config.reasoning_effort,
         "screenshot_mode": getattr(config, "screenshot_mode", None),
     }

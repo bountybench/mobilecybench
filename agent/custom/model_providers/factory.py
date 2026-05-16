@@ -108,7 +108,7 @@ def get_model_provider(
         raise ValueError(
             f"Unsupported model: '{model}'. Supported models: {supported}. "
             "To register a new model permanently, add it to "
-            "agent/model_providers/factory.py:SupportedModel and add a "
+            "agent/custom/model_providers/factory.py:SupportedModel and add a "
             "pricing row to utils/token_pricing.json. For model-sweep "
             "exploration where you don't need accurate cost telemetry, "
             "set 'allow_unregistered_models': true in runner_config.json. "

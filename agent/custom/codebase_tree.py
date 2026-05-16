@@ -1,12 +1,6 @@
-"""Shared helper functions for the in-process CustomAgent loop.
+"""Shared helper functions for the in-process CustomAgent loop."""
 
-CodexAgent / ClaudeCodeAgent (legacy in-process wrappers) were deleted in
-the BYO-contract consolidation; codex + claude-code now run inside their
-own images via harness.byo_agent.run_agent. CustomAgent is the only
-remaining caller.
-"""
-
-from agent.backend.docker_ops import execute_command_internal
+from agent.custom.backend.docker_ops import execute_command_internal
 from utils.logger import agent_logger
 
 

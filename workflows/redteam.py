@@ -255,7 +255,7 @@ class RemoteAttackerOps:
             kwargs["exploit_dir"],
             phase_dir,
             exploit_runner=workflow.project_root / "utils" / "run_exploit_container.sh",
-            exploit_image=os.environ.get("EXPLOIT_IMAGE", workflow.config.agent_image),
+            exploit_image=workflow.config.agent_image,
             app_server=workflow.metadata.get("app_server"),
             codebase_dir=codebase_dir,
             replay_apk=replay_apk,
@@ -493,7 +493,7 @@ class RedTeamWorkflow(Workflow):
         self._bundle.prepare_phase1_codebase(codebase_dir)
 
     def setup_runtime_environment(self) -> None:
-        from agent.agent_container import setup_agent_environment
+        from agent.runtime.container import setup_agent_environment
         from utils.emulator_certs import inject_system_ca
         from utils.emulator_manager import EmulatorManager
         from utils.setup_utils import check_connectivity, install_app_and_setup_backend
@@ -572,7 +572,6 @@ class RedTeamWorkflow(Workflow):
             agent_image=self.config.agent_image,
             metadata=self.metadata,
             workflow=self.config.workflow,
-            agent_mode=self.config.agent_mode,
             no_codebase=self.config.no_codebase,
             network_mode=self.config.network_mode,
             post_checkout_hook=self._prepare_runtime_codebase,

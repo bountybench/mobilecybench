@@ -11,7 +11,7 @@ import docker
 import docker.errors
 
 from agent import firewall
-from agent.backend.docker_setup import AGENT_HOST_PORT
+from agent.custom.backend.docker_setup import AGENT_HOST_PORT
 from agent.firewall import AGENT_NET, EXTERNAL_BRIDGE, SHARED_NET
 from utils.git_utils import (
     cleanup_git_branches,
@@ -23,6 +23,10 @@ from utils.git_utils import (
     prepare_git_directory,
 )
 from utils.logger import logger
+
+# Repo root: agent/runtime/container.py → parents[2] = <repo>. Used to
+# resolve sibling trees (``utils/adb_filter_proxy.py``, ``agent/.env``).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # ADB filter proxy sidecar. Joined to agent_net (the agent's only network);
 # the proxy dual-homes onto the default bridge to reach the host's adb daemon.
@@ -730,10 +734,7 @@ def _start_adb_proxy() -> None:
     client = docker.from_env()
     _stop_adb_proxy()
 
-    # __file__ = agent/runtime/container.py → repo root is two .parent's up.
-    proxy_script = (
-        Path(__file__).resolve().parent.parent.parent / "utils" / "adb_filter_proxy.py"
-    )
+    proxy_script = _REPO_ROOT / "utils" / "adb_filter_proxy.py"
     patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
 
     proxy_container = client.containers.run(
@@ -858,13 +859,15 @@ def setup_agent_environment(
     _disable_emulator_root()
     logger.info("Emulator root privileges disabled")
 
-    # Ensure agent/.env is loaded so auth tokens are picked up.
-    # __file__ = agent/runtime/container.py → agent/ is one .parent up.
+    # Ensure agent/.env is loaded so auth tokens are picked up. Do not
+    # ``override=True`` — shell-exported tokens beat dotfile values so an
+    # operator who runs ``OPENAI_API_KEY=… python runner.py …`` gets what
+    # they typed, not whatever the file contains.
     from dotenv import load_dotenv
 
-    agent_env_file = Path(__file__).resolve().parent.parent / ".env"
+    agent_env_file = _REPO_ROOT / "agent" / ".env"
     if agent_env_file.exists():
-        load_dotenv(agent_env_file, override=True)
+        load_dotenv(agent_env_file)
 
     # ADB → adb-proxy sidecar; HTTP/HTTPS → Squid; in-cluster targets bypass
     # via NO_PROXY (Python HTTP clients match by hostname suffix, not CIDR).

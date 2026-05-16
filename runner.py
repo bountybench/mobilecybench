@@ -39,7 +39,7 @@ from workflows import (
 
 def run_interactive_shell(app_name: str) -> dict:
     """Run an interactive shell for manual command execution in dry-run mode."""
-    from agent.tools.runtime import ToolRuntime
+    from agent.custom.tools.runtime import ToolRuntime
 
     tool_runtime = ToolRuntime()
 

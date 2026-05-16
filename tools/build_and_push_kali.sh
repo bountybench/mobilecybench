@@ -8,7 +8,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-tag="latest"
+tag="v0.1.0"
 arch="amd64,arm64"
 mode=""
 
@@ -63,9 +63,9 @@ if [[ -z $mode ]]; then
 	show_help
 fi
 
-image_name="cybench/mobilecybench:${tag}"
-dockerfile="${SCRIPT_DIR}/../agent/kali/Dockerfile.kali"
-context="${SCRIPT_DIR}/../agent/kali"
+image_name="cybench/mobilecybench-kali:${tag}"
+dockerfile="${SCRIPT_DIR}/../agent/base/Dockerfile"
+context="${SCRIPT_DIR}/../agent/base"
 
 case $mode in
 local)

@@ -93,26 +93,27 @@ class Workflow(ABC):
 
         Order is load-bearing: the per-app `metadata.additional_info` carries
         threat-model framing that should appear first; the per-run
-        `runner_config.custom_system_prompt` is a runtime knob (hints,
+        `runner_config.additional_system_prompt` is a runtime knob (hints,
         framing tweaks) appended after it.
         """
         additional_info = self.metadata.get("additional_info")
-        extra = self.config.custom_system_prompt
+        extra = self.config.additional_system_prompt
         if not extra:
             return additional_info
         if not additional_info:
             return extra
         return f"{additional_info}\n\n{extra}"
 
-    def _build_agent_prompt(self, agent_type: str) -> str:
-        """Build the agent's system prompt for ``agent_type``.
+    def _build_agent_prompt(self) -> str:
+        """Build the agent's system prompt for ``self.config.agent_mode``.
 
-        Extracted from the per-agent ``_get_system_prompt_text`` methods that
-        lived on CodexAgent / ClaudeCodeAgent / CustomAgent before the BYO
-        consolidation.
+        Custom mode gets the full ReAct scaffolding; external mode gets the
+        base description only (each image's in-container entrypoint adds any
+        CLI-native footer it needs).
         """
         additional_context = self._resolve_additional_context()
         username, password = self._agent_credentials()
+        agent_mode = self.config.agent_mode
 
         if self.config.workflow == "redteam":
             builder = (
@@ -127,7 +128,7 @@ class Workflow(ABC):
                 username=username,
                 password=password,
                 no_codebase=self.config.no_codebase,
-                agent_type=agent_type,
+                agent_mode=agent_mode,
             )
         else:
             prompt = build_synthetic_prompt(
@@ -137,7 +138,7 @@ class Workflow(ABC):
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
                 no_codebase=self.config.no_codebase,
-                agent_type=agent_type,
+                agent_mode=agent_mode,
                 vuln_id=self.config.synthetic_vuln_id or "vuln_0",
             )
 
@@ -146,12 +147,12 @@ class Workflow(ABC):
         return prompt
 
     def _build_task_dict(self) -> dict[str, Any]:
-        """Assemble the BYO task.json dict for external (codex/claude-code) agents."""
+        """Assemble the task.json dict delivered to an external agent."""
         return build_task_dict(
             config=self.config,
             metadata=self.metadata,
             app_name=self.app_name,
-            prompt=self._build_agent_prompt(agent_type=self.config.agent_mode),
+            prompt=self._build_agent_prompt(),
             run_id=logger_manager.get_run_id(),
             apk_relpath="",
         )
@@ -166,39 +167,30 @@ class Workflow(ABC):
         workflow = self.config.workflow
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
 
-        if agent_mode in ("codex", "claude-code"):
+        if agent_mode == "external":
             # External agents run inside their container image (see
-            # agent/{codex,claude_code}/run_in_container.py). setup_agent does
-            # not construct an in-process agent object; run_agent assembles
-            # the BYO task_dict and hands off to harness.byo_agent.run_agent.
+            # documentation/BRING_YOUR_OWN_AGENT.md). setup_agent does not
+            # construct an in-process agent object; run_agent assembles the
+            # BYO task_dict and hands off to harness.byo_agent.run_agent.
             self.agent = None
             return
 
-        from agent.custom_agent import CustomAgent
+        from agent.custom.agent import CustomAgent
 
-        additional_context = self._resolve_additional_context()
-        agent_username, agent_password = self._agent_credentials()
         self.agent = CustomAgent(
             model=self.config.model,
             max_iterations=self.config.max_iterations,
             max_model_response_tokens=self.config.max_model_response_tokens,
             screenshot_enabled=self.config.screenshot_mode,
             app_name=self.app_name,
-            additional_context=additional_context,
-            timeout_ms=self.config.timeout_ms,
-            app_server=self.metadata.get("app_server"),
-            emulator_server=self.metadata.get("emulator_server"),
-            package_name=self.metadata.get("package_name"),
-            username=agent_username,
-            password=agent_password,
+            instructions=self._build_agent_prompt(),
+            llm_request_timeout_ms=self.config.llm_request_timeout_ms,
+            reasoning_effort=self.config.reasoning_effort,
             include_ssrf=False,
             workflow=workflow,
             attacker_model=self.config.attacker_model,
-            reasoning_effort=self.config.reasoning_effort,
             no_codebase=self.config.no_codebase,
             allow_unregistered_models=self.config.allow_unregistered_models,
-            vuln_id=self.config.synthetic_vuln_id or "vuln_0",
-            allowed_tools=self.config.allowed_tools,
         )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
@@ -208,12 +200,12 @@ class Workflow(ABC):
             logger.info("Dry run - skipping agent execution")
             return {"status": "dry_run", "turns": 0}
 
-        if self.config.agent_mode in ("codex", "claude-code"):
+        if self.config.agent_mode == "external":
             if not self.agent_env:
                 raise RuntimeError(
                     "Agent environment not initialized. setup_runtime_environment() first."
                 )
-            logger.info(f"Running external agent ({self.config.agent_mode}) via BYO contract...")
+            logger.info(f"Running external agent (image={self.config.agent_image}) via BYO contract...")
             task_dict = self._build_task_dict()
             # Persist task.json for reproducibility.
             logs_dir = Path(logger_manager.get_logs_dir())
@@ -244,11 +236,11 @@ class Workflow(ABC):
         Best-effort: logs warnings on failure but never raises.
         Called after run_agent() while the container is still alive.
 
-        External agents (codex / claude-code) extract artifacts inside
-        harness.byo_agent.run_agent's own finally block; this method
-        short-circuits for them to avoid double-extraction.
+        External agents extract artifacts inside harness.byo_agent.run_agent's
+        own finally block; this method short-circuits for them to avoid
+        double-extraction.
         """
-        if self.config.agent_mode in ("codex", "claude-code"):
+        if self.config.agent_mode == "external":
             return
         if not self.agent_env:
             return
@@ -390,7 +382,7 @@ class Workflow(ABC):
         Apps declare both as ``external: true``; if either is missing, compose
         aborts. agent_net is ``internal: true`` (kernel-level egress firewall).
         """
-        from agent.agent_container import AGENT_NET, SHARED_NET, create_docker_network
+        from agent.runtime.container import AGENT_NET, SHARED_NET, create_docker_network
 
         self._require_app_on_agent_net()
         create_docker_network(SHARED_NET)
