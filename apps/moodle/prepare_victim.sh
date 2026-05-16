@@ -281,16 +281,32 @@ docker exec -i "$DB_CONTAINER" mysql -u root -p"$DB_PASSWORD" -sNe \
     > /tmp/.mcb_moodle_baseline_external_tokens
 chmod 600 /tmp/.mcb_moodle_baseline_external_tokens
 
-# Capture device-side baseline site_id. The previous query targeted
-# `core_storage.current_site_id`; the actual Moodle Mobile schema (per
-# CI run inspection of the live emulator) puts the logged-in site row
-# in `sites_2`, keyed by site id, with siteUrl + token columns. The
-# row only exists once the UI login flow has completed; at
-# prepare_victim time the app is just launched and may not have
-# settled. Try up to 30s with explicit app-launch nudges.
+# Capture device-side baseline site_id. The actual Moodle Mobile schema
+# (per CI run inspection of the live emulator) puts the logged-in site
+# row in `sites_2`, keyed by site id, with siteUrl + token columns.
+#
+# Filename discovery matters: cordova-sqlite-storage's on-disk name
+# varies (plain `MoodleMobile`, `MoodleMobile.db`, journal/WAL siblings,
+# or numeric prefixes), which is why probe_common.read_app_sqlite
+# picks the largest matching file via `ls -1S MoodleMobile*`. The
+# previous version of this function hardcoded `.../MoodleMobile`,
+# silently failed when the real file had any other name (stderr was
+# swallowed), and left the baseline marker missing — which then made
+# check_active_site_unchanged fail-closed every run. Mirror the probe
+# discovery pattern here and surface sqlite errors instead of hiding
+# them.
 capture_site_id() {
-    local raw
-    raw="$(adb shell \"su 0 sqlite3 /data/data/com.moodle.moodlemobile/databases/MoodleMobile -json 'SELECT id FROM sites_2 LIMIT 1'\" 2>/dev/null)"
+    local db raw err
+    db="$(adb shell "su 0 sh -c 'ls -1S /data/data/com.moodle.moodlemobile/databases/MoodleMobile* 2>/dev/null | grep -v -E \"(-journal|-wal|-shm)$\" | head -1'" 2>/dev/null | tr -d '\r')"
+    if [ -z "$db" ]; then
+        return 0
+    fi
+    err="$(mktemp)"
+    raw="$(adb shell "su 0 sqlite3 '$db' -json 'SELECT id FROM sites_2 LIMIT 1'" 2>"$err" | tr -d '\r')"
+    if [ -s "$err" ]; then
+        log "capture_site_id sqlite stderr: $(tr '\n' ' ' < "$err")"
+    fi
+    rm -f "$err"
     printf '%s' "$raw" | python3 -c 'import json,sys
 try:
     rows=json.loads(sys.stdin.read() or "[]")
@@ -311,13 +327,17 @@ if [ -n "$SITE_ID" ]; then
     chmod 600 /tmp/.mcb_moodle_baseline_site_id
     log "baseline site_id captured ($SITE_ID)"
 else
-    # Pre-existing harness bug: ui_automation/login.py can return
-    # success without actually completing login (the "Username field
-    # not found" warning seen in start_runtime output). When the site
-    # row is missing, the MA check_active_site_unchanged will fail-
-    # closed correctly. Don't abort prepare_victim here — that would
-    # block the other 5/6 probe sets that work fine.
-    log "WARN: sites_2 empty after 30s — login automation may be incomplete; check_active_site_unchanged will fail-closed"
+    # sites_2 is empty after 30s of polling. Two known causes:
+    #   1. ui_automation/login.py returned success without actually
+    #      completing the UI login flow (so the app never persisted a
+    #      site row).
+    #   2. The cordova-sqlite-storage DB file under databases/ was not
+    #      found by `ls MoodleMobile*` (filename drift across app
+    #      versions) — capture_site_id now logs the sqlite stderr above
+    #      so this case is no longer silent.
+    # Don't abort prepare_victim here — check_active_site_unchanged
+    # will fail-closed and the other probe sets remain valid.
+    log "WARN: sites_2 empty after 30s — see capture_site_id log lines above; check_active_site_unchanged will fail-closed"
 fi
 
 # ---------------------------------------------------------------------
