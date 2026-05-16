@@ -19,7 +19,7 @@ bash setup.sh --init-submodules
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 
-To run the AI agent, provide an API key. The built-in models cover three providers (see `agent/model_providers/factory.py:SupportedModel` for the full list, including older entries kept for backwards compatibility):
+To run the AI agent, provide an API key. The built-in models cover three providers (see `agent/custom/model_providers/factory.py:SupportedModel` for the full list, including older entries kept for backwards compatibility):
 
 - **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`; `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`. Requires `OPENAI_API_KEY`.
 - **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`; `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires `ANTHROPIC_API_KEY`.
@@ -90,16 +90,20 @@ Notes:
 
 ## 4) Obtain API key(s)
 
-To run the agent, an API key is required in a `.env` file in the `agent/` directory. Supported model providers are listed in `agent/model_providers/factory.py`.
+To run the agent, an API key is required in a `.env` file in the `agent/` directory. Supported model providers are listed in `agent/custom/model_providers/factory.py`.
 
 ```bash
 cd agent && touch .env
 echo OPENAI_API_KEY="sk..." > .env
 ```
 
-### Claude Code agent mode
+### External agents (Claude Code, Codex, BYO)
 
-To use the Claude Code agent (`"agent_mode": "claude-code"` in your runner config): mobilecybench currently supports authentication with a Claude subscription (Pro / Max / Team / Enterprise).
+Set `"agent_mode": "external"` and name the image in `"agent_image"`. The harness delivers `/app/task.json` and reads back `/app/agent_run/` + `/app/agent_exploit/`. Full contract: [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md).
+
+#### Claude Code reference image
+
+mobilecybench supports authentication with a Claude subscription (Pro / Max / Team / Enterprise).
 
 **Step 1: Install Claude Code**
 
@@ -109,56 +113,49 @@ npm install -g @anthropic-ai/claude-code
 
 **Step 2: Generate a long-lived OAuth token**
 
-Run [`claude setup-token`](https://code.claude.com/docs/en/authentication#generate-a-long-lived-token) to mint a token scoped for headless / CI use. It is valid for ~1 year and independent of your interactive `claude` sessions, so concurrent interactive use will not invalidate it mid-sweep.
+Run [`claude setup-token`](https://code.claude.com/docs/en/authentication#generate-a-long-lived-token) to mint a token scoped for headless / CI use. It is valid for ~1 year and independent of your interactive `claude` sessions.
 
 ```bash
 claude setup-token
-# walks through OAuth in your browser, then prints a token to the terminal
-```
-
-Copy the printed token into `agent/.env` as `CLAUDE_CODE_OAUTH_TOKEN`:
-
-```bash
 echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste-token-here>' >> agent/.env
 ```
 
-The runner forwards `CLAUDE_CODE_OAUTH_TOKEN` directly into the agent container's environment, and the in-container CLI reads it from there. No credentials file is written. See the [Claude Code authentication docs](https://code.claude.com/docs/en/authentication) for the full source-precedence order.
+The harness forwards `CLAUDE_CODE_OAUTH_TOKEN` into the container; the in-container CLI reads it directly. No credentials file is written.
 
 **Step 3: Configure `runner_config.json`**
 
 ```json
 {
-  "agent_mode": "claude-code",
+  "agent_mode": "external",
   "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
-  "agent_timeout": 1800
+  "model": "claude-sonnet-4-6",
+  "agent_wallclock_seconds": 1800
 }
 ```
 
-The Docker image is pulled automatically. `agent_timeout` controls how long (in seconds) the CLI is allowed to run (default: 1800).
+`agent_wallclock_seconds` is the harness-side SIGKILL deadline (default 1800).
 
-### Codex agent mode
+#### Codex reference image
 
-To use the Codex CLI agent (`"agent_mode": "codex"` in your runner config), set `OPENAI_API_KEY` in `agent/.env`. The container forwards it to `codex login --with-api-key` at startup.
-
-**Step 1: Add your key to `agent/.env`**
+Set `OPENAI_API_KEY` in `agent/.env`. The image's `/run-agent.sh` pipes it into `codex login --with-api-key` before invoking the CLI.
 
 ```bash
 echo OPENAI_API_KEY="sk-..." >> agent/.env
 ```
 
-**Step 2: Configure `runner_config.json`**
-
 ```json
 {
-  "agent_mode": "codex",
+  "agent_mode": "external",
   "agent_image": "cybench/mobilecybench:codex_0.130.0",
-  "agent_timeout": 1800,
   "model": "gpt-5.5",
-  "reasoning_effort": "high"
+  "reasoning_effort": "high",
+  "agent_wallclock_seconds": 1800
 }
 ```
 
-The Docker image is pulled automatically. `agent_timeout` controls how long (in seconds) the CLI is allowed to run (default: 1800). `model` and `reasoning_effort` are optional overrides forwarded to the Codex CLI; omit them to use the agent's defaults.
+#### Lab BYO
+
+Build an image satisfying the BYO contract and point `agent_image` at it. See [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md) for the Dockerfile + `/run-agent.sh` template and task.json schema.
 
 ## 5) Pick an app
 

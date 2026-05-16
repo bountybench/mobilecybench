@@ -18,11 +18,9 @@ build if the committed JSON Schema drifts from this model.
 
 import json
 from pathlib import Path
-from typing import ClassVar, List, Literal, Optional
+from typing import Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
-
-from agent.tools import ToolName
 
 
 class RunnerConfig(BaseModel):
@@ -63,38 +61,41 @@ class RunnerConfig(BaseModel):
         ...,
         min_length=1,
         description=(
-            "Model id for the custom agent (e.g. gpt-5.5, claude-opus-4-7, "
-            "gemini-3.1-pro). Forwarded to codex mode. Ignored by "
-            "claude-code. See agent/model_providers/factory.py:SupportedModel."
+            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). "
+            "Custom path: routed via agent/custom/model_providers/factory.py. "
+            "External path: forwarded to the in-container CLI."
         ),
     )
     agent_image: str = Field(
         ...,
         min_length=1,
         description=(
-            "Docker image used to run the agent (e.g. "
-            "cybench/mobilecybench:latest). Pulled implicitly on first use."
+            "Docker image the agent runs from. Custom path: kali base "
+            "(e.g. cybench/mobilecybench-kali:v0.1.0). External path: BYO "
+            "reference image (e.g. cybench/mobilecybench:codex_<v>, "
+            ":claudecode_<v>, or a lab's own tag)."
         ),
     )
-    agent_mode: Literal["custom", "codex", "claude-code"] = Field(
+    agent_mode: Literal["custom", "external"] = Field(
         default="custom",
         description=(
-            "Agent implementation: 'custom' (built-in per-turn loop, "
-            "default), 'codex' (OpenAI Codex CLI), or 'claude-code' "
-            "(Claude Code CLI)."
+            "Dispatch path. 'custom' (default): in-process Python loop. "
+            "'external': BYO Docker image satisfying the contract in "
+            "documentation/BRING_YOUR_OWN_AGENT.md (covers codex, "
+            "claude-code, and lab-supplied agents)."
         ),
     )
     max_iterations: int = Field(
         ...,
         gt=0,
-        description="Maximum agent turns before stopping. Custom agent only.",
+        description="Maximum agent turns before stopping. Custom path only.",
     )
     max_model_response_tokens: int = Field(
         ...,
         gt=0,
         description="Per-call output token cap forwarded to the provider.",
     )
-    custom_system_prompt: Optional[str] = Field(
+    additional_system_prompt: Optional[str] = Field(
         default=None,
         description=(
             "Free-form text appended to the workflow-built system prompt "
@@ -102,28 +103,18 @@ class RunnerConfig(BaseModel):
             "to all agent modes."
         ),
     )
-    allowed_tools: Optional[List[ToolName]] = Field(
+    reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
         default=None,
         description=(
-            "Restrict the tool surface. Each entry must be one of "
-            "agent.tools.TOOL_NAMES. Null = all tools. Custom agent only — "
-            "codex and claude-code use their CLI's native tool surface and "
-            "ignore this field."
-        ),
-    )
-    reasoning_effort: Optional[str] = Field(
-        default=None,
-        description=(
-            "Reasoning effort hint (e.g. 'low', 'medium', 'high'). Forwarded "
-            "to the provider by the custom agent and to the Codex CLI by "
-            "codex mode. Ignored by claude-code."
+            "Reasoning effort hint. v1 common-denominator across LiteLLM, "
+            "codex 0.130, and claude 2.1.142. xhigh/max deferred to v2."
         ),
     )
     allow_unregistered_models: bool = Field(
         default=False,
         description=(
             "Permit models that are not declared in "
-            "agent/model_providers/factory.py:SupportedModel. When true, "
+            "agent/custom/model_providers/factory.py:SupportedModel. When true, "
             "falls through to LiteLLM with auto-detected routing and a "
             "runtime WARNING. cost_usd reports $0 for any model that lacks "
             "a row in utils/token_pricing.json regardless of this flag."
@@ -258,7 +249,7 @@ class RunnerConfig(BaseModel):
             "to write done.marker; agent cannot extend by withholding it."
         ),
     )
-    timeout_ms: int = Field(
+    llm_request_timeout_ms: int = Field(
         default=600_000,
         gt=0,
         description=(
@@ -267,12 +258,13 @@ class RunnerConfig(BaseModel):
             "kali container."
         ),
     )
-    agent_timeout: int = Field(
+    agent_wallclock_seconds: int = Field(
         default=1800,
         gt=0,
         description=(
-            "Seconds for CLI-based agents (codex, claude-code). Custom "
-            "agent uses timeout_ms instead."
+            "Harness-side wall-clock kill budget for external agents "
+            "(SIGKILL on expiry). Custom agent ignores this and is bounded "
+            "by max_iterations + llm_request_timeout_ms."
         ),
     )
 
@@ -302,6 +294,25 @@ class RunnerConfig(BaseModel):
             c_dict.update({k: v for k, v in overrides.items() if v is not None})
 
         return cls(**c_dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_agent_modes(cls, data: Any) -> Any:
+        """Reject pre-BYO ``agent_mode: "codex"|"claude-code"`` with migration hint."""
+        if not isinstance(data, dict):
+            return data
+        mode = data.get("agent_mode")
+        if mode in ("codex", "claude-code"):
+            ref = {
+                "codex": "cybench/mobilecybench:codex_<version>",
+                "claude-code": "cybench/mobilecybench:claudecode_<version>",
+            }[mode]
+            raise ValueError(
+                f"agent_mode={mode!r} is no longer supported. "
+                f'Migrate to: agent_mode="external" + agent_image="{ref}". '
+                f"See documentation/BRING_YOUR_OWN_AGENT.md."
+            )
+        return data
 
     @model_validator(mode="after")
     def validate_attacker_model(self) -> "RunnerConfig":

@@ -2,7 +2,7 @@
 
 The model id you put in `runner_config.json:model` is sent to the underlying
 API. By default the runner only accepts models declared in
-`agent/model_providers/factory.py:SupportedModel`; this doc covers how to
+`agent/custom/model_providers/factory.py:SupportedModel`; this doc covers how to
 add one (the standard path) and how to bypass the registry temporarily for
 exploration (only use if you do not care about cost tracking).
 
@@ -12,7 +12,7 @@ Three short edits plus a smoke-test:
 
 ### 1. Add to `SupportedModel`
 
-`agent/model_providers/factory.py`:
+`agent/custom/model_providers/factory.py`:
 
 ```python
 class SupportedModel(Enum):
@@ -130,7 +130,7 @@ If your model name doesn't match a built-in substring, add a rule first.
 Inline (preferred — commit it alongside the model entry):
 
 ```python
-# agent/model_providers/litellm_provider.py
+# agent/custom/model_providers/litellm_provider.py
 _PROVIDER_REGISTRY: List[ProviderRule] = [
     ProviderRule(("myprovider",), "myprovider", "MYPROVIDER_API_KEY",
                  "MyProvider", litellm_prefix="openai/"),
@@ -155,11 +155,11 @@ always takes precedence over the built-in defaults.
 
 If the API is neither Responses-API nor Chat-Completions-shaped, write a
 new `ModelProvider` subclass. The contract is in
-`agent/model_providers/base.py`; `OpenAIProvider` and `LiteLLMProvider`
+`agent/custom/model_providers/base.py`; `OpenAIProvider` and `LiteLLMProvider`
 are worked references.
 
 ```python
-# agent/model_providers/myprovider.py
+# agent/custom/model_providers/myprovider.py
 class MyProviderProvider(ModelProvider):
     def __init__(self, model, instructions, tools=None,
                  max_output_tokens=None, timeout_ms=None,

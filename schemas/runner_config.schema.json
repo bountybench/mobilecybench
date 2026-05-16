@@ -21,30 +21,29 @@
       "type": "boolean"
     },
     "model": {
-      "description": "Model id for the custom agent (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). Forwarded to codex mode. Ignored by claude-code. See agent/model_providers/factory.py:SupportedModel.",
+      "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",
       "minLength": 1,
       "title": "Model",
       "type": "string"
     },
     "agent_image": {
-      "description": "Docker image used to run the agent (e.g. cybench/mobilecybench:latest). Pulled implicitly on first use.",
+      "description": "Docker image the agent runs from. Custom path: kali base (e.g. cybench/mobilecybench-kali:v0.1.0). External path: BYO reference image (e.g. cybench/mobilecybench:codex_<v>, :claudecode_<v>, or a lab's own tag).",
       "minLength": 1,
       "title": "Agent Image",
       "type": "string"
     },
     "agent_mode": {
       "default": "custom",
-      "description": "Agent implementation: 'custom' (built-in per-turn loop, default), 'codex' (OpenAI Codex CLI), or 'claude-code' (Claude Code CLI).",
+      "description": "Dispatch path. 'custom' (default): in-process Python loop. 'external': BYO Docker image satisfying the contract in documentation/BRING_YOUR_OWN_AGENT.md (covers codex, claude-code, and lab-supplied agents).",
       "enum": [
         "custom",
-        "codex",
-        "claude-code"
+        "external"
       ],
       "title": "Agent Mode",
       "type": "string"
     },
     "max_iterations": {
-      "description": "Maximum agent turns before stopping. Custom agent only.",
+      "description": "Maximum agent turns before stopping. Custom path only.",
       "exclusiveMinimum": 0,
       "title": "Max Iterations",
       "type": "integer"
@@ -55,7 +54,7 @@
       "title": "Max Model Response Tokens",
       "type": "integer"
     },
-    "custom_system_prompt": {
+    "additional_system_prompt": {
       "anyOf": [
         {
           "type": "string"
@@ -66,32 +65,16 @@
       ],
       "default": null,
       "description": "Free-form text appended to the workflow-built system prompt (after any per-app additional_info from metadata.json). Applies to all agent modes.",
-      "title": "Custom System Prompt"
-    },
-    "allowed_tools": {
-      "anyOf": [
-        {
-          "items": {
-            "enum": [
-              "execute_command",
-              "get_current_ui_state",
-              "execute_command_with_ui_state"
-            ],
-            "type": "string"
-          },
-          "type": "array"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Restrict the tool surface. Each entry must be one of agent.tools.TOOL_NAMES. Null = all tools. Custom agent only — codex and claude-code use their CLI's native tool surface and ignore this field.",
-      "title": "Allowed Tools"
+      "title": "Additional System Prompt"
     },
     "reasoning_effort": {
       "anyOf": [
         {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
           "type": "string"
         },
         {
@@ -99,12 +82,12 @@
         }
       ],
       "default": null,
-      "description": "Reasoning effort hint (e.g. 'low', 'medium', 'high'). Forwarded to the provider by the custom agent and to the Codex CLI by codex mode. Ignored by claude-code.",
+      "description": "Reasoning effort hint. v1 common-denominator across LiteLLM, codex 0.130, and claude 2.1.142. xhigh/max deferred to v2.",
       "title": "Reasoning Effort"
     },
     "allow_unregistered_models": {
       "default": false,
-      "description": "Permit models that are not declared in agent/model_providers/factory.py:SupportedModel. When true, falls through to LiteLLM with auto-detected routing and a runtime WARNING. cost_usd reports $0 for any model that lacks a row in utils/token_pricing.json regardless of this flag.",
+      "description": "Permit models that are not declared in agent/custom/model_providers/factory.py:SupportedModel. When true, falls through to LiteLLM with auto-detected routing and a runtime WARNING. cost_usd reports $0 for any model that lacks a row in utils/token_pricing.json regardless of this flag.",
       "title": "Allow Unregistered Models",
       "type": "boolean"
     },
@@ -253,18 +236,18 @@
       "title": "Apk Timeout",
       "type": "integer"
     },
-    "timeout_ms": {
+    "llm_request_timeout_ms": {
       "default": 600000,
       "description": "Per-LLM-API-call timeout (milliseconds). Used by the custom agent for provider calls and for docker exec calls into the kali container.",
       "exclusiveMinimum": 0,
-      "title": "Timeout Ms",
+      "title": "Llm Request Timeout Ms",
       "type": "integer"
     },
-    "agent_timeout": {
+    "agent_wallclock_seconds": {
       "default": 1800,
-      "description": "Seconds for CLI-based agents (codex, claude-code). Custom agent uses timeout_ms instead.",
+      "description": "Harness-side wall-clock kill budget for external agents (SIGKILL on expiry). Custom agent ignores this and is bounded by max_iterations + llm_request_timeout_ms.",
       "exclusiveMinimum": 0,
-      "title": "Agent Timeout",
+      "title": "Agent Wallclock Seconds",
       "type": "integer"
     }
   },

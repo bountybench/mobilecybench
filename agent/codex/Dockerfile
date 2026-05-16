@@ -1,0 +1,42 @@
+# BYO-contract reference image for the codex CLI agent.
+# See documentation/proposals/agent_decoupling/06_design.md §4.2.
+#
+# Build context = repo root (so the COPYs below resolve into /opt/agent/
+# and /opt/schemas/). The repo-root .dockerignore blocks **/.env family,
+# credentials, keys, and bloat trees.
+#
+# Manual build (from repo root):
+#   docker build -f agent/codex/Dockerfile -t cybench/mobilecybench:codex_<ver> .
+
+FROM cybench/mobilecybench-kali:v0.1.0
+
+RUN npm install -g @openai/codex@0.130.0 \
+    && npm cache clean --force \
+    && rm -rf /root/.npm
+
+# Plugin / apps marketplace fetches github.com + chatgpt.com on startup;
+# restricted egress denies them. Silence to keep Squid logs clean.
+RUN mkdir -p /root/.codex && \
+    printf '[features]\nplugins = false\napps = false\n' > /root/.codex/config.toml
+
+# Explicit-allowlist COPYs (no wildcards) so we never bake anything
+# unintended into image layer history.
+COPY agent/__init__.py /opt/agent/__init__.py
+COPY agent/codex/__init__.py /opt/agent/codex/__init__.py
+COPY agent/codex/event_parser.py /opt/agent/codex/event_parser.py
+COPY agent/codex/run_in_container.py /opt/agent/codex/run_in_container.py
+COPY utils/__init__.py /opt/utils/__init__.py
+COPY utils/logger.py /opt/utils/logger.py
+COPY utils/json_io.py /opt/utils/json_io.py
+COPY schemas/task.schema.json /opt/schemas/task.schema.json
+COPY agent/codex/run-agent.sh /run-agent.sh
+RUN chmod +x /run-agent.sh
+
+# jsonschema is already in the kali base venv; no extra install needed.
+
+# PYTHONPATH so `python -m agent.codex.run_in_container` resolves /opt/agent.
+ENV PYTHONPATH=/opt
+
+# Explicit clear in case any base layer set one. Harness's `command=` (idle
+# `sleep infinity`) overrides CMD, not ENTRYPOINT.
+ENTRYPOINT []

@@ -12,7 +12,7 @@
 
 **Agent** (`agent/`) - The LLM-powered actor that performs security testing. Builds prompts, executes an agentic loop (prompt → LLM → tool calls → repeat), and uses a ModelProvider for LLM communication.
 
-**ModelProvider** (`agent/model_providers/`) - Abstracts LLM API details: model routing, tokens, caching, response normalization, and conversation history.
+**ModelProvider** (`agent/custom/model_providers/`) - Abstracts LLM API details: model routing, tokens, caching, response normalization, and conversation history.
 
 ## Runtime Architecture
 
@@ -76,7 +76,7 @@ The agent reaches a peer only if both share a network. Each container is on exac
 | app backend / DB / redis        |   |   |   | ✓ |
 | `emulator-container` (CONTAINER mode) |   |   | ✓ |   |
 
-Defined in `agent/firewall/proxy.py` (`AGENT_NET`, `EXTERNAL_BRIDGE`), `agent/agent_container.py:_start_adb_proxy` (adb-proxy dual-homing), and each migrated app's `apps/<app>/docker-compose.yml` (`tls_proxy.networks: [shared_net, agent_net, private_net]`).
+Defined in `agent/firewall/proxy.py` (`AGENT_NET`, `EXTERNAL_BRIDGE`), `agent/runtime/container.py:_start_adb_proxy` (adb-proxy dual-homing), and each migrated app's `apps/<app>/docker-compose.yml` (`tls_proxy.networks: [shared_net, agent_net, private_net]`).
 
 ### Modes (single topology, conf swap inside the image)
 
@@ -94,7 +94,7 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 - Runs `runner.py` and Workflow orchestration (`workflows/base.py`, `workflows/exploit.py`, `workflows/redteam.py`)
 - Runs the host ADB server on `:5037`
 - Runs the Android emulator as a host process (`emulator_backend: native`) or as `emulator-container` on `shared_net` (`emulator_backend: container`)
-- Controls containers via `docker exec` (`agent/backend/docker_ops.py`)
+- Controls containers via `docker exec` (`agent/custom/backend/docker_ops.py`)
 
 ### Egress proxy / Squid sidecar
 
@@ -105,19 +105,19 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 
 ### ADB proxy sidecar
 
-- `agent/agent_container.py:_start_adb_proxy`. Image `python:3.11-slim`; the script `utils/adb_filter_proxy.py` is copied in.
+- `agent/runtime/container.py:_start_adb_proxy`. Image `python:3.11-slim`; the script `utils/adb_filter_proxy.py` is copied in.
 - Dual-homed: foot on `agent_net` (the agent's only network), foot on Docker's default `bridge`. The sidecar — not the agent — gets `extra_hosts: host.docker.internal: host-gateway`, so the proxy hairpins out to the host's `adbd` on `:5037`.
 - Filters ADB protocol messages and blocks dangerous operations (`root:`, `unroot:`, `backup:`, `su`, `run-as`, interactive shells); blocked patterns in `utils/adb_blocked_patterns.py`.
-- The agent's `ADB_SERVER_SOCKET=tcp:adb-proxy:5037` is set in container env by `setup_agent_environment` (`agent/agent_container.py:setup_agent_environment`).
-- `su` is also disabled on the emulator via a bind mount over `/system/xbin/su` (`agent/agent_container.py:_disable_emulator_root`).
+- The agent's `ADB_SERVER_SOCKET=tcp:adb-proxy:5037` is set in container env by `setup_agent_environment` (`agent/runtime/container.py:setup_agent_environment`).
+- `su` is also disabled on the emulator via a bind mount over `/system/xbin/su` (`agent/runtime/container.py:_disable_emulator_root`).
 
 ### Agent container
 
-- Joined to `[agent_net]` only — `agent_container.py:setup_agent_environment` passes `docker_networks=[AGENT_NET]`.
+- Joined to `[agent_net]` only — `agent/runtime/container.py:setup_agent_environment` passes `docker_networks=[AGENT_NET]`.
 - No `extra_hosts` mapping, no host-gateway alias, no default route off `agent_net`.
 - App codebase mounted at `/app/codebase` (default), or APK only at `/app/apk` when `no_codebase=true`.
 - Tools execute via `ToolRuntime`. Restarted before evaluation begins (only `agent_exploit` dir is preserved).
-- Mode-specific runtime: `agent_mode` ∈ {`custom`, `claude-code`, `codex`} picks the CLI and auth wiring (`agent/agent_container.py:AgentEnvironment.setup`).
+- Two dispatch paths: `agent_mode: "custom"` runs the in-process Python loop; `agent_mode: "external"` delivers a `task.json` to a BYO Docker image satisfying the contract in [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md). Auth tokens (listed in `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`) are forwarded uniformly to both.
 
 
 ## Agent Environment
@@ -131,7 +131,7 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 - `/app/agent_output` - Directory for exploit results (captured secrets, exfiltrated data). Volume-mounted so verify scripts on the host can read them.
 - `/app/verify_files` (exploit mode only) - Contains evaluator verification logic
 
-**From initial prompt (see `agent/custom_agent.py`):**
+**From initial prompt (see `agent/custom/agent.py`):**
 - Package name
 - App server container name + port (if applicable)
 - Username/password from `metadata.json` (if provided)

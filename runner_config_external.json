@@ -8,15 +8,15 @@
   "synthetic_vuln_id": null,
   "no_codebase": false,
 
-  "agent_mode": "custom",
-  "model": "gpt-5.5",
+  "agent_mode": "external",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
+  "model": "claude-sonnet-4-6",
   "reasoning_effort": "high",
   "max_iterations": 30,
   "max_model_response_tokens": 8192,
   "additional_system_prompt": null,
   "allow_unregistered_models": false,
 
-  "agent_image": "cybench/mobilecybench-kali:v0.1.0",
   "build_type": "download-apk",
   "emulator_backend": "native",
   "emulator_display": "headed",
@@ -26,5 +26,6 @@
   "gold_run": false,
   "screenshot_mode": false,
 
+  "agent_wallclock_seconds": 1800,
   "llm_request_timeout_ms": 600000
 }

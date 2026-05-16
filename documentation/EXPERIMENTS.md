@@ -121,25 +121,25 @@ JSON Schema captures per-field types and defaults but cannot machine-enforce the
 
 ### Agent Mode
 
-Set `"agent_mode"` in your `runner_config.json` to select an agent implementation:
+Two paths, picked by `"agent_mode"`:
 
-| Mode           | Description                                              | Docker Image                                  |
-| -------------- | -------------------------------------------------------- | --------------------------------------------- |
-| `custom`       | Built-in agent with per-turn model calls (default)       | `cybench/mobilecybench:latest`                |
-| `codex`        | OpenAI Codex CLI agent                                   | `cybench/mobilecybench:codex_0.130.0`         |
-| `claude-code`  | Claude Code CLI agent (requires OAuth tokens)            | `cybench/mobilecybench:claudecode_2.1.140`    |
+| Mode       | Description                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------- |
+| `custom`   | Built-in in-process Python loop (default). `agent_image` names the kali base.                |
+| `external` | BYO Docker image satisfying the contract in [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md). Covers the reference codex/claude-code images and lab BYO agents. `agent_image` names the image to run. |
 
-Example config for Claude Code (uses Opus 4.6 by default):
+Example external (Claude Code reference image):
 
 ```json
 {
-  "agent_mode": "claude-code",
+  "agent_mode": "external",
   "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
-  "agent_timeout": 1800
+  "model": "claude-sonnet-4-6",
+  "agent_wallclock_seconds": 1800
 }
 ```
 
-See `documentation/GETTING_STARTED.md` for setup instructions for each agent mode.
+The legacy `agent_mode: "codex"` and `agent_mode: "claude-code"` values were removed; switch to `agent_mode: "external"` plus the matching reference image. See `documentation/GETTING_STARTED.md` for setup instructions.
 
 ## Outputs
 
