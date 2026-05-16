@@ -28,7 +28,9 @@ from utils.json_io import write_json_atomic
 # Schema is COPY'd into every BYO image at /opt/schemas/task.schema.json
 # (see agent/codex/Dockerfile and agent/claude_code/Dockerfile). The same
 # PYTHONPATH=/opt convention puts this module two levels above /opt/agent/.
-_SCHEMA_PATH = Path(__file__).resolve().parent.parent.parent / "schemas" / "task.schema.json"
+_SCHEMA_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "schemas" / "task.schema.json"
+)
 with _SCHEMA_PATH.open(encoding="utf-8") as _f:
     _TASK_VALIDATOR = jsonschema.Draft202012Validator(json.load(_f))
 

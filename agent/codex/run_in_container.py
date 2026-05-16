@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from agent.codex.event_parser import CodexEventParser
 from agent.in_container.paths import TASK_JSON
 from agent.in_container.runner import run
-from agent.codex.event_parser import CodexEventParser
 
 # Codex's `exec` loop only continues while the model emits real tool calls;
 # the host-side ReAct scaffolding causes it to exit after one response.
@@ -48,15 +48,17 @@ def _build_cmd(task: dict[str, Any]) -> list[str]:
         cmd.extend(["--config", f"{key}={toml_val}"])
 
     working_dir = "/app/apk" if task["no_codebase"] else "/app/codebase"
-    cmd.extend([
-        "exec",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "--skip-git-repo-check",
-        "--json",
-        "-C",
-        working_dir,
-        task["prompt"] + _CODEX_NATIVE_FOOTER,
-    ])
+    cmd.extend(
+        [
+            "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--skip-git-repo-check",
+            "--json",
+            "-C",
+            working_dir,
+            task["prompt"] + _CODEX_NATIVE_FOOTER,
+        ]
+    )
     return cmd
 
 

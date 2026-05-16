@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from agent.claude_code.event_parser import ClaudeCodeEventParser
 from agent.in_container.paths import TASK_JSON
 from agent.in_container.runner import run
-from agent.claude_code.event_parser import ClaudeCodeEventParser
 
 
 def _build_cmd(task: dict[str, Any]) -> list[str]:

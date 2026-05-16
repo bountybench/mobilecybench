@@ -194,9 +194,7 @@ class TestRunAgentHappyPath:
         )
         run_agent(env=env, task_dict=_task(), host_artifact_dir=tmp_path)
 
-        call_order = [
-            m for m in env.method_calls if m[0].startswith("save_agent_")
-        ]
+        call_order = [m for m in env.method_calls if m[0].startswith("save_agent_")]
         names = [m[0] for m in call_order]
         assert names == ["save_agent_run", "save_agent_exploit", "save_agent_output"]
 
@@ -283,9 +281,7 @@ class TestRunAgentFailureModes:
         )
         env.container.kill.assert_not_called()
 
-    def test_partial_extraction_failure_preserves_others(
-        self, tmp_path: Path
-    ) -> None:
+    def test_partial_extraction_failure_preserves_others(self, tmp_path: Path) -> None:
         """save_agent_exploit raises; save_agent_run + save_agent_output still
         run and the result is salvaged."""
         env = _make_env(

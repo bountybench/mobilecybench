@@ -20,13 +20,12 @@ from typing import Any
 from agent.in_container.event_parser import BaseEventParser
 from utils.logger import agent_logger, logger
 
-
 # Claude's `result.usage` field names → our canonical token_totals names.
 _USAGE_FIELD_MAP = {
-    "input_tokens":                  "input_tokens",
-    "output_tokens":                 "output_tokens",
-    "cache_read_input_tokens":       "cached_input_tokens",
-    "cache_creation_input_tokens":   "cache_creation_tokens",
+    "input_tokens": "input_tokens",
+    "output_tokens": "output_tokens",
+    "cache_read_input_tokens": "cached_input_tokens",
+    "cache_creation_input_tokens": "cache_creation_tokens",
 }
 _USAGE_TTL_MAP = {
     "ephemeral_5m_input_tokens": "cache_creation_tokens_5m",
@@ -79,11 +78,13 @@ class ClaudeCodeEventParser(BaseEventParser):
             name = part.get("name", "unknown")
             args = part.get("input", {})
             call_id = part.get("id", "")
-            self._turn_tool_calls.append({
-                "tool_call_id": call_id,
-                "name": name,
-                "arguments": args,
-            })
+            self._turn_tool_calls.append(
+                {
+                    "tool_call_id": call_id,
+                    "name": name,
+                    "arguments": args,
+                }
+            )
             logger.info(f"[ClaudeCode Tool] {name} input={json.dumps(args)}")
             agent_logger.info("tool_use name=%s input=%s", name, json.dumps(args))
 
@@ -93,12 +94,14 @@ class ClaudeCodeEventParser(BaseEventParser):
             body = "\n".join(b.get("text", str(b)) for b in raw)
         else:
             body = raw
-        self._turn_observations.append({
-            "tool_call_id": part.get("tool_use_id", ""),
-            "type": "tool_result",
-            "content": body,
-            "truncated": False,
-        })
+        self._turn_observations.append(
+            {
+                "tool_call_id": part.get("tool_use_id", ""),
+                "type": "tool_result",
+                "content": body,
+                "truncated": False,
+            }
+        )
         agent_logger.info("tool_result content=%s", body)
 
     def _handle_result(self, data: dict[str, Any]) -> None:

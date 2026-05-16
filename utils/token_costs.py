@@ -105,8 +105,12 @@ def _parse_pricing_map(raw: Dict[str, dict]) -> Dict[str, ModelPricing]:
             output=float(price_entry.get("output", 0) or 0),
             cache_input=float(price_entry.get("cache_input", 0) or 0),
             reasoning=_optional_float(price_entry.get("reasoning")),
-            cache_creation_5m=_optional_float(price_entry.get("cache_creation_per_million_5m")),
-            cache_creation_1h=_optional_float(price_entry.get("cache_creation_per_million_1h")),
+            cache_creation_5m=_optional_float(
+                price_entry.get("cache_creation_per_million_5m")
+            ),
+            cache_creation_1h=_optional_float(
+                price_entry.get("cache_creation_per_million_1h")
+            ),
             high_context=high_context,
         )
     return parsed
@@ -311,11 +315,11 @@ def compute_cost_usd(
 
     scale = 1_000_000.0
     return float(
-        (billed_input        / scale) * rate.input
+        (billed_input / scale) * rate.input
         + (billed_text_output / scale) * rate.output
-        + (rt                 / scale) * reasoning_rate
-        + (ci                 / scale) * rate.cache_input
-        + (cw_flat            / scale) * cw_5m_rate
-        + (cw_5m              / scale) * cw_5m_rate
-        + (cw_1h              / scale) * cw_1h_rate
+        + (rt / scale) * reasoning_rate
+        + (ci / scale) * rate.cache_input
+        + (cw_flat / scale) * cw_5m_rate
+        + (cw_5m / scale) * cw_5m_rate
+        + (cw_1h / scale) * cw_1h_rate
     )

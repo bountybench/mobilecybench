@@ -114,11 +114,9 @@ class BaseEventParser(ABC):
             else len(self.conversation_events)
         )
         tool_call_count = sum(len(e["tool_calls"]) for e in self.conversation_events)
-        unique_tools = sorted({
-            tc["name"]
-            for e in self.conversation_events
-            for tc in e["tool_calls"]
-        })
+        unique_tools = sorted(
+            {tc["name"] for e in self.conversation_events for tc in e["tool_calls"]}
+        )
 
         result: dict[str, Any] = {
             "status": status,
@@ -165,14 +163,16 @@ class BaseEventParser(ABC):
         """Snapshot the current turn into ``conversation_events`` and reset accumulators."""
         if not self._turn_text and not self._turn_tool_calls:
             return
-        self.conversation_events.append({
-            "turn_number": len(self.conversation_events) + 1,
-            "assistant_text": "\n".join(self._turn_text),
-            "reasoning_summary": "\n".join(self._turn_reasoning),
-            "tool_calls": list(self._turn_tool_calls),
-            "observations": list(self._turn_observations),
-            "timestamp": _utc_now_iso(),
-        })
+        self.conversation_events.append(
+            {
+                "turn_number": len(self.conversation_events) + 1,
+                "assistant_text": "\n".join(self._turn_text),
+                "reasoning_summary": "\n".join(self._turn_reasoning),
+                "tool_calls": list(self._turn_tool_calls),
+                "observations": list(self._turn_observations),
+                "timestamp": _utc_now_iso(),
+            }
+        )
         self._turn_text.clear()
         self._turn_tool_calls.clear()
         self._turn_observations.clear()

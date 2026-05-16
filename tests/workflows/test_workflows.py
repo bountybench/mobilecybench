@@ -430,12 +430,16 @@ class TestResolveAdditionalContext:
         app_dir.mkdir(parents=True)
         (app_dir / "metadata.json").write_text("{}")
         return ExploitWorkflow(
-            _config(workflow="exploit", additional_system_prompt=additional_system_prompt),
+            _config(
+                workflow="exploit", additional_system_prompt=additional_system_prompt
+            ),
             "test_app",
             tmp_path,
         )
 
-    def test_appends_additional_system_prompt_to_metadata_additional_info(self, tmp_path):
+    def test_appends_additional_system_prompt_to_metadata_additional_info(
+        self, tmp_path
+    ):
         wf = self._workflow(tmp_path, additional_system_prompt="HINT: look at IPC")
         wf.metadata = {"additional_info": "App ships with seeded user"}
         # Ordering is load-bearing: per-app context first (threat model
@@ -445,12 +449,16 @@ class TestResolveAdditionalContext:
             == "App ships with seeded user\n\nHINT: look at IPC"
         )
 
-    def test_returns_additional_system_prompt_alone_when_no_metadata_info(self, tmp_path):
+    def test_returns_additional_system_prompt_alone_when_no_metadata_info(
+        self, tmp_path
+    ):
         wf = self._workflow(tmp_path, additional_system_prompt="HINT: look at IPC")
         wf.metadata = {}
         assert wf._resolve_additional_context() == "HINT: look at IPC"
 
-    def test_returns_metadata_unchanged_when_no_additional_system_prompt(self, tmp_path):
+    def test_returns_metadata_unchanged_when_no_additional_system_prompt(
+        self, tmp_path
+    ):
         wf = self._workflow(tmp_path)  # additional_system_prompt = None
         wf.metadata = {"additional_info": "App ships with seeded user"}
         assert wf._resolve_additional_context() == "App ships with seeded user"

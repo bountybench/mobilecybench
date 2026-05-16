@@ -8,7 +8,10 @@ variable names.
 
 import pytest
 
-from agent.custom.backend.docker_ops import check_shell_script_content, is_adb_command_allowed
+from agent.custom.backend.docker_ops import (
+    check_shell_script_content,
+    is_adb_command_allowed,
+)
 
 # ---------------------------------------------------------------------------
 # is_adb_command_allowed  (runtime, single-command validation)

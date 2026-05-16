@@ -13,6 +13,7 @@ from utils.artifact_paths import relative_artifact_path
 from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
+from utils.token_costs import compute_cost_usd, load_pricing
 
 # Field whose name ends in *_KEY/*_TOKEN/*_SECRET/PASSWORD is scrubbed before
 # run_summary.json hits disk. End-anchored to avoid false positives on plural
@@ -25,12 +26,17 @@ def _redact_for_persistence(value: Any) -> Any:
     """Walk value; replace any dict value whose key looks credential-ish."""
     if isinstance(value, dict):
         return {
-            k: _REDACTED if _SECRET_KEY_RE.search(str(k)) else _redact_for_persistence(v)
+            k: (
+                _REDACTED
+                if _SECRET_KEY_RE.search(str(k))
+                else _redact_for_persistence(v)
+            )
             for k, v in value.items()
         }
     if isinstance(value, list):
         return [_redact_for_persistence(v) for v in value]
     return value
+
 
 try:
     from jsonschema import validate as _jsonschema_validate
@@ -38,7 +44,9 @@ except Exception:  # pragma: no cover
     _jsonschema_validate = None
 
 
-_RESULT_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "result.schema.json"
+_RESULT_SCHEMA_PATH = (
+    Path(__file__).resolve().parent.parent / "schemas" / "result.schema.json"
+)
 with _RESULT_SCHEMA_PATH.open() as _f:
     _RESULT_SCHEMA: dict[str, Any] = json.load(_f)
 _RESULT_VALIDATOR = jsonschema.Draft202012Validator(_RESULT_SCHEMA)
@@ -54,8 +62,6 @@ _RESULT_NULL_DEFAULTS: dict[str, Any] = {
     "token_totals": {},
     "exit_code": 0,
 }
-
-from utils.token_costs import compute_cost_usd, load_pricing
 
 _PRICING_MAP = load_pricing()
 

@@ -70,7 +70,9 @@ def _pull_artifacts(env, host_artifact_dir: Path) -> None:
             logger.warning(f"Failed to save via {fn.__name__}: {e}")
 
 
-def _read_result_json(host_artifact_dir: Path) -> tuple[dict[str, Any] | None, str | None]:
+def _read_result_json(
+    host_artifact_dir: Path,
+) -> tuple[dict[str, Any] | None, str | None]:
     """Read the pulled-back result.json.
 
     Returns ``(parsed_dict, error_message)``. On success, ``error_message``

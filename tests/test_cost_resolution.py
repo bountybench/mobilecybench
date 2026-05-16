@@ -16,7 +16,9 @@ def _norm(**fields):
         "status": "completed",
         "turns_taken": 1,
         "model": fields.pop("model", "claude-opus-4-7"),
-        "token_totals": fields.pop("token_totals", {"input_tokens": 0, "output_tokens": 0}),
+        "token_totals": fields.pop(
+            "token_totals", {"input_tokens": 0, "output_tokens": 0}
+        ),
     }
     base.update(fields)
     return normalize_agent_result(base)
@@ -42,13 +44,17 @@ class TestCostResolution:
         assert out["cost_usd"] > 0  # priced model + nonzero tokens
 
     def test_unknown_model_marks_unpriced(self) -> None:
-        out = _norm(model="some-future-model-not-in-table",
-                    token_totals={"input_tokens": 1000, "output_tokens": 1000})
+        out = _norm(
+            model="some-future-model-not-in-table",
+            token_totals={"input_tokens": 1000, "output_tokens": 1000},
+        )
         assert out["cost_source"] == "derived_unpriced"
         assert out["cost_usd"] == 0.0
 
     def test_missing_model_marks_unpriced(self) -> None:
-        out = _norm(model="", token_totals={"input_tokens": 1000, "output_tokens": 1000})
+        out = _norm(
+            model="", token_totals={"input_tokens": 1000, "output_tokens": 1000}
+        )
         assert out["cost_source"] == "derived_unpriced"
         assert out["cost_usd"] == 0.0
 
@@ -99,9 +105,9 @@ class TestCacheTierPricing:
             token_totals={
                 "input_tokens": 100_000,
                 "output_tokens": 1_000,
-                "cache_creation_tokens": 50_000,         # the flat rollup
-                "cache_creation_tokens_5m": 30_000,      # split
-                "cache_creation_tokens_1h": 20_000,      # split
+                "cache_creation_tokens": 50_000,  # the flat rollup
+                "cache_creation_tokens_5m": 30_000,  # split
+                "cache_creation_tokens_1h": 20_000,  # split
             },
         )
         # With claude-opus-4-7's $5 input + $25 output + cache_input fallback,

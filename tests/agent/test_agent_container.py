@@ -524,7 +524,9 @@ class TestAuthEnvPassthrough:
             return_value={},
         ), patch("agent.runtime.container._start_adb_proxy"), patch(
             "agent.runtime.container._disable_emulator_root"
-        ), patch("agent.runtime.container.firewall.start"), patch(
+        ), patch(
+            "agent.runtime.container.firewall.start"
+        ), patch(
             "agent.runtime.container.firewall.proxy_url", return_value="http://proxy"
         ), patch(
             "agent.runtime.container.firewall.build_no_proxy", return_value=""

@@ -211,7 +211,9 @@ class Workflow(ABC):
                 raise RuntimeError(
                     "Agent environment not initialized. setup_runtime_environment() first."
                 )
-            logger.info(f"Running external agent (image={self.config.agent_image}) via BYO contract...")
+            logger.info(
+                f"Running external agent (image={self.config.agent_image}) via BYO contract..."
+            )
             task_dict = self._build_task_dict()
             # Persist task.json for reproducibility.
             logs_dir = Path(logger_manager.get_logs_dir())
@@ -221,7 +223,9 @@ class Workflow(ABC):
                 task_dict=task_dict,
                 host_artifact_dir=logs_dir,
             )
-            logger.info(f"Agent completed with status: {self.agent_result.get('status')}")
+            logger.info(
+                f"Agent completed with status: {self.agent_result.get('status')}"
+            )
             return self.agent_result
 
         if not self.agent:

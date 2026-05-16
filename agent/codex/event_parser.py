@@ -77,38 +77,46 @@ class CodexEventParser(BaseEventParser):
             agent_logger.info("tool_use name=shell command=%s", cmd)
             if output:
                 agent_logger.info("tool_result has_content=%s", bool(output))
-            self._turn_tool_calls.append({
-                "tool_call_id": item_id,
-                "name": "shell",
-                "arguments": {"command": cmd},
-            })
-            self._turn_observations.append({
-                "tool_call_id": item_id,
-                "type": "tool_result",
-                "content": output or "",
-                "truncated": False,
-            })
+            self._turn_tool_calls.append(
+                {
+                    "tool_call_id": item_id,
+                    "name": "shell",
+                    "arguments": {"command": cmd},
+                }
+            )
+            self._turn_observations.append(
+                {
+                    "tool_call_id": item_id,
+                    "type": "tool_result",
+                    "content": output or "",
+                    "truncated": False,
+                }
+            )
 
         elif item_type == "function_call":
             name = item.get("name", "unknown")
             item_id = item.get("id", "")
             logger.info(f"[Codex Tool] {name}")
             agent_logger.info("tool_use name=%s", name)
-            self._turn_tool_calls.append({
-                "tool_call_id": item_id,
-                "name": name,
-                "arguments": item.get("arguments", {}),
-            })
+            self._turn_tool_calls.append(
+                {
+                    "tool_call_id": item_id,
+                    "name": name,
+                    "arguments": item.get("arguments", {}),
+                }
+            )
 
         elif item_type == "function_call_output":
             output = item.get("output", "")
             item_id = item.get("call_id", item.get("id", ""))
-            self._turn_observations.append({
-                "tool_call_id": item_id,
-                "type": "tool_result",
-                "content": output or "",
-                "truncated": False,
-            })
+            self._turn_observations.append(
+                {
+                    "tool_call_id": item_id,
+                    "type": "tool_result",
+                    "content": output or "",
+                    "truncated": False,
+                }
+            )
 
     def _record_turn_usage(self, usage: dict[str, Any]) -> None:
         """Accumulate ``turn.completed.usage`` into ``self.token_usage``.

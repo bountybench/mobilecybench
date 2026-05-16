@@ -1,5 +1,4 @@
 import io
-import json
 import os
 import shutil
 import subprocess
@@ -219,9 +218,7 @@ class AgentEnvironment:
             logger.info(
                 "Creating agent_exploit, agent_run, agent_output directories in container"
             )
-            self.container.exec_run(
-                f"mkdir -p {EXPLOIT_DIR} {RUN_DIR} {OUTPUT_DIR}"
-            )
+            self.container.exec_run(f"mkdir -p {EXPLOIT_DIR} {RUN_DIR} {OUTPUT_DIR}")
 
             # Persist environment variables into the container's shell
             # profile so that *every* shell session (including those
@@ -880,7 +877,6 @@ def setup_agent_environment(
     agent_env_file = _REPO_ROOT / "agent" / ".env"
     if agent_env_file.exists():
         load_dotenv(agent_env_file)
-
 
     # ADB → adb-proxy sidecar; HTTP/HTTPS → Squid; in-cluster targets bypass
     # via NO_PROXY (Python HTTP clients match by hostname suffix, not CIDR).

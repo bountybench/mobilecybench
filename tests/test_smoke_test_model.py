@@ -169,7 +169,9 @@ def test_main_returns_2_on_provider_call_runtime_error(smoke_test_module):
     fake_provider = MagicMock()
     fake_provider.call.side_effect = ConnectionError("backend unreachable")
 
-    with patch("agent.custom.model_providers.get_model_provider", return_value=fake_provider):
+    with patch(
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
+    ):
         rc = _run_main(smoke_test_module, ["--model", "gpt-5.5"])
     assert rc == 2
 
@@ -181,7 +183,9 @@ def test_main_returns_2_on_empty_response(smoke_test_module):
         text="", reasoning="", tool_calls=[]
     )
 
-    with patch("agent.custom.model_providers.get_model_provider", return_value=fake_provider):
+    with patch(
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
+    ):
         rc = _run_main(smoke_test_module, ["--model", "gpt-5.5"])
     assert rc == 2
 
@@ -193,7 +197,9 @@ def test_main_accepts_response_with_only_reasoning(smoke_test_module):
         text="", reasoning="thinking through the problem"
     )
 
-    with patch("agent.custom.model_providers.get_model_provider", return_value=fake_provider):
+    with patch(
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
+    ):
         rc = _run_main(smoke_test_module, ["--model", "gpt-5.5"])
     assert rc == 0
 
@@ -205,7 +211,9 @@ def test_main_accepts_response_with_only_tool_calls(smoke_test_module):
     fake_provider = MagicMock()
     fake_provider.call.return_value = _provider_response(text="", tool_calls=[fc])
 
-    with patch("agent.custom.model_providers.get_model_provider", return_value=fake_provider):
+    with patch(
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
+    ):
         rc = _run_main(smoke_test_module, ["--model", "gpt-5.5"])
     assert rc == 0
 
