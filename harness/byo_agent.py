@@ -144,8 +144,10 @@ def run_agent(
                     "sending SIGTERM to runner for graceful flush."
                 )
                 try:
+                    # Reference images launch as `python -m agent.<cli>.run_in_container`;
+                    # match that argv so the runner's SIGTERM handler fires.
                     container.exec_run(
-                        ["pkill", "-TERM", "-f", "agent.in_container.runner"]
+                        ["pkill", "-TERM", "-f", r"agent\..*\.run_in_container"]
                     )
                 except docker.errors.APIError:
                     pass

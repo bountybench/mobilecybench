@@ -255,7 +255,7 @@ class TestRunAgentFailureModes:
         )
 
         env.container.exec_run.assert_any_call(
-            ["pkill", "-TERM", "-f", "agent.in_container.runner"]
+            ["pkill", "-TERM", "-f", r"agent\..*\.run_in_container"]
         )
         env.container.kill.assert_called_once_with(signal="SIGKILL")
         assert out["status"] == "timeout"
@@ -276,7 +276,7 @@ class TestRunAgentFailureModes:
         run_agent(env=env, task_dict=_task(wallclock=60), host_artifact_dir=tmp_path)
 
         env.container.exec_run.assert_any_call(
-            ["pkill", "-TERM", "-f", "agent.in_container.runner"]
+            ["pkill", "-TERM", "-f", r"agent\..*\.run_in_container"]
         )
         env.container.kill.assert_not_called()
 
