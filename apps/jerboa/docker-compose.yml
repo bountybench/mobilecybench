@@ -23,6 +23,7 @@ services:
         condition: service_healthy
     networks:
       - shared_net
+      - agent_net
       - private_net
     healthcheck:
       test: ["CMD", "curl", "-fsk", "https://localhost"]
@@ -98,5 +99,7 @@ services:
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true
   private_net:
