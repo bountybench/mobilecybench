@@ -105,14 +105,9 @@ def _resolve_cost(result: dict[str, Any]) -> None:
         result["cost_usd"] = float(agent)
         result["cost_source"] = "agent"
         return
-    model = result.get("model") or ""
-    derived, source = (
-        _derive_cost(result.get("token_totals") or {}, model)
-        if model
-        else (0.0, "derived_unpriced")
+    result["cost_usd"], result["cost_source"] = _derive_cost(
+        result.get("token_totals") or {}, result.get("model") or ""
     )
-    result["cost_usd"] = derived
-    result["cost_source"] = source
 
 
 def utc_now_iso() -> str:
@@ -309,9 +304,7 @@ def write_run_summary(
         except Exception:
             pass
 
-    # Both custom and BYO write to logs_dir/agent_run/conversation.jsonl
-    # (see agent/custom/agent.py and agent/in_container/runner.py). Read
-    # from this canonical location — no agent-supplied path field needed.
+    # Canonical path written by both custom and BYO; no agent-supplied field needed.
     canonical_conversation = logs_dir / "agent_run" / "conversation.jsonl"
     conversation_path = (
         str(canonical_conversation) if canonical_conversation.exists() else None
@@ -368,10 +361,8 @@ def write_run_summary(
         ).items()
     }
 
-    # Image identity is stamped onto run_result before agent_env cleanup
-    # (BYO from the live container handle in harness.byo_agent; custom from
-    # workflow.agent_env in runner.py). Fall back to config for dry-runs
-    # where agent_env was never set up.
+    # Image identity is stamped onto run_result before agent_env cleanup;
+    # agent_image falls back to config so dry-runs (no container) still record intent.
     agent_image = run_result.get("agent_image") or getattr(config, "agent_image", None)
     agent_image_digest = run_result.get("agent_image_digest")
 

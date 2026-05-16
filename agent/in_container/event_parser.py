@@ -1,24 +1,8 @@
 """Base parser for BYO CLIs that emit a line-delimited event stream.
 
-Subclasses override one method: ``_handle_event(data: dict)`` which maps the
-CLI's event vocabulary onto the per-turn / run accumulators below. Everything
-else — line buffering, turn flushing, conversation-row formatting, summary
-shape — is owned here.
-
-Run-wide accumulators a subclass should populate as events arrive:
-    self.token_usage: dict[str, int]
-    self.session_id: str | None
-    self.stop_reason: str | None
-    self.agent_reported_cost: float | None    # set only when the CLI emits cost
-    self.agent_reported_turns: int | None     # set only when the CLI emits a turn count
-    self.timing: dict[str, int]               # {api_ms, ttft_ms} when CLI exposes
-
-Per-turn accumulators — fill these in ``_handle_event``, then call ``_flush_turn``
-when the CLI's turn boundary fires:
-    self._turn_text: list[str]
-    self._turn_tool_calls: list[dict]         # canonical {tool_call_id, name, arguments}
-    self._turn_observations: list[dict]       # canonical {tool_call_id, type, content, truncated}
-    self._turn_reasoning: list[str]
+Subclasses override ``_handle_event(data: dict)`` to map the CLI's event
+vocabulary onto the accumulators declared in ``__init__``. Line buffering,
+turn flushing, conversation-row formatting, and summary shape are owned here.
 """
 
 from __future__ import annotations
