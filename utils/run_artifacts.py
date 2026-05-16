@@ -224,55 +224,6 @@ def _timing_summary_from_calls(calls: list[Any]) -> dict:
     }
 
 
-def _materialize_conversation_fallback(
-    conversation_history: Any, logs_dir: Path, run_id: str, project_root: Path
-) -> Optional[Path]:
-    if not isinstance(conversation_history, list) or not conversation_history:
-        return None
-
-    conversation_path = logs_dir / "agent_run" / "conversation.jsonl"
-    conversation_path.parent.mkdir(parents=True, exist_ok=True)
-    schema = load_schema(project_root, "conversation_turn.schema.json")
-    lines: list[str] = []
-    for idx, entry in enumerate(conversation_history, start=1):
-        if not isinstance(entry, dict):
-            continue
-        tool_outputs = entry.get("tool_outputs", [])
-        if not isinstance(tool_outputs, list):
-            tool_outputs = [tool_outputs]
-
-        event = {
-            "run_id": run_id,
-            "turn_number": idx,
-            "timestamp": utc_now_iso(),
-            "role": "assistant",
-            "response_id": entry.get("response_id"),
-            "assistant_text": entry.get("final_output"),
-            "reasoning_summary": entry.get("reasoning_summary"),
-            "tool_calls": [],
-            "observations": [
-                {
-                    "tool_call_id": None,
-                    "type": "tool_output",
-                    "content": str(tool_output),
-                    "truncated": False,
-                }
-                for tool_output in tool_outputs
-            ],
-            "status": "ok",
-        }
-        validate_schema(event, schema, "conversation turn")
-        lines.append(json.dumps(event, ensure_ascii=False))
-
-    if not lines:
-        return None
-
-    conversation_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(conversation_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    return conversation_path
-
-
 def _existing_path(path_value: Optional[str]) -> Optional[str]:
     if not path_value:
         return None
@@ -380,16 +331,14 @@ def write_run_summary(
         except Exception:
             pass
 
-    conversation_path = _existing_path(run_result.get("conversation_file"))
+    # Both custom and BYO write to logs_dir/agent_run/conversation.jsonl
+    # (see agent/custom/agent.py and agent/in_container/runner.py). Read
+    # from this canonical location — no agent-supplied path field needed.
+    canonical_conversation = logs_dir / "agent_run" / "conversation.jsonl"
+    conversation_path = (
+        str(canonical_conversation) if canonical_conversation.exists() else None
+    )
     system_prompt_path = _existing_path(run_result.get("system_prompt_file"))
-    if conversation_path is None:
-        fallback_path = _materialize_conversation_fallback(
-            run_result.get("conversation_history"),
-            logs_dir=logs_dir,
-            run_id=run_id,
-            project_root=project_root,
-        )
-        conversation_path = str(fallback_path) if fallback_path else None
 
     token_usage_path = logs_dir / "agent_run" / "token_usage.jsonl"
     token_usage_path.parent.mkdir(parents=True, exist_ok=True)

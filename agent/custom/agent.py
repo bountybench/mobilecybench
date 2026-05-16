@@ -274,7 +274,6 @@ class CustomAgent:
             "final_message": final_message,
             "token_totals": totals,
             "log_file": self.log_file,
-            "conversation_file": self._conversation_file,
             "system_prompt_file": self._system_prompt_file,
             "tool_call_count": self._tool_call_count,
             "unique_tools": sorted(self._unique_tools),
