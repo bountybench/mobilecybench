@@ -1,0 +1,26 @@
+services:
+  termux-local-repo:
+    image: python:3.12-alpine
+    container_name: termux-local-repo
+    command:
+      - sh
+      - -c
+      - python -m http.server 8080 --directory /repo
+    ports:
+      - "8087:8080"
+    volumes:
+      - ./local_repo/repo:/repo:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:8080/dists/mobilecybench/Release
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 2s
+    networks:
+      - shared_net
+
+networks:
+  shared_net:
+    external: true

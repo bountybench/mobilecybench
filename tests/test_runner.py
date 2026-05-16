@@ -404,6 +404,15 @@ class TestRun:
         self, base_config, tmp_path
     ):
         """Runner creates conversation.jsonl from conversation_history when needed."""
+
+        def evaluate_with_score_file():
+            score_path = tmp_path / "apps" / "test_app" / "synthetic_scores.json"
+            score_path.parent.mkdir(parents=True, exist_ok=True)
+            score_path.write_text(
+                json.dumps({"scores": {"probe_a": 1}}), encoding="utf-8"
+            )
+            return {"scores": {"probe_a": 1}}
+
         with patch("runner.ensure_app_submodule"), patch.object(
             ExploitWorkflow, "validate_arguments"
         ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
@@ -424,7 +433,7 @@ class TestRun:
                 },
             },
         ), patch.object(
-            ExploitWorkflow, "evaluate", return_value={"scores": {"probe_a": 1}}
+            ExploitWorkflow, "evaluate", side_effect=evaluate_with_score_file
         ), patch.object(
             ExploitWorkflow, "cleanup"
         ):
@@ -435,10 +444,20 @@ class TestRun:
         with open(summary_path, "r", encoding="utf-8") as f:
             summary = json.load(f)
 
+        artifacts = summary["artifacts"]
+        for key, value in artifacts.items():
+            if value is not None:
+                assert not Path(value).is_absolute(), key
+        assert artifacts["logs_dir"] == "."
+        assert (summary_path.parent / artifacts["log_file"]).exists()
+        assert (summary_path.parent / artifacts["agent_log_file"]).exists()
+        assert artifacts["synthetic_scores_json"] == "synthetic_scores.json"
+        assert (summary_path.parent / artifacts["synthetic_scores_json"]).exists()
+
         conversation_rel = summary["artifacts"]["conversation_jsonl"]
         conversation_path = Path(conversation_rel)
         if not conversation_path.is_absolute():
-            conversation_path = tmp_path / conversation_path
+            conversation_path = summary_path.parent / conversation_path
         assert conversation_path.exists()
         # agent_mode reflects the config field, not anything inferred from
         # run_result; base_config defaults to "custom".

@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 import jsonschema
 
+from utils.artifact_paths import relative_artifact_path
 from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
@@ -359,6 +360,12 @@ def write_run_summary(
         token_totals.get("cost_usd") if isinstance(token_totals, dict) else None
     )
     cost_usd = cost_top if cost_top is not None else cost_nested
+    score_artifact_paths = {
+        key: relative_artifact_path(path, logs_dir)
+        for key, path in _score_artifact_paths(
+            config.workflow, logs_dir, workflow
+        ).items()
+    }
 
     # Image identity: external path stamps these in run_result via
     # harness.byo_agent (from the live container handle); custom path snaps
@@ -431,20 +438,26 @@ def write_run_summary(
             ),
         },
         "artifacts": {
-            "log_file": logger_manager.get_log_file_name(),
-            "agent_log_file": logger_manager.get_agent_log_file_name(),
-            "token_usage_jsonl": (
-                str(token_usage_path) if token_usage_path.exists() else None
+            "log_file": relative_artifact_path(
+                logger_manager.get_log_file_name(), logs_dir
             ),
-            "conversation_jsonl": conversation_path,
-            "system_prompt_file": system_prompt_path,
+            "agent_log_file": relative_artifact_path(
+                logger_manager.get_agent_log_file_name(), logs_dir
+            ),
+            "token_usage_jsonl": (
+                relative_artifact_path(token_usage_path, logs_dir)
+                if token_usage_path.exists()
+                else None
+            ),
+            "conversation_jsonl": relative_artifact_path(conversation_path, logs_dir),
+            "system_prompt_file": relative_artifact_path(system_prompt_path, logs_dir),
             "screenshots_dir": (
-                str(logs_dir / "screenshots")
+                relative_artifact_path(logs_dir / "screenshots", logs_dir)
                 if (logs_dir / "screenshots").is_dir()
                 else None
             ),
-            **_score_artifact_paths(config.workflow, logs_dir, workflow),
-            "logs_dir": str(logs_dir),
+            **score_artifact_paths,
+            "logs_dir": relative_artifact_path(logs_dir, logs_dir),
         },
         "app": app_metadata,
     }

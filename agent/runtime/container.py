@@ -744,6 +744,9 @@ def _start_adb_proxy() -> None:
 
     proxy_script = _REPO_ROOT / "utils" / "adb_filter_proxy.py"
     patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
+    for f in (proxy_script, patterns_module):
+        if not f.exists():
+            raise FileNotFoundError(f"ADB filter proxy source missing: {f}")
 
     proxy_container = client.containers.run(
         image=ADB_PROXY_IMAGE,
@@ -876,6 +879,7 @@ def setup_agent_environment(
     agent_env_file = _REPO_ROOT / "agent" / ".env"
     if agent_env_file.exists():
         load_dotenv(agent_env_file)
+
 
     # ADB → adb-proxy sidecar; HTTP/HTTPS → Squid; in-cluster targets bypass
     # via NO_PROXY (Python HTTP clients match by hostname suffix, not CIDR).

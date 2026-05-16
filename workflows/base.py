@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Optional
 
+import yaml
+
 from agent.prompts.prompts import (
     build_malicious_app_prompt,
     build_remote_attacker_prompt,
@@ -400,8 +402,13 @@ class Workflow(ABC):
         file have no backend to reach.
         """
         composes = list(self._existing_compose_files())
-        if not composes or any("agent_net" in p.read_text() for p in composes):
+        if not composes:
             return
+        for p in composes:
+            doc = yaml.safe_load(p.read_text()) or {}
+            for svc in (doc.get("services") or {}).values():
+                if "agent_net" in (svc.get("networks") or {}):
+                    return
         raise RuntimeError(
             f"App '{self.app_name}' backend is not on agent_net. "
             f"Add `agent_net` (external: true) to the app's frontend service "

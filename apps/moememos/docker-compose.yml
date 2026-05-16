@@ -9,6 +9,7 @@ services:
       - memos-data:/var/opt/memos
     networks:
       - shared_net
+      - agent_net
 
   token_catcher:
     build:
@@ -34,4 +35,6 @@ volumes:
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true

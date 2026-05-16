@@ -17,6 +17,7 @@ services:
         condition: service_healthy
     networks:
       - shared_net
+      - agent_net
       - private_net
     healthcheck:
       test: ["CMD", "curl", "-fsk", "https://localhost"]
@@ -73,6 +74,8 @@ networks:
     # Separate network for SSRF listener - allows host port mapping but isolates from shared_net
     driver: bridge
   shared_net:
+    external: true
+  agent_net:
     external: true
 
 volumes:

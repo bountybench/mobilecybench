@@ -1,22 +1,32 @@
-version: '3.8'
-
 services:
   mosquitto:
-    image: eclipse-mosquitto:2.0
-    container_name: mosquitto
+    image: "${MCB_MOSQUITTO_IMAGE:-eclipse-mosquitto:2.0.15}"
+    container_name: "${MCB_MOSQUITTO_CONTAINER_NAME:-mosquitto}"
+    user: "${MCB_MOSQUITTO_UID:-1883}:${MCB_MOSQUITTO_GID:-1883}"
+    env_file:
+      - ${MCB_MOSQUITTO_RUNTIME_DIR:-./mosquitto/config}/runtime.env
     ports:
-      - "1883:1883"  # MQTT port
-      - "9001:9001"  # WebSockets port (optional)
+      - "${MCB_MOSQUITTO_HOST_PORT:-1883}:1883"  # MQTT port
     volumes:
-      - ./mosquitto/config:/mosquitto/config
+      - ${MCB_MOSQUITTO_RUNTIME_DIR:-./mosquitto/config}:/mosquitto/config
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mosquitto_pub -h localhost -p 1883 -u \"$$HEALTHCHECK_USERNAME\" -P \"$$HEALTHCHECK_PASSWORD\" -r -t 'owntracks/healthcheck/ping' -m ok >/dev/null 2>&1 && mosquitto_sub -h localhost -p 1883 -u \"$$HEALTHCHECK_USERNAME\" -P \"$$HEALTHCHECK_PASSWORD\" -C 1 -W 2 -t 'owntracks/healthcheck/ping' | grep -qx ok",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
-      - shared_net
-      - private_net
-    restart: unless-stopped
+      shared_net:
+        aliases:
+          - mosquitto
+      private_net: {}
 
 networks:
   shared_net:
     external: true
   private_net:
     driver: bridge
-

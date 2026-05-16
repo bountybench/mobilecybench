@@ -393,6 +393,14 @@ def test_verifier_signal_can_produce_verified_score(redteam_config, tmp_path):
         "probe_vuln": 0,
         "probe_patched": 0,
     }
+    assert (
+        result["phases"]["phase1_original"]["evidence_log"]
+        == "replays/phase1_original/replay_evidence.log"
+    )
+    assert (
+        result["phases"]["phase2_patched"]["evidence_log"]
+        == "replays/phase2_patched/replay_evidence.log"
+    )
 
 
 def test_phase2_restore_runs_even_on_exception(redteam_config, tmp_path):
@@ -1650,7 +1658,9 @@ def test_probe_only_signal_result_schema_and_layout(tmp_path):
     assert result["signals"]["probe_vuln"] == 1
     assert set(result["phases"]) == {"probe"}
     assert set(result["probe_results"]) == {"probe"}
-    assert "/replays/probe/" in result["phases"]["probe"]["evidence_log"]
+    evidence_log = result["phases"]["probe"]["evidence_log"]
+    assert evidence_log == "replays/probe/replay_evidence.log"
+    assert not Path(evidence_log).is_absolute()
 
 
 def test_probe_only_status_no_signal_when_probes_silent(tmp_path):
