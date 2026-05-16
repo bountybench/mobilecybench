@@ -84,6 +84,10 @@ class AgentEnvironment:
             raise
 
         self.container = None
+        # Populated by setup() from the live container handle right after
+        # ``containers.run`` returns; survives cleanup so write_run_summary
+        # can record it.
+        self.image_digest: Optional[str] = None
 
     def setup(self):
         """Set up the agent kali environment container."""
@@ -198,6 +202,10 @@ class AgentEnvironment:
                 tty=True,
                 detach=True,
             )
+            # Snapshot the live image digest now — the container handle may
+            # become unusable after cleanup, but ``write_run_summary`` runs
+            # later in runner.py's outer finally and still needs this value.
+            self.image_digest = self.container.image.id
 
             # Connect to additional networks if any
             for additional_network in self.docker_networks[1:]:

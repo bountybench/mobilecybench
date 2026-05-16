@@ -76,8 +76,13 @@ def normalize_agent_result(result: Optional[dict]) -> dict:
     normalized.setdefault("status", "unknown")
     normalized.setdefault("turns_taken", 0)
     normalized["turns_taken"] = int(normalized["turns_taken"] or 0)
+    # Treat None and missing-key as equivalent for defaulted fields: an
+    # agent that emits ``"final_message": None`` (custom path hits this when
+    # max_iterations expires without a final submission) should normalize
+    # to ``""`` so schema validation on a typed field passes.
     for key, default in _RESULT_DEFAULTS.items():
-        normalized.setdefault(key, default)
+        if normalized.get(key) is None:
+            normalized[key] = default
     _RESULT_VALIDATOR.validate(normalized)
     return normalized
 
@@ -353,12 +358,15 @@ def write_run_summary(
     )
     cost_usd = cost_top if cost_top is not None else cost_nested
 
-    # Image identity: harness.byo_agent stamps run_result["agent_image"] +
-    # ["agent_image_digest"] from the live container handle for the external
-    # path (single source of truth). Custom path has no result-side stamp;
-    # fall back to the config field, digest stays null.
+    # Image identity: external path stamps these in run_result via
+    # harness.byo_agent (from the live container handle); custom path snaps
+    # the digest into workflow.agent_image_digest before agent_env cleanup
+    # (see runner.py). write_run_summary runs after cleanup, so the snapshot
+    # is the only path that survives.
     agent_image = run_result.get("agent_image") or getattr(config, "agent_image", None)
-    agent_image_digest = run_result.get("agent_image_digest")
+    agent_image_digest = run_result.get("agent_image_digest") or getattr(
+        workflow, "agent_image_digest", None
+    )
 
     run_summary = {
         "run_id": run_id,

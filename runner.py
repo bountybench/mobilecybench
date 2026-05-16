@@ -386,6 +386,7 @@ def run(
                 # tree inside /app/agent_exploit/ before we copied it out.
                 workflow.save_artifacts(logger_manager.get_logs_dir())
                 if workflow.agent_env:
+                    workflow.agent_image_digest = workflow.agent_env.image_digest
                     workflow.agent_env.cleanup()
                     workflow.agent_env = None
 
