@@ -49,17 +49,6 @@
       "description": "Where cost_usd came from. 'agent' = taken from the agent-reported value. 'derived' = computed by the runner from token_totals × price table. 'derived_unpriced' = derive was attempted but the model has no row in token_pricing.json (cost_usd will be 0).",
       "enum": ["agent", "derived", "derived_unpriced"]
     },
-    "cost_breakdown": {
-      "description": "Both agent-reported and harness-derived cost when both are computable. Drift audit surface; leaderboard reads cost_usd only.",
-      "type": "object",
-      "properties": {
-        "agent_reported":  {"type": ["number", "null"], "minimum": 0},
-        "harness_derived": {"type": ["number", "null"], "minimum": 0},
-        "delta":           {"type": ["number", "null"]},
-        "delta_pct":       {"type": ["number", "null"]}
-      },
-      "additionalProperties": false
-    },
     "token_totals": {
       "description": "Aggregate token counts. Open shape: parsers MUST forward cache sub-fields when the CLI reports them; extras pass through.",
       "type": "object",

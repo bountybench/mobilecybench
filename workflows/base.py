@@ -204,7 +204,7 @@ class Workflow(ABC):
         """Execute the agent and return results."""
         if self.config.dry_run:
             logger.info("Dry run - skipping agent execution")
-            return {"status": "dry_run", "turns": 0}
+            return {"status": "dry_run", "turns_taken": 0}
 
         if self.config.agent_mode == "external":
             if not self.agent_env:

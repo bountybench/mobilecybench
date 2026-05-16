@@ -67,7 +67,6 @@ class ClaudeCodeEventParser(BaseEventParser):
         if ptype == "text":
             text = part.get("text", "")
             if text:
-                self.assistant_messages.append(text)
                 self._turn_text.append(text)
                 logger.info(f"[ClaudeCode Message] {text}")
         elif ptype == "thinking":

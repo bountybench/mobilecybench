@@ -95,43 +95,24 @@ def _derive_cost(token_totals: dict[str, Any], model: str) -> tuple[float, str]:
 
 
 def _resolve_cost(result: dict[str, Any]) -> None:
-    """Resolve cost_usd + cost_source + cost_breakdown in place.
+    """Resolve cost_usd + cost_source in place.
 
     Agent-reported cost wins whenever present (including a legitimate $0).
     Agents that don't know their cost MUST omit the key — never write 0 as a placeholder.
     """
-    model = result.get("model") or ""
-    token_totals = result.get("token_totals") or {}
     agent = result.get("cost_usd")
-    derived, source = (
-        _derive_cost(token_totals, model) if model else (0.0, "derived_unpriced")
-    )
-
     if agent is not None:
         result["cost_usd"] = float(agent)
         result["cost_source"] = "agent"
-    else:
-        result["cost_usd"] = derived
-        result["cost_source"] = source
-
-    derived_audit = derived if source == "derived" else None
-    agent_audit = float(agent) if agent is not None else None
-    delta = (
-        derived_audit - agent_audit
-        if (derived_audit is not None and agent_audit is not None)
-        else None
+        return
+    model = result.get("model") or ""
+    derived, source = (
+        _derive_cost(result.get("token_totals") or {}, model)
+        if model
+        else (0.0, "derived_unpriced")
     )
-    delta_pct = (
-        delta / agent_audit
-        if (delta is not None and agent_audit and agent_audit > 0)
-        else None
-    )
-    result["cost_breakdown"] = {
-        "agent_reported": agent_audit,
-        "harness_derived": derived_audit,
-        "delta": delta,
-        "delta_pct": delta_pct,
-    }
+    result["cost_usd"] = derived
+    result["cost_source"] = source
 
 
 def utc_now_iso() -> str:
@@ -152,12 +133,9 @@ def normalize_agent_result(result: Optional[dict]) -> dict:
     """Validate + normalize an agent result against schemas/result.schema.json.
 
     Coerces ``None`` to type-safe defaults for typed fields, then resolves
-    cost_usd / cost_source / cost_breakdown. Status defaults to ``"unknown"``.
-    Accepts legacy ``turns`` alias for ``turns_taken``.
+    cost_usd / cost_source. Status defaults to ``"unknown"``.
     """
     normalized = dict(result or {})
-    if "turns_taken" not in normalized and "turns" in normalized:
-        normalized["turns_taken"] = normalized["turns"]
     normalized.setdefault("status", "unknown")
     normalized.setdefault("turns_taken", 0)
     normalized["turns_taken"] = int(normalized["turns_taken"] or 0)
@@ -382,16 +360,7 @@ def write_run_summary(
                 except Exception as e:
                     logger.warning("Failed to copy %s: %s", score_file, e)
 
-    # Cost: agents may surface it at run_result top-level OR nest it inside
-    # token_totals (e.g. via TokenTracker). Top-level wins so an agent can
-    # report a different number than the per-call sum (CLI subscription
-    # cost vs. API-priced); falls back to nested so consumers always see a
-    # populated metric when one exists.
-    cost_top = run_result.get("cost_usd")
-    cost_nested = (
-        token_totals.get("cost_usd") if isinstance(token_totals, dict) else None
-    )
-    cost_usd = cost_top if cost_top is not None else cost_nested
+    cost_usd = run_result.get("cost_usd")
     score_artifact_paths = {
         key: relative_artifact_path(path, logs_dir)
         for key, path in _score_artifact_paths(

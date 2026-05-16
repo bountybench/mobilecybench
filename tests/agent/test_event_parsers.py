@@ -199,14 +199,14 @@ class TestFeedChunkResilience:
         full = json.dumps({"type": "thread.started", "thread_id": "t1"})
         parser.feed_chunk(full[: len(full) // 2])
         parser.feed_chunk(full[len(full) // 2 :] + "\n")
-        assert parser.session_id == "t1"
+        assert parser.summarize({}, 0, 0.0)["session_id"] == "t1"
 
     def test_claude_handles_split_line(self) -> None:
         parser = ClaudeCodeEventParser()
         full = json.dumps({"type": "system", "subtype": "init", "session_id": "s1"})
         parser.feed_chunk(full[: len(full) // 2])
         parser.feed_chunk(full[len(full) // 2 :] + "\n")
-        assert parser.session_id == "s1"
+        assert parser.summarize({}, 0, 0.0)["session_id"] == "s1"
 
     def test_codex_flush_drains_partial_line(self) -> None:
         """flush() should attempt to parse trailing buffered content."""
@@ -215,7 +215,7 @@ class TestFeedChunkResilience:
             json.dumps({"type": "thread.started", "thread_id": "t9"})
         )  # no newline
         parser.flush()
-        assert parser.session_id == "t9"
+        assert parser.summarize({}, 0, 0.0)["session_id"] == "t9"
 
     def test_codex_captures_reasoning_text(self) -> None:
         """Codex emits reasoning text in item.completed/reasoning; capture it."""
@@ -271,11 +271,12 @@ class TestFeedChunkResilience:
             )
             + "\n"
         )
-        assert parser.token_usage["cached_input_tokens"] == 100
-        assert parser.token_usage["cache_creation_tokens"] == 200
-        assert parser.token_usage["cache_creation_tokens_1h"] == 200
-        assert "cache_read_input_tokens" not in parser.token_usage
-        assert "cache_creation_input_tokens" not in parser.token_usage
+        totals = parser.summarize({}, 0, 0.0)["token_totals"]
+        assert totals["cached_input_tokens"] == 100
+        assert totals["cache_creation_tokens"] == 200
+        assert totals["cache_creation_tokens_1h"] == 200
+        assert "cache_read_input_tokens" not in totals
+        assert "cache_creation_input_tokens" not in totals
 
     def test_claude_captures_agent_cost_and_turns(self) -> None:
         """Claude's result event populates agent_reported_cost + agent_reported_turns."""
@@ -295,7 +296,8 @@ class TestFeedChunkResilience:
             )
             + "\n"
         )
-        assert parser.agent_reported_cost == 0.2199
-        assert parser.agent_reported_turns == 3
-        assert parser.stop_reason == "end_turn"
-        assert parser.timing == {"api_ms": 8000, "ttft_ms": 4500}
+        summary = parser.summarize({}, 0, 0.0)
+        assert summary["cost_usd"] == 0.2199
+        assert summary["turns_taken"] == 3
+        assert summary["stop_reason"] == "end_turn"
+        assert summary["timing"] == {"api_ms": 8000, "ttft_ms": 4500}

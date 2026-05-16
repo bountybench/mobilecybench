@@ -81,38 +81,6 @@ class TestCostResolution:
         assert out["cost_usd"] > 0
 
 
-class TestCostBreakdown:
-    """cost_breakdown carries both sides so drift is auditable."""
-
-    def test_both_present_records_delta(self) -> None:
-        # Both agent reports cost AND we can derive from tokens.
-        out = _norm(
-            cost_usd=0.5,
-            token_totals={"input_tokens": 1_000_000, "output_tokens": 0},
-        )
-        bd = out["cost_breakdown"]
-        assert bd["agent_reported"] == 0.5
-        assert bd["harness_derived"] is not None
-        assert bd["delta"] == bd["harness_derived"] - 0.5
-
-    def test_only_derived_no_delta(self) -> None:
-        out = _norm(token_totals={"input_tokens": 1000, "output_tokens": 0})
-        bd = out["cost_breakdown"]
-        assert bd["agent_reported"] is None
-        assert bd["delta"] is None
-
-    def test_unpriced_model_derived_is_null_for_audit(self) -> None:
-        """When derive can't produce a real number, audit side is null (not 0).
-        Distinguishes 'we tried and got 0' from 'we couldn't compute'."""
-        out = _norm(
-            cost_usd=0.5,
-            model="some-future-model-not-in-table",
-            token_totals={"input_tokens": 100, "output_tokens": 0},
-        )
-        bd = out["cost_breakdown"]
-        assert bd["harness_derived"] is None
-
-
 class TestCacheTierPricing:
     """Cache-aware derive: TTL split wins over flat when both present."""
 

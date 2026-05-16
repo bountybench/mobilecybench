@@ -18,10 +18,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import IO, Any, Callable, Protocol
+from typing import IO, Any, Callable
 
 import jsonschema
 
+from agent.in_container.event_parser import BaseEventParser
 from agent.in_container.paths import CONVERSATION_PATH, EXPLOIT_DIR, RUN_DIR
 from utils.json_io import write_json_atomic
 
@@ -33,23 +34,6 @@ _SCHEMA_PATH = (
 )
 with _SCHEMA_PATH.open(encoding="utf-8") as _f:
     _TASK_VALIDATOR = jsonschema.Draft202012Validator(json.load(_f))
-
-
-class Parser(Protocol):
-    """Per-CLI event parser the runner delegates to.
-
-    The runner streams CLI output through ``feed_chunk`` line by line, then
-    calls ``flush`` at EOF. After every event it drains newly-flushed turns
-    via ``drain_records`` into ``conversation.jsonl`` and snapshots a
-    best-effort ``result.json`` via ``summarize``.
-    """
-
-    def feed_chunk(self, chunk: str) -> None: ...
-    def flush(self) -> None: ...
-    def drain_records(self, task: dict[str, Any]) -> list[dict[str, Any]]: ...
-    def summarize(
-        self, task: dict[str, Any], exit_code: int, elapsed: float
-    ) -> dict[str, Any]: ...
 
 
 def _load_task(task_path: str) -> dict[str, Any]:
@@ -75,7 +59,7 @@ def _append_records(fh: IO[str], records: list[dict[str, Any]]) -> None:
 
 def _snapshot(
     result_path: Path,
-    parser: Parser,
+    parser: BaseEventParser,
     task: dict[str, Any],
     status: str,
     elapsed: float,
@@ -93,7 +77,7 @@ def _snapshot(
 def run(
     task_path: str,
     *,
-    parser_factory: Callable[[], Parser],
+    parser_factory: Callable[[], BaseEventParser],
     build_cmd: Callable[[dict[str, Any]], list[str]],
 ) -> int:
     """Run a BYO agent. Returns the subprocess exit code (0 on success)."""

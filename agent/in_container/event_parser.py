@@ -6,7 +6,6 @@ else — line buffering, turn flushing, conversation-row formatting, summary
 shape — is owned here.
 
 Run-wide accumulators a subclass should populate as events arrive:
-    self.assistant_messages: list[str]
     self.token_usage: dict[str, int]
     self.session_id: str | None
     self.stop_reason: str | None
@@ -44,7 +43,6 @@ class BaseEventParser(ABC):
     def __init__(self) -> None:
         # Run-wide.
         self.conversation_events: list[dict[str, Any]] = []
-        self.assistant_messages: list[str] = []
         self.token_usage: dict[str, int] = {}
         self.session_id: str | None = None
         self.stop_reason: str | None = None
@@ -64,7 +62,9 @@ class BaseEventParser(ABC):
 
     @property
     def final_output(self) -> str:
-        return "\n".join(self.assistant_messages)
+        return "\n".join(
+            e["assistant_text"] for e in self.conversation_events if e["assistant_text"]
+        )
 
     def feed_chunk(self, text: str) -> None:
         """Parse complete lines out of the next stdout chunk; buffer the remainder."""
@@ -101,12 +101,7 @@ class BaseEventParser(ABC):
     def summarize(
         self, task: dict[str, Any], exit_code: int, elapsed: float
     ) -> dict[str, Any]:
-        """Build the result.json shape from accumulated state.
-
-        Cost resolution does NOT happen here — the host-side
-        ``utils.run_artifacts.normalize_agent_result`` reads
-        ``cost_usd`` if the agent emitted one and derives otherwise.
-        """
+        """Build the result.json shape from accumulated state."""
         status = "completed" if exit_code == 0 else "error"
         turns_taken = (
             self.agent_reported_turns

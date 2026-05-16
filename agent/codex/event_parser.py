@@ -59,7 +59,6 @@ class CodexEventParser(BaseEventParser):
         if item_type == "agent_message":
             text = item.get("text", "")
             if text:
-                self.assistant_messages.append(text)
                 self._turn_text.append(text)
                 logger.info(f"[Codex Message] {text}")
 
