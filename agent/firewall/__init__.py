@@ -12,6 +12,7 @@ from agent.firewall.proxy import (
     SHARED_NET,
     build_no_proxy,
     proxy_url,
+    save_logs,
     start,
     stop,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "SHARED_NET",
     "build_no_proxy",
     "proxy_url",
+    "save_logs",
     "start",
     "stop",
 ]

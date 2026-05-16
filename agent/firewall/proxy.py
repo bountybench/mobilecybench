@@ -8,6 +8,9 @@ Squid policy lives in ``agent/firewall/image/``; the ``mode`` argument to
 :func:`start` selects the conf the image's entrypoint loads.
 """
 
+import io
+import shutil
+import tarfile
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlsplit
@@ -26,6 +29,10 @@ EGRESS_PROXY_REPO = "cybench/agent-firewall"
 EGRESS_PROXY_TAG = "v0.1.0"
 EGRESS_PROXY_PORT = 3128
 VALID_NETWORK_MODES = ("restricted", "permissive")
+SQUID_LOG_ARTIFACTS = (
+    ("/var/log/squid/access.log", "squid_access.log"),
+    ("/var/log/squid/cache.log", "squid_cache.log"),
+)
 
 _IMAGE_BUILD_CONTEXT = Path(__file__).parent / "image"
 
@@ -82,6 +89,65 @@ def stop() -> None:
     container.stop(timeout=5)
     container.remove(force=True)
     logger.info("Egress proxy stopped")
+
+
+def save_logs(dest_dir: Path) -> dict[str, Path]:
+    """Copy Squid logs from the live sidecar into ``dest_dir``.
+
+    Must run before :func:`stop`; removing the sidecar also removes Squid's
+    in-container access/cache logs.
+    """
+    try:
+        client = docker.from_env()
+        container = client.containers.get(EGRESS_PROXY_CONTAINER)
+    except docker.errors.NotFound:
+        logger.info("No egress proxy container found; skipping Squid log capture")
+        return {}
+    except Exception as e:
+        logger.warning("Failed to access egress proxy for log capture: %s", e)
+        return {}
+
+    captured: dict[str, Path] = {}
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    for container_path, artifact_name in SQUID_LOG_ARTIFACTS:
+        try:
+            exists = container.exec_run(["test", "-f", container_path])
+            if exists.exit_code != 0:
+                logger.info("No Squid log found at %s", container_path)
+                continue
+
+            bits, _ = container.get_archive(container_path)
+            stream = io.BytesIO()
+            for chunk in bits:
+                stream.write(chunk)
+            stream.seek(0)
+
+            artifact_path = dest_dir / artifact_name
+            with tarfile.open(fileobj=stream) as tar:
+                member = next(
+                    (item for item in tar.getmembers() if item.isfile()), None
+                )
+                if member is None:
+                    logger.warning(
+                        "Squid log archive for %s had no file", container_path
+                    )
+                    continue
+                src = tar.extractfile(member)
+                if src is None:
+                    logger.warning(
+                        "Could not extract Squid log archive member %s", member.name
+                    )
+                    continue
+                with open(artifact_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+
+            captured[artifact_name] = artifact_path
+            logger.info("Saved Squid log %s to %s", container_path, artifact_path)
+        except Exception as e:
+            logger.warning("Failed to save Squid log %s: %s", container_path, e)
+
+    return captured
 
 
 def proxy_url() -> str:

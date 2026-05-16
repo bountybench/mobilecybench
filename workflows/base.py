@@ -203,10 +203,10 @@ class Workflow(ABC):
         pass
 
     def save_artifacts(self, logs_dir: Path) -> None:
-        """Save agent artifacts (exploit files, agent output) to logs.
+        """Save agent artifacts (exploit files, agent output, firewall logs) to logs.
 
         Best-effort: logs warnings on failure but never raises.
-        Called after run_agent() while the container is still alive.
+        Called after run_agent() while the containers are still alive.
         """
         if not self.agent_env:
             return
@@ -219,6 +219,13 @@ class Workflow(ABC):
                 save_fn(logs_dir)
             except Exception as e:
                 logger.warning(f"Failed to save artifacts: {e}")
+
+        try:
+            from agent import firewall
+
+            firewall.save_logs(logs_dir)
+        except Exception as e:
+            logger.warning(f"Failed to save firewall logs: {e}")
 
     def setup_apks(self) -> None:
         """Acquire APKs based on build_type.
