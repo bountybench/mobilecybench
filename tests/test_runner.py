@@ -303,10 +303,11 @@ class TestRun:
                 "turns_taken": 2,
                 "tool_call_count": 1,
                 "unique_tools": ["execute_command"],
+                # CONTRACT v2: cost_usd lives at the top level; token_totals is tokens-only.
+                "cost_usd": 0.1,
                 "token_totals": {
                     "input_tokens": 10,
                     "output_tokens": 5,
-                    "cost_usd": 0.1,
                 },
                 "conversation_file": "logs/experiment_pytest_session/conversation.jsonl",
             },
@@ -330,10 +331,9 @@ class TestRun:
         assert summary["config"]["build_type"] == base_config.build_type
         assert summary["metrics"]["turn_count"] == 2
         assert summary["metrics"]["tool_call_count"] == 1
-        # cost_usd is sourced from token_totals when run_result has no
-        # top-level cost (the custom + codex agent shape).
+        # Per CONTRACT v2: cost_usd is top-level; token_totals carries tokens.
         assert summary["metrics"]["cost_usd"] == 0.1
-        assert summary["metrics"]["token_totals"]["cost_usd"] == 0.1
+        assert "cost_usd" not in summary["metrics"]["token_totals"]
         assert summary["results"]["scores"] == {"probe_a": 1}
         assert "conversation_jsonl" in summary["artifacts"]
         validate(instance=summary, schema=_load_run_summary_schema())

@@ -11,7 +11,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from utils.logger import logger
 
@@ -36,8 +36,8 @@ class HighContextPricing:
 class ModelPricing:
     """Per-1M token pricing for a model.
 
-    All values are USD per 1,000,000 tokens.
-    Missing fields default to 0.0.
+    All values are USD per 1,000,000 tokens. Missing fields default to 0.0
+    (cache-creation fields default to ``cache_input`` via the consumer).
 
     Attributes:
         - input: Price per 1M input tokens.
@@ -45,6 +45,8 @@ class ModelPricing:
         - cache_input: Price per 1M cache-read input tokens.
         - reasoning: Optional price per 1M reasoning output tokens.
             If omitted, reasoning tokens fall back to the standard output rate.
+        - cache_creation_5m: Optional price per 1M cache-write tokens (Anthropic 5m TTL).
+        - cache_creation_1h: Optional price per 1M cache-write tokens (Anthropic 1h TTL).
         - high_context: Optional higher-tier pricing for long prompts.
     """
 
@@ -52,6 +54,8 @@ class ModelPricing:
     output: float = 0.0
     cache_input: float = 0.0
     reasoning: Optional[float] = None
+    cache_creation_5m: Optional[float] = None
+    cache_creation_1h: Optional[float] = None
     high_context: Optional[HighContextPricing] = None
 
 
@@ -101,6 +105,8 @@ def _parse_pricing_map(raw: Dict[str, dict]) -> Dict[str, ModelPricing]:
             output=float(price_entry.get("output", 0) or 0),
             cache_input=float(price_entry.get("cache_input", 0) or 0),
             reasoning=_optional_float(price_entry.get("reasoning")),
+            cache_creation_5m=_optional_float(price_entry.get("cache_creation_per_million_5m")),
+            cache_creation_1h=_optional_float(price_entry.get("cache_creation_per_million_1h")),
             high_context=high_context,
         )
     return parsed
@@ -248,44 +254,68 @@ def compute_cost_usd(
     output_tokens: int = 0,
     cache_input_tokens: int = 0,
     reasoning_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+    cache_creation_tokens_5m: int = 0,
+    cache_creation_tokens_1h: int = 0,
 ) -> float:
-    """Calculate the USD cost based on token usage and model pricing.
+    """Calculate the USD cost from token usage and per-1M model pricing.
 
     Args:
-        pricing: ModelPricing instance with per-1M token prices.
-        input_tokens: Number of input tokens used.
-        output_tokens: Number of output tokens generated. For OpenAI-like
-            responses, this is typically the total output including reasoning.
-        cache_input_tokens: Number of input tokens served from cache.
-        reasoning_tokens: Number of reasoning tokens included in the output.
-            Subtracted from output_tokens so each token is billed once: text
-            output at the output rate, reasoning at the reasoning rate.
+        pricing: ModelPricing with per-1M token rates.
+        input_tokens: Total input tokens. Cache reads and cache writes are
+            subtracted out so each token is billed exactly once.
+        output_tokens: Total output tokens (includes reasoning for OpenAI-like
+            responses; reasoning is subtracted out).
+        cache_input_tokens: Cache-read tokens (priced at ``cache_input`` rate).
+        reasoning_tokens: Reasoning tokens included in ``output_tokens``.
+        cache_creation_tokens: Cache-write tokens without TTL split (used when
+            the CLI emits a single rollup, e.g. opencode).
+        cache_creation_tokens_5m / _1h: TTL-split cache-write tokens (Anthropic).
+            When BOTH non-zero, the TTL split wins and ``cache_creation_tokens``
+            is treated as 0 to avoid double-counting. See CONTRACT v2 §3c.
 
     Returns:
-        - Cost in USD as a float. (non-negative)
+        Non-negative USD cost.
     """
     it = max(int(input_tokens or 0), 0)
     ot = max(int(output_tokens or 0), 0)
     ci = max(int(cache_input_tokens or 0), 0)
     rt = max(int(reasoning_tokens or 0), 0)
-    billed_input = max(it - ci, 0)
+    cw_5m = max(int(cache_creation_tokens_5m or 0), 0)
+    cw_1h = max(int(cache_creation_tokens_1h or 0), 0)
+    # TTL split wins when present (CONTRACT v2 §3c rule 4).
+    cw_flat = 0 if (cw_5m or cw_1h) else max(int(cache_creation_tokens or 0), 0)
 
-    # Select tier: if high-context pricing exists and input exceeds threshold,
-    # the entire request is billed at the higher rate.
+    # "Fresh" input excludes cache reads and writes — priced separately below.
+    billed_input = max(it - ci - cw_flat - cw_5m - cw_1h, 0)
+
+    # High-context tier: entire request reprices when total input exceeds threshold.
     high_ctx = pricing.high_context
-    if high_ctx and it > high_ctx.input_threshold:
-        rate = high_ctx
-    else:
-        rate = pricing
+    rate: Any = high_ctx if (high_ctx and it > high_ctx.input_threshold) else pricing
 
-    # OpenAI/LiteLLM report reasoning tokens as a subset of total output tokens.
-    # Subtract them so each token is billed exactly once at the correct rate.
+    # Reasoning is a subset of output; subtract so we don't double-bill.
     billed_text_output = max(ot - rt, 0)
     reasoning_rate = rate.reasoning if rate.reasoning is not None else rate.output
 
+    # Cache writes fall back to cache_input when TTL-specific rates aren't set.
+    cw_5m_rate = (
+        pricing.cache_creation_5m
+        if pricing.cache_creation_5m is not None
+        else rate.cache_input
+    )
+    cw_1h_rate = (
+        pricing.cache_creation_1h
+        if pricing.cache_creation_1h is not None
+        else cw_5m_rate
+    )
+
     scale = 1_000_000.0
-    cost_input = (billed_input / scale) * rate.input
-    cost_output = (billed_text_output / scale) * rate.output
-    cost_reasoning = (rt / scale) * reasoning_rate
-    cost_cache_input = (ci / scale) * rate.cache_input
-    return float(cost_input + cost_output + cost_reasoning + cost_cache_input)
+    return float(
+        (billed_input        / scale) * rate.input
+        + (billed_text_output / scale) * rate.output
+        + (rt                 / scale) * reasoning_rate
+        + (ci                 / scale) * rate.cache_input
+        + (cw_flat            / scale) * cw_5m_rate
+        + (cw_5m              / scale) * cw_5m_rate
+        + (cw_1h              / scale) * cw_1h_rate
+    )

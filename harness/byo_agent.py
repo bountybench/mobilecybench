@@ -19,7 +19,7 @@ from typing import Any
 
 import docker.errors
 
-from harness import paths
+from agent.in_container.paths import TASK_JSON
 from utils.run_artifacts import normalize_agent_result
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,14 @@ logger = logging.getLogger(__name__)
 # Matches utils.docker_utils.run_command_in_container's polling cadence.
 _POLL_INTERVAL_SECONDS = 1.0
 
+# Window the in-container runner.py has to handle SIGTERM and flush
+# conversation.jsonl + result.json before we escalate to SIGKILL.
+_GRACEFUL_STOP_SECONDS = 10.0
+
 
 def _put_task_json(container, task_dict: dict[str, Any]) -> None:
-    """Deliver task_dict to paths.TASK_JSON via put_archive (no bind-mount)."""
-    target = Path(paths.TASK_JSON)
+    """Deliver task_dict to /app/task.json via put_archive (no bind-mount)."""
+    target = Path(TASK_JSON)
     payload = json.dumps(task_dict, indent=2).encode("utf-8")
 
     tar_stream = io.BytesIO()
@@ -110,10 +114,7 @@ def run_agent(
     task_dict: dict[str, Any],
     host_artifact_dir: Path,
 ) -> dict[str, Any]:
-    """Run an external agent inside ``env.container`` and return its normalized result.
-
-    See ``documentation/proposals/agent_decoupling/06_design.md`` §2.4 for the lifecycle.
-    """
+    """Run an external agent inside ``env.container`` and return its normalized result."""
     container = env.container
     api = container.client.api  # type: ignore[attr-defined]
 
@@ -131,11 +132,33 @@ def run_agent(
             api.exec_start(exec_id, detach=True)
             timed_out, exit_code = _wait_for_exec(api, exec_id, deadline)
             if timed_out:
+                # Two-phase termination: SIGTERM first so the in-container
+                # runner's signal handler can flush conversation.jsonl and
+                # write result.json with status="timeout" (see
+                # agent/in_container/runner.py::_on_sigterm). SIGKILL only if
+                # the agent doesn't exit within the grace window.
                 logger.warning(
                     f"Agent exceeded {wallclock_seconds}s wall-clock; "
-                    "sending SIGKILL to container."
+                    "sending SIGTERM to runner for graceful flush."
                 )
-                container.kill(signal="SIGKILL")
+                try:
+                    container.exec_run(
+                        ["pkill", "-TERM", "-f", "agent.in_container.runner"]
+                    )
+                except docker.errors.APIError:
+                    pass
+                grace_deadline = time.monotonic() + _GRACEFUL_STOP_SECONDS
+                while True:
+                    if not api.exec_inspect(exec_id).get("Running"):
+                        break
+                    if time.monotonic() >= grace_deadline:
+                        logger.warning(
+                            f"Agent did not exit within {_GRACEFUL_STOP_SECONDS}s "
+                            "of SIGTERM; sending SIGKILL to container."
+                        )
+                        container.kill(signal="SIGKILL")
+                        break
+                    time.sleep(_POLL_INTERVAL_SECONDS)
         except docker.errors.APIError as e:
             daemon_error = f"docker.errors.APIError: {e}"
             logger.error(daemon_error)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from agent.in_container.paths import TASK_JSON
 from agent.in_container.runner import run
 from agent.codex.event_parser import CodexEventParser
 
@@ -62,7 +63,7 @@ def _build_cmd(task: dict[str, Any]) -> list[str]:
 if __name__ == "__main__":
     sys.exit(
         run(
-            sys.argv[1] if len(sys.argv) > 1 else "/app/task.json",
+            sys.argv[1] if len(sys.argv) > 1 else TASK_JSON,
             parser_factory=CodexEventParser,
             build_cmd=_build_cmd,
         )

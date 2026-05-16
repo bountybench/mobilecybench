@@ -56,11 +56,20 @@ def _make_env(
 
     if exec_running_sequence is None:
         exec_running_sequence = [False]
-    inspect_responses = [
-        {"Running": running, "ExitCode": None if running else exit_code}
-        for running in exec_running_sequence
-    ]
-    api.exec_inspect.side_effect = inspect_responses
+
+    # The grace-period loop after SIGTERM polls exec_inspect repeatedly.
+    # Keep the LAST entry repeating forever so tests don't blow up with
+    # StopIteration from a too-short scripted sequence.
+    def _inspect_factory() -> Any:
+        seq = list(exec_running_sequence)
+
+        def _next(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            running = seq[0] if len(seq) == 1 else seq.pop(0)
+            return {"Running": running, "ExitCode": None if running else exit_code}
+
+        return _next
+
+    api.exec_inspect.side_effect = _inspect_factory()
 
     env.container = container
 
@@ -97,6 +106,21 @@ def _make_env(
     env.save_agent_output.__name__ = "save_agent_output"
 
     return env
+
+
+def _set_deterministic_monotonic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drive time.monotonic deterministically so wallclock + grace deadlines
+    fire in O(few iterations) instead of busy-waiting for real time to drift.
+    Each call advances the fake clock by 100s — well past any 10s grace window.
+    """
+    clock = [0.0]
+
+    def fake_monotonic() -> float:
+        clock[0] += 100.0
+        return clock[0]
+
+    monkeypatch.setattr(time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
 
 def _task(wallclock: int = 60) -> dict[str, Any]:
@@ -216,42 +240,48 @@ class TestRunAgentFailureModes:
         assert out["status"] == "error"
         assert "malformed" in out["error_traceback"]
 
-    def test_timeout_triggers_kill_and_synthesizes_timeout(
+    def test_timeout_sends_sigterm_then_sigkill_when_grace_expires(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When wall-clock expires, container.kill is called and result is
-        synthesized as ``timeout``."""
+        """When wall-clock expires, SIGTERM is sent first; if the agent
+        doesn't exit within the grace window, SIGKILL escalates and the
+        result synthesizes as ``timeout``."""
         env = _make_env(
             tmp_path,
             result_dict=None,
-            # Two iterations of "Running": forces the polling loop to hit
-            # the deadline before exit_inspect reports exited.
-            exec_running_sequence=[True, True],
+            exec_running_sequence=[True],  # stays Running through grace → SIGKILL
         )
-
-        # Make time.monotonic jump past the deadline on the 2nd call so we
-        # don't actually sleep the full wallclock.
-        original_monotonic = time.monotonic
-        call_count = [0]
-
-        def fake_monotonic() -> float:
-            call_count[0] += 1
-            # First call: setting deadline = now + wallclock. Second call:
-            # the polling-loop check; jump way past deadline.
-            if call_count[0] == 1:
-                return original_monotonic()
-            return original_monotonic() + 999999.0
-
-        monkeypatch.setattr(time, "monotonic", fake_monotonic)
-        # Skip the polling sleep too.
-        monkeypatch.setattr(time, "sleep", lambda _: None)
+        _set_deterministic_monotonic(monkeypatch)
 
         out = run_agent(
             env=env, task_dict=_task(wallclock=60), host_artifact_dir=tmp_path
         )
 
+        env.container.exec_run.assert_any_call(
+            ["pkill", "-TERM", "-f", "agent.in_container.runner"]
+        )
         env.container.kill.assert_called_once_with(signal="SIGKILL")
         assert out["status"] == "timeout"
+
+    def test_timeout_sigterm_graceful_exit_skips_sigkill(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When the agent exits cleanly after SIGTERM, SIGKILL is NOT sent."""
+        env = _make_env(
+            tmp_path,
+            result_dict={"status": "timeout", "turns_taken": 2},
+            # First inspect: Running (wait phase detects timeout).
+            # Second inspect (in grace loop): exited → break, no SIGKILL.
+            exec_running_sequence=[True, False],
+        )
+        _set_deterministic_monotonic(monkeypatch)
+
+        run_agent(env=env, task_dict=_task(wallclock=60), host_artifact_dir=tmp_path)
+
+        env.container.exec_run.assert_any_call(
+            ["pkill", "-TERM", "-f", "agent.in_container.runner"]
+        )
+        env.container.kill.assert_not_called()
 
     def test_partial_extraction_failure_preserves_others(
         self, tmp_path: Path

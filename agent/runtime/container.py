@@ -13,6 +13,7 @@ import docker.errors
 from agent import firewall
 from agent.custom.backend.docker_setup import AGENT_HOST_PORT
 from agent.firewall import AGENT_NET, EXTERNAL_BRIDGE, SHARED_NET
+from agent.in_container.paths import EXPLOIT_DIR, OUTPUT_DIR, RUN_DIR
 from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
@@ -219,7 +220,7 @@ class AgentEnvironment:
                 "Creating agent_exploit, agent_run, agent_output directories in container"
             )
             self.container.exec_run(
-                "mkdir -p /app/agent_exploit /app/agent_run /app/agent_output"
+                f"mkdir -p {EXPLOIT_DIR} {RUN_DIR} {OUTPUT_DIR}"
             )
 
             # Persist environment variables into the container's shell
@@ -431,10 +432,10 @@ class AgentEnvironment:
             shutil.rmtree(agent_output_dir)
         agent_output_dir.mkdir(parents=True)
 
-        logger.info("Mounting agent_output at /app/agent_output")
+        logger.info(f"Mounting agent_output at {OUTPUT_DIR}")
         return {
             str(agent_output_dir): {
-                "bind": "/app/agent_output",
+                "bind": OUTPUT_DIR,
                 "mode": "rw",
             }
         }
@@ -668,7 +669,7 @@ class AgentEnvironment:
 
     def save_agent_exploit(self, dest_dir: Path) -> None:
         """Copy /app/agent_exploit/ from the container to dest_dir/agent_exploit/."""
-        self._save_container_dir("/app/agent_exploit", dest_dir)
+        self._save_container_dir(EXPLOIT_DIR, dest_dir)
 
     def save_agent_run(self, dest_dir: Path) -> None:
         """Copy /app/agent_run/ from the container to dest_dir/agent_run/.
@@ -678,11 +679,11 @@ class AgentEnvironment:
         finally-block so the diagnostic trail survives even when other
         extractions fail.
         """
-        self._save_container_dir("/app/agent_run", dest_dir)
+        self._save_container_dir(RUN_DIR, dest_dir)
 
     def save_agent_output(self, dest_dir: Path) -> None:
         """Copy /app/agent_output/ from the container to dest_dir/agent_output/."""
-        self._save_container_dir("/app/agent_output", dest_dir)
+        self._save_container_dir(OUTPUT_DIR, dest_dir)
 
     def cleanup(self):
         """Clean up the agent environment (stop and remove container)."""

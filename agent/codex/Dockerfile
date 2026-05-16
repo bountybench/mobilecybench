@@ -1,5 +1,4 @@
 # BYO-contract reference image for the codex CLI agent.
-# See documentation/proposals/agent_decoupling/06_design.md §4.2.
 #
 # Build context = repo root (so the COPYs below resolve into /opt/agent/
 # and /opt/schemas/). The repo-root .dockerignore blocks **/.env family,
@@ -23,6 +22,8 @@ RUN mkdir -p /root/.codex && \
 # unintended into image layer history.
 COPY agent/__init__.py /opt/agent/__init__.py
 COPY agent/in_container/__init__.py /opt/agent/in_container/__init__.py
+COPY agent/in_container/paths.py /opt/agent/in_container/paths.py
+COPY agent/in_container/event_parser.py /opt/agent/in_container/event_parser.py
 COPY agent/in_container/runner.py /opt/agent/in_container/runner.py
 COPY agent/codex/__init__.py /opt/agent/codex/__init__.py
 COPY agent/codex/event_parser.py /opt/agent/codex/event_parser.py

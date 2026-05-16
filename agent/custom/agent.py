@@ -262,19 +262,26 @@ class CustomAgent:
 
         self._archive_conversation()
 
-        return {
+        # Per CONTRACT v2: cost_usd at top level, token_totals is tokens-only.
+        totals = self.token_tracker.totals()
+        cost_usd = totals.pop("cost_usd", None)
+
+        result = {
             "status": "completed",
             "turns_taken": turns,
             "max_turns": self.max_iterations,
             "exploit_exists": exploit_exists,
             "final_message": final_message,
-            "token_totals": self.token_tracker.totals(),
+            "token_totals": totals,
             "log_file": self.log_file,
             "conversation_file": self._conversation_file,
             "system_prompt_file": self._system_prompt_file,
             "tool_call_count": self._tool_call_count,
             "unique_tools": sorted(self._unique_tools),
         }
+        if cost_usd is not None:
+            result["cost_usd"] = cost_usd
+        return result
 
     def _format_observation_content(self, value):
         normalized = jsonable(value)

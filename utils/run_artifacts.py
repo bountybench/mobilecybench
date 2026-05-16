@@ -16,8 +16,7 @@ from utils.time_tracker import time_tracker
 
 # Field whose name ends in *_KEY/*_TOKEN/*_SECRET/PASSWORD is scrubbed before
 # run_summary.json hits disk. End-anchored to avoid false positives on plural
-# forms (max_model_response_tokens). Per-app prompt credentials are out of
-# scope (design §4.4).
+# forms (max_model_response_tokens). Per-app prompt credentials are not scrubbed.
 _SECRET_KEY_RE = re.compile(r"(_KEY|_TOKEN|_SECRET|PASSWORD)$", re.IGNORECASE)
 _REDACTED = "<redacted>"
 
@@ -43,11 +42,90 @@ _RESULT_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "resu
 with _RESULT_SCHEMA_PATH.open() as _f:
     _RESULT_SCHEMA: dict[str, Any] = json.load(_f)
 _RESULT_VALIDATOR = jsonschema.Draft202012Validator(_RESULT_SCHEMA)
-_RESULT_DEFAULTS: dict[str, Any] = {
-    k: v["default"]
-    for k, v in _RESULT_SCHEMA["properties"].items()
-    if "default" in v
+
+# None / missing → safe default. Keeps schema validation happy for typed fields
+# when an agent emits ``null`` (custom path's max_iterations-without-FINAL hits this).
+_RESULT_NULL_DEFAULTS: dict[str, Any] = {
+    "model": "",
+    "final_message": "",
+    "error_traceback": "",
+    "tool_call_count": 0,
+    "unique_tools": [],
+    "token_totals": {},
+    "exit_code": 0,
 }
+
+from utils.token_costs import compute_cost_usd, load_pricing
+
+_PRICING_MAP = load_pricing()
+
+
+def _tok(token_totals: dict[str, Any], key: str) -> int:
+    v = token_totals.get(key, 0)
+    return int(v) if isinstance(v, (int, float)) else 0
+
+
+def _derive_cost(token_totals: dict[str, Any], model: str) -> tuple[float, str]:
+    """Harness-derived cost from token_totals × price table.
+
+    Returns (cost_usd, cost_source). ``"derived"`` when the model has a row;
+    ``"derived_unpriced"`` (cost=0) otherwise. See CONTRACT v2 §3c.
+    """
+    pricing = _PRICING_MAP.get(model)
+    if pricing is None:
+        logger.warning(f"derive_cost: no pricing row for model={model!r}")
+        return 0.0, "derived_unpriced"
+    cost = compute_cost_usd(
+        pricing,
+        input_tokens=_tok(token_totals, "input_tokens"),
+        output_tokens=_tok(token_totals, "output_tokens"),
+        cache_input_tokens=_tok(token_totals, "cached_input_tokens"),
+        reasoning_tokens=_tok(token_totals, "reasoning_tokens"),
+        cache_creation_tokens=_tok(token_totals, "cache_creation_tokens"),
+        cache_creation_tokens_5m=_tok(token_totals, "cache_creation_tokens_5m"),
+        cache_creation_tokens_1h=_tok(token_totals, "cache_creation_tokens_1h"),
+    )
+    return cost, "derived"
+
+
+def _resolve_cost(result: dict[str, Any]) -> None:
+    """Apply CONTRACT v2 §3a in place.
+
+    Agent-reported cost wins whenever present (BYO authors MUST omit the key
+    when they don't have a number — never write 0 as a placeholder).
+    """
+    model = result.get("model") or ""
+    token_totals = result.get("token_totals") or {}
+    agent = result.get("cost_usd")
+    derived, source = (
+        _derive_cost(token_totals, model) if model else (0.0, "derived_unpriced")
+    )
+
+    if agent is not None:
+        result["cost_usd"] = float(agent)
+        result["cost_source"] = "agent"
+    else:
+        result["cost_usd"] = derived
+        result["cost_source"] = source
+
+    derived_audit = derived if source == "derived" else None
+    agent_audit = float(agent) if agent is not None else None
+    delta = (
+        derived_audit - agent_audit
+        if (derived_audit is not None and agent_audit is not None)
+        else None
+    )
+    delta_pct = (
+        delta / agent_audit
+        if (delta is not None and agent_audit and agent_audit > 0)
+        else None
+    )
+    result["cost_breakdown"] = {
+        "agent_reported": agent_audit,
+        "harness_derived": derived_audit,
+        "delta": delta,
+        "delta_pct": delta_pct,
+    }
 
 
 def utc_now_iso() -> str:
@@ -67,9 +145,9 @@ def jsonable(value: Any) -> Any:
 def normalize_agent_result(result: Optional[dict]) -> dict:
     """Validate + normalize an agent result against schemas/result.schema.json.
 
-    Pads missing optional fields with schema defaults; accepts the legacy
-    ``turns`` alias for ``turns_taken``. Status defaults to ``"unknown"`` so
-    empty-dict callers (harness-internal short-circuits) pass validation.
+    Coerces ``None`` to type-safe defaults for typed fields, then applies
+    CONTRACT v2 §3a cost resolution. Status defaults to ``"unknown"``.
+    Accepts legacy ``turns`` alias for ``turns_taken``.
     """
     normalized = dict(result or {})
     if "turns_taken" not in normalized and "turns" in normalized:
@@ -77,13 +155,12 @@ def normalize_agent_result(result: Optional[dict]) -> dict:
     normalized.setdefault("status", "unknown")
     normalized.setdefault("turns_taken", 0)
     normalized["turns_taken"] = int(normalized["turns_taken"] or 0)
-    # Treat None and missing-key as equivalent for defaulted fields: an
-    # agent that emits ``"final_message": None`` (custom path hits this when
-    # max_iterations expires without a final submission) should normalize
-    # to ``""`` so schema validation on a typed field passes.
-    for key, default in _RESULT_DEFAULTS.items():
+    for key, default in _RESULT_NULL_DEFAULTS.items():
         if normalized.get(key) is None:
             normalized[key] = default
+
+    _resolve_cost(normalized)
+
     _RESULT_VALIDATOR.validate(normalized)
     return normalized
 
