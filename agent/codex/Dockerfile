@@ -22,6 +22,8 @@ RUN mkdir -p /root/.codex && \
 # Explicit-allowlist COPYs (no wildcards) so we never bake anything
 # unintended into image layer history.
 COPY agent/__init__.py /opt/agent/__init__.py
+COPY agent/in_container/__init__.py /opt/agent/in_container/__init__.py
+COPY agent/in_container/runner.py /opt/agent/in_container/runner.py
 COPY agent/codex/__init__.py /opt/agent/codex/__init__.py
 COPY agent/codex/event_parser.py /opt/agent/codex/event_parser.py
 COPY agent/codex/run_in_container.py /opt/agent/codex/run_in_container.py

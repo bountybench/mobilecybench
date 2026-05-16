@@ -1,9 +1,8 @@
 """JSONL event parser for the claude CLI's ``--output-format stream-json`` stream.
 
-Stateful chunk consumer mirroring ``agent/codex/event_parser.py``. Extracted
-from ``claude_code_cli_provider.ClaudeCodeCLIProvider.execute`` so the legacy
-docker-SDK path and the new in-container path
-(``agent/claude_code/run_in_container.py``) feed the same parser.
+Same shape as :mod:`agent.codex.event_parser`: feeds CLI output chunk by
+chunk via ``feed_chunk``, drains on ``flush``, then ``emit_turns`` /
+``summarize`` materialize ``conversation.jsonl`` + ``result.json``.
 """
 
 from __future__ import annotations
@@ -162,3 +161,58 @@ class ClaudeCodeEventParser:
                 )
             elif subtype == "error":
                 logger.error(f"[ClaudeCode] Error: {data.get('error')}")
+
+    def emit_turns(self, task: Dict[str, Any], path: str) -> None:
+        """Materialize parser state as conversation_turn JSONL records."""
+        timestamp = _utc_now_iso()
+        with open(path, "w", encoding="utf-8") as f:
+            for ev in self.conversation_events:
+                f.write(json.dumps({
+                    "run_id": task["run_id"],
+                    "turn_number": ev["turn"],
+                    "timestamp": timestamp,
+                    "role": "assistant",
+                    "response_id": None,
+                    "assistant_text": ev["assistant_text"],
+                    "reasoning_summary": ev.get("reasoning_summary", ""),
+                    "tool_calls": ev["tool_calls"],
+                    "observations": [
+                        {
+                            "tool_call_id": obs.get("tool_use_id", ""),
+                            "type": "tool_result",
+                            "content": obs.get("content", ""),
+                            "truncated": False,
+                        }
+                        for obs in ev.get("observations", [])
+                    ],
+                    "status": "ok",
+                }, ensure_ascii=False) + "\n")
+
+    def summarize(
+        self, task: Dict[str, Any], exit_code: int, elapsed: float
+    ) -> Dict[str, Any]:
+        status = "completed" if exit_code == 0 else "error"
+        tool_call_count = sum(
+            len(e["tool_calls"]) for e in self.conversation_events
+        )
+        unique_tools = sorted({
+            tc["name"]
+            for e in self.conversation_events
+            for tc in e["tool_calls"]
+        })
+        result: Dict[str, Any] = {
+            "status": status,
+            "turns_taken": self.result_turns or len(self.conversation_events),
+            "cost_usd": self.result_cost or 0,
+            "model": task.get("model", ""),
+            "final_message": self.final_output,
+            "tool_call_count": tool_call_count,
+            "unique_tools": unique_tools,
+            "token_totals": (self.result_payload or {}).get("usage", {}),
+            "exit_code": exit_code,
+        }
+        if status == "error":
+            result["error_traceback"] = (
+                f"claude exit_code={exit_code}, elapsed={elapsed:.1f}s"
+            )
+        return result

@@ -22,6 +22,8 @@ RUN mkdir -p /root/.claude && \
 # Explicit-allowlist COPYs (no wildcards) so we never bake anything
 # unintended into image layer history.
 COPY agent/__init__.py /opt/agent/__init__.py
+COPY agent/in_container/__init__.py /opt/agent/in_container/__init__.py
+COPY agent/in_container/runner.py /opt/agent/in_container/runner.py
 COPY agent/claude_code/__init__.py /opt/agent/claude_code/__init__.py
 COPY agent/claude_code/event_parser.py /opt/agent/claude_code/event_parser.py
 COPY agent/claude_code/run_in_container.py /opt/agent/claude_code/run_in_container.py

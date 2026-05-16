@@ -1,17 +1,13 @@
 """JSONL event parser for the codex CLI's ``codex exec --json`` stream.
 
-Stateful chunk consumer: ``feed_chunk(text)`` accepts a stdout chunk (may
-split a JSONL line across calls), ``flush()`` drains any partial line and
-in-flight turn at stream end. Public properties expose aggregated totals.
-
-Extracted from ``codex_cli_provider.CodexCLIProvider.execute`` so both the
-legacy docker-SDK path (host invokes codex via ``docker exec``) and the
-new in-container path (``agent/codex/run_in_container.py`` invokes codex
-via ``subprocess.Popen``) feed the same parser. One source of truth.
+Implements the :class:`agent.in_container.runner.Parser` protocol: streamed
+chunks in via ``feed_chunk`` / ``flush``; ``conversation.jsonl`` and
+``result.json`` out via ``emit_turns`` / ``summarize``.
 """
 
 from __future__ import annotations
 
+import datetime
 import json
 import time
 from typing import Any, Dict, List, Optional
@@ -225,3 +221,42 @@ class CodexEventParser:
         # --- catch-all ---
         else:
             logger.debug(f"[Codex Event] {event_type}")
+
+    def emit_turns(self, task: Dict[str, Any], path: str) -> None:
+        """Materialize parser state as conversation_turn JSONL records."""
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with open(path, "w", encoding="utf-8") as f:
+            for ev in self.conversation_events:
+                f.write(json.dumps({
+                    "run_id": task["run_id"],
+                    "turn_number": ev["turn"],
+                    "timestamp": timestamp,
+                    "role": "assistant",
+                    "response_id": None,
+                    "assistant_text": ev["assistant_text"],
+                    "reasoning_summary": "",
+                    "tool_calls": ev["tool_calls"],
+                    "observations": ev["observations"],
+                    "status": "ok",
+                }, ensure_ascii=False) + "\n")
+
+    def summarize(
+        self, task: Dict[str, Any], exit_code: int, elapsed: float
+    ) -> Dict[str, Any]:
+        status = "completed" if exit_code == 0 else "error"
+        result: Dict[str, Any] = {
+            "status": status,
+            "turns_taken": self.turn_count,
+            "cost_usd": 0,
+            "model": task.get("model", ""),
+            "final_message": self.final_output,
+            "tool_call_count": sum(self.tool_call_breakdown.values()),
+            "unique_tools": sorted(self.tool_call_breakdown.keys()),
+            "token_totals": self.token_usage,
+            "exit_code": exit_code,
+        }
+        if status == "error":
+            result["error_traceback"] = (
+                f"codex exit_code={exit_code}, elapsed={elapsed:.1f}s"
+            )
+        return result
