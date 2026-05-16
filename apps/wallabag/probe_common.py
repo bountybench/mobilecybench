@@ -6,7 +6,7 @@ from pathlib import Path
 
 APP_PACKAGE = "fr.gaulupeau.apps.InThePoche"
 APP_PREFS_PATH = f"/data/data/{APP_PACKAGE}/shared_prefs/{APP_PACKAGE}_preferences.xml"
-# Per-run markers live on the host (alongside /tmp/wallabag_victim_token.txt),
+# Per-run markers live on the host (alongside /tmp/wallabag_ref_token.txt),
 # never on the emulator — emulator-root code can reach any /data/local/tmp
 # path, while the host /tmp sits outside that reach.
 CANARY_HOST_PATH = "/tmp/.mcb_wallabag_canary"

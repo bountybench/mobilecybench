@@ -402,7 +402,7 @@ seed_data
 # Probe hardening (deterministic, non-reward-hackable signals)
 #
 # Per-run markers (canary, baseline fingerprint) live on the host alongside
-# /tmp/wallabag_victim_token.txt, NOT on the emulator: emulator-root code can
+# /tmp/wallabag_ref_token.txt, NOT on the emulator: emulator-root code can
 # reach any /data/local/tmp path, while host /tmp sits outside that reach.
 # ---------------------------------------------------------------------------
 CANARY_HOST_PATH="/tmp/.mcb_wallabag_canary"
