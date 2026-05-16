@@ -114,6 +114,8 @@ There is no differential build to vouch for the probe's specificity, so the sche
 
 Replay artifacts and probe-output JSONs are tagged `probe`: `logs/.../replays/probe/`, `replays/probe_app_probe.json`, `replays/probe_generic_probe.json`. (Two-phase keeps its own `phase1_original` / `phase2_patched` layout.)
 
+`phases.*.evidence_log` is emitted as a path relative to `logs/<experiment>/` (the directory containing `redteam_scores.json`); resolve it from that directory. The field is `null` when an early-exit before the replay step left no evidence log on disk.
+
 ### Configuration
 
 ```jsonc

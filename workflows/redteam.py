@@ -739,10 +739,14 @@ class RedTeamWorkflow(Workflow):
     def _phase_summary(p: dict, **extra) -> dict:
         """Build the per-phase summary dict that goes into the result JSON."""
         evidence_log_path = p["evidence_log_path"]
-        evidence_log = str(evidence_log_path)
-        logs_dir = logger_manager.get_logs_dir()
-        if evidence_log_path is not None and logs_dir is not None:
-            evidence_log = relative_artifact_path(evidence_log_path, logs_dir)
+        evidence_log: str | None = None
+        if evidence_log_path is not None:
+            logs_dir = logger_manager.get_logs_dir()
+            evidence_log = (
+                relative_artifact_path(evidence_log_path, logs_dir)
+                if logs_dir is not None
+                else str(evidence_log_path)
+            )
 
         return {
             "exit_code": p["exit_code"],
