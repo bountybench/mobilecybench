@@ -51,10 +51,6 @@ class Workflow(ABC):
         self.agent_env = None
         self.agent = None
         self.agent_result: dict = {}
-        # Snapshot of the agent container's image digest; populated by
-        # runner.py before agent_env is cleaned up so write_run_summary
-        # can record it.
-        self.agent_image_digest: Optional[str] = None
 
     def validate_arguments(self) -> None:
         """Validate common preconditions and load metadata.

@@ -368,15 +368,12 @@ def write_run_summary(
         ).items()
     }
 
-    # Image identity: external path stamps these in run_result via
-    # harness.byo_agent (from the live container handle); custom path snaps
-    # the digest into workflow.agent_image_digest before agent_env cleanup
-    # (see runner.py). write_run_summary runs after cleanup, so the snapshot
-    # is the only path that survives.
+    # Image identity is stamped onto run_result before agent_env cleanup
+    # (BYO from the live container handle in harness.byo_agent; custom from
+    # workflow.agent_env in runner.py). Fall back to config for dry-runs
+    # where agent_env was never set up.
     agent_image = run_result.get("agent_image") or getattr(config, "agent_image", None)
-    agent_image_digest = run_result.get("agent_image_digest") or getattr(
-        workflow, "agent_image_digest", None
-    )
+    agent_image_digest = run_result.get("agent_image_digest")
 
     run_summary = {
         "run_id": run_id,
