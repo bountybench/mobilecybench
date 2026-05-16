@@ -778,6 +778,9 @@ def _start_adb_proxy() -> None:
         Path(__file__).resolve().parent.parent / "utils" / "adb_filter_proxy.py"
     )
     patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
+    for f in (proxy_script, patterns_module):
+        if not f.exists():
+            raise FileNotFoundError(f"ADB filter proxy source missing: {f}")
 
     proxy_container = client.containers.run(
         image=ADB_PROXY_IMAGE,
@@ -905,7 +908,7 @@ def setup_agent_environment(
         workflow: Evaluation workflow type ("exploit" or "redteam")
         vuln_id: Vulnerability ID for exploit workflow
         agent_mode: Agent mode ("custom", "codex", or "claude-code")
-        network_mode: Squid policy ("restricted" default, or "permissive")
+        network_mode: Squid policy ("restricted" or "permissive")
         no_codebase: Whether to copy the built APK into the agent environment
         post_checkout_hook: Optional callback run on the staged codebase
         apk_path: APK to copy into the agent environment when no_codebase=True

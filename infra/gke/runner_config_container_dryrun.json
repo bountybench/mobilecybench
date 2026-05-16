@@ -18,7 +18,7 @@
   "agent_image": "cybench/mobilecybench:latest",
   "emulator_display": "headless",
   "emulator_backend": "container",
-  "network_mode": "restricted",
+  "network_mode": "permissive",
   "timeout_ms": 600000,
   "allowed_tools": [
     "execute_command",
