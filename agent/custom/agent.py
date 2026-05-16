@@ -127,12 +127,13 @@ class CustomAgent:
         self.token_tracker = TokenTracker()
         self._tool_call_count = 0
         self._unique_tools = set()
-        self._conversation_file = str(
-            logger_manager.get_logs_dir() / "conversation.jsonl"
-        )
-        self._system_prompt_file = str(
-            logger_manager.get_logs_dir() / "system_prompt.txt"
-        )
+        # Mirror the BYO contract layout: agent state lives under
+        # logs_dir/agent_run/ regardless of dispatch mode (see
+        # documentation/BRING_YOUR_OWN_AGENT.md).
+        agent_run_dir = logger_manager.get_logs_dir() / "agent_run"
+        agent_run_dir.mkdir(parents=True, exist_ok=True)
+        self._conversation_file = str(agent_run_dir / "conversation.jsonl")
+        self._system_prompt_file = str(agent_run_dir / "system_prompt.txt")
         self._conversation_schema = self._load_conversation_schema()
         # Reset per-run structured conversation artifact.
         with open(self._conversation_file, "w", encoding="utf-8"):

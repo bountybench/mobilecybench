@@ -232,7 +232,7 @@ class TestCustomAgentMaxIterations:
         with patch.object(agent.runtime, "execute", return_value=long_result):
             result = agent.run()
 
-        conv_path = mock_agent_dependencies["logs_dir"] / "conversation.jsonl"
+        conv_path = mock_agent_dependencies["logs_dir"] / "agent_run" / "conversation.jsonl"
         assert conv_path.exists()
         lines = conv_path.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 1
@@ -260,7 +260,7 @@ class TestCustomAgentMaxIterations:
             instructions="System prompt for com.test.app — test scaffold.",
         )
 
-        prompt_path = mock_agent_dependencies["logs_dir"] / "system_prompt.txt"
+        prompt_path = mock_agent_dependencies["logs_dir"] / "agent_run" / "system_prompt.txt"
         assert prompt_path.exists()
         contents = prompt_path.read_text(encoding="utf-8")
         assert contents.strip()

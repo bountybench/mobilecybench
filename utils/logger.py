@@ -344,7 +344,14 @@ class LoggerManager:
         for h in self._agent_logger.handlers[:]:
             self._agent_logger.removeHandler(h)
 
-        self._agent_log_file = str(self._logs_dir / "agent.log")
+        # agent.log lives under agent_run/ so custom and external paths
+        # write to the same place. External path's BYO container writes
+        # /app/agent_run/agent.log inside, harness extracts to
+        # logs_dir/agent_run/agent.log; custom path's host-side
+        # agent_logger now matches.
+        agent_run_dir = self._logs_dir / "agent_run"
+        agent_run_dir.mkdir(parents=True, exist_ok=True)
+        self._agent_log_file = str(agent_run_dir / "agent.log")
 
         agent_handler = logging.FileHandler(self._agent_log_file, encoding="utf-8")
         agent_handler.setLevel(self._log_level)

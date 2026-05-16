@@ -146,7 +146,8 @@ def _materialize_conversation_fallback(
     if not isinstance(conversation_history, list) or not conversation_history:
         return None
 
-    conversation_path = logs_dir / "conversation.jsonl"
+    conversation_path = logs_dir / "agent_run" / "conversation.jsonl"
+    conversation_path.parent.mkdir(parents=True, exist_ok=True)
     schema = load_schema(project_root, "conversation_turn.schema.json")
     lines: list[str] = []
     for idx, entry in enumerate(conversation_history, start=1):
@@ -306,7 +307,8 @@ def write_run_summary(
         )
         conversation_path = str(fallback_path) if fallback_path else None
 
-    token_usage_path = logs_dir / "token_usage.jsonl"
+    token_usage_path = logs_dir / "agent_run" / "token_usage.jsonl"
+    token_usage_path.parent.mkdir(parents=True, exist_ok=True)
     llm_calls_this_run = time_tracker.llm_calls[timing_start_idx:]
 
     unique_tools = run_result.get("unique_tools") or []

@@ -635,7 +635,7 @@ class Workflow(ABC):
             replay_stdout=stdout,
             agent_output_dir=output_dir / "agent_output",
             agent_exploit_dir=logs_dir / "agent_exploit" if logs_dir else None,
-            agent_log=logs_dir / "agent.log" if logs_dir else None,
+            agent_log=logs_dir / "agent_run" / "agent.log" if logs_dir else None,
         )
 
         return {
