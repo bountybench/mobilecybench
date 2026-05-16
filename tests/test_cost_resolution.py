@@ -57,6 +57,29 @@ class TestCostResolution:
         assert out["cost_source"] == "derived_unpriced"
         assert out["cost_usd"] == 0.0
 
+    def test_provider_prefixed_model_resolves(self) -> None:
+        """LiteLLM-style names like 'anthropic/claude-opus-4-7' must hit pricing."""
+        bare = _norm(
+            model="claude-opus-4-7",
+            token_totals={"input_tokens": 1_000_000, "output_tokens": 0},
+        )
+        prefixed = _norm(
+            model="anthropic/claude-opus-4-7",
+            token_totals={"input_tokens": 1_000_000, "output_tokens": 0},
+        )
+        assert prefixed["cost_source"] == "derived"
+        assert prefixed["cost_usd"] == bare["cost_usd"]
+        assert prefixed["cost_usd"] > 0
+
+    def test_dated_model_suffix_resolves(self) -> None:
+        """Snapshot suffixes like '-20250929' must hit the base model row."""
+        out = _norm(
+            model="claude-opus-4-7-20250929",
+            token_totals={"input_tokens": 1_000_000, "output_tokens": 0},
+        )
+        assert out["cost_source"] == "derived"
+        assert out["cost_usd"] > 0
+
 
 class TestCostBreakdown:
     """cost_breakdown carries both sides so drift is auditable."""

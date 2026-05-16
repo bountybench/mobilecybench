@@ -197,59 +197,60 @@ def _strip_date_suffix(model: str) -> str:
     return _DATE_SUFFIX_RE.sub("", model)
 
 
+def lookup_pricing(
+    model: str, pricing_map: Dict[str, ModelPricing]
+) -> Optional[ModelPricing]:
+    """Look up a model in ``pricing_map`` applying name normalization.
+
+    Lookup order:
+      1. Exact match
+      2. Provider prefix stripped (``gemini/gemini-2.0-flash`` → ``gemini-2.0-flash``)
+      3. Date suffix stripped (``gpt-5-2025-08-07`` → ``gpt-5``)
+      4. Both stripped
+
+    Returns ``None`` when no row matches under any normalization — callers
+    that want to distinguish "found via fallback" from "truly unknown"
+    should use this directly; callers that always need a ModelPricing
+    should use ``get_pricing_for_model``.
+    """
+    if not model:
+        return None
+    pricing = pricing_map.get(model)
+    if pricing is not None:
+        return pricing
+    model_no_prefix = _strip_provider_prefix(model)
+    if model_no_prefix != model:
+        pricing = pricing_map.get(model_no_prefix)
+        if pricing is not None:
+            logger.debug(f"Using pricing for '{model_no_prefix}' for model '{model}'")
+            return pricing
+    model_no_date = _strip_date_suffix(model_no_prefix)
+    if model_no_date != model_no_prefix:
+        pricing = pricing_map.get(model_no_date)
+        if pricing is not None:
+            logger.debug(f"Using pricing for '{model_no_date}' for model '{model}'")
+            return pricing
+    return None
+
+
 def get_pricing_for_model(
     model: str,
     pricing_map: Optional[Dict[str, ModelPricing]] = None,
     *,
     warn: bool = True,
 ) -> ModelPricing:
-    """Get pricing for a specific model.
+    """Return pricing for ``model``, or all-zero ModelPricing if unknown.
 
-    Args:
-        model: Model name to look up.
-        pricing_map: Optional pre-loaded pricing map. If None, loads from default path.
-
-    Returns:
-        ModelPricing instance. Returns all-zero pricing for unknown models to prevent
-        pipeline failures.
-
-    Note:
-        Lookup order:
-        1. Exact model name match
-        2. With provider prefix stripped (e.g., "gemini/gemini-2.0-flash" -> "gemini-2.0-flash")
-        3. With date suffix stripped (e.g., "gpt-5-2025-08-07" -> "gpt-5")
-        4. With both prefix and date suffix stripped
-
-        If still unknown and `warn` is True, a warning is logged.
-        Returns ModelPricing with all zeros to avoid breaking the pipeline.
+    Convenience wrapper around ``lookup_pricing`` for callers that always
+    need a ``ModelPricing`` instance and treat "unknown" as zeros.
     """
     all_pricing = pricing_map if pricing_map is not None else load_pricing()
-
-    # Try exact match first
-    pricing = all_pricing.get(model)
+    pricing = lookup_pricing(model, all_pricing)
     if pricing is not None:
         return pricing
-
-    # Try with provider prefix stripped (e.g., "gemini/gemini-2.0-flash" -> "gemini-2.0-flash")
-    model_no_prefix = _strip_provider_prefix(model)
-    if model_no_prefix != model:
-        pricing = all_pricing.get(model_no_prefix)
-        if pricing is not None:
-            logger.debug(f"Using pricing for '{model_no_prefix}' for model '{model}'")
-            return pricing
-
-    # Try with date suffix stripped
-    model_no_date = _strip_date_suffix(model_no_prefix)
-    if model_no_date != model_no_prefix:
-        pricing = all_pricing.get(model_no_date)
-        if pricing is not None:
-            logger.debug(f"Using pricing for '{model_no_date}' for model '{model}'")
-            return pricing
-
-    # No pricing found
     if warn:
         logger.warning(f"Token pricing unknown for model '{model}'; using zeros.")
-    return ModelPricing()  # all pricing zeros
+    return ModelPricing()
 
 
 def compute_cost_usd(

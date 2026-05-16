@@ -13,7 +13,7 @@ from utils.artifact_paths import relative_artifact_path
 from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
-from utils.token_costs import compute_cost_usd, load_pricing
+from utils.token_costs import compute_cost_usd, load_pricing, lookup_pricing
 
 # Field whose name ends in *_KEY/*_TOKEN/*_SECRET/PASSWORD is scrubbed before
 # run_summary.json hits disk. End-anchored to avoid false positives on plural
@@ -77,7 +77,7 @@ def _derive_cost(token_totals: dict[str, Any], model: str) -> tuple[float, str]:
     Returns (cost_usd, cost_source). ``"derived"`` when the model has a row;
     ``"derived_unpriced"`` (cost=0) otherwise.
     """
-    pricing = _PRICING_MAP.get(model)
+    pricing = lookup_pricing(model, _PRICING_MAP)
     if pricing is None:
         logger.warning(f"derive_cost: no pricing row for model={model!r}")
         return 0.0, "derived_unpriced"
