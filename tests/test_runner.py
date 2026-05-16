@@ -303,7 +303,7 @@ class TestRun:
                 "turns_taken": 2,
                 "tool_call_count": 1,
                 "unique_tools": ["execute_command"],
-                # CONTRACT v2: cost_usd lives at the top level; token_totals is tokens-only.
+                # cost_usd is top-level; token_totals carries token counts only.
                 "cost_usd": 0.1,
                 "token_totals": {
                     "input_tokens": 10,
@@ -331,7 +331,6 @@ class TestRun:
         assert summary["config"]["build_type"] == base_config.build_type
         assert summary["metrics"]["turn_count"] == 2
         assert summary["metrics"]["tool_call_count"] == 1
-        # Per CONTRACT v2: cost_usd is top-level; token_totals carries tokens.
         assert summary["metrics"]["cost_usd"] == 0.1
         assert "cost_usd" not in summary["metrics"]["token_totals"]
         assert summary["results"]["scores"] == {"probe_a": 1}

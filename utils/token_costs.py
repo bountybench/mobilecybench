@@ -15,6 +15,9 @@ from typing import Any, Dict, Optional
 
 from utils.logger import logger
 
+# Matches "-YYYY-MM-DD" or compact "-YYYYMMDD" suffixes at the end of a model name.
+_DATE_SUFFIX_RE = re.compile(r"-(?:\d{4}-\d{2}-\d{2}|\d{8})$")
+
 
 @dataclass(frozen=True)
 class HighContextPricing:
@@ -191,9 +194,7 @@ def _strip_date_suffix(model: str) -> str:
         "claude-sonnet-4-5-20250929" -> "claude-sonnet-4-5"
         "gpt-4" -> "gpt-4" (unchanged)
     """
-    # Matches "-YYYY-MM-DD" or compact "-YYYYMMDD" suffixes at the end.
-    date_pattern = r"-(?:\d{4}-\d{2}-\d{2}|\d{8})$"
-    return re.sub(date_pattern, "", model)
+    return _DATE_SUFFIX_RE.sub("", model)
 
 
 def get_pricing_for_model(
@@ -275,8 +276,8 @@ def compute_cost_usd(
         cache_creation_tokens: Cache-write tokens without TTL split (used when
             the CLI emits a single rollup, e.g. opencode).
         cache_creation_tokens_5m / _1h: TTL-split cache-write tokens (Anthropic).
-            When BOTH non-zero, the TTL split wins and ``cache_creation_tokens``
-            is treated as 0 to avoid double-counting. See CONTRACT v2 §3c.
+            When either is non-zero, the TTL split wins and ``cache_creation_tokens``
+            is treated as 0 to avoid double-counting.
 
     Returns:
         Non-negative USD cost.
@@ -287,7 +288,7 @@ def compute_cost_usd(
     rt = max(int(reasoning_tokens or 0), 0)
     cw_5m = max(int(cache_creation_tokens_5m or 0), 0)
     cw_1h = max(int(cache_creation_tokens_1h or 0), 0)
-    # TTL split wins when present (CONTRACT v2 §3c rule 4).
+    # TTL split wins over the flat rollup to avoid double-counting cache writes.
     cw_flat = 0 if (cw_5m or cw_1h) else max(int(cache_creation_tokens or 0), 0)
 
     # "Fresh" input excludes cache reads and writes — priced separately below.

@@ -1,9 +1,8 @@
 """Behavior tests for the cost resolution applied by normalize_agent_result.
 
-Locks in CONTRACT v2 §3a: agent-reported cost wins whenever PRESENT
-(non-null), including a legitimate $0. Harness derives from token_totals
-× token_pricing.json when the agent omits the key. Unknown model →
-cost_source="derived_unpriced", cost=0.
+Agent-reported cost wins whenever PRESENT (non-null), including a legitimate $0.
+Harness derives from token_totals × token_pricing.json when the agent omits the
+key. Unknown model → cost_source="derived_unpriced", cost=0.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ def _norm(**fields):
 
 
 class TestCostResolution:
-    """§3a: agent-reported wins when non-null."""
+    """Agent-reported cost wins when non-null."""
 
     def test_agent_reported_present_wins(self) -> None:
         out = _norm(cost_usd=0.5)

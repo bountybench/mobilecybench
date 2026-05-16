@@ -262,7 +262,7 @@ class CustomAgent:
 
         self._archive_conversation()
 
-        # Per CONTRACT v2: cost_usd at top level, token_totals is tokens-only.
+        # cost_usd lives at the top level of result; token_totals carries token counts only.
         totals = self.token_tracker.totals()
         cost_usd = totals.pop("cost_usd", None)
 

@@ -64,7 +64,6 @@ class CodexEventParser(BaseEventParser):
                 logger.info(f"[Codex Message] {text}")
 
         elif item_type == "reasoning":
-            # P1.3: codex emits reasoning text in its own event; previously dropped.
             text = item.get("text", "")
             if text:
                 self._turn_reasoning.append(text)

@@ -218,7 +218,7 @@ class TestFeedChunkResilience:
         assert parser.session_id == "t9"
 
     def test_codex_captures_reasoning_text(self) -> None:
-        """P1.3: codex emits reasoning text in item.completed/reasoning; capture it."""
+        """Codex emits reasoning text in item.completed/reasoning; capture it."""
         parser = CodexEventParser()
         parser.feed_chunk(json.dumps({"type": "turn.started"}) + "\n")
         parser.feed_chunk(
@@ -248,7 +248,7 @@ class TestFeedChunkResilience:
         assert rec["reasoning_summary"] == "I should list files first."
 
     def test_claude_canonical_cache_field_names(self) -> None:
-        """P1.4: parser renames claude's usage fields to v2 canonical names."""
+        """Parser renames claude's usage fields to canonical names."""
         parser = ClaudeCodeEventParser()
         parser.feed_chunk(
             json.dumps(

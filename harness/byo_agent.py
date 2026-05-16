@@ -149,18 +149,15 @@ def run_agent(
                     )
                 except docker.errors.APIError:
                     pass
-                grace_deadline = time.monotonic() + _GRACEFUL_STOP_SECONDS
-                while True:
-                    if not api.exec_inspect(exec_id).get("Running"):
-                        break
-                    if time.monotonic() >= grace_deadline:
-                        logger.warning(
-                            f"Agent did not exit within {_GRACEFUL_STOP_SECONDS}s "
-                            "of SIGTERM; sending SIGKILL to container."
-                        )
-                        container.kill(signal="SIGKILL")
-                        break
-                    time.sleep(_POLL_INTERVAL_SECONDS)
+                grace_expired, _ = _wait_for_exec(
+                    api, exec_id, time.monotonic() + _GRACEFUL_STOP_SECONDS
+                )
+                if grace_expired:
+                    logger.warning(
+                        f"Agent did not exit within {_GRACEFUL_STOP_SECONDS}s "
+                        "of SIGTERM; sending SIGKILL to container."
+                    )
+                    container.kill(signal="SIGKILL")
         except docker.errors.APIError as e:
             daemon_error = f"docker.errors.APIError: {e}"
             logger.error(daemon_error)
@@ -182,9 +179,4 @@ def run_agent(
     image = container.image
     result["agent_image"] = image.tags[0] if image.tags else image.id
     result["agent_image_digest"] = image.id
-    result["host_paths"] = {
-        "agent_run": str(host_artifact_dir / "agent_run"),
-        "agent_exploit": str(host_artifact_dir / "agent_exploit"),
-        "agent_output": str(host_artifact_dir / "agent_output"),
-    }
     return result

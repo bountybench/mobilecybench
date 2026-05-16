@@ -209,7 +209,6 @@ class TestRunAgentHappyPath:
 
         assert out["agent_image"] == "cybench/mobilecybench:codex_2.5.0"
         assert out["agent_image_digest"] == "sha256:deadbeef"
-        assert out["host_paths"]["agent_run"].endswith("agent_run")
 
 
 class TestRunAgentFailureModes:

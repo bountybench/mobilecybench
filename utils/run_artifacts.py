@@ -75,7 +75,7 @@ def _derive_cost(token_totals: dict[str, Any], model: str) -> tuple[float, str]:
     """Harness-derived cost from token_totals × price table.
 
     Returns (cost_usd, cost_source). ``"derived"`` when the model has a row;
-    ``"derived_unpriced"`` (cost=0) otherwise. See CONTRACT v2 §3c.
+    ``"derived_unpriced"`` (cost=0) otherwise.
     """
     pricing = _PRICING_MAP.get(model)
     if pricing is None:
@@ -95,10 +95,10 @@ def _derive_cost(token_totals: dict[str, Any], model: str) -> tuple[float, str]:
 
 
 def _resolve_cost(result: dict[str, Any]) -> None:
-    """Apply CONTRACT v2 §3a in place.
+    """Resolve cost_usd + cost_source + cost_breakdown in place.
 
-    Agent-reported cost wins whenever present (BYO authors MUST omit the key
-    when they don't have a number — never write 0 as a placeholder).
+    Agent-reported cost wins whenever present (including a legitimate $0).
+    Agents that don't know their cost MUST omit the key — never write 0 as a placeholder.
     """
     model = result.get("model") or ""
     token_totals = result.get("token_totals") or {}
@@ -151,8 +151,8 @@ def jsonable(value: Any) -> Any:
 def normalize_agent_result(result: Optional[dict]) -> dict:
     """Validate + normalize an agent result against schemas/result.schema.json.
 
-    Coerces ``None`` to type-safe defaults for typed fields, then applies
-    CONTRACT v2 §3a cost resolution. Status defaults to ``"unknown"``.
+    Coerces ``None`` to type-safe defaults for typed fields, then resolves
+    cost_usd / cost_source / cost_breakdown. Status defaults to ``"unknown"``.
     Accepts legacy ``turns`` alias for ``turns_taken``.
     """
     normalized = dict(result or {})

@@ -85,8 +85,9 @@ class ClaudeCodeEventParser(BaseEventParser):
                     "arguments": args,
                 }
             )
-            logger.info(f"[ClaudeCode Tool] {name} input={json.dumps(args)}")
-            agent_logger.info("tool_use name=%s input=%s", name, json.dumps(args))
+            args_json = json.dumps(args)
+            logger.info(f"[ClaudeCode Tool] {name} input={args_json}")
+            agent_logger.info("tool_use name=%s input=%s", name, args_json)
 
     def _handle_tool_result(self, part: dict[str, Any]) -> None:
         raw = part.get("content", "")
