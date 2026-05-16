@@ -2,7 +2,7 @@
 
 Pins the contract that ``build_synthetic_prompt`` honors ``vuln_id``: the
 rendered path in the prompt must match the runtime bind mount in
-``agent/agent_container.py:_setup_verify_files`` (``/app/verify_files/{vuln_id}``).
+``agent/runtime/container.py:_setup_verify_files`` (``/app/verify_files/{vuln_id}``).
 
 The agent-class wrapper tests (``CodexAgent._get_system_prompt_text``,
 ``ClaudeCodeAgent._get_system_prompt_text``) were removed in the BYO-contract

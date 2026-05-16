@@ -114,18 +114,19 @@ class TestCreateWorkflow:
                 }
             )
 
-    def test_allowed_tools_accepts_known_name(self, base_config):
-        """A name listed in agent.tools.TOOL_NAMES is accepted."""
-        config = RunnerConfig(
-            **{**base_config.model_dump(), "allowed_tools": ["execute_command"]}
-        )
-        assert config.allowed_tools == ["execute_command"]
-
-    def test_allowed_tools_rejects_unknown_name(self, base_config):
-        """A name not in agent.tools.TOOL_NAMES is rejected at load time —
-        locks the Literal[ToolName] contract that pydantic infers for us."""
-        with pytest.raises(ValueError, match="execute_command"):
-            RunnerConfig(**{**base_config.model_dump(), "allowed_tools": ["nope"]})
+    @pytest.mark.parametrize(
+        "legacy_mode, expected_image_hint",
+        [
+            ("codex", "codex_<version>"),
+            ("claude-code", "claudecode_<version>"),
+        ],
+    )
+    def test_legacy_agent_mode_raises_migration_hint(
+        self, base_config, legacy_mode, expected_image_hint
+    ):
+        """Pre-BYO ``agent_mode`` values are rejected with a migration string."""
+        with pytest.raises(ValueError, match=expected_image_hint):
+            RunnerConfig(**{**base_config.model_dump(), "agent_mode": legacy_mode})
 
 
 class TestRun:
@@ -411,10 +412,6 @@ class TestRun:
             ExploitWorkflow,
             "run_agent",
             return_value={
-                # agent_type is now passed-through (no auto-inference from
-                # conversation_history shape, per the BYO consolidation in
-                # utils/run_artifacts.py:normalize_agent_result).
-                "agent_type": "codex",
                 "status": "completed",
                 "turns_taken": 1,
                 "conversation_history": [
@@ -443,7 +440,9 @@ class TestRun:
         if not conversation_path.is_absolute():
             conversation_path = tmp_path / conversation_path
         assert conversation_path.exists()
-        assert summary["context"]["agent_type"] == "codex"
+        # agent_mode reflects the config field, not anything inferred from
+        # run_result; base_config defaults to "custom".
+        assert summary["context"]["agent_mode"] == "custom"
         lines = conversation_path.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 1
         turn_event = json.loads(lines[0])

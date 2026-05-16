@@ -1,6 +1,6 @@
 import pytest
 
-from agent.model_providers.factory import SupportedModel
+from agent.custom.model_providers.factory import SupportedModel
 from utils.token_costs import (
     HighContextPricing,
     ModelPricing,

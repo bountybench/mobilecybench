@@ -281,7 +281,7 @@ class TestWorkflowRuntimeCleanup:
 
         # Network creation runs first; mock so the test stays a unit test
         # (otherwise it would hit the real Docker daemon in CI).
-        with patch("agent.agent_container.create_docker_network"), patch(
+        with patch("agent.runtime.container.create_docker_network"), patch(
             "workflows.base.subprocess.run",
             side_effect=subprocess.CalledProcessError(
                 1, ["bash", str(stale_app_dir / "cleanup.sh")], "", "boom"
@@ -317,7 +317,7 @@ class TestWorkflowRuntimeCleanup:
             )
 
         with patch(
-            "agent.agent_container.create_docker_network",
+            "agent.runtime.container.create_docker_network",
             side_effect=fake_create_network,
         ), patch("workflows.base.subprocess.run", side_effect=fake_run):
             workflow._preflight_cleanup_app_runtime()
@@ -338,7 +338,7 @@ class TestWorkflowRuntimeCleanup:
 
         workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
 
-        with patch("agent.agent_container.create_docker_network") as mock_create:
+        with patch("agent.runtime.container.create_docker_network") as mock_create:
             workflow._ensure_docker_networks()
 
         assert mock_create.call_args_list == [
@@ -355,7 +355,7 @@ class TestWorkflowRuntimeCleanup:
         )
         workflow = ExploitWorkflow(_config(workflow="exploit"), "pilot_app", tmp_path)
 
-        with patch("agent.agent_container.create_docker_network"):
+        with patch("agent.runtime.container.create_docker_network"):
             workflow._ensure_docker_networks()  # must not raise
 
     def test_skip_guard_passes_when_no_compose_file(self, tmp_path):
@@ -363,7 +363,7 @@ class TestWorkflowRuntimeCleanup:
         (tmp_path / "apps" / "no_backend").mkdir(parents=True)
         workflow = ExploitWorkflow(_config(workflow="exploit"), "no_backend", tmp_path)
 
-        with patch("agent.agent_container.create_docker_network"):
+        with patch("agent.runtime.container.create_docker_network"):
             workflow._ensure_docker_networks()  # must not raise
 
     def test_skip_guard_fails_when_compose_missing_agent_net(self, tmp_path):
@@ -375,7 +375,7 @@ class TestWorkflowRuntimeCleanup:
         )
         workflow = ExploitWorkflow(_config(workflow="exploit"), "legacy_app", tmp_path)
 
-        with patch("agent.agent_container.create_docker_network"), pytest.raises(
+        with patch("agent.runtime.container.create_docker_network"), pytest.raises(
             RuntimeError, match="not on agent_net"
         ):
             workflow._ensure_docker_networks()
@@ -413,7 +413,7 @@ class TestWorkflowRuntimeCleanup:
 
 
 class TestResolveAdditionalContext:
-    """`custom_system_prompt` is appended to per-app `metadata.additional_info`.
+    """`additional_system_prompt` is appended to per-app `metadata.additional_info`.
 
     Field has been in the RunnerConfig schema since #290 (2025-10) but had no
     live reader on main since #605 (2026-02) dropped the runner.py wiring.
@@ -425,18 +425,18 @@ class TestResolveAdditionalContext:
     import time and fails under pytest without a live docker daemon.
     """
 
-    def _workflow(self, tmp_path, custom_system_prompt=None):
+    def _workflow(self, tmp_path, additional_system_prompt=None):
         app_dir = tmp_path / "apps" / "test_app"
         app_dir.mkdir(parents=True)
         (app_dir / "metadata.json").write_text("{}")
         return ExploitWorkflow(
-            _config(workflow="exploit", custom_system_prompt=custom_system_prompt),
+            _config(workflow="exploit", additional_system_prompt=additional_system_prompt),
             "test_app",
             tmp_path,
         )
 
-    def test_appends_custom_system_prompt_to_metadata_additional_info(self, tmp_path):
-        wf = self._workflow(tmp_path, custom_system_prompt="HINT: look at IPC")
+    def test_appends_additional_system_prompt_to_metadata_additional_info(self, tmp_path):
+        wf = self._workflow(tmp_path, additional_system_prompt="HINT: look at IPC")
         wf.metadata = {"additional_info": "App ships with seeded user"}
         # Ordering is load-bearing: per-app context first (threat model
         # framing), runtime knob (hint) second.
@@ -445,13 +445,13 @@ class TestResolveAdditionalContext:
             == "App ships with seeded user\n\nHINT: look at IPC"
         )
 
-    def test_returns_custom_system_prompt_alone_when_no_metadata_info(self, tmp_path):
-        wf = self._workflow(tmp_path, custom_system_prompt="HINT: look at IPC")
+    def test_returns_additional_system_prompt_alone_when_no_metadata_info(self, tmp_path):
+        wf = self._workflow(tmp_path, additional_system_prompt="HINT: look at IPC")
         wf.metadata = {}
         assert wf._resolve_additional_context() == "HINT: look at IPC"
 
-    def test_returns_metadata_unchanged_when_no_custom_system_prompt(self, tmp_path):
-        wf = self._workflow(tmp_path)  # custom_system_prompt = None
+    def test_returns_metadata_unchanged_when_no_additional_system_prompt(self, tmp_path):
+        wf = self._workflow(tmp_path)  # additional_system_prompt = None
         wf.metadata = {"additional_info": "App ships with seeded user"}
         assert wf._resolve_additional_context() == "App ships with seeded user"
 
@@ -460,11 +460,11 @@ class TestResolveAdditionalContext:
         wf.metadata = {}
         assert wf._resolve_additional_context() is None
 
-    def test_empty_string_custom_system_prompt_is_treated_as_unset(self, tmp_path):
+    def test_empty_string_additional_system_prompt_is_treated_as_unset(self, tmp_path):
         # `""` and `None` should behave the same — empty strings in JSON
         # config commonly mean "no value", and we should not paste an empty
         # paragraph onto the prompt either way.
-        wf = self._workflow(tmp_path, custom_system_prompt="")
+        wf = self._workflow(tmp_path, additional_system_prompt="")
         wf.metadata = {"additional_info": "App ships with seeded user"}
         assert wf._resolve_additional_context() == "App ships with seeded user"
 

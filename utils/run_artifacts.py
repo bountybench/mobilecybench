@@ -1,6 +1,7 @@
 import datetime
 import json
 import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,6 +12,25 @@ import jsonschema
 from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
+
+# Field whose name ends in *_KEY/*_TOKEN/*_SECRET/PASSWORD is scrubbed before
+# run_summary.json hits disk. End-anchored to avoid false positives on plural
+# forms (max_model_response_tokens). Per-app prompt credentials are out of
+# scope (design §4.4).
+_SECRET_KEY_RE = re.compile(r"(_KEY|_TOKEN|_SECRET|PASSWORD)$", re.IGNORECASE)
+_REDACTED = "<redacted>"
+
+
+def _redact_for_persistence(value: Any) -> Any:
+    """Walk value; replace any dict value whose key looks credential-ish."""
+    if isinstance(value, dict):
+        return {
+            k: _REDACTED if _SECRET_KEY_RE.search(str(k)) else _redact_for_persistence(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_for_persistence(v) for v in value]
+    return value
 
 try:
     from jsonschema import validate as _jsonschema_validate
@@ -292,11 +312,10 @@ def write_run_summary(
     if not isinstance(token_totals, dict):
         token_totals = {}
 
-    # Timing summary: prefer time_tracker data when the agent used the
-    # custom provider (one llm_timing call per model request), otherwise
-    # fall back to any timing dict the agent provided.  CLI-based agents
-    # (codex, claude-code) bypass time_tracker entirely, so without this
-    # fallback their timing metrics would always be zero.
+    # Timing summary: prefer time_tracker data (one llm_timing call per
+    # model request, recorded by the custom in-process provider). External
+    # agents bypass time_tracker, so fall back to whatever timing dict the
+    # agent surfaced — without this fallback their metrics would be zero.
     time_tracker_timing = _timing_summary_from_calls(llm_calls_this_run)
     agent_timing = run_result.get("timing") or {}
     if not isinstance(agent_timing, dict):
@@ -323,17 +342,23 @@ def write_run_summary(
                 except Exception as e:
                     logger.warning("Failed to copy %s: %s", score_file, e)
 
-    # Cost: claude-code surfaces it at run_result top-level; the custom
-    # and codex agents nest it inside token_totals via TokenTracker. Read
-    # the top-level first (so an agent that wants to report a different
-    # number — e.g. CLI-reported subscription cost vs. API-priced — wins),
-    # then fall back to the nested value so downstream consumers always
-    # see a populated metric when one exists.
+    # Cost: agents may surface it at run_result top-level OR nest it inside
+    # token_totals (e.g. via TokenTracker). Top-level wins so an agent can
+    # report a different number than the per-call sum (CLI subscription
+    # cost vs. API-priced); falls back to nested so consumers always see a
+    # populated metric when one exists.
     cost_top = run_result.get("cost_usd")
     cost_nested = (
         token_totals.get("cost_usd") if isinstance(token_totals, dict) else None
     )
     cost_usd = cost_top if cost_top is not None else cost_nested
+
+    # Image identity: harness.byo_agent stamps run_result["agent_image"] +
+    # ["agent_image_digest"] from the live container handle for the external
+    # path (single source of truth). Custom path has no result-side stamp;
+    # fall back to the config field, digest stays null.
+    agent_image = run_result.get("agent_image") or getattr(config, "agent_image", None)
+    agent_image_digest = run_result.get("agent_image_digest")
 
     run_summary = {
         "run_id": run_id,
@@ -349,7 +374,9 @@ def write_run_summary(
             "workflow": config.workflow,
             "vuln_id": config.synthetic_vuln_id,
             "task": config.task,
-            "agent_type": run_result.get("agent_type", "custom"),
+            "agent_mode": config.agent_mode,
+            "agent_image": agent_image,
+            "agent_image_digest": agent_image_digest,
             "model": config.model,
         },
         "config": {
@@ -418,6 +445,8 @@ def write_run_summary(
         "run summary",
     )
     try:
-        _write_json_atomic(logs_dir / "run_summary.json", run_summary)
+        _write_json_atomic(
+            logs_dir / "run_summary.json", _redact_for_persistence(run_summary)
+        )
     except Exception as e:
         logger.warning("Failed to write run_summary.json: %s", e)
