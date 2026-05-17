@@ -47,10 +47,12 @@ class SupportedModel(Enum):
 
     # Anthropic — LiteLLM provider
     CLAUDE_OPUS_4_7 = ModelConfig("claude-opus-4-7", "litellm")
-    CLAUDE_SONNET_4_6 = ModelConfig("claude-sonnet-4-6", "litellm")
-    CLAUDE_HAIKU_4_5 = ModelConfig("claude-haiku-4-5", "litellm")
     CLAUDE_OPUS_4_6 = ModelConfig("claude-opus-4-6", "litellm")
+    CLAUDE_OPUS_4_5 = ModelConfig("claude-opus-4-5", "litellm")
+    CLAUDE_OPUS_4_1 = ModelConfig("claude-opus-4-1", "litellm")
+    CLAUDE_SONNET_4_6 = ModelConfig("claude-sonnet-4-6", "litellm")
     CLAUDE_SONNET_4_5 = ModelConfig("claude-sonnet-4-5-20250929", "litellm")
+    CLAUDE_HAIKU_4_5 = ModelConfig("claude-haiku-4-5", "litellm")
 
     # Google — LiteLLM provider
     GEMINI_3_1_PRO = ModelConfig("gemini-3.1-pro", "litellm")
@@ -58,7 +60,7 @@ class SupportedModel(Enum):
 
 
 # Lookup table: api_id → SupportedModel
-_MODEL_REGISTRY: Dict[str, SupportedModel] = {m.value.api_id: m for m in SupportedModel}
+MODEL_REGISTRY: Dict[str, SupportedModel] = {m.value.api_id: m for m in SupportedModel}
 
 
 def get_model_provider(
@@ -97,16 +99,15 @@ def get_model_provider(
         reasoning_effort=reasoning_effort,
     )
 
-    entry = _MODEL_REGISTRY.get(model)
+    entry = MODEL_REGISTRY.get(model)
     if entry is not None:
         if entry.value.provider == "openai":
             return OpenAIProvider(**kwargs)
         return LiteLLMProvider(**kwargs)
 
     if not allow_unregistered:
-        supported = [m.value.api_id for m in SupportedModel]
         raise ValueError(
-            f"Unsupported model: '{model}'. Supported models: {supported}. "
+            f"Unsupported model: '{model}'. Supported models: {sorted(MODEL_REGISTRY)}. "
             "To register a new model permanently, add it to "
             "agent/custom/model_providers/factory.py:SupportedModel and add a "
             "pricing row to utils/token_pricing.json. For model-sweep "
