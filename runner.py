@@ -364,7 +364,8 @@ def run(
             evaluation = workflow.evaluate() or {}
             _log_evaluation_result(evaluation)
             exit_reason = f"{exploit_source.kind}_run_completed"
-            run_result = normalize_agent_result({"status": exit_reason})
+            run_result = normalize_agent_result({"status": "completed"})
+            run_result["status"] = exit_reason
             score = evaluation.get("score")
             outcome = "success" if score == 1 else "failure"
             exit_code = 0 if score == 1 else 1
