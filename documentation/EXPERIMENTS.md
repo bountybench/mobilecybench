@@ -9,12 +9,12 @@ Our goal is to evaluate AI agents on their ability to find and exploit security 
 There are two types of attackers represented
 
 1. Remote Attacker
-The agent represents a remote attacker. It writes an exploit.sh script targeting the backend server and other preseeded app users, via UI automation and network requests. No user data exists on the device.
+   The agent represents a remote attacker. It writes an exploit.sh script targeting the backend server and other preseeded app users, via UI automation and network requests. No user data exists on the device.
 
-The agent has full system access (root, UI automation, ADB), but no information about the other users. 
+The agent has full system access (root, UI automation, ADB), but no information about the other users.
 
 2. Malicious App
-The agent will be allowed to build a malicious app that we will install and run on a "victim" device, where a user will already be logged in for the target app.
+   The agent will be allowed to build a malicious app that we will install and run on a "victim" device, where a user will already be logged in for the target app.
 
 We will provide a template to build a malicious app, where it can implement a MainActivity that sends IPC commands. We will build and run on a victim device, relying on the Android OS to block restricted commands.
 
@@ -116,15 +116,16 @@ JSON Schema captures per-field types and defaults but cannot machine-enforce the
 - `workflow == "redteam"` (two-phase) requires **exactly one** of `task` (zero-day) or `synthetic_vuln_id` (synthetic).
 - `attacker_model` requires `workflow == "redteam"`. In two-phase mode it's a dev/debug hint that the runtime overrides from the task bundle's `metadata.json`; in `probe_only` mode it is **required and authoritative** (there is no task metadata to read). See [REDTEAM.md](REDTEAM.md).
 - `probe_only: true` requires `workflow == "redteam"`, **forbids** `task` and `synthetic_vuln_id` (bundle-less by design), and is incompatible with `gold_run` (no canonical exploit source to replay).
-- `dry_run` and `gold_run` are mutually exclusive — at most one may be truthy.
+- `dry_run`, `gold_run`, and `replay_run` are mutually exclusive — at most one may be truthy.
+- `apk_obfuscation: "on"` forbids `build_type: "source"` (would rebuild un-minified APKs and defeat the experiment). Use `download-apk` so the runner fetches the R8-minified bundle from `download_link_obfuscated`. The effective decision per app comes from `resolve_obfuscation(runner_config.apk_obfuscation, metadata.apk_obfuscation)` — see `utils/obfuscation_resolver.py` for the resolution table. Apps without `metadata.apk_obfuscation` opted in (or set to `"never"`) silently stay un-obfuscated even when the runner asks for `on`.
 
 ### Agent Mode
 
 Two paths, picked by `"agent_mode"`:
 
-| Mode       | Description                                                                                  |
-| ---------- | -------------------------------------------------------------------------------------------- |
-| `custom`   | Built-in in-process Python loop (default). `agent_image` names the kali base.                |
+| Mode       | Description                                                                                                                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `custom`   | Built-in in-process Python loop (default). `agent_image` names the kali base.                                                                                                                             |
 | `external` | BYO Docker image satisfying the contract in [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md). Covers the reference codex/claude-code images and lab BYO agents. `agent_image` names the image to run. |
 
 Example external (Claude Code reference image):
@@ -148,19 +149,19 @@ A symlink to the most recent run is maintained at `logs/latest/`.
 
 ### Experiment Directory Structure
 
-| File                              | Description                                                                                            |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `run_summary.json`                | **Primary Source of Truth.** Machine-readable summary of config, results, metrics, and artifact paths. |
-| `experiment.log`                  | Full technical trace of the runner, workflow, and agent.                                               |
-| `agent_run/agent.log`             | Cleaned stream of agent-only thoughts and tool interactions.                                           |
-| `agent_run/conversation.jsonl`    | Turn-by-turn record of the LLM conversation (ideal for analysis).                                      |
-| `agent_run/token_usage.jsonl`     | Granular token counts and USD cost per API call.                                                       |
-| `agent_run/system_prompt.txt`     | Exact system prompt used by the custom agent for this run.                                             |
-| `android_system.log`              | Full Android Logcat dump captured at the end of the run.                                               |
-| `git_repro.patch`                 | (If repo is dirty) Diff of uncommitted changes to ensure 100% reproducibility.                         |
-| `synthetic_scores.json`           | Copied exploit verification results (Exploit mode).                                                    |
-| `redteam_scores.json`             | Differential replay results (Redteam mode).                                                            |
-| `errors.log`                      | Summary of all ERROR-level events encountered during the run.                                          |
+| File                           | Description                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `run_summary.json`             | **Primary Source of Truth.** Machine-readable summary of config, results, metrics, and artifact paths. |
+| `experiment.log`               | Full technical trace of the runner, workflow, and agent.                                               |
+| `agent_run/agent.log`          | Cleaned stream of agent-only thoughts and tool interactions.                                           |
+| `agent_run/conversation.jsonl` | Turn-by-turn record of the LLM conversation (ideal for analysis).                                      |
+| `agent_run/token_usage.jsonl`  | Granular token counts and USD cost per API call.                                                       |
+| `agent_run/system_prompt.txt`  | Exact system prompt used by the custom agent for this run.                                             |
+| `android_system.log`           | Full Android Logcat dump captured at the end of the run.                                               |
+| `git_repro.patch`              | (If repo is dirty) Diff of uncommitted changes to ensure 100% reproducibility.                         |
+| `synthetic_scores.json`        | Copied exploit verification results (Exploit mode).                                                    |
+| `redteam_scores.json`          | Differential replay results (Redteam mode).                                                            |
+| `errors.log`                   | Summary of all ERROR-level events encountered during the run.                                          |
 
 ## Interpreting Results
 

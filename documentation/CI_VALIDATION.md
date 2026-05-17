@@ -77,6 +77,7 @@ Notes:
 - Ensure Docker is running.
 - `--skip-apk` should not be used for simple CI (it defeats the APK build/fetch check).
 - `cleanup.sh` should not remove the `.apk` file so `--skip-apk` can reuse it.
+- For apps that opt into `apk_obfuscation`, CI also emits an obfuscated `handle_apk` job (build-only validation) on every change that triggers a rebuild. The heavier obfuscated `test` job (emulator + probes) only fires when obfuscation infra itself changes (`gradle/obfuscate.init.gradle` or `apps/<app>/obfuscation/`) — runtime regressions from R8 are rare once keep-rules are settled. Mirror this locally with `./run_ci_local.sh apps/<app> --obfuscate`.
 
 ## Testing Synthetic Vulnerabilities
 
