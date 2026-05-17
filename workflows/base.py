@@ -297,7 +297,12 @@ class Workflow(ABC):
                     f"No download_link in apps/{self.app_name}/metadata.json. "
                     f"Build and publish: ./publish_apk_bundle.sh apps/{self.app_name}"
                 )
-            download_apk(self.app_name, url, self.project_root)
+            download_apk(
+                self.app_name,
+                url,
+                self.project_root,
+                obfuscated=(decision.effective == "on"),
+            )
             return
 
         self._build_apks_from_source()

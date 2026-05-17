@@ -27,8 +27,7 @@
 #     # Build a hardened APK from an explicit patch file (for example a task/report fix.patch)
 #   ./build_apk.sh conversations --obfuscate
 #     # Build a release APK with R8 minify/shrink enabled via the repo-level
-#     # gradle/obfuscate.init.gradle init script. See
-#     # documentation/APK_OBFUSCATION.md for the full design.
+#     # gradle/obfuscate.init.gradle init script.
 #
 
 set -e
@@ -94,8 +93,7 @@ show_usage() {
     echo "                       e.g. a task/report fix.patch)"
     echo "  --obfuscate         Build the release APK with R8 minify/shrink enabled via"
     echo "                      gradle/obfuscate.init.gradle. Output goes to"
-    echo "                      apps/<app>/apk/obfuscated/<app>.apk. See"
-    echo "                      documentation/APK_OBFUSCATION.md for the full design."
+    echo "                      apps/<app>/apk/obfuscated/<app>.apk."
     echo "  -h, --help          Show this help message"
     echo ""
     echo "Note: --vuln and --hardened-patch are mutually exclusive."
@@ -569,7 +567,7 @@ build_and_package() {
     # Obfuscation toggle: when --obfuscate is passed, export the env vars the
     # per-app build.sh and the repo-level init script consume. When NOT passed,
     # explicitly unset them so a stale value in the operator's environment
-    # cannot silently turn obfuscation on. See documentation/APK_OBFUSCATION.md.
+    # cannot silently turn obfuscation on.
     if [ "$OBFUSCATE" = "1" ]; then
         export MCB_OBFUSCATE=1
         export MCB_OBFUSCATE_INIT_SCRIPT="$ROOT_DIR/gradle/obfuscate.init.gradle"
@@ -615,10 +613,8 @@ build_and_package() {
     # Determine output path (vuln/hardened builds go in subdirectory).
     # When --obfuscate is on, the final signed APK lands under an obfuscated/
     # subdirectory so default and obfuscated variants coexist on disk without
-    # one overwriting the other (see documentation/APK_OBFUSCATION.md
-    # "Build cache fingerprint" — cache storage paths split by variant).
-    # Hardened builds use a caller-resolved HARDENED_OUTPUT_PATH and are not
-    # split here.
+    # one overwriting the other. Hardened builds use a caller-resolved
+    # HARDENED_OUTPUT_PATH and are not split here.
     local output_path
     if [[ -n "$VULN_ID" ]]; then
         if [ "$OBFUSCATE" = "1" ]; then
@@ -704,7 +700,6 @@ compute_build_fingerprint() {
     # toggling --obfuscate always produces a different fingerprint, even when
     # no other input changed. When on, also hash the init script and the
     # optional per-app extra-keep.pro so edits to either invalidate the cache.
-    # See documentation/APK_OBFUSCATION.md "Build cache fingerprint".
     local obfuscate_marker
     if [ "$OBFUSCATE" = "1" ]; then
         obfuscate_marker="obfuscate=on"

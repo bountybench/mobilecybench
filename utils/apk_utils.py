@@ -105,16 +105,25 @@ def resolve_apk_path(
 
 
 def download_apk(
-    app_name: str, url: str, project_root: Path, *, force: bool = False
+    app_name: str,
+    url: str,
+    project_root: Path,
+    *,
+    force: bool = False,
+    obfuscated: bool = False,
 ) -> Path:
     """Download APK from GitHub release URL into apps/<app>/apk/.
 
     Supports single APKs and zip bundles.
     Without force, skips files that already exist locally (fill gaps, never overwrite).
     With force, overwrites all existing files.
-    Returns the apk directory path.
+    When ``obfuscated=True``, downloads into apps/<app>/apk/obfuscated/ so the
+    obfuscated bundle never overwrites or commingles with the default bundle.
+    Returns the apk directory path that was written to.
     """
     apk_dir = project_root / "apps" / app_name / "apk"
+    if obfuscated:
+        apk_dir = apk_dir / "obfuscated"
     apk_dir.mkdir(parents=True, exist_ok=True)
 
     match = _RELEASE_URL_RE.match(url)
