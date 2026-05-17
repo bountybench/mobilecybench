@@ -89,13 +89,13 @@ PY
 }
 
 PKG="$(read_runtime_field package_name)"
-VICTIM_USERNAME="$(read_runtime_field victim.username)"
-VICTIM_DEVICE_ID="$(read_runtime_field victim.device_id)"
-VICTIM_CMD_TOPIC="$(read_runtime_field victim.cmd_topic)"
+VICTIM_USERNAME="$(read_runtime_field monitored.username)"
+VICTIM_DEVICE_ID="$(read_runtime_field monitored.device_id)"
+VICTIM_CMD_TOPIC="$(read_runtime_field monitored.cmd_topic)"
 MONITOR_LOG_IN_CONTAINER="$(read_runtime_field monitor_log_in_container)"
 MONITOR_USERNAME="$(read_runtime_field monitor.username)"
 SECRET_BUNDLE_HOST_PATH="$(read_runtime_field secret_bundle_host_path)"
-VICTIM_LOCATION_TOPIC="$(read_runtime_field victim.topic_base)"
+VICTIM_LOCATION_TOPIC="$(read_runtime_field monitored.topic_base)"
 VICTIM_STATUS_TOPIC="${VICTIM_LOCATION_TOPIC}/status"
 AGENT_USERNAME="$(read_runtime_field agent.username)"
 ATTACKER_MODEL="${MCB_ATTACKER_MODEL:-}"
@@ -133,7 +133,7 @@ print(value)
 PY
 }
 
-VICTIM_PASSWORD="$(read_secret_field victim.password)"
+VICTIM_PASSWORD="$(read_secret_field monitored.password)"
 MONITOR_PASSWORD="$(read_secret_field monitor.password)"
 
 app_uid() {
