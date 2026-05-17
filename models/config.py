@@ -72,8 +72,8 @@ class RunnerConfig(BaseModel):
         description=(
             "Docker image the agent runs from. Custom path: kali base "
             "(e.g. cybench/mobilecybench:latest). External path: BYO "
-            "reference image (e.g. cybench/mobilecybench:codex_<v>, "
-            ":claudecode_<v>, or a lab's own tag)."
+            "reference image (e.g. cybench/mobilecybench:codex_0.130.0-r2, "
+            ":claudecode_2.1.140-r2, or a lab's own tag)."
         ),
     )
     agent_mode: Literal["custom", "external"] = Field(
@@ -302,8 +302,8 @@ class RunnerConfig(BaseModel):
         mode = data.get("agent_mode")
         if mode in ("codex", "claude-code"):
             ref = {
-                "codex": "cybench/mobilecybench:codex_<version>",
-                "claude-code": "cybench/mobilecybench:claudecode_<version>",
+                "codex": "cybench/mobilecybench:codex_0.130.0-r2",
+                "claude-code": "cybench/mobilecybench:claudecode_2.1.140-r2",
             }[mode]
             raise ValueError(
                 f"agent_mode={mode!r} is no longer supported. "

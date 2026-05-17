@@ -7,11 +7,11 @@ mobilecybench evaluates agents through one of two paths:
 | `custom`     | Built-in in-process Python loop. Stays as-is; no contract surface.        |
 | `external`   | Your Docker image. The harness delivers a `task.json`, runs `/run-agent.sh`, and reads filesystem artifacts back. |
 
-This page documents the **`external`** contract. The reference codex and claude-code images ship as `cybench/mobilecybench:codex_<v>` and `cybench/mobilecybench:claudecode_<v>`; a lab BYO image satisfies the same contract.
+This page documents the **`external`** contract. The reference codex and claude-code images ship as `cybench/mobilecybench:codex_0.130.0-r2` and `cybench/mobilecybench:claudecode_2.1.140-r2` (the `<cli-version>-r<revision>` tag pattern lets the harness bump independently of the CLI); a lab BYO image satisfies the same contract.
 
 ## The contract in one paragraph
 
-Your image ships an executable `/run-agent.sh`. The harness creates the container with `command="sleep infinity"`, installs the test CA, delivers `/app/task.json`, then `docker exec`s `/run-agent.sh`. Your script reads the task, runs whatever agent loop you want, and writes:
+Your image ships an executable `/run-agent.sh`. Before invoking your agent, `agent/runtime/container.py:setup_agent_environment` creates the container (with `command="sleep infinity"`), installs the test CA, and mounts `/app/codebase` (or `/app/apk` when `no_codebase=true`). The harness (`harness/byo_agent.py`) then delivers `/app/task.json` and `docker exec`s `/run-agent.sh`. Your script reads the task, runs whatever agent loop you want, and writes:
 
 - `/app/agent_run/result.json` — required; the harness reads this for `status`, `turns_taken`, etc.
 - `/app/agent_run/conversation.jsonl` — one JSON object per turn; needed for the leaderboard.
@@ -25,7 +25,7 @@ Your image ships an executable `/run-agent.sh`. The harness creates the containe
 ### `Dockerfile`
 
 ```dockerfile
-FROM cybench/mobilecybench-kali:<pinned-version>
+FROM cybench/mobilecybench-kali:v0.1.0
 # Install your agent (CLI, runtime, etc.)
 RUN curl -fsSL https://your-domain/install-agent.sh | sh
 
@@ -75,20 +75,35 @@ fi
 
 No `trap` / no `setsid` / no graceful-shutdown logic in this example. The harness's wall-clock SIGTERM targets the in-container Python runner by argv pattern, so a plain bash script like this one never receives it. Flush per-turn state atomically and treat the eventual SIGKILL as unrecoverable. (If you want graceful shutdown, run the reference Python runner — see "How the reference images plug in" below.)
 
+## Filesystem layout inside the container
+
+| Path | Direction | Notes |
+| --- | --- | --- |
+| `/app/task.json` | in | Task contract (see below). Read-only. |
+| `/app/codebase/` | in | App source. Mounted when `no_codebase=false`. |
+| `/app/apk/` | in | Single APK file. Mounted when `no_codebase=true` (replaces `/app/codebase`). |
+| `/app/agent_run/` | out | `result.json`, `conversation.jsonl`, `agent.log`. Pulled to host after run. |
+| `/app/agent_exploit/` | out | `exploit.sh` (RA) or `exploit_apk/.../*.apk` (MA). Pulled to host after run. |
+| `/app/agent_output/` | out | Read-write scratch dir for synthetic-vuln mode (verify scripts read it). Pulled to host. |
+
 ## `task.json` (input)
 
-Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `vuln_id`, `attacker_model`, `reasoning_effort`, `screenshot_mode`.
+Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `vuln_id`, `attacker_model`, `reasoning_effort`, `screenshot_mode` (in practice the harness always emits these too).
 
 | Field | Notes |
 | --- | --- |
 | `run_id` | Bare uuid (e.g. `03e2c121-cb4d-481e-b668-da0dee5d84cf`). Embed in conversation events. |
+| `app_name` | Directory name under `apps/` (e.g. `wallabag`). Useful for logging / artifact naming. |
 | `workflow` | `"exploit"` or `"redteam"`. |
 | `prompt` | Fully assembled workflow prompt — relay to your CLI / API verbatim. Test credentials and any `additional_system_prompt` from operator config are pre-merged into this string by the harness. |
 | `model` | Defender model id. Forward to your CLI. |
 | `agent_wallclock_seconds` | Harness-side SIGKILL deadline (see "Wall-clock termination" above); the agent can also use it for internal pacing. |
-| `reasoning_effort` | `"low"` / `"medium"` / `"high"` / null. v1 common-denominator. |
+| `reasoning_effort` | `"low"` / `"medium"` / `"high"` / null. Forwarded to providers that accept it; ignored otherwise. |
 | `no_codebase` | When true, `/app/apk/` is mounted (not `/app/codebase/`). |
-| `vuln_id` | Synthetic vuln id when `workflow="exploit"` + RA mode; else null. |
+| `apk_relpath` | Path to the built target APK, relative to `/app/codebase` (or `/app/apk` when `no_codebase=true`). |
+| `vuln_id` | Synthetic vuln id when `synthetic_vuln_id` is set on the operator config (either `workflow="exploit"` or `workflow="redteam"` with synthetic mode). Null for zero-day redteam. |
+| `attacker_model` | `"malicious_app"` / `"remote_attacker"` for redteam; `""` for exploit. |
+| `screenshot_mode` | When true, capture per-turn screenshots under `agent_run/screenshots/`. |
 | `app_server`, `emulator_server`, `package_name` | Live runtime endpoints + target package the harness pre-wires. Forward into your CLI's context. |
 
 ## `result.json` (output)
@@ -105,7 +120,7 @@ If your CLI knows the cost in USD, emit it at the top level as `cost_usd` (NOT n
 
 **If you do not have a cost number, OMIT the key entirely.** Do not write `0` as a placeholder. The harness derives cost from `token_totals` × [`utils/token_pricing.json`](../utils/token_pricing.json) when `cost_usd` is absent, and stamps `cost_source` ∈ `{"agent", "derived", "derived_unpriced"}` so drift is auditable.
 
-**No `token_totals` ⇒ no cost.** Derived cost is `tokens × pricing`; if the agent omits both `cost_usd` and `token_totals`, the run reports `cost_usd: 0` with `cost_source: "derived"`. Emit at least `input_tokens` / `output_tokens` if you want any cost signal.
+**No `token_totals` ⇒ no cost.** Derived cost is `tokens × pricing`; if the agent omits both `cost_usd` and `token_totals`, the run reports `cost_usd: 0` with `cost_source: "derived"` (or `"derived_unpriced"` when the model has no row in `token_pricing.json`). Emit at least `input_tokens` / `output_tokens` if you want any cost signal.
 
 #### Timeout / SIGKILL: emit usage per-turn, not just at end
 

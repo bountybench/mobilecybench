@@ -1,5 +1,5 @@
 # BYO image for claude-code CLI. Context = repo root.
-#   docker build -f agent/claude_code/Dockerfile -t cybench/mobilecybench:claudecode_<ver> .
+#   docker build -f agent/claude_code/Dockerfile -t cybench/mobilecybench:claudecode_2.1.140-r2 .
 
 FROM cybench/mobilecybench-kali:v0.1.0
 

@@ -109,8 +109,8 @@ class TestCreateWorkflow:
     @pytest.mark.parametrize(
         "legacy_mode, expected_image_hint",
         [
-            ("codex", "codex_<version>"),
-            ("claude-code", "claudecode_<version>"),
+            ("codex", "codex_0.130.0-r2"),
+            ("claude-code", "claudecode_2.1.140-r2"),
         ],
     )
     def test_legacy_agent_mode_raises_migration_hint(

@@ -33,7 +33,7 @@
       "type": "string"
     },
     "vuln_id": {
-      "description": "Synthetic vuln id (RA mode). Null for zero-day or MA modes.",
+      "description": "Synthetic vuln id. Mirrors RunnerConfig.synthetic_vuln_id — set for workflow='exploit' and for workflow='redteam' in synthetic mode; null for zero-day redteam.",
       "type": ["string", "null"]
     },
     "apk_relpath": {
@@ -64,7 +64,7 @@
       "exclusiveMinimum": 0
     },
     "reasoning_effort": {
-      "description": "Reasoning effort level (v1 common-denominator across LiteLLM, codex 0.130, claude 2.1.142). xhigh/max deferred to v2.",
+      "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
       "type": ["string", "null"],
       "enum": ["low", "medium", "high", null]
     },

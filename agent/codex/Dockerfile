@@ -1,5 +1,5 @@
 # BYO image for codex CLI. Context = repo root.
-#   docker build -f agent/codex/Dockerfile -t cybench/mobilecybench:codex_<ver> .
+#   docker build -f agent/codex/Dockerfile -t cybench/mobilecybench:codex_0.130.0-r2 .
 
 FROM cybench/mobilecybench-kali:v0.1.0
 
