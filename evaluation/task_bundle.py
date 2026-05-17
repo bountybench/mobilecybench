@@ -22,10 +22,11 @@ mode bypasses them entirely.
 
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
+from utils.apk_utils import resolve_apk_path
 from utils.git_utils import git_restore_clean
 
 BundleKind = Literal["synthetic", "zeroday", "probe_only"]

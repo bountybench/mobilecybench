@@ -21,13 +21,87 @@ _RELEASE_URL_RE = re.compile(
 )
 
 
-def get_download_url(app_name: str, project_root: Path) -> Optional[str]:
-    """Read download_link from an app's metadata.json. Returns None if missing."""
+def get_download_url(
+    app_name: str,
+    project_root: Path,
+    *,
+    obfuscated: bool = False,
+) -> Optional[str]:
+    """Read download_link (or download_link_obfuscated) from an app's metadata.json.
+
+    Returns None if missing. When ``obfuscated=True`` and the app doesn't have
+    a ``download_link_obfuscated`` field, falls back to the default
+    ``download_link`` and logs a warning — the caller's request for the
+    obfuscated variant cannot be honored.
+    """
     metadata_file = project_root / "apps" / app_name / "metadata.json"
     if not metadata_file.exists():
         return None
     with open(metadata_file) as f:
-        return json.load(f).get("download_link")
+        meta = json.load(f)
+    if obfuscated:
+        url = meta.get("download_link_obfuscated")
+        if url:
+            return url
+        logger.warning(
+            "%s: obfuscated APK requested but download_link_obfuscated not set in "
+            "metadata.json; falling back to default download_link. The two-commit "
+            "publish protocol (PR A flips apk_obfuscation, PR B adds the URL) may "
+            "be mid-flight, or this app is not on the toggle. See "
+            "documentation/APK_OBFUSCATION.md.",
+            app_name,
+        )
+    return meta.get("download_link")
+
+
+def resolve_apk_path(
+    *,
+    project_root: Path,
+    app_name: str,
+    runner_obfuscation: str,
+    app_metadata: dict,
+    vuln_id: Optional[str] = None,
+    _logged_decisions: dict = {},  # noqa: B006 — intentional process-wide cache
+) -> Path:
+    """Return the APK path under ``apps/<app>/apk/`` honoring the obfuscation
+    toggle, resolved against the app's metadata.
+
+    Returns a Path RELATIVE to ``apps/<app>/`` (matching the existing call-site
+    convention in workflows/exploit.py and workflows/redteam.py). Callers
+    typically prefix with ``self.app_dir`` to get an absolute path.
+
+    Path layout (mirrors ``build_apk.sh`` output paths):
+      off, no vuln:  Path("apk") / "<app>.apk"
+      off, vuln_id:  Path("apk") / "<vuln_id>" / "<app>.apk"
+      on,  no vuln:  Path("apk") / "obfuscated" / "<app>.apk"
+      on,  vuln_id:  Path("apk") / "obfuscated" / "<vuln_id>" / "<app>.apk"
+
+    The first call per (app, decision) emits the resolver's log message at
+    its specified level; subsequent calls in the same process are silent to
+    avoid log spam from repeated path resolutions during a single experiment.
+    """
+    from utils.obfuscation_resolver import resolve_obfuscation
+
+    decision = resolve_obfuscation(
+        runner_obfuscation,
+        app_metadata.get("apk_obfuscation"),
+    )
+    cache_key = (app_name, decision.effective, decision.log_message)
+    if cache_key not in _logged_decisions:
+        log_fn = getattr(logger, decision.log_level)
+        log_fn("%s: %s", app_name, decision.log_message)
+        _logged_decisions[cache_key] = True
+
+    parts = [Path("apk")]
+    if decision.effective == "on":
+        parts.append(Path("obfuscated"))
+    if vuln_id:
+        parts.append(Path(vuln_id))
+    parts.append(Path(f"{app_name}.apk"))
+    out = parts[0]
+    for p in parts[1:]:
+        out = out / p
+    return out
 
 
 def download_apk(

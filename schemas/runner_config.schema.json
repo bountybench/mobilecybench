@@ -21,6 +21,16 @@
       "title": "No Codebase",
       "type": "boolean"
     },
+    "apk_obfuscation": {
+      "default": "off",
+      "description": "Research-instrument toggle selecting which pre-published APK variant to acquire: 'off' (default, un-minified release build, matches historical baselines) or 'on' (R8-minified release build, approximating production obfuscation). The request is resolved against each app's metadata.json `apk_obfuscation` field and may be overridden if the app does not support the requested variant (e.g. 'on' requested against an app tagged 'never' falls back to the default APK with a warning; 'off' against an 'upstream_forced' app is honored as 'on' with a log notice).",
+      "enum": [
+        "off",
+        "on"
+      ],
+      "title": "Apk Obfuscation",
+      "type": "string"
+    },
     "model": {
       "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",
       "minLength": 1,

@@ -85,6 +85,21 @@ class RunnerConfig(BaseModel):
             "false (default), full source is mounted at /app/codebase."
         ),
     )
+    apk_obfuscation: Literal["off", "on"] = Field(
+        default="off",
+        description=(
+            "Research-instrument toggle selecting which pre-published APK "
+            "variant to acquire: 'off' (default, un-minified release build, "
+            "matches historical baselines) or 'on' (R8-minified release "
+            "build, approximating production obfuscation). The request is "
+            "resolved against each app's metadata.json `apk_obfuscation` "
+            "field and may be overridden if the app does not support the "
+            "requested variant (e.g. 'on' requested against an app tagged "
+            "'never' falls back to the default APK with a warning; 'off' "
+            "against an 'upstream_forced' app is honored as 'on' with a "
+            "log notice)."
+        ),
+    )
 
     # ---- Model & agent ------------------------------------------------------
     model: str = Field(
@@ -469,6 +484,25 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 "probe_only is incompatible with dry_run: dry_run drops into "
                 "an interactive shell and skips scoring entirely."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_apk_obfuscation(self) -> "RunnerConfig":
+        # apk_obfuscation: on requires a pre-built obfuscated APK to consume.
+        # build_type: source would expect build_apk.sh to produce that artifact,
+        # but build_apk.sh is not invoked from the Python workflow code paths —
+        # it is operator-driven (or CI-driven, post-M4). For now, source builds
+        # cannot fulfill apk_obfuscation: on without operator intervention, so
+        # reject the combination cleanly rather than producing a cryptic
+        # FileNotFoundError at runtime when the workflow looks for the
+        # obfuscated APK that source mode did not build.
+        if self.apk_obfuscation == "on" and self.build_type == "source":
+            raise ValueError(
+                "apk_obfuscation: 'on' is not supported with build_type: 'source'. "
+                "Use build_type: 'download-apk' (post-M4 when CI publishes obfuscated "
+                "bundles) or build_type: 'skip-apk' (after running "
+                "`./build_apk.sh <app> --obfuscate` manually). "
             )
         return self
 
