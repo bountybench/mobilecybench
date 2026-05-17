@@ -22,6 +22,28 @@ from typing import Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from agent.custom.model_providers.factory import MODEL_REGISTRY
+from agent.custom.model_providers.litellm_provider import lookup_rule
+
+
+# Image-tag prefix → provider tags the CLI in that image can call.
+# Provider tags match ProviderRule.provider in
+# agent/custom/model_providers/litellm_provider.py. Unknown tags skip the
+# check; lab/BYO images are unconstrained per BRING_YOUR_OWN_AGENT.md.
+_CLI_IMAGE_COMPAT: dict[str, set[str]] = {
+    "claudecode": {"anthropic"},
+    "codex": {"openai"},
+}
+
+
+def _cli_family(agent_image: str) -> Optional[str]:
+    """Return the CLI tag prefix when ``agent_image`` is a known reference build."""
+    tag = agent_image.rsplit(":", 1)[-1] if ":" in agent_image else agent_image
+    for prefix in _CLI_IMAGE_COMPAT:
+        if tag.startswith(prefix + "_"):
+            return prefix
+    return None
+
 
 class RunnerConfig(BaseModel):
     """Configuration for a single ``runner.py`` invocation.
@@ -311,6 +333,47 @@ class RunnerConfig(BaseModel):
                 f"See documentation/BRING_YOUR_OWN_AGENT.md."
             )
         return data
+
+    @model_validator(mode="after")
+    def validate_model_registered_external(self) -> "RunnerConfig":
+        """For external mode, reject model ids that are not in SupportedModel.
+
+        Custom mode is gated at agent boot by factory.py:get_model_provider;
+        external mode otherwise passes the model id straight to the container
+        CLI, so a typo (``opus-4-7`` vs ``claude-opus-4-7``) wastes setup time
+        and API credit. allow_unregistered_models bypasses for exploration.
+        """
+        if self.agent_mode != "external" or self.allow_unregistered_models:
+            return self
+        if self.model not in MODEL_REGISTRY:
+            raise ValueError(
+                f"Unknown model {self.model!r}. Supported: {sorted(MODEL_REGISTRY)}. "
+                f"Add to SupportedModel + utils/token_pricing.json, or set "
+                f"allow_unregistered_models=true. See documentation/ADDING_MODELS.md."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_image_model_compat(self) -> "RunnerConfig":
+        """Reject obvious image↔model mismatches for external-mode reference
+        CLIs. claudecode_* images only call Anthropic; codex_* only OpenAI.
+        Unknown image tags (lab/BYO) skip; they declare their own contract
+        per BRING_YOUR_OWN_AGENT.md.
+        """
+        if self.agent_mode != "external":
+            return self
+        cli = _cli_family(self.agent_image)
+        if cli is None:
+            return self
+        allowed = _CLI_IMAGE_COMPAT[cli]
+        rule = lookup_rule(self.model)
+        if rule.provider not in allowed:
+            raise ValueError(
+                f"agent_image '{self.agent_image}' uses the {cli} CLI which "
+                f"only supports {sorted(allowed)} models; got model={self.model!r} "
+                f"(provider={rule.provider})"
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_attacker_model(self) -> "RunnerConfig":
