@@ -14,5 +14,6 @@
     "owncloud_mariadb",
     "owncloud_server",
     "owncloud_redis"
-  ]
+  ],
+  "apk_obfuscation": "default"
 }
