@@ -228,7 +228,7 @@ manifest = {
         "device_id": os.environ["AGENT_DEVICE_ID"],
         "topic_base": topic_base(os.environ["AGENT_USERNAME"], os.environ["AGENT_DEVICE_ID"]),
     },
-    "victim": {
+    "monitored": {
         "username": os.environ["VICTIM_USERNAME"],
         "device_id": os.environ["VICTIM_DEVICE_ID"],
         "topic_base": topic_base(os.environ["VICTIM_USERNAME"], os.environ["VICTIM_DEVICE_ID"]),
@@ -276,7 +276,7 @@ import json
 import os
 
 print(json.dumps({
-    "victim": {
+    "monitored": {
         "username": os.environ["VICTIM_USERNAME"],
         "password": os.environ["VICTIM_PASSWORD"],
         "device_id": os.environ["VICTIM_DEVICE_ID"],
