@@ -37,8 +37,8 @@ The agent runs on a single Docker network — `agent_net`, declared `internal: t
    ║                                              │           :3128       ║
    ║                                   ┌──────────┴─────────────┐         ║
    ║                                   │         agent          │         ║
-   ║                                   │ (custom / claude-code  │         ║
-   ║                                   │  / codex)              │         ║
+   ║                                   │ (custom or external    │         ║
+   ║                                   │  BYO image)            │         ║
    ║                                   └──┬─────────────────┬───┘         ║
    ║                                      │ ADB             │ HTTPS       ║
    ║                                      │ tcp:adb-proxy   │ direct      ║
@@ -117,7 +117,7 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 - No `extra_hosts` mapping, no host-gateway alias, no default route off `agent_net`.
 - App codebase mounted at `/app/codebase` (default), or APK only at `/app/apk` when `no_codebase=true`.
 - Tools execute via `ToolRuntime`. Restarted before evaluation begins (only `agent_exploit` dir is preserved).
-- Two dispatch paths: `agent_mode: "custom"` runs the in-process Python loop; `agent_mode: "external"` delivers a `task.json` to a BYO Docker image satisfying the contract in [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md). Auth tokens (listed in `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`) are forwarded uniformly to both.
+- Two dispatch paths: `agent_mode: "custom"` runs the in-process Python loop; `agent_mode: "external"` delivers a `task.json` to a BYO Docker image satisfying the contract in [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md). The external path is implemented in `harness/byo_agent.py:run_agent` (host-side SIGTERM/SIGKILL + artifact extraction) plus `agent/in_container/runner.py` (in-container entrypoint that streams events through a `BaseEventParser` subclass and writes `agent_run/result.json` + `conversation.jsonl` per turn). Auth tokens (listed in `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`) are forwarded uniformly to both.
 
 
 ## Agent Environment
@@ -205,7 +205,7 @@ GKE Node (n2d-standard-8, nested virt enabled)
 ```
 
 Key infrastructure components:
-- **Orchestrator images**: `Dockerfile.orchestrator` (no emulator, ~5-6 GB) + separate `Dockerfile.emulator` (~8-10 GB)
+- **Images**: `orchestrator/Dockerfile.orchestrator` (~5-6 GB, no emulator) + `orchestrator/Dockerfile.emulator` (~8-10 GB) + `infra/gke/Dockerfile.runner` (the per-job image that runs `runner.py`).
 - **Emulator modes**: `container` (emulator as a separate Docker container inside DinD) or `native` (emulator as a process inside the orchestrator)
 - **Job generation**: `infra/gke/generate_jobs.py` creates Kubernetes Job manifests for experiment matrices (apps x models x vulnerabilities)
 - **Results collection**: Experiment results are uploaded to GCS and aggregated via `infra/gke/collect_results.py`
@@ -221,12 +221,20 @@ The `LoggerManager` (`utils/logger.py`) is a lazy singleton that owns the experi
 - **Late-Binding Config**: The logger is initialized with `RunnerConfig` early in the `runner.py` execution, allowing configuration-driven log levels and UI filtering.
 - **Thread Safety**: Uses log-record cloning to prevent side-effects during concurrent logging.
 
-### Data Modeling (Pydantic)
-All high-signal data objects use Pydantic `BaseModel` for strict typing and consistent serialization:
-- `RunnerConfig`: Orchestrates the run parameters.
+### Data Modeling (Pydantic + JSON Schema)
+High-signal data objects use Pydantic `BaseModel` for strict typing; the BYO contract uses JSON Schema for cross-language interop:
+- `RunnerConfig`: Orchestrates the run parameters; emitted as `schemas/runner_config.schema.json` for editor autocomplete.
 - `ProviderResponse`: Standardizes LLM outputs across OpenAI and LiteLLM.
 - `TokenUsage`: Tracks cost and tokens per request.
-- `CodexCLIResult`: Captures multi-turn interaction data.
+- `schemas/result.schema.json` / `schemas/task.schema.json`: The BYO-contract I/O — what an external agent reads from `/app/task.json` and writes to `/app/agent_run/result.json`.
+
+### Cost provenance
+Every run records `cost_source ∈ {agent, derived, derived_unpriced}` alongside `cost_usd` in `run_summary.metrics`:
+- `agent`: the agent's CLI reported a number (claude-code emits `total_cost_usd`).
+- `derived`: the harness computed cost from `token_totals × utils/token_pricing.json` (codex always lands here; claude-code on timeout).
+- `derived_unpriced`: the model has no pricing row; `cost_usd` is `0` with an explicit "we don't know" marker.
+
+Resolution lives in `utils/run_artifacts.py:_resolve_cost` and `utils/token_costs.py:derive_cost_from_totals`. Agent-reported values win whenever present (including a legitimate `$0`).
 
 ### Forensic Artifacts
 Beyond standard text logs, the system captures:
