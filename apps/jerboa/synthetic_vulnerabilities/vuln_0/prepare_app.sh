@@ -7,7 +7,7 @@ source "$ROOT_DIR/utils/android.sh"
 source "$SCRIPT_DIR/../../helpers/victim_state.sh"
 
 SECRETS_FILE="$SCRIPT_DIR/../../secrets.json"
-EXPECTED_SECRET_FILE="$SCRIPT_DIR/.expected_secret"
+EXPECTED_SECRET_FILE="$SCRIPT_DIR/.expected_marker"
 
 log_info "Preparing Jerboa synthetic vuln-0 task state"
 rm -f "$EXPECTED_SECRET_FILE"
