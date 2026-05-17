@@ -18,7 +18,7 @@ Your image ships an executable `/run-agent.sh`. The harness creates the containe
 - `/app/agent_run/agent.log` — captured via `exec >>$RUN_DIR/agent.log 2>&1` in the script.
 - `/app/agent_exploit/exploit.sh` (RA workflow) **or** `/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk` (MA workflow) — the work-product probes score.
 
-If wall-clock time runs out, the harness sends `SIGKILL` to the container; `result.json` may be absent (treated as `status: "timeout"`).
+**Wall-clock termination.** When `agent_wallclock_seconds` elapses, the harness sends `pkill -TERM` targeting an in-container Python runner (matches `agent\..*\.run_in_container`), waits 10s for graceful flush, then `SIGKILL`s the container. If your image is the reference shape (Python runner under `agent/in_container/runner.py`), SIGTERM hits the runner and its handler writes `result.json` with `status: "timeout"` plus the per-turn state already on disk. If your image is a plain bash bootstrap, the bash script does NOT receive SIGTERM — only the in-container Python catches it. Plan accordingly: either run the reference Python runner, or flush per-turn atomically and treat SIGKILL as unrecoverable.
 
 ## Files to ship
 
@@ -38,6 +38,11 @@ ENTRYPOINT []
 ```
 
 Pin the kali base by digest (`FROM cybench/mobilecybench-kali@sha256:...`) if you want reproducibility.
+
+**Two image constraints the contract relies on:**
+
+1. **Empty `ENTRYPOINT`.** The harness invokes `/run-agent.sh` (and the exploit replay container invokes `bash exploit.sh`) directly. A non-empty `ENTRYPOINT` would hijack both.
+2. **Replay tooling.** Your `agent_image` is also used by the host as the **exploit replay image** — after the agent writes `exploit.sh`, the harness re-runs that script in a fresh container of the same image (`utils/run_exploit_container.sh`). The kali base bundles bash, curl, jq, adb, gradle/JDK; if you switch bases, keep these or replay will crash.
 
 ### `/run-agent.sh`
 
@@ -68,30 +73,31 @@ else
 fi
 ```
 
-No `trap` / no `setsid` / no graceful-shutdown logic. Docker doesn't propagate signals from pid 1 to exec'd children, so in-script SIGTERM grace is unreliable. Flush per-turn state atomically and assume the harness can kill you at any moment.
+No `trap` / no `setsid` / no graceful-shutdown logic in this example. The harness's wall-clock SIGTERM targets the in-container Python runner by argv pattern, so a plain bash script like this one never receives it. Flush per-turn state atomically and treat the eventual SIGKILL as unrecoverable. (If you want graceful shutdown, run the reference Python runner — see "How the reference images plug in" below.)
 
 ## `task.json` (input)
 
-Schema: [`schemas/task.schema.json`](../schemas/task.schema.json). Notable fields:
+Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `vuln_id`, `attacker_model`, `reasoning_effort`, `screenshot_mode`.
 
 | Field | Notes |
 | --- | --- |
-| `run_id` | Stable identifier (`logs/experiment_<uuid>`). Embed in any conversation events you emit. |
+| `run_id` | Bare uuid (e.g. `03e2c121-cb4d-481e-b668-da0dee5d84cf`). Embed in conversation events. |
 | `workflow` | `"exploit"` or `"redteam"`. |
-| `prompt` | Fully assembled workflow prompt — relay to your CLI / API verbatim. Test credentials are embedded here when relevant. |
+| `prompt` | Fully assembled workflow prompt — relay to your CLI / API verbatim. Test credentials and any `additional_system_prompt` from operator config are pre-merged into this string by the harness. |
 | `model` | Defender model id. Forward to your CLI. |
-| `agent_wallclock_seconds` | Harness-side SIGKILL deadline; the harness owns it, but your agent can also use it for internal pacing. |
+| `agent_wallclock_seconds` | Harness-side SIGKILL deadline (see "Wall-clock termination" above); the agent can also use it for internal pacing. |
 | `reasoning_effort` | `"low"` / `"medium"` / `"high"` / null. v1 common-denominator. |
 | `no_codebase` | When true, `/app/apk/` is mounted (not `/app/codebase/`). |
 | `vuln_id` | Synthetic vuln id when `workflow="exploit"` + RA mode; else null. |
+| `app_server`, `emulator_server`, `package_name` | Live runtime endpoints + target package the harness pre-wires. Forward into your CLI's context. |
 
 ## `result.json` (output)
 
 Schema: [`schemas/result.schema.json`](../schemas/result.schema.json). Status enum: `completed | timeout | error | dry_run | unknown`.
 
-**Required:** `status`. That's it. Every other field is optional with a documented runner-side fallback (`turns_taken` defaults to row count in `conversation.jsonl`; `model` falls back to `task.model`; etc.).
+**Required:** `status`. That's it. Every other field is optional. The harness coerces missing typed fields to safe defaults in `utils/run_artifacts.py:normalize_agent_result` (`turns_taken=0`, `model=""`, `final_message=""`, `tool_call_count=0`, `unique_tools=[]`, `token_totals={}`, `exit_code=0`, `error_traceback=""`); unknown fields pass through.
 
-**Optional fields the harness reads:** `cost_usd`, `model`, `final_message`, `exit_code`, `tool_call_count`, `unique_tools`, `token_totals` (open object — see below), `session_id`, `stop_reason`, `timing` (`{wall_ms, api_ms, ttft_ms}`), `error_traceback`. Unknown fields pass through.
+**Optional fields the harness reads:** `cost_usd`, `model`, `final_message`, `exit_code`, `tool_call_count`, `unique_tools`, `token_totals` (open object — see below), `session_id`, `stop_reason`, `timing` (`{wall_ms, api_ms, ttft_ms}`), `error_traceback`.
 
 ### Cost reporting
 
@@ -142,15 +148,15 @@ exec python -m agent.codex.run_in_container "$TASK"
 
 `agent/{codex,claude_code}/run_in_container.py` does the CLI-specific work: builds the argv, streams events through a `BaseEventParser` subclass (`CodexEventParser` / `ClaudeCodeEventParser`), and lets the shared runner write `conversation.jsonl` + `result.json`.
 
-The parser layer in `agent/in_container/event_parser.py` owns line buffering, turn flushing, conversation-row formatting, and result-summary shaping. To add a third BYO CLI you write a single subclass overriding `_handle_event` (a switch on your CLI's event types) — typically ~100 LOC. Use codex + claude-code as worked examples.
+The parser layer in `agent/in_container/event_parser.py` (`BaseEventParser`) owns line buffering, turn flushing, conversation-row formatting, result-summary shaping, and per-turn token accumulation. To add a third BYO CLI you write a single subclass overriding `_handle_event` (a switch on your CLI's event types) — codex is ~140 LOC, claude-code is ~190 LOC. Both are worked examples.
 
-**Live-tailing logs.** The runner writes incrementally — every turn appends one line to `conversation.jsonl` and snapshots `result.json` (`status="unknown"` during the run, finalized at clean exit). On a wall-clock SIGKILL, the per-turn writes survive. Note: these files are inside the container, not on the host. To watch live during a run:
+**Live-tailing logs.** The reference runner writes incrementally — every turn appends one line to `conversation.jsonl` and snapshots `result.json` (`status="unknown"` during the run, finalized at clean exit). On a wall-clock SIGKILL, the per-turn writes survive.
+
+**These files live inside the container until the container exits.** The harness pulls `agent_run/`, `agent_exploit/`, and `agent_output/` to the host's `logs/experiment_<uuid>/` only in its `finally` block (`harness/byo_agent._pull_artifacts`). For real-time visibility during a run, exec into the container:
 
 ```bash
 docker exec kali-container tail -f /app/agent_run/conversation.jsonl
 ```
-
-The harness pulls them to the host's `logs/experiment_<uuid>/agent_run/` when the container exits.
 
 ## Operator config
 
