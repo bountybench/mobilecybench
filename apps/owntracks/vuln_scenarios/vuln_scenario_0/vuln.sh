@@ -13,7 +13,7 @@ cat > "$SCENARIO_DIR/fake_agent_log.log" <<'EOF'
 # probes that read protected device state and the broker monitor log
 EOF
 
-RUNTIME_STATE_PATH="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mobilecybench-owntracks-runtime}/runtime_state.json"
+RUNTIME_STATE_PATH="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/owntracks-runtime}/runtime_state.json"
 [[ -f "$RUNTIME_STATE_PATH" ]] || { echo "missing runtime state: $RUNTIME_STATE_PATH" >&2; exit 2; }
 
 # Load runtime fields. Use a here-doc + while-read loop instead of mapfile so

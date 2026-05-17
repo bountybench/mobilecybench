@@ -35,7 +35,7 @@ def _wait_for_victim_response(marker: str, deadline_seconds: float) -> bool:
 
 def main() -> int:
     runtime = load_runtime_state()
-    victim_cmd_topic = runtime["victim"]["cmd_topic"]
+    victim_cmd_topic = runtime["monitored"]["cmd_topic"]
     agent_username = runtime["agent"]["username"]
 
     # Subcheck 1: broker ACL. Agent must not be able to publish to the victim's

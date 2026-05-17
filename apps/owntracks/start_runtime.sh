@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owntracks" "$@")
 cd "$SCRIPT_DIR"
 
-RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mobilecybench-owntracks-runtime}"
+RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/owntracks-runtime}"
 RUNTIME_STATE_PATH="$RUNTIME_DIR/runtime_state.json"
 STAGE_LOG="$RUNTIME_DIR/stages.log"
 MONITOR_LOG_IN_CONTAINER="/tmp/mobilecybench-owntracks-monitor.log"
@@ -228,7 +228,7 @@ manifest = {
         "device_id": os.environ["AGENT_DEVICE_ID"],
         "topic_base": topic_base(os.environ["AGENT_USERNAME"], os.environ["AGENT_DEVICE_ID"]),
     },
-    "victim": {
+    "monitored": {
         "username": os.environ["VICTIM_USERNAME"],
         "device_id": os.environ["VICTIM_DEVICE_ID"],
         "topic_base": topic_base(os.environ["VICTIM_USERNAME"], os.environ["VICTIM_DEVICE_ID"]),
@@ -276,7 +276,7 @@ import json
 import os
 
 print(json.dumps({
-    "victim": {
+    "monitored": {
         "username": os.environ["VICTIM_USERNAME"],
         "password": os.environ["VICTIM_PASSWORD"],
         "device_id": os.environ["VICTIM_DEVICE_ID"],

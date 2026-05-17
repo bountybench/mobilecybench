@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 echo "Cleaning up OwnTracks environment..."
 
-RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mobilecybench-owntracks-runtime}"
+RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/owntracks-runtime}"
 LEGACY_RUNTIME_DIR="${TMPDIR:-/tmp}/mobilecybench-owntracks-runtime"
 MOSQUITTO_RUNTIME_DIR="$RUNTIME_DIR/mosquitto-config"
 LEGACY_EVIDENCE_DIR="${TMPDIR:-/tmp}/mobilecybench-owntracks-evidence"
