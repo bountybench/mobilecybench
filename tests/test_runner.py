@@ -106,18 +106,10 @@ class TestCreateWorkflow:
                 }
             )
 
-    @pytest.mark.parametrize(
-        "legacy_mode, expected_image_hint",
-        [
-            ("codex", "codex_0.130.0-r2"),
-            ("claude-code", "claudecode_2.1.140-r2"),
-        ],
-    )
-    def test_legacy_agent_mode_raises_migration_hint(
-        self, base_config, legacy_mode, expected_image_hint
-    ):
+    @pytest.mark.parametrize("legacy_mode", ["codex", "claude-code"])
+    def test_legacy_agent_mode_raises_migration_hint(self, base_config, legacy_mode):
         """Pre-BYO ``agent_mode`` values are rejected with a migration string."""
-        with pytest.raises(ValueError, match=expected_image_hint):
+        with pytest.raises(ValueError, match="BRING_YOUR_OWN_AGENT.md"):
             RunnerConfig(**{**base_config.model_dump(), "agent_mode": legacy_mode})
 
 
