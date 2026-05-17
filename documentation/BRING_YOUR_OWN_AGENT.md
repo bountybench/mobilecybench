@@ -64,7 +64,7 @@ write_result() { jq -n "$@" > "$RUN_DIR/result.json.tmp" && mv "$RUN_DIR/result.
 
 # ... read $TASK, run your agent, write $EXPLOIT_DIR/exploit.sh ...
 
-if mythos-cli run --task-file "$TASK" --exploit-dir "$EXPLOIT_DIR"; then
+if your-agent-cli run --task-file "$TASK" --exploit-dir "$EXPLOIT_DIR"; then
   write_result '{status:"completed", turns_taken:1}'
 else
   rc=$?
