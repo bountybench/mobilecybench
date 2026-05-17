@@ -25,7 +25,6 @@ from pydantic import BaseModel, Field, model_validator
 from agent.custom.model_providers.factory import MODEL_REGISTRY
 from agent.custom.model_providers.litellm_provider import lookup_rule
 
-
 # Image-tag prefix → provider tags the CLI in that image can call.
 # Provider tags match ProviderRule.provider in
 # agent/custom/model_providers/litellm_provider.py. Unknown tags skip the
