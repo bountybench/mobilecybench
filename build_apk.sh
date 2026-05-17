@@ -231,8 +231,8 @@ parse_args_and_validate() {
     # --hardened-patch + --obfuscate produces a path collision: HARDENED_OUTPUT_PATH
     # is resolved unconditionally without an obfuscated/ subdir split, so an obfuscated
     # hardened build would overwrite the non-obfuscated hardened APK at the same path.
-    # The combination is undocumented in the obfuscation design spec — reject cleanly
-    # here until a follow-up milestone defines the right output-path layout for it.
+    # The output-path layout for this combination has not been defined yet — reject
+    # cleanly so we don't silently overwrite the wrong file.
     if [ "$OBFUSCATE" = "1" ] && [ -n "$HARDENED_PATCH_PATH" ]; then
         echo -e "${ERROR} --obfuscate and --hardened-patch cannot be combined (not yet supported)"
         return 1
@@ -575,16 +575,15 @@ build_and_package() {
         echo -e "${INFO} Obfuscation enabled:"
         echo -e "${INFO}   MCB_OBFUSCATE_INIT_SCRIPT=$MCB_OBFUSCATE_INIT_SCRIPT"
         echo -e "${INFO}   MCB_APP_DIR=$MCB_APP_DIR"
-        # Loud warning: env vars are exported but no per-app build.sh has been
-        # updated yet to read MCB_OBFUSCATE and pass --init-script to gradlew.
-        # Until M5 wallabag integration + per-app PRs land, the built APK at the
-        # obfuscated/ output path will NOT actually be obfuscated — it'll be
-        # identical to the non-obfuscated build. Surface this so operators don't
-        # silently produce wrong-state experiments.
+        # Loud warning: env vars are exported but if the per-app build.sh
+        # doesn't read MCB_OBFUSCATE and forward --init-script to gradlew,
+        # the built APK at the obfuscated/ output path will be identical
+        # to the non-obfuscated build (silent wrong-state experiment).
         if ! grep -q "MCB_OBFUSCATE" "$APP_DIR/build.sh" 2>/dev/null; then
-            echo -e "${WARNING} $APP_NAME/build.sh does not yet read MCB_OBFUSCATE."
-            echo -e "${WARNING} The produced APK will NOT be obfuscated until that"
-            echo -e "${WARNING} per-app integration lands (M5 wallabag + per-app PRs)."
+            echo -e "${WARNING} $APP_NAME/build.sh does not read MCB_OBFUSCATE."
+            echo -e "${WARNING} The produced APK at apk/obfuscated/ will NOT be R8-minified."
+            echo -e "${WARNING} Update $APP_NAME/build.sh to forward --init-script \"\$MCB_OBFUSCATE_INIT_SCRIPT\""
+            echo -e "${WARNING} to gradlew when MCB_OBFUSCATE=1. See apps/wallabag/build.sh for a reference."
         fi
     else
         unset MCB_OBFUSCATE

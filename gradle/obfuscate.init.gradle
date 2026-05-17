@@ -67,7 +67,17 @@ allprojects { project ->
                     // reflects that here. Leaving it alone preserves the
                     // app's tested ProGuard configuration. These apps should
                     // be tagged "upstream_forced" in metadata.json.
+                    //
+                    // Record the skip on the project so the afterEvaluate
+                    // proguardFiles-append block can also bail out. Without
+                    // this flag, by the time afterEvaluate runs we cannot
+                    // distinguish "upstream set minifyEnabled true" from "we
+                    // set it" (both leave the boolean reading true), and we
+                    // would silently inject proguard-android-optimize.txt on
+                    // top of apps that deliberately use proguard-android.txt
+                    // (e.g. termux's reproducible-builds config).
                     if (variantBuilder.minifyEnabled) {
+                        project.extensions.extraProperties.set('mcbObfuscateSkipped', true)
                         project.logger.lifecycle(
                             "[mcb-obfuscate] ${project.path}: release already has " +
                             "minifyEnabled true; leaving config alone (upstream-configured)"
@@ -116,6 +126,21 @@ allprojects { project ->
             }
             def release = android.buildTypes.findByName('release')
             if (release == null) {
+                return
+            }
+
+            // If beforeVariants decided to leave this project's config alone
+            // (upstream already had minifyEnabled true), do not touch
+            // proguardFiles either. Appending our defaults would silently
+            // change the rule set the app is tested against — for example
+            // injecting proguard-android-optimize.txt over a deliberate
+            // proguard-android.txt choice.
+            if (project.extensions.extraProperties.has('mcbObfuscateSkipped') &&
+                project.extensions.extraProperties.get('mcbObfuscateSkipped')) {
+                project.logger.lifecycle(
+                    "[mcb-obfuscate] ${project.path}: skipping proguardFiles " +
+                    "append (upstream-configured)"
+                )
                 return
             }
 

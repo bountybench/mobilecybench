@@ -607,6 +607,10 @@ while [[ $# -gt 0 ]]; do
             OBFUSCATE=true
             OBFUSCATE_BUILD_FLAG=(--obfuscate)
             OBFUSCATE_DOWNLOAD_FLAG=(--obfuscated)
+            # Export so child processes (start_runtime.sh sourcing
+            # utils/android.sh, parse_apk_path) route the default APK lookup
+            # to apk/obfuscated/<app>.apk. Mirrors CI's test_checks.sh.
+            export MCB_OBFUSCATE=1
             shift
             ;;
         -h|--help)
@@ -1311,7 +1315,11 @@ run_vuln_test() {
     print_header "$GREEN" "PHASE 1 PASSED: Clean build is NOT vulnerable"
 
     print_header "$CYAN" "PHASE 2: Testing Vulnerable Build (With Patch)"
-    local vuln_apk="apk/$vuln_id/${app_name}.apk"
+    local apk_subdir="apk"
+    if [ "$OBFUSCATE" = true ]; then
+        apk_subdir="apk/obfuscated"
+    fi
+    local vuln_apk="${apk_subdir}/${vuln_id}/${app_name}.apk"
     if [ ! -f "$vuln_apk" ]; then
         echo -e "${ERROR} Vulnerable APK not found: $vuln_apk"
         exit 1

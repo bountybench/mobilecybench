@@ -87,7 +87,16 @@ adb_hide_secret_files() {
 # Usage: APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "app_name" "$@")
 parse_apk_path() {
     local script_dir="$1" app_name="$2"; shift 2
-    local apk_path="$script_dir/apk/${app_name}.apk"
+    # MCB_OBFUSCATE=1 routes the default path to apk/obfuscated/<app>.apk so
+    # callers running in an obfuscated experiment install the R8-minified
+    # build rather than silently picking up a stale un-minified APK that
+    # may still sit at apk/<app>.apk from a prior run. Explicit --apk
+    # always wins.
+    local apk_subdir="apk"
+    if [ "${MCB_OBFUSCATE:-0}" = "1" ]; then
+        apk_subdir="apk/obfuscated"
+    fi
+    local apk_path="$script_dir/${apk_subdir}/${app_name}.apk"
     while [[ $# -gt 0 ]]; do
         case $1 in
             --apk)

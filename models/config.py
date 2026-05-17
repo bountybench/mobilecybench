@@ -490,19 +490,19 @@ class RunnerConfig(BaseModel):
     @model_validator(mode="after")
     def validate_apk_obfuscation(self) -> "RunnerConfig":
         # apk_obfuscation: on requires a pre-built obfuscated APK to consume.
-        # build_type: source would expect build_apk.sh to produce that artifact,
-        # but build_apk.sh is not invoked from the Python workflow code paths —
-        # it is operator-driven (or CI-driven, post-M4). For now, source builds
-        # cannot fulfill apk_obfuscation: on without operator intervention, so
-        # reject the combination cleanly rather than producing a cryptic
-        # FileNotFoundError at runtime when the workflow looks for the
-        # obfuscated APK that source mode did not build.
+        # build_type: source expects build_apk.sh to produce that artifact,
+        # but build_apk.sh is not invoked from the Python workflow code paths
+        # — it is operator-driven or CI-driven. Reject the combination
+        # cleanly rather than producing a cryptic FileNotFoundError at
+        # runtime when the workflow looks for the obfuscated APK that
+        # source mode did not build.
         if self.apk_obfuscation == "on" and self.build_type == "source":
             raise ValueError(
                 "apk_obfuscation: 'on' is not supported with build_type: 'source'. "
-                "Use build_type: 'download-apk' (post-M4 when CI publishes obfuscated "
-                "bundles) or build_type: 'skip-apk' (after running "
-                "`./build_apk.sh <app> --obfuscate` manually). "
+                "Use build_type: 'download-apk' (once an obfuscated bundle is "
+                "published for this app via publish_apk_bundle.sh) or "
+                "build_type: 'skip-apk' (after running "
+                "`./build_apk.sh <app> --obfuscate` manually)."
             )
         return self
 

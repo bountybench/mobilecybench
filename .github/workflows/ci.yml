@@ -922,6 +922,19 @@ jobs:
 
           echo "dir=\"${{ matrix.app_dir }}\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
+          echo "variant=\"${{ matrix.variant || 'default' }}\"" >> test_checks.sh
+          # When variant=obfuscated, export MCB_OBFUSCATE so parse_apk_path
+          # (utils/android.sh) routes start_runtime.sh's default APK lookup
+          # to apk/obfuscated/<app>.apk. apk_subdir mirrors the same choice
+          # for any code path that needs to build an explicit APK path
+          # (e.g. synthetic_vuln Phase 2's vulnerable APK).
+          cat <<'EOF' >> test_checks.sh
+          apk_subdir="apk"
+          if [ "$variant" = "obfuscated" ]; then
+            export MCB_OBFUSCATE=1
+            apk_subdir="apk/obfuscated"
+          fi
+          EOF
 
 
           case "${{ matrix.test_type }}" in
@@ -1441,7 +1454,7 @@ jobs:
           echo "Phase 2: Testing vulnerable build (SHOULD be vulnerable)"
           echo "============================================"
 
-          if ! task_validation_run_phase "Vulnerable build" "vulnerable" "apk/${vuln_id}/${app_name}.apk" "true" "synthetic_phase_apply_vulnerability_patch"; then
+          if ! task_validation_run_phase "Vulnerable build" "vulnerable" "${apk_subdir}/${vuln_id}/${app_name}.apk" "true" "synthetic_phase_apply_vulnerability_patch"; then
             echo "ERROR: Phase 2 (vulnerable build) failed"
             restore_codebase
             task_validation_cleanup_runtime
@@ -1551,12 +1564,19 @@ jobs:
 
       - name: Verify downloaded APK
         run: |
-          echo "Verifying APK downloaded for ${{ matrix.app_name }} (setup_mode: ${{ matrix.setup_mode }})"
-          ls -lhR "${{ matrix.app_dir }}/apk/"
+          echo "Verifying APK downloaded for ${{ matrix.app_name }} (setup_mode: ${{ matrix.setup_mode }}, variant: ${{ matrix.variant || 'default' }})"
+          # Obfuscated builds/downloads land under apk/obfuscated/ (see
+          # build_apk.sh output paths + download_apk.py routing). Validate
+          # the variant-specific dir, not bare apk/.
+          APK_DIR="${{ matrix.app_dir }}/apk"
+          if [ "${{ matrix.variant }}" = "obfuscated" ]; then
+            APK_DIR="$APK_DIR/obfuscated"
+          fi
+          ls -lhR "$APK_DIR/"
 
-          APK_COUNT=$(find "${{ matrix.app_dir }}/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK found after download"
+            echo "ERROR: No APK found after download in $APK_DIR/"
             exit 1
           fi
 
@@ -1564,7 +1584,7 @@ jobs:
 
           # For synthetic_vuln, also verify the vulnerable APK exists
           if [ "${{ matrix.test_type }}" = "synthetic_vuln" ] && [ -n "${{ matrix.vuln_id }}" ]; then
-            VULN_APK_DIR="${{ matrix.app_dir }}/apk/${{ matrix.vuln_id }}"
+            VULN_APK_DIR="$APK_DIR/${{ matrix.vuln_id }}"
             VULN_APK_COUNT=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
             if [ "$VULN_APK_COUNT" -eq 0 ]; then
               echo "ERROR: No vulnerable APK found in $VULN_APK_DIR/"

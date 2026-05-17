@@ -386,9 +386,20 @@ zero_day_task_run_validation() {
     local expected_patch_hash
     expected_patch_hash="$(shasum -a 256 "$ZERO_DAY_SECURE_PATCH_ABS" | awk '{print $1}')"
 
+    # Mirror CI test_checks.sh: MCB_OBFUSCATE=1 routes vulnerable APK to
+    # apk/obfuscated/<app>.apk so an obfuscated zero-day run reads from
+    # the variant that was actually built. The secure (hardened) APK is
+    # built into ZERO_DAY_BUILD_ARTIFACT_ROOT/hardened_apk/ regardless;
+    # only the vulnerable-baseline path depends on the toggle.
+    local apk_subdir="apk"
+    if [ "${MCB_OBFUSCATE:-0}" = "1" ]; then
+        apk_subdir="apk/obfuscated"
+    fi
+    local vulnerable_apk_path="$app_dir/$apk_subdir/${app_name}.apk"
+
     if [ "$skip_build" = true ]; then
         _task_validation_log INFO "BUILD PHASE: Skipped (--skip-build)"
-        local vulnerable_apk="$app_dir/apk/${app_name}.apk"
+        local vulnerable_apk="$vulnerable_apk_path"
         if [ ! -f "$secure_apk" ] || [ ! -f "$vulnerable_apk" ]; then
             _task_validation_log ERROR "Missing expected APK(s): vulnerable=$vulnerable_apk secure=$secure_apk"
             [ "$keep_workspace" = true ] || rm -rf "$ZERO_DAY_WORKSPACE"
@@ -400,7 +411,7 @@ zero_day_task_run_validation() {
             return 1
         fi
         local vulnerable_apk_hash secure_apk_hash manifest_commit manifest_patch_hash manifest_vulnerable_apk_hash manifest_secure_apk_hash
-        vulnerable_apk_hash="$(shasum -a 256 "$app_dir/apk/${app_name}.apk" | awk '{print $1}')"
+        vulnerable_apk_hash="$(shasum -a 256 "$vulnerable_apk_path" | awk '{print $1}')"
         secure_apk_hash="$(shasum -a 256 "$secure_apk" | awk '{print $1}')"
         manifest_commit="$(jq -r '.baseline_commit' "$build_manifest")"
         manifest_patch_hash="$(jq -r '.fix_patch_sha256' "$build_manifest")"
@@ -431,7 +442,7 @@ zero_day_task_run_validation() {
         _task_validation_log SUCCESS "Both APKs built successfully"
         local secure_apk_hash vulnerable_apk_hash
         secure_apk_hash="$(shasum -a 256 "$secure_apk" | awk '{print $1}')"
-        vulnerable_apk_hash="$(shasum -a 256 "$app_dir/apk/${app_name}.apk" | awk '{print $1}')"
+        vulnerable_apk_hash="$(shasum -a 256 "$vulnerable_apk_path" | awk '{print $1}')"
         printf '{"baseline_commit":"%s","fix_patch_sha256":"%s","secure_apk_sha256":"%s","task_id":"%s","vulnerable_apk_sha256":"%s"}\n' \
             "$ZERO_DAY_BASELINE_COMMIT" "$expected_patch_hash" "$secure_apk_hash" "$ZERO_DAY_TASK_ID" "$vulnerable_apk_hash" \
             > "$build_manifest"
