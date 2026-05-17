@@ -1,16 +1,4 @@
-"""Resolve the effective APK obfuscation state from runner_config + metadata.
-
-This is the implementation of the resolution table specified in
-``documentation/APK_OBFUSCATION.md`` (see the "Per-app metadata schema" and
-"Resolution table" sections). The helper combines the operator-supplied
-``runner_config.apk_obfuscation`` value with the per-app
-``metadata.apk_obfuscation`` value and returns both the effective state and a
-log message that explains how it was reached.
-
-Every override case (operator request and metadata disagree) is emitted at
-``info`` or ``warning`` level so that silent overrides cannot occur — silent
-overrides are a measurement bug per the design doc.
-"""
+"""Resolve effective APK obfuscation from runner_config + per-app metadata."""
 
 from dataclasses import dataclass
 from typing import Literal, get_args
@@ -24,14 +12,8 @@ _VALID_METADATA: tuple[str, ...] = ("never", "default", "force_on", "upstream_fo
 
 @dataclass(frozen=True)
 class ObfuscationDecision:
-    """The resolved effective obfuscation state and the reason for it.
-
-    ``log_message`` is suitable for direct emission at ``log_level`` (no
-    further formatting is required by the caller).
-    """
-
     effective: Literal["off", "on"]
-    log_level: Literal["debug", "info", "warning"]
+    log_level: Literal["info", "warning"]
     log_message: str
 
 
@@ -39,15 +21,7 @@ def resolve_obfuscation(
     requested: ObfuscationRequest,
     metadata_value: ObfuscationMetadata,
 ) -> ObfuscationDecision:
-    """Resolve the effective obfuscation state and the explaining log message.
-
-    See ``documentation/APK_OBFUSCATION.md`` "Resolution table" for the full
-    mapping. ``metadata_value`` of ``None`` is treated identically to
-    ``"never"`` per the design doc ("absent or 'never'").
-
-    Every override case (where the operator request and metadata disagree)
-    produces a non-empty ``log_message`` at ``warning`` or ``info`` level.
-    """
+    """``metadata_value=None`` is normalized to ``"never"``."""
     if requested not in _VALID_REQUESTS:
         raise ValueError(
             f"Invalid requested obfuscation value: {requested!r}. "
@@ -67,12 +41,12 @@ def resolve_obfuscation(
             if meta == "never":
                 return ObfuscationDecision(
                     effective="off",
-                    log_level="debug",
+                    log_level="info",
                     log_message="Obfuscation off (default)",
                 )
             return ObfuscationDecision(
                 effective="off",
-                log_level="debug",
+                log_level="info",
                 log_message=(
                     "Obfuscation off (app supports it but operator chose off)"
                 ),

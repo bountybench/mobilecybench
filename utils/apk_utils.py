@@ -44,11 +44,11 @@ def get_download_url(
         if url:
             return url
         logger.warning(
-            "%s: obfuscated APK requested but download_link_obfuscated not set in "
-            "metadata.json; falling back to default download_link. The two-commit "
-            "publish protocol (PR A flips apk_obfuscation, PR B adds the URL) may "
-            "be mid-flight, or this app is not on the toggle. See "
-            "documentation/APK_OBFUSCATION.md.",
+            "%s: obfuscated APK requested but download_link_obfuscated not set "
+            "in metadata.json; falling back to default download_link. The "
+            "two-commit publish protocol may be mid-flight (PR A flips "
+            "apk_obfuscation, PR B adds the URL), or this app is not on the "
+            "toggle.",
             app_name,
         )
     return meta.get("download_link")

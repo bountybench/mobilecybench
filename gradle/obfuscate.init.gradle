@@ -11,9 +11,6 @@
 // `--obfuscate` flag (sets MCB_OBFUSCATE=1 + MCB_OBFUSCATE_INIT_SCRIPT +
 // MCB_APP_DIR in the environment) and forwards `--init-script` to gradlew.
 //
-// Design doc (normative): documentation/APK_OBFUSCATION.md
-//   See section "Init script skeleton (normative)" — this file is the literal
-//   implementation of that skeleton. Reviewers: validate logic against the doc.
 //
 // Key invariants (DO NOT change without updating the doc):
 //   1. Detect-and-skip when the app already has `minifyEnabled true` upstream

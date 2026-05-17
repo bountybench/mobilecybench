@@ -105,6 +105,10 @@ def _run_build(project_root: Path, args: list[str], timeout: int) -> None:
 class SyntheticBundle:
     app_dir: Path
     vuln_id: str
+    # APK obfuscation toggle resolution context. Passed by resolve_bundle()
+    # from RunnerConfig + the app's metadata.json. 
+    runner_obfuscation: str = "off"
+    app_metadata: dict = field(default_factory=dict)
     kind: BundleKind = "synthetic"
 
     @property
@@ -123,12 +127,30 @@ class SyntheticBundle:
         return _read_attacker_model_from_metadata(self.task_dir / "metadata.json")
 
     def phase1_apk(self) -> Path:
-        """Vulnerable APK: built via --vuln synthetic_vulnerabilities/<vuln>."""
-        return self.app_dir / "apk" / self.vuln_id / f"{self.app_dir.name}.apk"
+        """Vulnerable APK: built via --vuln synthetic_vulnerabilities/<vuln>.
+
+        Path layout honors apk_obfuscation: see resolve_apk_path.
+        """
+        return self.app_dir / resolve_apk_path(
+            project_root=self.app_dir.parent.parent,
+            app_name=self.app_dir.name,
+            runner_obfuscation=self.runner_obfuscation,
+            app_metadata=self.app_metadata,
+            vuln_id=self.vuln_id,
+        )
 
     def phase2_apk(self) -> Path:
-        """Clean APK: the default build target."""
-        return self.app_dir / "apk" / f"{self.app_dir.name}.apk"
+        """Clean APK: the default build target.
+
+        Path layout honors apk_obfuscation: see resolve_apk_path.
+        """
+        return self.app_dir / resolve_apk_path(
+            project_root=self.app_dir.parent.parent,
+            app_name=self.app_dir.name,
+            runner_obfuscation=self.runner_obfuscation,
+            app_metadata=self.app_metadata,
+            vuln_id=None,
+        )
 
     def restore_codebase(self, codebase_dir: Path) -> None:
         """Reset codebase to a clean state (HEAD + no untracked files)."""
@@ -144,10 +166,15 @@ class SyntheticBundle:
         self.restore_codebase(codebase_dir)
 
     def build_apks(self, app_name: str, project_root: Path, *, timeout: int) -> None:
-        _run_build(project_root, [app_name], timeout)
+        # When obfuscation is requested, pass --obfuscate to build_apk.sh so
+        # build_apk.sh's M2 mechanism (gradle init script) takes effect and
+        # the output lands at apps/<app>/apk/obfuscated/[vuln_id/]<app>.apk —
+        # the same path resolve_apk_path() points phase1_apk()/phase2_apk() at.
+        obf_flag = ["--obfuscate"] if self.runner_obfuscation == "on" else []
+        _run_build(project_root, [app_name, *obf_flag], timeout)
         _run_build(
             project_root,
-            [app_name, "--vuln", f"synthetic_vulnerabilities/{self.vuln_id}"],
+            [app_name, "--vuln", f"synthetic_vulnerabilities/{self.vuln_id}", *obf_flag],
             timeout,
         )
 
@@ -162,6 +189,9 @@ class ZerodayBundle:
     project_root: Path
     app_name: str
     task: str
+    # APK obfuscation toggle context
+    runner_obfuscation: str = "off"
+    app_metadata: dict = field(default_factory=dict)
     kind: BundleKind = "zeroday"
 
     @property
@@ -188,13 +218,26 @@ class ZerodayBundle:
         return self._report_dir / "artifacts" / "hardened_apk" / f"{self.app_name}.apk"
 
     def phase1_apk(self) -> Path:
-        """Vulnerable APK: the default build target (baseline is vulnerable)."""
-        return (
-            self.project_root / "apps" / self.app_name / "apk" / f"{self.app_name}.apk"
+        """Vulnerable APK: the default build target (baseline is vulnerable).
+
+        Path layout honors apk_obfuscation via resolve_apk_path.
+        """
+        app_dir = self.project_root / "apps" / self.app_name
+        return app_dir / resolve_apk_path(
+            project_root=self.project_root,
+            app_name=self.app_name,
+            runner_obfuscation=self.runner_obfuscation,
+            app_metadata=self.app_metadata,
+            vuln_id=None,
         )
 
     def phase2_apk(self) -> Path:
-        """Patched APK: prebuilt and cached under artifacts/."""
+        """Patched APK: prebuilt and cached under artifacts/.
+
+        Hardened APK path is fixed by the report layout; build_apk.sh's
+        validator rejects --obfuscate + --hardened-patch as unsupported, so
+        the toggle does not split phase 2.
+        """
         return self._hardened_apk
 
     def restore_codebase(self, codebase_dir: Path) -> None:
@@ -210,7 +253,10 @@ class ZerodayBundle:
         _git_apply(codebase_dir, self.patch)
 
     def build_apks(self, app_name: str, project_root: Path, *, timeout: int) -> None:
-        _run_build(project_root, [app_name], timeout)
+        # Phase 1 (vulnerable baseline) honors --obfuscate. Phase 2 (hardened)
+        # cannot — build_apk.sh's validator rejects --obfuscate + --hardened-patch.
+        obf_flag = ["--obfuscate"] if self.runner_obfuscation == "on" else []
+        _run_build(project_root, [app_name, *obf_flag], timeout)
         _run_build(
             project_root,
             [app_name, "--hardened-patch", str(self.patch)],
@@ -242,6 +288,9 @@ class ProbeOnlyBundle:
 
     app_dir: Path
     _attacker_model: str
+    # APK obfuscation toggle context.
+    runner_obfuscation: str = "off"
+    app_metadata: dict = field(default_factory=dict)
     kind: BundleKind = "probe_only"
 
     @property
@@ -260,7 +309,14 @@ class ProbeOnlyBundle:
         return self._attacker_model
 
     def phase1_apk(self) -> Path:
-        return self.app_dir / "apk" / f"{self.app_dir.name}.apk"
+        """Baseline APK; path layout honors apk_obfuscation."""
+        return self.app_dir / resolve_apk_path(
+            project_root=self.app_dir.parent.parent,
+            app_name=self.app_dir.name,
+            runner_obfuscation=self.runner_obfuscation,
+            app_metadata=self.app_metadata,
+            vuln_id=None,
+        )
 
     def phase2_apk(self) -> Path:
         return self.phase1_apk()
@@ -279,10 +335,10 @@ class ProbeOnlyBundle:
         raise NotImplementedError("probe_only never enters phase 2")
 
     def build_apks(self, app_name: str, project_root: Path, *, timeout: int) -> None:
-        # Build only the clean baseline APK (apps/<app>/apk/<app>.apk).
-        # Probe-only never produces a vuln-variant or hardened APK because
-        # there is no patch.
-        _run_build(project_root, [app_name], timeout)
+        # Build only the clean baseline APK. Probe-only never produces a
+        # vuln-variant or hardened APK because there is no patch.
+        obf_flag = ["--obfuscate"] if self.runner_obfuscation == "on" else []
+        _run_build(project_root, [app_name, *obf_flag], timeout)
 
     def validate_build_artifacts(self, app_dir: Path) -> None:
         if not self.phase1_apk().exists():
@@ -330,6 +386,8 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
     task = getattr(config, "task", None)
     vuln_id = getattr(config, "synthetic_vuln_id", None)
     probe_only = getattr(config, "probe_only", False)
+    runner_obfuscation = getattr(config, "apk_obfuscation", "off")
+    app_metadata = _load_app_metadata(project_root, app_name)
 
     if probe_only:
         attacker_model = getattr(config, "attacker_model", None)
@@ -341,6 +399,8 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
         return ProbeOnlyBundle(
             app_dir=project_root / "apps" / app_name,
             _attacker_model=attacker_model,
+            runner_obfuscation=runner_obfuscation,
+            app_metadata=app_metadata,
         )
 
     if bool(task) == bool(vuln_id):
@@ -354,9 +414,25 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
             project_root=project_root,
             app_name=app_name,
             task=task,
+            runner_obfuscation=runner_obfuscation,
+            app_metadata=app_metadata,
         )
     assert vuln_id is not None
     return SyntheticBundle(
         app_dir=project_root / "apps" / app_name,
         vuln_id=vuln_id,
+        runner_obfuscation=runner_obfuscation,
+        app_metadata=app_metadata,
     )
+
+
+def _load_app_metadata(project_root: Path, app_name: str) -> dict:
+    """Load apps/<app>/metadata.json. Returns {} when missing/unreadable so
+    bundle construction stays robust in tests that don't touch real apps."""
+    metadata_path = project_root / "apps" / app_name / "metadata.json"
+    if not metadata_path.exists():
+        return {}
+    try:
+        return json.loads(metadata_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}

@@ -1,8 +1,4 @@
 """Tests for utils.obfuscation_resolver.
-
-Covers every row of the resolution table in
-``documentation/APK_OBFUSCATION.md`` plus argument validation and the
-``None == "never"`` normalization rule.
 """
 
 import pytest
@@ -16,21 +12,21 @@ _TABLE_CASES = [
         "off",
         None,
         "off",
-        "debug",
+        "info",
         "Obfuscation off (default)",
     ),
     (
         "off",
         "never",
         "off",
-        "debug",
+        "info",
         "Obfuscation off (default)",
     ),
     (
         "off",
         "default",
         "off",
-        "debug",
+        "info",
         "Obfuscation off (app supports it but operator chose off)",
     ),
     (

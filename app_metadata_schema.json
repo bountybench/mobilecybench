@@ -58,7 +58,7 @@
     "apk_obfuscation": {
       "type": "string",
       "enum": ["default", "force_on", "upstream_forced", "never"],
-      "description": "Opt-in posture for the APK obfuscation toggle. 'default': operator picks via runner_config (expected value for verified apps). 'force_on': always built obfuscated regardless of runner_config (deliberate project choice). 'upstream_forced': submodule's upstream already has minifyEnabled true, cannot be built un-obfuscated. 'never' (or field absent): obfuscation not supported for this app, only the default APK is published. See documentation/APK_OBFUSCATION.md for the resolution table that maps this against runner_config.apk_obfuscation."
+      "description": "Opt-in posture for the APK obfuscation toggle. 'default': operator picks via runner_config (expected value for verified apps). 'force_on': always built obfuscated regardless of runner_config (deliberate project choice). 'upstream_forced': submodule's upstream already has minifyEnabled true, cannot be built un-obfuscated. 'never' (or field absent): obfuscation not supported for this app, only the default APK is published."
     },
     "download_link_obfuscated": {
       "type": "string",
