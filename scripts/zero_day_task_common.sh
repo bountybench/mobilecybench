@@ -386,16 +386,10 @@ zero_day_task_run_validation() {
     local expected_patch_hash
     expected_patch_hash="$(shasum -a 256 "$ZERO_DAY_SECURE_PATCH_ABS" | awk '{print $1}')"
 
-    # Mirror CI test_checks.sh: MCB_OBFUSCATE=1 routes vulnerable APK to
-    # apk/obfuscated/<app>.apk so an obfuscated zero-day run reads from
-    # the variant that was actually built. The secure (hardened) APK is
-    # built into ZERO_DAY_BUILD_ARTIFACT_ROOT/hardened_apk/ regardless;
-    # only the vulnerable-baseline path depends on the toggle.
-    local apk_subdir="apk"
-    if [ "${MCB_OBFUSCATE:-0}" = "1" ]; then
-        apk_subdir="apk/obfuscated"
-    fi
-    local vulnerable_apk_path="$app_dir/$apk_subdir/${app_name}.apk"
+    # Route the vulnerable APK through the per-variant subdir. The secure
+    # (hardened) APK is built into ZERO_DAY_BUILD_ARTIFACT_ROOT/hardened_apk/
+    # regardless; only the vulnerable-baseline path depends on MCB_OBFUSCATE.
+    local vulnerable_apk_path="$app_dir/$(mcb_apk_subdir)/${app_name}.apk"
 
     if [ "$skip_build" = true ]; then
         _task_validation_log INFO "BUILD PHASE: Skipped (--skip-build)"

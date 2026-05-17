@@ -7,7 +7,9 @@ ObfuscationRequest = Literal["off", "on"]
 ObfuscationMetadata = Literal["never", "default", "force_on", "upstream_forced", None]
 
 _VALID_REQUESTS: tuple[str, ...] = get_args(ObfuscationRequest)
-_VALID_METADATA: tuple[str, ...] = ("never", "default", "force_on", "upstream_forced")
+_VALID_METADATA: tuple[str, ...] = tuple(
+    v for v in get_args(ObfuscationMetadata) if v is not None
+)
 
 
 @dataclass(frozen=True)
@@ -37,19 +39,17 @@ def resolve_obfuscation(
     meta = "never" if metadata_value is None else metadata_value
 
     if requested == "off":
-        if meta in ("never", "default"):
-            if meta == "never":
-                return ObfuscationDecision(
-                    effective="off",
-                    log_level="info",
-                    log_message="Obfuscation off (default)",
-                )
+        if meta == "never":
             return ObfuscationDecision(
                 effective="off",
                 log_level="info",
-                log_message=(
-                    "Obfuscation off (app supports it but operator chose off)"
-                ),
+                log_message="Obfuscation off (default)",
+            )
+        if meta == "default":
+            return ObfuscationDecision(
+                effective="off",
+                log_level="info",
+                log_message="Obfuscation off (app supports it but operator chose off)",
             )
         if meta == "force_on":
             return ObfuscationDecision(

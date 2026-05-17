@@ -15,6 +15,11 @@ from utils.command_executor import CommandExecutor
 logger = logging.getLogger("MobileCyBench.apk_utils")
 timeout_s = 600
 
+# Process-lifetime cache for resolve_apk_path's first-call-per-decision log
+# dedupe. Module-level (not a mutable default arg) so the scope is explicit
+# and there's no temptation to thread a per-call cache through internal APIs.
+_RESOLVE_APK_PATH_LOG_CACHE: dict = {}
+
 # Matches: https://github.com/<owner>/<repo>/releases/download/<tag>/<filename>
 _RELEASE_URL_RE = re.compile(
     r"https://github\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)"
@@ -56,12 +61,10 @@ def get_download_url(
 
 def resolve_apk_path(
     *,
-    project_root: Path,
     app_name: str,
     runner_obfuscation: str,
     app_metadata: dict,
     vuln_id: Optional[str] = None,
-    _logged_decisions: dict = {},  # noqa: B006 — intentional process-wide cache
 ) -> Path:
     """Return the APK path under ``apps/<app>/apk/`` honoring the obfuscation
     toggle, resolved against the app's metadata.
@@ -87,21 +90,17 @@ def resolve_apk_path(
         app_metadata.get("apk_obfuscation"),
     )
     cache_key = (app_name, decision.effective, decision.log_message)
-    if cache_key not in _logged_decisions:
+    if cache_key not in _RESOLVE_APK_PATH_LOG_CACHE:
         log_fn = getattr(logger, decision.log_level)
         log_fn("%s: %s", app_name, decision.log_message)
-        _logged_decisions[cache_key] = True
+        _RESOLVE_APK_PATH_LOG_CACHE[cache_key] = True
 
-    parts = [Path("apk")]
+    base = Path("apk")
     if decision.effective == "on":
-        parts.append(Path("obfuscated"))
+        base = base / "obfuscated"
     if vuln_id:
-        parts.append(Path(vuln_id))
-    parts.append(Path(f"{app_name}.apk"))
-    out = parts[0]
-    for p in parts[1:]:
-        out = out / p
-    return out
+        base = base / vuln_id
+    return base / f"{app_name}.apk"
 
 
 def download_apk(
@@ -241,15 +240,22 @@ def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> 
         )
 
 
-def check_releases(app_names: list[str], project_root: Path) -> dict[str, str]:
+def check_releases(
+    app_names: list[str],
+    project_root: Path,
+    *,
+    obfuscated: bool = False,
+) -> dict[str, str]:
     """Validate download_links exist on GitHub for the given apps.
 
     Returns a dict of {app_name: status} where status is 'ok', 'missing',
-    'no_link', or 'error: <message>'.
+    'no_link', or 'error: <message>'. When ``obfuscated=True``, validates
+    the ``download_link_obfuscated`` URL instead (falling back to
+    ``download_link`` with a warning, per ``get_download_url``).
     """
     results = {}
     for name in app_names:
-        url = get_download_url(name, project_root)
+        url = get_download_url(name, project_root, obfuscated=obfuscated)
         if not url:
             results[name] = "no_link"
             continue

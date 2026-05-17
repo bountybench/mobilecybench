@@ -16,13 +16,10 @@ import sys
 from pathlib import Path
 
 from utils.apk_utils import (
-    _RELEASE_URL_RE,
     check_releases,
     download_apk,
     get_download_url,
-    timeout_s,
 )
-from utils.command_executor import CommandExecutor
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -75,10 +72,7 @@ def main():
             if positional
             else sorted(d.name for d in apps_dir.iterdir() if d.is_dir())
         )
-        if obfuscated:
-            results = _check_releases_obfuscated(app_names, project_root)
-        else:
-            results = check_releases(app_names, project_root)
+        results = check_releases(app_names, project_root, obfuscated=obfuscated)
         for name, status in sorted(results.items()):
             print(f"  {status:<10} {name}")
         failures = {n: s for n, s in results.items() if s not in ("ok", "no_link")}
@@ -114,40 +108,6 @@ def main():
         force="--force" in flags,
         obfuscated=obfuscated,
     )
-
-
-def _check_releases_obfuscated(
-    app_names: list[str], project_root: Path
-) -> dict[str, str]:
-    """Validate download_link_obfuscated URLs exist on GitHub.
-
-    Mirrors ``check_releases`` but resolves URLs with ``obfuscated=True``.
-    Apps lacking ``download_link_obfuscated`` will fall back to
-    ``download_link`` inside ``get_download_url`` (with a logged warning).
-    """
-    results: dict[str, str] = {}
-    for name in app_names:
-        url = get_download_url(name, project_root, obfuscated=True)
-        if not url:
-            results[name] = "no_link"
-            continue
-        match = _RELEASE_URL_RE.match(url)
-        if not match:
-            results[name] = f"error: invalid URL {url}"
-            continue
-        owner, repo, tag, _ = match.groups()
-        try:
-            result = CommandExecutor().run(
-                f"gh release view {tag} --repo {owner}/{repo}",
-                capture_output=True,
-                timeout=timeout_s,
-            )
-            results[name] = "ok" if result.returncode == 0 else "missing"
-        except FileNotFoundError:
-            results[name] = "error: gh CLI not installed"
-        except Exception as e:  # noqa: BLE001
-            results[name] = f"error: {e}"
-    return results
 
 
 if __name__ == "__main__":

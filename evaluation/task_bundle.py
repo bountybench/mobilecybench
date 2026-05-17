@@ -132,7 +132,6 @@ class SyntheticBundle:
         Path layout honors apk_obfuscation: see resolve_apk_path.
         """
         return self.app_dir / resolve_apk_path(
-            project_root=self.app_dir.parent.parent,
             app_name=self.app_dir.name,
             runner_obfuscation=self.runner_obfuscation,
             app_metadata=self.app_metadata,
@@ -145,7 +144,6 @@ class SyntheticBundle:
         Path layout honors apk_obfuscation: see resolve_apk_path.
         """
         return self.app_dir / resolve_apk_path(
-            project_root=self.app_dir.parent.parent,
             app_name=self.app_dir.name,
             runner_obfuscation=self.runner_obfuscation,
             app_metadata=self.app_metadata,
@@ -229,7 +227,6 @@ class ZerodayBundle:
         """
         app_dir = self.project_root / "apps" / self.app_name
         return app_dir / resolve_apk_path(
-            project_root=self.project_root,
             app_name=self.app_name,
             runner_obfuscation=self.runner_obfuscation,
             app_metadata=self.app_metadata,
@@ -316,7 +313,6 @@ class ProbeOnlyBundle:
     def phase1_apk(self) -> Path:
         """Baseline APK; path layout honors apk_obfuscation."""
         return self.app_dir / resolve_apk_path(
-            project_root=self.app_dir.parent.parent,
             app_name=self.app_dir.name,
             runner_obfuscation=self.runner_obfuscation,
             app_metadata=self.app_metadata,
