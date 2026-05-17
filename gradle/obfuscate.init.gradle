@@ -1,0 +1,185 @@
+// gradle/obfuscate.init.gradle
+//
+// =============================================================================
+// SUMMARY
+// =============================================================================
+// Gradle init script injected at build time (via `gradlew --init-script <abs>`)
+// to enable R8 minification, resource shrinking, and the AGP-default ProGuard
+// rules on the `release` buildType of any Android *application* subproject in
+// the evaluated build, WITHOUT modifying the submodule's `build.gradle`. The
+// script is opt-in: it is only applied when build_apk.sh detects the
+// `--obfuscate` flag (sets MCB_OBFUSCATE=1 + MCB_OBFUSCATE_INIT_SCRIPT +
+// MCB_APP_DIR in the environment) and forwards `--init-script` to gradlew.
+//
+// Design doc (normative): documentation/APK_OBFUSCATION.md
+//   See section "Init script skeleton (normative)" — this file is the literal
+//   implementation of that skeleton. Reviewers: validate logic against the doc.
+//
+// Key invariants (DO NOT change without updating the doc):
+//   1. Detect-and-skip when the app already has `minifyEnabled true` upstream
+//      (e.g. moememos). Preserve the upstream-tested ProGuard configuration.
+//   2. APPEND to proguardFiles via getProguardFiles()+setProguardFiles(). The
+//      DSL helper `release.proguardFiles(...)` REPLACES the list and would
+//      silently drop the app's own `proguard-rules.pro`.
+//   3. Operate only on the `release` buildType. Debug builds stay un-minified
+//      so developer tooling continues to work.
+//   4. AGP-7.x and AGP-8.x compat for shrinkResources (the property moved
+//      from BuildType to the nested androidResources block in 8.x).
+//   5. Never throw fatally on missing optional inputs (MCB_APP_DIR unset,
+//      shrinkResources unsupported by ancient AGP, extra-keep.pro absent).
+//      Log lifecycle/warn notices so the operator can see what happened.
+// =============================================================================
+
+// `allprojects` so this fires for every subproject in a multi-module build.
+// Apps in this benchmark have varying layouts — AnkiDroid's `:AnkiDroid`,
+// Thunderbird's `:app-thunderbird`, OpenVPN's `:main`, plus simple flat
+// `:app` projects. Iterating allprojects + filtering by plugin id is the
+// only selector that catches all of them without per-app knowledge.
+allprojects { project ->
+    // `plugins.withId('com.android.application')` runs the closure only after
+    // the AGP application plugin is applied to this subproject. This filters
+    // out library subprojects (com.android.library), pure-Java/Kotlin
+    // subprojects, and the root project — none of which have an `android {}`
+    // block or a release buildType to mutate.
+    project.plugins.withId('com.android.application') {
+        // `afterEvaluate` defers our mutation until AFTER the app's own
+        // `build.gradle` has finished evaluating. This matters because:
+        //   - The app may declare its own `buildTypes { release { ... } }`
+        //     setting signingConfig, applicationIdSuffix, custom proguardFiles,
+        //     etc. We need to read the list AFTER those have been registered
+        //     so our append preserves them.
+        //   - The AGP `android` extension is fully realized only post-eval;
+        //     accessing buildTypes earlier can race with AGP setup.
+        // Registering afterEvaluate inside plugins.withId guarantees both
+        // the plugin is present AND the project body has run.
+        project.afterEvaluate {
+            def android = project.extensions.findByName('android')
+            if (android == null) {
+                // Belt-and-suspenders: plugins.withId should ensure this, but
+                // a misconfigured project could have removed the extension.
+                return
+            }
+            def release = android.buildTypes.findByName('release')
+            if (release == null) {
+                // Some apps rename or remove the conventional `release`
+                // buildType. We have no safe default in that case — skip
+                // rather than guess.
+                return
+            }
+
+            // -----------------------------------------------------------------
+            // Detect-and-skip: respect upstream-forced minification.
+            // -----------------------------------------------------------------
+            // If the app's own build.gradle already enabled minifyEnabled, the
+            // app authors have tested some specific ProGuard configuration.
+            // Overriding it (especially appending generic default rules) risks
+            // breaking reflection-heavy paths they've carefully kept. Leave
+            // their config alone and log loudly so the operator sees we
+            // detected the existing config. These apps should be tagged
+            // "upstream_forced" in metadata.json (see resolution table in doc).
+            if (release.minifyEnabled) {
+                project.logger.lifecycle(
+                    "[mcb-obfuscate] ${project.path}: release already has minifyEnabled true; " +
+                    "leaving config alone (upstream-configured)"
+                )
+                return
+            }
+
+            // -----------------------------------------------------------------
+            // Enable R8 minification (always, once we've decided to act).
+            // -----------------------------------------------------------------
+            release.minifyEnabled = true
+
+            // -----------------------------------------------------------------
+            // Enable resource shrinking — AGP-7.x vs AGP-8.x compat shim.
+            // -----------------------------------------------------------------
+            // The property moved across AGP majors:
+            //   AGP 7.x: `release.shrinkResources = true` (BuildType property)
+            //   AGP 8.x: `release.androidResources.shrinkResources = true`
+            //            (nested in the androidResources block)
+            // Probe for the setter via metaClass first (most reliable AGP-7
+            // signal), then fall back to the nested androidResources property
+            // (AGP-8 path). If neither path works (very old AGP, or AGP
+            // experimental variants), warn-and-continue: minify alone is
+            // still useful for measurement, and a hard failure here would
+            // block the entire build over a secondary feature.
+            try {
+                if (release.metaClass.respondsTo(release, 'setShrinkResources', boolean)) {
+                    release.shrinkResources = true
+                } else if (release.hasProperty('androidResources')) {
+                    release.androidResources.shrinkResources = true
+                }
+            } catch (Exception e) {
+                project.logger.warn(
+                    "[mcb-obfuscate] ${project.path}: could not set shrinkResources " +
+                    "(${e.message}); proceeding with minifyEnabled only"
+                )
+            }
+
+            // -----------------------------------------------------------------
+            // ProGuard files: APPEND, do not REPLACE.
+            // -----------------------------------------------------------------
+            // The DSL helper `release.proguardFiles(a, b, c)` is a SETTER that
+            // replaces the entire list. Using it here would silently drop any
+            // `proguard-rules.pro` the app already registered (Funkwhale and
+            // others patch their own rules in build.sh / build.gradle).
+            //
+            // The safe pattern is: read the current list via getProguardFiles(),
+            // build a new list by concatenation, write it back via setter.
+            // By afterEvaluate, the file collection is fully resolved, so
+            // coercing to a List is well-defined.
+            def existing = release.getProguardFiles() as List
+            def additions = [
+                // AGP-shipped default optimization rules. The contents of this
+                // file vary across AGP versions (see "Confounds" in the doc) —
+                // that's a known measurement caveat, not a bug here.
+                android.getDefaultProguardFile('proguard-android-optimize.txt'),
+            ]
+
+            // -----------------------------------------------------------------
+            // Optional per-app extra-keep.pro lookup.
+            // -----------------------------------------------------------------
+            // MCB_APP_DIR is set by build_apk.sh to the absolute path of the
+            // current app's directory (apps/<app>/). It points to repo-managed
+            // extra keep rules that DO NOT live inside the submodule — this is
+            // how we add Hilt/Room/Retrofit keep rules without mutating the
+            // submodule's working tree.
+            //
+            // If MCB_APP_DIR is unset (e.g. someone runs `gradlew
+            // --init-script` directly without going through build_apk.sh),
+            // skip the extra-keep lookup with a notice rather than failing.
+            // The build will still get minify + default rules.
+            def appRoot = System.getenv('MCB_APP_DIR')
+            if (!appRoot) {
+                project.logger.lifecycle(
+                    "[mcb-obfuscate] ${project.path}: MCB_APP_DIR not set; " +
+                    "skipping per-app extra-keep.pro lookup"
+                )
+            }
+            if (appRoot) {
+                def extra = new File(appRoot, 'obfuscation/extra-keep.pro')
+                if (extra.exists()) {
+                    additions << extra
+                    project.logger.lifecycle(
+                        "[mcb-obfuscate] ${project.path}: appending ${extra.absolutePath}"
+                    )
+                }
+                // Note: silently no-op when the file is absent. Most apps will
+                // not need extra keep rules; advertising every miss as a
+                // warning would create log noise on the common path.
+            }
+
+            // Write the merged list back via the setter (NOT the appender
+            // helper). See APPEND-not-REPLACE comment above.
+            release.setProguardFiles(existing + additions)
+
+            // Final lifecycle log so build output makes the toggle visible.
+            // Operators grep for `[mcb-obfuscate]` to confirm the script
+            // actually ran on the target subproject.
+            project.logger.lifecycle(
+                "[mcb-obfuscate] ${project.path}: enabled minify+shrink with " +
+                "${(existing + additions).size()} proguard files"
+            )
+        }
+    }
+}

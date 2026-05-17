@@ -25,6 +25,10 @@
 #     # Build from an explicit commit instead of metadata.json commit_version
 #   ./build_apk.sh conversations --hardened-patch /path/to/fix.patch
 #     # Build a hardened APK from an explicit patch file (for example a task/report fix.patch)
+#   ./build_apk.sh conversations --obfuscate
+#     # Build a release APK with R8 minify/shrink enabled via the repo-level
+#     # gradle/obfuscate.init.gradle init script. See
+#     # documentation/APK_OBFUSCATION.md for the full design.
 #
 
 set -e
@@ -53,6 +57,7 @@ OUTPUT_DIR_EXPLICIT="0"
 BUILD_COMMIT_OVERRIDE=""
 HARDENED_OUTPUT_PATH=""
 USE_CACHE=""
+OBFUSCATE="0"
 
 show_usage() {
     echo "Usage: $0 <app_name> [options]"
@@ -87,6 +92,10 @@ show_usage() {
     echo "                      Build a hardened APK by applying an explicit patch file"
     echo "                      (useful when the remediation patch lives outside the app dir,"
     echo "                       e.g. a task/report fix.patch)"
+    echo "  --obfuscate         Build the release APK with R8 minify/shrink enabled via"
+    echo "                      gradle/obfuscate.init.gradle. Output goes to"
+    echo "                      apps/<app>/apk/obfuscated/<app>.apk. See"
+    echo "                      documentation/APK_OBFUSCATION.md for the full design."
     echo "  -h, --help          Show this help message"
     echo ""
     echo "Note: --vuln and --hardened-patch are mutually exclusive."
@@ -162,6 +171,10 @@ parse_args_and_validate() {
                 USE_CACHE="1"
                 shift
                 ;;
+            --obfuscate)
+                OBFUSCATE="1"
+                shift
+                ;;
             -h|--help)
                 show_usage
                 return 2
@@ -216,6 +229,16 @@ parse_args_and_validate() {
 
     # Standard location for unsigned APK (build.sh copies here)
     UNSIGNED_APK="$APP_DIR/unsigned.apk"
+
+    # --hardened-patch + --obfuscate produces a path collision: HARDENED_OUTPUT_PATH
+    # is resolved unconditionally without an obfuscated/ subdir split, so an obfuscated
+    # hardened build would overwrite the non-obfuscated hardened APK at the same path.
+    # The combination is undocumented in the obfuscation design spec — reject cleanly
+    # here until a follow-up milestone defines the right output-path layout for it.
+    if [ "$OBFUSCATE" = "1" ] && [ -n "$HARDENED_PATCH_PATH" ]; then
+        echo -e "${ERROR} --obfuscate and --hardened-patch cannot be combined (not yet supported)"
+        return 1
+    fi
 }
 
 resolve_vuln_dir() {
@@ -543,6 +566,34 @@ build_and_package() {
     export ANDROID_KEY_ALIAS="$key_alias"
     export ANDROID_KEY_PASSWORD="$keystore_pass"
 
+    # Obfuscation toggle: when --obfuscate is passed, export the env vars the
+    # per-app build.sh and the repo-level init script consume. When NOT passed,
+    # explicitly unset them so a stale value in the operator's environment
+    # cannot silently turn obfuscation on. See documentation/APK_OBFUSCATION.md.
+    if [ "$OBFUSCATE" = "1" ]; then
+        export MCB_OBFUSCATE=1
+        export MCB_OBFUSCATE_INIT_SCRIPT="$ROOT_DIR/gradle/obfuscate.init.gradle"
+        export MCB_APP_DIR="$ROOT_DIR/apps/$APP_NAME"
+        echo -e "${INFO} Obfuscation enabled:"
+        echo -e "${INFO}   MCB_OBFUSCATE_INIT_SCRIPT=$MCB_OBFUSCATE_INIT_SCRIPT"
+        echo -e "${INFO}   MCB_APP_DIR=$MCB_APP_DIR"
+        # Loud warning: env vars are exported but no per-app build.sh has been
+        # updated yet to read MCB_OBFUSCATE and pass --init-script to gradlew.
+        # Until M5 wallabag integration + per-app PRs land, the built APK at the
+        # obfuscated/ output path will NOT actually be obfuscated — it'll be
+        # identical to the non-obfuscated build. Surface this so operators don't
+        # silently produce wrong-state experiments.
+        if ! grep -q "MCB_OBFUSCATE" "$APP_DIR/build.sh" 2>/dev/null; then
+            echo -e "${WARNING} $APP_NAME/build.sh does not yet read MCB_OBFUSCATE."
+            echo -e "${WARNING} The produced APK will NOT be obfuscated until that"
+            echo -e "${WARNING} per-app integration lands (M5 wallabag + per-app PRs)."
+        fi
+    else
+        unset MCB_OBFUSCATE
+        unset MCB_OBFUSCATE_INIT_SCRIPT
+        unset MCB_APP_DIR
+    fi
+
     # Clean up any leftover unsigned APK
     cleanup_unsigned_apk
 
@@ -561,17 +612,33 @@ build_and_package() {
 
     echo -e "${INFO} Found unsigned APK: $UNSIGNED_APK"
 
-    # Determine output path (vuln/hardened builds go in subdirectory)
+    # Determine output path (vuln/hardened builds go in subdirectory).
+    # When --obfuscate is on, the final signed APK lands under an obfuscated/
+    # subdirectory so default and obfuscated variants coexist on disk without
+    # one overwriting the other (see documentation/APK_OBFUSCATION.md
+    # "Build cache fingerprint" — cache storage paths split by variant).
+    # Hardened builds use a caller-resolved HARDENED_OUTPUT_PATH and are not
+    # split here.
     local output_path
     if [[ -n "$VULN_ID" ]]; then
-        mkdir -p "$OUTPUT_DIR/$VULN_OUTPUT_NAME"
-        output_path="$OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        if [ "$OBFUSCATE" = "1" ]; then
+            mkdir -p "$OUTPUT_DIR/obfuscated/$VULN_OUTPUT_NAME"
+            output_path="$OUTPUT_DIR/obfuscated/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        else
+            mkdir -p "$OUTPUT_DIR/$VULN_OUTPUT_NAME"
+            output_path="$OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        fi
     elif [[ -n "$HARDENED_PATCH_PATH" ]]; then
         mkdir -p "$(dirname "$HARDENED_OUTPUT_PATH")"
         output_path="$HARDENED_OUTPUT_PATH"
     else
-        mkdir -p "$OUTPUT_DIR"
-        output_path="$OUTPUT_DIR/${APP_NAME}.apk"
+        if [ "$OBFUSCATE" = "1" ]; then
+            mkdir -p "$OUTPUT_DIR/obfuscated"
+            output_path="$OUTPUT_DIR/obfuscated/${APP_NAME}.apk"
+        else
+            mkdir -p "$OUTPUT_DIR"
+            output_path="$OUTPUT_DIR/${APP_NAME}.apk"
+        fi
     fi
 
     # Sign and copy
@@ -633,9 +700,24 @@ compute_build_fingerprint() {
         files+=("$vuln_dir/vulnerability.patch")
     fi
 
+    # Obfuscation toggle: include the literal on/off marker unconditionally so
+    # toggling --obfuscate always produces a different fingerprint, even when
+    # no other input changed. When on, also hash the init script and the
+    # optional per-app extra-keep.pro so edits to either invalidate the cache.
+    # See documentation/APK_OBFUSCATION.md "Build cache fingerprint".
+    local obfuscate_marker
+    if [ "$OBFUSCATE" = "1" ]; then
+        obfuscate_marker="obfuscate=on"
+        files+=("$ROOT_DIR/gradle/obfuscate.init.gradle")
+        files+=("$ROOT_DIR/apps/$APP_NAME/obfuscation/extra-keep.pro")
+    else
+        obfuscate_marker="obfuscate=off"
+    fi
+
     # Hash file contents in given order. Missing files contribute nothing
     # (mirrors hashFiles() glob semantics).
     local hashes=""
+    hashes+="$(printf '%s' "$obfuscate_marker" | shasum -a 256 | cut -d' ' -f1)"
     for f in "${files[@]}"; do
         if [ -f "$f" ]; then
             hashes+="$(shasum -a 256 "$f" | cut -d' ' -f1)"
@@ -655,18 +737,26 @@ should_use_cache() {
 }
 
 cache_fingerprint_file() {
+    local base="$OUTPUT_DIR"
+    if [ "$OBFUSCATE" = "1" ]; then
+        base="$OUTPUT_DIR/obfuscated"
+    fi
     if [ -n "$VULN_ID" ]; then
-        printf '%s' "$OUTPUT_DIR/$VULN_OUTPUT_NAME/.fingerprint"
+        printf '%s' "$base/$VULN_OUTPUT_NAME/.fingerprint"
     else
-        printf '%s' "$OUTPUT_DIR/.fingerprint"
+        printf '%s' "$base/.fingerprint"
     fi
 }
 
 cache_apk_file() {
+    local base="$OUTPUT_DIR"
+    if [ "$OBFUSCATE" = "1" ]; then
+        base="$OUTPUT_DIR/obfuscated"
+    fi
     if [ -n "$VULN_ID" ]; then
-        printf '%s' "$OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        printf '%s' "$base/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
     else
-        printf '%s' "$OUTPUT_DIR/${APP_NAME}.apk"
+        printf '%s' "$base/${APP_NAME}.apk"
     fi
 }
 
@@ -799,7 +889,11 @@ main() {
     fi
 
     if [ -n "$VULN_ID" ]; then
-        echo -e "${INFO} Output: $OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        if [ "$OBFUSCATE" = "1" ]; then
+            echo -e "${INFO} Output: $OUTPUT_DIR/obfuscated/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        else
+            echo -e "${INFO} Output: $OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        fi
         echo -e "${INFO} Mode: Vulnerable APK build ($VULN_ID)"
 
         # Validate vulnerability directory exists
@@ -842,7 +936,11 @@ main() {
         echo -e "${INFO} Mode: Hardened APK build (explicit patch)"
         echo -e "${INFO} Patch: $HARDENED_PATCH_PATH"
     else
-        echo -e "${INFO} Output: $OUTPUT_DIR/${APP_NAME}.apk"
+        if [ "$OBFUSCATE" = "1" ]; then
+            echo -e "${INFO} Output: $OUTPUT_DIR/obfuscated/${APP_NAME}.apk"
+        else
+            echo -e "${INFO} Output: $OUTPUT_DIR/${APP_NAME}.apk"
+        fi
         echo -e "${INFO} Mode: Regular APK build"
     fi
 
@@ -885,7 +983,11 @@ main() {
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} Vulnerable APK build completed!"
-        echo -e "${SUCCESS} Output: $OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        if [ "$OBFUSCATE" = "1" ]; then
+            echo -e "${SUCCESS} Output: $OUTPUT_DIR/obfuscated/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        else
+            echo -e "${SUCCESS} Output: $OUTPUT_DIR/$VULN_OUTPUT_NAME/${APP_NAME}.apk"
+        fi
         echo -e "${SUCCESS} =================================="
     elif [ -n "$HARDENED_PATCH_PATH" ]; then
         # Hardened build with explicit patch file
@@ -929,7 +1031,11 @@ main() {
 
         echo -e "${SUCCESS} =================================="
         echo -e "${SUCCESS} APK build completed!"
-        echo -e "${SUCCESS} Output: $OUTPUT_DIR/${APP_NAME}.apk"
+        if [ "$OBFUSCATE" = "1" ]; then
+            echo -e "${SUCCESS} Output: $OUTPUT_DIR/obfuscated/${APP_NAME}.apk"
+        else
+            echo -e "${SUCCESS} Output: $OUTPUT_DIR/${APP_NAME}.apk"
+        fi
         echo -e "${SUCCESS} =================================="
     fi
 }
