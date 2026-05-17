@@ -28,12 +28,14 @@ def _load_conversation_turn_schema() -> dict:
 
 def test_custom_agent_resolves_conversation_schema_from_repo_root() -> None:
     """Regression: CustomAgent._load_conversation_schema must reach the repo
-    root from agent/custom/agent.py (.parent×3). A stale .parent×2 stopped at
-    agent/, load_schema returned None, validate_schema silently no-op'd, and
-    malformed conversation rows leaked through unchecked."""
-    schema = CustomAgent._load_conversation_schema(None)  # self unused
-    assert schema is not None
-    assert "$id" in schema or "properties" in schema
+    root and produce a working validator. A stale .parent×2 stopped at agent/
+    (no schemas/ there) and produced a no-op validator; malformed conversation
+    rows leaked through unchecked."""
+    validator = CustomAgent._load_conversation_schema(None)  # self unused
+    # Spot-check the validator actually validates: empty dict must fail.
+    import jsonschema
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate({})
 
 
 class TestCustomAgentMaxIterations:

@@ -17,7 +17,10 @@ from agent.prompts.prompts import MISSING_OUTPUT_NUDGE
 from utils.agent_utils import take_screenshot
 from utils.command_executor import CommandExecutor
 from utils.logger import agent_logger, logger_manager
-from utils.run_artifacts import jsonable, load_schema, utc_now_iso, validate_schema
+import jsonschema
+
+from utils.json_io import load_validator
+from utils.run_artifacts import jsonable, utc_now_iso
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker
 
@@ -311,15 +314,13 @@ class CustomAgent:
             agent_logger.warning(f"Failed to append conversation turn JSONL: {e}")
 
     def _load_conversation_schema(self):
-        # __file__ = <repo>/agent/custom/agent.py → repo root is .parent×3.
-        # Earlier ×2 stopped at agent/ (no schemas/ there), so load_schema
-        # returned None and validate_schema silently no-op'd.
-        return load_schema(
-            Path(__file__).parent.parent.parent, "conversation_turn.schema.json"
-        )
+        return load_validator("conversation_turn.schema.json")
 
     def _validate_turn_event(self, event):
-        validate_schema(event, self._conversation_schema, "conversation turn")
+        try:
+            self._conversation_schema.validate(event)
+        except jsonschema.ValidationError as e:
+            agent_logger.warning("conversation turn schema validation failed: %s", e)
 
     def _parse_arguments(self, arguments: str) -> dict:
         """Safely parse tool arguments from JSON string."""

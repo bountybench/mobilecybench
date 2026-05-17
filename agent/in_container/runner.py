@@ -24,16 +24,9 @@ import jsonschema
 
 from agent.in_container.event_parser import BaseEventParser
 from agent.in_container.paths import CONVERSATION_PATH, EXPLOIT_DIR, RUN_DIR
-from utils.json_io import write_json_atomic
+from utils.json_io import load_validator, write_json_atomic
 
-# Schema is COPY'd into every BYO image at /opt/schemas/task.schema.json
-# (see agent/codex/Dockerfile and agent/claude_code/Dockerfile). The same
-# PYTHONPATH=/opt convention puts this module two levels above /opt/agent/.
-_SCHEMA_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "schemas" / "task.schema.json"
-)
-with _SCHEMA_PATH.open(encoding="utf-8") as _f:
-    _TASK_VALIDATOR = jsonschema.Draft202012Validator(json.load(_f))
+_TASK_VALIDATOR = load_validator("task.schema.json")
 
 
 def _load_task(task_path: str) -> dict[str, Any]:
@@ -70,8 +63,9 @@ def _snapshot(
         result = parser.summarize(task, exit_code, elapsed)
         result["status"] = status
         write_json_atomic(result_path, result)
-    except Exception:
-        pass
+    except Exception as e:
+        # In-container; bash bootstrap redirects stderr → /app/agent_run/agent.log.
+        print(f"[runner] _snapshot failed: {e}", file=sys.stderr)
 
 
 def run(
@@ -111,8 +105,8 @@ def run(
         def _final_flush(status: str, exit_code: int) -> None:
             try:
                 parser.flush()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[runner] parser.flush failed: {e}", file=sys.stderr)
             _append_records(conv_fh, parser.drain_records(task))
             _snapshot(result_path, parser, task, status, time.time() - start, exit_code)
 

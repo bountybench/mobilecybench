@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import io
 import json
-import logging
 import tarfile
 import time
 from pathlib import Path
@@ -20,8 +19,7 @@ from typing import Any
 import docker.errors
 
 from agent.in_container.paths import TASK_JSON
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 # Matches utils.docker_utils.run_command_in_container's polling cadence.
 _POLL_INTERVAL_SECONDS = 1.0
@@ -148,8 +146,8 @@ def run_agent(
                     container.exec_run(
                         ["pkill", "-TERM", "-f", r"agent\..*\.run_in_container"]
                     )
-                except docker.errors.APIError:
-                    pass
+                except docker.errors.APIError as e:
+                    logger.debug("pkill SIGTERM via exec_run failed: %s", e)
                 grace_expired, _ = _wait_for_exec(
                     api, exec_id, time.monotonic() + _GRACEFUL_STOP_SECONDS
                 )

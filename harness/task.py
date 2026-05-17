@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
-import jsonschema
+from utils.json_io import load_validator
 
-_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "task.schema.json"
-with _SCHEMA_PATH.open() as _f:
-    _TASK_VALIDATOR = jsonschema.Draft202012Validator(json.load(_f))
+_TASK_VALIDATOR = load_validator("task.schema.json")
 
 
 def build_task_dict(

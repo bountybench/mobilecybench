@@ -10,7 +10,7 @@ from typing import Any, Optional
 import jsonschema
 
 from utils.artifact_paths import relative_artifact_path
-from utils.json_io import write_json_atomic as _write_json_atomic
+from utils.json_io import load_validator, write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
 from utils.token_costs import compute_cost_usd, load_pricing, lookup_pricing
@@ -38,18 +38,8 @@ def _redact_for_persistence(value: Any) -> Any:
     return value
 
 
-try:
-    from jsonschema import validate as _jsonschema_validate
-except Exception:  # pragma: no cover
-    _jsonschema_validate = None
-
-
-_RESULT_SCHEMA_PATH = (
-    Path(__file__).resolve().parent.parent / "schemas" / "result.schema.json"
-)
-with _RESULT_SCHEMA_PATH.open() as _f:
-    _RESULT_SCHEMA: dict[str, Any] = json.load(_f)
-_RESULT_VALIDATOR = jsonschema.Draft202012Validator(_RESULT_SCHEMA)
+_RESULT_VALIDATOR = load_validator("result.schema.json")
+_RUN_SUMMARY_VALIDATOR = load_validator("run_summary.schema.json")
 
 # None / missing → safe default. Keeps schema validation happy for typed fields
 # when an agent emits ``null`` (custom path's max_iterations-without-FINAL hits this).
@@ -161,26 +151,6 @@ def _run_git_value(project_root: Path, args: list[str]) -> str:
         return (proc.stdout or "").strip()
     except Exception:
         return "unknown"
-
-
-def load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
-    schema_path = project_root / "schemas" / schema_name
-    if not schema_path.exists():
-        return None
-    try:
-        with open(schema_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-def validate_schema(instance: dict, schema: Optional[dict], artifact_name: str) -> None:
-    if not schema or _jsonschema_validate is None:
-        return
-    try:
-        _jsonschema_validate(instance=instance, schema=schema)
-    except Exception as e:
-        logger.warning("%s schema validation failed: %s", artifact_name, e)
 
 
 def _timing_summary_from_calls(calls: list[Any]) -> dict:
@@ -458,11 +428,12 @@ def write_run_summary(
         "app": app_metadata,
     }
 
-    validate_schema(
-        run_summary,
-        load_schema(project_root, "run_summary.schema.json"),
-        "run summary",
-    )
+    # Warn rather than raise — by this point the agent has already run; a
+    # validation error here shouldn't lose the data we just collected.
+    try:
+        _RUN_SUMMARY_VALIDATOR.validate(run_summary)
+    except jsonschema.ValidationError as e:
+        logger.warning("run_summary schema validation failed: %s", e)
     try:
         _write_json_atomic(
             logs_dir / "run_summary.json", _redact_for_persistence(run_summary)
