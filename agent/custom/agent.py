@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+import jsonschema
 import openai
 from dotenv import load_dotenv
 
@@ -16,10 +17,8 @@ from agent.custom.tools.runtime import ToolRuntime
 from agent.prompts.prompts import MISSING_OUTPUT_NUDGE
 from utils.agent_utils import take_screenshot
 from utils.command_executor import CommandExecutor
-from utils.logger import agent_logger, logger_manager
-import jsonschema
-
 from utils.json_io import load_validator
+from utils.logger import agent_logger, logger_manager
 from utils.run_artifacts import jsonable, utc_now_iso
 from utils.time_tracker import time_tracker
 from utils.token_tracker import TokenTracker

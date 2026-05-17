@@ -1,5 +1,4 @@
 import datetime
-import json
 import platform
 import re
 import shutil
@@ -10,7 +9,8 @@ from typing import Any, Optional
 import jsonschema
 
 from utils.artifact_paths import relative_artifact_path
-from utils.json_io import load_validator, write_json_atomic as _write_json_atomic
+from utils.json_io import load_validator
+from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
 from utils.token_costs import compute_cost_usd, load_pricing, lookup_pricing
