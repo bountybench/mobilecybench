@@ -23,6 +23,15 @@ from typing import Any
 from agent.in_container.event_parser import BaseEventParser
 from utils.logger import agent_logger, logger
 
+# Codex's ``turn.completed.usage`` field names → our canonical token_totals names.
+# (verified against codex-rs/exec/src/exec_events.rs)
+_USAGE_FIELD_MAP = {
+    "input_tokens": "input_tokens",
+    "output_tokens": "output_tokens",
+    "cached_input_tokens": "cached_input_tokens",
+    "reasoning_output_tokens": "reasoning_tokens",
+}
+
 
 class CodexEventParser(BaseEventParser):
     """Stateful consumer of codex's ``--json`` event stream."""
@@ -117,22 +126,9 @@ class CodexEventParser(BaseEventParser):
             )
 
     def _record_turn_usage(self, usage: dict[str, Any]) -> None:
-        """Accumulate ``turn.completed.usage`` into ``self.token_usage``.
-
-        Codex Usage fields (verified against codex-rs/exec/src/exec_events.rs):
-            input_tokens, output_tokens, reasoning_output_tokens, cached_input_tokens
-        """
+        """Accumulate ``turn.completed.usage`` into ``self.token_usage``."""
         if not usage:
             return
-        for src, dst in (
-            ("input_tokens", "input_tokens"),
-            ("output_tokens", "output_tokens"),
-            ("cached_input_tokens", "cached_input_tokens"),
-            ("reasoning_output_tokens", "reasoning_tokens"),
-        ):
-            val = usage.get(src, 0) or 0
-            if val:
-                self.token_usage[dst] = self.token_usage.get(dst, 0) + int(val)
-        # Ensure input/output keys exist even when value is 0 (contract requires them).
+        self._accumulate_token_usage(usage, _USAGE_FIELD_MAP)
         self.token_usage.setdefault("input_tokens", 0)
         self.token_usage.setdefault("output_tokens", 0)

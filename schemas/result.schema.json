@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mobilecybench.dev/schemas/result.schema.json",
   "title": "Agent Result",
-  "description": "Contract output written by a BYO agent to /app/agent_run/result.json. Only `status` is strictly required; every other field has a documented runner-side fallback (see lab/agent_response_audit/CONTRACT_v2_LOCKED.md).",
+  "description": "Contract output written by a BYO agent to /app/agent_run/result.json. Only `status` is strictly required; every other field has a documented runner-side fallback.",
   "type": "object",
   "properties": {
     "status": {

@@ -127,6 +127,15 @@ class BaseEventParser(ABC):
     def _handle_event(self, data: dict[str, Any]) -> None:
         """Map one parsed CLI event onto the per-turn / run accumulators."""
 
+    def _accumulate_token_usage(
+        self, usage: dict[str, Any], mapping: dict[str, str]
+    ) -> None:
+        """Rename ``usage[src]`` → ``token_usage[dst]`` and add into the running total."""
+        for src, dst in mapping.items():
+            val = usage.get(src, 0) or 0
+            if val:
+                self.token_usage[dst] = self.token_usage.get(dst, 0) + int(val)
+
     # --- internal ---
 
     def _consume_line(self, line: str) -> None:

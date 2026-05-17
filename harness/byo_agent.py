@@ -176,8 +176,7 @@ def run_agent(
 
     # Stamp the image-identity fields so write_run_summary picks them up.
     # Returns the raw dict; runner-side normalize_agent_result is the single
-    # validation + cost-resolution boundary. Double-normalizing here corrupted
-    # cost_source (derived → agent) when result.json had no agent-reported cost.
+    # validation + cost-resolution boundary.
     image = container.image
     raw["agent_image"] = image.tags[0] if image.tags else image.id
     raw["agent_image_digest"] = image.id

@@ -45,8 +45,7 @@ class TestCostResolution:
     def test_timeout_with_no_cost_stays_derived_under_renormalize(self) -> None:
         """Idempotency guard: re-normalizing an already-normalized result must
         keep cost_source='derived', not flip to 'agent' just because cost_usd
-        was filled in by the first derive. Regression for the BYO double-normalize
-        bug — see lab/e2e_test_plan/FINDINGS_F4_F5.md F5."""
+        was filled in by the first derive."""
         first = normalize_agent_result(
             {
                 "status": "timeout",

@@ -113,12 +113,12 @@ class ClaudeCodeEventParser(BaseEventParser):
         agent_logger.info("tool_result content=%s", body)
 
     def _handle_stream_event(self, event: dict[str, Any]) -> None:
-        # message_delta carries the FINAL per-turn usage + stop_reason and
-        # lands before the terminal result event. Accumulate so totals survive
-        # a SIGTERM that kills the CLI before result/success fires.
+        # message_delta carries the final per-turn usage + stop_reason. Lands
+        # before the terminal result event, so accumulating from it keeps
+        # totals intact when SIGTERM kills the CLI mid-run.
         if event.get("type") != "message_delta":
             return
-        self._record_usage(event.get("usage") or {}, additive=True)
+        self._record_usage(event.get("usage") or {})
         sr = (event.get("delta") or {}).get("stop_reason")
         if isinstance(sr, str):
             self.stop_reason = sr
@@ -141,10 +141,13 @@ class ClaudeCodeEventParser(BaseEventParser):
             if isinstance(val, int):
                 self.timing[dst] = val
 
-        # result.usage is cumulative; wipe any per-turn accumulator first so
-        # it becomes the source of truth on success.
-        self.token_usage.clear()
-        self._record_usage(data.get("usage") or {})
+        # result.usage is cumulative; let it replace any per-turn accumulator.
+        # Guard on presence so a degenerate event missing `usage` doesn't wipe
+        # the per-turn totals we already collected.
+        usage = data.get("usage")
+        if usage:
+            self.token_usage.clear()
+            self._record_usage(usage)
 
         if data.get("subtype") == "success":
             cost_str = f"${cost:.4f}" if isinstance(cost, (int, float)) else "N/A"
@@ -154,31 +157,17 @@ class ClaudeCodeEventParser(BaseEventParser):
         elif data.get("subtype") == "error":
             logger.error(f"[ClaudeCode] Error: {data.get('error')}")
 
-    def _record_usage(self, usage: dict[str, Any], *, additive: bool = False) -> None:
-        """Project claude's ``usage`` blob onto v2 canonical token_totals.
+    def _record_usage(self, usage: dict[str, Any]) -> None:
+        """Project claude's ``usage`` blob onto canonical token_totals names.
 
-        ``additive=True`` for per-turn message_delta (sum across turns);
-        default replace semantics for cumulative result.usage.
+        Always additive. Cumulative-vs-per-turn semantics is the caller's
+        concern: ``_handle_result`` clears before calling (replace),
+        ``_handle_stream_event`` does not (sum across message_deltas).
         """
         if not usage:
             return
-
-        def _set(dst: str, val: int) -> None:
-            self.token_usage[dst] = (
-                self.token_usage.get(dst, 0) + val if additive else val
-            )
-
-        for src, dst in _USAGE_FIELD_MAP.items():
-            val = usage.get(src, 0) or 0
-            if val:
-                _set(dst, int(val))
-
-        cache_creation = usage.get("cache_creation") or {}
-        for src, dst in _USAGE_TTL_MAP.items():
-            val = cache_creation.get(src, 0) or 0
-            if val:
-                _set(dst, int(val))
-
+        self._accumulate_token_usage(usage, _USAGE_FIELD_MAP)
+        self._accumulate_token_usage(usage.get("cache_creation") or {}, _USAGE_TTL_MAP)
         # Contract requires input/output keys to be present.
         self.token_usage.setdefault("input_tokens", 0)
         self.token_usage.setdefault("output_tokens", 0)
