@@ -106,7 +106,7 @@ class SyntheticBundle:
     app_dir: Path
     vuln_id: str
     # APK obfuscation toggle resolution context. Passed by resolve_bundle()
-    # from RunnerConfig + the app's metadata.json. 
+    # from RunnerConfig + the app's metadata.json.
     runner_obfuscation: str = "off"
     app_metadata: dict = field(default_factory=dict)
     kind: BundleKind = "synthetic"
@@ -174,7 +174,12 @@ class SyntheticBundle:
         _run_build(project_root, [app_name, *obf_flag], timeout)
         _run_build(
             project_root,
-            [app_name, "--vuln", f"synthetic_vulnerabilities/{self.vuln_id}", *obf_flag],
+            [
+                app_name,
+                "--vuln",
+                f"synthetic_vulnerabilities/{self.vuln_id}",
+                *obf_flag,
+            ],
             timeout,
         )
 
