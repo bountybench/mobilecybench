@@ -164,7 +164,7 @@ class LoggerManager:
         # Sentinel values so accessor methods never NPE before bootstrap fires.
         self.run_id = self._resolve_run_id()
         self._is_gold = False
-        self._logs_dir: Optional[Path] = None  # filesystem-not-initialized signal
+        self._logs_dir: Optional[Path] = None
         self._log_file = None
         self._agent_log_file = None
         self._ui_debug_log_file = None
@@ -197,7 +197,6 @@ class LoggerManager:
         """(Re)configure the logger manager with new settings."""
         self._config = config
 
-        # Reset handlers if reconfiguring
         logger = logging.getLogger(self._name)
         for handler in logger.handlers[:]:
             logger.removeHandler(handler)
@@ -208,7 +207,6 @@ class LoggerManager:
         self._error_buffer_handler = None
         self._error_log_file = None
 
-        # Resolve or generate the unique run ID
         self.run_id = self._resolve_run_id()
 
         self._log_level = self._get_log_level()
@@ -266,7 +264,6 @@ class LoggerManager:
         if env_id:
             return env_id
 
-        # Use UUID for machine-readability and uniqueness
         new_id = str(uuid.uuid4())
         os.environ["MOBILECYBENCH_SESSION_ID"] = new_id
         return new_id
@@ -338,17 +335,13 @@ class LoggerManager:
         name = f"{self._name}.Agent"
         self._agent_logger = logging.getLogger(name)
         self._agent_logger.setLevel(self._log_level)
-        self._agent_logger.propagate = True  # Allow propagation to main logger handlers
+        self._agent_logger.propagate = True
 
-        # Clear existing handlers
         for h in self._agent_logger.handlers[:]:
             self._agent_logger.removeHandler(h)
 
-        # agent.log lives under agent_run/ so custom and external paths
-        # write to the same place. External path's BYO container writes
-        # /app/agent_run/agent.log inside, harness extracts to
-        # logs_dir/agent_run/agent.log; custom path's host-side
-        # agent_logger now matches.
+        # Mirror the BYO container's /app/agent_run/agent.log layout so custom
+        # and external paths leave artifacts in the same place.
         agent_run_dir = self._logs_dir / "agent_run"
         agent_run_dir.mkdir(parents=True, exist_ok=True)
         self._agent_log_file = str(agent_run_dir / "agent.log")
@@ -492,7 +485,6 @@ def get_logger_manager(config: dict = None) -> LoggerManager:
     if _instance is None:
         _instance = LoggerManager(config=config, announce=config is not None)
     elif config is not None:
-        # Re-configure existing instance if new config provided
         _instance.configure(config, announce=True)
     return _instance
 

@@ -126,7 +126,6 @@ class CodexEventParser(BaseEventParser):
             )
 
     def _record_turn_usage(self, usage: dict[str, Any]) -> None:
-        """Accumulate ``turn.completed.usage`` into ``self.token_usage``."""
         if not usage:
             return
         self._accumulate_token_usage(usage, _USAGE_FIELD_MAP)

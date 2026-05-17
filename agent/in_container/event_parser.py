@@ -20,8 +20,6 @@ def _utc_now_iso() -> str:
 
 
 class BaseEventParser(ABC):
-    """Stateful consumer of a CLI's line-delimited event stream."""
-
     raw_log_prefix: str = "Event"  # override per CLI (e.g. "Codex", "ClaudeCode")
 
     def __init__(self) -> None:

@@ -93,23 +93,20 @@ class AgentEnvironment:
         """Set up the agent kali environment container."""
         container_name = "kali-container"
 
-        # Remove existing container FIRST, before any setup work
+        # Remove a stale kali-container left from a prior run before anything else.
         try:
             existing_container = self.client.containers.get(container_name)
             logger.info(f"Removing existing container: {container_name}")
             existing_container.remove(force=True)
         except docker.errors.NotFound:
-            # no need to raise if container doesn't exist
             pass
 
         logger.info(f"Ensuring image {self.image_name} is available...")
 
-        # First check if image exists locally
         try:
             self.client.images.get(self.image_name)
             logger.info(f"Image {self.image_name} found locally, skipping pull")
         except docker.errors.ImageNotFound:
-            # Image not found locally, try to pull it
             logger.info(
                 f"Image {self.image_name} not found locally, pulling from registry..."
             )
@@ -207,7 +204,6 @@ class AgentEnvironment:
             # later in runner.py's outer finally and still needs this value.
             self.image_digest = self.container.image.id
 
-            # Connect to additional networks if any
             for additional_network in self.docker_networks[1:]:
                 network_obj = self.client.networks.get(additional_network)
                 network_obj.connect(self.container)
@@ -235,7 +231,6 @@ class AgentEnvironment:
                 ]
             )
 
-            # Install self-signed CA into system trust store
             if ca_volumes:
                 result = self.container.exec_run("update-ca-certificates")
                 if result.exit_code == 0:
@@ -247,7 +242,6 @@ class AgentEnvironment:
 
         except Exception as e:
             logger.error(f"Setup failed: {e}")
-            # Remove container if it was created
             if self.container:
                 try:
                     self.container.remove(force=True)
@@ -269,22 +263,21 @@ class AgentEnvironment:
         agent_codebase = self.app_dir / "agent_codebase"
         staging_dir = self.app_dir / "agent_codebase.staging"
 
-        # Always clean up staging directory first to ensure fresh start
+        # Always start from a clean staging dir; leftovers can poison the copy.
         if staging_dir.exists():
             logger.info(f"Removing existing staging directory at {staging_dir}")
             shutil.rmtree(staging_dir, onerror=onerror)
 
-        # Check if original_codebase is empty, if so use git_submodule_update
         if not original_codebase.exists() or not any(original_codebase.iterdir()):
             logger.info("Original codebase is empty, initializing submodule")
             git_submodule_update(self.app_dir)
 
-        # Create staging directory
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
         if not self.include_git_history:
-            # Copy codebase without git history so agent cannot see prior commits
+            # Strip history so the agent cannot see prior commits, then init a
+            # fresh repo so it can still use git locally.
             logger.info("Copying codebase without git history")
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
@@ -292,11 +285,9 @@ class AgentEnvironment:
                 logger.info("Running post_checkout_hook on %s", staging_dir)
                 self.post_checkout_hook(staging_dir)
 
-            # Initialize fresh git repo so agent can still use git commands
             logger.info("Initializing fresh git repository in staging directory")
             initialize_git_repository(staging_dir)
 
-            # Create initial commit with all files
             subprocess.run(
                 ["git", "add", "-A"],
                 cwd=staging_dir,
@@ -309,7 +300,6 @@ class AgentEnvironment:
                 check=True,
                 capture_output=True,
             )
-            # Create dev branch from this commit
             subprocess.run(
                 ["git", "checkout", "-b", "dev"],
                 cwd=staging_dir,
@@ -318,19 +308,17 @@ class AgentEnvironment:
             )
             logger.info("Created fresh git repo with 'main' and 'dev' branches")
         else:
-            # Checkout specific commit and preserve full git history
-            # Find the repository root (which contains .git)
+            # Find the .git root by walking up from original_codebase.
             repo_root = original_codebase
             while repo_root.parent != repo_root:
                 if (repo_root / ".git").exists():
                     break
                 repo_root = repo_root.parent
 
-            # Remove git index lock files (cross-platform)
+            # Stale .git/index.lock files from a crashed prior run break checkout.
             logger.info("Removing git index lock files")
             git_dir = Path(repo_root) / ".git"
             if git_dir.exists():
-                # Use Python's pathlib to find and remove index.lock files
                 for lock_file in git_dir.rglob("index.lock"):
                     try:
                         lock_file.unlink()
@@ -338,15 +326,12 @@ class AgentEnvironment:
                     except Exception as e:
                         logger.warning(f"Failed to remove lock file {lock_file}: {e}")
 
-            # Checkout to commit_id in original_codebase
             logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
             git_checkout(original_codebase, self.commit_id, force=True)
 
-            # Copy original_codebase to staging directory with git history
             logger.info(f"Copying {original_codebase} to {staging_dir}")
             self.copy_files(original_codebase, staging_dir, ignore_git=False)
 
-            # Run git_setup_dev_branch in staging directory
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
 
@@ -354,17 +339,14 @@ class AgentEnvironment:
                 logger.info("Running post_checkout_hook on %s", staging_dir)
                 self.post_checkout_hook(staging_dir)
 
-        # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
             logger.info(f"Removing existing agent_codebase at {agent_codebase}")
             shutil.rmtree(agent_codebase, onerror=onerror)
 
-        # Move staging directory to agent_codebase
         logger.info(f"Moving staging directory to {agent_codebase}")
         shutil.move(str(staging_dir), str(agent_codebase))
         logger.info("✓ Agent codebase ready for mounting")
 
-        # Return volume mapping for bind mount
         volumes = {str(agent_codebase): {"bind": "/app/codebase", "mode": "ro"}}
 
         return volumes
@@ -516,7 +498,6 @@ class AgentEnvironment:
 
                 return ignored
 
-            # Copy the directory structure
             shutil.copytree(
                 source,
                 destination,
@@ -525,7 +506,6 @@ class AgentEnvironment:
                 symlinks=True,
             )
 
-            # Handle Git repository if needed
             git_file = source / ".git"
             if not ignore_git and git_file.exists():
                 if git_file.is_file():
@@ -540,17 +520,15 @@ class AgentEnvironment:
 
     def _handle_git_submodule(self, git_file, source, destination):
         """Handle Git submodule reference files."""
-        # Read the submodule reference
         with open(git_file, "r") as f:
             content = f.read().strip()
 
         if not content.startswith("gitdir:"):
-            # It's a regular .git file, just copy it
+            # Regular .git file — no submodule indirection; copy verbatim.
             shutil.copy2(git_file, destination / ".git")
             logger.debug(f"Copied .git file from {git_file} to {destination / '.git'}")
             return
 
-        # Extract the actual Git directory path
         gitdir_path = content.split("gitdir:")[1].strip()
         if not os.path.isabs(gitdir_path):
             gitdir_path = os.path.normpath(os.path.join(source, gitdir_path))
@@ -564,7 +542,6 @@ class AgentEnvironment:
             shutil.copy2(git_file, destination / ".git")
             return
 
-        # Setup the destination Git repository
         dest_git_path = destination / ".git"
         prepare_git_directory(dest_git_path)
 
@@ -575,7 +552,7 @@ class AgentEnvironment:
             self._create_clean_git_config(dest_git_path)
             logger.debug(f"Copied Git data from {actual_git_dir} to {dest_git_path}")
 
-            # Clean up branches and make detached HEAD the new main branch
+            # cleanup_git_branches promotes the detached HEAD to the new main.
             cleanup_git_branches(destination)
             logger.debug(f"Cleaned up Git branches in {destination}")
         except Exception as e:
@@ -594,7 +571,7 @@ class AgentEnvironment:
             self._create_clean_git_config(dest_git_path)
             logger.debug(f"Copied Git data from {git_dir} to {dest_git_path}")
 
-            # Clean up branches and make detached HEAD the new main branch
+            # cleanup_git_branches promotes the detached HEAD to the new main.
             cleanup_git_branches(destination)
             logger.debug(f"Cleaned up Git branches in {destination}")
         except Exception as e:
@@ -793,11 +770,12 @@ def _disable_emulator_root() -> None:
     This must run *before* ``adb unroot`` drops our ability to do root ops.
     """
     try:
-        # Ensure we have root for the setup steps
+        # adb root is required to bind-mount over /system/xbin/su below.
         subprocess.run(["adb", "root"], capture_output=True, timeout=10)
         subprocess.run(["adb", "wait-for-device"], capture_output=True, timeout=30)
 
-        # Disable su binary via bind mount
+        # Mask the su binary with an empty mode-000 file so it can't execute
+        # even if the agent bypasses the adb-proxy filter.
         subprocess.run(
             [
                 "adb",
@@ -810,7 +788,6 @@ def _disable_emulator_root() -> None:
             timeout=10,
         )
 
-        # Drop root
         subprocess.run(["adb", "unroot"], capture_output=True, timeout=10)
     except Exception as e:
         logger.warning(f"Failed to fully disable emulator root: {e}")
@@ -853,7 +830,7 @@ def setup_agent_environment(
         metadata: App metadata dict
         workflow: Evaluation workflow type ("exploit" or "redteam")
         vuln_id: Vulnerability ID for exploit workflow
-        network_mode: Squid policy ("restricted" default, or "permissive")
+        network_mode: Squid policy ("permissive" default, or "restricted")
         no_codebase: Whether to copy the built APK into the agent environment
         post_checkout_hook: Optional callback run on the staged codebase
         apk_path: APK to copy into the agent environment when no_codebase=True
