@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Generates an OAuth authorization code for the attacker account.
+# Generates an OAuth authorization code for the external account.
 # Outputs ONLY the authorization code (no other text).
 set -euo pipefail
 
 OC_BASE="${OC_BASE:-http://localhost:8080}"
-ATTACKER_USER="${ATTACKER_USER:-attacker}"
+ATTACKER_USER="${ATTACKER_USER:-external}"
 ATTACKER_PASS="${ATTACKER_PASS:-S3cureAttacker!2026}"
 CLIENT_ID="${CLIENT_ID:-e4rAsNUSIUs0lF4nbv9FmCeUkTlV9GdgTLDH1b5uie7syb90SzEVrbN7HIpmWJeD}"
 REDIRECT_URI="${REDIRECT_URI:-oc://android.owncloud.com}"
