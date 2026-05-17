@@ -106,8 +106,8 @@ class RunnerConfig(BaseModel):
     reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
         default=None,
         description=(
-            "Reasoning effort hint. v1 common-denominator across LiteLLM, "
-            "codex 0.130, and claude 2.1.142. xhigh/max deferred to v2."
+            "Reasoning effort hint forwarded to providers that accept it. "
+            "Models without a reasoning-effort knob ignore this field."
         ),
     )
     allow_unregistered_models: bool = Field(
@@ -220,10 +220,10 @@ class RunnerConfig(BaseModel):
 
     # ---- Network --------------------------------------------------------------
     network_mode: Literal["restricted", "permissive"] = Field(
-        ...,
+        default="permissive",
         description=(
-            "Squid egress policy. 'restricted': exact-FQDN allowlist "
-            "(LLM APIs + apt/pip mirrors). 'permissive': any public host. "
+            "Squid egress policy. 'permissive' (default): any public host. "
+            "'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). "
             "Kernel routing (agent_net internal:true) applies in both."
         ),
     )
@@ -232,9 +232,7 @@ class RunnerConfig(BaseModel):
     script_timeout: int = Field(
         default=600,
         gt=0,
-        description=(
-            "Seconds for long-running scripts (exploit, verify, setup, " "prepare_app)."
-        ),
+        description="Seconds for long-running scripts (exploit, verify, setup, prepare_app).",
     )
     build_command_timeout: int = Field(
         default=1200,
@@ -404,15 +402,7 @@ class RunnerConfig(BaseModel):
             raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
         return self
 
-    # ------------------------------------------------------------------
-    # Schema export
-    # ------------------------------------------------------------------
-    #
-    # The committed schemas/runner_config.schema.json document is the
-    # contract editors / external tooling read for autocomplete +
-    # hover-docs and sweep-config validation. Build it here so the model
-    # is the single source of truth; the generator script and the CI
-    # parity test both call ``render_json_schema``.
+    # ---- Schema export (single source of truth for runner_config.schema.json) ----
 
     JSON_SCHEMA_DRAFT: ClassVar[str] = "https://json-schema.org/draft/2020-12/schema"
     JSON_SCHEMA_ID: ClassVar[str] = (

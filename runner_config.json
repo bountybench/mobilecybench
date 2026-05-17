@@ -20,7 +20,7 @@
   "build_type": "download-apk",
   "emulator_backend": "native",
   "emulator_display": "headed",
-  "network_mode": "restricted",
+  "network_mode": "permissive",
 
   "dry_run": false,
   "gold_run": false,

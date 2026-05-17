@@ -18,6 +18,6 @@
   "agent_image": "cybench/mobilecybench-kali:v0.1.0",
   "emulator_display": "headless",
   "emulator_backend": "container",
-  "network_mode": "restricted",
+  "network_mode": "permissive",
   "llm_request_timeout_ms": 600000
 }

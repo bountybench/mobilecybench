@@ -82,7 +82,7 @@
         }
       ],
       "default": null,
-      "description": "Reasoning effort hint. v1 common-denominator across LiteLLM, codex 0.130, and claude 2.1.142. xhigh/max deferred to v2.",
+      "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
       "title": "Reasoning Effort"
     },
     "allow_unregistered_models": {
@@ -207,7 +207,8 @@
       "type": "integer"
     },
     "network_mode": {
-      "description": "Squid egress policy. 'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). 'permissive': any public host. Kernel routing (agent_net internal:true) applies in both.",
+      "default": "permissive",
+      "description": "Squid egress policy. 'permissive' (default): any public host. 'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). Kernel routing (agent_net internal:true) applies in both.",
       "enum": [
         "restricted",
         "permissive"
@@ -258,8 +259,7 @@
     "max_iterations",
     "max_model_response_tokens",
     "dry_run",
-    "screenshot_mode",
-    "network_mode"
+    "screenshot_mode"
   ],
   "type": "object"
 }
