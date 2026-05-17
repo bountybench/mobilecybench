@@ -163,7 +163,7 @@ exec python -m agent.codex.run_in_container "$TASK"
 
 `agent/{codex,claude_code}/run_in_container.py` does the CLI-specific work: builds the argv, streams events through a `BaseEventParser` subclass (`CodexEventParser` / `ClaudeCodeEventParser`), and lets the shared runner write `conversation.jsonl` + `result.json`.
 
-The parser layer in `agent/in_container/event_parser.py` (`BaseEventParser`) owns line buffering, turn flushing, conversation-row formatting, result-summary shaping, and per-turn token accumulation. To add a third BYO CLI you write a single subclass overriding `_handle_event` (a switch on your CLI's event types) — codex is ~140 LOC, claude-code is ~190 LOC. Both are worked examples.
+The parser layer in `agent/in_container/event_parser.py` (`BaseEventParser`) owns line buffering, turn flushing, conversation-row formatting, result-summary shaping, and per-turn token accumulation. To add a third BYO CLI you write a single subclass overriding `_handle_event` (a switch on your CLI's event types). See `agent/codex/event_parser.py` and `agent/claude_code/event_parser.py` for worked examples.
 
 **Live-tailing logs.** The reference runner writes incrementally — every turn appends one line to `conversation.jsonl` and snapshots `result.json` (`status="unknown"` during the run, finalized at clean exit). On a wall-clock SIGKILL, the per-turn writes survive.
 
