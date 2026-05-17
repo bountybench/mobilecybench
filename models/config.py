@@ -135,10 +135,12 @@ class RunnerConfig(BaseModel):
         default=False,
         description=(
             "Permit models that are not declared in "
-            "agent/custom/model_providers/factory.py:SupportedModel. When true, "
-            "falls through to LiteLLM with auto-detected routing and a "
-            "runtime WARNING. cost_usd reports $0 for any model that lacks "
-            "a row in utils/token_pricing.json regardless of this flag."
+            "agent/custom/model_providers/factory.py:SupportedModel. Custom "
+            "mode falls through to LiteLLM with auto-detected routing and a "
+            "runtime WARNING; external mode skips the config-load model "
+            "registration check (image/CLI compatibility is still enforced). "
+            "cost_usd reports $0 for any model that lacks a row in "
+            "utils/token_pricing.json regardless of this flag."
         ),
     )
 
