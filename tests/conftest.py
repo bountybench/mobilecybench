@@ -123,7 +123,7 @@ def mock_agent_dependencies(mock_model_provider):
                             "input_tokens": 100,
                             "output_tokens": 50,
                             "reasoning_tokens": 0,
-                            "cache_input_tokens": 0,
+                            "cached_input_tokens": 0,
                             "cost_usd": 0.0,
                         }
                     )

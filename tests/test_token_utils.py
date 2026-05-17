@@ -444,7 +444,7 @@ def test_tracker_multiple_records_accumulate_totals():
     assert totals["input_tokens"] == 800
     assert totals["output_tokens"] == 300
     assert totals["reasoning_tokens"] == 0
-    assert totals["cache_input_tokens"] == 50
+    assert totals["cached_input_tokens"] == 50
 
     excepted_cost = compute_cost_usd(
         pricing=get_pricing_for_model("gpt-4.1", tracker._pricing_map),

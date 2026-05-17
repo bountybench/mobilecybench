@@ -413,6 +413,7 @@ def write_run_summary(
             "error_count": max(0, logger_manager.get_error_count() - start_error_count),
             "token_totals": token_totals,
             "cost_usd": cost_usd,
+            "cost_source": run_result.get("cost_source"),
             "timing": timing_summary,
         },
         "results": {

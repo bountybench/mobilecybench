@@ -95,6 +95,10 @@
         "error_count": { "type": "integer", "minimum": 0 },
         "token_totals": { "type": "object" },
         "cost_usd": { "type": ["number", "null"] },
+        "cost_source": {
+          "type": ["string", "null"],
+          "enum": ["agent", "derived", "derived_unpriced", null]
+        },
         "timing": { "type": "object" }
       }
     },
