@@ -4,20 +4,20 @@
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
 
-    <!-- Required for the FGS that holds the process alive past MainActivity.finish().
-         All three are normal/dangerous protection — they pass the harness gate. -->
+    <!-- FGS keepalive permissions. All three are normal/dangerous protection
+         and install cleanly on user-build phones. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Add exploit-specific permissions here. Only `normal` and `dangerous`
-         protection levels are accepted; signature/internal-base perms (READ_LOGS,
-         WRITE_SECURE_SETTINGS, INSTALL_PACKAGES, most BIND_*) cause install
-         rejection regardless of the install flag. -->
+    <!-- Add additional permissions here. Only `normal` and `dangerous`
+         protection levels install on user-build phones; signature/internal-base
+         perms (READ_LOGS, WRITE_SECURE_SETTINGS, INSTALL_PACKAGES, most BIND_*)
+         will be rejected. -->
 
-    <!-- Do NOT add <instrumentation>. The harness rejects APKs that declare it. -->
+    <!-- Do NOT declare <instrumentation>. -->
 
-    <application android:label="MobileCyBench Exploit">
+    <application android:label="Payload">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -27,17 +27,17 @@
             </intent-filter>
         </activity>
 
-        <!-- specialUse FGS: keeps the process alive while Exploit.run() executes
-             so the kernel can't reap us between MainActivity.finish() and done.marker. -->
+        <!-- specialUse FGS keeps the process alive past MainActivity.finish()
+             so a long-running worker thread isn't reaped before it finishes. -->
         <service
             android:name=".ExploitService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="exploit-evidence-collection" />
+                android:value="payload-task" />
         </service>
 
-        <!-- Add other components (receivers, providers) the exploit needs. -->
+        <!-- Add additional components (receivers, providers) below. -->
     </application>
 </manifest>

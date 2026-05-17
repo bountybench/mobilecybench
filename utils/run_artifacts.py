@@ -336,6 +336,8 @@ def write_run_summary(
             config.workflow, logs_dir, workflow
         ).items()
     }
+    squid_access_log = logs_dir / "squid_access.log"
+    squid_cache_log = logs_dir / "squid_cache.log"
 
     # Image identity is stamped onto run_result before agent_env cleanup;
     # agent_image falls back to config so dry-runs (no container) still record intent.
@@ -420,6 +422,16 @@ def write_run_summary(
             "screenshots_dir": (
                 relative_artifact_path(logs_dir / "screenshots", logs_dir)
                 if (logs_dir / "screenshots").is_dir()
+                else None
+            ),
+            "squid_access_log": (
+                relative_artifact_path(squid_access_log, logs_dir)
+                if squid_access_log.exists()
+                else None
+            ),
+            "squid_cache_log": (
+                relative_artifact_path(squid_cache_log, logs_dir)
+                if squid_cache_log.exists()
                 else None
             ),
             **score_artifact_paths,

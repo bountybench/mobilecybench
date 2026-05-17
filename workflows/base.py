@@ -237,28 +237,32 @@ class Workflow(ABC):
         pass
 
     def save_artifacts(self, logs_dir: Path) -> None:
-        """Save agent artifacts (exploit files, agent output) to logs.
+        """Save agent artifacts (exploit files, agent output, firewall logs) to logs.
 
         Best-effort: logs warnings on failure but never raises.
-        Called after run_agent() while the container is still alive.
+        Called after run_agent() while the containers are still alive.
 
-        External agents extract artifacts inside harness.byo_agent.run_agent's
-        own finally block; this method short-circuits for them to avoid
-        double-extraction.
+        External agents extract agent_run/agent_exploit/agent_output inside
+        harness.byo_agent.run_agent's own finally block, so this method handles
+        the per-agent extractions only for custom mode. Firewall logs run
+        unconditionally — the Squid sidecar is independent of agent_mode.
         """
-        if self.config.agent_mode == "external":
-            return
-        if not self.agent_env:
-            return
+        if self.agent_env and self.config.agent_mode != "external":
+            for save_fn in (
+                self.agent_env.save_agent_exploit,
+                self.agent_env.save_agent_output,
+            ):
+                try:
+                    save_fn(logs_dir)
+                except Exception as e:
+                    logger.warning(f"Failed to save artifacts: {e}")
 
-        for save_fn in (
-            self.agent_env.save_agent_exploit,
-            self.agent_env.save_agent_output,
-        ):
-            try:
-                save_fn(logs_dir)
-            except Exception as e:
-                logger.warning(f"Failed to save artifacts: {e}")
+        try:
+            from agent import firewall
+
+            firewall.save_logs(logs_dir)
+        except Exception as e:
+            logger.warning(f"Failed to save firewall logs: {e}")
 
     def setup_apks(self) -> None:
         """Acquire APKs based on build_type.

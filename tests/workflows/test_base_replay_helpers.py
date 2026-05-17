@@ -60,6 +60,17 @@ def test_save_result_preserves_existing_file_when_json_write_fails(workflow):
     assert not (workflow.app_dir / f"{workflow.SCORE_FILE}.tmp").exists()
 
 
+def test_save_artifacts_captures_agent_outputs_and_firewall_logs(workflow, tmp_path):
+    workflow.agent_env = MagicMock()
+
+    with patch("agent.firewall.save_logs") as mock_save_logs:
+        workflow.save_artifacts(tmp_path)
+
+    workflow.agent_env.save_agent_exploit.assert_called_once_with(tmp_path)
+    workflow.agent_env.save_agent_output.assert_called_once_with(tmp_path)
+    mock_save_logs.assert_called_once_with(tmp_path)
+
+
 class TestRestartRuntime:
     @patch("utils.setup_utils.install_app_and_setup_backend")
     @patch("utils.emulator_certs.inject_system_ca")
