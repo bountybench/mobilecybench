@@ -1,7 +1,6 @@
 """Base workflow class defining the evaluation interface."""
 
 import json
-import logging
 import os
 import shutil
 import subprocess
@@ -20,10 +19,8 @@ from harness.byo_agent import run_agent as _byo_run_agent
 from harness.task import build_task_dict
 from models.config import RunnerConfig
 from utils.json_io import write_json_atomic
-from utils.logger import logger_manager
+from utils.logger import logger, logger_manager
 from utils.text_files import collect_text_files
-
-logger = logging.getLogger(__name__)
 
 
 class Workflow(ABC):
@@ -800,21 +797,15 @@ class Workflow(ABC):
             except Exception as e:
                 logger.warning(f"Failed to restore codebase: {e}")
 
-        # Delete agent_codebase — created during setup, needed through evaluate(),
-        # but should not persist between runs.
-        agent_codebase = self.app_dir / "agent_codebase"
-        if agent_codebase.exists():
+        # Drop per-run staging dirs (agent_codebase: needed through evaluate();
+        # agent_apk: created only under no_codebase=True). Neither should persist
+        # between runs.
+        for staging_name in ("agent_codebase", "agent_apk"):
+            staging_path = self.app_dir / staging_name
+            if not staging_path.exists():
+                continue
             try:
-                shutil.rmtree(agent_codebase)
-                logger.info("Deleted agent_codebase")
+                shutil.rmtree(staging_path)
+                logger.info(f"Deleted {staging_name}")
             except Exception as e:
-                logger.warning(f"Failed to delete agent_codebase: {e}")
-
-        # Delete agent_apk staging directory (created when no_codebase=True)
-        agent_apk = self.app_dir / "agent_apk"
-        if agent_apk.exists():
-            try:
-                shutil.rmtree(agent_apk)
-                logger.info("Deleted agent_apk")
-            except Exception as e:
-                logger.warning(f"Failed to delete agent_apk: {e}")
+                logger.warning(f"Failed to delete {staging_name}: {e}")
