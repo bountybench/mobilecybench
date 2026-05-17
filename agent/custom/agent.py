@@ -311,8 +311,11 @@ class CustomAgent:
             agent_logger.warning(f"Failed to append conversation turn JSONL: {e}")
 
     def _load_conversation_schema(self):
+        # __file__ = <repo>/agent/custom/agent.py → repo root is .parent×3.
+        # Earlier ×2 stopped at agent/ (no schemas/ there), so load_schema
+        # returned None and validate_schema silently no-op'd.
         return load_schema(
-            Path(__file__).parent.parent, "conversation_turn.schema.json"
+            Path(__file__).parent.parent.parent, "conversation_turn.schema.json"
         )
 
     def _validate_turn_event(self, event):
