@@ -2,7 +2,7 @@
 
 ## What is an Experiment?
 
-Our goal is to evaluate AI agents on their ability to find and exploit security vulnerabilities in an Android applications. The agent will run in an sandboxed container with access to an app (either an apk or source code) and an emulator. If the app a backend server, sample users and data will be seeded
+Our goal is to evaluate AI agents on their ability to find and exploit security vulnerabilities in Android applications. The agent runs in a sandboxed container with access to an app (either an APK or source code) and an emulator. If the app has a backend server, sample users and data are seeded.
 
 ## Threat model
 
@@ -59,7 +59,7 @@ If the exploit passes on the vulnerable build but fails on the patched build, th
 
 To run two-phase, set `"workflow": "redteam"` and **exactly one** of `task` (zero-day) or `synthetic_vuln_id` (synthetic) in `runner_config.json`. See [REDTEAM.md](REDTEAM.md) for the full task-bundle layout and scoring rules.
 
-**Probe-only (`probe_only: true`)** is a bundle-less alternative scoring mode for runs where no patch is available (closed-source apps, public-app evaluations, baseline noise calibration). It runs a single replay against the app's baseline APK and scores on app-probe activity only — no patch, no verifier, no two-phase comparison. Set `probe_only: true`, `attacker_model` (required), and **omit** both `task` and `synthetic_vuln_id`. See [REDTEAM.md#probe-only-mode](REDTEAM.md#probe-only-mode).
+**Probe-only (`probe_only: true`)** is a bundle-less alternative scoring mode for runs where no patch is available (closed-source apps, public-app evaluations, baseline noise calibration). It runs a single replay against the app's baseline APK and scores on app-probe activity only — no patch, no verifier, no two-phase comparison. Set `workflow: "redteam"`, `probe_only: true`, `attacker_model` (required), and **omit** both `task` and `synthetic_vuln_id`. See [REDTEAM.md#probe-only-mode](REDTEAM.md#probe-only-mode).
 
 ## Running Experiments
 
@@ -80,11 +80,10 @@ The runner will:
 
 ### Dry Run (no API calls)
 
-To test setup without access to an API key:
+To test setup without access to an API key, use the committed dry-run config:
 
 ```bash
-# Set dry_run: true in runner_config.json, then:
-python runner.py <app_name>
+python runner.py <app_name> --config runner_config_dryrun.json
 ```
 
 This launches an interactive shell in the Kali container for manual testing.
@@ -121,25 +120,25 @@ JSON Schema captures per-field types and defaults but cannot machine-enforce the
 
 ### Agent Mode
 
-Set `"agent_mode"` in your `runner_config.json` to select an agent implementation:
+Two paths, picked by `"agent_mode"`:
 
-| Mode           | Description                                              | Docker Image                                  |
-| -------------- | -------------------------------------------------------- | --------------------------------------------- |
-| `custom`       | Built-in agent with per-turn model calls (default)       | `cybench/mobilecybench:latest`                |
-| `codex`        | OpenAI Codex CLI agent                                   | `cybench/mobilecybench:codex_0.130.0`         |
-| `claude-code`  | Claude Code CLI agent (requires OAuth tokens)            | `cybench/mobilecybench:claudecode_2.1.140`    |
+| Mode       | Description                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------- |
+| `custom`   | Built-in in-process Python loop (default). `agent_image` names the kali base.                |
+| `external` | BYO Docker image satisfying the contract in [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md). Covers the reference codex/claude-code images and lab BYO agents. `agent_image` names the image to run. |
 
-Example config for Claude Code (uses Opus 4.6 by default):
+Example external (Claude Code reference image):
 
 ```json
 {
-  "agent_mode": "claude-code",
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
-  "agent_timeout": 1800
+  "agent_mode": "external",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
+  "model": "claude-sonnet-4-6",
+  "agent_wallclock_seconds": 1800
 }
 ```
 
-See `documentation/GETTING_STARTED.md` for setup instructions for each agent mode.
+The legacy `agent_mode: "codex"` and `agent_mode: "claude-code"` values were removed; switch to `agent_mode: "external"` plus the matching reference image. See `documentation/GETTING_STARTED.md` for setup instructions.
 
 ## Outputs
 
@@ -149,26 +148,24 @@ A symlink to the most recent run is maintained at `logs/latest/`.
 
 ### Experiment Directory Structure
 
-| File                    | Description                                                                                            |
-| ----------------------- | ------------------------------------------------------------------------------------------------------ |
-| `run_summary.json`      | **Primary Source of Truth.** Machine-readable summary of config, results, metrics, and artifact paths. |
-| `experiment.log`        | Full technical trace of the runner, workflow, and agent.                                               |
-| `agent.log`             | Cleaned stream of agent-only thoughts and tool interactions.                                           |
-| `system_prompt.txt`     | Exact system prompt used by the custom agent for this run.                                             |
-| `conversation.jsonl`    | Turn-by-turn record of the LLM conversation (ideal for analysis).                                      |
-| `token_usage.jsonl`     | Granular token counts and USD cost per API call.                                                       |
-| `android_system.log`    | Full Android Logcat dump captured at the end of the run.                                               |
-| `screenshots/`          | PNG captures of the emulator for every turn (if enabled).                                              |
-| `git_repro.patch`       | (If repo is dirty) Diff of uncommitted changes to ensure 100% reproducibility.                         |
-| `synthetic_scores.json` | Copied exploit verification results (Exploit mode).                                                    |
-| `redteam_scores.json`   | Differential replay results (Redteam mode).                                                           |
-| `errors.log`            | Summary of all ERROR-level events encountered during the run.                                          |
+| File                              | Description                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `run_summary.json`                | **Primary Source of Truth.** Machine-readable summary of config, results, metrics, and artifact paths. |
+| `experiment.log`                  | Full technical trace of the runner, workflow, and agent.                                               |
+| `agent_run/agent.log`             | Cleaned stream of agent-only thoughts and tool interactions.                                           |
+| `agent_run/conversation.jsonl`    | Turn-by-turn record of the LLM conversation (ideal for analysis).                                      |
+| `agent_run/token_usage.jsonl`     | Granular token counts and USD cost per API call.                                                       |
+| `agent_run/system_prompt.txt`     | Exact system prompt used by the custom agent for this run.                                             |
+| `android_system.log`              | Full Android Logcat dump captured at the end of the run.                                               |
+| `screenshots/`                    | PNG captures of the emulator for every turn (if enabled).                                              |
+| `git_repro.patch`                 | (If repo is dirty) Diff of uncommitted changes to ensure 100% reproducibility.                         |
+| `synthetic_scores.json`           | Copied exploit verification results (Exploit mode).                                                    |
+| `redteam_scores.json`             | Differential replay results (Redteam mode).                                                            |
+| `errors.log`                      | Summary of all ERROR-level events encountered during the run.                                          |
 
 ## Interpreting Results
 
 **The `run_summary.json` file is the recommended starting point for automated analysis.** It contains the `outcome`, `exit_reason`, and a `metrics` block with timing and token data.
-
-Paths in `run_summary.json["artifacts"]` are relative to the directory containing `run_summary.json`; downstream scripts should resolve them from that directory.
 
 **Exploit mode:**
 

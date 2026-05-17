@@ -151,4 +151,4 @@ def test_agent_logger_first_emit_also_bootstraps(tmp_path: Path) -> None:
     expected = logs_dir / "experiment_agent_session"
     last = [ln for ln in out.splitlines() if ln.startswith("LOGS_DIR=")][-1]
     assert last == f"LOGS_DIR={expected}"
-    assert (expected / "agent.log").exists()
+    assert (expected / "agent_run" / "agent.log").exists()

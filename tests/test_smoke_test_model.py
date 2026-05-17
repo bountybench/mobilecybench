@@ -89,7 +89,7 @@ def test_main_returns_0_on_successful_call(smoke_test_module, tmp_path):
     fake_provider.call.return_value = _provider_response(text="OK")
 
     with patch(
-        "agent.model_providers.get_model_provider", return_value=fake_provider
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
     ) as mock_factory:
         rc = _run_main(smoke_test_module, ["--config", str(config_path)])
 
@@ -105,7 +105,7 @@ def test_main_uses_explicit_model_override(smoke_test_module):
     fake_provider.call.return_value = _provider_response(text="OK")
 
     with patch(
-        "agent.model_providers.get_model_provider", return_value=fake_provider
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
     ) as mock_factory:
         # No --config; we override model inline.
         rc = _run_main(smoke_test_module, ["--model", "claude-opus-4-7"])
@@ -152,7 +152,7 @@ def test_main_returns_1_when_config_path_is_a_directory(smoke_test_module, tmp_p
 def test_main_returns_1_on_provider_construction_error(smoke_test_module):
     """get_model_provider raising ValueError (unsupported model / missing key) → exit 1."""
     with patch(
-        "agent.model_providers.get_model_provider",
+        "agent.custom.model_providers.get_model_provider",
         side_effect=ValueError("Unsupported model: 'totally-fake'"),
     ):
         rc = _run_main(smoke_test_module, ["--model", "totally-fake"])
@@ -169,7 +169,9 @@ def test_main_returns_2_on_provider_call_runtime_error(smoke_test_module):
     fake_provider = MagicMock()
     fake_provider.call.side_effect = ConnectionError("backend unreachable")
 
-    with patch("agent.model_providers.get_model_provider", return_value=fake_provider):
+    with patch(
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
+    ):
         rc = _run_main(smoke_test_module, ["--model", "gpt-5.5"])
     assert rc == 2
 
@@ -181,7 +183,9 @@ def test_main_returns_2_on_empty_response(smoke_test_module):
         text="", reasoning="", tool_calls=[]
     )
 
-    with patch("agent.model_providers.get_model_provider", return_value=fake_provider):
+    with patch(
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
+    ):
         rc = _run_main(smoke_test_module, ["--model", "gpt-5.5"])
     assert rc == 2
 
@@ -193,7 +197,9 @@ def test_main_accepts_response_with_only_reasoning(smoke_test_module):
         text="", reasoning="thinking through the problem"
     )
 
-    with patch("agent.model_providers.get_model_provider", return_value=fake_provider):
+    with patch(
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
+    ):
         rc = _run_main(smoke_test_module, ["--model", "gpt-5.5"])
     assert rc == 0
 
@@ -205,7 +211,9 @@ def test_main_accepts_response_with_only_tool_calls(smoke_test_module):
     fake_provider = MagicMock()
     fake_provider.call.return_value = _provider_response(text="", tool_calls=[fc])
 
-    with patch("agent.model_providers.get_model_provider", return_value=fake_provider):
+    with patch(
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
+    ):
         rc = _run_main(smoke_test_module, ["--model", "gpt-5.5"])
     assert rc == 0
 
@@ -221,7 +229,7 @@ def test_main_propagates_allow_unregistered_from_cli(smoke_test_module):
     fake_provider.call.return_value = _provider_response(text="OK")
 
     with patch(
-        "agent.model_providers.get_model_provider", return_value=fake_provider
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
     ) as mock_factory:
         _run_main(
             smoke_test_module, ["--model", "fake-model-id", "--allow-unregistered"]
@@ -239,7 +247,7 @@ def test_main_propagates_allow_unregistered_from_config(smoke_test_module, tmp_p
     fake_provider.call.return_value = _provider_response(text="OK")
 
     with patch(
-        "agent.model_providers.get_model_provider", return_value=fake_provider
+        "agent.custom.model_providers.get_model_provider", return_value=fake_provider
     ) as mock_factory:
         _run_main(smoke_test_module, ["--config", str(cfg)])
 

@@ -39,7 +39,7 @@ from workflows import (
 
 def run_interactive_shell(app_name: str) -> dict:
     """Run an interactive shell for manual command execution in dry-run mode."""
-    from agent.tools.runtime import ToolRuntime
+    from agent.custom.tools.runtime import ToolRuntime
 
     tool_runtime = ToolRuntime()
 
@@ -364,7 +364,8 @@ def run(
             evaluation = workflow.evaluate() or {}
             _log_evaluation_result(evaluation)
             exit_reason = f"{exploit_source.kind}_run_completed"
-            run_result = normalize_agent_result({"status": exit_reason})
+            run_result = normalize_agent_result({"status": "completed"})
+            run_result["status"] = exit_reason
             score = evaluation.get("score")
             outcome = "success" if score == 1 else "failure"
             exit_code = 0 if score == 1 else 1
@@ -386,6 +387,10 @@ def run(
                 # tree inside /app/agent_exploit/ before we copied it out.
                 workflow.save_artifacts(logger_manager.get_logs_dir())
                 if workflow.agent_env:
+                    run_result.setdefault("agent_image", workflow.agent_env.image_name)
+                    run_result.setdefault(
+                        "agent_image_digest", workflow.agent_env.image_digest
+                    )
                     workflow.agent_env.cleanup()
                     workflow.agent_env = None
 

@@ -1,0 +1,15 @@
+# Applies to repo-root builds (codex / claudecode BYO images).
+# Must exist BEFORE the first COPY — added later, the secret stays in layer history.
+
+# Secrets — agent/.env holds operator API tokens, read at runtime via load_dotenv.
+**/.env
+**/.env.*
+
+# Build bloat
+.git/
+.pytest_cache/
+.ruff_cache/
+**/*.egg-info/
+**/__pycache__/
+**/*.pyc
+**/*.pyo

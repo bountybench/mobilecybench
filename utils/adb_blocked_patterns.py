@@ -4,7 +4,7 @@ This module is the single source of truth for ADB commands that agents
 are not permitted to run.  It is consumed by:
 
 - ``utils/adb_filter_proxy.py``  (network-level enforcement in the sidecar)
-- ``agent/backend/docker_ops.py`` (application-level checks + exploit.sh validation)
+- ``agent/custom/backend/docker_ops.py`` (application-level checks + exploit.sh validation)
 
 The two categories serve different purposes:
 

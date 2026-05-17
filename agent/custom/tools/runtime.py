@@ -1,29 +1,19 @@
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Tuple, Union
 
 from pydantic import BaseModel, ValidationError
 
-from agent.backend.docker_ops import execute_command_internal, get_ui_state
-from agent.tools import TOOL_NAMES
-from agent.tools.schemas import ExecuteCommand, ExecuteCommandWithUI, GetUIState
+from agent.custom.backend.docker_ops import execute_command_internal, get_ui_state
+from agent.custom.tools import TOOL_NAMES
+from agent.custom.tools.schemas import ExecuteCommand, ExecuteCommandWithUI, GetUIState
 from utils.logger import logger
 
 
 class ToolRuntime:
-    """
-    Runtime environment for executing tools locally.
-    Handles argument parsing, validation, and execution.
+    """Runtime environment for executing tools locally."""
 
-    Args:
-        allowed_tools: Optional whitelist of tool names. When None (default),
-            all tools are exposed. When non-empty, only listed tools are
-            registered. Validation of names is the caller's responsibility
-            (RunnerConfig already enforces the allowed set).
-    """
-
-    def __init__(self, allowed_tools: Optional[List[str]] = None):
-        # Map tool names to (Schema, Function)
-        full_registry: Dict[str, Tuple[type[BaseModel], Callable]] = {
+    def __init__(self):
+        self.registry: Dict[str, Tuple[type[BaseModel], Callable]] = {
             "execute_command": (ExecuteCommand, self._execute_command),
             "get_current_ui_state": (GetUIState, self._get_current_ui_state),
             "execute_command_with_ui_state": (
@@ -31,17 +21,10 @@ class ToolRuntime:
                 self._execute_command_with_ui_state,
             ),
         }
-        assert set(full_registry) == set(TOOL_NAMES), (
-            "ToolRuntime.registry drifted from agent.tools.TOOL_NAMES; "
+        assert set(self.registry) == set(TOOL_NAMES), (
+            "ToolRuntime.registry drifted from agent.custom.tools.TOOL_NAMES; "
             "update one or the other to match."
         )
-        if allowed_tools is None:
-            self.registry = full_registry
-        else:
-            allowed = set(allowed_tools)
-            self.registry = {
-                name: entry for name, entry in full_registry.items() if name in allowed
-            }
 
     def _execute_command(self, args: ExecuteCommand) -> str:
         try:

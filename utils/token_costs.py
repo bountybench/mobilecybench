@@ -11,9 +11,12 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from utils.logger import logger
+
+# Matches "-YYYY-MM-DD" or compact "-YYYYMMDD" suffixes at the end of a model name.
+_DATE_SUFFIX_RE = re.compile(r"-(?:\d{4}-\d{2}-\d{2}|\d{8})$")
 
 
 @dataclass(frozen=True)
@@ -36,8 +39,8 @@ class HighContextPricing:
 class ModelPricing:
     """Per-1M token pricing for a model.
 
-    All values are USD per 1,000,000 tokens.
-    Missing fields default to 0.0.
+    All values are USD per 1,000,000 tokens. Missing fields default to 0.0
+    (cache-creation fields default to ``cache_input`` via the consumer).
 
     Attributes:
         - input: Price per 1M input tokens.
@@ -45,6 +48,8 @@ class ModelPricing:
         - cache_input: Price per 1M cache-read input tokens.
         - reasoning: Optional price per 1M reasoning output tokens.
             If omitted, reasoning tokens fall back to the standard output rate.
+        - cache_creation_5m: Optional price per 1M cache-write tokens (Anthropic 5m TTL).
+        - cache_creation_1h: Optional price per 1M cache-write tokens (Anthropic 1h TTL).
         - high_context: Optional higher-tier pricing for long prompts.
     """
 
@@ -52,6 +57,8 @@ class ModelPricing:
     output: float = 0.0
     cache_input: float = 0.0
     reasoning: Optional[float] = None
+    cache_creation_5m: Optional[float] = None
+    cache_creation_1h: Optional[float] = None
     high_context: Optional[HighContextPricing] = None
 
 
@@ -101,6 +108,12 @@ def _parse_pricing_map(raw: Dict[str, dict]) -> Dict[str, ModelPricing]:
             output=float(price_entry.get("output", 0) or 0),
             cache_input=float(price_entry.get("cache_input", 0) or 0),
             reasoning=_optional_float(price_entry.get("reasoning")),
+            cache_creation_5m=_optional_float(
+                price_entry.get("cache_creation_per_million_5m")
+            ),
+            cache_creation_1h=_optional_float(
+                price_entry.get("cache_creation_per_million_1h")
+            ),
             high_context=high_context,
         )
     return parsed
@@ -181,9 +194,43 @@ def _strip_date_suffix(model: str) -> str:
         "claude-sonnet-4-5-20250929" -> "claude-sonnet-4-5"
         "gpt-4" -> "gpt-4" (unchanged)
     """
-    # Matches "-YYYY-MM-DD" or compact "-YYYYMMDD" suffixes at the end.
-    date_pattern = r"-(?:\d{4}-\d{2}-\d{2}|\d{8})$"
-    return re.sub(date_pattern, "", model)
+    return _DATE_SUFFIX_RE.sub("", model)
+
+
+def lookup_pricing(
+    model: str, pricing_map: Dict[str, ModelPricing]
+) -> Optional[ModelPricing]:
+    """Look up a model in ``pricing_map`` applying name normalization.
+
+    Lookup order:
+      1. Exact match
+      2. Provider prefix stripped (``gemini/gemini-2.0-flash`` → ``gemini-2.0-flash``)
+      3. Date suffix stripped (``gpt-5-2025-08-07`` → ``gpt-5``)
+      4. Both stripped
+
+    Returns ``None`` when no row matches under any normalization — callers
+    that want to distinguish "found via fallback" from "truly unknown"
+    should use this directly; callers that always need a ModelPricing
+    should use ``get_pricing_for_model``.
+    """
+    if not model:
+        return None
+    pricing = pricing_map.get(model)
+    if pricing is not None:
+        return pricing
+    model_no_prefix = _strip_provider_prefix(model)
+    if model_no_prefix != model:
+        pricing = pricing_map.get(model_no_prefix)
+        if pricing is not None:
+            logger.debug(f"Using pricing for '{model_no_prefix}' for model '{model}'")
+            return pricing
+    model_no_date = _strip_date_suffix(model_no_prefix)
+    if model_no_date != model_no_prefix:
+        pricing = pricing_map.get(model_no_date)
+        if pricing is not None:
+            logger.debug(f"Using pricing for '{model_no_date}' for model '{model}'")
+            return pricing
+    return None
 
 
 def get_pricing_for_model(
@@ -192,53 +239,18 @@ def get_pricing_for_model(
     *,
     warn: bool = True,
 ) -> ModelPricing:
-    """Get pricing for a specific model.
+    """Return pricing for ``model``, or all-zero ModelPricing if unknown.
 
-    Args:
-        model: Model name to look up.
-        pricing_map: Optional pre-loaded pricing map. If None, loads from default path.
-
-    Returns:
-        ModelPricing instance. Returns all-zero pricing for unknown models to prevent
-        pipeline failures.
-
-    Note:
-        Lookup order:
-        1. Exact model name match
-        2. With provider prefix stripped (e.g., "gemini/gemini-2.0-flash" -> "gemini-2.0-flash")
-        3. With date suffix stripped (e.g., "gpt-5-2025-08-07" -> "gpt-5")
-        4. With both prefix and date suffix stripped
-
-        If still unknown and `warn` is True, a warning is logged.
-        Returns ModelPricing with all zeros to avoid breaking the pipeline.
+    Convenience wrapper around ``lookup_pricing`` for callers that always
+    need a ``ModelPricing`` instance and treat "unknown" as zeros.
     """
     all_pricing = pricing_map if pricing_map is not None else load_pricing()
-
-    # Try exact match first
-    pricing = all_pricing.get(model)
+    pricing = lookup_pricing(model, all_pricing)
     if pricing is not None:
         return pricing
-
-    # Try with provider prefix stripped (e.g., "gemini/gemini-2.0-flash" -> "gemini-2.0-flash")
-    model_no_prefix = _strip_provider_prefix(model)
-    if model_no_prefix != model:
-        pricing = all_pricing.get(model_no_prefix)
-        if pricing is not None:
-            logger.debug(f"Using pricing for '{model_no_prefix}' for model '{model}'")
-            return pricing
-
-    # Try with date suffix stripped
-    model_no_date = _strip_date_suffix(model_no_prefix)
-    if model_no_date != model_no_prefix:
-        pricing = all_pricing.get(model_no_date)
-        if pricing is not None:
-            logger.debug(f"Using pricing for '{model_no_date}' for model '{model}'")
-            return pricing
-
-    # No pricing found
     if warn:
         logger.warning(f"Token pricing unknown for model '{model}'; using zeros.")
-    return ModelPricing()  # all pricing zeros
+    return ModelPricing()
 
 
 def compute_cost_usd(
@@ -248,44 +260,103 @@ def compute_cost_usd(
     output_tokens: int = 0,
     cache_input_tokens: int = 0,
     reasoning_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+    cache_creation_tokens_5m: int = 0,
+    cache_creation_tokens_1h: int = 0,
 ) -> float:
-    """Calculate the USD cost based on token usage and model pricing.
+    """Calculate the USD cost from token usage and per-1M model pricing.
 
     Args:
-        pricing: ModelPricing instance with per-1M token prices.
-        input_tokens: Number of input tokens used.
-        output_tokens: Number of output tokens generated. For OpenAI-like
-            responses, this is typically the total output including reasoning.
-        cache_input_tokens: Number of input tokens served from cache.
-        reasoning_tokens: Number of reasoning tokens included in the output.
-            Subtracted from output_tokens so each token is billed once: text
-            output at the output rate, reasoning at the reasoning rate.
+        pricing: ModelPricing with per-1M token rates.
+        input_tokens: Total input tokens. Cache reads and cache writes are
+            subtracted out so each token is billed exactly once.
+        output_tokens: Total output tokens (includes reasoning for OpenAI-like
+            responses; reasoning is subtracted out).
+        cache_input_tokens: Cache-read tokens (priced at ``cache_input`` rate).
+        reasoning_tokens: Reasoning tokens included in ``output_tokens``.
+        cache_creation_tokens: Cache-write tokens without TTL split (used when
+            the CLI emits a single rollup, e.g. opencode).
+        cache_creation_tokens_5m / _1h: TTL-split cache-write tokens (Anthropic).
+            When either is non-zero, the TTL split wins and ``cache_creation_tokens``
+            is treated as 0 to avoid double-counting.
 
     Returns:
-        - Cost in USD as a float. (non-negative)
+        Non-negative USD cost.
     """
     it = max(int(input_tokens or 0), 0)
     ot = max(int(output_tokens or 0), 0)
     ci = max(int(cache_input_tokens or 0), 0)
     rt = max(int(reasoning_tokens or 0), 0)
-    billed_input = max(it - ci, 0)
+    cw_5m = max(int(cache_creation_tokens_5m or 0), 0)
+    cw_1h = max(int(cache_creation_tokens_1h or 0), 0)
+    # TTL split wins over the flat rollup to avoid double-counting cache writes.
+    cw_flat = 0 if (cw_5m or cw_1h) else max(int(cache_creation_tokens or 0), 0)
 
-    # Select tier: if high-context pricing exists and input exceeds threshold,
-    # the entire request is billed at the higher rate.
+    # "Fresh" input excludes cache reads and writes — priced separately below.
+    billed_input = max(it - ci - cw_flat - cw_5m - cw_1h, 0)
+
+    # High-context tier: entire request reprices when total input exceeds threshold.
     high_ctx = pricing.high_context
-    if high_ctx and it > high_ctx.input_threshold:
-        rate = high_ctx
-    else:
-        rate = pricing
+    rate: Any = high_ctx if (high_ctx and it > high_ctx.input_threshold) else pricing
 
-    # OpenAI/LiteLLM report reasoning tokens as a subset of total output tokens.
-    # Subtract them so each token is billed exactly once at the correct rate.
+    # Reasoning is a subset of output; subtract so we don't double-bill.
     billed_text_output = max(ot - rt, 0)
     reasoning_rate = rate.reasoning if rate.reasoning is not None else rate.output
 
+    # Cache writes fall back to cache_input when TTL-specific rates aren't set.
+    cw_5m_rate = (
+        pricing.cache_creation_5m
+        if pricing.cache_creation_5m is not None
+        else rate.cache_input
+    )
+    cw_1h_rate = (
+        pricing.cache_creation_1h
+        if pricing.cache_creation_1h is not None
+        else cw_5m_rate
+    )
+
     scale = 1_000_000.0
-    cost_input = (billed_input / scale) * rate.input
-    cost_output = (billed_text_output / scale) * rate.output
-    cost_reasoning = (rt / scale) * reasoning_rate
-    cost_cache_input = (ci / scale) * rate.cache_input
-    return float(cost_input + cost_output + cost_reasoning + cost_cache_input)
+    return float(
+        (billed_input / scale) * rate.input
+        + (billed_text_output / scale) * rate.output
+        + (rt / scale) * reasoning_rate
+        + (ci / scale) * rate.cache_input
+        + (cw_flat / scale) * cw_5m_rate
+        + (cw_5m / scale) * cw_5m_rate
+        + (cw_1h / scale) * cw_1h_rate
+    )
+
+
+def _tok(token_totals: Dict[str, Any], key: str) -> int:
+    v = token_totals.get(key, 0)
+    return int(v) if isinstance(v, (int, float)) else 0
+
+
+def derive_cost_from_totals(
+    token_totals: Dict[str, Any],
+    model: str,
+    pricing_map: Optional[Dict[str, ModelPricing]] = None,
+) -> tuple[float, str]:
+    """Compute cost from a result.json-shaped ``token_totals`` dict + model id.
+
+    Returns ``(cost_usd, cost_source)``. ``"derived"`` when the model has a
+    pricing row; ``"derived_unpriced"`` (cost=0) otherwise. Field names follow
+    the BYO ``result.schema.json`` token_totals layout.
+    """
+    pricing = lookup_pricing(
+        model, pricing_map if pricing_map is not None else load_pricing()
+    )
+    if pricing is None:
+        logger.warning(f"derive_cost: no pricing row for model={model!r}")
+        return 0.0, "derived_unpriced"
+    cost = compute_cost_usd(
+        pricing,
+        input_tokens=_tok(token_totals, "input_tokens"),
+        output_tokens=_tok(token_totals, "output_tokens"),
+        cache_input_tokens=_tok(token_totals, "cached_input_tokens"),
+        reasoning_tokens=_tok(token_totals, "reasoning_tokens"),
+        cache_creation_tokens=_tok(token_totals, "cache_creation_tokens"),
+        cache_creation_tokens_5m=_tok(token_totals, "cache_creation_tokens_5m"),
+        cache_creation_tokens_1h=_tok(token_totals, "cache_creation_tokens_1h"),
+    )
+    return cost, "derived"

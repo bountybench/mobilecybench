@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilecybench.dev/schemas/task.schema.json",
+  "title": "Agent Task",
+  "description": "Contract input delivered by the harness to a BYO agent at /app/task.json. The agent reads this file, runs its loop, and writes /app/agent_run/result.json + /app/agent_exploit/exploit.sh (RA) or /app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk (MA). See documentation/proposals/agent_decoupling/06_design.md for the full contract.",
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "description": "Stable identifier for this run (the harness uses logs/experiment_<uuid>).",
+      "type": "string",
+      "minLength": 1
+    },
+    "app_name": {
+      "description": "App under test (e.g. owncloud-android, wallabag).",
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow": {
+      "description": "Workflow class.",
+      "enum": ["exploit", "redteam"]
+    },
+    "package_name": {
+      "description": "Android package name of the target app.",
+      "type": "string",
+      "minLength": 1
+    },
+    "app_server": {
+      "description": "Hostname:port for the app's backend (e.g. wallabag-app:80).",
+      "type": "string"
+    },
+    "emulator_server": {
+      "description": "Hostname:port for the ADB proxy (e.g. adb-proxy:5037).",
+      "type": "string"
+    },
+    "vuln_id": {
+      "description": "Synthetic vuln id. Mirrors RunnerConfig.synthetic_vuln_id — set for workflow='exploit' and for workflow='redteam' in synthetic mode; null for zero-day redteam.",
+      "type": ["string", "null"]
+    },
+    "apk_relpath": {
+      "description": "Path to the built target APK, relative to /app/codebase (or /app/apk when no_codebase=true).",
+      "type": "string"
+    },
+    "no_codebase": {
+      "description": "When true, /app/apk/ is mounted instead of /app/codebase/.",
+      "type": "boolean"
+    },
+    "attacker_model": {
+      "description": "Attacker model id (redteam mode). Empty string for exploit mode.",
+      "type": "string"
+    },
+    "model": {
+      "description": "Model id (the model the agent runs as).",
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt": {
+      "description": "Fully assembled workflow prompt. Harness builds (workflow prompt + per-app metadata + operator's additional_system_prompt); agent relays to its CLI/API verbatim. Test credentials (agent_username/agent_password) are embedded here when relevant.",
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_wallclock_seconds": {
+      "description": "Harness-side wall-clock kill budget. After this many seconds, the harness sends SIGKILL to the container.",
+      "type": "integer",
+      "exclusiveMinimum": 0
+    },
+    "reasoning_effort": {
+      "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
+      "type": ["string", "null"],
+      "enum": ["low", "medium", "high", null]
+    },
+    "screenshot_mode": {
+      "description": "When true, the agent captures and persists screenshots on tool use. Matches RunnerConfig.screenshot_mode.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "run_id",
+    "app_name",
+    "workflow",
+    "package_name",
+    "app_server",
+    "emulator_server",
+    "apk_relpath",
+    "no_codebase",
+    "model",
+    "prompt",
+    "agent_wallclock_seconds"
+  ],
+  "additionalProperties": false
+}

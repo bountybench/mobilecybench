@@ -1,20 +1,55 @@
 import datetime
-import json
 import platform
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
+import jsonschema
+
 from utils.artifact_paths import relative_artifact_path
+from utils.json_io import load_validator
 from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
+from utils.token_costs import derive_cost_from_totals
 
-try:
-    from jsonschema import validate as _jsonschema_validate
-except Exception:  # pragma: no cover
-    _jsonschema_validate = None
+_RESULT_VALIDATOR = load_validator("result.schema.json")
+_RUN_SUMMARY_VALIDATOR = load_validator("run_summary.schema.json")
+
+# None / missing → safe default. Keeps schema validation happy for typed fields
+# when an agent emits ``null`` (custom path's max_iterations-without-FINAL hits this).
+_RESULT_NULL_DEFAULTS: dict[str, Any] = {
+    "model": "",
+    "final_message": "",
+    "error_traceback": "",
+    "tool_call_count": 0,
+    "unique_tools": [],
+    "token_totals": {},
+    "exit_code": 0,
+}
+
+
+def _resolve_cost(result: dict[str, Any]) -> None:
+    """Resolve cost_usd + cost_source in place.
+
+    Agent-reported cost wins whenever present (including a legitimate $0).
+    Agents that don't know their cost MUST omit the key — never write 0 as a placeholder.
+
+    Idempotent: ``cost_source`` already set ⇒ a prior resolve already happened;
+    re-running would mis-attribute a derived 0.0 as 'agent' (the value is
+    legitimately present, but its provenance was already decided).
+    """
+    if result.get("cost_source") is not None:
+        return
+    agent = result.get("cost_usd")
+    if agent is not None:
+        result["cost_usd"] = float(agent)
+        result["cost_source"] = "agent"
+        return
+    result["cost_usd"], result["cost_source"] = derive_cost_from_totals(
+        result.get("token_totals") or {}, result.get("model") or ""
+    )
 
 
 def utc_now_iso() -> str:
@@ -32,26 +67,22 @@ def jsonable(value: Any) -> Any:
 
 
 def normalize_agent_result(result: Optional[dict]) -> dict:
-    normalized = dict(result or {})
-    turns_taken = normalized.get("turns_taken")
-    if turns_taken is None:
-        turns_taken = normalized.get("turns", 0)
+    """Validate + normalize an agent result against schemas/result.schema.json.
 
-    if "agent_type" not in normalized:
-        if isinstance(normalized.get("conversation_history"), list) and normalized.get(
-            "conversation_history"
-        ):
-            normalized["agent_type"] = "codex"
-        else:
-            normalized["agent_type"] = "custom"
+    Coerces ``None`` to type-safe defaults for typed fields, then resolves
+    cost_usd / cost_source. Status defaults to ``"unknown"``.
+    """
+    normalized = dict(result or {})
     normalized.setdefault("status", "unknown")
-    normalized["turns_taken"] = int(turns_taken or 0)
-    normalized.setdefault("tool_call_count", 0)
-    normalized.setdefault("unique_tools", [])
-    normalized.setdefault("token_totals", {})
-    normalized.setdefault("conversation_file", None)
-    normalized.setdefault("system_prompt_file", None)
-    normalized.setdefault("conversation_history", [])
+    normalized.setdefault("turns_taken", 0)
+    normalized["turns_taken"] = int(normalized["turns_taken"] or 0)
+    for key, default in _RESULT_NULL_DEFAULTS.items():
+        if normalized.get(key) is None:
+            normalized[key] = default
+
+    _resolve_cost(normalized)
+
+    _RESULT_VALIDATOR.validate(normalized)
     return normalized
 
 
@@ -66,26 +97,6 @@ def _run_git_value(project_root: Path, args: list[str]) -> str:
         return (proc.stdout or "").strip()
     except Exception:
         return "unknown"
-
-
-def load_schema(project_root: Path, schema_name: str) -> Optional[dict]:
-    schema_path = project_root / "schemas" / schema_name
-    if not schema_path.exists():
-        return None
-    try:
-        with open(schema_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-def validate_schema(instance: dict, schema: Optional[dict], artifact_name: str) -> None:
-    if not schema or _jsonschema_validate is None:
-        return
-    try:
-        _jsonschema_validate(instance=instance, schema=schema)
-    except Exception as e:
-        logger.warning("%s schema validation failed: %s", artifact_name, e)
 
 
 def _timing_summary_from_calls(calls: list[Any]) -> dict:
@@ -108,59 +119,16 @@ def _timing_summary_from_calls(calls: list[Any]) -> dict:
     }
 
 
-def _materialize_conversation_fallback(
-    conversation_history: Any, logs_dir: Path, run_id: str, project_root: Path
-) -> Optional[Path]:
-    if not isinstance(conversation_history, list) or not conversation_history:
-        return None
-
-    conversation_path = logs_dir / "conversation.jsonl"
-    schema = load_schema(project_root, "conversation_turn.schema.json")
-    lines: list[str] = []
-    for idx, entry in enumerate(conversation_history, start=1):
-        if not isinstance(entry, dict):
-            continue
-        tool_outputs = entry.get("tool_outputs", [])
-        if not isinstance(tool_outputs, list):
-            tool_outputs = [tool_outputs]
-
-        event = {
-            "run_id": run_id,
-            "turn_number": idx,
-            "timestamp": utc_now_iso(),
-            "role": "assistant",
-            "response_id": entry.get("response_id"),
-            "assistant_text": entry.get("final_output"),
-            "reasoning_summary": entry.get("reasoning_summary"),
-            "tool_calls": [],
-            "observations": [
-                {
-                    "tool_call_id": None,
-                    "type": "tool_output",
-                    "content": str(tool_output),
-                    "truncated": False,
-                }
-                for tool_output in tool_outputs
-            ],
-            "status": "ok",
-        }
-        validate_schema(event, schema, "conversation turn")
-        lines.append(json.dumps(event, ensure_ascii=False))
-
-    if not lines:
-        return None
-
-    conversation_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(conversation_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    return conversation_path
-
-
 def _existing_path(path_value: Optional[str]) -> Optional[str]:
     if not path_value:
         return None
     candidate = Path(path_value)
     return str(candidate) if candidate.exists() else None
+
+
+def _rel_if_exists(path: Path, logs_dir: Path) -> Optional[str]:
+    """Relativized artifact pointer, or None when the file doesn't exist."""
+    return relative_artifact_path(path, logs_dir) if path.exists() else None
 
 
 # Maps artifact key → filename, and which workflows produce each file.
@@ -252,29 +220,25 @@ def write_run_summary(
     logs_dir = logger_manager.get_logs_dir()
     app_metadata = getattr(workflow, "metadata", {}) or {}
 
-    # Check for git dirty state
     git_status = _run_git_value(project_root, ["status", "--porcelain"])
     is_dirty = bool(git_status and git_status.strip())
     if is_dirty:
+        diff = _run_git_value(project_root, ["diff", "HEAD"])
         try:
-            diff = _run_git_value(project_root, ["diff", "HEAD"])
             with open(logs_dir / "git_repro.patch", "w", encoding="utf-8") as f:
                 f.write(diff)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("Failed to write git_repro.patch: %s", e)
 
-    conversation_path = _existing_path(run_result.get("conversation_file"))
+    # Canonical path written by both custom and BYO; no agent-supplied field needed.
+    canonical_conversation = logs_dir / "agent_run" / "conversation.jsonl"
+    conversation_path = (
+        str(canonical_conversation) if canonical_conversation.exists() else None
+    )
     system_prompt_path = _existing_path(run_result.get("system_prompt_file"))
-    if conversation_path is None:
-        fallback_path = _materialize_conversation_fallback(
-            run_result.get("conversation_history"),
-            logs_dir=logs_dir,
-            run_id=run_id,
-            project_root=project_root,
-        )
-        conversation_path = str(fallback_path) if fallback_path else None
 
-    token_usage_path = logs_dir / "token_usage.jsonl"
+    token_usage_path = logs_dir / "agent_run" / "token_usage.jsonl"
+    token_usage_path.parent.mkdir(parents=True, exist_ok=True)
     llm_calls_this_run = time_tracker.llm_calls[timing_start_idx:]
 
     unique_tools = run_result.get("unique_tools") or []
@@ -285,19 +249,15 @@ def write_run_summary(
     if not isinstance(token_totals, dict):
         token_totals = {}
 
-    # Timing summary: prefer time_tracker data when the agent used the
-    # custom provider (one llm_timing call per model request), otherwise
-    # fall back to any timing dict the agent provided.  CLI-based agents
-    # (codex, claude-code) bypass time_tracker entirely, so without this
-    # fallback their timing metrics would always be zero.
+    # Timing summary: prefer time_tracker data (one llm_timing call per
+    # model request, recorded by the custom in-process provider). External
+    # agents bypass time_tracker, so fall back to whatever timing dict the
+    # agent surfaced — without this fallback their metrics would be zero.
     time_tracker_timing = _timing_summary_from_calls(llm_calls_this_run)
-    agent_timing = run_result.get("timing") or {}
-    if not isinstance(agent_timing, dict):
-        agent_timing = {}
+    agent_timing_raw = run_result.get("timing")
+    agent_timing = agent_timing_raw if isinstance(agent_timing_raw, dict) else {}
     if llm_calls_this_run:
-        timing_summary = time_tracker_timing
-        if agent_timing:
-            timing_summary = {**agent_timing, **time_tracker_timing}
+        timing_summary = {**agent_timing, **time_tracker_timing}
     else:
         timing_summary = agent_timing or time_tracker_timing
 
@@ -316,17 +276,7 @@ def write_run_summary(
                 except Exception as e:
                     logger.warning("Failed to copy %s: %s", score_file, e)
 
-    # Cost: claude-code surfaces it at run_result top-level; the custom
-    # and codex agents nest it inside token_totals via TokenTracker. Read
-    # the top-level first (so an agent that wants to report a different
-    # number — e.g. CLI-reported subscription cost vs. API-priced — wins),
-    # then fall back to the nested value so downstream consumers always
-    # see a populated metric when one exists.
-    cost_top = run_result.get("cost_usd")
-    cost_nested = (
-        token_totals.get("cost_usd") if isinstance(token_totals, dict) else None
-    )
-    cost_usd = cost_top if cost_top is not None else cost_nested
+    cost_usd = run_result.get("cost_usd")
     score_artifact_paths = {
         key: relative_artifact_path(path, logs_dir)
         for key, path in _score_artifact_paths(
@@ -335,6 +285,11 @@ def write_run_summary(
     }
     squid_access_log = logs_dir / "squid_access.log"
     squid_cache_log = logs_dir / "squid_cache.log"
+
+    # Image identity is stamped onto run_result before agent_env cleanup;
+    # agent_image falls back to config so dry-runs (no container) still record intent.
+    agent_image = run_result.get("agent_image") or getattr(config, "agent_image", None)
+    agent_image_digest = run_result.get("agent_image_digest")
 
     run_summary = {
         "run_id": run_id,
@@ -350,7 +305,9 @@ def write_run_summary(
             "workflow": config.workflow,
             "vuln_id": config.synthetic_vuln_id,
             "task": config.task,
-            "agent_type": run_result.get("agent_type", "custom"),
+            "agent_mode": config.agent_mode,
+            "agent_image": agent_image,
+            "agent_image_digest": agent_image_digest,
             "model": config.model,
         },
         "config": {
@@ -381,6 +338,7 @@ def write_run_summary(
             "error_count": max(0, logger_manager.get_error_count() - start_error_count),
             "token_totals": token_totals,
             "cost_usd": cost_usd,
+            "cost_source": run_result.get("cost_source"),
             "timing": timing_summary,
         },
         "results": {
@@ -401,11 +359,7 @@ def write_run_summary(
             "agent_log_file": relative_artifact_path(
                 logger_manager.get_agent_log_file_name(), logs_dir
             ),
-            "token_usage_jsonl": (
-                relative_artifact_path(token_usage_path, logs_dir)
-                if token_usage_path.exists()
-                else None
-            ),
+            "token_usage_jsonl": _rel_if_exists(token_usage_path, logs_dir),
             "conversation_jsonl": relative_artifact_path(conversation_path, logs_dir),
             "system_prompt_file": relative_artifact_path(system_prompt_path, logs_dir),
             "screenshots_dir": (
@@ -413,27 +367,20 @@ def write_run_summary(
                 if (logs_dir / "screenshots").is_dir()
                 else None
             ),
-            "squid_access_log": (
-                relative_artifact_path(squid_access_log, logs_dir)
-                if squid_access_log.exists()
-                else None
-            ),
-            "squid_cache_log": (
-                relative_artifact_path(squid_cache_log, logs_dir)
-                if squid_cache_log.exists()
-                else None
-            ),
+            "squid_access_log": _rel_if_exists(squid_access_log, logs_dir),
+            "squid_cache_log": _rel_if_exists(squid_cache_log, logs_dir),
             **score_artifact_paths,
             "logs_dir": relative_artifact_path(logs_dir, logs_dir),
         },
         "app": app_metadata,
     }
 
-    validate_schema(
-        run_summary,
-        load_schema(project_root, "run_summary.schema.json"),
-        "run summary",
-    )
+    # Warn rather than raise — by this point the agent has already run; a
+    # validation error here shouldn't lose the data we just collected.
+    try:
+        _RUN_SUMMARY_VALIDATOR.validate(run_summary)
+    except jsonschema.ValidationError as e:
+        logger.warning("run_summary schema validation failed: %s", e)
     try:
         _write_json_atomic(logs_dir / "run_summary.json", run_summary)
     except Exception as e:

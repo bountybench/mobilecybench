@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilecybench.dev/schemas/result.schema.json",
+  "title": "Agent Result",
+  "description": "Contract output written by a BYO agent to /app/agent_run/result.json. Only `status` is strictly required; every other field has a documented runner-side fallback. Unknown keys pass through (additionalProperties: true). Full contract: documentation/BRING_YOUR_OWN_AGENT.md.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "description": "Run terminal status. Agents write one of: 'completed' (finished cleanly), 'timeout' (SIGTERM/SIGKILL by harness wall-clock), 'error' (agent raised), 'unknown' (per-turn snapshot only; overwritten at final write). 'dry_run' is harness-only and never written by a BYO agent.",
+      "enum": ["completed", "timeout", "error", "dry_run", "unknown"]
+    },
+    "turns_taken": {
+      "description": "Number of completed assistant turns. Runner falls back to len(conversation.jsonl) when absent.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "model": {
+      "description": "Effective model id. Runner falls back to task.model when absent.",
+      "type": "string"
+    },
+    "final_message": {
+      "description": "Last assistant message text. Runner falls back to parser's last text buffer when absent.",
+      "type": "string"
+    },
+    "exit_code": {
+      "description": "Subprocess exit code. Runner falls back to the observed subprocess exit code when absent.",
+      "type": "integer"
+    },
+    "error_traceback": {
+      "description": "Populated only when status='error'. Stack trace or short error message describing what went wrong (the runner also writes this for malformed result.json).",
+      "type": "string"
+    },
+    "tool_call_count": {
+      "description": "Aggregate tool invocations. Runner derives by summing across conversation.jsonl rows when absent.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "unique_tools": {
+      "description": "Distinct tool names invoked. Runner derives by union over conversation.jsonl rows when absent.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "cost_usd": {
+      "description": "Total LLM cost for this run in USD. Agents that don't have a number MUST omit this key (not write 0). Runner-derived from token_totals × token_pricing.json when absent.",
+      "type": "number",
+      "minimum": 0
+    },
+    "cost_source": {
+      "description": "Set by the runner; agents should not write this. 'agent' = taken from the agent-reported cost_usd. 'derived' = computed by the runner from token_totals × token_pricing.json. 'derived_unpriced' = derive was attempted but the model has no row in token_pricing.json (cost_usd will be 0).",
+      "enum": ["agent", "derived", "derived_unpriced"]
+    },
+    "token_totals": {
+      "description": "Aggregate token counts. Open shape: parsers MUST forward cache sub-fields when the CLI reports them; extras pass through.",
+      "type": "object",
+      "properties": {
+        "input_tokens":             {"type": "integer", "minimum": 0},
+        "output_tokens":            {"type": "integer", "minimum": 0},
+        "reasoning_tokens":         {"type": "integer", "minimum": 0},
+        "cached_input_tokens":      {"type": "integer", "minimum": 0},
+        "cache_creation_tokens":    {"type": "integer", "minimum": 0},
+        "cache_creation_tokens_5m": {"type": "integer", "minimum": 0},
+        "cache_creation_tokens_1h": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "session_id": {
+      "description": "Cross-reference into CLI-side logs / provider dashboards.",
+      "type": ["string", "null"]
+    },
+    "stop_reason": {
+      "description": "Free-form CLI-native terminal reason (e.g. 'end_turn', 'refusal', 'max_tokens'). Refusals visible here for analysis; status still carries the harness-level rollup.",
+      "type": ["string", "null"]
+    },
+    "timing": {
+      "description": "Run timing. wall_ms set by the runner; api_ms and ttft_ms are CLI-specific (claude-code emits both).",
+      "type": "object",
+      "properties": {
+        "wall_ms":  {"type": "integer", "minimum": 0},
+        "api_ms":   {"type": ["integer", "null"], "minimum": 0},
+        "ttft_ms":  {"type": ["integer", "null"], "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["status"],
+  "additionalProperties": true
+}

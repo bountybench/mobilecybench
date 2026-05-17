@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from agent.backend import ui_connection
+from agent.custom.backend import ui_connection
 
 
 def test_run_adb_shell_uses_safe_default_start_dir():

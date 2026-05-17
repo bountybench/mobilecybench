@@ -1,5 +1,4 @@
 import io
-import json
 import os
 import shutil
 import subprocess
@@ -11,8 +10,9 @@ import docker
 import docker.errors
 
 from agent import firewall
-from agent.backend.docker_setup import AGENT_HOST_PORT
+from agent.custom.backend.docker_setup import AGENT_HOST_PORT
 from agent.firewall import AGENT_NET, EXTERNAL_BRIDGE, SHARED_NET
+from agent.in_container.paths import EXPLOIT_DIR, OUTPUT_DIR, RUN_DIR
 from utils.git_utils import (
     cleanup_git_branches,
     git_checkout,
@@ -23,6 +23,10 @@ from utils.git_utils import (
     prepare_git_directory,
 )
 from utils.logger import logger
+
+# Repo root: agent/runtime/container.py → parents[2] = <repo>. Used to
+# resolve sibling trees (``utils/adb_filter_proxy.py``, ``agent/.env``).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # ADB filter proxy sidecar. Joined to agent_net (the agent's only network);
 # the proxy dual-homes onto the default bridge to reach the host's adb daemon.
@@ -39,7 +43,6 @@ class AgentEnvironment:
         image_name: str,
         env: Dict[str, str],
         commit_id: Optional[str] = None,
-        mode: Optional[str] = None,
         workflow: str = "exploit",
         package_name: Optional[str] = None,
         vuln_id: Optional[str] = None,
@@ -54,7 +57,6 @@ class AgentEnvironment:
         self.image_name = image_name
         self.env = env
         self.commit_id = commit_id
-        self.mode = mode
         self.workflow = workflow
         self.package_name = package_name
         self.vuln_id = vuln_id
@@ -82,28 +84,29 @@ class AgentEnvironment:
             raise
 
         self.container = None
+        # Populated by setup() from the live container handle right after
+        # ``containers.run`` returns; survives cleanup so write_run_summary
+        # can record it.
+        self.image_digest: Optional[str] = None
 
     def setup(self):
         """Set up the agent kali environment container."""
         container_name = "kali-container"
 
-        # Remove existing container FIRST, before any setup work
+        # Remove a stale kali-container left from a prior run before anything else.
         try:
             existing_container = self.client.containers.get(container_name)
             logger.info(f"Removing existing container: {container_name}")
             existing_container.remove(force=True)
         except docker.errors.NotFound:
-            # no need to raise if container doesn't exist
             pass
 
         logger.info(f"Ensuring image {self.image_name} is available...")
 
-        # First check if image exists locally
         try:
             self.client.images.get(self.image_name)
             logger.info(f"Image {self.image_name} found locally, skipping pull")
         except docker.errors.ImageNotFound:
-            # Image not found locally, try to pull it
             logger.info(
                 f"Image {self.image_name} not found locally, pulling from registry..."
             )
@@ -196,17 +199,22 @@ class AgentEnvironment:
                 tty=True,
                 detach=True,
             )
+            # Snapshot the live image digest now — the container handle may
+            # become unusable after cleanup, but ``write_run_summary`` runs
+            # later in runner.py's outer finally and still needs this value.
+            self.image_digest = self.container.image.id
 
-            # Connect to additional networks if any
             for additional_network in self.docker_networks[1:]:
                 network_obj = self.client.networks.get(additional_network)
                 network_obj.connect(self.container)
 
-            # Create agent_exploit and agent_output directories
+            # Create agent_exploit, agent_run, agent_output directories.
+            # agent_run holds /app/agent_run/{result.json, conversation.jsonl, agent.log}
+            # written by external (BYO-contract) agents; see harness.byo_agent.
             logger.info(
-                "Creating agent_exploit and agent_output directories in container"
+                "Creating agent_exploit, agent_run, agent_output directories in container"
             )
-            self.container.exec_run("mkdir -p /app/agent_exploit /app/agent_output")
+            self.container.exec_run(f"mkdir -p {EXPLOIT_DIR} {RUN_DIR} {OUTPUT_DIR}")
 
             # Persist environment variables into the container's shell
             # profile so that *every* shell session (including those
@@ -223,7 +231,6 @@ class AgentEnvironment:
                 ]
             )
 
-            # Install self-signed CA into system trust store
             if ca_volumes:
                 result = self.container.exec_run("update-ca-certificates")
                 if result.exit_code == 0:
@@ -233,74 +240,8 @@ class AgentEnvironment:
                         f"Failed to install root CA: {result.output.decode()}"
                     )
 
-            if self.mode == "codex":
-                logger.info("Logging in to Codex CLI with API key...")
-                result = self.container.exec_run(
-                    "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
-                )
-                if result.exit_code == 0:
-                    logger.info("Codex CLI logged in successfully")
-                else:
-                    logger.error(f"Codex login failed: {result.output.decode()}")
-            elif self.mode == "claude-code":
-                self.container.exec_run("mkdir -p /root/.claude")
-
-                # Pre-allow all tools so the CLI doesn't prompt for
-                # permissions (--dangerously-skip-permissions refuses to
-                # run as root).  Claude Code has no "allow all" wildcard,
-                # so we list each tool.  Update this list if new tools
-                # are added in future Claude Code releases.
-                settings = json.dumps(
-                    {
-                        "permissions": {
-                            "allow": [
-                                "Bash",
-                                "Read",
-                                "Edit",
-                                "Write",
-                                "Grep",
-                                "Glob",
-                                "WebFetch",
-                                "WebSearch",
-                                "Agent",
-                                "NotebookEdit",
-                                "ToolSearch",
-                                "Task",
-                                "TaskOutput",
-                                "TaskStop",
-                                "TodoWrite",
-                                "AskUserQuestion",
-                                "Skill",
-                                "EnterPlanMode",
-                                "ExitPlanMode",
-                                "EnterWorktree",
-                            ]
-                        }
-                    }
-                )
-                self.container.exec_run(
-                    [
-                        "bash",
-                        "-c",
-                        f"cat > /root/.claude/settings.json << 'SETTINGS_EOF'\n{settings}\nSETTINGS_EOF",
-                    ]
-                )
-                logger.info("Wrote Claude Code settings (all tools allowed)")
-
-                # Verify authentication
-                result = self.container.exec_run("bash -c 'claude auth status'")
-                if result.exit_code == 0:
-                    logger.info(
-                        f"Claude Code authenticated: {result.output.decode().strip()}"
-                    )
-                else:
-                    logger.warning(
-                        f"Claude Code auth check failed: {result.output.decode()}"
-                    )
-
         except Exception as e:
             logger.error(f"Setup failed: {e}")
-            # Remove container if it was created
             if self.container:
                 try:
                     self.container.remove(force=True)
@@ -322,22 +263,21 @@ class AgentEnvironment:
         agent_codebase = self.app_dir / "agent_codebase"
         staging_dir = self.app_dir / "agent_codebase.staging"
 
-        # Always clean up staging directory first to ensure fresh start
+        # Always start from a clean staging dir; leftovers can poison the copy.
         if staging_dir.exists():
             logger.info(f"Removing existing staging directory at {staging_dir}")
             shutil.rmtree(staging_dir, onerror=onerror)
 
-        # Check if original_codebase is empty, if so use git_submodule_update
         if not original_codebase.exists() or not any(original_codebase.iterdir()):
             logger.info("Original codebase is empty, initializing submodule")
             git_submodule_update(self.app_dir)
 
-        # Create staging directory
         logger.info(f"Creating staging directory at {staging_dir}")
         staging_dir.mkdir(parents=True, exist_ok=True)
 
         if not self.include_git_history:
-            # Copy codebase without git history so agent cannot see prior commits
+            # Strip history so the agent cannot see prior commits, then init a
+            # fresh repo so it can still use git locally.
             logger.info("Copying codebase without git history")
             self.copy_files(original_codebase, staging_dir, ignore_git=True)
 
@@ -345,11 +285,9 @@ class AgentEnvironment:
                 logger.info("Running post_checkout_hook on %s", staging_dir)
                 self.post_checkout_hook(staging_dir)
 
-            # Initialize fresh git repo so agent can still use git commands
             logger.info("Initializing fresh git repository in staging directory")
             initialize_git_repository(staging_dir)
 
-            # Create initial commit with all files
             subprocess.run(
                 ["git", "add", "-A"],
                 cwd=staging_dir,
@@ -362,7 +300,6 @@ class AgentEnvironment:
                 check=True,
                 capture_output=True,
             )
-            # Create dev branch from this commit
             subprocess.run(
                 ["git", "checkout", "-b", "dev"],
                 cwd=staging_dir,
@@ -371,19 +308,17 @@ class AgentEnvironment:
             )
             logger.info("Created fresh git repo with 'main' and 'dev' branches")
         else:
-            # Checkout specific commit and preserve full git history
-            # Find the repository root (which contains .git)
+            # Find the .git root by walking up from original_codebase.
             repo_root = original_codebase
             while repo_root.parent != repo_root:
                 if (repo_root / ".git").exists():
                     break
                 repo_root = repo_root.parent
 
-            # Remove git index lock files (cross-platform)
+            # Stale .git/index.lock files from a crashed prior run break checkout.
             logger.info("Removing git index lock files")
             git_dir = Path(repo_root) / ".git"
             if git_dir.exists():
-                # Use Python's pathlib to find and remove index.lock files
                 for lock_file in git_dir.rglob("index.lock"):
                     try:
                         lock_file.unlink()
@@ -391,15 +326,12 @@ class AgentEnvironment:
                     except Exception as e:
                         logger.warning(f"Failed to remove lock file {lock_file}: {e}")
 
-            # Checkout to commit_id in original_codebase
             logger.info(f"Checking out commit {self.commit_id} in {original_codebase}")
             git_checkout(original_codebase, self.commit_id, force=True)
 
-            # Copy original_codebase to staging directory with git history
             logger.info(f"Copying {original_codebase} to {staging_dir}")
             self.copy_files(original_codebase, staging_dir, ignore_git=False)
 
-            # Run git_setup_dev_branch in staging directory
             logger.info("Setting up dev branch in staging directory")
             git_setup_dev_branch(staging_dir)
 
@@ -407,17 +339,14 @@ class AgentEnvironment:
                 logger.info("Running post_checkout_hook on %s", staging_dir)
                 self.post_checkout_hook(staging_dir)
 
-        # Clean up any existing agent_codebase directory
         if agent_codebase.exists():
             logger.info(f"Removing existing agent_codebase at {agent_codebase}")
             shutil.rmtree(agent_codebase, onerror=onerror)
 
-        # Move staging directory to agent_codebase
         logger.info(f"Moving staging directory to {agent_codebase}")
         shutil.move(str(staging_dir), str(agent_codebase))
         logger.info("✓ Agent codebase ready for mounting")
 
-        # Return volume mapping for bind mount
         volumes = {str(agent_codebase): {"bind": "/app/codebase", "mode": "ro"}}
 
         return volumes
@@ -482,10 +411,10 @@ class AgentEnvironment:
             shutil.rmtree(agent_output_dir)
         agent_output_dir.mkdir(parents=True)
 
-        logger.info("Mounting agent_output at /app/agent_output")
+        logger.info(f"Mounting agent_output at {OUTPUT_DIR}")
         return {
             str(agent_output_dir): {
-                "bind": "/app/agent_output",
+                "bind": OUTPUT_DIR,
                 "mode": "rw",
             }
         }
@@ -569,7 +498,6 @@ class AgentEnvironment:
 
                 return ignored
 
-            # Copy the directory structure
             shutil.copytree(
                 source,
                 destination,
@@ -578,7 +506,6 @@ class AgentEnvironment:
                 symlinks=True,
             )
 
-            # Handle Git repository if needed
             git_file = source / ".git"
             if not ignore_git and git_file.exists():
                 if git_file.is_file():
@@ -593,17 +520,15 @@ class AgentEnvironment:
 
     def _handle_git_submodule(self, git_file, source, destination):
         """Handle Git submodule reference files."""
-        # Read the submodule reference
         with open(git_file, "r") as f:
             content = f.read().strip()
 
         if not content.startswith("gitdir:"):
-            # It's a regular .git file, just copy it
+            # Regular .git file — no submodule indirection; copy verbatim.
             shutil.copy2(git_file, destination / ".git")
             logger.debug(f"Copied .git file from {git_file} to {destination / '.git'}")
             return
 
-        # Extract the actual Git directory path
         gitdir_path = content.split("gitdir:")[1].strip()
         if not os.path.isabs(gitdir_path):
             gitdir_path = os.path.normpath(os.path.join(source, gitdir_path))
@@ -617,7 +542,6 @@ class AgentEnvironment:
             shutil.copy2(git_file, destination / ".git")
             return
 
-        # Setup the destination Git repository
         dest_git_path = destination / ".git"
         prepare_git_directory(dest_git_path)
 
@@ -628,7 +552,7 @@ class AgentEnvironment:
             self._create_clean_git_config(dest_git_path)
             logger.debug(f"Copied Git data from {actual_git_dir} to {dest_git_path}")
 
-            # Clean up branches and make detached HEAD the new main branch
+            # cleanup_git_branches promotes the detached HEAD to the new main.
             cleanup_git_branches(destination)
             logger.debug(f"Cleaned up Git branches in {destination}")
         except Exception as e:
@@ -647,7 +571,7 @@ class AgentEnvironment:
             self._create_clean_git_config(dest_git_path)
             logger.debug(f"Copied Git data from {git_dir} to {dest_git_path}")
 
-            # Clean up branches and make detached HEAD the new main branch
+            # cleanup_git_branches promotes the detached HEAD to the new main.
             cleanup_git_branches(destination)
             logger.debug(f"Cleaned up Git branches in {destination}")
         except Exception as e:
@@ -681,7 +605,13 @@ class AgentEnvironment:
     def _save_container_dir(self, container_path: str, dest_dir: Path) -> None:
         """Copy a directory from the container to dest_dir.
 
-        Must be called before cleanup() destroys the container.
+        Works on a stopped container (Docker's ``get_archive`` reads the
+        overlay filesystem). The previous ``ls`` precheck required a running
+        container, which broke after the harness's SIGKILL timeout path
+        (``container.kill(signal="SIGKILL")``). ``get_archive`` raises
+        ``docker.errors.NotFound`` when the path is missing; that is the
+        expected case for, e.g., agent_output when the agent never wrote
+        anything, so we log it at INFO not WARNING.
         """
         dir_name = container_path.rstrip("/").split("/")[-1]
         if not self.container:
@@ -689,12 +619,15 @@ class AgentEnvironment:
             return
 
         try:
-            result = self.container.exec_run(f"ls {container_path}")
-            if result.exit_code != 0 or not result.output.strip():
-                logger.info(f"No {dir_name} found in container")
-                return
-
             bits, _ = self.container.get_archive(container_path)
+        except docker.errors.NotFound:
+            logger.info(f"No {dir_name} found in container")
+            return
+        except Exception as e:
+            logger.warning(f"Failed to save {dir_name}: {e}")
+            return
+
+        try:
             stream = io.BytesIO()
             for chunk in bits:
                 stream.write(chunk)
@@ -710,11 +643,21 @@ class AgentEnvironment:
 
     def save_agent_exploit(self, dest_dir: Path) -> None:
         """Copy /app/agent_exploit/ from the container to dest_dir/agent_exploit/."""
-        self._save_container_dir("/app/agent_exploit", dest_dir)
+        self._save_container_dir(EXPLOIT_DIR, dest_dir)
+
+    def save_agent_run(self, dest_dir: Path) -> None:
+        """Copy /app/agent_run/ from the container to dest_dir/agent_run/.
+
+        Carries the BYO-contract diagnostic trail: result.json,
+        conversation.jsonl, agent.log. Pulled FIRST by ``run_agent``'s
+        finally-block so the diagnostic trail survives even when other
+        extractions fail.
+        """
+        self._save_container_dir(RUN_DIR, dest_dir)
 
     def save_agent_output(self, dest_dir: Path) -> None:
         """Copy /app/agent_output/ from the container to dest_dir/agent_output/."""
-        self._save_container_dir("/app/agent_output", dest_dir)
+        self._save_container_dir(OUTPUT_DIR, dest_dir)
 
     def cleanup(self):
         """Clean up the agent environment (stop and remove container)."""
@@ -774,9 +717,7 @@ def _start_adb_proxy() -> None:
     client = docker.from_env()
     _stop_adb_proxy()
 
-    proxy_script = (
-        Path(__file__).resolve().parent.parent / "utils" / "adb_filter_proxy.py"
-    )
+    proxy_script = _REPO_ROOT / "utils" / "adb_filter_proxy.py"
     patterns_module = proxy_script.parent / "adb_blocked_patterns.py"
     for f in (proxy_script, patterns_module):
         if not f.exists():
@@ -829,11 +770,12 @@ def _disable_emulator_root() -> None:
     This must run *before* ``adb unroot`` drops our ability to do root ops.
     """
     try:
-        # Ensure we have root for the setup steps
+        # adb root is required to bind-mount over /system/xbin/su below.
         subprocess.run(["adb", "root"], capture_output=True, timeout=10)
         subprocess.run(["adb", "wait-for-device"], capture_output=True, timeout=30)
 
-        # Disable su binary via bind mount
+        # Mask the su binary with an empty mode-000 file so it can't execute
+        # even if the agent bypasses the adb-proxy filter.
         subprocess.run(
             [
                 "adb",
@@ -846,7 +788,6 @@ def _disable_emulator_root() -> None:
             timeout=10,
         )
 
-        # Drop root
         subprocess.run(["adb", "unroot"], capture_output=True, timeout=10)
     except Exception as e:
         logger.warning(f"Failed to fully disable emulator root: {e}")
@@ -857,33 +798,15 @@ def _disable_emulator_root() -> None:
             pass
 
 
-def _load_claude_code_auth() -> Dict[str, str]:
-    """Load the long-lived ``CLAUDE_CODE_OAUTH_TOKEN`` from ``agent/.env``.
-
-    Returned env is forwarded to the container; the in-container CLI
-    reads ``CLAUDE_CODE_OAUTH_TOKEN`` directly from its environment, so
-    no credentials file is written. Generate the token with
-    ``claude setup-token``. Auth-source precedence is documented at
-    https://code.claude.com/docs/en/authentication.
-    """
-    # Ensure agent/.env is loaded before reading credentials.
-    # This function is called during setup_runtime_environment(), which
-    # runs before setup_agent() where the agent's __init__ loads .env.
-    from dotenv import load_dotenv
-
-    agent_env_file = Path(__file__).parent / ".env"
-    if agent_env_file.exists():
-        load_dotenv(agent_env_file, override=True)
-
-    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
-    if not token:
-        logger.warning(
-            "No Claude Code credentials found. Set CLAUDE_CODE_OAUTH_TOKEN "
-            "in agent/.env (run `claude setup-token` to generate one)."
-        )
-        return {}
-
-    return {"CLAUDE_CODE_OAUTH_TOKEN": token}
+# Auth tokens forwarded from operator's .env to every agent container. The
+# in-container CLI reads what it needs and ignores the rest; missing values
+# stay missing (we log names — not values — at setup).
+AUTH_ENV_PASSTHROUGH = (
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+)
 
 
 def setup_agent_environment(
@@ -893,7 +816,6 @@ def setup_agent_environment(
     network_mode: str,
     workflow: str = "exploit",
     vuln_id: Optional[str] = None,
-    agent_mode: str = "custom",
     no_codebase: bool = False,
     post_checkout_hook: Optional[Callable[[Path], None]] = None,
     apk_path: Optional[Path] = None,
@@ -903,12 +825,12 @@ def setup_agent_environment(
 
     Args:
         app_dir: Application directory
-        agent_image: Docker image to use for agent
+        agent_image: Docker image to use for agent (custom = kali base;
+            external = BYO reference image)
         metadata: App metadata dict
         workflow: Evaluation workflow type ("exploit" or "redteam")
         vuln_id: Vulnerability ID for exploit workflow
-        agent_mode: Agent mode ("custom", "codex", or "claude-code")
-        network_mode: Squid policy ("restricted" or "permissive")
+        network_mode: Squid policy ("permissive" default, or "restricted")
         no_codebase: Whether to copy the built APK into the agent environment
         post_checkout_hook: Optional callback run on the staged codebase
         apk_path: APK to copy into the agent environment when no_codebase=True
@@ -922,6 +844,16 @@ def setup_agent_environment(
 
     _disable_emulator_root()
     logger.info("Emulator root privileges disabled")
+
+    # Ensure agent/.env is loaded so auth tokens are picked up. Do not
+    # ``override=True`` — shell-exported tokens beat dotfile values so an
+    # operator who runs ``OPENAI_API_KEY=… python runner.py …`` gets what
+    # they typed, not whatever the file contains.
+    from dotenv import load_dotenv
+
+    agent_env_file = _REPO_ROOT / "agent" / ".env"
+    if agent_env_file.exists():
+        load_dotenv(agent_env_file)
 
     # ADB → adb-proxy sidecar; HTTP/HTTPS → Squid; in-cluster targets bypass
     # via NO_PROXY (Python HTTP clients match by hostname suffix, not CIDR).
@@ -939,20 +871,15 @@ def setup_agent_environment(
         "no_proxy": no_proxy,
     }
 
-    # Ensure agent/.env is loaded so mode-specific keys are available.
-    from dotenv import load_dotenv
-
-    agent_env_file = Path(__file__).parent / ".env"
-    if agent_env_file.exists():
-        load_dotenv(agent_env_file, override=True)
-
-    # Inject mode-specific environment variables
-    if agent_mode == "codex":
-        openai_key = os.environ.get("OPENAI_API_KEY", "")
-        if openai_key:
-            env_vars["OPENAI_API_KEY"] = openai_key
-    elif agent_mode == "claude-code":
-        env_vars.update(_load_claude_code_auth())
+    # Forward whichever auth tokens the operator has set. CLI in-container
+    # picks the one it needs; absent values are silently skipped.
+    forwarded = []
+    for name in AUTH_ENV_PASSTHROUGH:
+        val = os.environ.get(name)
+        if val:
+            env_vars[name] = val
+            forwarded.append(name)
+    logger.info("Forwarded auth env vars: %s", ", ".join(forwarded) or "(none)")
 
     commit_id: Optional[str] = None
     if not no_codebase:
@@ -966,7 +893,6 @@ def setup_agent_environment(
         image_name=agent_image,
         env=env_vars,
         commit_id=commit_id,
-        mode=agent_mode,
         workflow=workflow,
         package_name=metadata.get("package_name"),
         vuln_id=vuln_id if workflow == "exploit" else None,

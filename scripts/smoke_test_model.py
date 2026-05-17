@@ -128,7 +128,7 @@ def main() -> int:
     )
 
     try:
-        from agent.model_providers import get_model_provider
+        from agent.custom.model_providers import get_model_provider
     except ImportError as e:
         print(f"ERROR: cannot import model_providers ({e}).", file=sys.stderr)
         return 1

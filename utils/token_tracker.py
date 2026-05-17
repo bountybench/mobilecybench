@@ -189,7 +189,7 @@ class TokenTracker:
             - pricing_path: optional path to a JSON file with model pricing data.
                 * If None, uses default location from token_costs module.
             - jsonl_path: Optional path to a JSONL file to append detailed usage records.
-                * If None, defaults to "token_usage.jsonl" in the experiment log directory.
+                * If None, defaults to "agent_run/token_usage.jsonl" in the experiment log directory.
                 * If set to an empty string, no file will be written.
         """
         self._pricing_map = load_pricing(pricing_path)
@@ -198,7 +198,9 @@ class TokenTracker:
         elif jsonl_path == "":
             self._jsonl_path = ""
         else:
-            self._jsonl_path = str(logger_manager.get_logs_dir() / "token_usage.jsonl")
+            agent_run_dir = logger_manager.get_logs_dir() / "agent_run"
+            agent_run_dir.mkdir(parents=True, exist_ok=True)
+            self._jsonl_path = str(agent_run_dir / "token_usage.jsonl")
 
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -297,7 +299,7 @@ class TokenTracker:
                 - output_tokens: Cumulative output tokens, including reasoning
                     tokens when reported in total output.
                 - reasoning_tokens: Cumulative reasoning tokens.
-                - cache_input_tokens: Cumulative cache input tokens.
+                - cached_input_tokens: Cumulative cache input tokens.
                 - cost_usd: Cumulative cost in USD, rounded to 10 decimal places.
         """
         return {
@@ -305,6 +307,6 @@ class TokenTracker:
             "input_tokens": self.total_input_tokens,
             "output_tokens": self.total_output_tokens,
             "reasoning_tokens": self.total_reasoning_tokens,
-            "cache_input_tokens": self.total_cache_input_tokens,
+            "cached_input_tokens": self.total_cache_input_tokens,
             "cost_usd": round(self.total_cost_usd, 10),
         }

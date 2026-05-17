@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import docker.errors
 
-from agent.agent_container import AgentEnvironment
+from agent.runtime.container import AgentEnvironment
 from evaluation.task_bundle import SyntheticBundle, ZerodayBundle
 
 _GIT_ENV = {
@@ -172,7 +172,7 @@ class TestAgentEnvironmentPostCheckoutHook:
             env={**os.environ, **_GIT_ENV},
         )
 
-    @patch("agent.agent_container.docker.from_env")
+    @patch("agent.runtime.container.docker.from_env")
     def test_post_checkout_hook_applies_to_staged_copy_only(
         self, mock_from_env, tmp_path
     ):
@@ -242,7 +242,7 @@ class TestAgentEnvironmentPostCheckoutHook:
         assert "is_authenticated" not in agent_server.read_text()
         assert "is_authenticated" in server_file.read_text()
 
-    @patch("agent.agent_container.docker.from_env")
+    @patch("agent.runtime.container.docker.from_env")
     def test_synthetic_bundle_phase1_snapshot_is_vulnerable(
         self, mock_from_env, tmp_path
     ):
@@ -304,7 +304,7 @@ class TestAgentEnvironmentPostCheckoutHook:
         assert "is_authenticated" not in agent_server.read_text()
         assert "is_authenticated" in server_file.read_text()
 
-    @patch("agent.agent_container.docker.from_env")
+    @patch("agent.runtime.container.docker.from_env")
     def test_zeroday_bundle_phase1_snapshot_stays_baseline(
         self, mock_from_env, tmp_path
     ):
@@ -380,85 +380,10 @@ def _make_tar(files: dict[str, str]) -> bytes:
     return buf.getvalue()
 
 
-class TestAgentContainerModeHandling:
-    """Regression tests for workflow vs agent mode separation."""
-
-    @patch("agent.agent_container.docker.from_env")
-    def test_codex_mode_still_logs_in_after_container_start(
-        self, mock_from_env, tmp_path
-    ):
-        mock_client = MagicMock()
-        mock_from_env.return_value = mock_client
-        mock_client.images.get.return_value = MagicMock()
-
-        mock_container = MagicMock()
-        mock_container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
-        mock_client.containers.run.return_value = mock_container
-        mock_client.containers.get.side_effect = docker.errors.NotFound("not found")
-
-        app_dir = tmp_path / "app"
-        codebase_dir = app_dir / "codebase"
-        codebase_dir.mkdir(parents=True)
-        (codebase_dir / ".git").mkdir()
-
-        agent_env = AgentEnvironment(
-            app_dir=app_dir,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id="HEAD",
-            mode="codex",
-            workflow="exploit",
-        )
-
-        with patch.object(agent_env, "_setup_agent_codebase", return_value={}):
-            agent_env.setup()
-
-        mock_container.exec_run.assert_any_call(
-            "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
-        )
-
-    @patch("agent.agent_container.docker.from_env")
-    def test_non_codex_workflow_does_not_trigger_codex_login(
-        self, mock_from_env, tmp_path
-    ):
-        mock_client = MagicMock()
-        mock_from_env.return_value = mock_client
-        mock_client.images.get.return_value = MagicMock()
-
-        mock_container = MagicMock()
-        mock_container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
-        mock_client.containers.run.return_value = mock_container
-        mock_client.containers.get.side_effect = docker.errors.NotFound("not found")
-
-        app_dir = tmp_path / "app"
-        codebase_dir = app_dir / "codebase"
-        codebase_dir.mkdir(parents=True)
-        (codebase_dir / ".git").mkdir()
-
-        agent_env = AgentEnvironment(
-            app_dir=app_dir,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id="HEAD",
-            workflow="exploit",
-        )
-
-        with patch.object(agent_env, "_setup_agent_codebase", return_value={}):
-            agent_env.setup()
-
-        exec_calls = [call.args[0] for call in mock_container.exec_run.call_args_list]
-        assert (
-            "bash -c 'echo $OPENAI_API_KEY | codex login --with-api-key'"
-            not in exec_calls
-        )
-
-
 class TestAgentNetworkIsolation:
     """Verify agent container is not handed pivot primitives at start."""
 
-    @patch("agent.agent_container.docker.from_env")
+    @patch("agent.runtime.container.docker.from_env")
     def test_agent_container_has_no_host_gateway(self, mock_from_env, tmp_path):
         """Agent must not receive host.docker.internal:host-gateway mapping.
 
@@ -521,14 +446,17 @@ class TestSaveAgentExploit:
         agent_env.save_agent_exploit(tmp_path / "logs")
         assert not (tmp_path / "logs" / "agent_exploit").exists()
 
-    def test_empty_agent_exploit_skipped(self, tmp_path):
-        """No extraction when agent_exploit directory is empty in container."""
+    def test_missing_agent_exploit_skipped(self, tmp_path):
+        """No extraction when agent_exploit does not exist in container.
+
+        get_archive raises NotFound on missing paths; _save_container_dir
+        downgrades to INFO and writes nothing. Important because SIGKILL'd
+        containers can't satisfy a pre-existence check via `exec_run`."""
         agent_env = self._create_agent_env(tmp_path)
         agent_env.container = MagicMock()
-        agent_env.container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
+        agent_env.container.get_archive.side_effect = docker.errors.NotFound("no path")
 
         agent_env.save_agent_exploit(tmp_path / "logs")
-        agent_env.container.get_archive.assert_not_called()
         assert not (tmp_path / "logs" / "agent_exploit").exists()
 
     def test_copies_to_agent_exploit_dir(self, tmp_path):
@@ -565,26 +493,53 @@ class TestSaveAgentExploit:
         agent_env.save_agent_exploit(tmp_path / "logs")
 
 
-class TestLoadClaudeCodeAuth:
-    """Tests for the setup-token env-var loader."""
+class TestAuthEnvPassthrough:
+    """Auth tokens set in the operator's env reach the agent container env_vars."""
 
-    @staticmethod
-    def _import_loader(monkeypatch):
-        """Neutralize ``load_dotenv(agent/.env)`` so tests are hermetic
-        against the developer's local ``agent/.env``."""
-        from agent import agent_container
+    @patch("agent.runtime.container.docker.from_env")
+    def test_set_auth_vars_forwarded_to_container(
+        self, mock_from_env, tmp_path, monkeypatch
+    ):
+        """When the operator has OPENAI_API_KEY etc. in their env, those names
+        appear in the container's env_vars dict."""
+        from agent.runtime.container import setup_agent_environment
 
-        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **kw: False)
-        return agent_container._load_claude_code_auth
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-test")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
-    def test_no_token_returns_empty(self, monkeypatch):
-        loader = self._import_loader(monkeypatch)
-        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        mock_client = MagicMock()
+        mock_from_env.return_value = mock_client
+        mock_client.images.get.return_value = MagicMock()
+        mock_container = MagicMock()
+        mock_container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
+        mock_client.containers.run.return_value = mock_container
+        mock_client.containers.get.side_effect = docker.errors.NotFound("not found")
 
-        assert loader() == {}
+        app_dir = tmp_path / "app"
+        (app_dir / "codebase" / ".git").mkdir(parents=True)
 
-    def test_token_forwarded_as_env_var(self, monkeypatch):
-        loader = self._import_loader(monkeypatch)
-        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-LONG_LIVED")
+        with patch(
+            "agent.runtime.container.AgentEnvironment._setup_agent_codebase",
+            return_value={},
+        ), patch("agent.runtime.container._start_adb_proxy"), patch(
+            "agent.runtime.container._disable_emulator_root"
+        ), patch(
+            "agent.runtime.container.firewall.start"
+        ), patch(
+            "agent.runtime.container.firewall.proxy_url", return_value="http://proxy"
+        ), patch(
+            "agent.runtime.container.firewall.build_no_proxy", return_value=""
+        ):
+            setup_agent_environment(
+                app_dir=app_dir,
+                agent_image="test:latest",
+                metadata={"package_name": "com.example", "commit_version": "HEAD"},
+                network_mode="restricted",
+                workflow="exploit",
+            )
 
-        assert loader() == {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-LONG_LIVED"}
+        env_vars = mock_client.containers.run.call_args.kwargs["environment"]
+        assert env_vars.get("OPENAI_API_KEY") == "sk-test"
+        assert env_vars.get("CLAUDE_CODE_OAUTH_TOKEN") == "oat-test"
+        assert "ANTHROPIC_API_KEY" not in env_vars

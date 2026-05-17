@@ -8,10 +8,10 @@ from unittest.mock import patch
 import pytest
 from jsonschema import validate
 
-from agent.custom_agent import CustomAgent
-from agent.model_providers.factory import SupportedModel, get_model_provider
-from agent.model_providers.litellm_provider import LiteLLMProvider
-from agent.model_providers.openai_provider import OpenAIProvider
+from agent.custom.agent import CustomAgent
+from agent.custom.model_providers.factory import SupportedModel, get_model_provider
+from agent.custom.model_providers.litellm_provider import LiteLLMProvider
+from agent.custom.model_providers.openai_provider import OpenAIProvider
 from tests.conftest import create_provider_response
 from utils.token_tracker import TokenTracker
 
@@ -24,6 +24,19 @@ def _load_conversation_turn_schema() -> dict:
     )
     with open(schema_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def test_custom_agent_resolves_conversation_schema_from_repo_root() -> None:
+    """Regression: CustomAgent._load_conversation_schema must reach the repo
+    root and produce a working validator. A stale .parent×2 stopped at agent/
+    (no schemas/ there) and produced a no-op validator; malformed conversation
+    rows leaked through unchecked."""
+    validator = CustomAgent._load_conversation_schema(None)  # self unused
+    # Spot-check the validator actually validates: empty dict must fail.
+    import jsonschema
+
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate({})
 
 
 class TestCustomAgentMaxIterations:
@@ -41,7 +54,7 @@ class TestCustomAgentMaxIterations:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         result = agent.run()
@@ -54,7 +67,7 @@ class TestCustomAgentMaxIterations:
         assert result["max_turns"] == max_iterations
         assert result["final_message"] is None
 
-    @patch("agent.custom_agent.subprocess.run")
+    @patch("agent.custom.agent.subprocess.run")
     def test_early_stop_on_final_submission(
         self, mock_subprocess_run, mock_agent_dependencies
     ):
@@ -92,7 +105,7 @@ class TestCustomAgentMaxIterations:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         result = agent.run()
@@ -111,7 +124,7 @@ class TestCustomAgentMaxIterations:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
     def test_check_exploit_exists_silent_when_artifact_absent(
@@ -121,7 +134,7 @@ class TestCustomAgentMaxIterations:
         the normal "no" answer to an existence check. It must return False
         without emitting any ERROR record — otherwise healthy runs gain a
         false entry in errors.log / ERROR SUMMARY."""
-        from agent import custom_agent as ca_mod
+        from agent.custom import agent as ca_mod
 
         agent = self._exploit_check_agent()
         absent = type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
@@ -141,7 +154,7 @@ class TestCustomAgentMaxIterations:
         as an agent-logger warning so triage can distinguish it from a
         legitimately missing artifact, even though the function still
         returns False either way."""
-        from agent import custom_agent as ca_mod
+        from agent.custom import agent as ca_mod
 
         agent = self._exploit_check_agent()
         infra_fail = type(
@@ -168,7 +181,7 @@ class TestCustomAgentMaxIterations:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         result = agent.run()
@@ -186,7 +199,7 @@ class TestCustomAgentMaxIterations:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         # Conversation history should start empty
@@ -227,12 +240,14 @@ class TestCustomAgentMaxIterations:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
         with patch.object(agent.runtime, "execute", return_value=long_result):
             result = agent.run()
 
-        conv_path = mock_agent_dependencies["logs_dir"] / "conversation.jsonl"
+        conv_path = (
+            mock_agent_dependencies["logs_dir"] / "agent_run" / "conversation.jsonl"
+        )
         assert conv_path.exists()
         lines = conv_path.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 1
@@ -257,10 +272,12 @@ class TestCustomAgentMaxIterations:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
-        prompt_path = mock_agent_dependencies["logs_dir"] / "system_prompt.txt"
+        prompt_path = (
+            mock_agent_dependencies["logs_dir"] / "agent_run" / "system_prompt.txt"
+        )
         assert prompt_path.exists()
         contents = prompt_path.read_text(encoding="utf-8")
         assert contents.strip()
@@ -359,7 +376,7 @@ class TestLiteLLMProviderUsagePassthrough:
     """Verify that LiteLLM raw responses flow through to TokenTracker correctly."""
 
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
-    @patch("agent.model_providers.litellm_provider.litellm.completion")
+    @patch("agent.custom.model_providers.litellm_provider.litellm.completion")
     def test_top_level_reasoning_tokens_reach_token_tracker(self, mock_completion):
         usage = SimpleNamespace(
             prompt_tokens=200,
@@ -394,7 +411,7 @@ class TestCustomAgentWithClaude:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         result = agent.run()
@@ -403,7 +420,7 @@ class TestCustomAgentWithClaude:
         assert result["turns_taken"] == max_iterations
         assert result["max_turns"] == max_iterations
 
-    @patch("agent.custom_agent.subprocess.run")
+    @patch("agent.custom.agent.subprocess.run")
     def test_early_stop_with_claude(self, mock_subprocess_run, mock_agent_dependencies):
         mock_subprocess_run.return_value = type(
             "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
@@ -432,7 +449,7 @@ class TestCustomAgentWithClaude:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         result = agent.run()
@@ -447,7 +464,7 @@ class TestCustomAgentWithClaude:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         agent.run()
@@ -470,7 +487,7 @@ class TestCustomAgentWithGemini:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         result = agent.run()
@@ -479,7 +496,7 @@ class TestCustomAgentWithGemini:
         assert result["turns_taken"] == max_iterations
         assert result["max_turns"] == max_iterations
 
-    @patch("agent.custom_agent.subprocess.run")
+    @patch("agent.custom.agent.subprocess.run")
     def test_early_stop_with_gemini(self, mock_subprocess_run, mock_agent_dependencies):
         mock_subprocess_run.return_value = type(
             "MockResult", (), {"returncode": 0, "stdout": "", "stderr": ""}
@@ -508,7 +525,7 @@ class TestCustomAgentWithGemini:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         result = agent.run()
@@ -523,7 +540,7 @@ class TestCustomAgentWithGemini:
             max_model_response_tokens=1000,
             screenshot_enabled=False,
             app_name="test_app",
-            package_name="com.test.app",
+            instructions="System prompt for com.test.app — test scaffold.",
         )
 
         agent.run()

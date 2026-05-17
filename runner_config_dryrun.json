@@ -14,15 +14,10 @@
   "task": null,
   "no_codebase": false,
   "synthetic_vuln_id": "vuln_0",
-  "custom_system_prompt": null,
+  "additional_system_prompt": null,
   "agent_image": "cybench/mobilecybench:latest",
   "emulator_display": "headed",
   "emulator_backend": "native",
   "network_mode": "permissive",
-  "timeout_ms": 600000,
-  "allowed_tools": [
-    "execute_command",
-    "get_current_ui_state",
-    "execute_command_with_ui_state"
-  ]
+  "llm_request_timeout_ms": 600000
 }

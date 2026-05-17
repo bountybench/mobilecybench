@@ -174,14 +174,14 @@ def _write_agent_artifact(attacker_model: str, *, present: bool = True) -> Path:
 
 
 def _patch_agent_container(*, create_network=None, setup_agent=None):
-    fake_module = types.ModuleType("agent.agent_container")
+    fake_module = types.ModuleType("agent.runtime.container")
     fake_module.SHARED_NET = "shared_net"
     fake_module.AGENT_NET = "agent_net"
     fake_module.create_docker_network = create_network or (lambda name, **kwargs: None)
     fake_module.setup_agent_environment = setup_agent or (
         lambda **kwargs: MagicMock(container=MagicMock())
     )
-    return patch.dict("sys.modules", {"agent.agent_container": fake_module})
+    return patch.dict("sys.modules", {"agent.runtime.container": fake_module})
 
 
 def _run_evaluate(wf, ops_cls, exits, probes, *, verifier=(1, 1)):

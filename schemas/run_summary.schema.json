@@ -30,13 +30,15 @@
     },
     "context": {
       "type": "object",
-      "required": ["app_name", "workflow", "agent_type", "model"],
+      "required": ["app_name", "workflow", "agent_mode", "agent_image", "model"],
       "properties": {
         "app_name": { "type": "string", "minLength": 1 },
         "workflow": { "type": "string", "enum": ["exploit", "redteam"] },
         "vuln_id": { "type": ["string", "null"] },
         "task": { "type": ["string", "null"] },
-        "agent_type": { "type": "string", "enum": ["custom", "codex", "claude-code"] },
+        "agent_mode": { "type": "string", "enum": ["custom", "external"] },
+        "agent_image": { "type": "string", "minLength": 1 },
+        "agent_image_digest": { "type": ["string", "null"] },
         "model": { "type": "string", "minLength": 1 }
       }
     },
@@ -93,6 +95,10 @@
         "error_count": { "type": "integer", "minimum": 0 },
         "token_totals": { "type": "object" },
         "cost_usd": { "type": ["number", "null"] },
+        "cost_source": {
+          "type": ["string", "null"],
+          "enum": ["agent", "derived", "derived_unpriced", null]
+        },
         "timing": { "type": "object" }
       }
     },

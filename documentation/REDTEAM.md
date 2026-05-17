@@ -182,7 +182,7 @@ The authoritative result file is `apps/<app>/redteam_scores.json`.
 | `probe_results` | Normalized probe output per phase |
 | `reason` | One-line human-readable summary |
 
-Per-run logs live under `logs/experiment_<uuid>/`; phase artifacts land in `logs/experiment_<uuid>/replays/`. Phase-level probe artifacts use explicit red-team paths: `probe_app_<phase>.json` for app-specific or attacker-model probe output and `probe_generic_<phase>.json` for generic probe output when generic probes apply. Two-phase runs use tags `phase1` / `phase2`; probe-only runs use the tag `probe` (artifacts at `replays/probe/`, `replays/probe_app_probe.json`, etc.).
+Per-run logs live under `logs/experiment_<uuid>/`; phase artifacts land in `logs/experiment_<uuid>/replays/`. Phase-level probe artifacts use explicit red-team paths: `probe_app_<phase>.json` for app-specific or attacker-model probe output and `probe_generic_<phase>.json` for generic probe output when generic probes apply. Two-phase runs use tags `phase1_original` / `phase2_patched`; probe-only runs use the tag `probe` (artifacts at `replays/probe/`, `replays/probe_app_probe.json`, etc.).
 
 For MA runs, an additional top-level file `logs/experiment_<uuid>/exploit_apk_permissions.json` records the agent APK's declared permissions (parsed from the manifest), each one's protection level (looked up via `dumpsys package permissions`), the gate verdict per permission (`accept` / `reject`), and the post-install grant category (`install_granted` / `runtime_granted` / `declared_not_granted`) when install succeeded. On gate-reject the file is written from the manifest parse alone; no install happened, so no grant categories are populated. See [MA permission gate](#ma-permission-gate).
 

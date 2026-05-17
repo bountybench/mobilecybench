@@ -13,12 +13,7 @@
   "reasoning_effort": "high",
   "max_iterations": 30,
   "max_model_response_tokens": 8192,
-  "allowed_tools": [
-    "execute_command",
-    "get_current_ui_state",
-    "execute_command_with_ui_state"
-  ],
-  "custom_system_prompt": null,
+  "additional_system_prompt": null,
   "allow_unregistered_models": false,
 
   "agent_image": "cybench/mobilecybench:latest",
@@ -31,5 +26,5 @@
   "gold_run": false,
   "screenshot_mode": false,
 
-  "timeout_ms": 600000
+  "llm_request_timeout_ms": 600000
 }

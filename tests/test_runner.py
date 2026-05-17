@@ -20,14 +20,6 @@ def _load_run_summary_schema() -> dict:
         return json.load(f)
 
 
-def _load_conversation_turn_schema() -> dict:
-    schema_path = (
-        Path(__file__).parent.parent / "schemas" / "conversation_turn.schema.json"
-    )
-    with open(schema_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
 @pytest.fixture
 def base_config():
     """Base configuration for testing."""
@@ -114,18 +106,19 @@ class TestCreateWorkflow:
                 }
             )
 
-    def test_allowed_tools_accepts_known_name(self, base_config):
-        """A name listed in agent.tools.TOOL_NAMES is accepted."""
-        config = RunnerConfig(
-            **{**base_config.model_dump(), "allowed_tools": ["execute_command"]}
-        )
-        assert config.allowed_tools == ["execute_command"]
-
-    def test_allowed_tools_rejects_unknown_name(self, base_config):
-        """A name not in agent.tools.TOOL_NAMES is rejected at load time —
-        locks the Literal[ToolName] contract that pydantic infers for us."""
-        with pytest.raises(ValueError, match="execute_command"):
-            RunnerConfig(**{**base_config.model_dump(), "allowed_tools": ["nope"]})
+    @pytest.mark.parametrize(
+        "legacy_mode, expected_image_hint",
+        [
+            ("codex", "codex_0.130.0-r2"),
+            ("claude-code", "claudecode_2.1.140-r2"),
+        ],
+    )
+    def test_legacy_agent_mode_raises_migration_hint(
+        self, base_config, legacy_mode, expected_image_hint
+    ):
+        """Pre-BYO ``agent_mode`` values are rejected with a migration string."""
+        with pytest.raises(ValueError, match=expected_image_hint):
+            RunnerConfig(**{**base_config.model_dump(), "agent_mode": legacy_mode})
 
 
 class TestRun:
@@ -334,12 +327,12 @@ class TestRun:
                 "turns_taken": 2,
                 "tool_call_count": 1,
                 "unique_tools": ["execute_command"],
+                # cost_usd is top-level; token_totals carries token counts only.
+                "cost_usd": 0.1,
                 "token_totals": {
                     "input_tokens": 10,
                     "output_tokens": 5,
-                    "cost_usd": 0.1,
                 },
-                "conversation_file": "logs/experiment_pytest_session/conversation.jsonl",
             },
         ), patch.object(
             ExploitWorkflow, "evaluate", return_value={"scores": {"probe_a": 1}}
@@ -361,10 +354,8 @@ class TestRun:
         assert summary["config"]["build_type"] == base_config.build_type
         assert summary["metrics"]["turn_count"] == 2
         assert summary["metrics"]["tool_call_count"] == 1
-        # cost_usd is sourced from token_totals when run_result has no
-        # top-level cost (the custom + codex agent shape).
         assert summary["metrics"]["cost_usd"] == 0.1
-        assert summary["metrics"]["token_totals"]["cost_usd"] == 0.1
+        assert "cost_usd" not in summary["metrics"]["token_totals"]
         assert summary["results"]["scores"] == {"probe_a": 1}
         assert "conversation_jsonl" in summary["artifacts"]
         validate(instance=summary, schema=_load_run_summary_schema())
@@ -472,70 +463,48 @@ class TestRun:
         assert summary["artifacts"]["conversation_jsonl"] is None
         validate(instance=summary, schema=_load_run_summary_schema())
 
-    def test_materializes_conversation_jsonl_from_history_fallback(
-        self, base_config, tmp_path
-    ):
-        """Runner creates conversation.jsonl from conversation_history when needed."""
+    def test_canonical_conversation_jsonl_is_recorded(self, base_config, tmp_path):
+        """If agent_run/conversation.jsonl exists on disk, run_summary points to it.
+        Both custom and BYO write to this canonical path; consumers should find it
+        without the agent stamping a redundant path field."""
 
-        def evaluate_with_score_file():
-            score_path = tmp_path / "apps" / "test_app" / "synthetic_scores.json"
-            score_path.parent.mkdir(parents=True, exist_ok=True)
-            score_path.write_text(
-                json.dumps({"scores": {"probe_a": 1}}), encoding="utf-8"
+        def write_canonical_conversation():
+            agent_run = logger_manager.get_logs_dir() / "agent_run"
+            agent_run.mkdir(parents=True, exist_ok=True)
+            (agent_run / "conversation.jsonl").write_text(
+                '{"run_id":"r","turn_number":1,"timestamp":"2026-01-01T00:00:00+00:00",'
+                '"role":"assistant","assistant_text":"done","tool_calls":[],'
+                '"observations":[],"status":"ok"}\n',
+                encoding="utf-8",
             )
-            return {"scores": {"probe_a": 1}}
+
+        def setup_agent_writes_conversation(*_a, **_kw):
+            write_canonical_conversation()
 
         with patch("runner.ensure_app_submodule"), patch.object(
             ExploitWorkflow, "validate_arguments"
         ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
+            ExploitWorkflow, "setup_agent", side_effect=setup_agent_writes_conversation
         ), patch.object(
             ExploitWorkflow,
             "run_agent",
             return_value={
                 "status": "completed",
                 "turns_taken": 1,
-                "conversation_history": [
-                    {"final_output": "done", "tool_outputs": ["ok"], "turns": 1}
-                ],
-                "token_totals": {
-                    "input_tokens": 1,
-                    "output_tokens": 1,
-                    "cost_usd": 0.0,
-                },
+                "token_totals": {"input_tokens": 1, "output_tokens": 1},
             },
         ), patch.object(
-            ExploitWorkflow, "evaluate", side_effect=evaluate_with_score_file
+            ExploitWorkflow, "evaluate", return_value={"scores": {"probe_a": 1}}
         ), patch.object(
             ExploitWorkflow, "cleanup"
         ):
-            result = run(base_config, "test_app", tmp_path)
-            assert result == 0
+            assert run(base_config, "test_app", tmp_path) == 0
 
         summary_path = logger_manager.get_logs_dir() / "run_summary.json"
-        with open(summary_path, "r", encoding="utf-8") as f:
-            summary = json.load(f)
-
-        artifacts = summary["artifacts"]
-        for key, value in artifacts.items():
-            if value is not None:
-                assert not Path(value).is_absolute(), key
-        assert artifacts["logs_dir"] == "."
-        assert (summary_path.parent / artifacts["log_file"]).exists()
-        assert (summary_path.parent / artifacts["agent_log_file"]).exists()
-        assert artifacts["synthetic_scores_json"] == "synthetic_scores.json"
-        assert (summary_path.parent / artifacts["synthetic_scores_json"]).exists()
-
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
         conversation_rel = summary["artifacts"]["conversation_jsonl"]
-        conversation_path = Path(conversation_rel)
-        if not conversation_path.is_absolute():
-            conversation_path = summary_path.parent / conversation_path
-        assert conversation_path.exists()
-        assert summary["context"]["agent_type"] == "codex"
-        lines = conversation_path.read_text(encoding="utf-8").strip().splitlines()
-        assert len(lines) == 1
-        turn_event = json.loads(lines[0])
-        validate(instance=turn_event, schema=_load_conversation_turn_schema())
+        assert conversation_rel is not None
+        assert (summary_path.parent / conversation_rel).exists()
 
 
 class TestAttackerModelConfig:

@@ -1,21 +1,26 @@
 """Base workflow class defining the evaluation interface."""
 
 import json
-import logging
 import os
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
 
+from agent.prompts.prompts import (
+    build_malicious_app_prompt,
+    build_remote_attacker_prompt,
+    build_synthetic_prompt,
+)
+from harness.byo_agent import run_agent as _byo_run_agent
+from harness.task import build_task_dict
 from models.config import RunnerConfig
 from utils.json_io import write_json_atomic
+from utils.logger import logger, logger_manager
 from utils.text_files import collect_text_files
-
-logger = logging.getLogger(__name__)
 
 
 class Workflow(ABC):
@@ -87,16 +92,69 @@ class Workflow(ABC):
 
         Order is load-bearing: the per-app `metadata.additional_info` carries
         threat-model framing that should appear first; the per-run
-        `runner_config.custom_system_prompt` is a runtime knob (hints,
+        `runner_config.additional_system_prompt` is a runtime knob (hints,
         framing tweaks) appended after it.
         """
         additional_info = self.metadata.get("additional_info")
-        extra = self.config.custom_system_prompt
+        extra = self.config.additional_system_prompt
         if not extra:
             return additional_info
         if not additional_info:
             return extra
         return f"{additional_info}\n\n{extra}"
+
+    def _build_agent_prompt(self) -> str:
+        """Build the agent's system prompt for ``self.config.agent_mode``.
+
+        Custom mode gets the full ReAct scaffolding; external mode gets the
+        base description only (each image's in-container entrypoint adds any
+        CLI-native footer it needs).
+        """
+        additional_context = self._resolve_additional_context()
+        username, password = self._agent_credentials()
+        agent_mode = self.config.agent_mode
+
+        if self.config.workflow == "redteam":
+            builder = (
+                build_remote_attacker_prompt
+                if self.config.attacker_model == "remote_attacker"
+                else build_malicious_app_prompt
+            )
+            prompt = builder(
+                package_name=self.metadata.get("package_name"),
+                app_server=self.metadata.get("app_server"),
+                emulator_server=self.metadata.get("emulator_server"),
+                username=username,
+                password=password,
+                no_codebase=self.config.no_codebase,
+                agent_mode=agent_mode,
+            )
+        else:
+            prompt = build_synthetic_prompt(
+                package_name=self.metadata.get("package_name"),
+                username=username,
+                password=password,
+                app_server=self.metadata.get("app_server"),
+                emulator_server=self.metadata.get("emulator_server"),
+                no_codebase=self.config.no_codebase,
+                agent_mode=agent_mode,
+                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
+            )
+
+        if additional_context:
+            prompt = prompt + "\n\n" + additional_context
+        return prompt
+
+    def _build_task_dict(self) -> dict[str, Any]:
+        """Assemble the task.json dict delivered to an external agent."""
+        return build_task_dict(
+            config=self.config,
+            metadata=self.metadata,
+            app_name=self.app_name,
+            prompt=self._build_agent_prompt(),
+            run_id=logger_manager.get_run_id(),
+            apk_relpath="",
+        )
 
     def setup_agent(self) -> None:
         """Configure and initialize the agent."""
@@ -106,92 +164,65 @@ class Workflow(ABC):
 
         agent_mode = self.config.agent_mode
         workflow = self.config.workflow
-        include_ssrf = False
-
-        additional_context = self._resolve_additional_context()
-        agent_username, agent_password = self._agent_credentials()
-
         logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
 
-        # TODO: `config.allowed_tools` is currently honored only by the
-        # custom agent. Codex and Claude Code agents drive their own CLI
-        # tool surfaces (Codex's native `shell`, Claude Code's built-in
-        # tools) and would need a separate filter pass — wire when needed.
-        if agent_mode == "claude-code":
-            from agent.claude_code_agent import ClaudeCodeAgent
+        if agent_mode == "external":
+            # External agents run inside their container image (see
+            # documentation/BRING_YOUR_OWN_AGENT.md). setup_agent does not
+            # construct an in-process agent object; run_agent assembles the
+            # BYO task_dict and hands off to harness.byo_agent.run_agent.
+            self.agent = None
+            return
 
-            self.agent = ClaudeCodeAgent(
-                app_name=self.app_name,
-                model=self.config.model,
-                timeout_ms=self.config.agent_timeout * 1000,
-                app_server=self.metadata.get("app_server"),
-                emulator_server=self.metadata.get("emulator_server"),
-                package_name=self.metadata.get("package_name"),
-                username=agent_username,
-                password=agent_password,
-                include_ssrf=include_ssrf,
-                workflow=workflow,
-                attacker_model=self.config.attacker_model,
-                additional_context=additional_context,
-                no_codebase=self.config.no_codebase,
-                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
-            )
-        elif agent_mode == "codex":
-            from agent.codex_agent import CodexAgent
+        from agent.custom.agent import CustomAgent
 
-            self.agent = CodexAgent(
-                app_name=self.app_name,
-                timeout_ms=self.config.agent_timeout * 1000,
-                app_server=self.metadata.get("app_server"),
-                emulator_server=self.metadata.get("emulator_server"),
-                package_name=self.metadata.get("package_name"),
-                username=agent_username,
-                password=agent_password,
-                include_ssrf=include_ssrf,
-                workflow=workflow,
-                attacker_model=self.config.attacker_model,
-                additional_context=additional_context,
-                no_codebase=self.config.no_codebase,
-                model=self.config.model,
-                reasoning_effort=self.config.reasoning_effort,
-                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
-            )
-        else:
-            from agent.custom_agent import CustomAgent
-
-            self.agent = CustomAgent(
-                model=self.config.model,
-                max_iterations=self.config.max_iterations,
-                max_model_response_tokens=self.config.max_model_response_tokens,
-                screenshot_enabled=self.config.screenshot_mode,
-                app_name=self.app_name,
-                additional_context=additional_context,
-                timeout_ms=self.config.timeout_ms,
-                app_server=self.metadata.get("app_server"),
-                emulator_server=self.metadata.get("emulator_server"),
-                package_name=self.metadata.get("package_name"),
-                username=agent_username,
-                password=agent_password,
-                include_ssrf=include_ssrf,
-                workflow=workflow,
-                attacker_model=self.config.attacker_model,
-                reasoning_effort=self.config.reasoning_effort,
-                no_codebase=self.config.no_codebase,
-                allow_unregistered_models=self.config.allow_unregistered_models,
-                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
-                allowed_tools=self.config.allowed_tools,
-            )
+        self.agent = CustomAgent(
+            model=self.config.model,
+            max_iterations=self.config.max_iterations,
+            max_model_response_tokens=self.config.max_model_response_tokens,
+            screenshot_enabled=self.config.screenshot_mode,
+            app_name=self.app_name,
+            instructions=self._build_agent_prompt(),
+            llm_request_timeout_ms=self.config.llm_request_timeout_ms,
+            reasoning_effort=self.config.reasoning_effort,
+            include_ssrf=False,
+            workflow=workflow,
+            attacker_model=self.config.attacker_model,
+            no_codebase=self.config.no_codebase,
+            allow_unregistered_models=self.config.allow_unregistered_models,
+        )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
     def run_agent(self) -> dict:
         """Execute the agent and return results."""
         if self.config.dry_run:
             logger.info("Dry run - skipping agent execution")
-            return {"status": "dry_run", "turns": 0}
+            return {"status": "dry_run", "turns_taken": 0}
+
+        if self.config.agent_mode == "external":
+            if not self.agent_env:
+                raise RuntimeError(
+                    "Agent environment not initialized. setup_runtime_environment() first."
+                )
+            logger.info(
+                f"Running external agent (image={self.config.agent_image}) via BYO contract..."
+            )
+            task_dict = self._build_task_dict()
+            # Persist task.json for reproducibility.
+            logs_dir = Path(logger_manager.get_logs_dir())
+            write_json_atomic(logs_dir / "task.json", task_dict)
+            self.agent_result = _byo_run_agent(
+                env=self.agent_env,
+                task_dict=task_dict,
+                host_artifact_dir=logs_dir,
+            )
+            logger.info(
+                f"Agent completed with status: {self.agent_result.get('status')}"
+            )
+            return self.agent_result
 
         if not self.agent:
             raise RuntimeError("Agent not initialized. Call setup_agent() first.")
-
         logger.info(f"Running agent for {self.config.workflow}...")
         self.agent_result = self.agent.run()
         logger.info(f"Agent completed with status: {self.agent_result.get('status')}")
@@ -207,18 +238,21 @@ class Workflow(ABC):
 
         Best-effort: logs warnings on failure but never raises.
         Called after run_agent() while the containers are still alive.
-        """
-        if not self.agent_env:
-            return
 
-        for save_fn in (
-            self.agent_env.save_agent_exploit,
-            self.agent_env.save_agent_output,
-        ):
-            try:
-                save_fn(logs_dir)
-            except Exception as e:
-                logger.warning(f"Failed to save artifacts: {e}")
+        External agents extract agent_run/agent_exploit/agent_output inside
+        harness.byo_agent.run_agent's own finally block, so this method handles
+        the per-agent extractions only for custom mode. Firewall logs run
+        unconditionally — the Squid sidecar is independent of agent_mode.
+        """
+        if self.agent_env and self.config.agent_mode != "external":
+            for save_fn in (
+                self.agent_env.save_agent_exploit,
+                self.agent_env.save_agent_output,
+            ):
+                try:
+                    save_fn(logs_dir)
+                except Exception as e:
+                    logger.warning(f"Failed to save artifacts: {e}")
 
         try:
             from agent import firewall
@@ -355,7 +389,7 @@ class Workflow(ABC):
         Apps declare both as ``external: true``; if either is missing, compose
         aborts. agent_net is ``internal: true`` (kernel-level egress firewall).
         """
-        from agent.agent_container import AGENT_NET, SHARED_NET, create_docker_network
+        from agent.runtime.container import AGENT_NET, SHARED_NET, create_docker_network
 
         self._require_app_on_agent_net()
         create_docker_network(SHARED_NET)
@@ -609,7 +643,7 @@ class Workflow(ABC):
             replay_stdout=stdout,
             agent_output_dir=output_dir / "agent_output",
             agent_exploit_dir=logs_dir / "agent_exploit" if logs_dir else None,
-            agent_log=logs_dir / "agent.log" if logs_dir else None,
+            agent_log=logs_dir / "agent_run" / "agent.log" if logs_dir else None,
         )
 
         return {
@@ -763,21 +797,15 @@ class Workflow(ABC):
             except Exception as e:
                 logger.warning(f"Failed to restore codebase: {e}")
 
-        # Delete agent_codebase — created during setup, needed through evaluate(),
-        # but should not persist between runs.
-        agent_codebase = self.app_dir / "agent_codebase"
-        if agent_codebase.exists():
+        # Drop per-run staging dirs (agent_codebase: needed through evaluate();
+        # agent_apk: created only under no_codebase=True). Neither should persist
+        # between runs.
+        for staging_name in ("agent_codebase", "agent_apk"):
+            staging_path = self.app_dir / staging_name
+            if not staging_path.exists():
+                continue
             try:
-                shutil.rmtree(agent_codebase)
-                logger.info("Deleted agent_codebase")
+                shutil.rmtree(staging_path)
+                logger.info(f"Deleted {staging_name}")
             except Exception as e:
-                logger.warning(f"Failed to delete agent_codebase: {e}")
-
-        # Delete agent_apk staging directory (created when no_codebase=True)
-        agent_apk = self.app_dir / "agent_apk"
-        if agent_apk.exists():
-            try:
-                shutil.rmtree(agent_apk)
-                logger.info("Deleted agent_apk")
-            except Exception as e:
-                logger.warning(f"Failed to delete agent_apk: {e}")
+                logger.warning(f"Failed to delete {staging_name}: {e}")

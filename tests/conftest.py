@@ -12,7 +12,7 @@ os.environ.setdefault("MOBILECYBENCH_SESSION_ID", "pytest_session")
 
 import pytest
 
-from agent.model_providers.base import FunctionCall, ProviderResponse
+from agent.custom.model_providers.base import FunctionCall, ProviderResponse
 
 
 def pytest_addoption(parser):
@@ -106,11 +106,11 @@ def mock_agent_dependencies(mock_model_provider):
     """Fixture that patches all external dependencies for CustomAgent."""
     logs_dir = Path(tempfile.mkdtemp(prefix="pytest_agent_logs_"))
     with patch(
-        "agent.custom_agent.get_model_provider", return_value=mock_model_provider
+        "agent.custom.agent.get_model_provider", return_value=mock_model_provider
     ):
-        with patch("agent.custom_agent.TokenTracker") as mock_tracker:
-            with patch("agent.custom_agent.agent_logger"):
-                with patch("agent.custom_agent.logger_manager") as mock_logger_mgr:
+        with patch("agent.custom.agent.TokenTracker") as mock_tracker:
+            with patch("agent.custom.agent.agent_logger"):
+                with patch("agent.custom.agent.logger_manager") as mock_logger_mgr:
                     mock_logger_mgr.get_log_file_name.return_value = "test_agent.log"
                     mock_logger_mgr.get_logs_dir.return_value = logs_dir
                     mock_logger_mgr.get_run_id.return_value = "pytest_session"
@@ -123,7 +123,7 @@ def mock_agent_dependencies(mock_model_provider):
                             "input_tokens": 100,
                             "output_tokens": 50,
                             "reasoning_tokens": 0,
-                            "cache_input_tokens": 0,
+                            "cached_input_tokens": 0,
                             "cost_usd": 0.0,
                         }
                     )
