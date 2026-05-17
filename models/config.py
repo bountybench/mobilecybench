@@ -25,10 +25,12 @@ from pydantic import BaseModel, Field, model_validator
 from agent.custom.model_providers.factory import MODEL_REGISTRY
 from agent.custom.model_providers.litellm_provider import lookup_rule
 
-# Image-tag prefix → provider tags the CLI in that image can call.
-# Provider tags match ProviderRule.provider in
-# agent/custom/model_providers/litellm_provider.py. Unknown tags skip the
-# check; lab/BYO images are unconstrained per BRING_YOUR_OWN_AGENT.md.
+# Image-tag prefix (the part before "_<version>" in the Docker tag) →
+# set of ProviderRule.provider tags ("anthropic", "openai", "gemini",
+# ...) that the CLI in that image can call. Reference images follow
+# the `<prefix>_<version>-r<rev>` tag convention documented in
+# BRING_YOUR_OWN_AGENT.md. Unknown prefixes skip the compat check;
+# lab/BYO images are unconstrained.
 _CLI_IMAGE_COMPAT: dict[str, set[str]] = {
     "claudecode": {"anthropic"},
     "codex": {"openai"},
@@ -36,7 +38,12 @@ _CLI_IMAGE_COMPAT: dict[str, set[str]] = {
 
 
 def _cli_family(agent_image: str) -> Optional[str]:
-    """Return the CLI tag prefix when ``agent_image`` is a known reference build."""
+    """Return the CLI prefix for a known reference image, else None.
+
+    Strips the registry/repo portion of ``agent_image`` and matches the
+    tag's ``<prefix>_`` head against ``_CLI_IMAGE_COMPAT`` keys.
+    Example: ``cybench/mobilecybench:claudecode_2.1.140-r2`` -> ``"claudecode"``.
+    """
     tag = agent_image.rsplit(":", 1)[-1] if ":" in agent_image else agent_image
     for prefix in _CLI_IMAGE_COMPAT:
         if tag.startswith(prefix + "_"):
@@ -337,12 +344,15 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_model_registered_external(self) -> "RunnerConfig":
-        """For external mode, reject model ids that are not in SupportedModel.
+        """For external mode, reject model ids not in ``SupportedModel``.
 
-        Custom mode is gated at agent boot by factory.py:get_model_provider;
-        external mode otherwise passes the model id straight to the container
-        CLI, so a typo (``opus-4-7`` vs ``claude-opus-4-7``) wastes setup time
-        and API credit. allow_unregistered_models bypasses for exploration.
+        Custom mode is gated when the provider is constructed in
+        ``agent/custom/model_providers/factory.py:get_model_provider``;
+        external mode otherwise forwards the model id verbatim to the
+        container CLI, so a typo (``opus-4-7`` vs ``claude-opus-4-7``)
+        only fails after image pull + emulator boot + API call.
+        ``allow_unregistered_models=True`` bypasses this check for
+        exploration runs.
         """
         if self.agent_mode != "external" or self.allow_unregistered_models:
             return self
@@ -356,10 +366,16 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_image_model_compat(self) -> "RunnerConfig":
-        """Reject obvious image↔model mismatches for external-mode reference
-        CLIs. claudecode_* images only call Anthropic; codex_* only OpenAI.
-        Unknown image tags (lab/BYO) skip; they declare their own contract
-        per BRING_YOUR_OWN_AGENT.md.
+        """Reject obvious image/model mismatches for external-mode reference CLIs.
+
+        The reference ``claudecode_*`` image only talks to Anthropic and
+        ``codex_*`` only to OpenAI; pairing one with a model from another
+        provider fails inside the container after setup. Unknown image
+        tags (lab / BYO) skip — they declare their own contract per
+        ``documentation/BRING_YOUR_OWN_AGENT.md``. Unlike
+        :meth:`validate_model_registered_external`, this check is not
+        bypassed by ``allow_unregistered_models``: the constraint is a
+        property of the CLI in the image, not of the model registry.
         """
         if self.agent_mode != "external":
             return self
@@ -372,7 +388,8 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 f"agent_image '{self.agent_image}' uses the {cli} CLI which "
                 f"only supports {sorted(allowed)} models; got model={self.model!r} "
-                f"(provider={rule.provider})"
+                f"(provider={rule.provider}). Use a model from the supported "
+                f"provider(s), or switch agent_image."
             )
         return self
 
