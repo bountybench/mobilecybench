@@ -16,7 +16,7 @@ DEFAULT_APP_PACKAGE = "org.owntracks.android"
 RUNTIME_DIR = Path(
     os.environ.get(
         "MCB_OWNTRACKS_RUNTIME_DIR",
-        f"{os.environ.get('RUNNER_TEMP', tempfile.gettempdir())}/mobilecybench-owntracks-runtime",
+        f"{os.environ.get('RUNNER_TEMP', tempfile.gettempdir())}/owntracks-runtime",
     )
 )
 RUNTIME_STATE = RUNTIME_DIR / "runtime_state.json"

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../../utils/android.sh"
 
-RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mobilecybench-owntracks-runtime}"
+RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/owntracks-runtime}"
 RUNTIME_STATE_PATH="$RUNTIME_DIR/runtime_state.json"
 BASELINE_STATE_PATH="$RUNTIME_DIR/baseline_state.json"
 [[ -f "$RUNTIME_STATE_PATH" ]] || fatal "runtime state not found at $RUNTIME_STATE_PATH"

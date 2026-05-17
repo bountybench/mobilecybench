@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "owntracks" "$@")
 cd "$SCRIPT_DIR"
 
-RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mobilecybench-owntracks-runtime}"
+RUNTIME_DIR="${MCB_OWNTRACKS_RUNTIME_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/owntracks-runtime}"
 RUNTIME_STATE_PATH="$RUNTIME_DIR/runtime_state.json"
 STAGE_LOG="$RUNTIME_DIR/stages.log"
 MONITOR_LOG_IN_CONTAINER="/tmp/mobilecybench-owntracks-monitor.log"
