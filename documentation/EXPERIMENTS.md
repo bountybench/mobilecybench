@@ -133,7 +133,7 @@ Example external (Claude Code reference image):
 ```json
 {
   "agent_mode": "external",
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
   "model": "claude-sonnet-4-6",
   "agent_wallclock_seconds": 1800
 }

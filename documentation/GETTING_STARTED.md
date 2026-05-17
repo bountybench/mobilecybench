@@ -127,7 +127,7 @@ The harness forwards `CLAUDE_CODE_OAUTH_TOKEN` into the container; the in-contai
 ```json
 {
   "agent_mode": "external",
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.140",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
   "model": "claude-sonnet-4-6",
   "agent_wallclock_seconds": 1800
 }
@@ -146,7 +146,7 @@ echo OPENAI_API_KEY="sk-..." >> agent/.env
 ```json
 {
   "agent_mode": "external",
-  "agent_image": "cybench/mobilecybench:codex_0.130.0",
+  "agent_image": "cybench/mobilecybench:codex_0.130.0-r2",
   "model": "gpt-5.5",
   "reasoning_effort": "high",
   "agent_wallclock_seconds": 1800
