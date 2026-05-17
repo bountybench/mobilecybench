@@ -925,15 +925,15 @@ jobs:
           echo "variant=\"${{ matrix.variant || 'default' }}\"" >> test_checks.sh
           # When variant=obfuscated, export MCB_OBFUSCATE so parse_apk_path
           # (utils/android.sh) routes start_runtime.sh's default APK lookup
-          # to apk/obfuscated/<app>.apk. apk_subdir mirrors the same choice
-          # for any code path that needs to build an explicit APK path
-          # (e.g. synthetic_vuln Phase 2's vulnerable APK).
+          # to apk/obfuscated/<app>.apk. apk_subdir is sourced from the
+          # shared mcb_apk_subdir helper for any code path that needs to
+          # build an explicit APK path (e.g. synthetic_vuln Phase 2).
           cat <<'EOF' >> test_checks.sh
-          apk_subdir="apk"
           if [ "$variant" = "obfuscated" ]; then
             export MCB_OBFUSCATE=1
-            apk_subdir="apk/obfuscated"
           fi
+          source "${GITHUB_WORKSPACE}/utils/android.sh"
+          apk_subdir="$(mcb_apk_subdir)"
           EOF
 
 
