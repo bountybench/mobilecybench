@@ -87,9 +87,42 @@ Schema: [`schemas/task.schema.json`](../schemas/task.schema.json). Notable field
 
 ## `result.json` (output)
 
-Schema: [`schemas/result.schema.json`](../schemas/result.schema.json). Required: `status`, `turns_taken`. Status enum: `completed | timeout | error | dry_run | unknown`.
+Schema: [`schemas/result.schema.json`](../schemas/result.schema.json). Status enum: `completed | timeout | error | dry_run | unknown`.
 
-Anything else is best-effort: `cost_usd`, `model`, `final_message`, `tool_call_count`, `unique_tools`, `token_totals`, `error_traceback`. Missing optional fields get schema defaults; unknown fields pass through.
+**Required:** `status`. That's it. Every other field is optional with a documented runner-side fallback (`turns_taken` defaults to row count in `conversation.jsonl`; `model` falls back to `task.model`; etc.).
+
+**Optional fields the harness reads:** `cost_usd`, `model`, `final_message`, `exit_code`, `tool_call_count`, `unique_tools`, `token_totals` (open object — see below), `session_id`, `stop_reason`, `timing` (`{wall_ms, api_ms, ttft_ms}`), `error_traceback`. Unknown fields pass through.
+
+### Cost reporting
+
+If your CLI knows the cost in USD, emit it at the top level as `cost_usd` (NOT nested in `token_totals`). The harness will trust whatever you write — including a legitimate `0` for a $0 run.
+
+**If you do not have a cost number, OMIT the key entirely.** Do not write `0` as a placeholder. The harness derives cost from `token_totals` × [`utils/token_pricing.json`](../utils/token_pricing.json) when `cost_usd` is absent, and stamps `cost_source` ∈ `{"agent", "derived", "derived_unpriced"}` so drift is auditable.
+
+**No `token_totals` ⇒ no cost.** Derived cost is `tokens × pricing`; if the agent omits both `cost_usd` and `token_totals`, the run reports `cost_usd: 0` with `cost_source: "derived"`. Emit at least `input_tokens` / `output_tokens` if you want any cost signal.
+
+#### Timeout / SIGKILL: emit usage per-turn, not just at end
+
+The harness enforces `agent_wallclock_seconds` by sending SIGTERM (then SIGKILL) to your CLI. **If your agent emits token usage only in a terminal event (end-of-run), all token data is lost on every timed-out run** — both `token_totals` and any derived cost will be empty/zero. Two strategies:
+
+- **Aggregate per turn / per call as you go.** Survives SIGTERM cleanly. The codex parser (`agent/codex/event_parser.py`) does this from `turn.completed.usage`, but codex itself only emits `turn.completed` at end-of-loop — so codex runs that don't finish within wallclock currently report `token_totals: {}`. This is a known limitation of codex's event stream, not a harness bug.
+- **Emit per-turn usage events.** The claude-code parser (`agent/claude_code/event_parser.py`) accumulates from claude's `stream_event/message_delta`, gated on the CLI flag `--include-partial-messages`. Even on SIGTERM, all turns whose `message_delta` already landed are preserved.
+
+If you're building a new BYO CLI, prefer a streaming usage emission model. Otherwise, document the gap and accept that timeout-cost is uninstructive for your agent.
+
+### `token_totals` sub-fields
+
+Open object. Sub-fields the harness understands for cache-aware cost derivation:
+
+| Sub-field                   | When to emit                                                   |
+| --------------------------- | -------------------------------------------------------------- |
+| `input_tokens`              | Always, even when 0.                                           |
+| `output_tokens`             | Always.                                                        |
+| `reasoning_tokens`          | When your CLI separates reasoning from output.                 |
+| `cached_input_tokens`       | When your CLI reports cache **reads**.                         |
+| `cache_creation_tokens`     | When your CLI reports total cache **writes** (no TTL split).   |
+| `cache_creation_tokens_5m`  | When you have a TTL split for cache writes (Anthropic).        |
+| `cache_creation_tokens_1h`  | Same.                                                          |
 
 ## Environment your container sees
 
@@ -107,7 +140,17 @@ Both reference images use a thin bash bootstrap that delegates parsing + result 
 exec python -m agent.codex.run_in_container "$TASK"
 ```
 
-`agent/{codex,claude_code}/run_in_container.py` does the CLI-specific work: builds the argv, streams JSONL events through the shared `CodexEventParser` / `ClaudeCodeEventParser`, writes `conversation.jsonl`, and emits `result.json`. Use them as worked examples for your own image.
+`agent/{codex,claude_code}/run_in_container.py` does the CLI-specific work: builds the argv, streams events through a `BaseEventParser` subclass (`CodexEventParser` / `ClaudeCodeEventParser`), and lets the shared runner write `conversation.jsonl` + `result.json`.
+
+The parser layer in `agent/in_container/event_parser.py` owns line buffering, turn flushing, conversation-row formatting, and result-summary shaping. To add a third BYO CLI you write a single subclass overriding `_handle_event` (a switch on your CLI's event types) — typically ~100 LOC. Use codex + claude-code as worked examples.
+
+**Live-tailing logs.** The runner writes incrementally — every turn appends one line to `conversation.jsonl` and snapshots `result.json` (`status="unknown"` during the run, finalized at clean exit). On a wall-clock SIGKILL, the per-turn writes survive. Note: these files are inside the container, not on the host. To watch live during a run:
+
+```bash
+docker exec kali-container tail -f /app/agent_run/conversation.jsonl
+```
+
+The harness pulls them to the host's `logs/experiment_<uuid>/agent_run/` when the container exits.
 
 ## Operator config
 
