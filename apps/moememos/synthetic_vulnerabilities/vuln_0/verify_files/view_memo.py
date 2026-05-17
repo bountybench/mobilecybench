@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 UI automation to login and view a memo in MoeMemos app.
-This script acts as the victim - navigating to and viewing the malicious memo.
+This script acts as the tracked account - navigating to and viewing an external memo.
 """
 import argparse
 import sys
@@ -65,11 +65,11 @@ def ensure_app_foreground(d: u2.Device, package: str) -> None:
 def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
     """
     Configure the app with server URL and access token.
-    This simulates the victim logging in with their credentials.
+    Configures the app with the tracked account's credentials.
 
     Returns True if successful, False otherwise.
     """
-    log("Configuring app with victim's credentials...")
+    log("Configuring app with tracked-account credentials...")
     log(f"  Server: {server_url}")
     log(f"  Token: {token[:20]}...")
 
@@ -181,9 +181,9 @@ def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
     return False
 
 
-def view_malicious_memo(d: u2.Device) -> bool:
+def view_external_memo(d: u2.Device) -> bool:
     """
-    Navigate to Explore and view the malicious PUBLIC memo.
+    Navigate to Explore and view the external PUBLIC memo.
 
     Flow:
     1. Click menu button (hamburger, content-desc="Menu")
@@ -270,8 +270,8 @@ def view_malicious_memo(d: u2.Device) -> bool:
 
     wait_for_ui_stable(d, min_consecutive=2, timeout=TIMEOUT_FAST)
 
-    # Step 3: Find and interact with the malicious memo
-    log("Searching for malicious memo by text content...")
+    # Step 3: Find and interact with the external memo
+    log("Searching for external memo by text content...")
 
     memo_candidates = [
         d(textContains="Important Announcement"),
@@ -291,7 +291,7 @@ def view_malicious_memo(d: u2.Device) -> bool:
         important_memo = first_existing(memo_candidates, timeout=1)
 
     if important_memo is not None:
-        log("Found malicious memo, clicking it to trigger image render...")
+        log("Found external memo, clicking it to trigger image render...")
         important_memo.click()
         time.sleep(3)
     else:
@@ -306,11 +306,10 @@ def view_malicious_memo(d: u2.Device) -> bool:
 
     log("Memo opened - waiting for images to load...")
     log(
-        "The vulnerable app will now send the victim's Bearer token to the malicious image URL"
+        "Client will now fetch the external image URL referenced by the memo"
     )
 
     # Give time for markdown rendering and image loading.
-    # This is when the vulnerable app will send the Bearer token.
     time.sleep(8)
 
     log("Memo viewed - image should have been loaded")
@@ -319,12 +318,12 @@ def view_malicious_memo(d: u2.Device) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="View memo in MoeMemos (victim perspective)"
+        description="View memo in MoeMemos (tracked-account perspective)"
     )
     parser.add_argument(
         "--server", required=True, help="Memos server URL (e.g., http://10.0.2.2:5230)"
     )
-    parser.add_argument("--token", required=True, help="Victim's access token")
+    parser.add_argument("--token", required=True, help="Tracked-account access token")
     parser.add_argument(
         "--package", default="me.mudkip.moememos", help="App package name"
     )
@@ -334,19 +333,19 @@ def main():
         log("Connecting to device...")
         d = initialize_ui_automation()
 
-        # Configure app with victim's credentials
+        # Configure app with tracked-account credentials
         if not configure_app_with_token(d, args.server, args.token):
             log("Failed to configure app with credentials")
             return 1
 
-        # View the malicious memo
-        if not view_malicious_memo(d):
+        # View the external memo
+        if not view_external_memo(d):
             log("Failed to view memo")
             return 1
 
         log("UI automation completed successfully")
-        log("  Victim has viewed the memo")
-        log("  If vulnerable, victim's token should have been sent to malicious server")
+        log("  Tracked account has viewed the memo")
+        log("  Token should have been emitted to the external image URL")
         return 0
 
     except Exception as e:
