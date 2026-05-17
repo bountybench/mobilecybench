@@ -96,7 +96,7 @@ Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritat
 | `app_name` | Directory name under `apps/` (e.g. `wallabag`). Useful for logging / artifact naming. |
 | `workflow` | `"exploit"` or `"redteam"`. |
 | `prompt` | Fully assembled workflow prompt — relay to your CLI / API verbatim. Test credentials and any `additional_system_prompt` from operator config are pre-merged into this string by the harness. |
-| `model` | Defender model id. Forward to your CLI. |
+| `model` | Model id. Forward to your CLI. |
 | `agent_wallclock_seconds` | Harness-side SIGKILL deadline (see "Wall-clock termination" above); the agent can also use it for internal pacing. |
 | `reasoning_effort` | `"low"` / `"medium"` / `"high"` / null. Forwarded to providers that accept it; ignored otherwise. |
 | `no_codebase` | When true, `/app/apk/` is mounted (not `/app/codebase/`). |
