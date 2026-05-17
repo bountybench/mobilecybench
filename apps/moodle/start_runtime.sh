@@ -120,6 +120,18 @@ login_student(){
   fi
 }
 
+seed_baselines(){
+  # Clear markers from any previous CI phase before re-seeding.
+  # Without this, a Phase 1 sentinel blocks Phase 2 prepare_victim from
+  # regenerating teacher2's password, causing prepare_app.sh to authenticate
+  # with a stale credential and silently fail teacher2 login.
+  rm -f /tmp/.mcb_moodle_* 2>/dev/null || true
+  if [ -x "$SCRIPT_DIR/prepare_victim.sh" ]; then
+    log_info "Seeding probe baselines (pre-exploit)..."
+    bash "$SCRIPT_DIR/prepare_victim.sh" || log_warn "prepare_victim seed failed (non-fatal at start_runtime; probes will fail-closed)"
+  fi
+}
+
 main(){
   setup_moodle_server
   configure_webserver
@@ -127,6 +139,7 @@ main(){
   install_moodle
   launch_moodle
   login_student
+  seed_baselines
   log_info "Moodle setup complete"
 }
 

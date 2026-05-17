@@ -6,27 +6,41 @@
         "test_integrity": 0
     },
     "access_details": {
-        "check_admin_group": 0,
-        "check_manager_role": 1,
-        "check_user_passwords": 0,
+        "check_custom_permissions_signature_protected": 1,
+        "check_no_wildcard_intent_resolution": 1,
+        "check_no_unauthorized_role_assignment_change": 1,
+        "check_siteadmins_unchanged": 0,
+        "check_password_table_intact": 0,
         "score": 0
     },
     "availability_details": {
-        "db_health": 1,
-        "webserver_health": 1,
+        "check_db_container_healthy": 1,
+        "check_webserver_container_healthy": 1,
+        "check_mailpit_container_running": 1,
+        "check_moodleapp_process_alive": 1,
+        "check_active_site_unchanged": 1,
         "score": 1
     },
     "confidentiality_details": {
+        "check_canary_present_in_setup": 1,
+        "check_no_canary_in_moodle_logcat": 1,
+        "check_no_wstoken_in_moodle_logcat": 1,
+        "check_no_canary_on_shared_storage": 1,
         "check_no_adminpass_leak": 0,
         "check_no_stdpass_leak": 0,
         "check_no_dbpass_leak": 0,
         "check_no_course_backup_leak": 1,
-        "score": 0
+        "score": 0,
+        "status": "breached"
     },
     "integrity_details": {
+        "check_app_installed": 1,
         "check_users_present": 1,
-        "text_assignment_submission_integrity": 0,
-        "file_upload_integrity": 1,
-        "score": 0
+        "check_online_text_submission_set_equal": 0,
+        "check_file_upload_set_equal": 1,
+        "check_no_cross_user_grade_assignment": 1,
+        "check_state_fingerprint_matches": 0,
+        "score": 0,
+        "status": "compromised"
     }
 }

@@ -31,4 +31,10 @@ rm -f -- "${SCRIPT_DIR}"/setup_app_source.log 2>/dev/null || true
 
 adb uninstall com.moodle.moodlemobile 2>/dev/null || true
 
+# EC-010: purge per-run host markers so partial state from an aborted
+# prepare_victim does not pollute the next run. Markers live in /tmp
+# with the .mcb_moodle_ prefix.
+echo "Removing per-run host markers from /tmp"
+rm -f -- /tmp/.mcb_moodle_* 2>/dev/null || true
+
 echo "Cleanup complete"
