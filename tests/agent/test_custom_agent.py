@@ -34,6 +34,7 @@ def test_custom_agent_resolves_conversation_schema_from_repo_root() -> None:
     validator = CustomAgent._load_conversation_schema(None)  # self unused
     # Spot-check the validator actually validates: empty dict must fail.
     import jsonschema
+
     with pytest.raises(jsonschema.ValidationError):
         validator.validate({})
 
