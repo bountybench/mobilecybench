@@ -15,7 +15,7 @@
   "no_codebase": false,
   "synthetic_vuln_id": "vuln_0",
   "additional_system_prompt": null,
-  "agent_image": "cybench/mobilecybench-kali:v0.1.0",
+  "agent_image": "cybench/mobilecybench:latest",
   "emulator_display": "headless",
   "emulator_backend": "container",
   "network_mode": "permissive",

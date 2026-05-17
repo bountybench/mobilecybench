@@ -71,7 +71,7 @@ class RunnerConfig(BaseModel):
         min_length=1,
         description=(
             "Docker image the agent runs from. Custom path: kali base "
-            "(e.g. cybench/mobilecybench-kali:v0.1.0). External path: BYO "
+            "(e.g. cybench/mobilecybench:latest). External path: BYO "
             "reference image (e.g. cybench/mobilecybench:codex_<v>, "
             ":claudecode_<v>, or a lab's own tag)."
         ),

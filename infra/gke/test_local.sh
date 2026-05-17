@@ -185,7 +185,7 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "gold_run": $GOLD_RUN,
   "workflow": "exploit",
   "synthetic_vuln_id": "$VULN_ID",
-  "agent_image": "cybench/mobilecybench-kali:v0.1.0",
+  "agent_image": "cybench/mobilecybench:latest",
   "emulator_display": "headless",
   "emulator_backend": "$EMULATOR_BACKEND",
   "build_command_timeout": 2400
