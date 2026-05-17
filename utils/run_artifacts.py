@@ -99,7 +99,13 @@ def _resolve_cost(result: dict[str, Any]) -> None:
 
     Agent-reported cost wins whenever present (including a legitimate $0).
     Agents that don't know their cost MUST omit the key — never write 0 as a placeholder.
+
+    Idempotent: ``cost_source`` already set ⇒ a prior resolve already happened;
+    re-running would mis-attribute a derived 0.0 as 'agent' (the value is
+    legitimately present, but its provenance was already decided).
     """
+    if result.get("cost_source") is not None:
+        return
     agent = result.get("cost_usd")
     if agent is not None:
         result["cost_usd"] = float(agent)

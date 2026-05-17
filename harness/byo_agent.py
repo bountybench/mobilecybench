@@ -20,7 +20,6 @@ from typing import Any
 import docker.errors
 
 from agent.in_container.paths import TASK_JSON
-from utils.run_artifacts import normalize_agent_result
 
 logger = logging.getLogger(__name__)
 
@@ -175,10 +174,11 @@ def run_agent(
             daemon_error=daemon_error,
         )
 
-    result = normalize_agent_result(raw)
-
     # Stamp the image-identity fields so write_run_summary picks them up.
+    # Returns the raw dict; runner-side normalize_agent_result is the single
+    # validation + cost-resolution boundary. Double-normalizing here corrupted
+    # cost_source (derived → agent) when result.json had no agent-reported cost.
     image = container.image
-    result["agent_image"] = image.tags[0] if image.tags else image.id
-    result["agent_image_digest"] = image.id
-    return result
+    raw["agent_image"] = image.tags[0] if image.tags else image.id
+    raw["agent_image_digest"] = image.id
+    return raw

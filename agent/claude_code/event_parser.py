@@ -4,12 +4,17 @@ stream-json`` vocabulary onto the base accumulators.
 
 Claude 2.1.x event types we handle (verified against a real captured stream):
 
-    system/init      — carries session_id
-    assistant        — message.content[] with sub-types text / thinking / tool_use
-    user             — message.content[] with tool_result; ends a turn
-    result/success   — terminal: num_turns, total_cost_usd, usage (token totals),
-                       stop_reason, duration_api_ms, ttft_ms
-    result/error     — terminal failure path
+    system/init           — carries session_id
+    assistant             — message.content[] with sub-types text / thinking / tool_use
+    user                  — message.content[] with tool_result; ends a turn
+    stream_event          — when claude is invoked with --include-partial-messages,
+                            sub-events fire per turn before the terminal result.
+                            We read `event.type == "message_delta"`, which carries
+                            the final per-turn usage + stop_reason. Survives SIGTERM.
+    result/success        — terminal: num_turns, total_cost_usd, usage (cumulative
+                            token totals), stop_reason, duration_api_ms, ttft_ms.
+                            Overrides per-turn accumulator when present.
+    result/error          — terminal failure path
 """
 
 from __future__ import annotations
@@ -59,6 +64,9 @@ class ClaudeCodeEventParser(BaseEventParser):
             # A user event (tool_result) marks the end of a turn.
             self._flush_turn()
 
+        elif event_type == "stream_event":
+            self._handle_stream_event(data.get("event") or {})
+
         elif event_type == "result":
             self._handle_result(data)
 
@@ -104,6 +112,17 @@ class ClaudeCodeEventParser(BaseEventParser):
         )
         agent_logger.info("tool_result content=%s", body)
 
+    def _handle_stream_event(self, event: dict[str, Any]) -> None:
+        # message_delta carries the FINAL per-turn usage + stop_reason and
+        # lands before the terminal result event. Accumulate so totals survive
+        # a SIGTERM that kills the CLI before result/success fires.
+        if event.get("type") != "message_delta":
+            return
+        self._record_usage(event.get("usage") or {}, additive=True)
+        sr = (event.get("delta") or {}).get("stop_reason")
+        if isinstance(sr, str):
+            self.stop_reason = sr
+
     def _handle_result(self, data: dict[str, Any]) -> None:
         # Flush any in-flight turn so its text isn't dropped on assistant-final-text runs.
         self._flush_turn()
@@ -122,7 +141,9 @@ class ClaudeCodeEventParser(BaseEventParser):
             if isinstance(val, int):
                 self.timing[dst] = val
 
-        # Token totals: project claude's usage names onto v2 canonical names.
+        # result.usage is cumulative; wipe any per-turn accumulator first so
+        # it becomes the source of truth on success.
+        self.token_usage.clear()
         self._record_usage(data.get("usage") or {})
 
         if data.get("subtype") == "success":
@@ -133,26 +154,30 @@ class ClaudeCodeEventParser(BaseEventParser):
         elif data.get("subtype") == "error":
             logger.error(f"[ClaudeCode] Error: {data.get('error')}")
 
-    def _record_usage(self, usage: dict[str, Any]) -> None:
-        """Project claude's ``result.usage`` blob onto v2 canonical token_totals.
+    def _record_usage(self, usage: dict[str, Any], *, additive: bool = False) -> None:
+        """Project claude's ``usage`` blob onto v2 canonical token_totals.
 
-        v1 carried claude's native field names verbatim (e.g.
-        ``cache_creation_input_tokens``); v2 renames at this boundary so
-        downstream / leaderboards see one shape across all CLIs.
+        ``additive=True`` for per-turn message_delta (sum across turns);
+        default replace semantics for cumulative result.usage.
         """
         if not usage:
             return
 
+        def _set(dst: str, val: int) -> None:
+            self.token_usage[dst] = (
+                self.token_usage.get(dst, 0) + val if additive else val
+            )
+
         for src, dst in _USAGE_FIELD_MAP.items():
             val = usage.get(src, 0) or 0
             if val:
-                self.token_usage[dst] = int(val)
+                _set(dst, int(val))
 
         cache_creation = usage.get("cache_creation") or {}
         for src, dst in _USAGE_TTL_MAP.items():
             val = cache_creation.get(src, 0) or 0
             if val:
-                self.token_usage[dst] = int(val)
+                _set(dst, int(val))
 
         # Contract requires input/output keys to be present.
         self.token_usage.setdefault("input_tokens", 0)

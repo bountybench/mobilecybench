@@ -20,6 +20,10 @@ def _build_cmd(task: dict[str, Any]) -> list[str]:
         "--output-format",
         "stream-json",
         "--verbose",
+        # Emit stream_event rows incl. message_delta (final per-turn usage +
+        # stop_reason). Without this, totals are populated only by the terminal
+        # result event — lost on SIGTERM.
+        "--include-partial-messages",
         "--model",
         task.get("model") or "sonnet",
         "--add-dir",

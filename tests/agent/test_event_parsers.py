@@ -278,6 +278,68 @@ class TestFeedChunkResilience:
         assert "cache_read_input_tokens" not in totals
         assert "cache_creation_input_tokens" not in totals
 
+    def test_claude_message_delta_survives_timeout(self) -> None:
+        """When the terminal result event never lands (SIGTERM mid-run), per-turn
+        message_delta events keep token totals + stop_reason intact. Gated on
+        the --include-partial-messages CLI flag in run_in_container.py."""
+        parser = ClaudeCodeEventParser()
+        for usage in (
+            {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 20},
+            {"input_tokens": 200, "output_tokens": 80, "cache_read_input_tokens": 40},
+        ):
+            parser.feed_chunk(
+                json.dumps(
+                    {
+                        "type": "stream_event",
+                        "event": {
+                            "type": "message_delta",
+                            "delta": {"stop_reason": "end_turn"},
+                            "usage": usage,
+                        },
+                    }
+                )
+                + "\n"
+            )
+        summary = parser.summarize({}, exit_code=143, elapsed=1.0)
+        assert summary["status"] == "error"  # SIGTERM exit code
+        assert summary["token_totals"]["input_tokens"] == 300
+        assert summary["token_totals"]["output_tokens"] == 130
+        assert summary["token_totals"]["cached_input_tokens"] == 60
+        assert summary["stop_reason"] == "end_turn"
+
+    def test_claude_result_overrides_per_turn_accumulator(self) -> None:
+        """On success, the cumulative result.usage replaces any per-turn sum
+        (else we'd double-count once result fires after message_deltas)."""
+        parser = ClaudeCodeEventParser()
+        parser.feed_chunk(
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "message_delta",
+                        "delta": {"stop_reason": "end_turn"},
+                        "usage": {"input_tokens": 100, "output_tokens": 50},
+                    },
+                }
+            )
+            + "\n"
+        )
+        parser.feed_chunk(
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "num_turns": 1,
+                    "total_cost_usd": 0.01,
+                    "usage": {"input_tokens": 100, "output_tokens": 50},
+                }
+            )
+            + "\n"
+        )
+        totals = parser.summarize({}, 0, 0.0)["token_totals"]
+        assert totals["input_tokens"] == 100  # not 200
+        assert totals["output_tokens"] == 50  # not 100
+
     def test_claude_captures_agent_cost_and_turns(self) -> None:
         """Claude's result event populates agent_reported_cost + agent_reported_turns."""
         parser = ClaudeCodeEventParser()
