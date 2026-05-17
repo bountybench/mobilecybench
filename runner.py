@@ -442,6 +442,12 @@ def run(
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
 
+        if workflow and workflow.agent_env:
+            try:
+                workflow.save_artifacts(logger_manager.get_logs_dir())
+            except Exception as e:
+                logger.warning(f"Failed to save artifacts before cleanup: {e}")
+
         # Capture Logcat before stopping emulator
         if workflow and workflow.emulator:
             try:

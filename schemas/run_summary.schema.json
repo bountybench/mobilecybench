@@ -115,6 +115,8 @@
               "agent_log_file",
               "token_usage_jsonl",
               "conversation_jsonl",
+              "squid_access_log",
+              "squid_cache_log",
               "logs_dir"
             ]
       ,
@@ -125,6 +127,8 @@
         "conversation_jsonl": { "type": ["string", "null"] },
         "system_prompt_file": { "type": ["string", "null"] },
         "screenshots_dir": { "type": ["string", "null"] },
+        "squid_access_log": { "type": ["string", "null"] },
+        "squid_cache_log": { "type": ["string", "null"] },
         "scores_json": { "type": ["string", "null"] },
         "synthetic_scores_json": { "type": ["string", "null"] },
         "redteam_scores_json": { "type": ["string", "null"] },

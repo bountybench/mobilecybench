@@ -1,13 +1,28 @@
 """Behavior tests for build_no_proxy parsing and Squid conf policy invariants."""
 
+import io
+import tarfile
 from pathlib import Path
+from unittest.mock import MagicMock, call, patch
 
+import docker.errors
 import pytest
 
 from agent import firewall
 from agent.firewall import proxy
 
 IMAGE_DIR = Path(__file__).resolve().parents[2] / "agent" / "firewall" / "image"
+
+
+def _make_tar(arcname: str, content: str) -> bytes:
+    data = content.encode("utf-8")
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        info = tarfile.TarInfo(arcname)
+        info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
+    buf.seek(0)
+    return buf.read()
 
 
 class TestBuildNoProxy:
@@ -74,3 +89,40 @@ class TestSquidPolicyRegressions:
         assert (
             "allowed_domains.txt" in text
         ), "restricted mode must load the exact-FQDN allowlist"
+
+
+class TestSquidLogCapture:
+    @patch("agent.firewall.proxy.docker.from_env")
+    def test_save_logs_copies_access_and_cache_logs(self, mock_from_env, tmp_path):
+        client = MagicMock()
+        container = MagicMock()
+        mock_from_env.return_value = client
+        client.containers.get.return_value = container
+        container.exec_run.return_value = MagicMock(exit_code=0)
+        container.get_archive.side_effect = [
+            (iter([_make_tar("access.log", "TCP_DENIED example.com\n")]), {}),
+            (iter([_make_tar("cache.log", "Squid cache entry\n")]), {}),
+        ]
+
+        captured = proxy.save_logs(tmp_path)
+
+        assert (tmp_path / "squid_access.log").read_text() == "TCP_DENIED example.com\n"
+        assert (tmp_path / "squid_cache.log").read_text() == "Squid cache entry\n"
+        assert captured == {
+            "squid_access.log": tmp_path / "squid_access.log",
+            "squid_cache.log": tmp_path / "squid_cache.log",
+        }
+        assert container.get_archive.call_args_list == [
+            call("/var/log/squid/access.log"),
+            call("/var/log/squid/cache.log"),
+        ]
+
+    @patch("agent.firewall.proxy.docker.from_env")
+    def test_save_logs_skips_missing_sidecar(self, mock_from_env, tmp_path):
+        client = MagicMock()
+        mock_from_env.return_value = client
+        client.containers.get.side_effect = docker.errors.NotFound("not found")
+
+        assert proxy.save_logs(tmp_path) == {}
+        assert not (tmp_path / "squid_access.log").exists()
+        assert not (tmp_path / "squid_cache.log").exists()

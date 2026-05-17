@@ -288,6 +288,38 @@ class TestRun:
             mock_setup_agent.assert_not_called()
             mock_run_agent.assert_not_called()
 
+    def test_dry_run_saves_artifacts_before_cleanup(self, base_config, tmp_path):
+        """Dry-run sidecar logs are captured before final cleanup removes them."""
+        call_order = []
+        dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
+
+        class FakeWorkflow:
+            metadata = {}
+            emulator = None
+            agent_env = object()
+
+            def __init__(self):
+                self.app_dir = tmp_path / "apps" / "test_app"
+
+            def validate_arguments(self):
+                pass
+
+            def setup_runtime_environment(self):
+                pass
+
+            def save_artifacts(self, logs_dir):
+                call_order.append("save_artifacts")
+
+            def cleanup(self):
+                call_order.append("cleanup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", return_value=FakeWorkflow()
+        ), patch("runner.run_interactive_shell", return_value={"status": "completed"}):
+            assert run(dry_run_config, "test_app", tmp_path) == 0
+
+        assert call_order == ["save_artifacts", "cleanup"]
+
     def test_writes_run_summary_json(self, base_config, tmp_path):
         """Run writes structured run_summary.json with key fields."""
         with patch("runner.ensure_app_submodule"), patch.object(
@@ -335,6 +367,47 @@ class TestRun:
         assert summary["metrics"]["token_totals"]["cost_usd"] == 0.1
         assert summary["results"]["scores"] == {"probe_a": 1}
         assert "conversation_jsonl" in summary["artifacts"]
+        validate(instance=summary, schema=_load_run_summary_schema())
+
+    def test_run_summary_includes_captured_squid_logs(self, base_config, tmp_path):
+        """Run summary points at Squid logs captured before firewall cleanup."""
+
+        def save_squid_logs(*args):
+            logs_dir = Path(args[-1])
+            (logs_dir / "squid_access.log").write_text(
+                "TCP_DENIED example.com\n", encoding="utf-8"
+            )
+            (logs_dir / "squid_cache.log").write_text(
+                "Squid cache entry\n", encoding="utf-8"
+            )
+
+        with patch("runner.ensure_app_submodule"), patch.object(
+            ExploitWorkflow, "validate_arguments"
+        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
+            ExploitWorkflow, "setup_agent"
+        ), patch.object(
+            ExploitWorkflow,
+            "run_agent",
+            return_value={"status": "completed"},
+        ), patch.object(
+            ExploitWorkflow, "save_artifacts", side_effect=save_squid_logs
+        ), patch.object(
+            ExploitWorkflow, "evaluate", return_value={"scores": {"probe_a": 1}}
+        ), patch.object(
+            ExploitWorkflow, "cleanup"
+        ):
+            assert run(base_config, "test_app", tmp_path) == 0
+
+        summary_path = logger_manager.get_logs_dir() / "run_summary.json"
+        with open(summary_path, "r", encoding="utf-8") as f:
+            summary = json.load(f)
+
+        artifacts = summary["artifacts"]
+        assert artifacts["squid_access_log"] == "squid_access.log"
+        assert artifacts["squid_cache_log"] == "squid_cache.log"
+        assert (summary_path.parent / artifacts["squid_access_log"]).read_text(
+            encoding="utf-8"
+        ) == "TCP_DENIED example.com\n"
         validate(instance=summary, schema=_load_run_summary_schema())
 
     def test_run_summary_cost_usd_prefers_top_level(self, base_config, tmp_path):
