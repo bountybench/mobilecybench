@@ -325,3 +325,38 @@ def compute_cost_usd(
         + (cw_5m / scale) * cw_5m_rate
         + (cw_1h / scale) * cw_1h_rate
     )
+
+
+def _tok(token_totals: Dict[str, Any], key: str) -> int:
+    v = token_totals.get(key, 0)
+    return int(v) if isinstance(v, (int, float)) else 0
+
+
+def derive_cost_from_totals(
+    token_totals: Dict[str, Any],
+    model: str,
+    pricing_map: Optional[Dict[str, ModelPricing]] = None,
+) -> tuple[float, str]:
+    """Compute cost from a result.json-shaped ``token_totals`` dict + model id.
+
+    Returns ``(cost_usd, cost_source)``. ``"derived"`` when the model has a
+    pricing row; ``"derived_unpriced"`` (cost=0) otherwise. Field names follow
+    the BYO ``result.schema.json`` token_totals layout.
+    """
+    pricing = lookup_pricing(
+        model, pricing_map if pricing_map is not None else load_pricing()
+    )
+    if pricing is None:
+        logger.warning(f"derive_cost: no pricing row for model={model!r}")
+        return 0.0, "derived_unpriced"
+    cost = compute_cost_usd(
+        pricing,
+        input_tokens=_tok(token_totals, "input_tokens"),
+        output_tokens=_tok(token_totals, "output_tokens"),
+        cache_input_tokens=_tok(token_totals, "cached_input_tokens"),
+        reasoning_tokens=_tok(token_totals, "reasoning_tokens"),
+        cache_creation_tokens=_tok(token_totals, "cache_creation_tokens"),
+        cache_creation_tokens_5m=_tok(token_totals, "cache_creation_tokens_5m"),
+        cache_creation_tokens_1h=_tok(token_totals, "cache_creation_tokens_1h"),
+    )
+    return cost, "derived"

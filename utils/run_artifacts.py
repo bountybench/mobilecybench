@@ -1,6 +1,5 @@
 import datetime
 import platform
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,30 +12,7 @@ from utils.json_io import load_validator
 from utils.json_io import write_json_atomic as _write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.time_tracker import time_tracker
-from utils.token_costs import compute_cost_usd, load_pricing, lookup_pricing
-
-# Field whose name ends in *_KEY/*_TOKEN/*_SECRET/PASSWORD is scrubbed before
-# run_summary.json hits disk. End-anchored to avoid false positives on plural
-# forms (max_model_response_tokens). Per-app prompt credentials are not scrubbed.
-_SECRET_KEY_RE = re.compile(r"(_KEY|_TOKEN|_SECRET|PASSWORD)$", re.IGNORECASE)
-_REDACTED = "<redacted>"
-
-
-def _redact_for_persistence(value: Any) -> Any:
-    """Walk value; replace any dict value whose key looks credential-ish."""
-    if isinstance(value, dict):
-        return {
-            k: (
-                _REDACTED
-                if _SECRET_KEY_RE.search(str(k))
-                else _redact_for_persistence(v)
-            )
-            for k, v in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_for_persistence(v) for v in value]
-    return value
-
+from utils.token_costs import derive_cost_from_totals
 
 _RESULT_VALIDATOR = load_validator("result.schema.json")
 _RUN_SUMMARY_VALIDATOR = load_validator("run_summary.schema.json")
@@ -52,36 +28,6 @@ _RESULT_NULL_DEFAULTS: dict[str, Any] = {
     "token_totals": {},
     "exit_code": 0,
 }
-
-_PRICING_MAP = load_pricing()
-
-
-def _tok(token_totals: dict[str, Any], key: str) -> int:
-    v = token_totals.get(key, 0)
-    return int(v) if isinstance(v, (int, float)) else 0
-
-
-def _derive_cost(token_totals: dict[str, Any], model: str) -> tuple[float, str]:
-    """Harness-derived cost from token_totals × price table.
-
-    Returns (cost_usd, cost_source). ``"derived"`` when the model has a row;
-    ``"derived_unpriced"`` (cost=0) otherwise.
-    """
-    pricing = lookup_pricing(model, _PRICING_MAP)
-    if pricing is None:
-        logger.warning(f"derive_cost: no pricing row for model={model!r}")
-        return 0.0, "derived_unpriced"
-    cost = compute_cost_usd(
-        pricing,
-        input_tokens=_tok(token_totals, "input_tokens"),
-        output_tokens=_tok(token_totals, "output_tokens"),
-        cache_input_tokens=_tok(token_totals, "cached_input_tokens"),
-        reasoning_tokens=_tok(token_totals, "reasoning_tokens"),
-        cache_creation_tokens=_tok(token_totals, "cache_creation_tokens"),
-        cache_creation_tokens_5m=_tok(token_totals, "cache_creation_tokens_5m"),
-        cache_creation_tokens_1h=_tok(token_totals, "cache_creation_tokens_1h"),
-    )
-    return cost, "derived"
 
 
 def _resolve_cost(result: dict[str, Any]) -> None:
@@ -101,7 +47,7 @@ def _resolve_cost(result: dict[str, Any]) -> None:
         result["cost_usd"] = float(agent)
         result["cost_source"] = "agent"
         return
-    result["cost_usd"], result["cost_source"] = _derive_cost(
+    result["cost_usd"], result["cost_source"] = derive_cost_from_totals(
         result.get("token_totals") or {}, result.get("model") or ""
     )
 
@@ -178,6 +124,11 @@ def _existing_path(path_value: Optional[str]) -> Optional[str]:
         return None
     candidate = Path(path_value)
     return str(candidate) if candidate.exists() else None
+
+
+def _rel_if_exists(path: Path, logs_dir: Path) -> Optional[str]:
+    """Relativized artifact pointer, or None when the file doesn't exist."""
+    return relative_artifact_path(path, logs_dir) if path.exists() else None
 
 
 # Maps artifact key → filename, and which workflows produce each file.
@@ -269,16 +220,15 @@ def write_run_summary(
     logs_dir = logger_manager.get_logs_dir()
     app_metadata = getattr(workflow, "metadata", {}) or {}
 
-    # Check for git dirty state
     git_status = _run_git_value(project_root, ["status", "--porcelain"])
     is_dirty = bool(git_status and git_status.strip())
     if is_dirty:
+        diff = _run_git_value(project_root, ["diff", "HEAD"])
         try:
-            diff = _run_git_value(project_root, ["diff", "HEAD"])
             with open(logs_dir / "git_repro.patch", "w", encoding="utf-8") as f:
                 f.write(diff)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("Failed to write git_repro.patch: %s", e)
 
     # Canonical path written by both custom and BYO; no agent-supplied field needed.
     canonical_conversation = logs_dir / "agent_run" / "conversation.jsonl"
@@ -304,13 +254,10 @@ def write_run_summary(
     # agents bypass time_tracker, so fall back to whatever timing dict the
     # agent surfaced — without this fallback their metrics would be zero.
     time_tracker_timing = _timing_summary_from_calls(llm_calls_this_run)
-    agent_timing = run_result.get("timing") or {}
-    if not isinstance(agent_timing, dict):
-        agent_timing = {}
+    agent_timing_raw = run_result.get("timing")
+    agent_timing = agent_timing_raw if isinstance(agent_timing_raw, dict) else {}
     if llm_calls_this_run:
-        timing_summary = time_tracker_timing
-        if agent_timing:
-            timing_summary = {**agent_timing, **time_tracker_timing}
+        timing_summary = {**agent_timing, **time_tracker_timing}
     else:
         timing_summary = agent_timing or time_tracker_timing
 
@@ -412,11 +359,7 @@ def write_run_summary(
             "agent_log_file": relative_artifact_path(
                 logger_manager.get_agent_log_file_name(), logs_dir
             ),
-            "token_usage_jsonl": (
-                relative_artifact_path(token_usage_path, logs_dir)
-                if token_usage_path.exists()
-                else None
-            ),
+            "token_usage_jsonl": _rel_if_exists(token_usage_path, logs_dir),
             "conversation_jsonl": relative_artifact_path(conversation_path, logs_dir),
             "system_prompt_file": relative_artifact_path(system_prompt_path, logs_dir),
             "screenshots_dir": (
@@ -424,16 +367,8 @@ def write_run_summary(
                 if (logs_dir / "screenshots").is_dir()
                 else None
             ),
-            "squid_access_log": (
-                relative_artifact_path(squid_access_log, logs_dir)
-                if squid_access_log.exists()
-                else None
-            ),
-            "squid_cache_log": (
-                relative_artifact_path(squid_cache_log, logs_dir)
-                if squid_cache_log.exists()
-                else None
-            ),
+            "squid_access_log": _rel_if_exists(squid_access_log, logs_dir),
+            "squid_cache_log": _rel_if_exists(squid_cache_log, logs_dir),
             **score_artifact_paths,
             "logs_dir": relative_artifact_path(logs_dir, logs_dir),
         },
@@ -447,8 +382,6 @@ def write_run_summary(
     except jsonschema.ValidationError as e:
         logger.warning("run_summary schema validation failed: %s", e)
     try:
-        _write_json_atomic(
-            logs_dir / "run_summary.json", _redact_for_persistence(run_summary)
-        )
+        _write_json_atomic(logs_dir / "run_summary.json", run_summary)
     except Exception as e:
         logger.warning("Failed to write run_summary.json: %s", e)
