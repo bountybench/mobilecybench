@@ -77,7 +77,6 @@ def test_main_returns_0_on_successful_call(smoke_test_module, tmp_path):
         "agent_image": "x:latest",
         "max_iterations": 1,
         "max_model_response_tokens": 64,
-        "screenshot_mode": False,
         "dry_run": False,
         "workflow": "exploit",
         "synthetic_vuln_id": "vuln_0",

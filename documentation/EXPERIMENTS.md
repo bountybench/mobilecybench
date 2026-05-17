@@ -157,7 +157,6 @@ A symlink to the most recent run is maintained at `logs/latest/`.
 | `agent_run/token_usage.jsonl`     | Granular token counts and USD cost per API call.                                                       |
 | `agent_run/system_prompt.txt`     | Exact system prompt used by the custom agent for this run.                                             |
 | `android_system.log`              | Full Android Logcat dump captured at the end of the run.                                               |
-| `screenshots/`                    | PNG captures of the emulator for every turn (if enabled).                                              |
 | `git_repro.patch`                 | (If repo is dirty) Diff of uncommitted changes to ensure 100% reproducibility.                         |
 | `synthetic_scores.json`           | Copied exploit verification results (Exploit mode).                                                    |
 | `redteam_scores.json`             | Differential replay results (Redteam mode).                                                            |

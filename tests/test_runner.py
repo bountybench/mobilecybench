@@ -28,7 +28,6 @@ def base_config():
         max_iterations=10,
         max_model_response_tokens=1000,
         model="gpt-4",
-        screenshot_mode=False,
         dry_run=False,
         agent_image="test-image:latest",
         emulator_display="headed",

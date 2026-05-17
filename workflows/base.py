@@ -180,7 +180,6 @@ class Workflow(ABC):
             model=self.config.model,
             max_iterations=self.config.max_iterations,
             max_model_response_tokens=self.config.max_model_response_tokens,
-            screenshot_enabled=self.config.screenshot_mode,
             app_name=self.app_name,
             instructions=self._build_agent_prompt(),
             llm_request_timeout_ms=self.config.llm_request_timeout_ms,

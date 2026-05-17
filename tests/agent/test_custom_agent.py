@@ -52,7 +52,6 @@ class TestCustomAgentMaxIterations:
             model="gpt-5.2",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -103,7 +102,6 @@ class TestCustomAgentMaxIterations:
             model="gpt-5.2",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -122,7 +120,6 @@ class TestCustomAgentMaxIterations:
             model="gpt-5.2",
             max_iterations=1,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -179,7 +176,6 @@ class TestCustomAgentMaxIterations:
             model="gpt-5.2",
             max_iterations=1,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -197,7 +193,6 @@ class TestCustomAgentMaxIterations:
             model="gpt-5.2",
             max_iterations=3,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -238,7 +233,6 @@ class TestCustomAgentMaxIterations:
             model="gpt-5.2",
             max_iterations=1,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -270,7 +264,6 @@ class TestCustomAgentMaxIterations:
             model="gpt-5.2",
             max_iterations=1,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -409,7 +402,6 @@ class TestCustomAgentWithClaude:
             model="claude-opus-4-6",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -447,7 +439,6 @@ class TestCustomAgentWithClaude:
             model="claude-opus-4-6",
             max_iterations=10,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -462,7 +453,6 @@ class TestCustomAgentWithClaude:
             model="claude-opus-4-6",
             max_iterations=3,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -485,7 +475,6 @@ class TestCustomAgentWithGemini:
             model="gemini-3-pro-preview",
             max_iterations=max_iterations,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -523,7 +512,6 @@ class TestCustomAgentWithGemini:
             model="gemini-3-pro-preview",
             max_iterations=10,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )
@@ -538,7 +526,6 @@ class TestCustomAgentWithGemini:
             model="gemini-3-pro-preview",
             max_iterations=3,
             max_model_response_tokens=1000,
-            screenshot_enabled=False,
             app_name="test_app",
             instructions="System prompt for com.test.app — test scaffold.",
         )

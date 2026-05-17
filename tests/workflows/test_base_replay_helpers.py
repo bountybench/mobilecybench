@@ -35,7 +35,6 @@ def workflow(tmp_path):
         agent_image="test:latest",
         max_iterations=10,
         max_model_response_tokens=1000,
-        screenshot_mode=False,
         dry_run=False,
         emulator_backend="native",
         emulator_display="headed",

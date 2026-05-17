@@ -88,7 +88,7 @@ No `trap` / no `setsid` / no graceful-shutdown logic in this example. The harnes
 
 ## `task.json` (input)
 
-Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `vuln_id`, `attacker_model`, `reasoning_effort`, `screenshot_mode` (in practice the harness always emits these too).
+Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `vuln_id`, `attacker_model`, `reasoning_effort` (in practice the harness always emits these too).
 
 | Field | Notes |
 | --- | --- |
@@ -103,7 +103,6 @@ Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritat
 | `apk_relpath` | Path to the built target APK, relative to `/app/codebase` (or `/app/apk` when `no_codebase=true`). |
 | `vuln_id` | Synthetic vuln id when `synthetic_vuln_id` is set on the operator config (either `workflow="exploit"` or `workflow="redteam"` with synthetic mode). Null for zero-day redteam. |
 | `attacker_model` | `"malicious_app"` / `"remote_attacker"` for redteam; `""` for exploit. |
-| `screenshot_mode` | When true, capture per-turn screenshots under `agent_run/screenshots/`. |
 | `app_server`, `emulator_server`, `package_name` | Live runtime endpoints + target package the harness pre-wires. Forward into your CLI's context. |
 
 ## `result.json` (output)

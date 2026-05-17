@@ -49,7 +49,6 @@
         "dry_run",
         "emulator_backend",
         "emulator_display",
-        "screenshot_mode",
         "max_iterations",
         "max_model_response_tokens",
         "full_snapshot"
@@ -59,7 +58,6 @@
         "dry_run": { "type": "boolean" },
         "emulator_backend": { "type": "string", "enum": ["native", "container"] },
         "emulator_display": { "type": "string", "enum": ["headed", "headless"] },
-        "screenshot_mode": { "type": "boolean" },
         "max_iterations": { "type": "integer", "minimum": 1 },
         "max_model_response_tokens": { "type": "integer", "minimum": 1 },
         "reasoning_effort": { "type": ["string", "null"] },
@@ -132,7 +130,6 @@
         "token_usage_jsonl": { "type": ["string", "null"] },
         "conversation_jsonl": { "type": ["string", "null"] },
         "system_prompt_file": { "type": ["string", "null"] },
-        "screenshots_dir": { "type": ["string", "null"] },
         "squid_access_log": { "type": ["string", "null"] },
         "squid_cache_log": { "type": ["string", "null"] },
         "scores_json": { "type": ["string", "null"] },

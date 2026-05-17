@@ -24,7 +24,6 @@
 
   "dry_run": false,
   "gold_run": false,
-  "screenshot_mode": false,
 
   "llm_request_timeout_ms": 600000
 }

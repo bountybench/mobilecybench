@@ -174,11 +174,6 @@
       "description": "Replay a prior redteam exploit artifact from logs/experiment_<uuid>. May also be set via runner.py --replay-run. Mutually exclusive with dry_run and gold_run.",
       "title": "Replay Run"
     },
-    "screenshot_mode": {
-      "description": "Capture a per-turn PNG screenshot under logs/experiment_<uuid>/screenshots/. Adds ~10s per turn plus disk usage.",
-      "title": "Screenshot Mode",
-      "type": "boolean"
-    },
     "emulator_backend": {
       "default": "native",
       "description": "Run the emulator as a host process ('native') or as a separate Docker container ('container', used by GKE).",
@@ -258,8 +253,7 @@
     "agent_image",
     "max_iterations",
     "max_model_response_tokens",
-    "dry_run",
-    "screenshot_mode"
+    "dry_run"
   ],
   "type": "object"
 }

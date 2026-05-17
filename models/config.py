@@ -222,14 +222,6 @@ class RunnerConfig(BaseModel):
             "--replay-run. Mutually exclusive with dry_run and gold_run."
         ),
     )
-    screenshot_mode: bool = Field(
-        ...,
-        description=(
-            "Capture a per-turn PNG screenshot under logs/experiment_<uuid>"
-            "/screenshots/. Adds ~10s per turn plus disk usage."
-        ),
-    )
-
     # ---- Emulator -----------------------------------------------------------
     emulator_backend: Literal["native", "container"] = Field(
         default="native",
