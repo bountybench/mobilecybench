@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mobilecybench.dev/schemas/result.schema.json",
   "title": "Agent Result",
-  "description": "Contract output written by a BYO agent to /app/agent_run/result.json. Only `status` is strictly required; every other field has a documented runner-side fallback.",
+  "description": "Contract output written by a BYO agent to /app/agent_run/result.json. Only `status` is strictly required; every other field has a documented runner-side fallback. Unknown keys pass through (additionalProperties: true). Full contract: documentation/BRING_YOUR_OWN_AGENT.md.",
   "type": "object",
   "properties": {
     "status": {
-      "description": "Run terminal status. 'completed' = agent finished cleanly. 'timeout' = SIGTERM/SIGKILL by harness wall-clock. 'error' = agent or harness raised. 'unknown' = runner died between a per-turn snapshot and the final write. 'dry_run' is internal.",
+      "description": "Run terminal status. Agents write one of: 'completed' (finished cleanly), 'timeout' (SIGTERM/SIGKILL by harness wall-clock), 'error' (agent raised), 'unknown' (per-turn snapshot only; overwritten at final write). 'dry_run' is harness-only and never written by a BYO agent.",
       "enum": ["completed", "timeout", "error", "dry_run", "unknown"]
     },
     "turns_taken": {
@@ -23,11 +23,11 @@
       "type": "string"
     },
     "exit_code": {
-      "description": "Subprocess exit code. Runner records this directly when absent.",
+      "description": "Subprocess exit code. Runner falls back to the observed subprocess exit code when absent.",
       "type": "integer"
     },
     "error_traceback": {
-      "description": "Populated only when status='error'. Stack trace or decoder message for malformed result.json.",
+      "description": "Populated only when status='error'. Stack trace or short error message describing what went wrong (the runner also writes this for malformed result.json).",
       "type": "string"
     },
     "tool_call_count": {
@@ -46,7 +46,7 @@
       "minimum": 0
     },
     "cost_source": {
-      "description": "Where cost_usd came from. 'agent' = taken from the agent-reported value. 'derived' = computed by the runner from token_totals × price table. 'derived_unpriced' = derive was attempted but the model has no row in token_pricing.json (cost_usd will be 0).",
+      "description": "Set by the runner; agents should not write this. 'agent' = taken from the agent-reported cost_usd. 'derived' = computed by the runner from token_totals × token_pricing.json. 'derived_unpriced' = derive was attempted but the model has no row in token_pricing.json (cost_usd will be 0).",
       "enum": ["agent", "derived", "derived_unpriced"]
     },
     "token_totals": {
