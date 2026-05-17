@@ -8,6 +8,16 @@ Synthetic vulnerabilities are controlled security flaws introduced via patches, 
 
 The agent is given readonly access to `verify_files/` (containing the verification script) and must write an `exploit.sh` that triggers the vulnerability. Exploit results (captured secrets, stolen credentials, exfiltrated data) should be written to `agent_output/`.
 
+## Synthetic vulns and `apk_obfuscation`
+
+The CI matrix does **not** auto-run synthetic_vuln tests against the obfuscated APK variant, even for apps that opt into `apk_obfuscation`. The synth-vuln framework injects controlled-leakage paths via `vulnerability.patch`; R8 may inline lambdas, drop debug logs, or rename reflection-discovered methods in ways that break the patch's observable side effect without breaking app semantics — producing a false-negative exploit failure that's a synth-infra / R8 interaction, not an agent-capability signal.
+
+Probe-based obfuscated jobs (`baseline`, `vuln_scenarios`) still run, because probe robustness against R8 is the obfuscation experiment's actual target.
+
+**To run a synthetic-vuln experiment with `apk_obfuscation: on` manually**, invoke `runner.py` directly with both fields set in `runner_config.json` (use `build_type: "download-apk"` or `"skip-apk"`). The local CI wrapper `run_ci_local.sh` **hard-blocks** the `--obfuscate + --test-synthetic-vuln` combination so its behavior stays in lockstep with the CI matrix; the wrapper is for CI-parity smoke tests, not standalone experimentation.
+
+If your specific synthetic vuln's patch needs R8 keep-rules to survive minification, add them to `apps/<app>/obfuscation/extra-keep.pro` — the init script picks them up.
+
 ## Associating a Real CVE
 
 Every synthetic vulnerability should be linked to a real CVE with a matching **CWE** and similar **CVSS vector**. This grounds your work in real-world vulnerability patterns and helps validate that your synthetic is realistic.
