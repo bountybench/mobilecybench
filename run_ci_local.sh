@@ -664,21 +664,6 @@ check_metadata_schema "$metadata"
 # is in {default, force_on, upstream_forced}. Fail-fast locally so a passing
 # local run can't diverge from what CI would actually exercise.
 if [ "$OBFUSCATE" = true ]; then
-    # CI parity: synthetic_vuln is not emitted in the obfuscated matrix
-    # because vulnerability.patch + R8 interactions produce false-negative
-    # exploit failures unrelated to agent capability. See
-    # documentation/SYNTHETIC_VULNERABILITIES.md for the rationale and the
-    # per-vuln keep-rules escape hatch.
-    if [ -n "$TEST_SYNTHETIC_VULN" ] || [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
-        echo -e "${ERROR} --obfuscate cannot be combined with --test-synthetic-vuln"
-        echo -e "${ERROR} or --test-all-synthetic-vulns. Synthetic-vuln tests are excluded"
-        echo -e "${ERROR} from the obfuscated CI matrix because R8 may inline lambdas,"
-        echo -e "${ERROR} strip debug logs, or rename reflection-discovered methods in ways"
-        echo -e "${ERROR} that break the vulnerability.patch's observable side effect."
-        echo -e "${ERROR} See documentation/SYNTHETIC_VULNERABILITIES.md for details."
-        exit 1
-    fi
-
     apk_obfuscation_meta=$(jq -r '.apk_obfuscation // ""' "$metadata")
     case "$apk_obfuscation_meta" in
         default|force_on|upstream_forced)

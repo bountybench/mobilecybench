@@ -26,7 +26,7 @@ jobs:
 
       - name: Disable Git ownership check
         run: git config --global --add safe.directory '*'
-
+        
       - name: Fetch main branch
         run: git fetch origin main:refs/remotes/origin/main
 
@@ -275,16 +275,27 @@ jobs:
 
                 echo "  Added synthetic_vuln jobs for $vuln_id"
 
-                # synthetic_vuln intentionally does NOT run in the obfuscated
-                # matrix. The synth-vuln framework injects controlled-leakage
-                # paths via vulnerability.patch; R8 may inline lambdas, drop
-                # debug logs, or rename reflection-discovered methods in ways
-                # that break the patch's observable side effect without
-                # breaking app semantics — producing a false-negative exploit
-                # failure that's a synth-infra / R8 interaction, not an
-                # agent-capability signal. Obfuscated probe-based jobs
-                # (baseline, vuln_scenarios) still run below — those measure
-                # what we actually care about: probe robustness against R8.
+                # Obfuscated variant for opt-in apps. Cost policy:
+                # always emit the obfuscated handle_apk (build) job to catch
+                # minify breakage cheaply; only emit the obfuscated test
+                # (emulator + probes) job when obfuscation infra itself
+                # changed — runtime breakage from minify is rare once an
+                # app's keep-rules are settled, so paying the heavy probe
+                # run on every app-source PR is wasteful.
+                if [ "$obfuscation_optin" = true ]; then
+                  apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                    --arg java "$java" --arg mode "$synth_mode" --arg vuln_id "$vuln_id" \
+                    '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode, "vuln_id": $vuln_id, "variant": "obfuscated"}]')
+                  echo "  Added obfuscated synthetic_vuln handle_apk for $vuln_id"
+
+                  if [ "$obfuscate_init_changed" = "true" ] || [ "$app_obfuscation_changed" = "true" ]; then
+                    test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                      --arg sdk "$sdk" --arg image "$system_image" --arg mode "$synth_mode" \
+                      --arg type "synthetic_vuln" --arg vuln_id "$vuln_id" \
+                      '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type, "vuln_id": $vuln_id, "variant": "obfuscated"}]')
+                    echo "  Added obfuscated synthetic_vuln test for $vuln_id (obfuscation infra changed)"
+                  fi
+                fi
               done
             fi
 
@@ -479,7 +490,7 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
+          distribution: 'temurin'
           java-version: "${{ matrix.java }}"
           cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
 
@@ -865,8 +876,8 @@ jobs:
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          cache: "pip"
+          python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -941,11 +952,11 @@ jobs:
           DUMMY_EOF
 
           cd "$dir"
-
+          
           # Get package_name from metadata.json (required field) and verify before setup
           package_name=$(jq -r '.package_name' metadata.json)
           echo "Found package_name in metadata.json: $package_name"
-
+          
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
             echo "ERROR: Package $package_name is already installed before start_runtime.sh"
@@ -954,7 +965,7 @@ jobs:
           else
             echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
           fi
-
+          
           echo "Running setup..."
           ./start_runtime.sh
 
@@ -984,10 +995,10 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
-
+          
           # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
-
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -1011,7 +1022,7 @@ jobs:
 
           echo "Running baseline and generic probe checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
-
+          
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: Baseline scores.json does not contain all 1s."
             cat scores.json
@@ -1076,7 +1087,7 @@ jobs:
               fi
             fi
           }
-
+          
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
             echo "ERROR: Package $package_name is already installed before start_runtime.sh"
@@ -1085,7 +1096,7 @@ jobs:
           else
             echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
           fi
-
+          
           echo "Running setup..."
           ./start_runtime.sh
 
@@ -1098,10 +1109,10 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
-
+          
           # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
-
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -1127,13 +1138,13 @@ jobs:
           cd vuln_scenarios/vuln_scenario_0
           ./vuln.sh
           cd -
-
+          
           echo "Running checks..."
           ../../run_checks.sh . "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
-
+          
           score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
-
+          
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
             echo "Vuln scenario 0 scores match."
           else
@@ -1209,7 +1220,7 @@ jobs:
               fi
             fi
           }
-
+          
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
             echo "ERROR: Package $package_name is already installed before start_runtime.sh"
@@ -1218,7 +1229,7 @@ jobs:
           else
             echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
           fi
-
+          
           echo "Running setup..."
           ./start_runtime.sh
 
@@ -1231,10 +1242,10 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
-
+          
           # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
-
+          
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -1260,13 +1271,13 @@ jobs:
           cd vuln_scenarios/vuln_scenario_1
           ./vuln.sh
           cd -
-
+          
           echo "Running checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
-
+          
           score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
-
+          
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
             echo "Vuln scenario 1 scores match."
           else
@@ -1637,7 +1648,7 @@ jobs:
       - name: Pre-emulator Resource Check
         run: |
           echo "=== Pre-Emulator Resource Check ==="
-
+          
           # Check if CPU usage is acceptable
           CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
           if [ "$CPU_USAGE" -gt 25 ]; then
@@ -1650,14 +1661,14 @@ jobs:
             sudo pkill -f firefox || true
             sleep 10
           fi
-
+          
           # Check memory
           AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
           if [ "$AVAILABLE_MEM" -lt 2 ]; then
             echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
             free -h
           fi
-
+          
           echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
 
       - name: Run emulator test with action
