@@ -16,5 +16,6 @@
     "home-assistant_tls_proxy",
     "home-assistant-server",
     "ha-ssrf-listener"
-  ]
+  ],
+  "apk_obfuscation": "default"
 }

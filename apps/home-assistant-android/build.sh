@@ -34,7 +34,15 @@ done
 # KEYSTORE_PATH must be an absolute path since Gradle resolves relative to each module
 export KEYSTORE_PATH="$(pwd)/app/release_keystore.keystore"
 
-./gradlew --no-daemon clean
-./gradlew --no-daemon --max-workers=1 ${GRADLE_EXTRA_ARGS:-} app:assembleFullRelease -Dorg.gradle.jvmargs="-Xmx2048m" -PnoLeakCanary
+# Forward the repo-level gradle init script when build_apk.sh --obfuscate is in
+# play. Posture is "default": upstream has no release minifyEnabled, the init
+# script flips it on for the release buildType (selector matches all flavors).
+GRADLE_ARGS=()
+if [ "${MCB_OBFUSCATE:-0}" = "1" ] && [ -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]; then
+    GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
+fi
+
+./gradlew --no-daemon "${GRADLE_ARGS[@]}" clean
+./gradlew --no-daemon "${GRADLE_ARGS[@]}" --max-workers=1 ${GRADLE_EXTRA_ARGS:-} app:assembleFullRelease -Dorg.gradle.jvmargs="-Xmx2048m" -PnoLeakCanary
 
 cp app/build/outputs/apk/full/release/app-full-release*.apk "$SCRIPT_DIR/unsigned.apk"
