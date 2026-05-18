@@ -1862,7 +1862,9 @@ def validate_malicious_app():
         raise HydrationError("malicious_app.json has unexpected package_name")
     if data.get("requested_permissions") != ["android.permission.INTERNET"]:
         raise HydrationError("malicious_app.json requested permissions are stale")
-    components = data.get("components") if isinstance(data.get("components"), dict) else {}
+    components = (
+        data.get("components") if isinstance(data.get("components"), dict) else {}
+    )
     if components.get("image_provider") != ATTACKER_IMAGE_AUTHORITY:
         raise HydrationError("malicious_app.json image provider metadata is stale")
     status = attacker_package_status()
