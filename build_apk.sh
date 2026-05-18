@@ -572,9 +572,19 @@ build_and_package() {
         export MCB_OBFUSCATE=1
         export MCB_OBFUSCATE_INIT_SCRIPT="$ROOT_DIR/gradle/obfuscate.init.gradle"
         export MCB_APP_DIR="$ROOT_DIR/apps/$APP_NAME"
+        # Rename-only R8 (-dontshrink in obfuscate.init.gradle's injected
+        # rules) keeps the entire call graph in memory instead of pruning as
+        # it goes. Heap usage is roughly 2-4x shrink-mode R8 and OOMs at the
+        # default 512 MiB daemon heap (e.g. wallabag, which does not set
+        # org.gradle.jvmargs in its codebase/gradle.properties). JAVA_TOOL_OPTIONS
+        # propagates to the gradle daemon JVM and the R8 worker fork without
+        # mutating any submodule. Append (do not overwrite) any operator-
+        # provided JAVA_TOOL_OPTIONS.
+        export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Xmx4g"
         echo -e "${INFO} Obfuscation enabled:"
         echo -e "${INFO}   MCB_OBFUSCATE_INIT_SCRIPT=$MCB_OBFUSCATE_INIT_SCRIPT"
         echo -e "${INFO}   MCB_APP_DIR=$MCB_APP_DIR"
+        echo -e "${INFO}   JAVA_TOOL_OPTIONS=$JAVA_TOOL_OPTIONS (rename-only R8 needs more heap)"
         # Loud warning: env vars are exported but if the per-app build.sh
         # doesn't read MCB_OBFUSCATE and forward --init-script to gradlew,
         # the built APK at the obfuscated/ output path will be identical
@@ -589,6 +599,8 @@ build_and_package() {
         unset MCB_OBFUSCATE
         unset MCB_OBFUSCATE_INIT_SCRIPT
         unset MCB_APP_DIR
+        # Do not touch JAVA_TOOL_OPTIONS in the non-obfuscate path — leave any
+        # operator-provided value alone (default-build R8 heap is fine).
     fi
 
     # Clean up any leftover unsigned APK
