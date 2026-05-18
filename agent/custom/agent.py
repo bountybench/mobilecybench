@@ -105,13 +105,10 @@ class CustomAgent:
         self.app_name = app_name
 
         self.runtime = ToolRuntime()
-
-        self._initial_tree_context = get_directory_tree(self.no_codebase)
         self._instructions = instructions
 
-        agent_logger.info("Agent initialized with system prompt instructions.")
-
-        # Create provider (fully configured on construction)
+        # Provider before tree fetch so a missing API key surfaces before
+        # get_directory_tree's kali-404 noise can mask it.
         self.provider = get_model_provider(
             model=model,
             instructions=self._instructions,
@@ -121,6 +118,10 @@ class CustomAgent:
             reasoning_effort=reasoning_effort,
             allow_unregistered=allow_unregistered_models,
         )
+
+        self._initial_tree_context = get_directory_tree(self.no_codebase)
+
+        agent_logger.info("Agent initialized with system prompt instructions.")
 
         # Use shared logger's file name for consistency
         self.log_file = logger_manager.get_agent_log_file_name()
