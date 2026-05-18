@@ -347,7 +347,9 @@ def main():
 
         log("UI automation completed successfully")
         log("  Client has viewed the memo")
-        log("  If vulnerable, the client token should have been sent to the external server")
+        log(
+            "  If vulnerable, the client token should have been sent to the external server"
+        )
         return 0
 
     except Exception as e:
