@@ -32,7 +32,7 @@ echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py owncloud-android
 ```
 
-> The committed `runner_config.json` is a probe-only example (probe_only + malicious_app), which requires the target app to ship per-app probes and `generic_probe_config.json`. `owncloud-android` is one of the apps that satisfies this; see the README quickstart for the full list.
+> The committed `runner_config.json` is a probe-only example (probe_only + malicious_app), which requires the target app to ship per-app probes and `generic_probe_config.json`. `owncloud-android` is one of the apps that satisfies this.
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
@@ -167,7 +167,7 @@ List available apps:
 ls apps
 ```
 
-Pick any existing app directory. The committed `runner_config.json` defaults to probe-only + `malicious_app`, which requires per-app probes and `generic_probe_config.json`; `owncloud-android` is a known-supported choice (see the README quickstart for the full list of probe-only-ready apps).
+Pick an app that ships per-app probes and `generic_probe_config.json`. The committed `runner_config.json` defaults to probe-only + `malicious_app`; `owncloud-android` is a known-supported choice.
 
 ## 6) Run a baseline experiment
 
