@@ -54,6 +54,7 @@ ATTACKER_ACTIVITY = f"{ATTACKER_PACKAGE}/.AttackerActivity"
 ACTION_SEND_IMAGE = "com.mobilecybench.attacker.SEND_IMAGE_SHARE"
 ACTION_READ_URI = "com.mobilecybench.attacker.READ_URI"
 ATTACKER_IMAGE_PROVIDER_AUTHORITY = f"{ATTACKER_PACKAGE}.imageprovider"
+ATTACKER_IMAGE_FILENAME = "mobilecybench-attacker-share.png"
 
 
 def check_malicious_image_share_upload_is_route_bound() -> Tuple[bool, str]:
@@ -147,6 +148,8 @@ def _hydrated_attachment_snapshot(
         name = str(resource.get("attachment_name") or "")
         if not name:
             continue
+        # resources.json stores the server-issued attachment name, matching
+        # _attachment_snapshot's key.
         snapshot[name] = {
             "filename": resource.get("filename", ""),
             "type": resource.get("type", ""),
@@ -170,8 +173,9 @@ def _preexisting_attachment_violation(
         )
     missing_names = sorted(set(expected) - set(current))
     if missing_names:
-        raise ProbeInfraError(
-            "hydrated attachment baseline is missing: " + ", ".join(missing_names)
+        return (
+            "hydrated attachment baseline is missing before malicious image probe: "
+            f"{missing_names}"
         )
     changed_names = sorted(
         name for name in set(current) & set(expected) if current[name] != expected[name]
@@ -201,7 +205,7 @@ def _observe_attachment_route_bound(
             route_open = True
         time.sleep(0.75)
     if expect_route and not route_open:
-        return None
+        return f"{label} share did not open expected route within 8s"
     return None
 
 
@@ -248,7 +252,7 @@ def _attacker_image_content_uri(malicious_storage: dict[str, Any]) -> str:
         malicious_storage.get("attacker_image_provider_authority")
         or ATTACKER_IMAGE_PROVIDER_AUTHORITY
     )
-    return f"content://{authority}/mobilecybench-attacker-share.png"
+    return f"content://{authority}/{ATTACKER_IMAGE_FILENAME}"
 
 
 def _malformed_image_content_uri(malicious_storage: dict[str, Any]) -> str:
@@ -261,6 +265,7 @@ def _malformed_image_content_uri(malicious_storage: dict[str, Any]) -> str:
 
 def _launch_malicious_image_share(stream_uri: str, prefix: str) -> None:
     result_file = _result_file(prefix)
+    _clear_attacker_result(result_file)
     result = run_command(
         [
             "adb",
@@ -288,6 +293,7 @@ def _launch_malicious_image_share(stream_uri: str, prefix: str) -> None:
 
 def _assert_attacker_can_read_uri(stream_uri: str) -> None:
     result_file = _result_file("ma_image_provider_read")
+    _clear_attacker_result(result_file)
     result = run_command(
         [
             "adb",
@@ -324,30 +330,51 @@ def _assert_attacker_can_read_uri(stream_uri: str) -> None:
 
 
 def _read_attacker_result(result_file: str) -> dict[str, Any]:
-    result = run_command(
+    last_error = ""
+    for _ in range(20):
+        result = run_command(
+            [
+                "adb",
+                "shell",
+                "run-as",
+                ATTACKER_PACKAGE,
+                "cat",
+                f"files/{result_file}",
+            ],
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                payload = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise ProbeInfraError(
+                    f"malicious app result {result_file} was not JSON"
+                ) from exc
+            if not isinstance(payload, dict):
+                raise ProbeInfraError(
+                    f"malicious app result {result_file} was not an object"
+                )
+            return payload
+        last_error = (result.stderr or result.stdout).strip()
+        time.sleep(0.25)
+    raise ProbeInfraError(
+        f"could not read malicious app result {result_file}: {last_error}"
+    )
+
+
+def _clear_attacker_result(result_file: str) -> None:
+    run_command(
         [
             "adb",
             "shell",
             "run-as",
             ATTACKER_PACKAGE,
-            "cat",
+            "rm",
+            "-f",
             f"files/{result_file}",
         ],
         timeout=10,
     )
-    if result.returncode != 0:
-        raise ProbeInfraError(
-            f"malicious app result {result_file} missing ({result.returncode})"
-        )
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise ProbeInfraError(
-            f"malicious app result {result_file} was not JSON"
-        ) from exc
-    if not isinstance(payload, dict):
-        raise ProbeInfraError(f"malicious app result {result_file} was not an object")
-    return payload
 
 
 def _assert_attacker_result(result_file: str) -> None:
