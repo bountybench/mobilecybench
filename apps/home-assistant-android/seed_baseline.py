@@ -58,7 +58,7 @@ BASELINE_FILE = Path("baseline_manifest.json")
 METADATA_FILE = Path("metadata.json")
 HA_BASE_URL = "https://localhost:8123"
 HA_CLIENT_ID = "https://home-assistant.io/android"
-LLAT_NAME_PREFIX = "MobileCyBench Probe Baseline"
+LLAT_NAME_PREFIX = "Smart Home Sync"
 
 CONFIG_FILES = [
     "/config/.storage/auth_provider.homeassistant",
