@@ -37,7 +37,7 @@ class TokenUsage(BaseModel):
         - output_tokens: Number of output tokens generated, including reasoning
             tokens when the upstream API reports them as part of total output.
         - reasoning_tokens: Number of billed reasoning tokens, if reported.
-        - cache_input_tokens: Number of input tokens served from cache.
+        - cached_input_tokens: Number of input tokens served from cache.
         - cost_usd: Total cost in USD for this call, rounded to 10 decimal places.
     """
 
@@ -48,7 +48,7 @@ class TokenUsage(BaseModel):
     input_tokens: int
     output_tokens: int
     reasoning_tokens: int
-    cache_input_tokens: int
+    cached_input_tokens: int
     cost_usd: float
 
 
@@ -67,7 +67,7 @@ def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
     Args:
         u: The usage object from the API response.
         key: One of "input_tokens", "output_tokens", "reasoning_tokens",
-            or "cache_input_tokens".
+            or "cached_input_tokens".
         default: Value to return if the key is not found or extraction fails.
     Returns:
         Integer token count for the specified key, or default if not found.
@@ -78,7 +78,7 @@ def _extract_token_count(u: Any, key: str, default: int = 0) -> int:
     if u is None:
         return default
     try:
-        if key == "cache_input_tokens":
+        if key == "cached_input_tokens":
             for details_key in ["input_tokens_details", "prompt_tokens_details"]:
                 details = _get_attr_or_key(u, details_key)
                 val = _get_attr_or_key(details, "cached_tokens")
@@ -127,7 +127,7 @@ def _extract_usage_openai_like(
             input_tokens,
             output_tokens,
             reasoning_tokens,
-            cache_input_tokens,
+            cached_input_tokens,
             request_id,
         ).
         Each token count defaults to 0 if not found, and request_id may be None.
@@ -153,7 +153,7 @@ def _extract_usage_openai_like(
     input_tokens = _extract_token_count(usage, "input_tokens", 0)
     output_tokens = _extract_token_count(usage, "output_tokens", 0)
     reasoning_tokens = _extract_token_count(usage, "reasoning_tokens", 0)
-    cache_read = _extract_token_count(usage, "cache_input_tokens", 0)
+    cache_read = _extract_token_count(usage, "cached_input_tokens", 0)
 
     return input_tokens, output_tokens, reasoning_tokens, cache_read, request_id
 
@@ -167,7 +167,7 @@ class TokenTracker:
         - total_input_tokens: Cumulative input tokens across all recorded calls.
         - total_output_tokens: Cumulative output tokens across all recorded calls.
         - total_reasoning_tokens: Cumulative reasoning tokens across all recorded calls.
-        - total_cache_input_tokens: Cumulative cache-read input tokens across all calls.
+        - total_cached_input_tokens: Cumulative cache-read input tokens across all calls.
         - total_cost_usd: Cumulative cost in USD across all recorded calls.
         - call_count: Total number of API calls recorded.
 
@@ -205,7 +205,7 @@ class TokenTracker:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_reasoning_tokens = 0
-        self.total_cache_input_tokens = 0
+        self.total_cached_input_tokens = 0
         self.total_cost_usd = 0.0
         self.call_count = 0
 
@@ -214,7 +214,7 @@ class TokenTracker:
         self.total_input_tokens += record.input_tokens
         self.total_output_tokens += record.output_tokens
         self.total_reasoning_tokens += record.reasoning_tokens
-        self.total_cache_input_tokens += record.cache_input_tokens
+        self.total_cached_input_tokens += record.cached_input_tokens
         self.total_cost_usd += record.cost_usd
         self.call_count += 1
 
@@ -248,7 +248,7 @@ class TokenTracker:
             pricing,
             input_tokens=i,
             output_tokens=o,
-            cache_input_tokens=cr,
+            cached_input_tokens=cr,
             reasoning_tokens=r,
         )
 
@@ -260,7 +260,7 @@ class TokenTracker:
             input_tokens=i,
             output_tokens=o,
             reasoning_tokens=r,
-            cache_input_tokens=cr,
+            cached_input_tokens=cr,
             cost_usd=round(cost, 10),
         )
 
@@ -269,7 +269,7 @@ class TokenTracker:
 
         # Log a concise line
         logger.info(
-            "Token usage | model=%s id=%s in=%d out=%d reasoning=%d cache_input=%d cost=$%.6f",
+            "Token usage | model=%s id=%s in=%d out=%d reasoning=%d cached_input=%d cost=$%.6f",
             model,
             request_id or "-",
             i,
@@ -307,6 +307,6 @@ class TokenTracker:
             "input_tokens": self.total_input_tokens,
             "output_tokens": self.total_output_tokens,
             "reasoning_tokens": self.total_reasoning_tokens,
-            "cached_input_tokens": self.total_cache_input_tokens,
+            "cached_input_tokens": self.total_cached_input_tokens,
             "cost_usd": round(self.total_cost_usd, 10),
         }

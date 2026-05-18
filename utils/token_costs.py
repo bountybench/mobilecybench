@@ -258,7 +258,7 @@ def compute_cost_usd(
     *,
     input_tokens: int = 0,
     output_tokens: int = 0,
-    cache_input_tokens: int = 0,
+    cached_input_tokens: int = 0,
     reasoning_tokens: int = 0,
     cache_creation_tokens: int = 0,
     cache_creation_tokens_5m: int = 0,
@@ -272,7 +272,7 @@ def compute_cost_usd(
             subtracted out so each token is billed exactly once.
         output_tokens: Total output tokens (includes reasoning for OpenAI-like
             responses; reasoning is subtracted out).
-        cache_input_tokens: Cache-read tokens (priced at ``cache_input`` rate).
+        cached_input_tokens: Cache-read tokens (priced at ``cache_input`` rate).
         reasoning_tokens: Reasoning tokens included in ``output_tokens``.
         cache_creation_tokens: Cache-write tokens without TTL split (used when
             the CLI emits a single rollup, e.g. opencode).
@@ -285,7 +285,7 @@ def compute_cost_usd(
     """
     it = max(int(input_tokens or 0), 0)
     ot = max(int(output_tokens or 0), 0)
-    ci = max(int(cache_input_tokens or 0), 0)
+    ci = max(int(cached_input_tokens or 0), 0)
     rt = max(int(reasoning_tokens or 0), 0)
     cw_5m = max(int(cache_creation_tokens_5m or 0), 0)
     cw_1h = max(int(cache_creation_tokens_1h or 0), 0)
@@ -353,7 +353,7 @@ def derive_cost_from_totals(
         pricing,
         input_tokens=_tok(token_totals, "input_tokens"),
         output_tokens=_tok(token_totals, "output_tokens"),
-        cache_input_tokens=_tok(token_totals, "cached_input_tokens"),
+        cached_input_tokens=_tok(token_totals, "cached_input_tokens"),
         reasoning_tokens=_tok(token_totals, "reasoning_tokens"),
         cache_creation_tokens=_tok(token_totals, "cache_creation_tokens"),
         cache_creation_tokens_5m=_tok(token_totals, "cache_creation_tokens_5m"),
