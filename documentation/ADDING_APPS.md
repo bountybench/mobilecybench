@@ -118,7 +118,7 @@ cp app/build/outputs/apk/release/app-release-unsigned.apk "$SCRIPT_DIR/unsigned.
 - App-specific build patches (SDK upgrades, dependency fixes, ProGuard rules, etc.) belong here
 - Keep it simple — most `build.sh` scripts are 10-20 lines
 
-If the app opts into `apk_obfuscation`, `build.sh` must forward the repo-level init script to gradlew when `MCB_OBFUSCATE=1` is in the environment (set by `build_apk.sh --obfuscate`). The init script flips `minifyEnabled` / `shrinkResources` on the release variant and appends `proguard-android-optimize.txt` plus an optional per-app `apps/<app>/obfuscation/extra-keep.pro`:
+If the app opts into `apk_obfuscation`, `build.sh` must forward the repo-level init script to gradlew when `MCB_OBFUSCATE=1` is in the environment (set by `build_apk.sh --obfuscate`). The init script flips `minifyEnabled` on the release variant (rename-only — `shrinkResources` is intentionally not touched so the resource set stays identical to baseline), appends `proguard-android-optimize.txt`, appends a generated rename-only rule file (`-dontshrink`, `-dontoptimize`, `-repackageclasses ''`, `-keepattributes SourceFile,LineNumberTable`), and appends an optional per-app `apps/<app>/obfuscation/extra-keep.pro`:
 
 ```bash
 GRADLE_ARGS=()

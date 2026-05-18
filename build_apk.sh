@@ -697,8 +697,9 @@ compute_build_fingerprint() {
 
     # Obfuscation toggle: include the literal on/off marker unconditionally so
     # toggling --obfuscate always produces a different fingerprint, even when
-    # no other input changed. When on, also hash the init script and the
-    # optional per-app extra-keep.pro so edits to either invalidate the cache.
+    # no other input changed. When on, also hash the init script (which
+    # contains the inlined rename-only directives) and the optional per-app
+    # extra-keep.pro so edits to either invalidate the cache.
     local obfuscate_marker
     if [ "$OBFUSCATE" = "1" ]; then
         obfuscate_marker="obfuscate=on"
