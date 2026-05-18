@@ -38,8 +38,25 @@ SIGNATURE_PROTECTION_LEVELS = {
 }
 
 
+def _moodle_apk_path() -> Path:
+    """Resolve the moodle APK path for the current test variant.
+
+    The runner places obfuscated APKs at apk/obfuscated/moodle.apk and
+    default APKs at apk/moodle.apk, and exports MCB_OBFUSCATE=1 for
+    obfuscated test variants. Probes that statically inspect the APK
+    (e.g. via apkanalyzer) must read the variant's APK, not the default
+    one — otherwise an obfuscated test will silently inspect the default
+    APK (if present) or return 0 (if absent), neither of which is what
+    the experiment intends.
+    """
+    base = Path(__file__).resolve().parent / "apk"
+    if os.environ.get("MCB_OBFUSCATE") == "1":
+        return base / "obfuscated" / "moodle.apk"
+    return base / "moodle.apk"
+
+
 def check_custom_permissions_signature_protected() -> int:
-    apk_path = Path(__file__).resolve().parent / "apk" / "moodle.apk"
+    apk_path = _moodle_apk_path()
     if not apk_path.exists():
         print(
             f"check_custom_permissions_signature_protected: APK missing at {apk_path}",
