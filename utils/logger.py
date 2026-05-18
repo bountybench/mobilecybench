@@ -2,9 +2,13 @@ import logging
 import os
 import re
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
+
+# Log records use UTC so timestamps line up with run_summary.json's UTC ISO.
+logging.Formatter.converter = time.gmtime
 
 
 class ColorConsoleFormatter(logging.Formatter):
@@ -64,7 +68,7 @@ class FilteringFormatter(logging.Formatter):
         if bracket_count == 0:
             before = text[:start_pos]
             after = text[pos:]
-            return before + '"[truncated - see debug log]"' + after
+            return before + '"[truncated]"' + after
         return text
 
 
@@ -167,7 +171,6 @@ class LoggerManager:
         self._logs_dir: Optional[Path] = None
         self._log_file = None
         self._agent_log_file = None
-        self._ui_debug_log_file = None
         self._error_log_file = None
         self._error_buffer_handler = None
 
@@ -214,7 +217,6 @@ class LoggerManager:
         self._log_file: Optional[str] = None
         self._agent_log_file: Optional[str] = None
         self._agent_logger: Optional[logging.Logger] = None
-        self._ui_debug_log_file: Optional[str] = None
 
         # Setup logs directory
         if "MOBILECYBENCH_LOGS_DIR" in os.environ:
@@ -245,9 +247,6 @@ class LoggerManager:
         self._ensure_handlers()
         self._setup_agent_logger()
         self._setup_error_logging()
-
-        if self._should_filter_ui():
-            self._setup_ui_debug_logger()
 
         # Keep canonical UUID for machines while surfacing a short human-friendly hint.
         if announce:
@@ -289,30 +288,19 @@ class LoggerManager:
         console_handler.setLevel(self._log_level)
 
         formatter_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        datefmt = "%Y-%m-%dT%H:%M:%S+0000"
         if self._should_filter_ui():
-            file_formatter = FilteringFormatter(formatter_str)
+            file_formatter = FilteringFormatter(formatter_str, datefmt=datefmt)
         else:
-            file_formatter = logging.Formatter(formatter_str)
+            file_formatter = logging.Formatter(formatter_str, datefmt=datefmt)
 
         file_handler.setFormatter(file_formatter)
-        console_handler.setFormatter(ColorConsoleFormatter(formatter_str))
+        console_handler.setFormatter(
+            ColorConsoleFormatter(formatter_str, datefmt=datefmt)
+        )
 
         self._logger.addHandler(file_handler)
         self._logger.addHandler(console_handler)
-
-    def _setup_ui_debug_logger(self) -> None:
-        self._ui_debug_log_file = str(self._logs_dir / "ui_debug.log")
-
-        debug_handler = logging.FileHandler(self._ui_debug_log_file, encoding="utf-8")
-        debug_handler.setLevel(self._log_level)
-
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        debug_handler.setFormatter(formatter)
-
-        if self._agent_logger:
-            self._agent_logger.addHandler(debug_handler)
 
     def _setup_error_logging(self) -> None:
         self._error_log_file = str(self._logs_dir / "errors.log")
@@ -350,10 +338,11 @@ class LoggerManager:
         agent_handler.setLevel(self._log_level)
 
         formatter_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        datefmt = "%Y-%m-%dT%H:%M:%S+0000"
         if self._should_filter_ui():
-            formatter = FilteringFormatter(formatter_str)
+            formatter = FilteringFormatter(formatter_str, datefmt=datefmt)
         else:
-            formatter = logging.Formatter(formatter_str)
+            formatter = logging.Formatter(formatter_str, datefmt=datefmt)
 
         agent_handler.setFormatter(formatter)
         self._agent_logger.addHandler(agent_handler)
@@ -371,9 +360,6 @@ class LoggerManager:
 
     def get_agent_log_file_name(self) -> str:
         return self._agent_log_file or ""
-
-    def get_ui_debug_log_file_name(self) -> str:
-        return self._ui_debug_log_file or ""
 
     def get_logs_dir(self) -> Optional[Path]:
         """Return the experiment logs directory, or None if not yet configured.
