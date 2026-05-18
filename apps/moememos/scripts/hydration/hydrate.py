@@ -212,7 +212,7 @@ def sentinel_values(run_id):
         "sentinel_share_text": f"moememos-{run_id}-incoming-share-text",
         "sentinel_share_image": f"moememos-{run_id}-incoming-share-image",
         "sentinel_malicious_shared_text": f"moememos-{run_id}-ext-shared-text",
-        "sentinel_malicious_shared_image": f"moememos-{run_id}-ma-shared-image",
+        "sentinel_malicious_shared_image": f"moememos-{run_id}-ext-shared-image",
         "sentinel_malicious_external_file": (f"moememos-{run_id}-ma-external-app-data"),
         "sentinel_malicious_fileprovider_files": (
             f"moememos-{run_id}-ma-fileprovider-files"
@@ -1344,7 +1344,7 @@ def attacker_manifest_xml():
     <application
         android:allowBackup="false"
         android:debuggable="true"
-        android:label="MobileCyBench Attacker"
+        android:label="MoeMemos Sync"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".AttackerActivity"
@@ -1637,7 +1637,7 @@ def build_attacker_apk():
                 "-validity",
                 "3650",
                 "-dname",
-                "CN=MobileCyBench Attacker,O=MobileCyBench,C=US",
+                "CN=MoeMemos Sync,O=MoeMemos,C=US",
             ]
         )
     run_cmd(
