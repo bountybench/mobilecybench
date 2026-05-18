@@ -13,43 +13,22 @@
 //
 //
 // Key invariants (DO NOT change without testing on a fresh build):
-//   1. minifyEnabled MUST be flipped via the AndroidComponents
+//   1. minifyEnabled / shrinkResources MUST be flipped via the AndroidComponents
 //      `beforeVariants` hook, not in `afterEvaluate`. AGP 7.1+ creates the
 //      variant task graph (including the conditional minifyReleaseWithR8 task)
 //      from `beforeVariants`; setting BuildType.minifyEnabled in afterEvaluate
 //      runs AFTER task creation and silently produces a non-minified APK.
 //      (Diagnosed against AGP 8.7.3 on wallabag: afterEvaluate path logged
 //      "minifyEnabled=true" but no R8 task ever ran. The fix is documented.)
-//   2. RENAME-ONLY invariant. `shrinkResources` is deliberately NOT flipped
-//      — it is an AGP-level resource-shrinking pass independent of ProGuard's
-//      `-dontshrink` and would remove resources added by synth-vuln patches.
-//      Code shrink + optimize are suppressed via a generated rename-only
-//      rule file (written under each project's buildDir/mcb-obfuscate/).
-//      The combined effect: R8 runs as a pure symbol-renamer; APK semantics
-//      ≈ baseline modulo the symbol map.
-//   3. Upstream-forced apps (e.g. moememos with `minifyEnabled true`) are
-//      detected and the proguard-android-optimize.txt injection is skipped
-//      to preserve their tested ProGuard configuration. The rename-only
-//      constraints are STILL appended so the ablation stays uniform across
-//      postures.
-//
-// Known limitation:
-//   The rename-only rule file is written from `afterEvaluate` at
-//   configuration time. This is NOT compatible with Gradle's
-//   configuration cache (`org.gradle.configuration-cache=true`); on a
-//   config-cache hit the write does not replay and the file may be
-//   missing if `gradle clean` ran since the last write. None of the
-//   apps in this benchmark currently enable config-cache, so the
-//   limitation is latent. When the first app opts in, move the write
-//   into a `doFirst` block on the `minify*WithR8` task (or register a
-//   proper WriteFile task wired as an R8 input).
-//   4. APPEND to proguardFiles via getProguardFiles()+setProguardFiles(). The
+//   2. Detect-and-skip when the app already has `minifyEnabled true` upstream
+//      (e.g. moememos). Preserve the upstream-tested ProGuard configuration.
+//   3. APPEND to proguardFiles via getProguardFiles()+setProguardFiles(). The
 //      DSL helper `release.proguardFiles(...)` REPLACES the list and would
 //      silently drop the app's own `proguard-rules.pro`. ProGuard file
 //      registration happens in `afterEvaluate` (BuildType DSL, not Variant API).
-//   5. Operate only on the `release` buildType. Debug builds stay un-minified
+//   4. Operate only on the `release` buildType. Debug builds stay un-minified
 //      so developer tooling continues to work.
-//   6. Never throw fatally on missing optional inputs (MCB_APP_DIR unset,
+//   5. Never throw fatally on missing optional inputs (MCB_APP_DIR unset,
 //      androidComponents extension absent on ancient AGP, extra-keep.pro
 //      absent). Log lifecycle/warn notices so the operator can see what
 //      happened.
@@ -69,8 +48,7 @@ allprojects { project ->
     project.plugins.withId('com.android.application') {
 
         // ---------------------------------------------------------------------
-        // PHASE 1 — beforeVariants: flip minifyEnabled (rename-only; see
-        // invariant #2 — shrinkResources is intentionally left alone).
+        // PHASE 1 — beforeVariants: flip minifyEnabled / shrinkResources.
         // ---------------------------------------------------------------------
         // This must run BEFORE AGP creates the variant task graph, which is
         // why it cannot live in afterEvaluate. The AndroidComponents extension
@@ -107,17 +85,22 @@ allprojects { project ->
                         return
                     }
                     variantBuilder.minifyEnabled = true
-                    // Deliberately NOT setting shrinkResources. The toggle is
-                    // rename-only — resource shrinking is a separate AGP-level
-                    // pass (AAPT2 / R8-integrated in AGP 8.12+) that is NOT
-                    // controlled by ProGuard's -dontshrink. Leaving resource
-                    // shrinking off keeps the obfuscated APK's resource set
-                    // identical to baseline, which preserves probe rigor for
-                    // synth-vuln patches that add layout/string resources.
+                    // shrinkResources is exposed directly on the AGP 8.x
+                    // VariantBuilder. Wrap in try/catch since the property
+                    // exists in 8.x but may be absent or read-only in some
+                    // experimental variants.
+                    try {
+                        variantBuilder.shrinkResources = true
+                    } catch (Throwable t) {
+                        project.logger.warn(
+                            "[mcb-obfuscate] ${project.path}: could not set " +
+                            "shrinkResources on VariantBuilder (${t.message}); " +
+                            "proceeding with minifyEnabled only"
+                        )
+                    }
                     project.logger.lifecycle(
                         "[mcb-obfuscate] ${project.path}: beforeVariants enabled " +
-                        "minify on release (rename-only; shrink/optimize " +
-                        "suppressed via generated rename-only rules)"
+                        "minify+shrink on release"
                     )
                 }
             }
@@ -146,51 +129,47 @@ allprojects { project ->
                 return
             }
 
-            // Did beforeVariants (or the fallback path below) detect that
-            // upstream already has minifyEnabled true? If so we MUST NOT
-            // inject proguard-android-optimize.txt — that would silently
-            // change the rule set the app is tested against (e.g. injecting
-            // -optimize over a deliberate proguard-android.txt choice).
-            //
-            // The rename-only constraints, however, MUST still be appended
-            // even for upstream-forced apps — otherwise those apps run with
-            // full shrink+optimize and break the uniform rename-only
-            // invariant across the ablation. Same logic for the per-app
-            // extra-keep.pro override.
-
-            // On the AGP-less-than-7.1 fallback path we still need to flip
-            // minifyEnabled here. The R8 task may not be created, but the
-            // configuration will at least be visible to anything that inspects
-            // it. shrinkResources is intentionally NOT touched (see phase 1
-            // comment — rename-only invariant keeps resource set == baseline).
-            //
-            // CRITICAL ordering: this block must run BEFORE we compute
-            // skipUpstreamRules, because the fallback path is where
-            // mcbObfuscateSkipped gets set for AGP<7.1 + upstream-forced apps.
-            // Earlier versions of this script computed skipUpstreamRules first
-            // and then ran the fallback — the flag write was a no-op for the
-            // already-bound local and proguard-android-optimize.txt landed on
-            // top of a config that should have been left alone.
-            if (!hasAndroidComponents) {
-                if (release.minifyEnabled) {
-                    // Treat upstream-forced just like the phase 1 path: set the
-                    // skip flag so the proguard-android-optimize.txt injection
-                    // bails, but still append rename-only + extra-keep.pro
-                    // below.
-                    project.extensions.extraProperties.set('mcbObfuscateSkipped', true)
-                    project.logger.lifecycle(
-                        "[mcb-obfuscate] ${project.path}: (fallback) release " +
-                        "already has minifyEnabled true; leaving minify+upstream " +
-                        "rules alone, still appending rename-only constraints"
-                    )
-                } else {
-                    release.minifyEnabled = true
-                }
+            // If beforeVariants decided to leave this project's config alone
+            // (upstream already had minifyEnabled true), do not touch
+            // proguardFiles either. Appending our defaults would silently
+            // change the rule set the app is tested against — for example
+            // injecting proguard-android-optimize.txt over a deliberate
+            // proguard-android.txt choice.
+            if (project.extensions.extraProperties.has('mcbObfuscateSkipped') &&
+                project.extensions.extraProperties.get('mcbObfuscateSkipped')) {
+                project.logger.lifecycle(
+                    "[mcb-obfuscate] ${project.path}: skipping proguardFiles " +
+                    "append (upstream-configured)"
+                )
+                return
             }
 
-            // Read the skip flag AFTER the AGP<7.1 fallback may have set it.
-            def skipUpstreamRules = project.extensions.extraProperties.has('mcbObfuscateSkipped') &&
-                project.extensions.extraProperties.get('mcbObfuscateSkipped')
+            // On the AGP-less-than-7.1 fallback path we still need to flip
+            // minifyEnabled here (and shrinkResources via the BuildType
+            // shim). The R8 task may not be created, but the configuration
+            // will at least be visible to anything that inspects it.
+            if (!hasAndroidComponents) {
+                if (release.minifyEnabled) {
+                    project.logger.lifecycle(
+                        "[mcb-obfuscate] ${project.path}: (fallback) release " +
+                        "already has minifyEnabled true; leaving alone"
+                    )
+                    return
+                }
+                release.minifyEnabled = true
+                try {
+                    if (release.metaClass.respondsTo(release, 'setShrinkResources', boolean)) {
+                        release.shrinkResources = true
+                    } else if (release.hasProperty('androidResources')) {
+                        release.androidResources.shrinkResources = true
+                    }
+                } catch (Exception e) {
+                    project.logger.warn(
+                        "[mcb-obfuscate] ${project.path}: (fallback) could not " +
+                        "set shrinkResources (${e.message})"
+                    )
+                }
+            }
 
             // ProGuard files: APPEND, do not REPLACE.
             // The DSL helper `release.proguardFiles(a, b, c)` is a SETTER that
@@ -199,43 +178,11 @@ allprojects { project ->
             // pattern is read-modify-write via getProguardFiles() +
             // setProguardFiles().
             def existing = release.getProguardFiles() as List
-            def additions = []
-
-            if (!skipUpstreamRules) {
+            def additions = [
                 // AGP-shipped default optimization rules. Contents vary across
-                // AGP versions — a known measurement caveat, not a bug. Not
-                // injected for upstream-forced apps (they already have their
-                // own tested ProGuard configuration).
-                additions << android.getDefaultProguardFile('proguard-android-optimize.txt')
-            }
-
-            // Rename-only invariant. The research target is symbol rename;
-            // shrink + optimize introduce confounds (synth-vuln code paths
-            // can be DCE'd, optimize can alter control flow vs. baseline).
-            // The four directives below are written to a generated .pro file
-            // under the project's build dir and appended to proguardFiles.
-            // ALWAYS appended — including for upstream-forced apps —
-            // otherwise the ablation mixes rename-only and full-minify across
-            // apps and the comparison becomes uninterpretable.
-            // project.buildDir was deprecated in Gradle 8.10; the layout API
-            // has been stable since Gradle 7 (matches our minimum AGP 7.1+
-            // target). Avoids the deprecation warning on Gradle 8.10+ and
-            // the hard removal in Gradle 9.0.
-            def renameOnlyRules = new File(
-                project.layout.buildDirectory.get().asFile,
-                'mcb-obfuscate/rename-only.pro'
-            )
-            renameOnlyRules.parentFile.mkdirs()
-            renameOnlyRules.text = (
-                "-dontshrink\n" +
-                "-dontoptimize\n" +
-                "-repackageclasses ''\n" +
-                "-keepattributes SourceFile,LineNumberTable\n"
-            )
-            additions << renameOnlyRules
-            project.logger.lifecycle(
-                "[mcb-obfuscate] ${project.path}: wrote rename-only rules to ${renameOnlyRules.absolutePath}"
-            )
+                // AGP versions — a known measurement caveat, not a bug.
+                android.getDefaultProguardFile('proguard-android-optimize.txt'),
+            ]
 
             // Optional per-app extra-keep.pro lookup. MCB_APP_DIR is set by
             // build_apk.sh to the absolute path of the current app's
