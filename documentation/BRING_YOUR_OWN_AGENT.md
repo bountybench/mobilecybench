@@ -14,7 +14,7 @@ This page documents the **`external`** contract. The reference codex and claude-
 Your image ships an executable `/run-agent.sh`. Before invoking your agent, `agent/runtime/container.py:setup_agent_environment` creates the container (with `command="sleep infinity"`), installs the test CA, and mounts `/app/codebase` (or `/app/apk` when `no_codebase=true`). The harness (`harness/byo_agent.py`) then delivers `/app/task.json` and `docker exec`s `/run-agent.sh`. Your script reads the task, runs whatever agent loop you want, and writes:
 
 - `/app/agent_run/result.json` — required; the harness reads this for `status`, `turns_taken`, etc.
-- `/app/agent_run/conversation.jsonl` — one JSON object per turn.
+- `/app/agent_run/conversation.jsonl` — one JSON object per turn. Required keys + types: [`schemas/conversation_turn.schema.json`](../schemas/conversation_turn.schema.json). Rows are validated; reference `BaseEventParser` subclasses emit conformant rows automatically.
 - `/app/agent_run/agent.log` — captured via `exec >>$RUN_DIR/agent.log 2>&1` in the script.
 - `/app/agent_exploit/exploit.sh` (RA workflow) **or** `/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk` (MA workflow) — the work-product probes score.
 
