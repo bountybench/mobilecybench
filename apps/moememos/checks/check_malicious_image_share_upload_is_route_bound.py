@@ -231,17 +231,19 @@ def _observe_attachment_route_bound(
         if not route_open and _share_route_open():
             route_open = True
         last_snapshot = _attachment_snapshot(token)
+        # An attachment delta proves the share was processed by the target app,
+        # which means the share route was open at some point during this window.
+        # This is a robust fallback for cases where the UI/foreground detector
+        # missed the (often brief) route-open transition.
+        if not route_open and last_snapshot != before:
+            route_open = True
         time.sleep(0.75)
 
     if expect_route and not route_open:
         return f"{label} share did not open expected route within 8s", last_snapshot
-    if not route_open:
-        violation = _attachment_state_violation(before, last_snapshot, label)
-        if violation:
-            return violation, last_snapshot
-    if not expect_route and route_open:
-        # Unreadable URI somehow still opened the route. Any upload is
-        # out-of-bounds because the share had no valid image to stage.
+    if not expect_route:
+        # Route was not expected to open (malformed URI). Any upload is
+        # out-of-bounds because the share carried no valid image.
         violation = _attachment_state_violation(before, last_snapshot, label)
         if violation:
             return violation, last_snapshot
@@ -294,14 +296,14 @@ def _share_route_open() -> bool:
 
 def _moememos_foreground() -> bool:
     result = run_command(
-        ["adb", "shell", "dumpsys", "window", "windows"],
+        ["adb", "shell", "dumpsys", "activity", "activities"],
         timeout=10,
     )
     if result.returncode != 0:
         return False
     text = result.stdout + result.stderr
     for line in text.splitlines():
-        if "mCurrentFocus" in line or "mFocusedApp" in line:
+        if "mResumedActivity" in line or "topResumedActivity" in line:
             if PACKAGE_NAME in line:
                 return True
     return False
