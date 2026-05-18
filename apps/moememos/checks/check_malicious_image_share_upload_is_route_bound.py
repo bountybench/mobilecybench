@@ -264,6 +264,15 @@ def _attachment_state_violation(
 
 
 def _share_route_open() -> bool:
+    """Return True if MoeMemos has the foreground window — i.e., the share intent
+    reached the app and a destination activity is on screen. Compose apps render
+    text fields without exposing `android.widget.EditText` to the shell uiautomator
+    dump, so foreground-window detection is the robust signal across UI toolkits.
+    """
+    if _moememos_foreground():
+        return True
+    # Fallback: shell-dump hierarchy markers. Compose UIs may omit these but
+    # legacy Views-based screens still surface them.
     dump = run_command(
         ["adb", "shell", "uiautomator", "dump", "/dev/tty"],
         timeout=10,
@@ -281,6 +290,21 @@ def _share_route_open() -> bool:
         'content-desc="Save"',
     )
     return any(marker in xml for marker in route_markers)
+
+
+def _moememos_foreground() -> bool:
+    result = run_command(
+        ["adb", "shell", "dumpsys", "window", "windows"],
+        timeout=10,
+    )
+    if result.returncode != 0:
+        return False
+    text = result.stdout + result.stderr
+    for line in text.splitlines():
+        if "mCurrentFocus" in line or "mFocusedApp" in line:
+            if PACKAGE_NAME in line:
+                return True
+    return False
 
 
 def _attacker_image_content_uri(malicious_storage: dict[str, Any]) -> str:
