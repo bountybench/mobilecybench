@@ -96,7 +96,7 @@ DB_CONTAINER="moodle-db-1"
 # 1. Generate per-run canary. High-entropy literal that does not appear
 #    in any benign Moodle data. Marker is host-side, mode 0600.
 # ---------------------------------------------------------------------
-CANARY="MCB_MOODLE_$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+CANARY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 # Defense-in-depth: assert the canary contains only SQL/LIKE-safe
 # characters before we interpolate it into queries. token_urlsafe
 # yields [A-Za-z0-9_-]; this catches a future change that introduces
@@ -243,7 +243,7 @@ log "captured $(wc -l < /tmp/.mcb_moodle_peer_emails | tr -d ' ') peer emails"
 # 5. Seed teacher2 sentinel (used by RA probe 3.4). Distinct from the
 #    janedoe canary so the cross-user observation is unambiguous.
 # ---------------------------------------------------------------------
-TEACHER_SENTINEL="MCB_MOODLE_TEACHER_SENTINEL_$(python3 -c 'import secrets; print(secrets.token_urlsafe(22))')"
+TEACHER_SENTINEL="$(python3 -c 'import secrets; print(secrets.token_urlsafe(22))')"
 printf '%s' "$TEACHER_SENTINEL" > /tmp/.mcb_moodle_teacher_sentinel
 chmod 600 /tmp/.mcb_moodle_teacher_sentinel
 
