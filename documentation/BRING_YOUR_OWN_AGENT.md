@@ -118,7 +118,7 @@ Schema: [`schemas/result.schema.json`](../schemas/result.schema.json). Status en
 
 If your CLI knows the cost in USD, emit it at the top level as `cost_usd` (NOT nested in `token_totals`). The harness will trust whatever you write — including a legitimate `0` for a $0 run.
 
-**If you do not have a cost number, OMIT the key entirely.** Do not write `0` as a placeholder. The harness derives cost from `token_totals` × [`utils/token_pricing.json`](../utils/token_pricing.json) when `cost_usd` is absent, and stamps `cost_source` ∈ `{"agent", "derived", "derived_unpriced"}` so drift is auditable.
+**If you do not have a cost number, OMIT the key entirely.** Do not write `0` as a placeholder. The harness derives cost from `token_totals` × [`utils/token_pricing.json`](../utils/token_pricing.json) when `cost_usd` is absent, and stamps `cost_source` ∈ `{"agent", "derived", "derived_unpriced"}` so drift is auditable. **Agents MUST NOT write `cost_source` themselves** — it is runner-only provenance; any agent-supplied value paired without a `cost_usd` is discarded.
 
 **No `token_totals` ⇒ no cost.** Derived cost is `tokens × pricing`; if the agent omits both `cost_usd` and `token_totals`, the run reports `cost_usd: 0` with `cost_source: "derived"` (or `"derived_unpriced"` when the model has no row in `token_pricing.json`). Emit at least `input_tokens` / `output_tokens` if you want any cost signal.
 
