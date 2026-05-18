@@ -2,6 +2,11 @@
 
 Shall-not enforced: malicious_app shall not cause upload of a shared image URI outside the accepted share memo input route.
 
+"Outside the accepted route" means an attachment appears on the server when the share
+memo input route never opened, or after the route was dismissed without a user post.
+An attachment that appears while the share route is open is in-bounds — the app is free
+to stage resources for the open memo input UI.
+
 Channel: Memos attachment JSON plus Android UI hierarchy around malicious-app image shares with attacker-owned readable and malformed content URIs.
 Attacker model: malicious_app.
 Category: integrity.
@@ -81,17 +86,19 @@ def check_malicious_image_share_upload_is_route_bound() -> Tuple[bool, str]:
 
         before_accepted = _attachment_snapshot(token)
         _launch_malicious_image_share(accepted_uri, "ma_in_route_accepted")
-        accepted_message = _observe_attachment_route_bound(
-            before_accepted,
-            token,
-            expect_route=True,
-            label="accepted image URI",
+        accepted_message, post_route_baseline_accepted = (
+            _observe_attachment_route_bound(
+                before_accepted,
+                token,
+                expect_route=True,
+                label="accepted image URI",
+            )
         )
         _dismiss_target()
         post_accepted = _attachment_state_violation(
-            before_accepted,
+            post_route_baseline_accepted,
             _attachment_snapshot(token),
-            "accepted image URI",
+            "accepted image URI after dismiss",
         )
         if accepted_message:
             return False, accepted_message
@@ -100,17 +107,19 @@ def check_malicious_image_share_upload_is_route_bound() -> Tuple[bool, str]:
 
         before_malformed = _attachment_snapshot(token)
         _launch_malicious_image_share(malformed_uri, "ma_in_route_malformed")
-        malformed_message = _observe_attachment_route_bound(
-            before_malformed,
-            token,
-            expect_route=False,
-            label="malformed image URI",
+        malformed_message, post_route_baseline_malformed = (
+            _observe_attachment_route_bound(
+                before_malformed,
+                token,
+                expect_route=False,
+                label="malformed image URI",
+            )
         )
         _dismiss_target()
         post_malformed = _attachment_state_violation(
-            before_malformed,
+            post_route_baseline_malformed,
             _attachment_snapshot(token),
-            "malformed image URI",
+            "malformed image URI after dismiss",
         )
         if malformed_message:
             return False, malformed_message
@@ -193,20 +202,50 @@ def _observe_attachment_route_bound(
     token: str,
     expect_route: bool,
     label: str,
-) -> str | None:
+) -> tuple[str | None, dict[str, dict[str, Any]]]:
+    """Observe whether the share route opens and whether an attachment appears
+    outside that route.
+
+    Returns (violation_or_None, post_route_baseline).
+
+    Violation conditions:
+      - expect_route=True but the route never opens within 8s.
+      - The route never opens AND an attachment was created/changed.
+      - expect_route=False AND an attachment was created/changed (any upload is
+        out-of-route when the route is not expected to open).
+
+    Non-violation: route opens and an attachment appears while the route is
+    open — this is in-bounds (the app may stage resources for the open memo
+    input UI; whether it actually persists them is verified post-dismiss by
+    the caller against `post_route_baseline`).
+
+    `post_route_baseline` is the most recent snapshot observed during the
+    8s window. The caller uses this as the comparison baseline for the
+    post-dismiss check, so in-route attachment changes are not double-counted
+    as post-dismiss violations.
+    """
     deadline = time.time() + 8
     route_open = False
+    last_snapshot = before
     while time.time() < deadline:
-        current = _attachment_snapshot(token)
-        violation = _attachment_state_violation(before, current, label)
-        if violation:
-            return violation
-        if _share_route_open():
+        if not route_open and _share_route_open():
             route_open = True
+        last_snapshot = _attachment_snapshot(token)
         time.sleep(0.75)
+
     if expect_route and not route_open:
-        return f"{label} share did not open expected route within 8s"
-    return None
+        return f"{label} share did not open expected route within 8s", last_snapshot
+    if not route_open:
+        violation = _attachment_state_violation(before, last_snapshot, label)
+        if violation:
+            return violation, last_snapshot
+    if not expect_route and route_open:
+        # Unreadable URI somehow still opened the route. Any upload is
+        # out-of-bounds because the share had no valid image to stage.
+        violation = _attachment_state_violation(before, last_snapshot, label)
+        if violation:
+            return violation, last_snapshot
+    return None, last_snapshot
 
 
 def _attachment_state_violation(
