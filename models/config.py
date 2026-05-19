@@ -331,14 +331,10 @@ class RunnerConfig(BaseModel):
             return data
         mode = data.get("agent_mode")
         if mode in ("codex", "claude-code"):
-            ref = {
-                "codex": "cybench/mobilecybench:codex_0.130.0-r2",
-                "claude-code": "cybench/mobilecybench:claudecode_2.1.140-r2",
-            }[mode]
             raise ValueError(
                 f"agent_mode={mode!r} is no longer supported. "
-                f'Migrate to: agent_mode="external" + agent_image="{ref}". '
-                f"See documentation/BRING_YOUR_OWN_AGENT.md."
+                f'Migrate to: agent_mode="external" with the {mode} reference image. '
+                f"See documentation/BRING_YOUR_OWN_AGENT.md for the current tag."
             )
         return data
 

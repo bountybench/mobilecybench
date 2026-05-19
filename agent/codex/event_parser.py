@@ -129,5 +129,3 @@ class CodexEventParser(BaseEventParser):
         if not usage:
             return
         self._accumulate_token_usage(usage, _USAGE_FIELD_MAP)
-        self.token_usage.setdefault("input_tokens", 0)
-        self.token_usage.setdefault("output_tokens", 0)
