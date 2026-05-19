@@ -46,7 +46,7 @@
       "minimum": 0
     },
     "cost_source": {
-      "description": "Set by the runner; agents should not write this. 'agent' = taken from the agent-reported cost_usd. 'derived' = computed by the runner from token_totals × token_pricing.json. 'derived_unpriced' = derive was attempted but the model has no row in token_pricing.json (cost_usd will be 0).",
+      "description": "Runner-only provenance. Agents MUST NOT write this. An agent-supplied cost_source without cost_usd is discarded (suppression-spoof guard). 'agent' = paired with the agent-reported cost_usd. 'derived' = computed by the runner from token_totals × token_pricing.json. 'derived_unpriced' = derive was attempted but the model has no row in token_pricing.json (cost_usd will be 0).",
       "enum": ["agent", "derived", "derived_unpriced"]
     },
     "token_totals": {

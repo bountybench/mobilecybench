@@ -382,22 +382,24 @@ class RunnerConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_attacker_model(self) -> "RunnerConfig":
-        if self.attacker_model is not None and self.workflow != "redteam":
-            raise ValueError(
-                f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
-            )
-        return self
-
-    @model_validator(mode="after")
     def validate_probe_only_workflow(self) -> "RunnerConfig":
-        """probe_only is a redteam-only mode. On other workflows it would
-        be silently ignored, which violates the truthful-config contract
-        (operator reads probe_only=True and assumes it took effect)."""
+        """probe_only is a redteam-only mode. Declared before
+        ``validate_attacker_model`` so on ``workflow=exploit + probe_only=True``
+        the operator sees the probe_only mismatch, not the secondary
+        attacker_model symptom (validators run in declaration order).
+        """
         if self.probe_only and self.workflow != "redteam":
             raise ValueError(
                 f"probe_only=True requires workflow='redteam'; "
                 f"got workflow={self.workflow!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_attacker_model(self) -> "RunnerConfig":
+        if self.attacker_model is not None and self.workflow != "redteam":
+            raise ValueError(
+                f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
             )
         return self
 
@@ -465,10 +467,22 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_mode_flags(self) -> "RunnerConfig":
+        """dry_run / gold_run / replay_run are mutually exclusive runner branches.
+
+        probe_only + dry_run is also rejected: dry_run short-circuits to the
+        interactive shell before scoring. (probe_only + gold_run handled by
+        validate_gold_run_probe_only; probe_only + replay_run is intentionally
+        permitted -- runner.py clears the stale flag at replay-source resolution.)
+        """
         replay_enabled = bool(self.replay_run)
         enabled_modes = [self.dry_run, self.gold_run, replay_enabled]
         if sum(bool(flag) for flag in enabled_modes) > 1:
             raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
+        if self.probe_only and self.dry_run:
+            raise ValueError(
+                "probe_only is incompatible with dry_run: dry_run drops into "
+                "an interactive shell and skips scoring entirely."
+            )
         return self
 
     # ---- Schema export (single source of truth for runner_config.schema.json) ----

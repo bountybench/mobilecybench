@@ -34,14 +34,18 @@ def _resolve_cost(result: dict[str, Any]) -> None:
     """Resolve cost_usd + cost_source in place.
 
     Agent-reported cost wins whenever present (including a legitimate $0).
-    Agents that don't know their cost MUST omit the key — never write 0 as a placeholder.
+    Agents that don't know their cost MUST omit the key -- never write 0
+    as a placeholder.
 
-    Idempotent: ``cost_source`` already set ⇒ a prior resolve already happened;
-    re-running would mis-attribute a derived 0.0 as 'agent' (the value is
-    legitimately present, but its provenance was already decided).
+    ``cost_source`` is runner-only provenance per ``result.schema.json``.
+    Idempotent on a fully resolved state (both keys set). An agent-supplied
+    ``cost_source`` without ``cost_usd`` is the suppression spoof (write
+    provenance to skip derivation); strip and re-resolve.
     """
     if result.get("cost_source") is not None:
-        return
+        if result.get("cost_usd") is not None:
+            return
+        result.pop("cost_source", None)
     agent = result.get("cost_usd")
     if agent is not None:
         result["cost_usd"] = float(agent)

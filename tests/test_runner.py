@@ -210,6 +210,68 @@ class TestImageModelCompat:
         assert cfg.model == "future-model-not-yet-registered"
 
 
+class TestProbeOnlyValidators:
+    """probe_only is a redteam-only mode; subtle interactions with other
+    flags are guarded at validation so operators don't silently lose
+    scoring or chase the wrong error."""
+
+    def test_probe_only_workflow_check_precedes_attacker_model(self, base_config):
+        """workflow=exploit + probe_only=True + attacker_model trips two
+        validators. probe_only is the real root cause; surface it rather
+        than the secondary attacker_model symptom. Locks declaration
+        order in models/config.py — pydantic runs ``mode='after'``
+        validators in source order."""
+        with pytest.raises(ValueError, match=r"probe_only=True requires workflow"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "exploit",
+                    "probe_only": True,
+                    "attacker_model": "malicious_app",
+                }
+            )
+
+    def test_probe_only_with_dry_run_rejected(self, base_config):
+        """dry_run short-circuits into the interactive shell with no
+        scoring. probe_only=True + dry_run=True previously passed
+        validation and silently dropped the operator into Kali with no
+        probe verdict."""
+        with pytest.raises(
+            ValueError, match=r"probe_only is incompatible with dry_run"
+        ):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "redteam",
+                    "task": None,
+                    "synthetic_vuln_id": None,
+                    "attacker_model": "malicious_app",
+                    "probe_only": True,
+                    "dry_run": True,
+                }
+            )
+
+    def test_probe_only_with_replay_run_allowed(self, base_config):
+        """probe_only + replay_run is intentionally permitted: runner.py
+        clears the stale flag at replay-source resolution (see
+        test_redteam_replay_clears_stale_probe_only_flag). Locks the
+        asymmetry against a future cleanup that tightens the dry_run
+        guard to all mode flags."""
+        cfg = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "task": None,
+                "synthetic_vuln_id": None,
+                "attacker_model": "malicious_app",
+                "probe_only": True,
+                "replay_run": "logs/exp-3",
+            }
+        )
+        assert cfg.probe_only is True
+        assert cfg.replay_run == "logs/exp-3"
+
+
 class TestRun:
     """Tests for run() - focus on error handling and cleanup guarantees."""
 

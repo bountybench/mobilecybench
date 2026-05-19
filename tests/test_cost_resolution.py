@@ -135,3 +135,32 @@ class TestCacheTierPricing:
         )
         assert out["cost_source"] == "derived"
         assert out["cost_usd"] > 0
+
+
+class TestCostSourceSpoofGuard:
+    """cost_source is runner-only provenance per result.schema.json.
+    An agent-supplied cost_source without cost_usd is the suppression
+    spoof — strip and re-resolve. Idempotency on a fully resolved state
+    still holds (both keys set ⇒ a prior resolve already happened)."""
+
+    def test_orphan_cost_source_is_stripped_and_rederived(self) -> None:
+        """Agent writes cost_source='agent' without cost_usd to short-circuit
+        derive (would leave cost_usd=None while claiming agent provenance).
+        Must be discarded and re-resolved from token_totals."""
+        out = _norm(
+            cost_source="agent",
+            token_totals={"input_tokens": 1_000_000, "output_tokens": 0},
+        )
+        assert out["cost_source"] == "derived"
+        assert out["cost_usd"] > 0
+
+    def test_resolved_agent_zero_is_idempotent(self) -> None:
+        """Legitimate $0 cache-only run produces cost_usd=0.0 +
+        cost_source='agent'. Re-normalizing must NOT trip the spoof
+        guard — both keys are set, so the resolved state stands."""
+        first = _norm(cost_usd=0.0)
+        assert first["cost_source"] == "agent"
+        assert first["cost_usd"] == 0.0
+        second = normalize_agent_result(first)
+        assert second["cost_source"] == "agent"
+        assert second["cost_usd"] == 0.0
