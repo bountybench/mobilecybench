@@ -132,7 +132,6 @@ Validator enforces:
 - `task` and `synthetic_vuln_id` must both be omitted (probe-only is bundle-less).
 - `attacker_model` must be set (no task metadata to read).
 - `gold_run` is incompatible with `probe_only` (no canonical exploit source).
-- `replay_run` against a probe-only snapshot is rejected (no patched-phase comparison to replay).
 
 ### Resource model
 
@@ -260,7 +259,7 @@ Use the per-task `prepare_app.sh` for vuln-specific state and the per-app `prepa
 
 Optional **per-app** pre-agent hook at `apps/<app>/agent_login.sh`. Drives the emulator UI to log the agent's account into the app once, before the agent starts seeing the env. Shared across all tasks for that app; runs for both attacker models and in probe-only mode.
 
-When it fires: last step of `setup_runtime_environment`, after `start_runtime.sh` and after the agent container is created. The agent container has not started running yet. Fires whenever the file exists, including under `dry_run` (so the interactive shell sees logged-in state) and `gold_run` / `replay_run` (the per-phase emulator restart wipes the state before replay anyway, so it's a no-op for scoring; running it keeps the contract uniform).
+When it fires: last step of `setup_runtime_environment`, after `start_runtime.sh` and after the agent container is created. The agent container has not started running yet. Fires whenever the file exists, including under `dry_run` (so the interactive shell sees logged-in state) and `gold_run` (the per-phase emulator restart wipes the state before replay anyway, so it's a no-op for scoring; running it keeps the contract uniform).
 
 Why it does not collide with `prepare_victim.sh`: the two run on different emulator epochs. `agent_login.sh` runs once on the emulator the agent observes; `evaluate()` then calls `_restart_runtime` per phase, wiping the device before `prepare_victim.sh` re-seeds victim state for replay. They never coexist.
 

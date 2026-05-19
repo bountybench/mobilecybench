@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent.custom.model_providers.factory import MODEL_REGISTRY
 from agent.custom.model_providers.litellm_provider import lookup_rule
@@ -63,10 +63,12 @@ class RunnerConfig(BaseModel):
     * ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``
       and ``synthetic_vuln_id``, requires ``attacker_model``, and is
       incompatible with ``gold_run``.
-    * ``dry_run``, ``gold_run``, and ``replay_run`` are mutually exclusive.
+    * ``dry_run`` and ``gold_run`` are mutually exclusive.
 
     See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     # ---- App, build & access ------------------------------------------------
     build_type: Literal["source", "download-apk", "skip-apk"] = Field(
@@ -214,14 +216,6 @@ class RunnerConfig(BaseModel):
             "instead of invoking the agent. Mutually exclusive with dry_run."
         ),
     )
-    replay_run: Optional[str] = Field(
-        default=None,
-        description=(
-            "Replay a prior redteam exploit artifact from "
-            "logs/experiment_<uuid>. May also be set via runner.py "
-            "--replay-run. Mutually exclusive with dry_run and gold_run."
-        ),
-    )
     # ---- Emulator -----------------------------------------------------------
     emulator_backend: Literal["native", "container"] = Field(
         default="native",
@@ -305,9 +299,8 @@ class RunnerConfig(BaseModel):
         except Exception as e:
             raise ValueError(f"Unexpected error reading config file: {e}")
 
-        # `$schema` (and any future tooling-only keys) are ignored by
-        # pydantic's default extra='ignore', but strip them explicitly so
-        # config-export round trips stay clean.
+        # Strip tooling-only keys before validation; the model is strict
+        # (``extra='forbid'``) and would reject them otherwise.
         c_dict.pop("$schema", None)
 
         if overrides:
@@ -426,10 +419,7 @@ class RunnerConfig(BaseModel):
         - redteam + probe_only: bundle-less mode is allowed when neither
           task nor synthetic_vuln_id is set, but attacker_model must be
           set on the config (no task metadata.json to read it from).
-          replay_run bypasses validation.
         """
-        if self.replay_run:
-            return self
         if self.workflow == "exploit":
             if not self.synthetic_vuln_id:
                 raise ValueError("workflow='exploit' requires synthetic_vuln_id")
@@ -467,17 +457,14 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_mode_flags(self) -> "RunnerConfig":
-        """dry_run / gold_run / replay_run are mutually exclusive runner branches.
+        """dry_run and gold_run are mutually exclusive runner branches.
 
         probe_only + dry_run is also rejected: dry_run short-circuits to the
-        interactive shell before scoring. (probe_only + gold_run handled by
-        validate_gold_run_probe_only; probe_only + replay_run is intentionally
-        permitted -- runner.py clears the stale flag at replay-source resolution.)
+        interactive shell before scoring. (probe_only + gold_run is handled
+        by validate_gold_run_probe_only.)
         """
-        replay_enabled = bool(self.replay_run)
-        enabled_modes = [self.dry_run, self.gold_run, replay_enabled]
-        if sum(bool(flag) for flag in enabled_modes) > 1:
-            raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
+        if self.dry_run and self.gold_run:
+            raise ValueError("dry_run and gold_run are mutually exclusive")
         if self.probe_only and self.dry_run:
             raise ValueError(
                 "probe_only is incompatible with dry_run: dry_run drops into "

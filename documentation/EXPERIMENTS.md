@@ -116,7 +116,7 @@ JSON Schema captures per-field types and defaults but cannot machine-enforce the
 - `workflow == "redteam"` (two-phase) requires **exactly one** of `task` (zero-day) or `synthetic_vuln_id` (synthetic).
 - `attacker_model` requires `workflow == "redteam"`. In two-phase mode it's a dev/debug hint that the runtime overrides from the task bundle's `metadata.json`; in `probe_only` mode it is **required and authoritative** (there is no task metadata to read). See [REDTEAM.md](REDTEAM.md).
 - `probe_only: true` requires `workflow == "redteam"`, **forbids** `task` and `synthetic_vuln_id` (bundle-less by design), and is incompatible with `gold_run` (no canonical exploit source to replay).
-- `dry_run`, `gold_run`, and `replay_run` are mutually exclusive — at most one may be truthy.
+- `dry_run` and `gold_run` are mutually exclusive — at most one may be truthy.
 
 ### Agent Mode
 
