@@ -105,9 +105,11 @@ def _run_git_value(project_root: Path, args: list[str]) -> str:
 
 def _timing_summary_from_calls(calls: list[Any]) -> dict:
     if not calls:
+        # Unmeasured: null over 0 so dispatches that bypass time_tracker
+        # don't contradict their own tool/token counters.
         return {
-            "total_llm_time": 0.0,
-            "llm_call_count": 0,
+            "total_llm_time": None,
+            "llm_call_count": None,
             "p50": None,
             "p95": None,
             "max": None,
@@ -253,17 +255,12 @@ def write_run_summary(
     if not isinstance(token_totals, dict):
         token_totals = {}
 
-    # Timing summary: prefer time_tracker data (one llm_timing call per
-    # model request, recorded by the custom in-process provider). External
-    # agents bypass time_tracker, so fall back to whatever timing dict the
-    # agent surfaced — without this fallback their metrics would be zero.
+    # Canonical 5 keys from time_tracker; agent's CLI-native fields
+    # (claudecode: api_ms, ttft_ms) overlay when populated.
     time_tracker_timing = _timing_summary_from_calls(llm_calls_this_run)
     agent_timing_raw = run_result.get("timing")
     agent_timing = agent_timing_raw if isinstance(agent_timing_raw, dict) else {}
-    if llm_calls_this_run:
-        timing_summary = {**agent_timing, **time_tracker_timing}
-    else:
-        timing_summary = agent_timing or time_tracker_timing
+    timing_summary = {**time_tracker_timing, **agent_timing}
 
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
 
