@@ -51,13 +51,13 @@ CONTROL_BASELINE_KEYS = (
     "expected_cover_states",
 )
 CONTROL_ENTITY_IDS = {
-    "lock.front_door",
-    "alarm_control_panel.alarm",
-    "cover.garage",
+    "lock.house_entry",
+    "alarm_control_panel.home_perimeter",
+    "cover.vehicle_bay",
 }
 BACKING_ENTITY_IDS = {
-    "input_boolean.front_door_state",
-    "input_boolean.garage_state",
+    "input_boolean.house_entry_state",
+    "input_boolean.vehicle_bay_state",
 }
 
 

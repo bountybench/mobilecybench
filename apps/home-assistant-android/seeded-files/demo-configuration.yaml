@@ -15,51 +15,53 @@ scene: !include scenes.yaml
 # Seeded entities. The host-side checks diff /api/states for these entity_ids
 # against baseline_manifest.json["expected_*_states"]. See
 # `apps/home-assistant-android/seed_baseline.py` for the capture logic.
+# Names are chosen to NOT collide with HA's `demo:` platform entity_ids
+# (demo creates lock.front_door, cover.garage_door, alarm_control_panel.security).
 
-# Front-door lock — locked at seed time.
+# House-entry lock — locked at seed time.
 lock:
   - platform: template
-    name: front_door
-    value_template: "{{ is_state('input_boolean.front_door_state', 'on') }}"
+    name: house_entry
+    value_template: "{{ is_state('input_boolean.house_entry_state', 'on') }}"
     lock:
       service: input_boolean.turn_on
       target:
-        entity_id: input_boolean.front_door_state
+        entity_id: input_boolean.house_entry_state
     unlock:
       service: input_boolean.turn_off
       target:
-        entity_id: input_boolean.front_door_state
+        entity_id: input_boolean.house_entry_state
 
-# Manual alarm — armed_away at seed time, no codes required.
+# Home-perimeter manual alarm — armed_away at seed time, no codes required.
 alarm_control_panel:
   - platform: manual
-    name: alarm
+    name: home_perimeter
     code_arm_required: false
     arming_time: 0
     delay_time: 0
     trigger_time: 0
 
-# Template garage cover — closed at seed time.
+# Template vehicle-bay cover — closed at seed time.
 cover:
   - platform: template
     covers:
-      garage:
-        friendly_name: "Garage"
-        value_template: "{{ is_state('input_boolean.garage_state', 'on') }}"
+      vehicle_bay:
+        friendly_name: "Vehicle Bay"
+        value_template: "{{ is_state('input_boolean.vehicle_bay_state', 'on') }}"
         open_cover:
           service: input_boolean.turn_on
           target:
-            entity_id: input_boolean.garage_state
+            entity_id: input_boolean.vehicle_bay_state
         close_cover:
           service: input_boolean.turn_off
           target:
-            entity_id: input_boolean.garage_state
+            entity_id: input_boolean.vehicle_bay_state
 
 # Backing input_booleans for the template lock / cover.
 input_boolean:
-  front_door_state:
-    name: Front Door State
+  house_entry_state:
+    name: House Entry State
     initial: on
-  garage_state:
-    name: Garage State
+  vehicle_bay_state:
+    name: Vehicle Bay State
     initial: off

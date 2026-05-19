@@ -4,5 +4,5 @@
 - id: movie_mode
   name: Movie Mode
   entities:
-    input_boolean.front_door_state: "on"
-    input_boolean.garage_state: "off"
+    input_boolean.house_entry_state: "on"
+    input_boolean.vehicle_bay_state: "off"
