@@ -261,9 +261,11 @@ class CustomAgent:
 
         self._archive_conversation()
 
-        # cost_usd lives at the top level of result; token_totals carries token counts only.
+        # cost_usd lives at result top level; calls lives in metrics.timing.
+        # Neither belongs in token_totals.
         totals = self.token_tracker.totals()
         cost_usd = totals.pop("cost_usd", None)
+        totals.pop("calls", None)
 
         result = {
             "status": "completed",

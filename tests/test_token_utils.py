@@ -333,6 +333,27 @@ def test_tracker_record_known_model_no_cache_details():
 
 
 @pytest.mark.token_tracker
+def test_custom_agent_result_token_totals_omits_calls_and_cost():
+    """Custom agent strips `cost_usd` (top-level field) and `calls`
+    (lives in metrics.timing.llm_call_count) from token_totals before
+    shipping them to result.json. Mirrors agent/custom/agent.py."""
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
+    tracker.record_from_openai_response(
+        _Resp(rid="r1", usage=_Usage(input_tokens=1000, output_tokens=500)),
+        model="gpt-4.1",
+    )
+
+    totals = tracker.totals()
+    totals.pop("cost_usd", None)
+    totals.pop("calls", None)
+
+    assert "calls" not in totals
+    assert "cost_usd" not in totals
+    assert totals["input_tokens"] == 1000
+    assert totals["output_tokens"] == 500
+
+
+@pytest.mark.token_tracker
 def test_tracker_record_known_model_with_cache_details():
     tracker = TokenTracker(jsonl_path="token_test.jsonl")
     mock_resp = _Resp(rid="r2", usage=_UsageWithDetails(200, 100, 50))
