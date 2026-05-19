@@ -128,11 +128,18 @@ class BaseEventParser(ABC):
     def _accumulate_token_usage(
         self, usage: dict[str, Any], mapping: dict[str, str]
     ) -> None:
-        """Rename ``usage[src]`` → ``token_usage[dst]`` and add into the running total."""
+        """Rename ``usage[src]`` → ``token_usage[dst]`` and add into the running total.
+
+        Also seeds ``input_tokens`` / ``output_tokens`` to 0 so the BYO contract's
+        required keys are always present after the first usage event lands, even
+        if the upstream blob omits one of them.
+        """
         for src, dst in mapping.items():
             val = usage.get(src, 0) or 0
             if val:
                 self.token_usage[dst] = self.token_usage.get(dst, 0) + int(val)
+        self.token_usage.setdefault("input_tokens", 0)
+        self.token_usage.setdefault("output_tokens", 0)
 
     # --- internal ---
 

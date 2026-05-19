@@ -168,6 +168,3 @@ class ClaudeCodeEventParser(BaseEventParser):
             return
         self._accumulate_token_usage(usage, _USAGE_FIELD_MAP)
         self._accumulate_token_usage(usage.get("cache_creation") or {}, _USAGE_TTL_MAP)
-        # Contract requires input/output keys to be present.
-        self.token_usage.setdefault("input_tokens", 0)
-        self.token_usage.setdefault("output_tokens", 0)
