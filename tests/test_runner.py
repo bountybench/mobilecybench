@@ -208,6 +208,8 @@ class TestImageModelCompat:
             }
         )
         assert cfg.model == "future-model-not-yet-registered"
+
+
 class TestRun:
     """Tests for run() - focus on error handling and cleanup guarantees."""
 
