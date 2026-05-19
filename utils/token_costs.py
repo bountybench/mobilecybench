@@ -347,7 +347,10 @@ def derive_cost_from_totals(
         model, pricing_map if pricing_map is not None else load_pricing()
     )
     if pricing is None:
-        logger.warning(f"derive_cost: no pricing row for model={model!r}")
+        # Nothing to price when totals are empty; skip the WARN so the
+        # startup seed (empty model + empty totals) doesn't shout.
+        if token_totals:
+            logger.warning(f"derive_cost: no pricing row for model={model!r}")
         return 0.0, "derived_unpriced"
     cost = compute_cost_usd(
         pricing,
