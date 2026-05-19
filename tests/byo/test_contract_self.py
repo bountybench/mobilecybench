@@ -140,7 +140,6 @@ def _task(wallclock: int = 60) -> dict[str, Any]:
         "prompt": "find the vuln",
         "agent_wallclock_seconds": wallclock,
         "reasoning_effort": "high",
-        "screenshot_mode": False,
     }
 
 

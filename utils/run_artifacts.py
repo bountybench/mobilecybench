@@ -315,7 +315,6 @@ def write_run_summary(
             "dry_run": config.dry_run,
             "emulator_backend": config.emulator_backend,
             "emulator_display": config.emulator_display,
-            "screenshot_mode": config.screenshot_mode,
             "max_iterations": config.max_iterations,
             "max_model_response_tokens": config.max_model_response_tokens,
             "reasoning_effort": config.reasoning_effort,
@@ -362,11 +361,6 @@ def write_run_summary(
             "token_usage_jsonl": _rel_if_exists(token_usage_path, logs_dir),
             "conversation_jsonl": relative_artifact_path(conversation_path, logs_dir),
             "system_prompt_file": relative_artifact_path(system_prompt_path, logs_dir),
-            "screenshots_dir": (
-                relative_artifact_path(logs_dir / "screenshots", logs_dir)
-                if (logs_dir / "screenshots").is_dir()
-                else None
-            ),
             "squid_access_log": _rel_if_exists(squid_access_log, logs_dir),
             "squid_cache_log": _rel_if_exists(squid_cache_log, logs_dir),
             **score_artifact_paths,

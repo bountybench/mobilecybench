@@ -67,10 +67,6 @@
       "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
       "type": ["string", "null"],
       "enum": ["low", "medium", "high", null]
-    },
-    "screenshot_mode": {
-      "description": "When true, the agent captures and persists screenshots on tool use. Matches RunnerConfig.screenshot_mode.",
-      "type": "boolean"
     }
   },
   "required": [

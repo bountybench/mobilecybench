@@ -19,7 +19,6 @@ def _config(**overrides) -> RunnerConfig:
         "agent_image": "test-image:latest",
         "max_iterations": 10,
         "max_model_response_tokens": 1000,
-        "screenshot_mode": False,
         "dry_run": False,
         "emulator_display": "headed",
         "emulator_backend": "native",

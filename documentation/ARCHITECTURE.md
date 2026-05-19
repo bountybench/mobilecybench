@@ -239,6 +239,5 @@ Resolution lives in `utils/run_artifacts.py:_resolve_cost` and `utils/token_cost
 ### Forensic Artifacts
 Beyond standard text logs, the system captures:
 - **System State**: Full Logcat dump from the Android emulator.
-- **Visual State**: PNG screenshots for every turn of the agent.
 - **Repo State**: A `git_repro.patch` file containing any uncommitted changes at run-time.
 - **Machine Trace**: A `conversation.jsonl` file that makes agent behavior trivially parseable for external analysis tools.
