@@ -64,9 +64,7 @@ class TestRunAgentLogging:
         messages = [r.message for r in caplog.records]
         assert "Agent run finished: status=timeout" in messages
         # No self-contradicting "Agent completed ... timeout" survives.
-        assert not any(
-            "Agent completed" in m and "timeout" in m for m in messages
-        )
+        assert not any("Agent completed" in m and "timeout" in m for m in messages)
 
 
 class TestExploitWorkflow:
