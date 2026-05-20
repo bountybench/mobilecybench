@@ -32,7 +32,6 @@ Flags:
 
 - `python runner.py <app_name>` — run the workflow declared in `runner_config.json` against `<app_name>`.
 - `--config <path>` — use an alternate runner config file (default: `runner_config.json`).
-- `--replay-run <logs/experiment_<uuid>>` — replay a prior redteam exploit artifact instead of running the agent again. App name is derived from the source. Probe-only snapshots are not replayable (no patched-phase comparison exists); attempting to replay one fails fast with a clear error.
 - `--explain-config` — print the JSON Schema for `runner_config.json` (field names, types, defaults, descriptions) and exit. Same content as `schemas/runner_config.schema.json`.
 
 Agent implementation (`custom` in-process Python loop, or `external` BYO Docker image) is selected via the `agent_mode` field in `runner_config.json`. See `documentation/EXPERIMENTS.md#agent-mode` and `documentation/BRING_YOUR_OWN_AGENT.md`.

@@ -2,7 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mobilecybench.dev/schemas/runner_config.schema.json",
   "title": "Runner Config",
-  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)\n  or ``synthetic_vuln_id`` (synthetic).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``\n  and ``synthetic_vuln_id``, requires ``attacker_model``, and is\n  incompatible with ``gold_run``.\n* ``dry_run``, ``gold_run``, and ``replay_run`` are mutually exclusive.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
+  "additionalProperties": false,
+  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)\n  or ``synthetic_vuln_id`` (synthetic).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``\n  and ``synthetic_vuln_id``, requires ``attacker_model``, and is\n  incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
   "properties": {
     "build_type": {
       "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
@@ -160,19 +161,6 @@
       "description": "Replay the task's reference exploit through the full pipeline instead of invoking the agent. Mutually exclusive with dry_run.",
       "title": "Gold Run",
       "type": "boolean"
-    },
-    "replay_run": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Replay a prior redteam exploit artifact from logs/experiment_<uuid>. May also be set via runner.py --replay-run. Mutually exclusive with dry_run and gold_run.",
-      "title": "Replay Run"
     },
     "emulator_backend": {
       "default": "native",

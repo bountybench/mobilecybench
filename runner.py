@@ -16,10 +16,8 @@ from typing import Optional
 
 from models.config import RunnerConfig
 from utils.exploit_source import (
-    ExploitSource,
     ExploitSourceError,
     resolve_gold_source,
-    resolve_replay_source,
     stage_exploit_source,
 )
 from utils.git_utils import ensure_app_submodule, ensure_zerodays_submodule
@@ -152,9 +150,8 @@ def _log_experiment_config(
         config.attacker_model,
     )
     logger.info(
-        "Runner settings: gold_run=%s replay_run=%s task=%s dry_run=%s model=%s iterations=%s",
+        "Runner settings: gold_run=%s task=%s dry_run=%s model=%s iterations=%s",
         str(config.gold_run).lower(),
-        config.replay_run,
         config.task,
         str(config.dry_run).lower(),
         config.model,
@@ -215,7 +212,6 @@ def run(
     app_name: str,
     project_root: Path,
     config_path: Optional[Path] = None,
-    exploit_source: Optional[ExploitSource] = None,
 ) -> int:
     """
     Execute the evaluation workflow.
@@ -224,9 +220,6 @@ def run(
         config: Runner configuration
         app_name: Name of the app to evaluate
         project_root: Root directory of the project
-        exploit_source: Prebuilt exploit to evaluate (replay_run or gold_run).
-            When set, the agent loop is skipped and the pipeline evaluates
-            this artifact directly.
 
     Returns:
         Exit code (0 for success, non-zero for failure)
@@ -246,46 +239,18 @@ def run(
     exit_reason = "runtime_exception"
     exit_code = 1
 
+    gold_source_dir: Optional[Path] = None
     try:
-        # Replay trusts the saved artifact's run_summary.json.
-        # Non-replay redteam trusts task/metadata.json.
-        # (Gold is resolved later, after this.)
-        updates: dict = {}
-        if exploit_source:
-            replay = exploit_source
-            logger.info(
-                "Replay source: %s (app=%s, workflow=%s, task=%s, vuln_id=%s, attacker_model=%s)",
-                replay.source_dir,
-                replay.app_name,
-                replay.workflow,
-                replay.task,
-                replay.synthetic_vuln_id,
-                replay.attacker_model,
-            )
-            if replay.workflow:
-                updates["workflow"] = replay.workflow
-            if replay.workflow == "redteam":
-                # Clear the opposite selector so legacy config defaults do not
-                # violate the TaskBundle XOR contract during replay.
-                updates["task"] = replay.task
-                updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
-                updates["attacker_model"] = replay.attacker_model
-                # Replay validation in models/config.py is bypassed for
-                # replay_run, and resolve_replay_source already refused any
-                # probe_only snapshot — so an accepted replay source is
-                # always two-phase. Force probe_only=False here to defend
-                # against a stale probe_only=True in the operator's current
-                # config silently routing a two-phase replay through
-                # ProbeOnlyBundle.
-                updates["probe_only"] = False
-            elif replay.workflow == "exploit":
-                updates["task"] = None
-                updates["synthetic_vuln_id"] = replay.synthetic_vuln_id
-                updates["attacker_model"] = None
-                updates["probe_only"] = False
-        elif config.workflow == "redteam":
-            # Bundle owns attacker_model. Sync into config so downstream
-            # gold-source resolution sees the authoritative value.
+        # Initialize submodules before any task/app metadata reads. Redteam
+        # attacker-model reconciliation and gold-source resolution both touch
+        # task bundle paths, so preconditions belong at the top of the run.
+        if config.workflow == "redteam" and config.task:
+            ensure_zerodays_submodule(project_root)
+        ensure_app_submodule(project_root, app_name)
+
+        # Redteam: bundle owns attacker_model. Sync into config so downstream
+        # gold-source resolution sees the authoritative value.
+        if config.workflow == "redteam":
             bundle_attacker_model = _load_bundle_attacker_model(
                 project_root, app_name, config
             )
@@ -295,10 +260,9 @@ def run(
                     config.attacker_model,
                     bundle_attacker_model,
                 )
-                updates["attacker_model"] = bundle_attacker_model
-
-        if updates:
-            config = config.model_copy(update=updates)
+                config = config.model_copy(
+                    update={"attacker_model": bundle_attacker_model}
+                )
 
         # Gold source is resolved after attacker_model reconciliation so
         # shape validation uses the authoritative model.
@@ -306,7 +270,7 @@ def run(
             config.workflow == "redteam" and config.attacker_model == "malicious_app"
         )
         if config.gold_run:
-            exploit_source = resolve_gold_source(
+            gold_source_dir = resolve_gold_source(
                 workflow=config.workflow,
                 app_name=app_name,
                 task=config.task,
@@ -319,14 +283,6 @@ def run(
         workflow_type = type(workflow).__name__
         logger.info(f"Created {workflow_type} for app: {app_name}")
 
-        # Submodule init must precede validate_arguments: redteam zero-day
-        # bundles read fix.patch / metadata.json from zerodays/, so an
-        # uninitialized submodule would surface as a misleading "Task file
-        # not found" error.
-        if config.workflow == "redteam" and config.task:
-            ensure_zerodays_submodule(project_root)
-        ensure_app_submodule(project_root, app_name)
-
         logger.info("Validating arguments...")
         workflow.validate_arguments()
         logger.info("Arguments validated")
@@ -338,15 +294,15 @@ def run(
         workflow.setup_runtime_environment()
         logger.info("Runtime environment ready")
 
-        if exploit_source:
+        if gold_source_dir:
             staged = stage_exploit_source(
-                exploit_source,
+                gold_source_dir,
                 workflow,
                 logs_dir=logger_manager.get_logs_dir(),
                 project_root=project_root,
                 is_apk_exploit=is_apk_exploit,
             )
-            logger.info("Staged %s exploit into %s", exploit_source.kind, staged)
+            logger.info("Staged gold exploit into %s", staged)
 
         if config.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
@@ -356,14 +312,11 @@ def run(
             outcome = "success"
             exit_reason = "dry_run_completed"
             exit_code = 0
-        elif exploit_source:
-            logger.info(
-                "%s-run mode — evaluating prestaged exploit artifact...",
-                exploit_source.kind,
-            )
+        elif gold_source_dir:
+            logger.info("gold-run mode — evaluating prestaged exploit artifact...")
             evaluation = workflow.evaluate() or {}
             _log_evaluation_result(evaluation)
-            exit_reason = f"{exploit_source.kind}_run_completed"
+            exit_reason = "gold_run_completed"
             run_result = normalize_agent_result({"status": "completed"})
             run_result["status"] = exit_reason
             score = evaluation.get("score")
@@ -497,17 +450,12 @@ def main():
     parser.add_argument(
         "app_name",
         nargs="?",
-        help="Name of the app to evaluate (omit when --replay-run is used; "
-        "the app is derived from the replay source)",
+        help="Name of the app to evaluate",
     )
     parser.add_argument(
         "--config",
         default="runner_config.json",
         help="Path to runner config file",
-    )
-    parser.add_argument(
-        "--replay-run",
-        help="Replay a prior redteam experiment from logs/experiment_<uuid>",
     )
     parser.add_argument(
         "--explain-config",
@@ -525,24 +473,15 @@ def main():
         print(RunnerConfig.render_json_schema(), end="")
         return 0
 
-    # Load config first so replay_run from JSON is visible to validation.
+    if not args.app_name:
+        parser.error("app_name is required")
+
     config_path = Path(args.config)
     try:
-        config = RunnerConfig.from_file(
-            config_path,
-            overrides={"replay_run": args.replay_run},
-        )
+        config = RunnerConfig.from_file(config_path)
     except (FileNotFoundError, ValueError) as e:
         logger.error(str(e))
         return 1
-
-    if config.replay_run and args.app_name:
-        parser.error(
-            "app_name is derived from the replay source; omit it when "
-            "replay_run is set"
-        )
-    if not config.replay_run and not args.app_name:
-        parser.error("app_name is required unless replay_run is set")
 
     project_root = Path(__file__).parent
 
@@ -551,24 +490,11 @@ def main():
 
     get_logger_manager(config=config.model_dump())
 
-    exploit_source: Optional[ExploitSource] = None
-    app_name: Optional[str] = args.app_name
-    if config.replay_run:
-        try:
-            exploit_source = resolve_replay_source(config.replay_run, project_root)
-            app_name = exploit_source.app_name
-        except ExploitSourceError as e:
-            logger.error(str(e))
-            logger_manager.print_error_summary()
-            return 1
-
-    assert app_name is not None
     exit_code = run(
         config,
-        app_name,
+        args.app_name,
         project_root,
         config_path=config_path,
-        exploit_source=exploit_source,
     )
 
     # Print error summary at the very end for better visibility
