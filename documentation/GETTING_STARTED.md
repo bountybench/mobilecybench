@@ -25,14 +25,14 @@ To run the AI agent, provide an API key. The built-in models cover three provide
 - **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`; `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires `ANTHROPIC_API_KEY`.
 - **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`. Requires `GEMINI_API_KEY`.
 
-To add a new model, append an entry to `SupportedModel` and a pricing row to `utils/token_pricing.json` — see [Adding a New Model](ADDING_MODELS.md). For one-off model-sweep exploration where cost telemetry doesn't matter, set `"allow_unregistered_models": true` in `runner_config.json` to bypass the registry.
+To add a new model, append an entry to `SupportedModel` and a pricing row to `utils/token_pricing.json` — see [Adding a New Model](ADDING_MODELS.md). For one-off model-sweep exploration where cost telemetry doesn't matter, set `agent.allow_unregistered_models: true` in `runner_config.json` to bypass the registry.
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py owncloud-android
 ```
 
-> The committed `runner_config.json` is a probe-only example (probe_only + malicious_app), which requires the target app to ship per-app probes and `generic_probe_config.json`. `owncloud-android` is one of the apps that satisfies this; see the README quickstart for the full list.
+> The committed `runner_config.json` is a probe-only example (`workflow.kind: redteam_probe_only`, `workflow.attacker_model: malicious_app`), which requires the target app to ship per-app probes and `generic_probe_config.json`. `owncloud-android` is one of the apps that satisfies this; see the README quickstart for the full list.
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
@@ -49,7 +49,7 @@ python runner.py conversations --config runner_config_dryrun.json
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop (for agent stack and some app environments)
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+. Please note that some apps require Java 21 to build.)
-- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `runtime.build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
 
 ## 2) Clone and create a Python environment
 
@@ -101,7 +101,7 @@ echo OPENAI_API_KEY="sk..." >> .env
 
 ### External agents (Claude Code, Codex, BYO)
 
-Set `"agent_mode": "external"` and name the image in `"agent_image"`. The harness delivers `/app/task.json` and reads back `/app/agent_run/` + `/app/agent_exploit/`. Full contract: [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md).
+Set `agent.mode: "external"` and name the image in `agent.image`. The harness delivers `/app/task.json` and reads back `/app/agent_run/` + `/app/agent_exploit/`. Full contract: [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md).
 
 #### Claude Code reference image
 
@@ -128,14 +128,16 @@ The harness forwards `CLAUDE_CODE_OAUTH_TOKEN` into the container; the in-contai
 
 ```json
 {
-  "agent_mode": "external",
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-  "model": "claude-sonnet-4-6",
-  "agent_wallclock_seconds": 1800
+  "agent": {
+    "mode": "external",
+    "image": "cybench/mobilecybench:claudecode_2.1.140-r2",
+    "model": "claude-sonnet-4-6",
+    "wallclock_seconds": 1800
+  }
 }
 ```
 
-`agent_wallclock_seconds` is the harness-side SIGKILL deadline (default 1800).
+`agent.wallclock_seconds` is the harness-side SIGKILL deadline (default 1800).
 
 #### Codex reference image
 
@@ -147,17 +149,19 @@ echo OPENAI_API_KEY="sk-..." >> agent/.env
 
 ```json
 {
-  "agent_mode": "external",
-  "agent_image": "cybench/mobilecybench:codex_0.130.0-r2",
-  "model": "gpt-5.5",
-  "reasoning_effort": "high",
-  "agent_wallclock_seconds": 1800
+  "agent": {
+    "mode": "external",
+    "image": "cybench/mobilecybench:codex_0.130.0-r2",
+    "model": "gpt-5.5",
+    "reasoning_effort": "high",
+    "wallclock_seconds": 1800
+  }
 }
 ```
 
 #### Lab BYO
 
-Build an image satisfying the BYO contract and point `agent_image` at it. See [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md) for the Dockerfile + `/run-agent.sh` template and task.json schema.
+Build an image satisfying the BYO contract and point `agent.image` at it. See [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md) for the Dockerfile + `/run-agent.sh` template and task.json schema.
 
 ## 5) Pick an app
 

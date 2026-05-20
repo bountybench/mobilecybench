@@ -1,7 +1,7 @@
 # Adding a New Model
 
-The model id you put in `runner_config.json:model` is sent to the underlying
-API. By default the runner only accepts models declared in
+The model id you put in `runner_config.json` under `agent.model` is sent to
+the underlying API. By default the runner only accepts models declared in
 `agent/custom/model_providers/factory.py:SupportedModel`; this doc covers how to
 add one (the standard path) and how to bypass the registry temporarily for
 exploration (only use if you do not care about cost tracking).
@@ -51,13 +51,13 @@ A placeholder line so future users know the variable exists.
 
 ### 4. Smoke-test
 
-`runner.py --config runner_config_dryrun.json` (or `dry_run: true` in the config) launches an interactive Kali shell instead of the agent — useful for verifying the runtime environment, but it never invokes the provider, so it can't validate a model integration. Use the dedicated provider smoke-test:
+`runner.py --config runner_config_dryrun.json` (or `execution.mode: "dry_run"` in the config) launches an interactive Kali shell instead of the agent — useful for verifying the runtime environment, but it never invokes the provider, so it can't validate a model integration. Use the dedicated provider smoke-test:
 
 ```bash
 python scripts/smoke_test_model.py
 ```
 
-By default it picks up `model` from `runner_config.json` and sends a trivial single-token prompt. Pass `--model my-model-id` to override, or `--allow-unregistered` to bypass the registry check (useful when smoke-testing before completing step 1). Exit codes:
+By default it picks up `agent.model` from `runner_config.json` and sends a trivial single-token prompt. Pass `--model my-model-id` to override, or `--allow-unregistered` to bypass the registry check (useful when smoke-testing before completing step 1). Exit codes:
 
 - `0` — provider returned a non-empty response (model integration is wired up).
 - `1` — configuration or API-key error (provider couldn't be constructed).
@@ -78,7 +78,7 @@ OK in 2.10s
 Once the smoke-test passes, do a one-iteration real run to exercise the agent loop:
 
 ```bash
-# Set max_iterations: 1 in runner_config.json (keep dry_run: false), then:
+# Set agent.max_iterations: 1 in runner_config.json (keep execution.mode: "live"), then:
 python runner.py owncloud-android
 ```
 
@@ -86,12 +86,12 @@ Open `logs/latest/conversation.jsonl` and confirm the single turn has non-empty 
 
 ---
 
-## Quick alternative — `allow_unregistered_models`
+## Quick alternative — `agent.allow_unregistered_models`
 
-Set this in `runner_config.json` to skip the registry check:
+Set this on the `agent` block in `runner_config.json` to skip the registry check:
 
 ```json
-{ "model": "claude-some-variant", "allow_unregistered_models": true }
+{ "agent": { "model": "claude-some-variant", "allow_unregistered_models": true } }
 ```
 
 The agent logs a `WARNING` and proceeds. The model still has to route
@@ -198,14 +198,14 @@ Notes:
 ## Common pitfalls
 
 - **`ValueError: Unsupported model`.** Default deny. Register the model
-  per the standard path, or set `allow_unregistered_models: true` for
-  exploration only.
+  per the standard path, or set `agent.allow_unregistered_models: true`
+  for exploration only.
 - **Cost reported as `0`.** Missing `token_pricing.json` row. The
-  `allow_unregistered_models` flag does not fix this; pricing is a
+  `agent.allow_unregistered_models` flag does not fix this; pricing is a
   separate edit.
 - **Agent loops with empty responses.** Your provider isn't filling
   `ProviderResponse.assistant_text` or `function_calls`; the agent
-  nudges and retries until `max_iterations`.
+  nudges and retries until `agent.max_iterations`.
 - **`ValueError: <ENV>_API_KEY environment variable is required`.**
   Either the var isn't set, or your model name's substring matches the
   wrong detection rule.

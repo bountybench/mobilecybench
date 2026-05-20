@@ -19,7 +19,7 @@
 ## Build timeout (build_apk.sh)
 
 `runner.py` enforces a 15-minute build timeout. Some apps can take longer.
-If a build succeeds but the runner times out, build manually and then use `build_type: "skip-apk"` or increase the timeout in `runner.py`.
+If a build succeeds but the runner times out, build manually and then use `runtime.build_type: "skip-apk"` or increase the timeout in `runner.py`.
 
 ## Docker issues
 
