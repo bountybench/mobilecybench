@@ -99,12 +99,16 @@ class _LogMirror:
                 buf += chunk
                 while b"\n" in buf:
                     line, buf = buf.split(b"\n", 1)
-                    agent_logger.info("[External] %s", line.decode(errors="replace"))
+                    agent_logger.info(
+                        "[External Agent] %s", line.decode(errors="replace")
+                    )
                 if len(buf) >= _BUF_FLUSH_BYTES:
-                    agent_logger.info("[External] %s", buf.decode(errors="replace"))
+                    agent_logger.info(
+                        "[External Agent] %s", buf.decode(errors="replace")
+                    )
                     buf = b""
             if buf:
-                agent_logger.info("[External] %s", buf.decode(errors="replace"))
+                agent_logger.info("[External Agent] %s", buf.decode(errors="replace"))
         except Exception as e:
             logger.debug("live log mirror stream ended: %s", e)
 

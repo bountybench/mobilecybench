@@ -349,10 +349,12 @@ class TestLiveLogMirror:
             out = run_agent(env=env, task_dict=_task(), host_artifact_dir=tmp_path)
 
         external = [
-            r.getMessage() for r in caplog.records if "[External]" in r.getMessage()
+            r.getMessage()
+            for r in caplog.records
+            if "[External Agent]" in r.getMessage()
         ]
-        assert "[External] hello world" in external
-        assert "[External] second line" in external
+        assert "[External Agent] hello world" in external
+        assert "[External Agent] second line" in external
         assert out["status"] == "completed"
 
     def test_mirror_start_failure_does_not_break_run(self, tmp_path: Path) -> None:
