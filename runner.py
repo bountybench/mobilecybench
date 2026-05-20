@@ -8,7 +8,6 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 """
 
 import argparse
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -117,14 +116,8 @@ def create_workflow(
     return ExploitWorkflow(config, app_name, project_root)
 
 
-def _log_experiment_config(
-    config: RunnerConfig, resolved: ResolvedRunnerConfig, workflow: Workflow
-) -> None:
-    """Log a compact effective summary plus the input config dump.
-
-    The input ``config.model_dump()`` is exhaustive enough for repro; the
-    detail it lacks (bundle-resolved ``attacker_model``) is in ``log_view``.
-    """
+def _log_experiment_config(resolved: ResolvedRunnerConfig, workflow: Workflow) -> None:
+    """Log the compact resolved config used for this run."""
     metadata = getattr(workflow, "metadata", {})
 
     for line in resolved.log_view():
@@ -143,17 +136,6 @@ def _log_experiment_config(
     container_names = metadata.get("container_names", [])
     if container_names:
         logger.info("App containers: %s", ", ".join(container_names))
-    logger.info(
-        "Experiment configuration:\n%s",
-        json.dumps(
-            {
-                "app": {"name": resolved.app_name, **metadata},
-                "runner": config.model_dump(),
-            },
-            indent=2,
-            default=str,
-        ),
-    )
 
 
 def _derive_outcome(
@@ -265,7 +247,7 @@ def run(
         logger.info("Arguments validated")
 
         # Log structured experiment configuration for observability
-        _log_experiment_config(config, resolved, workflow)
+        _log_experiment_config(resolved, workflow)
 
         logger.info("Setting up runtime environment...")
         workflow.setup_runtime_environment()
