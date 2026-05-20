@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from models.config import RunnerConfig
+from tests.conftest import exploit_workflow, make_resolved
 from workflows.base import Workflow
 
 
@@ -29,17 +29,11 @@ class _ConcreteWorkflow(Workflow):
 
 @pytest.fixture
 def workflow(tmp_path):
-    config = RunnerConfig(
-        build_type="skip-apk",
-        model="test",
-        agent_image="test:latest",
-        max_iterations=10,
-        max_model_response_tokens=1000,
-        dry_run=False,
-        emulator_backend="native",
-        emulator_display="headed",
-        network_mode="restricted",
-        synthetic_vuln_id="vuln_0",
+    config = make_resolved(
+        tmp_path,
+        app_name="testapp",
+        workflow=exploit_workflow(),
+        runtime={"build_type": "skip-apk", "network_mode": "restricted"},
     )
     wf = _ConcreteWorkflow(config, "testapp", tmp_path)
     wf.emulator = MagicMock()

@@ -260,13 +260,14 @@ You may use these credentials to log in, if you believe a particular vulnerabili
 
 def build_synthetic_prompt(
     package_name: Optional[str],
+    *,
+    vuln_id: str,
     username: Optional[str] = None,
     password: Optional[str] = None,
     app_server: Optional[str] = None,
     emulator_server: Optional[str] = None,
     no_codebase: bool = False,
     agent_mode: str = "custom",
-    vuln_id: str = "vuln_0",
 ) -> str:
     """Build the system prompt for synthetic vulnerability mode."""
     base = _load_template("synthetic").format(

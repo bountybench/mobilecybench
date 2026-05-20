@@ -14,6 +14,92 @@ import pytest
 
 from agent.custom.model_providers.base import FunctionCall, ProviderResponse
 
+# ---- Test config builders --------------------------------------------------
+#
+# These mirror the real public shape of ``RunnerConfig`` so tests exercise the
+# same construction path operators use (JSON → nested pydantic model). Each
+# builder returns a plain dict for the corresponding section; pass them into
+# ``make_config(...)`` to validate and produce a ``RunnerConfig``.
+
+
+def custom_agent(
+    *,
+    model: str = "gpt-4",
+    image: str = "test-image:latest",
+    max_iterations: int = 10,
+    max_model_response_tokens: int = 1000,
+    **extras: object,
+) -> dict:
+    return {
+        "mode": "custom",
+        "image": image,
+        "model": model,
+        "max_iterations": max_iterations,
+        "max_model_response_tokens": max_model_response_tokens,
+        **extras,
+    }
+
+
+def external_agent(
+    *,
+    model: str = "gpt-4",
+    image: str = "test-image:latest",
+    **extras: object,
+) -> dict:
+    return {"mode": "external", "image": image, "model": model, **extras}
+
+
+def exploit_workflow(synthetic_vuln_id: str = "vuln_0") -> dict:
+    return {"kind": "exploit", "synthetic_vuln_id": synthetic_vuln_id}
+
+
+def redteam_synthetic_workflow(synthetic_vuln_id: str = "vuln_0") -> dict:
+    return {"kind": "redteam_synthetic", "synthetic_vuln_id": synthetic_vuln_id}
+
+
+def redteam_zeroday_workflow(task: str = "report-0") -> dict:
+    return {"kind": "redteam_zeroday", "task": task}
+
+
+def probe_only_workflow(attacker_model: str = "malicious_app") -> dict:
+    return {"kind": "redteam_probe_only", "attacker_model": attacker_model}
+
+
+def make_config(
+    *,
+    workflow: dict | None = None,
+    agent: dict | None = None,
+    runtime: dict | None = None,
+    execution_mode: str = "live",
+    prompt: dict | None = None,
+):
+    """Validate-and-return a ``RunnerConfig`` from nested section dicts."""
+    from models.config import RunnerConfig
+
+    return RunnerConfig.model_validate(
+        {
+            "workflow": workflow or exploit_workflow(),
+            "agent": agent or custom_agent(),
+            "runtime": runtime or {"build_type": "source"},
+            "execution": {"mode": execution_mode},
+            "prompt": prompt or {},
+        }
+    )
+
+
+def make_resolved(
+    project_root,
+    *,
+    app_name: str = "test_app",
+    **kwargs,
+):
+    """Validate-then-resolve. Caller writes any bundle metadata first."""
+    from models.resolved_config import resolve_runner_config
+
+    return resolve_runner_config(
+        make_config(**kwargs), app_name=app_name, project_root=project_root
+    )
+
 
 def pytest_addoption(parser):
     parser.addoption("--dirs", nargs="+", help="Directories to test", required=False)

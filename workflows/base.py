@@ -17,7 +17,12 @@ from agent.prompts.prompts import (
 )
 from harness.byo_agent import run_agent as _byo_run_agent
 from harness.task import build_task_dict
-from models.config import RunnerConfig
+from models.resolved_config import (
+    REDTEAM_WORKFLOW_TYPES,
+    ResolvedExploitWorkflow,
+    ResolvedExternalAgent,
+    ResolvedRunnerConfig,
+)
 from utils.json_io import write_json_atomic
 from utils.logger import logger, logger_manager
 from utils.text_files import collect_text_files
@@ -38,7 +43,7 @@ class Workflow(ABC):
     6. Save artifacts and clean up
     """
 
-    def __init__(self, config: RunnerConfig, app_name: str, project_root: Path):
+    def __init__(self, config: ResolvedRunnerConfig, app_name: str, project_root: Path):
         self.config = config
         self.app_name = app_name
         self.app_dir = project_root / "apps" / app_name
@@ -72,9 +77,10 @@ class Workflow(ABC):
         attacker account so the prompt does not hand out victim/admin
         credentials as "your credentials".
         """
+        wf = self.config.workflow
         if (
-            self.config.workflow == "redteam"
-            and self.config.attacker_model == "remote_attacker"
+            isinstance(wf, REDTEAM_WORKFLOW_TYPES)
+            and wf.attacker_model == "remote_attacker"
         ):
             remote_username = self.metadata.get("remote_attacker_username")
             remote_password = self.metadata.get("remote_attacker_password")
@@ -104,7 +110,7 @@ class Workflow(ABC):
         return f"{additional_info}\n\n{extra}"
 
     def _build_agent_prompt(self) -> str:
-        """Build the agent's system prompt for ``self.config.agent_mode``.
+        """Build the agent's system prompt for the resolved agent mode.
 
         Custom mode gets the full ReAct scaffolding; external mode gets the
         base description only (each image's in-container entrypoint adds any
@@ -112,12 +118,14 @@ class Workflow(ABC):
         """
         additional_context = self._resolve_additional_context()
         username, password = self._agent_credentials()
-        agent_mode = self.config.agent_mode
+        agent_mode = self.config.agent.mode
+        no_codebase = self.config.runtime.no_codebase
 
-        if self.config.workflow == "redteam":
+        wf = self.config.workflow
+        if isinstance(wf, REDTEAM_WORKFLOW_TYPES):
             builder = (
                 build_remote_attacker_prompt
-                if self.config.attacker_model == "remote_attacker"
+                if wf.attacker_model == "remote_attacker"
                 else build_malicious_app_prompt
             )
             prompt = builder(
@@ -126,29 +134,32 @@ class Workflow(ABC):
                 emulator_server=self.metadata.get("emulator_server"),
                 username=username,
                 password=password,
-                no_codebase=self.config.no_codebase,
+                no_codebase=no_codebase,
                 agent_mode=agent_mode,
             )
         else:
+            if not isinstance(wf, ResolvedExploitWorkflow):
+                raise TypeError(f"unexpected workflow variant: {type(wf).__name__}")
             prompt = build_synthetic_prompt(
                 package_name=self.metadata.get("package_name"),
                 username=username,
                 password=password,
                 app_server=self.metadata.get("app_server"),
                 emulator_server=self.metadata.get("emulator_server"),
-                no_codebase=self.config.no_codebase,
+                no_codebase=no_codebase,
                 agent_mode=agent_mode,
-                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
+                vuln_id=wf.synthetic_vuln_id,
             )
 
         if additional_context:
             prompt = prompt + "\n\n" + additional_context
         return prompt
 
-    def _build_task_dict(self) -> dict[str, Any]:
+    def _build_task_dict(self, external_agent: ResolvedExternalAgent) -> dict[str, Any]:
         """Assemble the task.json dict delivered to an external agent."""
         return build_task_dict(
-            config=self.config,
+            resolved=self.config,
+            external_agent=external_agent,
             metadata=self.metadata,
             app_name=self.app_name,
             prompt=self._build_agent_prompt(),
@@ -158,15 +169,17 @@ class Workflow(ABC):
 
     def setup_agent(self) -> None:
         """Configure and initialize the agent."""
-        if self.config.dry_run:
+        if self.config.execution_mode == "dry_run":
             logger.info("Dry run - skipping agent setup")
             return
 
-        agent_mode = self.config.agent_mode
-        workflow = self.config.workflow
-        logger.info(f"Setting up agent (mode={agent_mode}) with {workflow} prompt...")
+        agent = self.config.agent
+        workflow_family = self.config.workflow_family
+        logger.info(
+            f"Setting up agent (mode={agent.mode}) with {workflow_family} prompt..."
+        )
 
-        if agent_mode == "external":
+        if isinstance(agent, ResolvedExternalAgent):
             # External agents run inside their container image (see
             # documentation/BRING_YOUR_OWN_AGENT.md). setup_agent does not
             # construct an in-process agent object; run_agent assembles the
@@ -176,37 +189,42 @@ class Workflow(ABC):
 
         from agent.custom.agent import CustomAgent
 
+        wf = self.config.workflow
+        attacker_model = (
+            wf.attacker_model if isinstance(wf, REDTEAM_WORKFLOW_TYPES) else None
+        )
         self.agent = CustomAgent(
-            model=self.config.model,
-            max_iterations=self.config.max_iterations,
-            max_model_response_tokens=self.config.max_model_response_tokens,
+            model=agent.model,
+            max_iterations=agent.max_iterations,
+            max_model_response_tokens=agent.max_model_response_tokens,
             app_name=self.app_name,
             instructions=self._build_agent_prompt(),
-            llm_request_timeout_ms=self.config.llm_request_timeout_ms,
-            reasoning_effort=self.config.reasoning_effort,
+            llm_request_timeout_ms=agent.llm_request_timeout_ms,
+            reasoning_effort=agent.reasoning_effort,
             include_ssrf=False,
-            workflow=workflow,
-            attacker_model=self.config.attacker_model,
-            no_codebase=self.config.no_codebase,
-            allow_unregistered_models=self.config.allow_unregistered_models,
+            workflow=workflow_family,
+            attacker_model=attacker_model,
+            no_codebase=self.config.runtime.no_codebase,
+            allow_unregistered_models=agent.allow_unregistered_models,
         )
-        logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
+        logger.info(f"Agent configured for {workflow_family} mode (mode={agent.mode})")
 
     def run_agent(self) -> dict:
         """Execute the agent and return results."""
-        if self.config.dry_run:
+        if self.config.execution_mode == "dry_run":
             logger.info("Dry run - skipping agent execution")
             return {"status": "dry_run", "turns_taken": 0}
 
-        if self.config.agent_mode == "external":
+        external_agent = self.config.agent
+        if isinstance(external_agent, ResolvedExternalAgent):
             if not self.agent_env:
                 raise RuntimeError(
                     "Agent environment not initialized. setup_runtime_environment() first."
                 )
             logger.info(
-                f"Running external agent (image={self.config.agent_image}) via BYO contract..."
+                f"Running external agent (image={external_agent.image}) via BYO contract..."
             )
-            task_dict = self._build_task_dict()
+            task_dict = self._build_task_dict(external_agent)
             # Persist task.json for reproducibility.
             logs_dir = Path(logger_manager.get_logs_dir())
             write_json_atomic(logs_dir / "task.json", task_dict)
@@ -222,7 +240,7 @@ class Workflow(ABC):
 
         if not self.agent:
             raise RuntimeError("Agent not initialized. Call setup_agent() first.")
-        logger.info(f"Running agent for {self.config.workflow}...")
+        logger.info(f"Running agent for {self.config.workflow_family}...")
         self.agent_result = self.agent.run()
         logger.info(f"Agent completed with status: {self.agent_result.get('status')}")
         return self.agent_result
@@ -243,7 +261,7 @@ class Workflow(ABC):
         the per-agent extractions only for custom mode. Firewall logs run
         unconditionally — the Squid sidecar is independent of agent_mode.
         """
-        if self.agent_env and self.config.agent_mode != "external":
+        if self.agent_env and not isinstance(self.config.agent, ResolvedExternalAgent):
             for save_fn in (
                 self.agent_env.save_agent_exploit,
                 self.agent_env.save_agent_output,
@@ -266,11 +284,11 @@ class Workflow(ABC):
         Handles skip-apk and download-apk centrally.
         For source builds, delegates to subclass ``_build_apks_from_source()``.
         """
-        if self.config.build_type == "skip-apk":
+        if self.config.runtime.build_type == "skip-apk":
             logger.info("skip-apk: assuming APKs already present")
             return
 
-        if self.config.build_type == "download-apk":
+        if self.config.runtime.build_type == "download-apk":
             from utils.apk_utils import download_apk, get_download_url
 
             url = get_download_url(self.app_name, self.project_root)
@@ -480,7 +498,7 @@ class Workflow(ABC):
 
         self.emulator.restart()
         self.emulator.wait_until_ready(
-            timeout=self.config.emulator_boot_timeout_seconds
+            timeout=self.config.runtime.emulator_boot_timeout_seconds
         )
         inject_system_ca(self.project_root)
         self.emulator.setup_port_forwards(self.app_dir)
@@ -494,7 +512,7 @@ class Workflow(ABC):
             inject_flags=inject_flags,
             start_ssrf=start_ssrf,
             container_names=self.metadata.get("container_names", []),
-            build_command_timeout=self.config.build_command_timeout,
+            build_command_timeout=self.config.runtime.build_command_timeout,
         )
 
         if prepare_app_hook and prepare_app_hook.exists():
@@ -502,7 +520,7 @@ class Workflow(ABC):
             cmd = CommandExecutor()
             cmd.run_with_progress(
                 f"bash {prepare_app_hook}",
-                timeout=self.config.script_timeout,
+                timeout=self.config.runtime.script_timeout,
                 message="Running prepare_app hook",
                 cwd=self.app_dir,
             )
@@ -621,10 +639,10 @@ class Workflow(ABC):
             logger.info(f"[replay] {line}")
 
         try:
-            proc.wait(timeout=self.config.script_timeout)
+            proc.wait(timeout=self.config.runtime.script_timeout)
         except subprocess.TimeoutExpired:
             logger.error(
-                f"Exploit replay timed out after {self.config.script_timeout}s, killing process"
+                f"Exploit replay timed out after {self.config.runtime.script_timeout}s, killing process"
             )
             proc.kill()
             proc.wait()

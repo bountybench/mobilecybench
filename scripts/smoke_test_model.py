@@ -7,7 +7,7 @@ Verifies that:
   3. The provider returns a non-error response to a trivial prompt.
 
 Usage:
-    python scripts/smoke_test_model.py                          # use runner_config.json:model
+    python scripts/smoke_test_model.py                          # use runner_config.json:agent.model
     python scripts/smoke_test_model.py --model gpt-5.5          # override
     python scripts/smoke_test_model.py --config foo.json        # alt config
 
@@ -59,16 +59,17 @@ def _load_dotenv_if_present() -> None:
 
 
 def _read_model_from_config(config_path: Path) -> tuple[str, bool]:
-    """Return (model, allow_unregistered) from runner_config.json."""
+    """Return (model, allow_unregistered) from runner_config.json (nested shape)."""
     data = json.loads(config_path.read_text())
-    return data["model"], bool(data.get("allow_unregistered_models", False))
+    agent = data["agent"]
+    return agent["model"], bool(agent.get("allow_unregistered_models", False))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
-        help="Model id to smoke-test (overrides runner_config.json:model).",
+        help="Model id to smoke-test (overrides runner_config.json:agent.model).",
     )
     parser.add_argument(
         "--config",

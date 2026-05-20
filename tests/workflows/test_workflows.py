@@ -6,27 +6,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from models.config import RunnerConfig
+from tests.conftest import exploit_workflow, make_resolved
 from workflows.exploit import ExploitWorkflow
 
 
-def _config(**overrides) -> RunnerConfig:
-    """Create a RunnerConfig with sensible test defaults."""
-
-    defaults = {
-        "build_type": "source",
-        "model": "gpt-4",
-        "agent_image": "test-image:latest",
-        "max_iterations": 10,
-        "max_model_response_tokens": 1000,
-        "dry_run": False,
-        "emulator_display": "headed",
-        "emulator_backend": "native",
-        "network_mode": "restricted",
-        "script_timeout": 600,
-        "synthetic_vuln_id": "vuln_0",
-    }
-    return RunnerConfig(**{**defaults, **overrides})
+def _resolved(project_root, *, app_name="test_app", synthetic_vuln_id="vuln_0"):
+    """Resolved exploit-workflow config for ExploitWorkflow tests."""
+    return make_resolved(
+        project_root,
+        app_name=app_name,
+        workflow=exploit_workflow(synthetic_vuln_id=synthetic_vuln_id),
+        runtime={"build_type": "source", "network_mode": "restricted"},
+    )
 
 
 class TestExploitWorkflow:
@@ -34,7 +25,7 @@ class TestExploitWorkflow:
 
     def test_validate_arguments_fails_missing_app_dir(self, tmp_path):
         """validate_arguments raises error if app_dir doesn't exist."""
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         with pytest.raises(ValueError, match="App directory not found"):
             workflow.validate_arguments()
 
@@ -43,7 +34,7 @@ class TestExploitWorkflow:
         app_dir = tmp_path / "apps" / "test_app"
         app_dir.mkdir(parents=True)
         (app_dir / "metadata.json").write_text("{}")
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         with pytest.raises(ValueError, match="Vulnerability directory not found"):
             workflow.validate_arguments()
 
@@ -53,7 +44,7 @@ class TestExploitWorkflow:
         app_dir.mkdir(parents=True)
         (app_dir / "metadata.json").write_text("{}")
         (app_dir / "synthetic_vulnerabilities" / "vuln_0").mkdir(parents=True)
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         with pytest.raises(ValueError, match="verify_files not found"):
             workflow.validate_arguments()
 
@@ -64,7 +55,7 @@ class TestExploitWorkflow:
         (app_dir / "metadata.json").write_text("{}")
         vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
         (vuln_dir / "verify_files").mkdir(parents=True)
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         with pytest.raises(ValueError, match="vulnerability.patch not found"):
             workflow.validate_arguments()
 
@@ -76,7 +67,7 @@ class TestExploitWorkflow:
         vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_1"
         (vuln_dir / "verify_files").mkdir(parents=True)
         (vuln_dir / "vulnerability.patch").write_text("patch content")
-        config = _config(workflow="exploit", synthetic_vuln_id="vuln_1")
+        config = _resolved(tmp_path, synthetic_vuln_id="vuln_1")
         workflow = ExploitWorkflow(config, "test_app", tmp_path)
         workflow.validate_arguments()
 
@@ -88,7 +79,7 @@ class TestExploitWorkflow:
         vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
         (vuln_dir / "verify_files").mkdir(parents=True)
         (vuln_dir / "vulnerability.patch").write_text("patch content")
-        config = _config(workflow="exploit", synthetic_vuln_id="vuln_1")
+        config = _resolved(tmp_path, synthetic_vuln_id="vuln_1")
         workflow = ExploitWorkflow(config, "test_app", tmp_path)
         with pytest.raises(
             ValueError, match="Vulnerability directory not found.*vuln_1"
@@ -113,7 +104,7 @@ class TestExploitWorkflowEvaluation:
         exploit_runner.write_text("#!/bin/bash\nexit 0")
         app_dir.mkdir(parents=True)
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         workflow.metadata = {}
 
         with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
@@ -166,7 +157,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
 
         with patch("workflows.base.subprocess.run") as mock_run:
             workflow.cleanup()
@@ -185,7 +176,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         state_file = workflow._backend_runtime_state_file()
         state_file.write_text("test_app\n")
 
@@ -207,7 +198,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         state_file = workflow._backend_runtime_state_file()
         state_file.write_text("test_app\n")
 
@@ -232,7 +223,7 @@ class TestWorkflowRuntimeCleanup:
         codebase_dir.mkdir(parents=True)
         agent_codebase.mkdir(parents=True)
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         workflow.emulator = MagicMock()
         workflow.emulator.stop.side_effect = RuntimeError("ADB reset failed")
         workflow.agent_env = MagicMock()
@@ -249,7 +240,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "docker-compose.yaml").write_text("services: {}\n")
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         workflow.emulator = _StubEmulator()
 
         with patch("utils.emulator_certs.inject_system_ca"), patch(
@@ -275,7 +266,7 @@ class TestWorkflowRuntimeCleanup:
         (stale_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
         (current_app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         workflow._backend_runtime_state_file().write_text("stale_app\n")
 
         # Network creation runs first; mock so the test stays a unit test
@@ -298,7 +289,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
 
         call_order: list[str] = []
 
@@ -335,7 +326,7 @@ class TestWorkflowRuntimeCleanup:
         """
         from unittest.mock import call
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
 
         with patch("agent.runtime.container.create_docker_network") as mock_create:
             workflow._ensure_docker_networks()
@@ -352,7 +343,7 @@ class TestWorkflowRuntimeCleanup:
         (app_dir / "docker-compose.yml").write_text(
             "services:\n  tls_proxy:\n    networks: [agent_net]\n"
         )
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "pilot_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "pilot_app", tmp_path)
 
         with patch("agent.runtime.container.create_docker_network"):
             workflow._ensure_docker_networks()  # must not raise
@@ -360,7 +351,7 @@ class TestWorkflowRuntimeCleanup:
     def test_skip_guard_passes_when_no_compose_file(self, tmp_path):
         """App with no backend (no compose) has nothing to reach — allowed."""
         (tmp_path / "apps" / "no_backend").mkdir(parents=True)
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "no_backend", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "no_backend", tmp_path)
 
         with patch("agent.runtime.container.create_docker_network"):
             workflow._ensure_docker_networks()  # must not raise
@@ -372,7 +363,7 @@ class TestWorkflowRuntimeCleanup:
         (app_dir / "docker-compose.yml").write_text(
             "services:\n  backend:\n    networks: [shared_net]\n"
         )
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "legacy_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "legacy_app", tmp_path)
 
         with patch("agent.runtime.container.create_docker_network"), pytest.raises(
             RuntimeError, match="not on agent_net"
@@ -384,7 +375,7 @@ class TestWorkflowRuntimeCleanup:
         app_dir.mkdir(parents=True)
         (app_dir / "docker-compose.yaml").write_text("services: {}\n")
 
-        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+        workflow = ExploitWorkflow(_resolved(tmp_path), "test_app", tmp_path)
         workflow.emulator = _StubEmulator()
 
         with patch("utils.emulator_certs.inject_system_ca"), patch(
@@ -428,13 +419,13 @@ class TestResolveAdditionalContext:
         app_dir = tmp_path / "apps" / "test_app"
         app_dir.mkdir(parents=True)
         (app_dir / "metadata.json").write_text("{}")
-        return ExploitWorkflow(
-            _config(
-                workflow="exploit", additional_system_prompt=additional_system_prompt
-            ),
-            "test_app",
+        config = make_resolved(
             tmp_path,
+            app_name="test_app",
+            workflow=exploit_workflow(),
+            prompt={"additional_system_prompt": additional_system_prompt},
         )
+        return ExploitWorkflow(config, "test_app", tmp_path)
 
     def test_appends_additional_system_prompt_to_metadata_additional_info(
         self, tmp_path

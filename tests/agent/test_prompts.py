@@ -23,13 +23,6 @@ def test_synthetic_prompt_renders_provided_vuln_id():
     assert "/app/verify_files/vuln_0" not in prompt
 
 
-def test_synthetic_prompt_default_is_vuln_0_for_back_compat():
-    """If a caller forgets to pass vuln_id, fall back to vuln_0 — matches
-    the historic default and the most common selector in the test suite."""
-    prompt = build_synthetic_prompt(package_name="com.example.app")
-    assert "/app/verify_files/vuln_0" in prompt
-
-
 def test_synthetic_prompt_distinct_per_vuln_id():
     prompts = {
         vuln_id: build_synthetic_prompt(package_name="com.example.app", vuln_id=vuln_id)

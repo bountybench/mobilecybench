@@ -24,11 +24,13 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol, cast, get_args, runtime_checkable
 
+from models.config import AttackerModel
 from utils.git_utils import git_restore_clean
 
 BundleKind = Literal["synthetic", "zeroday", "probe_only"]
+_VALID_ATTACKER_MODELS: frozenset[str] = frozenset(get_args(AttackerModel))
 
 
 @runtime_checkable
@@ -51,7 +53,7 @@ class TaskBundle(Protocol):
         """
         ...
 
-    def attacker_model(self) -> str:
+    def attacker_model(self) -> AttackerModel:
         """Authoritative attacker_model for this bundle.
 
         Bundle-backed: read from task_dir/metadata.json.
@@ -70,10 +72,7 @@ class TaskBundle(Protocol):
     def validate_build_artifacts(self, app_dir: Path) -> None: ...
 
 
-_VALID_ATTACKER_MODELS = {"malicious_app", "remote_attacker"}
-
-
-def _read_attacker_model_from_metadata(metadata_path: Path) -> str:
+def _read_attacker_model_from_metadata(metadata_path: Path) -> AttackerModel:
     if not metadata_path.exists():
         raise ValueError(f"metadata.json not found at {metadata_path}")
     am = json.loads(metadata_path.read_text()).get("attacker_model")
@@ -82,7 +81,8 @@ def _read_attacker_model_from_metadata(metadata_path: Path) -> str:
             f"attacker_model={'missing' if am is None else repr(am)} "
             f"in {metadata_path} (must be one of {_VALID_ATTACKER_MODELS})"
         )
-    return am
+    # ``am`` is now proven to be one of ``AttackerModel``'s Literal values.
+    return cast(AttackerModel, am)
 
 
 def _git_apply(codebase_dir: Path, patch: Path) -> None:
@@ -118,7 +118,7 @@ class SyntheticBundle:
     def patch(self) -> Path:
         return self.task_dir / "vulnerability.patch"
 
-    def attacker_model(self) -> str:
+    def attacker_model(self) -> AttackerModel:
         return _read_attacker_model_from_metadata(self.task_dir / "metadata.json")
 
     def phase1_apk(self) -> Path:
@@ -179,7 +179,7 @@ class ZerodayBundle:
     def patch(self) -> Path:
         return self.task_dir / "fix.patch"
 
-    def attacker_model(self) -> str:
+    def attacker_model(self) -> AttackerModel:
         return _read_attacker_model_from_metadata(self.task_dir / "metadata.json")
 
     @property
@@ -240,7 +240,7 @@ class ProbeOnlyBundle:
     """
 
     app_dir: Path
-    _attacker_model: str
+    _attacker_model: AttackerModel
     kind: BundleKind = "probe_only"
 
     @property
@@ -255,7 +255,7 @@ class ProbeOnlyBundle:
     def patch(self) -> Path:
         raise NotImplementedError("probe_only has no patch")
 
-    def attacker_model(self) -> str:
+    def attacker_model(self) -> AttackerModel:
         return self._attacker_model
 
     def phase1_apk(self) -> Path:
@@ -309,53 +309,4 @@ def assert_zerodays_initialized(project_root: Path) -> None:
         "    git submodule update --init zerodays\n"
         "If you do not have access to the submodule remote, contact a "
         "repo maintainer."
-    )
-
-
-def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
-    """Return the TaskBundle for the current config.
-
-    - probe_only=True → ProbeOnlyBundle (config validator guarantees no
-      task / no synthetic_vuln_id and an explicit attacker_model)
-    - task set → ZerodayBundle
-    - synthetic_vuln_id set → SyntheticBundle
-
-    Bundle-backed runs require strict XOR (task vs synthetic_vuln_id).
-
-    Pure path-resolution — does not check filesystem state. Callers that
-    need an environment precondition should invoke
-    ``assert_zerodays_initialized`` separately.
-    """
-    task = getattr(config, "task", None)
-    vuln_id = getattr(config, "synthetic_vuln_id", None)
-    probe_only = getattr(config, "probe_only", False)
-
-    if probe_only:
-        attacker_model = getattr(config, "attacker_model", None)
-        if attacker_model not in _VALID_ATTACKER_MODELS:
-            raise ValueError(
-                "probe_only requires config.attacker_model in "
-                f"{_VALID_ATTACKER_MODELS}; got {attacker_model!r}"
-            )
-        return ProbeOnlyBundle(
-            app_dir=project_root / "apps" / app_name,
-            _attacker_model=attacker_model,
-        )
-
-    if bool(task) == bool(vuln_id):
-        raise ValueError(
-            "TaskBundle requires exactly one of config.task (zeroday) or "
-            f"config.synthetic_vuln_id (synthetic); got task={task!r}, "
-            f"synthetic_vuln_id={vuln_id!r}."
-        )
-    if task:
-        return ZerodayBundle(
-            project_root=project_root,
-            app_name=app_name,
-            task=task,
-        )
-    assert vuln_id is not None
-    return SyntheticBundle(
-        app_dir=project_root / "apps" / app_name,
-        vuln_id=vuln_id,
     )

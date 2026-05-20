@@ -1,29 +1,29 @@
 {
   "$schema": "./schemas/runner_config.schema.json",
 
-  "workflow": "redteam",
-  "probe_only": true,
-  "attacker_model": "malicious_app",
-  "task": null,
-  "synthetic_vuln_id": null,
-  "no_codebase": false,
+  "workflow": {
+    "kind": "redteam_probe_only",
+    "attacker_model": "malicious_app"
+  },
 
-  "agent_mode": "custom",
-  "model": "gpt-5.5",
-  "reasoning_effort": "high",
-  "max_iterations": 30,
-  "max_model_response_tokens": 8192,
-  "additional_system_prompt": null,
-  "allow_unregistered_models": false,
+  "agent": {
+    "mode": "custom",
+    "image": "cybench/mobilecybench:latest",
+    "model": "gpt-5.5",
+    "reasoning_effort": "high",
+    "max_iterations": 30,
+    "max_model_response_tokens": 8192,
+    "llm_request_timeout_ms": 600000,
+    "allow_unregistered_models": false
+  },
 
-  "agent_image": "cybench/mobilecybench:latest",
-  "build_type": "download-apk",
-  "emulator_backend": "native",
-  "emulator_display": "headed",
-  "network_mode": "permissive",
+  "runtime": {
+    "build_type": "download-apk",
+    "no_codebase": false,
+    "emulator_backend": "native",
+    "emulator_display": "headed",
+    "network_mode": "permissive"
+  },
 
-  "dry_run": false,
-  "gold_run": false,
-
-  "llm_request_timeout_ms": 600000
+  "execution": { "mode": "live" }
 }

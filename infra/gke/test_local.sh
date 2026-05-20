@@ -174,20 +174,36 @@ echo ""
 trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"' EXIT
 
 echo "--- Step 3: Creating test config ---"
+if [ "$DRY_RUN" = true ]; then
+    EXECUTION_MODE="dry_run"
+elif [ "$GOLD_RUN" = true ]; then
+    EXECUTION_MODE="gold"
+else
+    EXECUTION_MODE="live"
+fi
+
 cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
 {
-  "build_type": "$BUILD_TYPE",
-  "max_iterations": 1,
-  "max_model_response_tokens": 100,
-  "model": "notarealmodel",
-  "dry_run": $DRY_RUN,
-  "gold_run": $GOLD_RUN,
-  "workflow": "exploit",
-  "synthetic_vuln_id": "$VULN_ID",
-  "agent_image": "cybench/mobilecybench:latest",
-  "emulator_display": "headless",
-  "emulator_backend": "$EMULATOR_BACKEND",
-  "build_command_timeout": 2400
+  "workflow": {
+    "kind": "exploit",
+    "synthetic_vuln_id": "$VULN_ID"
+  },
+  "agent": {
+    "mode": "custom",
+    "image": "cybench/mobilecybench:latest",
+    "model": "notarealmodel",
+    "max_iterations": 1,
+    "max_model_response_tokens": 100
+  },
+  "runtime": {
+    "build_type": "$BUILD_TYPE",
+    "emulator_display": "headless",
+    "emulator_backend": "$EMULATOR_BACKEND",
+    "build_command_timeout": 2400
+  },
+  "execution": {
+    "mode": "$EXECUTION_MODE"
+  }
 }
 EOF
 echo "Config written to runner_config_test.json"

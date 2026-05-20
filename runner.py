@@ -14,7 +14,15 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from models.config import RunnerConfig
+from models.config import RedteamZerodayWorkflowInput, RunnerConfig
+from models.resolved_config import (
+    REDTEAM_WORKFLOW_TYPES,
+    ResolvedExploitWorkflow,
+    ResolvedRedteamSyntheticWorkflow,
+    ResolvedRedteamZerodayWorkflow,
+    ResolvedRunnerConfig,
+    resolve_runner_config,
+)
 from utils.exploit_source import (
     ExploitSourceError,
     resolve_gold_source,
@@ -101,67 +109,26 @@ def run_interactive_shell(app_name: str) -> dict:
 
 
 def create_workflow(
-    config: RunnerConfig, app_name: str, project_root: Path
+    config: ResolvedRunnerConfig, app_name: str, project_root: Path
 ) -> Workflow:
-    """
-    Create the appropriate workflow based on configuration.
-
-    Args:
-        config: Runner configuration
-        app_name: Name of the app to evaluate
-        project_root: Root directory of the project
-
-    Returns:
-        Workflow instance (ExploitWorkflow or RedTeamWorkflow)
-    """
-    if config.workflow == "redteam":
+    """Construct the workflow for the resolved config."""
+    if config.is_redteam:
         return RedTeamWorkflow(config, app_name, project_root)
     return ExploitWorkflow(config, app_name, project_root)
 
 
 def _log_experiment_config(
-    config: RunnerConfig, app_name: str, workflow: Workflow
+    config: RunnerConfig, resolved: ResolvedRunnerConfig, workflow: Workflow
 ) -> None:
-    """Log a structured summary of the full experiment configuration.
+    """Log a compact effective summary plus the input config dump.
 
-    Combines runner config with app metadata so the full experiment log
-    captures everything needed to reproduce or understand the run.
+    The input ``config.model_dump()`` is exhaustive enough for repro; the
+    detail it lacks (bundle-resolved ``attacker_model``) is in ``log_view``.
     """
     metadata = getattr(workflow, "metadata", {})
 
-    experiment_config = {
-        "app": {
-            "name": app_name,
-            **metadata,
-        },
-        "runner": config.model_dump(),
-    }
-
-    # Add exploit-specific fields
-    if config.workflow == "exploit":
-        experiment_config["exploit"] = {
-            "vuln_id": config.synthetic_vuln_id,
-        }
-
-    logger.info(
-        "Run config: app=%s workflow=%s attacker_model=%s",
-        app_name,
-        config.workflow,
-        config.attacker_model,
-    )
-    logger.info(
-        "Runner settings: gold_run=%s task=%s dry_run=%s model=%s iterations=%s",
-        str(config.gold_run).lower(),
-        config.task,
-        str(config.dry_run).lower(),
-        config.model,
-        config.max_iterations,
-    )
-    logger.info(
-        "Emulator: %s/%s",
-        config.emulator_backend,
-        config.emulator_display,
-    )
+    for line in resolved.log_view():
+        logger.info(line)
     logger.info(
         "App config: package=%s commit=%s",
         metadata.get("package_name"),
@@ -177,24 +144,35 @@ def _log_experiment_config(
     if container_names:
         logger.info("App containers: %s", ", ".join(container_names))
     logger.info(
-        "Experiment configuration (full):\n%s",
-        json.dumps(experiment_config, indent=2, default=str),
+        "Experiment configuration:\n%s",
+        json.dumps(
+            {
+                "app": {"name": resolved.app_name, **metadata},
+                "runner": config.model_dump(),
+            },
+            indent=2,
+            default=str,
+        ),
     )
 
 
-def _load_bundle_attacker_model(
-    project_root: Path, app_name: str, config: RunnerConfig
-) -> str:
-    """Return the bundle's authoritative attacker_model for redteam runs.
+def _derive_outcome(
+    *, agent_status: str, eval_score: Optional[int], is_redteam: bool
+) -> tuple[str, str, int]:
+    """Map (agent_status, eval_score) → (outcome, exit_reason, exit_code).
 
-    Bundle-backed (synthetic / zeroday): read from task metadata.json.
-    Probe-only bundle-less: returns the config value (the bundle echoes it).
+    Precedence: agent failures (timeout/error) > scoring > workflow defaults.
+    Redteam workflows must always produce a score; absence is a runner failure.
     """
-    from evaluation.task_bundle import assert_zerodays_initialized, resolve_bundle
-
-    if getattr(config, "task", None):
-        assert_zerodays_initialized(project_root)
-    return resolve_bundle(config, project_root, app_name).attacker_model()
+    if agent_status in ("timeout", "error"):
+        return "failure", agent_status, 1
+    if eval_score == 1:
+        return "success", "completed", 0
+    if eval_score is not None:
+        return "failure", "completed", 1
+    if is_redteam:
+        return "failure", "missing_evaluation", 1
+    return "success", "completed", 0
 
 
 def _log_evaluation_result(evaluation: dict) -> None:
@@ -217,7 +195,7 @@ def run(
     Execute the evaluation workflow.
 
     Args:
-        config: Runner configuration
+        config: Runner configuration (input contract)
         app_name: Name of the app to evaluate
         project_root: Root directory of the project
 
@@ -240,46 +218,45 @@ def run(
     exit_code = 1
 
     gold_source_dir: Optional[Path] = None
+    resolved: Optional[ResolvedRunnerConfig] = None
     try:
-        # Initialize submodules before any task/app metadata reads. Redteam
-        # attacker-model reconciliation and gold-source resolution both touch
-        # task bundle paths, so preconditions belong at the top of the run.
-        if config.workflow == "redteam" and config.task:
+        # Initialize submodules before any task/app metadata reads. Zeroday
+        # bundles live under zerodays/; resolution reads metadata.json so the
+        # submodule must be initialized first.
+        if isinstance(config.workflow, RedteamZerodayWorkflowInput):
             ensure_zerodays_submodule(project_root)
         ensure_app_submodule(project_root, app_name)
 
-        # Redteam: bundle owns attacker_model. Sync into config so downstream
-        # gold-source resolution sees the authoritative value.
-        if config.workflow == "redteam":
-            bundle_attacker_model = _load_bundle_attacker_model(
-                project_root, app_name, config
-            )
-            if bundle_attacker_model != config.attacker_model:
-                logger.info(
-                    "Bundle attacker_model overrides config: %s -> %s",
-                    config.attacker_model,
-                    bundle_attacker_model,
-                )
-                config = config.model_copy(
-                    update={"attacker_model": bundle_attacker_model}
-                )
-
-        # Gold source is resolved after attacker_model reconciliation so
-        # shape validation uses the authoritative model.
-        is_apk_exploit = (
-            config.workflow == "redteam" and config.attacker_model == "malicious_app"
+        # Single resolution: bundle is looked up once, attacker_model becomes
+        # authoritative on the resolved object. No sync-back into config.
+        resolved = resolve_runner_config(
+            config, app_name=app_name, project_root=project_root
         )
-        if config.gold_run:
+
+        wf = resolved.workflow
+        is_apk_exploit = (
+            isinstance(wf, REDTEAM_WORKFLOW_TYPES)
+            and wf.attacker_model == "malicious_app"
+        )
+        if resolved.execution_mode == "gold":
             gold_source_dir = resolve_gold_source(
-                workflow=config.workflow,
+                workflow=resolved.workflow_family,
                 app_name=app_name,
-                task=config.task,
-                vuln_id=config.synthetic_vuln_id,
+                task=(
+                    wf.task if isinstance(wf, ResolvedRedteamZerodayWorkflow) else None
+                ),
+                vuln_id=(
+                    wf.synthetic_vuln_id
+                    if isinstance(
+                        wf, (ResolvedExploitWorkflow, ResolvedRedteamSyntheticWorkflow)
+                    )
+                    else None
+                ),
                 project_root=project_root,
                 is_apk_exploit=is_apk_exploit,
             )
 
-        workflow = create_workflow(config, app_name, project_root)
+        workflow = create_workflow(resolved, app_name, project_root)
         workflow_type = type(workflow).__name__
         logger.info(f"Created {workflow_type} for app: {app_name}")
 
@@ -288,7 +265,7 @@ def run(
         logger.info("Arguments validated")
 
         # Log structured experiment configuration for observability
-        _log_experiment_config(config, app_name, workflow)
+        _log_experiment_config(config, resolved, workflow)
 
         logger.info("Setting up runtime environment...")
         workflow.setup_runtime_environment()
@@ -304,7 +281,7 @@ def run(
             )
             logger.info("Staged gold exploit into %s", staged)
 
-        if config.dry_run:
+        if resolved.execution_mode == "dry_run":
             logger.info("Dry run mode - launching interactive shell...")
             run_result = normalize_agent_result(run_interactive_shell(app_name))
             run_result["status"] = "dry_run_completed"
@@ -351,34 +328,11 @@ def run(
             evaluation = workflow.evaluate() or {}
             _log_evaluation_result(evaluation)
 
-            # Derive outcome from agent_status and evaluation rather than
-            # unconditionally reporting success.
-            agent_status = run_result.get("status", "unknown")
-            eval_score = evaluation.get("score")
-
-            if agent_status in ("timeout", "error"):
-                outcome = "failure"
-                exit_reason = agent_status
-                exit_code = 1
-            elif eval_score == 1:
-                outcome = "success"
-                exit_reason = "completed"
-                exit_code = 0
-            elif eval_score is not None:
-                # Evaluation ran but the exploit did not succeed
-                outcome = "failure"
-                exit_reason = "completed"
-                exit_code = 1
-            elif config.workflow == "redteam":
-                # Redteam evaluation must always produce a top-level score.
-                outcome = "failure"
-                exit_reason = "missing_evaluation"
-                exit_code = 1
-            else:
-                # No evaluation score (non-exploit workflow or eval skipped)
-                outcome = "success"
-                exit_reason = "completed"
-                exit_code = 0
+            outcome, exit_reason, exit_code = _derive_outcome(
+                agent_status=run_result.get("status", "unknown"),
+                eval_score=evaluation.get("score"),
+                is_redteam=resolved.is_redteam if resolved else False,
+            )
 
     except (ValueError, ExploitSourceError) as e:
         logger.error(f"Validation error: {e}")
@@ -428,7 +382,8 @@ def run(
             project_root=project_root,
             run_id=run_id,
             app_name=app_name,
-            config=config,
+            resolved=resolved,
+            config_input=config,
             config_path=config_path,
             workflow=workflow,
             run_result=run_result,

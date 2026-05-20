@@ -44,24 +44,17 @@
     },
     "config": {
       "type": "object",
-      "required": [
-        "build_type",
-        "dry_run",
-        "emulator_backend",
-        "emulator_display",
-        "max_iterations",
-        "max_model_response_tokens",
-        "full_snapshot"
-      ],
+      "required": ["full_snapshot", "effective"],
       "properties": {
-        "build_type": { "type": "string" },
-        "dry_run": { "type": "boolean" },
-        "emulator_backend": { "type": "string", "enum": ["native", "container"] },
-        "emulator_display": { "type": "string", "enum": ["headed", "headless"] },
-        "max_iterations": { "type": "integer", "minimum": 1 },
-        "max_model_response_tokens": { "type": "integer", "minimum": 1 },
-        "reasoning_effort": { "type": ["string", "null"] },
-        "full_snapshot": { "type": "object" }
+        "config_path": { "type": ["string", "null"] },
+        "full_snapshot": {
+          "type": "object",
+          "description": "Verbatim dump of the input RunnerConfig (provenance)."
+        },
+        "effective": {
+          "type": ["object", "null"],
+          "description": "Effective resolved view; null only when resolution itself failed (rare — submodule init or bundle metadata error). When present, contains app_name/workflow/agent/execution/runtime; variant-specific fields (max_iterations, wallclock_seconds, ...) appear only on the matching variant."
+        }
       }
     },
     "reproducibility": {

@@ -55,8 +55,8 @@ if [ -n "$APP_NAME" ]; then
     # Ensure headless display in runner_config.json (orchestrator runs without display)
     # This changes the host filesystem via volume mount
     if [ -f runner_config.json ]; then
-        jq '.emulator_display = "headless"' runner_config.json > runner_config.json.tmp && mv runner_config.json.tmp runner_config.json
-        echo "Set emulator_display=headless in runner_config.json"
+        jq '.runtime.emulator_display = "headless"' runner_config.json > runner_config.json.tmp && mv runner_config.json.tmp runner_config.json
+        echo "Set runtime.emulator_display=headless in runner_config.json"
     fi
 
     python3 runner.py "$APP_NAME"

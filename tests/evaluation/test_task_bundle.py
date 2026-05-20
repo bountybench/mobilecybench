@@ -2,7 +2,6 @@
 
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -12,14 +11,7 @@ from evaluation.task_bundle import (
     TaskBundle,
     ZerodayBundle,
     assert_zerodays_initialized,
-    resolve_bundle,
 )
-
-
-def _config(**kwargs):
-    values = {"task": None, "synthetic_vuln_id": None}
-    values.update(kwargs)
-    return SimpleNamespace(**values)
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -85,24 +77,6 @@ def _initialized_zerodays_root(tmp_path: Path) -> Path:
     return tmp_path
 
 
-@pytest.mark.parametrize(
-    ("cfg", "expected_type"),
-    [
-        (_config(synthetic_vuln_id="vuln_0"), SyntheticBundle),
-        (_config(task="report-1"), ZerodayBundle),
-    ],
-)
-def test_resolve_bundle_selects_expected_kind(cfg, expected_type):
-    bundle = resolve_bundle(cfg, Path("/p"), "app")
-    assert isinstance(bundle, expected_type)
-
-
-def test_resolve_bundle_preserves_synthetic_vuln_id():
-    bundle = resolve_bundle(_config(synthetic_vuln_id="vuln_0"), Path("/p"), "app")
-    assert isinstance(bundle, SyntheticBundle)
-    assert bundle.vuln_id == "vuln_0"
-
-
 def test_assert_zerodays_initialized_raises_when_submodule_missing(tmp_path):
     """A bare clone leaves zerodays/ empty; downstream callers should
     see an actionable error pointing at the submodule, not a generic
@@ -116,26 +90,6 @@ def test_assert_zerodays_initialized_raises_when_submodule_missing(tmp_path):
 def test_assert_zerodays_initialized_passes_when_submodule_populated(tmp_path):
     """Once any content lives under zerodays/, the precondition clears."""
     assert_zerodays_initialized(_initialized_zerodays_root(tmp_path))
-
-
-def test_resolve_bundle_does_not_check_filesystem(tmp_path):
-    """resolve_bundle is pure path-resolution — env preconditions live
-    in `assert_zerodays_initialized`, not here."""
-    bundle = resolve_bundle(_config(task="report-1"), tmp_path, "app")
-    assert isinstance(bundle, ZerodayBundle)
-
-
-@pytest.mark.parametrize(
-    "cfg",
-    [
-        _config(),
-        _config(task="r1", synthetic_vuln_id="v0"),
-        _config(task="", synthetic_vuln_id=""),
-    ],
-)
-def test_resolve_bundle_rejects_invalid_selector(cfg):
-    with pytest.raises(ValueError, match="exactly one"):
-        resolve_bundle(cfg, Path("/p"), "app")
 
 
 @pytest.mark.parametrize(
@@ -248,17 +202,10 @@ def test_probe_only_bundle_validate_build_artifacts(tmp_path):
     bundle.validate_build_artifacts(tmp_path / "apps" / "myapp")
 
 
-def test_resolve_bundle_returns_probe_only_bundle(tmp_path):
-    config = _config(
-        probe_only=True,
-        attacker_model="malicious_app",
+def test_probe_only_bundle_echoes_attacker_model(tmp_path):
+    """ProbeOnlyBundle carries the operator-supplied attacker_model
+    (no task metadata.json to read from)."""
+    bundle = ProbeOnlyBundle(
+        app_dir=tmp_path / "apps" / "myapp", _attacker_model="malicious_app"
     )
-    bundle = resolve_bundle(config, tmp_path, "myapp")
-    assert isinstance(bundle, ProbeOnlyBundle)
     assert bundle.attacker_model() == "malicious_app"
-
-
-def test_resolve_bundle_probe_only_rejects_unknown_attacker_model(tmp_path):
-    config = _config(probe_only=True, attacker_model="bogus")
-    with pytest.raises(ValueError, match="attacker_model"):
-        resolve_bundle(config, tmp_path, "myapp")

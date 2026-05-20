@@ -229,7 +229,7 @@ class LoggerManager:
                 self._project_root = Path.cwd()
             logs_base = self._project_root / "logs"
 
-        self._is_gold = bool(self._config.get("gold_run"))
+        self._is_gold = self._config.get("execution", {}).get("mode") == "gold"
         suffix = "_gold" if self._is_gold else ""
         if self._is_gold:
             logs_base = logs_base / "gold"

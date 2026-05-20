@@ -71,16 +71,7 @@ def _run_main(module, argv: list[str]) -> int:
 
 def test_main_returns_0_on_successful_call(smoke_test_module, tmp_path):
     """A provider that returns a non-empty assistant_text → exit 0."""
-    config = {
-        "model": "gpt-5.5",
-        "build_type": "skip-apk",
-        "agent_image": "x:latest",
-        "max_iterations": 1,
-        "max_model_response_tokens": 64,
-        "dry_run": False,
-        "workflow": "exploit",
-        "synthetic_vuln_id": "vuln_0",
-    }
+    config = {"agent": {"model": "gpt-5.5", "allow_unregistered_models": False}}
     config_path = tmp_path / "runner_config.json"
     config_path.write_text(json.dumps(config))
 
@@ -240,7 +231,9 @@ def test_main_propagates_allow_unregistered_from_cli(smoke_test_module):
 def test_main_propagates_allow_unregistered_from_config(smoke_test_module, tmp_path):
     """allow_unregistered_models=true in runner_config.json reaches the factory."""
     cfg = tmp_path / "cfg.json"
-    cfg.write_text(json.dumps({"model": "x", "allow_unregistered_models": True}))
+    cfg.write_text(
+        json.dumps({"agent": {"model": "x", "allow_unregistered_models": True}})
+    )
 
     fake_provider = MagicMock()
     fake_provider.call.return_value = _provider_response(text="OK")

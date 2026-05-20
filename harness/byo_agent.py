@@ -3,7 +3,7 @@
 Single function: ``run_agent(env, task_dict, host_artifact_dir) -> dict``.
 
 The container is created upstream by ``setup_runtime_environment`` from
-``config.agent_image``; ``env.container`` is the live handle and
+``resolved.agent.image``; ``env.container`` is the live handle and
 ``env.container.image`` is the source of truth for which image is running.
 """
 
