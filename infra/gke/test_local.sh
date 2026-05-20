@@ -203,6 +203,9 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   },
   "execution": {
     "mode": "$EXECUTION_MODE"
+  },
+  "prompt": {
+    "additional_system_prompt": null
   }
 }
 EOF

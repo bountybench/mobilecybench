@@ -181,7 +181,8 @@ docker exec kali-container tail -f /app/agent_run/conversation.jsonl
     "image": "your-org/your-agent:v1",
     "model": "claude-sonnet-4-6",
     "wallclock_seconds": 1800
-  }
+  },
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 

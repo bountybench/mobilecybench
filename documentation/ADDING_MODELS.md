@@ -91,7 +91,10 @@ Open `logs/latest/conversation.jsonl` and confirm the single turn has non-empty 
 Set this on the `agent` block in `runner_config.json` to skip the registry check:
 
 ```json
-{ "agent": { "model": "claude-some-variant", "allow_unregistered_models": true } }
+{
+  "agent": { "model": "claude-some-variant", "allow_unregistered_models": true },
+  "prompt": { "additional_system_prompt": null }
+}
 ```
 
 The agent logs a `WARNING` and proceeds. The model still has to route

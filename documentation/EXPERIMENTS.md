@@ -103,7 +103,8 @@ The committed `runner_config.json` ships a probe-only redteam example. For an ex
 ```json
 {
   "workflow": { "kind": "exploit", "synthetic_vuln_id": "vuln_0" },
-  "runtime": { "build_type": "source" }
+  "runtime": { "build_type": "source" },
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 
@@ -137,7 +138,8 @@ Example external (Claude Code reference image):
     "image": "cybench/mobilecybench:claudecode_2.1.140-r2",
     "model": "claude-sonnet-4-6",
     "wallclock_seconds": 1800
-  }
+  },
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 

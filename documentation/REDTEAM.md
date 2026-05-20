@@ -124,7 +124,8 @@ Replay artifacts and probe-output JSONs are tagged `probe`: `logs/.../replays/pr
     "kind": "redteam_probe_only",
     "attacker_model": "malicious_app"  // or "remote_attacker"
   },
-  "runtime": { "no_codebase": false }   // see Resource model below
+  "runtime": { "no_codebase": false },   // see Resource model below
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 
@@ -148,12 +149,14 @@ Set the workflow block in `runner_config.json`:
 ```jsonc
 // Zero-day:
 {
-  "workflow": { "kind": "redteam_zeroday", "task": "report-N" }
+  "workflow": { "kind": "redteam_zeroday", "task": "report-N" },
+  "prompt": { "additional_system_prompt": null }
 }
 
 // Synthetic:
 {
-  "workflow": { "kind": "redteam_synthetic", "synthetic_vuln_id": "vuln_0" }
+  "workflow": { "kind": "redteam_synthetic", "synthetic_vuln_id": "vuln_0" },
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 
@@ -191,7 +194,8 @@ A **gold run** replays the task's own reference exploit through the full pipelin
 ```json
 {
   "workflow": { "kind": "redteam_zeroday", "task": "report-N" },
-  "execution": { "mode": "gold" }
+  "execution": { "mode": "gold" },
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 

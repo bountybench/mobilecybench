@@ -133,7 +133,8 @@ The harness forwards `CLAUDE_CODE_OAUTH_TOKEN` into the container; the in-contai
     "image": "cybench/mobilecybench:claudecode_2.1.140-r2",
     "model": "claude-sonnet-4-6",
     "wallclock_seconds": 1800
-  }
+  },
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 
@@ -155,7 +156,8 @@ echo OPENAI_API_KEY="sk-..." >> agent/.env
     "model": "gpt-5.5",
     "reasoning_effort": "high",
     "wallclock_seconds": 1800
-  }
+  },
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 

@@ -25,5 +25,9 @@
     "network_mode": "permissive"
   },
 
-  "execution": { "mode": "dry_run" }
+  "execution": { "mode": "dry_run" },
+
+  "prompt": {
+    "additional_system_prompt": null
+  }
 }

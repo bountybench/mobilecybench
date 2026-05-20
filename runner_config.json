@@ -9,8 +9,8 @@
   "agent": {
     "mode": "custom",
     "image": "cybench/mobilecybench:latest",
-    "model": "gpt-5.5",
-    "reasoning_effort": "high",
+    "model": "gpt-5.4",
+    "reasoning_effort": "low",
     "max_iterations": 30,
     "max_model_response_tokens": 8192,
     "llm_request_timeout_ms": 600000,
@@ -25,5 +25,9 @@
     "network_mode": "permissive"
   },
 
-  "execution": { "mode": "live" }
+  "execution": { "mode": "live" },
+
+  "prompt": {
+    "additional_system_prompt": null
+  }
 }
