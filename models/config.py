@@ -63,7 +63,7 @@ class RunnerConfig(BaseModel):
         ...,
         min_length=1,
         description=(
-            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). "
+            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). "
             "Custom path: routed via agent/custom/model_providers/factory.py. "
             "External path: forwarded to the in-container CLI."
         ),
