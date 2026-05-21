@@ -1,36 +1,38 @@
-"""Runner configuration model.
+"""Runner configuration input model.
 
-Single source of truth for `runner_config.json`. Each field carries a
-``description`` that surfaces in three places:
+Single source of truth for ``runner_config.json``. The nested shape encodes
+cross-section invariants in the type system: discriminated ``workflow`` and
+``agent`` blocks make invalid combinations unrepresentable (e.g. probe-only
+cannot carry ``task``; external mode cannot carry ``max_iterations``).
+
+Each field's ``description`` surfaces in three places:
 
   1. ``schemas/runner_config.schema.json`` — generated from
-     ``RunnerConfig.model_json_schema()`` and committed for editor / IDE
-     autocomplete and hover-docs (VSCode, JetBrains, Neovim).
-  2. ``python runner.py --explain-config`` — terminal users get the same
-     schema without leaving the CLI.
-  3. ``documentation/EXPERIMENTS.md`` — prose for cross-field semantics
-     (workflow/task XOR, mode-flag mutual exclusion) and pointers to the
-     two surfaces above.
+     ``RunnerConfig.model_json_schema()`` and committed for IDE autocomplete.
+  2. ``python runner.py --explain-config`` — CLI dump of the schema.
+  3. ``documentation/EXPERIMENTS.md`` — prose walkthrough.
 
-A CI parity test (``tests/test_runner_config_schema.py``) fails the
-build if the committed JSON Schema drifts from this model.
+A CI parity test (``tests/test_runner_config_schema.py``) fails the build if
+the committed schema drifts from this model.
 """
 
 import json
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Optional
+from typing import Annotated, Any, ClassVar, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent.custom.model_providers.factory import MODEL_REGISTRY
 from agent.custom.model_providers.litellm_provider import lookup_rule
 
-# Image-tag prefix (the part before "_<version>" in the Docker tag) →
-# set of ProviderRule.provider tags ("anthropic", "openai", "gemini",
-# ...) that the CLI in that image can call. Reference images follow
-# the `<prefix>_<version>-r<rev>` tag convention documented in
-# BRING_YOUR_OWN_AGENT.md. Unknown prefixes skip the compat check;
-# lab/BYO images are unconstrained.
+# Image-tag prefix (the part before "_<version>" in the Docker tag) → set of
+# ProviderRule.provider tags ("anthropic", "openai", ...) that the CLI in that
+# image can call. Reference images follow the `<prefix>_<version>-r<rev>` tag
+# convention documented in BRING_YOUR_OWN_AGENT.md. Unknown prefixes skip the
+# compat check; lab/BYO images are unconstrained.
+AttackerModel = Literal["malicious_app", "remote_attacker"]
+
+
 _CLI_IMAGE_COMPAT: dict[str, set[str]] = {
     "claudecode": {"anthropic"},
     "codex": {"openai"},
@@ -38,12 +40,7 @@ _CLI_IMAGE_COMPAT: dict[str, set[str]] = {
 
 
 def _cli_family(agent_image: str) -> Optional[str]:
-    """Return the CLI prefix for a known reference image, else None.
-
-    Strips the registry/repo portion of ``agent_image`` and matches the
-    tag's ``<prefix>_`` head against ``_CLI_IMAGE_COMPAT`` keys.
-    Example: ``cybench/mobilecybench:claudecode_2.1.140-r2`` -> ``"claudecode"``.
-    """
+    """Return the CLI prefix for a known reference image, else None."""
     tag = agent_image.rsplit(":", 1)[-1] if ":" in agent_image else agent_image
     for prefix in _CLI_IMAGE_COMPAT:
         if tag.startswith(prefix + "_"):
@@ -51,26 +48,216 @@ def _cli_family(agent_image: str) -> Optional[str]:
     return None
 
 
-class RunnerConfig(BaseModel):
-    """Configuration for a single ``runner.py`` invocation.
-
-    Cross-field invariants enforced by validators:
-
-    * ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.
-    * ``exploit`` requires ``synthetic_vuln_id``.
-    * ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)
-      or ``synthetic_vuln_id`` (synthetic).
-    * ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``
-      and ``synthetic_vuln_id``, requires ``attacker_model``, and is
-      incompatible with ``gold_run``.
-    * ``dry_run`` and ``gold_run`` are mutually exclusive.
-
-    See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
-    """
+class _Strict(BaseModel):
+    """Base for input sections — unknown keys fail validation loudly."""
 
     model_config = ConfigDict(extra="forbid")
 
-    # ---- App, build & access ------------------------------------------------
+
+# ---- Workflow variants ------------------------------------------------------
+
+
+class ExploitWorkflowInput(_Strict):
+    """Known-vulnerability synthetic workflow."""
+
+    kind: Literal["exploit"] = Field(
+        ..., description="Selects the known-vulnerability synthetic workflow."
+    )
+    synthetic_vuln_id: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Names a directory under apps/<app>/synthetic_vulnerabilities/. "
+            "Required for the exploit workflow."
+        ),
+    )
+
+
+class RedteamSyntheticWorkflowInput(_Strict):
+    """Bundle-backed redteam against a synthetic vulnerability."""
+
+    kind: Literal["redteam_synthetic"] = Field(
+        ..., description="Bundle-backed redteam against a synthetic vulnerability."
+    )
+    synthetic_vuln_id: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Names a directory under apps/<app>/synthetic_vulnerabilities/. "
+            "The bundle's metadata.json supplies the authoritative attacker_model."
+        ),
+    )
+
+
+class RedteamZerodayWorkflowInput(_Strict):
+    """Bundle-backed redteam against a zero-day report task."""
+
+    kind: Literal["redteam_zeroday"] = Field(
+        ..., description="Bundle-backed redteam against a zero-day task."
+    )
+    task: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Names a directory under zerodays/reports/<app>/. The bundle's "
+            "metadata.json supplies the authoritative attacker_model."
+        ),
+    )
+
+
+class RedteamProbeOnlyWorkflowInput(_Strict):
+    """Bundle-less redteam scored only by probes.
+
+    Single baseline replay, no patch, no verifier. ``attacker_model`` is
+    authoritative here because there is no task metadata.json to read from.
+    """
+
+    kind: Literal["redteam_probe_only"] = Field(
+        ..., description="Bundle-less redteam scored by probes only."
+    )
+    attacker_model: AttackerModel = Field(
+        ...,
+        description=(
+            "Required and authoritative for probe-only mode (no bundle "
+            "metadata to read from)."
+        ),
+    )
+
+
+WorkflowInput = Annotated[
+    Union[
+        ExploitWorkflowInput,
+        RedteamSyntheticWorkflowInput,
+        RedteamZerodayWorkflowInput,
+        RedteamProbeOnlyWorkflowInput,
+    ],
+    Field(discriminator="kind"),
+]
+
+
+# ---- Agent variants ---------------------------------------------------------
+
+
+class CustomAgentInput(_Strict):
+    """In-process custom agent loop."""
+
+    mode: Literal["custom"] = Field(..., description="In-process Python agent loop.")
+    image: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Kali / runtime Docker image for the custom agent "
+            "(e.g. cybench/mobilecybench:latest)."
+        ),
+    )
+    model: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Model id (e.g. gpt-5.5, claude-opus-4-7). Routed via "
+            "agent/custom/model_providers/factory.py."
+        ),
+    )
+    max_iterations: int = Field(
+        ..., gt=0, description="Maximum agent turns before stopping."
+    )
+    max_model_response_tokens: int = Field(
+        ..., gt=0, description="Per-call output token cap forwarded to the provider."
+    )
+    llm_request_timeout_ms: int = Field(
+        default=600_000,
+        gt=0,
+        description=(
+            "Per-LLM-API-call timeout (milliseconds). Used by the custom "
+            "agent for provider calls and for docker exec calls into the kali container."
+        ),
+    )
+    reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
+        default=None,
+        description=(
+            "Reasoning effort hint forwarded to providers that accept it. "
+            "Models without a reasoning-effort knob ignore this field."
+        ),
+    )
+    allow_unregistered_models: bool = Field(
+        default=False,
+        description=(
+            "Permit models that are not declared in "
+            "agent/custom/model_providers/factory.py:SupportedModel. Falls "
+            "through to LiteLLM with auto-detected routing and a runtime WARNING."
+        ),
+    )
+
+
+class ExternalAgentInput(_Strict):
+    """BYO containerized agent."""
+
+    mode: Literal["external"] = Field(
+        ..., description="BYO Docker-image agent per BRING_YOUR_OWN_AGENT.md."
+    )
+    image: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "BYO reference image (e.g. cybench/mobilecybench:codex_0.130.0-r2, "
+            ":claudecode_2.1.140-r2, or a lab's own tag)."
+        ),
+    )
+    model: str = Field(
+        ...,
+        min_length=1,
+        description="Model id forwarded verbatim to the in-container CLI.",
+    )
+    wallclock_seconds: int = Field(
+        default=1800,
+        gt=0,
+        description=(
+            "Harness-side wall-clock kill budget for external agents "
+            "(SIGKILL on expiry)."
+        ),
+    )
+    reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
+        default=None,
+        description=("Reasoning effort hint forwarded to providers that accept it."),
+    )
+    allow_unregistered_models: bool = Field(
+        default=False,
+        description=(
+            "Skip the config-load model registration check (image/CLI compat "
+            "is still enforced)."
+        ),
+    )
+
+
+AgentInput = Annotated[
+    Union[CustomAgentInput, ExternalAgentInput],
+    Field(discriminator="mode"),
+]
+
+
+# ---- Execution --------------------------------------------------------------
+
+
+class ExecutionInput(_Strict):
+    """Execution mode."""
+
+    mode: Literal["live", "dry_run", "gold"] = Field(
+        default="live",
+        description=(
+            "Execution branch. ``live`` (default): run the agent. "
+            "``dry_run``: drop into an interactive Kali shell instead. "
+            "``gold``: replay the canonical exploit; invalid for "
+            "redteam_probe_only (no canonical source)."
+        ),
+    )
+
+
+# ---- Runtime ---------------------------------------------------------------
+
+
+class RuntimeInput(_Strict):
+    """Infrastructure knobs shared across workflows."""
+
     build_type: Literal["source", "download-apk", "skip-apk"] = Field(
         ...,
         description=(
@@ -85,138 +272,6 @@ class RunnerConfig(BaseModel):
             "false (default), full source is mounted at /app/codebase."
         ),
     )
-
-    # ---- Model & agent ------------------------------------------------------
-    model: str = Field(
-        ...,
-        min_length=1,
-        description=(
-            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). "
-            "Custom path: routed via agent/custom/model_providers/factory.py. "
-            "External path: forwarded to the in-container CLI."
-        ),
-    )
-    agent_image: str = Field(
-        ...,
-        min_length=1,
-        description=(
-            "Docker image the agent runs from. Custom path: kali base "
-            "(e.g. cybench/mobilecybench:latest). External path: BYO "
-            "reference image (e.g. cybench/mobilecybench:codex_0.130.0-r2, "
-            ":claudecode_2.1.140-r2, or a lab's own tag)."
-        ),
-    )
-    agent_mode: Literal["custom", "external"] = Field(
-        default="custom",
-        description=(
-            "Dispatch path. 'custom' (default): in-process Python loop. "
-            "'external': BYO Docker image satisfying the contract in "
-            "documentation/BRING_YOUR_OWN_AGENT.md (covers codex, "
-            "claude-code, and lab-supplied agents)."
-        ),
-    )
-    max_iterations: int = Field(
-        ...,
-        gt=0,
-        description="Maximum agent turns before stopping. Custom path only.",
-    )
-    max_model_response_tokens: int = Field(
-        ...,
-        gt=0,
-        description="Per-call output token cap forwarded to the provider.",
-    )
-    additional_system_prompt: Optional[str] = Field(
-        default=None,
-        description=(
-            "Free-form text appended to the workflow-built system prompt "
-            "(after any per-app additional_info from metadata.json). Applies "
-            "to all agent modes."
-        ),
-    )
-    reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
-        default=None,
-        description=(
-            "Reasoning effort hint forwarded to providers that accept it. "
-            "Models without a reasoning-effort knob ignore this field."
-        ),
-    )
-    allow_unregistered_models: bool = Field(
-        default=False,
-        description=(
-            "Permit models that are not declared in "
-            "agent/custom/model_providers/factory.py:SupportedModel. Custom "
-            "mode falls through to LiteLLM with auto-detected routing and a "
-            "runtime WARNING; external mode skips the config-load model "
-            "registration check (image/CLI compatibility is still enforced). "
-            "cost_usd reports $0 for any model that lacks a row in "
-            "utils/token_pricing.json regardless of this flag."
-        ),
-    )
-
-    # ---- Workflow & task selectors -----------------------------------------
-    workflow: Literal["exploit", "redteam"] = Field(
-        default="exploit",
-        description=(
-            "Pipeline to run. 'exploit' requires synthetic_vuln_id; "
-            "two-phase 'redteam' requires exactly one of task (zero-day) "
-            "or synthetic_vuln_id (synthetic); 'redteam' with "
-            "probe_only=true forbids both."
-        ),
-    )
-    attacker_model: Optional[Literal["malicious_app", "remote_attacker"]] = Field(
-        default=None,
-        description=(
-            "Two-phase redteam: dev/debug hint only — runtime reads the "
-            "authoritative value from the task bundle's metadata.json and "
-            "logs any override. probe_only: required and authoritative — "
-            "there is no task metadata.json to read from. See "
-            "documentation/REDTEAM.md."
-        ),
-    )
-    synthetic_vuln_id: Optional[str] = Field(
-        default=None,
-        description=(
-            "Names a directory under apps/<app>/synthetic_vulnerabilities/. "
-            "Required for workflow='exploit'; one of {this, task} required "
-            "for two-phase redteam; forbidden when probe_only=true."
-        ),
-    )
-    task: Optional[str] = Field(
-        default=None,
-        description=(
-            "Zero-day task selector for two-phase redteam. Names a "
-            "directory under zerodays/reports/<app>/. Forbidden when "
-            "probe_only=true."
-        ),
-    )
-    probe_only: bool = Field(
-        default=False,
-        description=(
-            "redteam-only bundle-less mode: single replay against the "
-            "app's baseline APK, no patch / no verifier / no two-phase "
-            "comparison. Score is signal/no_signal based on app probes. "
-            "Forbids task and synthetic_vuln_id; requires attacker_model. "
-            "Incompatible with gold_run. See "
-            "documentation/REDTEAM.md#probe-only-mode."
-        ),
-    )
-
-    # ---- Mode flags (mutually exclusive) ------------------------------------
-    dry_run: bool = Field(
-        ...,
-        description=(
-            "If true, launches an interactive Kali shell instead of the "
-            "agent. Useful for verifying setup without API credits."
-        ),
-    )
-    gold_run: bool = Field(
-        default=False,
-        description=(
-            "Replay the task's reference exploit through the full pipeline "
-            "instead of invoking the agent. Mutually exclusive with dry_run."
-        ),
-    )
-    # ---- Emulator -----------------------------------------------------------
     emulator_backend: Literal["native", "container"] = Field(
         default="native",
         description=(
@@ -225,35 +280,29 @@ class RunnerConfig(BaseModel):
         ),
     )
     emulator_display: Literal["headed", "headless"] = Field(
-        default="headed",
-        description="Whether the emulator opens a window.",
+        default="headed", description="Whether the emulator opens a window."
     )
     emulator_boot_timeout_seconds: int = Field(
         default=300,
         gt=0,
         description="How long to wait for the emulator to be ready (seconds).",
     )
-
-    # ---- Network --------------------------------------------------------------
     network_mode: Literal["restricted", "permissive"] = Field(
         default="permissive",
         description=(
             "Squid egress policy. 'permissive' (default): any public host. "
-            "'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). "
-            "Kernel routing (agent_net internal:true) applies in both."
+            "'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors)."
         ),
     )
-
-    # ---- Timeouts -----------------------------------------------------------
     script_timeout: int = Field(
         default=600,
         gt=0,
-        description="Seconds for long-running scripts (exploit, verify, setup, prepare_app).",
+        description=(
+            "Seconds for long-running scripts (exploit, verify, setup, prepare_app)."
+        ),
     )
     build_command_timeout: int = Field(
-        default=1200,
-        gt=0,
-        description="Seconds for the APK build command.",
+        default=1200, gt=0, description="Seconds for the APK build command."
     )
     apk_timeout: int = Field(
         default=60,
@@ -263,85 +312,112 @@ class RunnerConfig(BaseModel):
             "to write done.marker; agent cannot extend by withholding it."
         ),
     )
-    llm_request_timeout_ms: int = Field(
-        default=600_000,
-        gt=0,
+
+
+# ---- Prompt -----------------------------------------------------------------
+
+
+class PromptInput(_Strict):
+    """Prompt overrides (decoupled from execution controls)."""
+
+    additional_system_prompt: Optional[str] = Field(
+        default=None,
         description=(
-            "Per-LLM-API-call timeout (milliseconds). Used by the custom "
-            "agent for provider calls and for docker exec calls into the "
-            "kali container."
-        ),
-    )
-    agent_wallclock_seconds: int = Field(
-        default=1800,
-        gt=0,
-        description=(
-            "Harness-side wall-clock kill budget for external agents "
-            "(SIGKILL on expiry). Custom agent ignores this and is bounded "
-            "by max_iterations + llm_request_timeout_ms."
+            "Free-form text appended to the workflow-built system prompt "
+            "(after any per-app additional_info from metadata.json)."
         ),
     )
 
+
+# ---- Top-level --------------------------------------------------------------
+
+
+class RunnerConfig(_Strict):
+    """Configuration for a single ``runner.py`` invocation.
+
+    Cross-section invariants enforced by validators:
+
+    * ``execution.mode='gold'`` is invalid for ``workflow.kind='redteam_probe_only'``.
+    * External-mode ``agent.model`` must be registered (or
+      ``allow_unregistered_models=true``).
+    * External-mode ``agent.image`` and ``agent.model`` provider must be
+      compatible (claudecode_* ↔ anthropic, codex_* ↔ openai); the check is
+      not bypassed by ``allow_unregistered_models`` because the constraint is
+      a property of the CLI in the image, not of the model registry.
+
+    See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
+    """
+
+    workflow: WorkflowInput = Field(
+        ..., description="Pipeline + selectors (discriminated by ``kind``)."
+    )
+    agent: AgentInput = Field(
+        ..., description="Agent integration (discriminated by ``mode``)."
+    )
+    runtime: RuntimeInput = Field(
+        ..., description="Infrastructure knobs (emulator, network, timeouts)."
+    )
+    execution: ExecutionInput = Field(
+        default_factory=lambda: ExecutionInput(mode="live"),
+        description="Execution branch (live / dry_run / gold).",
+    )
+    prompt: PromptInput = Field(
+        default_factory=PromptInput, description="Prompt overrides."
+    )
+
     @classmethod
-    def from_file(
-        cls, config_path: Path, overrides: Optional[dict] = None
-    ) -> "RunnerConfig":
+    def from_file(cls, config_path: Path) -> "RunnerConfig":
         config_path = Path(config_path)
-        if not config_path.exists():
-            raise FileNotFoundError(
-                f"Runner configuration file not found: {config_path}"
-            )
         try:
             with open(config_path, "r") as f:
                 c_dict = json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Runner configuration file not found: {config_path}"
+            )
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in config file: {e}")
-        except Exception as e:
-            raise ValueError(f"Unexpected error reading config file: {e}")
 
         # Strip tooling-only keys before validation; the model is strict
         # (``extra='forbid'``) and would reject them otherwise.
         c_dict.pop("$schema", None)
-
-        if overrides:
-            c_dict.update({k: v for k, v in overrides.items() if v is not None})
-
         return cls(**c_dict)
 
-    @model_validator(mode="before")
-    @classmethod
-    def reject_legacy_agent_modes(cls, data: Any) -> Any:
-        """Reject pre-BYO ``agent_mode: "codex"|"claude-code"`` with migration hint."""
-        if not isinstance(data, dict):
-            return data
-        mode = data.get("agent_mode")
-        if mode in ("codex", "claude-code"):
-            raise ValueError(
-                f"agent_mode={mode!r} is no longer supported. "
-                f'Migrate to: agent_mode="external" with the {mode} reference image. '
-                f"See documentation/BRING_YOUR_OWN_AGENT.md for the current tag."
-            )
-        return data
+    @model_validator(mode="after")
+    def validate_probe_only_execution(self) -> "RunnerConfig":
+        """probe-only requires the agent loop to score; ``dry_run`` skips it,
+        ``gold`` has no canonical exploit to replay. Reject both early."""
+        if isinstance(self.workflow, RedteamProbeOnlyWorkflowInput):
+            if self.execution.mode == "gold":
+                raise ValueError(
+                    "execution.mode='gold' is invalid for redteam_probe_only: "
+                    "probe-only has no canonical exploit source to resolve."
+                )
+            if self.execution.mode == "dry_run":
+                raise ValueError(
+                    "execution.mode='dry_run' is invalid for redteam_probe_only: "
+                    "dry_run drops into an interactive shell and skips scoring entirely."
+                )
+        return self
 
     @model_validator(mode="after")
     def validate_model_registered_external(self) -> "RunnerConfig":
-        """For external mode, reject model ids not in ``SupportedModel``.
+        """Reject unknown model ids for external mode.
 
         Custom mode is gated when the provider is constructed in
         ``agent/custom/model_providers/factory.py:get_model_provider``;
         external mode otherwise forwards the model id verbatim to the
-        container CLI, so a typo (``opus-4-7`` vs ``claude-opus-4-7``)
-        only fails after image pull + emulator boot + API call.
-        ``allow_unregistered_models=True`` bypasses this check for
-        exploration runs.
+        container CLI, so a typo only fails after image pull + emulator boot.
+        ``allow_unregistered_models=True`` bypasses this for exploration runs.
         """
-        if self.agent_mode != "external" or self.allow_unregistered_models:
+        ag = self.agent
+        if not isinstance(ag, ExternalAgentInput) or ag.allow_unregistered_models:
             return self
-        if self.model not in MODEL_REGISTRY:
+        if ag.model not in MODEL_REGISTRY:
             raise ValueError(
-                f"Unknown model {self.model!r}. Supported: {sorted(MODEL_REGISTRY)}. "
-                f"Add to SupportedModel + utils/token_pricing.json, or set "
-                f"allow_unregistered_models=true. See documentation/ADDING_MODELS.md."
+                f"Unknown model {ag.model!r}. Supported: {sorted(MODEL_REGISTRY)}. "
+                "Add to SupportedModel + utils/token_pricing.json, or set "
+                "agent.allow_unregistered_models=true. See documentation/ADDING_MODELS.md."
             )
         return self
 
@@ -350,129 +426,29 @@ class RunnerConfig(BaseModel):
         """Reject obvious image/model mismatches for external-mode reference CLIs.
 
         The reference ``claudecode_*`` image only talks to Anthropic and
-        ``codex_*`` only to OpenAI; pairing one with a model from another
-        provider fails inside the container after setup. Unknown image
-        tags (lab / BYO) skip — they declare their own contract per
-        ``documentation/BRING_YOUR_OWN_AGENT.md``. Unlike
-        :meth:`validate_model_registered_external`, this check is not
-        bypassed by ``allow_unregistered_models``: the constraint is a
+        ``codex_*`` only to OpenAI. Unknown image tags (lab / BYO) skip — they
+        declare their own contract. Unlike model-registry gating, this check
+        is not bypassed by ``allow_unregistered_models``: the constraint is a
         property of the CLI in the image, not of the model registry.
         """
-        if self.agent_mode != "external":
+        ag = self.agent
+        if not isinstance(ag, ExternalAgentInput):
             return self
-        cli = _cli_family(self.agent_image)
+        cli = _cli_family(ag.image)
         if cli is None:
             return self
         allowed = _CLI_IMAGE_COMPAT[cli]
-        rule = lookup_rule(self.model)
+        rule = lookup_rule(ag.model)
         if rule.provider not in allowed:
             raise ValueError(
-                f"agent_image '{self.agent_image}' uses the {cli} CLI which "
-                f"only supports {sorted(allowed)} models; got model={self.model!r} "
+                f"agent.image '{ag.image}' uses the {cli} CLI which only "
+                f"supports {sorted(allowed)} models; got model={ag.model!r} "
                 f"(provider={rule.provider}). Use a model from the supported "
-                f"provider(s), or switch agent_image."
+                f"provider(s), or switch agent.image."
             )
         return self
 
-    @model_validator(mode="after")
-    def validate_probe_only_workflow(self) -> "RunnerConfig":
-        """probe_only is a redteam-only mode. Declared before
-        ``validate_attacker_model`` so on ``workflow=exploit + probe_only=True``
-        the operator sees the probe_only mismatch, not the secondary
-        attacker_model symptom (validators run in declaration order).
-        """
-        if self.probe_only and self.workflow != "redteam":
-            raise ValueError(
-                f"probe_only=True requires workflow='redteam'; "
-                f"got workflow={self.workflow!r}"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def validate_attacker_model(self) -> "RunnerConfig":
-        if self.attacker_model is not None and self.workflow != "redteam":
-            raise ValueError(
-                f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def validate_gold_run_probe_only(self) -> "RunnerConfig":
-        """gold_run resolves a canonical exploit source; probe_only has
-        none (no patch / no verifier / no replayable artifact). Reject
-        early instead of failing at gold-source resolution."""
-        if self.gold_run and self.probe_only:
-            raise ValueError(
-                "gold_run is incompatible with probe_only: probe_only has "
-                "no canonical exploit source to resolve. Run interactively "
-                "with the same probe_only config instead."
-            )
-        return self
-
-    @model_validator(mode="after")
-    def validate_task(self) -> "RunnerConfig":
-        """Workflow-specific task selector validation.
-
-        - exploit: requires synthetic_vuln_id.
-        - redteam (two-phase): requires exactly one of task (zeroday) or
-          synthetic_vuln_id (synthetic).
-        - redteam + probe_only: bundle-less mode is allowed when neither
-          task nor synthetic_vuln_id is set, but attacker_model must be
-          set on the config (no task metadata.json to read it from).
-        """
-        if self.workflow == "exploit":
-            if not self.synthetic_vuln_id:
-                raise ValueError("workflow='exploit' requires synthetic_vuln_id")
-            return self
-        if self.workflow == "redteam":
-            has_task = bool(self.task)
-            has_vuln = bool(self.synthetic_vuln_id)
-            if self.probe_only:
-                # Probe-only is bundle-less by design: the bundle's
-                # patch/verifier are irrelevant, and accepting a task or
-                # vuln_id alongside probe_only invites operator confusion
-                # ("did vuln_0 get applied?" — no).
-                if has_task or has_vuln:
-                    raise ValueError(
-                        "probe_only is bundle-less: do not set task or "
-                        "synthetic_vuln_id; got "
-                        f"task={self.task!r}, "
-                        f"synthetic_vuln_id={self.synthetic_vuln_id!r}"
-                    )
-                if not self.attacker_model:
-                    raise ValueError(
-                        "probe_only requires attacker_model to be set on "
-                        "the config (no bundle metadata to read it from)"
-                    )
-                return self
-            # Two-phase redteam: bundle is mandatory.
-            if has_task == has_vuln:
-                raise ValueError(
-                    "workflow='redteam' requires exactly one of task "
-                    "(zeroday) or synthetic_vuln_id (synthetic); "
-                    f"got task={self.task!r}, "
-                    f"synthetic_vuln_id={self.synthetic_vuln_id!r}"
-                )
-        return self
-
-    @model_validator(mode="after")
-    def validate_mode_flags(self) -> "RunnerConfig":
-        """dry_run and gold_run are mutually exclusive runner branches.
-
-        probe_only + dry_run is also rejected: dry_run short-circuits to the
-        interactive shell before scoring. (probe_only + gold_run is handled
-        by validate_gold_run_probe_only.)
-        """
-        if self.dry_run and self.gold_run:
-            raise ValueError("dry_run and gold_run are mutually exclusive")
-        if self.probe_only and self.dry_run:
-            raise ValueError(
-                "probe_only is incompatible with dry_run: dry_run drops into "
-                "an interactive shell and skips scoring entirely."
-            )
-        return self
-
-    # ---- Schema export (single source of truth for runner_config.schema.json) ----
+    # ---- Schema export ----
 
     JSON_SCHEMA_DRAFT: ClassVar[str] = "https://json-schema.org/draft/2020-12/schema"
     JSON_SCHEMA_ID: ClassVar[str] = (
@@ -481,14 +457,7 @@ class RunnerConfig(BaseModel):
     JSON_SCHEMA_TITLE: ClassVar[str] = "Runner Config"
 
     @classmethod
-    def build_json_schema(cls) -> dict:
-        """Return the canonical JSON Schema dict for ``RunnerConfig``.
-
-        Pydantic emits the per-field schema (types, defaults, enums,
-        descriptions); we wrap it with the same draft / $id / title
-        metadata used by the other ``schemas/*.json`` documents so the
-        directory stays internally consistent.
-        """
+    def build_json_schema(cls) -> dict[str, Any]:
         body = cls.model_json_schema()
         return {
             "$schema": cls.JSON_SCHEMA_DRAFT,
@@ -499,5 +468,4 @@ class RunnerConfig(BaseModel):
 
     @classmethod
     def render_json_schema(cls) -> str:
-        """Serialize :meth:`build_json_schema` with stable, diffable formatting."""
         return json.dumps(cls.build_json_schema(), indent=2, ensure_ascii=False) + "\n"

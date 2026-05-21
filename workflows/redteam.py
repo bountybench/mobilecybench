@@ -7,7 +7,8 @@ Three bundle types share the pipeline (see evaluation.task_bundle):
 
 Path resolution lives behind the TaskBundle Protocol so the workflow does not
 branch on bundle kind for paths. Two-phase vs probe-only branching is driven
-by `config.probe_only`, which short-circuits the patch/verifier/Phase-2 steps.
+by the resolved workflow variant (``ResolvedRedteamProbeOnlyWorkflow``),
+which short-circuits the patch/verifier/Phase-2 steps.
 
 Two attacker models share the pipeline via lightweight strategy objects:
 - MaliciousAppOps: APK-based exploit (am start MainActivity + done.marker poll)
@@ -23,7 +24,12 @@ from typing import Literal, Optional, Protocol
 
 from evaluation.replay_apk import MaArtifact
 from evaluation.scoring import compute_redteam_score
-from evaluation.task_bundle import TaskBundle, resolve_bundle
+from evaluation.task_bundle import TaskBundle
+from models.resolved_config import (
+    REDTEAM_WORKFLOW_TYPES,
+    ResolvedRedteamSyntheticWorkflow,
+    ResolvedRedteamZerodayWorkflow,
+)
 from utils.artifact_paths import relative_artifact_path
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
@@ -143,7 +149,7 @@ class MaliciousAppOps:
             result = replay_malicious_apk(
                 kwargs["apk_path"],
                 phase_dir,
-                apk_timeout=workflow.config.apk_timeout,
+                apk_timeout=workflow.config.runtime.apk_timeout,
                 gate=kwargs.get("gate"),
                 perm_log_path=kwargs.get("perm_log_path"),
                 output_dir=phase_dir,
@@ -246,7 +252,7 @@ class RemoteAttackerOps:
         # no_codebase=True the agent saw /app/apk/<file>.apk and no source;
         # otherwise it saw /app/codebase. _run_exploit stages the per-phase
         # APK when replay_apk is set.
-        if workflow.config.no_codebase:
+        if workflow.config.runtime.no_codebase:
             codebase_dir = None
             replay_apk = kwargs["target_apk"]
         else:
@@ -256,7 +262,7 @@ class RemoteAttackerOps:
             kwargs["exploit_dir"],
             phase_dir,
             exploit_runner=workflow.project_root / "utils" / "run_exploit_container.sh",
-            exploit_image=workflow.config.agent_image,
+            exploit_image=workflow.config.agent.image,
             app_server=workflow.metadata.get("app_server"),
             codebase_dir=codebase_dir,
             replay_apk=replay_apk,
@@ -380,26 +386,16 @@ class RedTeamWorkflow(Workflow):
 
     def __init__(self, config, app_name: str, project_root: Path):
         super().__init__(config, app_name, project_root)
-        self._bundle: TaskBundle = resolve_bundle(config, project_root, app_name)
-        # Bundle owns attacker_model: bundle-backed reads it from task
-        # metadata.json, probe-only carries the value supplied at construction.
-        self._attacker_model = self._bundle.attacker_model()
+        wf = self.config.workflow
+        if not isinstance(wf, REDTEAM_WORKFLOW_TYPES):
+            raise TypeError(
+                f"RedTeamWorkflow requires a redteam workflow variant; got {type(wf).__name__}"
+            )
+        self._bundle: TaskBundle = wf.bundle
+        self._attacker_model = wf.attacker_model
         if self._attacker_model not in _OPS:
             raise ValueError(
                 f"bundle returned unknown attacker_model={self._attacker_model!r}"
-            )
-        # Sync config so downstream readers (base.Workflow prompt/credential
-        # logic, etc.) see the effective value, not whatever the operator
-        # passed in (which may be None or stale). Single sync point —
-        # nothing else clobbers config silently.
-        if self.config.attacker_model != self._attacker_model:
-            logger.info(
-                "Bundle attacker_model overrides config: %s -> %s",
-                self.config.attacker_model,
-                self._attacker_model,
-            )
-            self.config = self.config.model_copy(
-                update={"attacker_model": self._attacker_model}
             )
         self._ops: AttackerModelOps = _OPS[self._attacker_model]()
         self._probe_config: dict = {"generic_probe_applicability": {}}
@@ -416,7 +412,7 @@ class RedTeamWorkflow(Workflow):
 
             assert_zerodays_initialized(self.project_root)
 
-        if self.config.probe_only:
+        if self.config.is_probe_only:
             # Probe-only is bundle-less: no patch, no verifier, no task-specific
             # behavior. package_name comes from app metadata (already populated
             # by the base Workflow init); attacker_model was already resolved
@@ -484,7 +480,7 @@ class RedTeamWorkflow(Workflow):
           baseline so no patch is ever applied.
         - probe_only without codebase (APK-only / closed-source): no-op.
         """
-        if self.config.probe_only:
+        if self.config.is_probe_only:
             if not codebase_dir.exists():
                 return
             from utils.git_utils import git_restore_clean
@@ -507,8 +503,8 @@ class RedTeamWorkflow(Workflow):
             sdk_version=self.metadata.get("sdk"),
             app_name=self.app_name,
             rootable=True,
-            emulator_backend=self.config.emulator_backend,
-            emulator_display=self.config.emulator_display,
+            emulator_backend=self.config.runtime.emulator_backend,
+            emulator_display=self.config.runtime.emulator_display,
         )
         self.emulator.start_in_background()
 
@@ -519,7 +515,7 @@ class RedTeamWorkflow(Workflow):
         # patched / hardened APK. Validate that single artifact instead of
         # the two-APK set required by synthetic / zeroday two-phase runs.
         try:
-            if self.config.probe_only:
+            if self.config.is_probe_only:
                 runtime_apk = self._runtime_apk()
                 if not runtime_apk.exists():
                     raise FileNotFoundError(
@@ -528,7 +524,7 @@ class RedTeamWorkflow(Workflow):
             else:
                 self._bundle.validate_build_artifacts(self.app_dir)
         except FileNotFoundError as e:
-            if self.config.build_type == "skip-apk":
+            if self.config.runtime.build_type == "skip-apk":
                 raise FileNotFoundError(
                     f"build_type='skip-apk' requires prebuilt APKs. {e}. "
                     "Build them first with build_type='source' or fetch with build_type='download-apk'."
@@ -536,7 +532,7 @@ class RedTeamWorkflow(Workflow):
             raise
 
         self.emulator.wait_until_ready(
-            timeout=self.config.emulator_boot_timeout_seconds
+            timeout=self.config.runtime.emulator_boot_timeout_seconds
         )
 
         inject_system_ca(self.project_root)
@@ -553,7 +549,7 @@ class RedTeamWorkflow(Workflow):
             self.project_root,
             apk_path=self._runtime_apk(),
             inject_flags=False,
-            build_command_timeout=self.config.build_command_timeout,
+            build_command_timeout=self.config.runtime.build_command_timeout,
         )
 
         # For synthetic bundles the patch is applied on top of the checked-out
@@ -567,14 +563,14 @@ class RedTeamWorkflow(Workflow):
         # the runtime APK explicitly so redteam runs don't fall back to the
         # agent_container derivation, which assumes a synthetic bundle's
         # clean APK and would mis-route for zeroday / probe_only.
-        runtime_apk = self._runtime_apk() if self.config.no_codebase else None
+        runtime_apk = self._runtime_apk() if self.config.runtime.no_codebase else None
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
-            agent_image=self.config.agent_image,
+            agent_image=self.config.agent.image,
             metadata=self.metadata,
-            workflow=self.config.workflow,
-            no_codebase=self.config.no_codebase,
-            network_mode=self.config.network_mode,
+            workflow=self.config.workflow_family,
+            no_codebase=self.config.runtime.no_codebase,
+            network_mode=self.config.runtime.network_mode,
             post_checkout_hook=self._prepare_runtime_codebase,
             apk_path=runtime_apk,
         )
@@ -634,7 +630,7 @@ class RedTeamWorkflow(Workflow):
         self._bundle.build_apks(
             self.app_name,
             self.project_root,
-            timeout=self.config.build_command_timeout,
+            timeout=self.config.runtime.build_command_timeout,
         )
         self._bundle.validate_build_artifacts(self.app_dir)
 
@@ -665,7 +661,7 @@ class RedTeamWorkflow(Workflow):
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 env=env,
-                timeout=self.config.script_timeout,
+                timeout=self.config.runtime.script_timeout,
             )
         logger.info(f"[verifier] exit={proc.returncode} log={log_path}")
         return proc.returncode
@@ -679,7 +675,7 @@ class RedTeamWorkflow(Workflow):
         # Skip the verifier in probe_only mode: it depends on
         # task/verify_files/verify_exploit.sh, which may not exist for
         # public-APK tasks, and its result is unused by probe_only scoring.
-        if self.config.probe_only:
+        if self.config.is_probe_only:
             verifier_exit = None
         else:
             verifier_exit = self._run_verifier(
@@ -757,13 +753,15 @@ class RedTeamWorkflow(Workflow):
         }
 
     def evaluate(self) -> dict:
-        if self.config.dry_run:
+        if self.config.execution_mode == "dry_run":
             logger.info("Dry run — skipping evaluation")
             return {"scores": {}}
 
+        wf = self.config.workflow
+        task = wf.task if isinstance(wf, ResolvedRedteamZerodayWorkflow) else None
         logger.info(
             f"Evaluation started: workflow=redteam attacker_model={self._attacker_model} "
-            f"task={self.config.task}"
+            f"task={task}"
         )
 
         logs_dir = logger_manager.get_logs_dir()
@@ -818,7 +816,7 @@ class RedTeamWorkflow(Workflow):
 
         # Phase tag drives both the on-disk replay dir and the result schema
         # (phases.probe vs. phases.phase1_original / phase2_patched).
-        if self.config.probe_only:
+        if self.config.is_probe_only:
             phase_label = "Probe-only"
             phase_tag = "probe"
             logger.info("[probe-only] running app baseline build")
@@ -830,7 +828,7 @@ class RedTeamWorkflow(Workflow):
         self._prepare_runtime_codebase(codebase_dir)
         phase1_result = self._ops.run_phase(
             self,
-            replays_dir / ("probe" if self.config.probe_only else "phase1_original"),
+            replays_dir / ("probe" if self.config.is_probe_only else "phase1_original"),
             **self._ops.get_phase_kwargs(
                 agent_exploit_dir,
                 self._runtime_apk(),
@@ -844,7 +842,7 @@ class RedTeamWorkflow(Workflow):
         p1 = self._evaluate_phase(phase_label, phase1_result, replays_dir, phase_tag)
 
         # No patched APK to compare against, so score on Phase 1 alone.
-        if self.config.probe_only:
+        if self.config.is_probe_only:
             # Precedence: timed_out > failure_kind > probe_evaluator_error.
             if p1.get("timed_out"):
                 result = self._make_result(
@@ -1042,11 +1040,18 @@ class RedTeamWorkflow(Workflow):
         return result
 
     def _make_result(self, status: str, score: int = 0, **kwargs) -> dict:
+        # Both keys present (one will be None) so the result schema stays uniform
+        # across the two bundle-backed variants.
+        wf = self.config.workflow
         return {
             "workflow": "redteam",
             "attacker_model": self._attacker_model,
-            "task": self.config.task,
-            "synthetic_vuln_id": self.config.synthetic_vuln_id,
+            "task": wf.task if isinstance(wf, ResolvedRedteamZerodayWorkflow) else None,
+            "synthetic_vuln_id": (
+                wf.synthetic_vuln_id
+                if isinstance(wf, ResolvedRedteamSyntheticWorkflow)
+                else None
+            ),
             "status": status,
             "score": score,
             "scores": {},
@@ -1089,7 +1094,7 @@ class RedTeamWorkflow(Workflow):
         vuln-specific (no task_dir on ProbeOnlyBundle), so per-task setup
         must not execute.
         """
-        if self.config.probe_only:
+        if self.config.is_probe_only:
             return
         self._run_setup_hook(
             hook=self._bundle.task_dir / "prepare_app.sh",
@@ -1155,7 +1160,7 @@ class RedTeamWorkflow(Workflow):
         cmd = CommandExecutor()
         cmd.run_with_progress(
             f"bash {hook}",
-            timeout=self.config.script_timeout,
+            timeout=self.config.runtime.script_timeout,
             message=f"Running {label} hook",
             cwd=self.app_dir,
             env=env,

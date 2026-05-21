@@ -13,7 +13,7 @@ MobileCybench is a framework to capture agentic offensive cyber-capabilities in 
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
 - Docker Desktop running
 - Java (required for Android builds; setup.sh enforces OpenJDK 17+)
-- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `runtime.build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
 
 ## Quick Start
 
@@ -43,9 +43,9 @@ echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py owncloud-android
 ```
 
-The committed `runner_config.json` defaults to probe-only + `malicious_app` (with `network_mode: permissive`), which requires per-app probes (`apps/<app>/test_*.py`) and `generic_probe_config.json`. Switch to `network_mode: restricted` for the exact-FQDN egress firewall.
+The committed `runner_config.json` defaults to probe-only + `malicious_app` (with `runtime.network_mode: permissive`), which requires per-app probes (`apps/<app>/test_*.py`) and `generic_probe_config.json`. Switch to `runtime.network_mode: restricted` for the exact-FQDN egress firewall.
 
-**To use a different provider**, change `runner_config.json:model` to a supported id *and* put the matching env var in `agent/.env` — they have to match, or the run will fail when the wrong key is loaded:
+**To use a different provider**, change `agent.model` in `runner_config.json` to a supported id *and* put the matching env var in `agent/.env` — they have to match, or the run will fail when the wrong key is loaded:
 
 | Provider | Env var | Example models |
 |---|---|---|
@@ -57,11 +57,11 @@ See `agent/custom/model_providers/factory.py:SupportedModel` for the current lis
 
 A run is defined by three independent axes:
 
-- **Workflow** (`workflow`) — `exploit` (default) tells the agent what to exploit and scores a single verifier run; `redteam` withholds the bug and scores via two-phase patch-differential replay (or, with `probe_only=true`, via a single-baseline app-probe pass — see [Red Team Workflow](documentation/REDTEAM.md)).
-- **Task type** — *synthetic* (a bug we introduce in an app) or *zero-day* (a bug that existed in the wild). Selected by `synthetic_vuln_id` or `task` respectively. `exploit` accepts only synthetic; `redteam` two-phase accepts either; `redteam` probe-only is bundle-less and forbids both.
-- **Attacker model** — `malicious_app` (agent builds an exploit APK) or `remote_attacker` (agent writes `exploit.sh`). Two-phase redteam reads it from the task bundle's `metadata.json`; probe-only takes it from `attacker_model` on the runner config (no task metadata to read).
+- **Workflow** (`workflow.kind`) — `exploit` tells the agent what to exploit and scores a single verifier run; `redteam_synthetic` / `redteam_zeroday` withhold the bug and score via two-phase patch-differential replay; `redteam_probe_only` is a single-baseline app-probe pass (see [Red Team Workflow](documentation/REDTEAM.md)).
+- **Task type** — *synthetic* (a bug we introduce in an app, selected via `workflow.synthetic_vuln_id`) or *zero-day* (a bug that existed in the wild, selected via `workflow.task`). `exploit` and `redteam_synthetic` use synthetic; `redteam_zeroday` uses zero-day; `redteam_probe_only` is bundle-less.
+- **Attacker model** — `malicious_app` (agent builds an exploit APK) or `remote_attacker` (agent writes `exploit.sh`). Two-phase redteam reads it from the task bundle's `metadata.json`; probe-only declares it directly via `workflow.attacker_model` (no task metadata to read).
 
-The committed `runner_config.json` is a probe-only example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, no task / vuln). It runs against any app that ships per-app probes and `generic_probe_config.json` and has a published APK bundle (`build_type: "download-apk"` fetches it on first run). For the exploit and two-phase redteam walkthroughs, see [Experiments](documentation/EXPERIMENTS.md) and [Red Team Workflow](documentation/REDTEAM.md).
+The committed `runner_config.json` is a probe-only example (`workflow.kind: "redteam_probe_only"`, `workflow.attacker_model: "malicious_app"`). It runs against any app that ships per-app probes and `generic_probe_config.json` and has a published APK bundle (`runtime.build_type: "download-apk"` fetches it on first run). For the exploit and two-phase redteam walkthroughs, see [Experiments](documentation/EXPERIMENTS.md) and [Red Team Workflow](documentation/REDTEAM.md).
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 

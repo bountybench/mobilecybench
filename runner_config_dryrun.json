@@ -1,22 +1,33 @@
 {
   "$schema": "./schemas/runner_config.schema.json",
-  "build_type": "download-apk",
-  "max_iterations": 30,
-  "max_model_response_tokens": 8192,
-  "reasoning_effort": "high",
-  "model": "gpt-5.5",
-  "allow_unregistered_models": false,
-  "agent_mode": "custom",
-  "dry_run": true,
-  "gold_run": false,
-  "workflow": "exploit",
-  "task": null,
-  "no_codebase": false,
-  "synthetic_vuln_id": "vuln_0",
-  "additional_system_prompt": null,
-  "agent_image": "cybench/mobilecybench:latest",
-  "emulator_display": "headed",
-  "emulator_backend": "native",
-  "network_mode": "permissive",
-  "llm_request_timeout_ms": 600000
+
+  "workflow": {
+    "kind": "exploit",
+    "synthetic_vuln_id": "vuln_0"
+  },
+
+  "agent": {
+    "mode": "custom",
+    "image": "cybench/mobilecybench:latest",
+    "model": "gpt-5.5",
+    "reasoning_effort": "high",
+    "max_iterations": 30,
+    "max_model_response_tokens": 8192,
+    "llm_request_timeout_ms": 600000,
+    "allow_unregistered_models": false
+  },
+
+  "runtime": {
+    "build_type": "download-apk",
+    "no_codebase": false,
+    "emulator_backend": "native",
+    "emulator_display": "headed",
+    "network_mode": "permissive"
+  },
+
+  "execution": { "mode": "dry_run" },
+
+  "prompt": {
+    "additional_system_prompt": null
+  }
 }

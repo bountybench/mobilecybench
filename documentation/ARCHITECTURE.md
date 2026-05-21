@@ -80,7 +80,7 @@ Defined in `agent/firewall/proxy.py` (`AGENT_NET`, `EXTERNAL_BRIDGE`), `agent/ru
 
 ### Modes (single topology, conf swap inside the image)
 
-`network_mode` is a required `RunnerConfig` field (`models/config.py`):
+`runtime.network_mode` is a `RunnerConfig` field (`models/config.py`):
 
 | Mode         | Squid allowlist                                              |
 |--------------|--------------------------------------------------------------|
@@ -93,7 +93,7 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 
 - Runs `runner.py` and Workflow orchestration (`workflows/base.py`, `workflows/exploit.py`, `workflows/redteam.py`)
 - Runs the host ADB server on `:5037`
-- Runs the Android emulator as a host process (`emulator_backend: native`) or as `emulator-container` on `shared_net` (`emulator_backend: container`)
+- Runs the Android emulator as a host process (`runtime.emulator_backend: native`) or as `emulator-container` on `shared_net` (`runtime.emulator_backend: container`)
 - Controls containers via `docker exec` (`agent/custom/backend/docker_ops.py`)
 
 ### Egress proxy / Squid sidecar
@@ -115,9 +115,9 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 
 - Joined to `[agent_net]` only — `agent/runtime/container.py:setup_agent_environment` passes `docker_networks=[AGENT_NET]`.
 - No `extra_hosts` mapping, no host-gateway alias, no default route off `agent_net`.
-- App codebase mounted at `/app/codebase` (default), or APK only at `/app/apk` when `no_codebase=true`.
+- App codebase mounted at `/app/codebase` (default), or APK only at `/app/apk` when `runtime.no_codebase=true`.
 - Tools execute via `ToolRuntime`. Restarted before evaluation begins (only `agent_exploit` dir is preserved).
-- Two dispatch paths: `agent_mode: "custom"` runs the in-process Python loop; `agent_mode: "external"` delivers a `task.json` to a BYO Docker image satisfying the contract in [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md). The external path is implemented in `harness/byo_agent.py:run_agent` (host-side SIGTERM/SIGKILL + artifact extraction) plus `agent/in_container/runner.py` (in-container entrypoint that streams events through a `BaseEventParser` subclass and writes `agent_run/result.json` + `conversation.jsonl` per turn). Auth tokens (listed in `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`) are forwarded uniformly to both.
+- Two dispatch paths: `agent.mode: "custom"` runs the in-process Python loop; `agent.mode: "external"` delivers a `task.json` to a BYO Docker image satisfying the contract in [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md). The external path is implemented in `harness/byo_agent.py:run_agent` (host-side SIGTERM/SIGKILL + artifact extraction) plus `agent/in_container/runner.py` (in-container entrypoint that streams events through a `BaseEventParser` subclass and writes `agent_run/result.json` + `conversation.jsonl` per turn). Auth tokens (listed in `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`) are forwarded uniformly to both.
 
 
 ## Agent Environment
@@ -140,7 +140,7 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 **Mode differences:**
 - Exploit mode: Agent receives vulnerability description + access to verify_files.
 - Redteam two-phase: Agent searches for the vulnerability without disclosure; evaluation replays the generated exploit on original vs hardened APKs and scores via differential signals.
-- Redteam probe-only (`probe_only=true`): single baseline replay against the app's `apps/<app>/apk/<app>.apk` (no patch / no verifier / no two-phase comparison); scoring is `signal`/`no_signal` based on app probes. See [REDTEAM.md#probe-only-mode](REDTEAM.md#probe-only-mode).
+- Redteam probe-only (`workflow.kind: redteam_probe_only`): single baseline replay against the app's `apps/<app>/apk/<app>.apk` (no patch / no verifier / no two-phase comparison); scoring is `signal`/`no_signal` based on app probes. See [REDTEAM.md#probe-only-mode](REDTEAM.md#probe-only-mode).
 
 ### Agent Capabilities
 

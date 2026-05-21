@@ -2,7 +2,7 @@
 
 mobilecybench evaluates agents through one of two paths:
 
-| `agent_mode` | What runs                                                                 |
+| `agent.mode` | What runs                                                                 |
 | ------------ | ------------------------------------------------------------------------- |
 | `custom`     | Built-in in-process Python loop. Stays as-is; no contract surface.        |
 | `external`   | Your Docker image. The harness delivers a `task.json`, runs `/run-agent.sh`, and reads filesystem artifacts back. |
@@ -42,7 +42,7 @@ Pin the kali base by digest (`FROM cybench/mobilecybench-kali@sha256:...`) if yo
 **Two image constraints the contract relies on:**
 
 1. **Empty `ENTRYPOINT`.** The harness invokes `/run-agent.sh` (and the exploit replay container invokes `bash exploit.sh`) directly. A non-empty `ENTRYPOINT` would hijack both.
-2. **Replay tooling.** Your `agent_image` is also used by the host as the **exploit replay image** — after the agent writes `exploit.sh`, the harness re-runs that script in a fresh container of the same image (`utils/run_exploit_container.sh`). The kali base bundles bash, curl, jq, adb, gradle/JDK; if you switch bases, keep these or replay will crash.
+2. **Replay tooling.** Your `agent.image` is also used by the host as the **exploit replay image** — after the agent writes `exploit.sh`, the harness re-runs that script in a fresh container of the same image (`utils/run_exploit_container.sh`). The kali base bundles bash, curl, jq, adb, gradle/JDK; if you switch bases, keep these or replay will crash.
 
 ### `/run-agent.sh`
 
@@ -176,11 +176,14 @@ docker exec kali-container tail -f /app/agent_run/conversation.jsonl
 
 ```json
 {
-  "agent_mode": "external",
-  "agent_image": "your-org/your-agent:v1",
-  "model": "claude-sonnet-4-6",
-  "agent_wallclock_seconds": 1800
+  "agent": {
+    "mode": "external",
+    "image": "your-org/your-agent:v1",
+    "model": "claude-sonnet-4-6",
+    "wallclock_seconds": 1800
+  },
+  "prompt": { "additional_system_prompt": null }
 }
 ```
 
-The legacy `agent_mode: "codex"` and `agent_mode: "claude-code"` values were removed. Use `agent_mode: "external"` with the reference-image tag instead. Config validation rejects the old values with the migration string.
+`agent.mode` is a discriminator with values `custom` or `external`; pre-BYO values (`codex`, `claude-code`) are no longer accepted. Use `mode: "external"` with the reference-image tag (or your own image) instead.

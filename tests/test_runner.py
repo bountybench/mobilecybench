@@ -8,7 +8,15 @@ import pytest
 from jsonschema import validate
 
 from models.config import RunnerConfig
+from models.resolved_config import resolve_runner_config
 from runner import create_workflow, main, run
+from tests.conftest import (
+    custom_agent,
+    external_agent,
+    make_config,
+    probe_only_workflow,
+    redteam_zeroday_workflow,
+)
 from utils.logger import logger_manager
 from workflows import ExploitWorkflow
 
@@ -21,98 +29,64 @@ def _load_run_summary_schema() -> dict:
 
 @pytest.fixture
 def base_config():
-    """Base configuration for testing."""
-    return RunnerConfig(
-        build_type="source",
-        max_iterations=10,
-        max_model_response_tokens=1000,
-        model="gpt-4",
-        dry_run=False,
-        agent_image="test-image:latest",
-        emulator_display="headed",
-        emulator_backend="native",
-        network_mode="restricted",
-        workflow="exploit",
-        synthetic_vuln_id="vuln_0",
-    )
-
-
-@pytest.fixture
-def exploit_config(base_config):
-    """Configuration for exploit workflow."""
-    return RunnerConfig(**{**base_config.model_dump(), "workflow": "exploit"})
+    """Exploit-workflow nested RunnerConfig for shared TestRun cases."""
+    return make_config()
 
 
 class TestCreateWorkflow:
     """Tests for workflow selection logic."""
 
-    def test_creates_exploit_workflow_by_default(self, base_config, tmp_path):
-        """Default workflow type is ExploitWorkflow."""
-        workflow = create_workflow(base_config, "test_app", tmp_path)
-        assert isinstance(workflow, ExploitWorkflow)
+    def test_creates_exploit_workflow_by_default(self, tmp_path):
+        resolved = resolve_runner_config(
+            make_config(), app_name="test_app", project_root=tmp_path
+        )
+        assert isinstance(
+            create_workflow(resolved, "test_app", tmp_path), ExploitWorkflow
+        )
 
-    def test_creates_exploit_workflow_when_configured(self, exploit_config, tmp_path):
-        """ExploitWorkflow is created when config.workflow == 'exploit'."""
-        workflow = create_workflow(exploit_config, "test_app", tmp_path)
-        assert isinstance(workflow, ExploitWorkflow)
-
-    def test_creates_redteam_workflow_when_configured(self, base_config, tmp_path):
-        """RedTeamWorkflow is created when config.workflow == 'redteam'."""
+    def test_creates_redteam_workflow_when_configured(self, tmp_path):
         from workflows import RedTeamWorkflow
 
-        # Bundle now owns attacker_model — seed task metadata.json so workflow
-        # init can read it.
         task_dir = tmp_path / "zerodays" / "reports" / "test_app" / "report-0" / "task"
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(
             json.dumps({"attacker_model": "malicious_app"})
         )
 
-        rt_config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": "report-0",
-                "synthetic_vuln_id": None,
-                "attacker_model": "malicious_app",
-            }
+        rt_config = make_config(workflow=redteam_zeroday_workflow(task="report-0"))
+        resolved = resolve_runner_config(
+            rt_config, app_name="test_app", project_root=tmp_path
         )
-        workflow = create_workflow(rt_config, "test_app", tmp_path)
-        assert isinstance(workflow, RedTeamWorkflow)
-
-    def test_gold_run_allowed_with_redteam(self, base_config):
-        """gold_run=True is valid with workflow='redteam'."""
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": "report-0",
-                "synthetic_vuln_id": None,
-                "gold_run": True,
-            }
+        assert isinstance(
+            create_workflow(resolved, "test_app", tmp_path), RedTeamWorkflow
         )
-        assert config.gold_run is True
 
-    def test_redteam_requires_task(self, base_config):
-        """workflow='redteam' without task or synthetic_vuln_id raises ValueError."""
-        with pytest.raises(ValueError, match="exactly one"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "redteam",
-                    "synthetic_vuln_id": None,
+    def test_gold_execution_allowed_with_redteam_zeroday(self):
+        cfg = make_config(
+            workflow=redteam_zeroday_workflow(task="report-0"),
+            execution_mode="gold",
+        )
+        assert cfg.execution.mode == "gold"
+
+    def test_redteam_synthetic_requires_vuln_id(self):
+        """Discriminated workflow union requires the variant's selectors."""
+        with pytest.raises(ValueError):
+            RunnerConfig.model_validate(
+                {
+                    "workflow": {"kind": "redteam_synthetic"},
+                    "agent": custom_agent(),
+                    "runtime": {"build_type": "source"},
                 }
             )
 
     @pytest.mark.parametrize("legacy_mode", ["codex", "claude-code"])
-    def test_legacy_agent_mode_raises_migration_hint(self, base_config, legacy_mode):
-        """Pre-BYO ``agent_mode`` values are rejected with a migration string."""
-        with pytest.raises(ValueError, match="BRING_YOUR_OWN_AGENT.md"):
-            RunnerConfig(**{**base_config.model_dump(), "agent_mode": legacy_mode})
+    def test_legacy_agent_mode_rejected(self, legacy_mode):
+        with pytest.raises(ValueError):
+            make_config(agent={"mode": legacy_mode, "image": "x", "model": "y"})
 
 
 class TestImageModelCompat:
-    """agent_image (CLI family) ↔ model (provider family) compatibility."""
+    """agent.image (CLI family) ↔ agent.model (provider family) compatibility."""
 
     @pytest.mark.parametrize(
         "image, model",
@@ -121,16 +95,9 @@ class TestImageModelCompat:
             ("cybench/mobilecybench:codex_0.130.0-r2", "gpt-5.5"),
         ],
     )
-    def test_matching_cli_and_provider_ok(self, base_config, image, model):
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": image,
-                "model": model,
-            }
-        )
-        assert cfg.agent_image == image and cfg.model == model
+    def test_matching_cli_and_provider_ok(self, image, model):
+        cfg = make_config(agent=external_agent(image=image, model=model))
+        assert cfg.agent.image == image and cfg.agent.model == model
 
     @pytest.mark.parametrize(
         "image, model, cli",
@@ -140,115 +107,66 @@ class TestImageModelCompat:
             ("cybench/mobilecybench:codex_0.130.0-r2", "gemini-3.1-pro", "codex"),
         ],
     )
-    def test_mismatch_rejected(self, base_config, image, model, cli):
+    def test_mismatch_rejected(self, image, model, cli):
         with pytest.raises(ValueError, match=cli):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "agent_mode": "external",
-                    "agent_image": image,
-                    "model": model,
-                }
+            make_config(agent=external_agent(image=image, model=model))
+
+    def test_unknown_image_tag_is_permissive(self):
+        """Lab/BYO images bypass the CLI-prefix compat check."""
+        cfg = make_config(
+            agent=external_agent(image="lab/mycli:0.1", model="gemini-3.1-pro")
+        )
+        assert cfg.agent.image == "lab/mycli:0.1"
+
+    def test_custom_mode_skips_check(self):
+        """Image-compat applies only to external mode."""
+        cfg = make_config(
+            agent=custom_agent(
+                image="cybench/mobilecybench:claudecode_2.1.140-r2", model="gpt-5.5"
             )
-
-    def test_unknown_image_tag_is_permissive(self, base_config):
-        """Lab/BYO images that don't match a known CLI prefix bypass the check."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": "lab/mycli:0.1",
-                "model": "gemini-3.1-pro",
-            }
         )
-        assert cfg.agent_image == "lab/mycli:0.1"
-
-    def test_custom_mode_skips_check(self, base_config):
-        """Custom mode is gated by SupportedModel; image-compat is irrelevant."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "custom",
-                "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-                "model": "gpt-5.5",
-            }
-        )
-        assert cfg.agent_mode == "custom"
+        assert cfg.agent.mode == "custom"
 
     @pytest.mark.parametrize(
         "model",
         [
-            "opus-4-7",  # missing claude- prefix (real-world typo)
-            "claude-opus-4-typoz",  # substring matches anthropic but model nonexistent
+            "opus-4-7",
+            "claude-opus-4-typoz",
             "gpt-5.5-typo",
         ],
     )
-    def test_external_unknown_model_rejected(self, base_config, model):
-        """External-mode model ids must be in SupportedModel (catches typos)."""
+    def test_external_unknown_model_rejected(self, model):
         with pytest.raises(ValueError, match="Unknown model"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "agent_mode": "external",
-                    "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-                    "model": model,
-                }
+            make_config(
+                agent=external_agent(
+                    image="cybench/mobilecybench:claudecode_2.1.140-r2", model=model
+                )
             )
 
-    def test_external_unknown_model_allowed_with_opt_in(self, base_config):
-        """allow_unregistered_models=true bypasses the registered-model check."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": "lab/mycli:0.1",
-                "model": "future-model-not-yet-registered",
-                "allow_unregistered_models": True,
-            }
+    def test_external_unknown_model_allowed_with_opt_in(self):
+        cfg = make_config(
+            agent=external_agent(
+                image="lab/mycli:0.1",
+                model="future-model-not-yet-registered",
+                allow_unregistered_models=True,
+            )
         )
-        assert cfg.model == "future-model-not-yet-registered"
+        assert cfg.agent.model == "future-model-not-yet-registered"
 
 
 class TestProbeOnlyValidators:
-    """probe_only is a redteam-only mode; subtle interactions with other
-    flags are guarded at validation so operators don't silently lose
-    scoring or chase the wrong error."""
+    """Probe-only scores via probes only. ``dry_run`` and ``gold`` bypass
+    scoring and are rejected at config-load."""
 
-    def test_probe_only_workflow_check_precedes_attacker_model(self, base_config):
-        """workflow=exploit + probe_only=True + attacker_model trips two
-        validators. probe_only is the real root cause; surface it rather
-        than the secondary attacker_model symptom. Locks declaration
-        order in models/config.py — pydantic runs ``mode='after'``
-        validators in source order."""
-        with pytest.raises(ValueError, match=r"probe_only=True requires workflow"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "exploit",
-                    "probe_only": True,
-                    "attacker_model": "malicious_app",
-                }
-            )
-
-    def test_probe_only_with_dry_run_rejected(self, base_config):
-        """dry_run short-circuits into the interactive shell with no
-        scoring. probe_only=True + dry_run=True previously passed
-        validation and silently dropped the operator into Kali with no
-        probe verdict."""
+    def test_probe_only_with_dry_run_rejected(self):
         with pytest.raises(
-            ValueError, match=r"probe_only is incompatible with dry_run"
+            ValueError, match=r"dry_run.*invalid for redteam_probe_only"
         ):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "redteam",
-                    "task": None,
-                    "synthetic_vuln_id": None,
-                    "attacker_model": "malicious_app",
-                    "probe_only": True,
-                    "dry_run": True,
-                }
-            )
+            make_config(workflow=probe_only_workflow(), execution_mode="dry_run")
+
+    def test_probe_only_with_gold_rejected(self):
+        with pytest.raises(ValueError, match=r"gold.*invalid for redteam_probe_only"):
+            make_config(workflow=probe_only_workflow(), execution_mode="gold")
 
 
 class TestRun:
@@ -281,7 +199,7 @@ class TestRun:
 
             def __init__(self):
                 self.app_dir = tmp_path / "apps" / "test_app"
-                self.app_dir.mkdir(parents=True)
+                self.app_dir.mkdir(parents=True, exist_ok=True)
 
             def validate_arguments(self):
                 pass
@@ -304,19 +222,23 @@ class TestRun:
             def cleanup(self):
                 pass
 
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": None,
-                "synthetic_vuln_id": "vuln_0",
-                "attacker_model": "malicious_app",
-            }
+        from tests.conftest import redteam_synthetic_workflow
+
+        config = make_config(
+            workflow=redteam_synthetic_workflow(synthetic_vuln_id="vuln_0")
         )
 
-        with patch(
-            "runner._load_bundle_attacker_model", return_value="malicious_app"
-        ), patch("runner.ensure_app_submodule"), patch(
+        # resolve_runner_config reads attacker_model from the bundle's
+        # metadata.json — write a real one instead of patching the helper.
+        vuln_dir = (
+            tmp_path / "apps" / "test_app" / "synthetic_vulnerabilities" / "vuln_0"
+        )
+        vuln_dir.mkdir(parents=True)
+        (vuln_dir / "metadata.json").write_text(
+            json.dumps({"attacker_model": "malicious_app"})
+        )
+
+        with patch("runner.ensure_app_submodule"), patch(
             "runner.create_workflow", return_value=FakeRedTeamWorkflow()
         ):
             result = run(config, "test_app", tmp_path)
@@ -392,7 +314,7 @@ class TestRun:
 
     def test_dry_run_skips_agent_execution(self, base_config, tmp_path):
         """Dry run mode runs interactive shell instead of agent."""
-        dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
+        dry_run_config = make_config(execution_mode="dry_run")
 
         with patch("runner.ensure_app_submodule"), patch.object(
             ExploitWorkflow, "validate_arguments"
@@ -414,7 +336,7 @@ class TestRun:
     def test_dry_run_saves_artifacts_before_cleanup(self, base_config, tmp_path):
         """Dry-run sidecar logs are captured before final cleanup removes them."""
         call_order = []
-        dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
+        dry_run_config = make_config(execution_mode="dry_run")
 
         class FakeWorkflow:
             metadata = {}
@@ -481,7 +403,12 @@ class TestRun:
         assert summary["run_id"]
         assert summary["outcome"] == "success"
         assert summary["context"]["app_name"] == "test_app"
-        assert summary["config"]["build_type"] == base_config.build_type
+        assert (
+            summary["config"]["effective"]["runtime"]["build_type"]
+            == base_config.runtime.build_type
+        )
+        # Schema-required effective view is fully populated, never None.
+        assert summary["config"]["effective"]["agent"]["mode"] == "custom"
         assert summary["metrics"]["turn_count"] == 2
         assert summary["metrics"]["tool_call_count"] == 1
         assert summary["metrics"]["cost_usd"] == 0.1
@@ -637,137 +564,49 @@ class TestRun:
         assert (summary_path.parent / conversation_rel).exists()
 
 
-class TestAttackerModelConfig:
-    """Tests for attacker_model configuration."""
-
-    def test_remote_attacker_valid_with_redteam(self, base_config):
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": "report-0",
-                "synthetic_vuln_id": None,
-                "attacker_model": "remote_attacker",
-            }
-        )
-        assert config.attacker_model == "remote_attacker"
-
-    def test_remote_attacker_rejected_with_exploit(self, base_config):
-        with pytest.raises(ValueError, match="requires workflow='redteam'"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "exploit",
-                    "attacker_model": "remote_attacker",
-                }
-            )
-
-    def test_malicious_app_rejected_with_exploit(self, base_config):
-        with pytest.raises(ValueError, match="requires workflow='redteam'"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "exploit",
-                    "attacker_model": "malicious_app",
-                }
-            )
-
-    def test_attacker_model_default_is_none(self, base_config):
-        """attacker_model has no silent default; task metadata is authoritative."""
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": "report-0",
-                "synthetic_vuln_id": None,
-            }
-        )
-        assert config.attacker_model is None
-
-    def test_invalid_attacker_model_rejected(self, base_config):
+class TestProbeOnlyAttackerModel:
+    def test_probe_only_invalid_attacker_model_rejected(self):
+        """probe-only attacker_model is a Literal; pydantic rejects unknown values."""
         with pytest.raises(ValueError):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "redteam",
-                    "task": "report-0",
-                    "synthetic_vuln_id": None,
-                    "attacker_model": "bogus",
-                }
-            )
+            make_config(workflow=probe_only_workflow(attacker_model="bogus"))
 
 
 class TestTaskMetadataOverride:
-    """task/metadata.json overrides config.attacker_model before workflow creation."""
+    """Bundle metadata.json is the authoritative source of attacker_model for
+    redteam_zeroday / redteam_synthetic. ``resolve_runner_config`` reads it
+    once during resolution; downstream code sees
+    ``resolved.workflow.attacker_model`` (after narrowing to a redteam variant)."""
 
-    def test_overrides_attacker_model_from_task_metadata(self, base_config, tmp_path):
-        """run() reconciles attacker_model from task/metadata.json for the workflow."""
+    def test_resolves_attacker_model_from_task_metadata(self, tmp_path):
         task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(
             json.dumps({"attacker_model": "remote_attacker"})
         )
 
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": "report-4",
-                "synthetic_vuln_id": None,
-            }
+        config = make_config(workflow=redteam_zeroday_workflow(task="report-4"))
+        resolved = resolve_runner_config(
+            config, app_name="testapp", project_root=tmp_path
         )
-        assert config.attacker_model is None
+        assert resolved.workflow.attacker_model == "remote_attacker"
 
-        captured = {}
-
-        def spy(cfg, app_name, project_root):
-            captured["attacker_model"] = cfg.attacker_model
-            raise RuntimeError("stop before workflow setup")
-
-        with patch("runner.ensure_app_submodule"), patch(
-            "runner.create_workflow", side_effect=spy
-        ):
-            run(config, "testapp", tmp_path)
-
-        assert captured["attacker_model"] == "remote_attacker"
-        # Caller's config is unchanged — reconciliation is purely local to run().
-        assert config.attacker_model is None
-
-    def test_missing_attacker_model_in_task_metadata_fails(self, base_config, tmp_path):
+    def test_missing_attacker_model_in_task_metadata_fails(self, tmp_path):
         """task/metadata.json with missing attacker_model returns exit code 1."""
         task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-0" / "task"
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(json.dumps({"title": "no model"}))
 
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": "report-0",
-                "synthetic_vuln_id": None,
-            }
-        )
-        exit_code = run(config, "testapp", tmp_path)
-        assert exit_code == 1
+        config = make_config(workflow=redteam_zeroday_workflow(task="report-0"))
+        assert run(config, "testapp", tmp_path) == 1
 
 
 class TestZerodaySubmoduleInit:
-    """zerodays/ submodule must be lazy-initialized BEFORE validate_arguments
-    for redteam tasks, otherwise validation surfaces a misleading 'Task file
-    not found' error instead of an init hint."""
+    """``ensure_zerodays_submodule`` must run before ``validate_arguments`` for
+    zeroday tasks; otherwise validation surfaces a misleading "Task file not
+    found" error instead of the submodule-init hint."""
 
-    def test_zerodays_init_runs_for_redteam_task_before_validate(
-        self, base_config, tmp_path
-    ):
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": "report-4",
-                "synthetic_vuln_id": None,
-                "attacker_model": "remote_attacker",
-            }
-        )
+    def test_zerodays_init_runs_for_redteam_task_before_validate(self, tmp_path):
+        config = make_config(workflow=redteam_zeroday_workflow(task="report-4"))
         task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
 
         order = []

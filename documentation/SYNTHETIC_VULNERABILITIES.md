@@ -4,7 +4,7 @@ Synthetic vulnerabilities are controlled security flaws introduced via patches, 
 
 **Exploit mode** instantiates a synthetic vulnerability environment: the app is built with the vulnerability patch applied, and the agent is tasked with exploiting it.
 
-**To run in exploit mode:** Set `"workflow": "exploit"` in `runner_config.json`.
+**To run in exploit mode:** Set `workflow.kind: "exploit"` (with the matching `workflow.synthetic_vuln_id`) in `runner_config.json`.
 
 The agent is given readonly access to `verify_files/` (containing the verification script) and must write an `exploit.sh` that triggers the vulnerability. Exploit results (captured secrets, stolen credentials, exfiltrated data) should be written to `agent_output/`.
 

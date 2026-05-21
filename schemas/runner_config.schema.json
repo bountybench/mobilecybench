@@ -2,246 +2,436 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mobilecybench.dev/schemas/runner_config.schema.json",
   "title": "Runner Config",
-  "additionalProperties": false,
-  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)\n  or ``synthetic_vuln_id`` (synthetic).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``\n  and ``synthetic_vuln_id``, requires ``attacker_model``, and is\n  incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
-  "properties": {
-    "build_type": {
-      "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
-      "enum": [
-        "source",
-        "download-apk",
-        "skip-apk"
-      ],
-      "title": "Build Type",
-      "type": "string"
-    },
-    "no_codebase": {
-      "default": false,
-      "description": "When true, the agent receives only the APK at /app/apk/. When false (default), full source is mounted at /app/codebase.",
-      "title": "No Codebase",
-      "type": "boolean"
-    },
-    "model": {
-      "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",
-      "minLength": 1,
-      "title": "Model",
-      "type": "string"
-    },
-    "agent_image": {
-      "description": "Docker image the agent runs from. Custom path: kali base (e.g. cybench/mobilecybench:latest). External path: BYO reference image (e.g. cybench/mobilecybench:codex_0.130.0-r2, :claudecode_2.1.140-r2, or a lab's own tag).",
-      "minLength": 1,
-      "title": "Agent Image",
-      "type": "string"
-    },
-    "agent_mode": {
-      "default": "custom",
-      "description": "Dispatch path. 'custom' (default): in-process Python loop. 'external': BYO Docker image satisfying the contract in documentation/BRING_YOUR_OWN_AGENT.md (covers codex, claude-code, and lab-supplied agents).",
-      "enum": [
-        "custom",
-        "external"
-      ],
-      "title": "Agent Mode",
-      "type": "string"
-    },
-    "max_iterations": {
-      "description": "Maximum agent turns before stopping. Custom path only.",
-      "exclusiveMinimum": 0,
-      "title": "Max Iterations",
-      "type": "integer"
-    },
-    "max_model_response_tokens": {
-      "description": "Per-call output token cap forwarded to the provider.",
-      "exclusiveMinimum": 0,
-      "title": "Max Model Response Tokens",
-      "type": "integer"
-    },
-    "additional_system_prompt": {
-      "anyOf": [
-        {
+  "$defs": {
+    "CustomAgentInput": {
+      "additionalProperties": false,
+      "description": "In-process custom agent loop.",
+      "properties": {
+        "mode": {
+          "const": "custom",
+          "description": "In-process Python agent loop.",
+          "title": "Mode",
           "type": "string"
         },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Free-form text appended to the workflow-built system prompt (after any per-app additional_info from metadata.json). Applies to all agent modes.",
-      "title": "Additional System Prompt"
-    },
-    "reasoning_effort": {
-      "anyOf": [
-        {
-          "enum": [
-            "low",
-            "medium",
-            "high"
+        "image": {
+          "description": "Kali / runtime Docker image for the custom agent (e.g. cybench/mobilecybench:latest).",
+          "minLength": 1,
+          "title": "Image",
+          "type": "string"
+        },
+        "model": {
+          "description": "Model id (e.g. gpt-5.5, claude-opus-4-7). Routed via agent/custom/model_providers/factory.py.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "max_iterations": {
+          "description": "Maximum agent turns before stopping.",
+          "exclusiveMinimum": 0,
+          "title": "Max Iterations",
+          "type": "integer"
+        },
+        "max_model_response_tokens": {
+          "description": "Per-call output token cap forwarded to the provider.",
+          "exclusiveMinimum": 0,
+          "title": "Max Model Response Tokens",
+          "type": "integer"
+        },
+        "llm_request_timeout_ms": {
+          "default": 600000,
+          "description": "Per-LLM-API-call timeout (milliseconds). Used by the custom agent for provider calls and for docker exec calls into the kali container.",
+          "exclusiveMinimum": 0,
+          "title": "Llm Request Timeout Ms",
+          "type": "integer"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
+          "default": null,
+          "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
+          "title": "Reasoning Effort"
+        },
+        "allow_unregistered_models": {
+          "default": false,
+          "description": "Permit models that are not declared in agent/custom/model_providers/factory.py:SupportedModel. Falls through to LiteLLM with auto-detected routing and a runtime WARNING.",
+          "title": "Allow Unregistered Models",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "image",
+        "model",
+        "max_iterations",
+        "max_model_response_tokens"
+      ],
+      "title": "CustomAgentInput",
+      "type": "object"
+    },
+    "ExecutionInput": {
+      "additionalProperties": false,
+      "description": "Execution mode.",
+      "properties": {
+        "mode": {
+          "default": "live",
+          "description": "Execution branch. ``live`` (default): run the agent. ``dry_run``: drop into an interactive Kali shell instead. ``gold``: replay the canonical exploit; invalid for redteam_probe_only (no canonical source).",
+          "enum": [
+            "live",
+            "dry_run",
+            "gold"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "ExecutionInput",
+      "type": "object"
+    },
+    "ExploitWorkflowInput": {
+      "additionalProperties": false,
+      "description": "Known-vulnerability synthetic workflow.",
+      "properties": {
+        "kind": {
+          "const": "exploit",
+          "description": "Selects the known-vulnerability synthetic workflow.",
+          "title": "Kind",
           "type": "string"
         },
-        {
-          "type": "null"
+        "synthetic_vuln_id": {
+          "description": "Names a directory under apps/<app>/synthetic_vulnerabilities/. Required for the exploit workflow.",
+          "minLength": 1,
+          "title": "Synthetic Vuln Id",
+          "type": "string"
         }
+      },
+      "required": [
+        "kind",
+        "synthetic_vuln_id"
       ],
-      "default": null,
-      "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
-      "title": "Reasoning Effort"
+      "title": "ExploitWorkflowInput",
+      "type": "object"
     },
-    "allow_unregistered_models": {
-      "default": false,
-      "description": "Permit models that are not declared in agent/custom/model_providers/factory.py:SupportedModel. Custom mode falls through to LiteLLM with auto-detected routing and a runtime WARNING; external mode skips the config-load model registration check (image/CLI compatibility is still enforced). cost_usd reports $0 for any model that lacks a row in utils/token_pricing.json regardless of this flag.",
-      "title": "Allow Unregistered Models",
-      "type": "boolean"
-    },
-    "workflow": {
-      "default": "exploit",
-      "description": "Pipeline to run. 'exploit' requires synthetic_vuln_id; two-phase 'redteam' requires exactly one of task (zero-day) or synthetic_vuln_id (synthetic); 'redteam' with probe_only=true forbids both.",
-      "enum": [
-        "exploit",
-        "redteam"
+    "ExternalAgentInput": {
+      "additionalProperties": false,
+      "description": "BYO containerized agent.",
+      "properties": {
+        "mode": {
+          "const": "external",
+          "description": "BYO Docker-image agent per BRING_YOUR_OWN_AGENT.md.",
+          "title": "Mode",
+          "type": "string"
+        },
+        "image": {
+          "description": "BYO reference image (e.g. cybench/mobilecybench:codex_0.130.0-r2, :claudecode_2.1.140-r2, or a lab's own tag).",
+          "minLength": 1,
+          "title": "Image",
+          "type": "string"
+        },
+        "model": {
+          "description": "Model id forwarded verbatim to the in-container CLI.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "wallclock_seconds": {
+          "default": 1800,
+          "description": "Harness-side wall-clock kill budget for external agents (SIGKILL on expiry).",
+          "exclusiveMinimum": 0,
+          "title": "Wallclock Seconds",
+          "type": "integer"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reasoning effort hint forwarded to providers that accept it.",
+          "title": "Reasoning Effort"
+        },
+        "allow_unregistered_models": {
+          "default": false,
+          "description": "Skip the config-load model registration check (image/CLI compat is still enforced).",
+          "title": "Allow Unregistered Models",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "image",
+        "model"
       ],
-      "title": "Workflow",
-      "type": "string"
+      "title": "ExternalAgentInput",
+      "type": "object"
     },
-    "attacker_model": {
-      "anyOf": [
-        {
+    "PromptInput": {
+      "additionalProperties": false,
+      "description": "Prompt overrides (decoupled from execution controls).",
+      "properties": {
+        "additional_system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Free-form text appended to the workflow-built system prompt (after any per-app additional_info from metadata.json).",
+          "title": "Additional System Prompt"
+        }
+      },
+      "title": "PromptInput",
+      "type": "object"
+    },
+    "RedteamProbeOnlyWorkflowInput": {
+      "additionalProperties": false,
+      "description": "Bundle-less redteam scored only by probes.\n\nSingle baseline replay, no patch, no verifier. ``attacker_model`` is\nauthoritative here because there is no task metadata.json to read from.",
+      "properties": {
+        "kind": {
+          "const": "redteam_probe_only",
+          "description": "Bundle-less redteam scored by probes only.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "attacker_model": {
+          "description": "Required and authoritative for probe-only mode (no bundle metadata to read from).",
           "enum": [
             "malicious_app",
             "remote_attacker"
           ],
+          "title": "Attacker Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "attacker_model"
+      ],
+      "title": "RedteamProbeOnlyWorkflowInput",
+      "type": "object"
+    },
+    "RedteamSyntheticWorkflowInput": {
+      "additionalProperties": false,
+      "description": "Bundle-backed redteam against a synthetic vulnerability.",
+      "properties": {
+        "kind": {
+          "const": "redteam_synthetic",
+          "description": "Bundle-backed redteam against a synthetic vulnerability.",
+          "title": "Kind",
           "type": "string"
         },
-        {
-          "type": "null"
+        "synthetic_vuln_id": {
+          "description": "Names a directory under apps/<app>/synthetic_vulnerabilities/. The bundle's metadata.json supplies the authoritative attacker_model.",
+          "minLength": 1,
+          "title": "Synthetic Vuln Id",
+          "type": "string"
         }
+      },
+      "required": [
+        "kind",
+        "synthetic_vuln_id"
       ],
-      "default": null,
-      "description": "Two-phase redteam: dev/debug hint only — runtime reads the authoritative value from the task bundle's metadata.json and logs any override. probe_only: required and authoritative — there is no task metadata.json to read from. See documentation/REDTEAM.md.",
-      "title": "Attacker Model"
+      "title": "RedteamSyntheticWorkflowInput",
+      "type": "object"
     },
-    "synthetic_vuln_id": {
-      "anyOf": [
-        {
+    "RedteamZerodayWorkflowInput": {
+      "additionalProperties": false,
+      "description": "Bundle-backed redteam against a zero-day report task.",
+      "properties": {
+        "kind": {
+          "const": "redteam_zeroday",
+          "description": "Bundle-backed redteam against a zero-day task.",
+          "title": "Kind",
           "type": "string"
         },
-        {
-          "type": "null"
+        "task": {
+          "description": "Names a directory under zerodays/reports/<app>/. The bundle's metadata.json supplies the authoritative attacker_model.",
+          "minLength": 1,
+          "title": "Task",
+          "type": "string"
         }
+      },
+      "required": [
+        "kind",
+        "task"
       ],
-      "default": null,
-      "description": "Names a directory under apps/<app>/synthetic_vulnerabilities/. Required for workflow='exploit'; one of {this, task} required for two-phase redteam; forbidden when probe_only=true.",
-      "title": "Synthetic Vuln Id"
+      "title": "RedteamZerodayWorkflowInput",
+      "type": "object"
     },
-    "task": {
-      "anyOf": [
-        {
+    "RuntimeInput": {
+      "additionalProperties": false,
+      "description": "Infrastructure knobs shared across workflows.",
+      "properties": {
+        "build_type": {
+          "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
+          "enum": [
+            "source",
+            "download-apk",
+            "skip-apk"
+          ],
+          "title": "Build Type",
           "type": "string"
         },
+        "no_codebase": {
+          "default": false,
+          "description": "When true, the agent receives only the APK at /app/apk/. When false (default), full source is mounted at /app/codebase.",
+          "title": "No Codebase",
+          "type": "boolean"
+        },
+        "emulator_backend": {
+          "default": "native",
+          "description": "Run the emulator as a host process ('native') or as a separate Docker container ('container', used by GKE).",
+          "enum": [
+            "native",
+            "container"
+          ],
+          "title": "Emulator Backend",
+          "type": "string"
+        },
+        "emulator_display": {
+          "default": "headed",
+          "description": "Whether the emulator opens a window.",
+          "enum": [
+            "headed",
+            "headless"
+          ],
+          "title": "Emulator Display",
+          "type": "string"
+        },
+        "emulator_boot_timeout_seconds": {
+          "default": 300,
+          "description": "How long to wait for the emulator to be ready (seconds).",
+          "exclusiveMinimum": 0,
+          "title": "Emulator Boot Timeout Seconds",
+          "type": "integer"
+        },
+        "network_mode": {
+          "default": "permissive",
+          "description": "Squid egress policy. 'permissive' (default): any public host. 'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors).",
+          "enum": [
+            "restricted",
+            "permissive"
+          ],
+          "title": "Network Mode",
+          "type": "string"
+        },
+        "script_timeout": {
+          "default": 600,
+          "description": "Seconds for long-running scripts (exploit, verify, setup, prepare_app).",
+          "exclusiveMinimum": 0,
+          "title": "Script Timeout",
+          "type": "integer"
+        },
+        "build_command_timeout": {
+          "default": 1200,
+          "description": "Seconds for the APK build command.",
+          "exclusiveMinimum": 0,
+          "title": "Build Command Timeout",
+          "type": "integer"
+        },
+        "apk_timeout": {
+          "default": 60,
+          "description": "HARD wall-clock deadline (seconds) for the malicious-APK replay to write done.marker; agent cannot extend by withholding it.",
+          "exclusiveMinimum": 0,
+          "title": "Apk Timeout",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "build_type"
+      ],
+      "title": "RuntimeInput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-section invariants enforced by validators:\n\n* ``execution.mode='gold'`` is invalid for ``workflow.kind='redteam_probe_only'``.\n* External-mode ``agent.model`` must be registered (or\n  ``allow_unregistered_models=true``).\n* External-mode ``agent.image`` and ``agent.model`` provider must be\n  compatible (claudecode_* ↔ anthropic, codex_* ↔ openai); the check is\n  not bypassed by ``allow_unregistered_models`` because the constraint is\n  a property of the CLI in the image, not of the model registry.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
+  "properties": {
+    "workflow": {
+      "description": "Pipeline + selectors (discriminated by ``kind``).",
+      "discriminator": {
+        "mapping": {
+          "exploit": "#/$defs/ExploitWorkflowInput",
+          "redteam_probe_only": "#/$defs/RedteamProbeOnlyWorkflowInput",
+          "redteam_synthetic": "#/$defs/RedteamSyntheticWorkflowInput",
+          "redteam_zeroday": "#/$defs/RedteamZerodayWorkflowInput"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
         {
-          "type": "null"
+          "$ref": "#/$defs/ExploitWorkflowInput"
+        },
+        {
+          "$ref": "#/$defs/RedteamSyntheticWorkflowInput"
+        },
+        {
+          "$ref": "#/$defs/RedteamZerodayWorkflowInput"
+        },
+        {
+          "$ref": "#/$defs/RedteamProbeOnlyWorkflowInput"
         }
       ],
-      "default": null,
-      "description": "Zero-day task selector for two-phase redteam. Names a directory under zerodays/reports/<app>/. Forbidden when probe_only=true.",
-      "title": "Task"
+      "title": "Workflow"
     },
-    "probe_only": {
-      "default": false,
-      "description": "redteam-only bundle-less mode: single replay against the app's baseline APK, no patch / no verifier / no two-phase comparison. Score is signal/no_signal based on app probes. Forbids task and synthetic_vuln_id; requires attacker_model. Incompatible with gold_run. See documentation/REDTEAM.md#probe-only-mode.",
-      "title": "Probe Only",
-      "type": "boolean"
-    },
-    "dry_run": {
-      "description": "If true, launches an interactive Kali shell instead of the agent. Useful for verifying setup without API credits.",
-      "title": "Dry Run",
-      "type": "boolean"
-    },
-    "gold_run": {
-      "default": false,
-      "description": "Replay the task's reference exploit through the full pipeline instead of invoking the agent. Mutually exclusive with dry_run.",
-      "title": "Gold Run",
-      "type": "boolean"
-    },
-    "emulator_backend": {
-      "default": "native",
-      "description": "Run the emulator as a host process ('native') or as a separate Docker container ('container', used by GKE).",
-      "enum": [
-        "native",
-        "container"
+    "agent": {
+      "description": "Agent integration (discriminated by ``mode``).",
+      "discriminator": {
+        "mapping": {
+          "custom": "#/$defs/CustomAgentInput",
+          "external": "#/$defs/ExternalAgentInput"
+        },
+        "propertyName": "mode"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CustomAgentInput"
+        },
+        {
+          "$ref": "#/$defs/ExternalAgentInput"
+        }
       ],
-      "title": "Emulator Backend",
-      "type": "string"
+      "title": "Agent"
     },
-    "emulator_display": {
-      "default": "headed",
-      "description": "Whether the emulator opens a window.",
-      "enum": [
-        "headed",
-        "headless"
-      ],
-      "title": "Emulator Display",
-      "type": "string"
+    "runtime": {
+      "$ref": "#/$defs/RuntimeInput",
+      "description": "Infrastructure knobs (emulator, network, timeouts)."
     },
-    "emulator_boot_timeout_seconds": {
-      "default": 300,
-      "description": "How long to wait for the emulator to be ready (seconds).",
-      "exclusiveMinimum": 0,
-      "title": "Emulator Boot Timeout Seconds",
-      "type": "integer"
+    "execution": {
+      "$ref": "#/$defs/ExecutionInput",
+      "description": "Execution branch (live / dry_run / gold)."
     },
-    "network_mode": {
-      "default": "permissive",
-      "description": "Squid egress policy. 'permissive' (default): any public host. 'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). Kernel routing (agent_net internal:true) applies in both.",
-      "enum": [
-        "restricted",
-        "permissive"
-      ],
-      "title": "Network Mode",
-      "type": "string"
-    },
-    "script_timeout": {
-      "default": 600,
-      "description": "Seconds for long-running scripts (exploit, verify, setup, prepare_app).",
-      "exclusiveMinimum": 0,
-      "title": "Script Timeout",
-      "type": "integer"
-    },
-    "build_command_timeout": {
-      "default": 1200,
-      "description": "Seconds for the APK build command.",
-      "exclusiveMinimum": 0,
-      "title": "Build Command Timeout",
-      "type": "integer"
-    },
-    "apk_timeout": {
-      "default": 60,
-      "description": "HARD wall-clock deadline (seconds) for the malicious-APK replay to write done.marker; agent cannot extend by withholding it.",
-      "exclusiveMinimum": 0,
-      "title": "Apk Timeout",
-      "type": "integer"
-    },
-    "llm_request_timeout_ms": {
-      "default": 600000,
-      "description": "Per-LLM-API-call timeout (milliseconds). Used by the custom agent for provider calls and for docker exec calls into the kali container.",
-      "exclusiveMinimum": 0,
-      "title": "Llm Request Timeout Ms",
-      "type": "integer"
-    },
-    "agent_wallclock_seconds": {
-      "default": 1800,
-      "description": "Harness-side wall-clock kill budget for external agents (SIGKILL on expiry). Custom agent ignores this and is bounded by max_iterations + llm_request_timeout_ms.",
-      "exclusiveMinimum": 0,
-      "title": "Agent Wallclock Seconds",
-      "type": "integer"
+    "prompt": {
+      "$ref": "#/$defs/PromptInput",
+      "description": "Prompt overrides."
     }
   },
   "required": [
-    "build_type",
-    "model",
-    "agent_image",
-    "max_iterations",
-    "max_model_response_tokens",
-    "dry_run"
+    "workflow",
+    "agent",
+    "runtime"
   ],
   "type": "object"
 }

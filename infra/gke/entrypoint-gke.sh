@@ -62,6 +62,10 @@ EMULATOR_BACKEND="${EMULATOR_BACKEND:-container}"
 normalize_bool() { [[ "${1,,}" == "true" || "$1" == "1" ]] && echo true || echo false; }
 DRY_RUN="$(normalize_bool "${DRY_RUN:-false}")"
 GOLD_RUN="$(normalize_bool "${GOLD_RUN:-false}")"
+if [ "$DRY_RUN" = "true" ] && [ "$GOLD_RUN" = "true" ]; then
+    echo "ERROR: DRY_RUN and GOLD_RUN are mutually exclusive"
+    exit 1
+fi
 
 if [ -f "$CONFIG_SRC" ]; then
     jq --arg model "$MODEL" \
@@ -69,12 +73,11 @@ if [ -f "$CONFIG_SRC" ]; then
        --arg em "$EMULATOR_BACKEND" \
        --argjson dryrun "$DRY_RUN" \
        --argjson goldrun "$GOLD_RUN" \
-       '.emulator_display = "headless"
-        | .emulator_backend = $em
-        | .dry_run = $dryrun
-        | .gold_run = $goldrun
-        | if $model != "" then .model = $model else . end
-        | if $vuln != "" then .synthetic_vuln_id = $vuln else . end' \
+       '.runtime.emulator_display = "headless"
+        | .runtime.emulator_backend = $em
+        | .execution.mode = (if $dryrun then "dry_run" elif $goldrun then "gold" else "live" end)
+        | if $model != "" then .agent.model = $model else . end
+        | if $vuln != "" then .workflow = {kind: "exploit", synthetic_vuln_id: $vuln} else . end' \
        "$CONFIG_SRC" > "$CONFIG_DST"
 else
     echo "ERROR: $CONFIG_SRC not found"

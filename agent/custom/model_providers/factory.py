@@ -83,7 +83,7 @@ def get_model_provider(
          model in ``SupportedModel`` and ``utils/token_pricing.json`` so
          cost telemetry stays accurate for sustained use.
        - If ``allow_unregistered=True`` (set via
-         ``runner_config.json:allow_unregistered_models``), fall through
+         ``runner_config.json:agent.allow_unregistered_models``), fall through
          to :class:`LiteLLMProvider` with substring detection from
          :func:`agent.model_providers.litellm_provider.lookup_rule` and
          emit a loud WARNING. Intended for model-sweep / exploration runs
@@ -112,7 +112,7 @@ def get_model_provider(
             "agent/custom/model_providers/factory.py:SupportedModel and add a "
             "pricing row to utils/token_pricing.json. For model-sweep "
             "exploration where you don't need accurate cost telemetry, "
-            "set 'allow_unregistered_models': true in runner_config.json. "
+            "set 'agent.allow_unregistered_models': true in runner_config.json. "
             "See documentation/ADDING_MODELS.md."
         )
 

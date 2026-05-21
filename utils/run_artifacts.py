@@ -7,6 +7,13 @@ from typing import Any, Optional
 
 import jsonschema
 
+from models.config import (
+    ExploitWorkflowInput,
+    RedteamSyntheticWorkflowInput,
+    RedteamZerodayWorkflowInput,
+    RunnerConfig,
+)
+from models.resolved_config import ResolvedRunnerConfig
 from utils.artifact_paths import relative_artifact_path
 from utils.json_io import load_validator
 from utils.json_io import write_json_atomic as _write_json_atomic
@@ -209,7 +216,8 @@ def write_run_summary(
     project_root: Path,
     run_id: str,
     app_name: str,
-    config,
+    resolved: Optional[ResolvedRunnerConfig],
+    config_input: RunnerConfig,
     config_path: Optional[Path],
     workflow,
     run_result: dict,
@@ -221,6 +229,12 @@ def write_run_summary(
     start_error_count: int,
     timing_start_idx: int,
 ) -> None:
+    """Write run_summary.json from the resolved config (effective view).
+
+    ``resolved`` is None only when resolution itself failed; in that case we
+    skip the effective-view summary and write a minimal record from the input
+    contract for forensics.
+    """
     logs_dir = logger_manager.get_logs_dir()
     app_metadata = getattr(workflow, "metadata", {}) or {}
 
@@ -267,16 +281,19 @@ def write_run_summary(
 
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
 
-    # Copy the workflow's score file to logs directory for self-containment.
-    # Only copy the file that belongs to THIS workflow — stale files from
-    # previous runs of other workflows would be misleading.
+    # All scalar fields read off the input contract (same shape regardless
+    # of whether resolution succeeded). Only ``effective_view`` requires the
+    # resolved object — it's None on resolution failure.
+    wf_in = config_input.workflow
+    ag_in = config_input.agent
+    workflow_family: str = "exploit" if wf_in.kind == "exploit" else "redteam"
+
     if hasattr(workflow, "app_dir"):
-        for score_file in _score_files_for_workflow(config.workflow):
+        for score_file in _score_files_for_workflow(workflow_family):
             src = workflow.app_dir / score_file
             if src.exists():
-                dst = logs_dir / score_file
                 try:
-                    shutil.copy2(src, dst)
+                    shutil.copy2(src, logs_dir / score_file)
                 except Exception as e:
                     logger.warning("Failed to copy %s: %s", score_file, e)
 
@@ -284,16 +301,18 @@ def write_run_summary(
     score_artifact_paths = {
         key: relative_artifact_path(path, logs_dir)
         for key, path in _score_artifact_paths(
-            config.workflow, logs_dir, workflow
+            workflow_family, logs_dir, workflow
         ).items()
     }
     squid_access_log = logs_dir / "squid_access.log"
     squid_cache_log = logs_dir / "squid_cache.log"
 
-    # Image identity is stamped onto run_result before agent_env cleanup;
-    # agent_image falls back to config so dry-runs (no container) still record intent.
-    agent_image = run_result.get("agent_image") or getattr(config, "agent_image", None)
+    agent_image = run_result.get("agent_image") or ag_in.image
     agent_image_digest = run_result.get("agent_image_digest")
+    # ``effective`` reflects the resolved DI object (bundle-resolved attacker_model
+    # and all). When resolution failed (rare — only on submodule init / metadata
+    # errors), we still write the input via ``full_snapshot`` for forensics.
+    effective_view = resolved.summary_view() if resolved is not None else None
 
     run_summary = {
         "run_id": run_id,
@@ -306,24 +325,26 @@ def write_run_summary(
         },
         "context": {
             "app_name": app_name,
-            "workflow": config.workflow,
-            "vuln_id": config.synthetic_vuln_id,
-            "task": config.task,
-            "agent_mode": config.agent_mode,
+            "workflow": workflow_family,
+            "vuln_id": (
+                wf_in.synthetic_vuln_id
+                if isinstance(
+                    wf_in, (ExploitWorkflowInput, RedteamSyntheticWorkflowInput)
+                )
+                else None
+            ),
+            "task": (
+                wf_in.task if isinstance(wf_in, RedteamZerodayWorkflowInput) else None
+            ),
+            "agent_mode": ag_in.mode,
             "agent_image": agent_image,
             "agent_image_digest": agent_image_digest,
-            "model": config.model,
+            "model": ag_in.model,
         },
         "config": {
-            "build_type": config.build_type,
-            "dry_run": config.dry_run,
-            "emulator_backend": config.emulator_backend,
-            "emulator_display": config.emulator_display,
-            "max_iterations": config.max_iterations,
-            "max_model_response_tokens": config.max_model_response_tokens,
-            "reasoning_effort": config.reasoning_effort,
             "config_path": str(config_path) if config_path else None,
-            "full_snapshot": config.model_dump(),
+            "full_snapshot": config_input.model_dump(),
+            "effective": effective_view,
         },
         "reproducibility": {
             "git_commit": _run_git_value(project_root, ["rev-parse", "HEAD"]),
@@ -352,7 +373,7 @@ def write_run_summary(
             ),
             "scores": scores,
             "inconsistencies": _detect_inconsistencies(
-                outcome, exit_reason, run_result, evaluation, config.workflow
+                outcome, exit_reason, run_result, evaluation, workflow_family
             ),
         },
         "artifacts": {
