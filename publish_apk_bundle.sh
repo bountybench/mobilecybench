@@ -94,12 +94,35 @@ fi
 # --- Lockstep version: both variants share the default sequence's next N. ---
 # This guarantees apk-<app>-v5.zip and apk-<app>-obfuscated-v5.zip refer to
 # the same source commit; downstream consumers can correlate by version alone.
+#
+# --obfuscated-only reuses the existing default version (CURRENT_VERSION) so
+# we land alongside an already-published default vN. Incrementing would
+# produce apk-<app>-obfuscated-vN+1 with no matching default vN+1, breaking
+# the by-version correlation downstream code relies on.
 LATEST=$(gh release list --repo "$REPO" --limit 1000 --json tagName --jq '.[].tagName' 2>/dev/null \
     | grep -E "^apk-${APP_NAME}-v[0-9]+$" | sort -V | tail -1)
 if [ -n "$LATEST" ]; then
     CURRENT_VERSION=$(echo "$LATEST" | sed "s/apk-${APP_NAME}-v//")
-    NEXT_VERSION=$((CURRENT_VERSION + 1))
+    if [ "$MODE" = "obfuscated-only" ]; then
+        NEXT_VERSION="$CURRENT_VERSION"
+        # Pre-check that the lockstep obfuscated tag isn't already taken.
+        # Without this, gh release create later fails with an opaque
+        # "release already exists" message; hint at the recovery path.
+        obf_tag="apk-${APP_NAME}-obfuscated-v$NEXT_VERSION"
+        if gh release view "$obf_tag" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Error: $obf_tag already exists at the lockstep version." >&2
+            echo "To republish, delete it first: gh release delete $obf_tag --repo $REPO --yes" >&2
+            exit 1
+        fi
+    else
+        NEXT_VERSION=$((CURRENT_VERSION + 1))
+    fi
 else
+    if [ "$MODE" = "obfuscated-only" ]; then
+        echo "Error: --obfuscated-only needs an existing apk-${APP_NAME}-v<N> default release to be in lockstep with; none found." >&2
+        echo "Publish a default bundle first (auto or --default-only) and rerun." >&2
+        exit 1
+    fi
     NEXT_VERSION=0
 fi
 
@@ -108,14 +131,25 @@ echo "Version: v$NEXT_VERSION"
 echo "Publishing: default=$publish_default obfuscated=$publish_obfuscated"
 echo ""
 
-# --- publish_variant <variant_name> <zip_name> <metadata_field> <zip_args...> ---
+# --- publish_variant <variant_name> <zip_name> <metadata_field> [--from-dir <subdir>] <zip_args...> ---
 # variant_name appears in the release tag; "default" produces apk-<app>-vN,
 # anything else produces apk-<app>-<variant>-vN. Both variants share vN.
+#
+# Optional `--from-dir <subdir>` zips from $APP_DIR/<subdir> instead of
+# $APP_DIR, so the subdir's contents land at the zip root. Needed because
+# utils/apk_utils.py:_extract_zip strips only an "apk/" prefix — if we zip
+# apk/obfuscated/<file> as-is, extraction nests as apk/obfuscated/obfuscated/.
 publish_variant() {
     local variant="$1"
     local zip_name="$2"
     local metadata_field="$3"
     shift 3
+
+    local from_dir="$APP_DIR"
+    if [ "$1" = "--from-dir" ]; then
+        from_dir="$APP_DIR/$2"
+        shift 2
+    fi
     local zip_args=("$@")
 
     local tag
@@ -127,8 +161,8 @@ publish_variant() {
 
     local zip_file="$APP_DIR/$zip_name"
     echo "--- $variant → $tag ---"
-    pushd "$APP_DIR" > /dev/null
-    zip -r "$zip_name" "${zip_args[@]}"
+    pushd "$from_dir" > /dev/null
+    zip -r "$zip_file" "${zip_args[@]}"
     popd > /dev/null
 
     echo "Uploading to GitHub release..."
@@ -162,8 +196,11 @@ if [ "$publish_default" = true ]; then
 fi
 
 if [ "$publish_obfuscated" = true ]; then
+    # Zip from inside apk/obfuscated/ so entries are root-level <file>.apk
+    # (or <vuln_id>/<file>.apk for synthetic-vuln subdirs). _extract_zip then
+    # writes them directly under apk_dir = apps/<app>/apk/obfuscated/.
     URL=$(publish_variant "obfuscated" "apk-${APP_NAME}-obfuscated-bundle.zip" "download_link_obfuscated" \
-        apk/obfuscated/ | tail -1)
+        --from-dir apk/obfuscated . | tail -1)
     URLS+=("obfuscated: $URL")
 fi
 

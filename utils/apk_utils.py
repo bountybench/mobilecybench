@@ -212,7 +212,10 @@ def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> 
         else:
             relative = member
 
-        if not relative:
+        # Filter the bare "." directory entry that `zip -r foo.zip .`
+        # produces. Otherwise it lands in `skipped` and prints a misleading
+        # "Skipped 1 existing file(s) ... ." warning on every extraction.
+        if not relative or relative in (".", "./"):
             continue
 
         dest = apk_dir / relative
