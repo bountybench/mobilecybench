@@ -137,7 +137,7 @@ class TestImageModelCompat:
         [
             ("cybench/mobilecybench:claudecode_2.1.140-r2", "gpt-5.5", "claudecode"),
             ("cybench/mobilecybench:codex_0.130.0-r2", "claude-opus-4-7", "codex"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "gemini-3.1-pro", "codex"),
+            ("cybench/mobilecybench:codex_0.130.0-r2", "gemini-3.1-pro-preview", "codex"),
         ],
     )
     def test_mismatch_rejected(self, base_config, image, model, cli):
@@ -158,7 +158,7 @@ class TestImageModelCompat:
                 **base_config.model_dump(),
                 "agent_mode": "external",
                 "agent_image": "lab/mycli:0.1",
-                "model": "gemini-3.1-pro",
+                "model": "gemini-3.1-pro-preview",
             }
         )
         assert cfg.agent_image == "lab/mycli:0.1"
