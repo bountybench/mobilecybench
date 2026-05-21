@@ -762,10 +762,8 @@ class Workflow(ABC):
             logger.warning("ssrf_utils not available — skipping SSRF clear")
 
     def _stop_ssrf_listener(self) -> None:
-        """Stop the shared SSRF listener if a probe run started it."""
         try:
             from utils.ssrf_utils import is_ssrf_listener_running, stop_ssrf_listener
-
             if is_ssrf_listener_running() and not stop_ssrf_listener():
                 logger.warning("Failed to stop SSRF listener")
         except ImportError:
