@@ -51,7 +51,7 @@ The committed `runner_config.json` defaults to probe-only + `malicious_app` (wit
 |---|---|---|
 | OpenAI (Responses API) | `OPENAI_API_KEY` | `gpt-5.5`, `gpt-5.4`, `gpt-5.2` (+ `-pro`, `-codex` variants) |
 | Anthropic (via LiteLLM) | `ANTHROPIC_API_KEY` | `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-opus-4-6` |
-| Google (via LiteLLM) | `GEMINI_API_KEY` | `gemini-3.1-pro`, `gemini-3-pro-preview` |
+| Google (via LiteLLM) | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-3-pro-preview` |
 
 See `agent/custom/model_providers/factory.py:SupportedModel` for the current list and [Adding a New Model](documentation/ADDING_MODELS.md) to register your own.
 
