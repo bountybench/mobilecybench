@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+import docker.errors
 import pytest
 
 from harness.byo_agent import run_agent
@@ -33,13 +34,22 @@ def _make_env(
     image_id: str = "sha256:abc123",
     exec_running_sequence: list[bool] | None = None,
     exit_code: int = 0,
+    tail_chunks: list[bytes] | None = None,
+    tail_create_raises: Exception | None = None,
 ) -> MagicMock:
     """Build a mock AgentEnvironment whose container exec_run produces the
     expected ``result.json``.
 
     ``exec_running_sequence`` lets the test control how many polling
-    iterations happen before the process appears exited. Default: exits
-    on the first inspect.
+    iterations happen before the main /run-agent.sh exec appears exited.
+    Default: exits on the first inspect.
+
+    ``tail_chunks`` is the byte stream produced by the live-log-mirror's
+    `tail -F` exec (consumed when ``exec_start(stream=True)``). Default
+    empty stream.
+
+    ``tail_create_raises`` simulates the mirror failing to start (e.g.
+    docker API error on its exec_create); main run continues unaffected.
     """
     env = MagicMock(name="AgentEnvironment")
     container = MagicMock(name="container")
@@ -51,8 +61,24 @@ def _make_env(
     api = MagicMock(name="docker_api")
     container.client.api = api
 
-    api.exec_create.return_value = {"Id": "exec-xyz"}
-    api.exec_start.return_value = None
+    # exec_create is called up to three times: /run-agent.sh, tail, pkill.
+    # Hand out stable IDs so exec_inspect / assertions can key by name.
+    exec_ids = iter(["exec-run", "exec-tail", "exec-pkill"])
+
+    def _exec_create(_cid: str, cmd: Any) -> dict[str, str]:
+        next_id = next(exec_ids)
+        if next_id == "exec-tail" and tail_create_raises is not None:
+            raise tail_create_raises
+        return {"Id": next_id}
+
+    api.exec_create.side_effect = _exec_create
+
+    def _exec_start(_exec_id: str, stream: bool = False, detach: bool = False) -> Any:
+        if stream:
+            return iter(tail_chunks or [])
+        return None
+
+    api.exec_start.side_effect = _exec_start
 
     if exec_running_sequence is None:
         exec_running_sequence = [False]
@@ -63,7 +89,10 @@ def _make_env(
     def _inspect_factory() -> Any:
         seq = list(exec_running_sequence)
 
-        def _next(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        def _next(exec_id: str, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            if exec_id != "exec-run":
+                # tail / pkill are not the lifecycle truth; report exited.
+                return {"Running": False, "ExitCode": 0}
             running = seq[0] if len(seq) == 1 else seq.pop(0)
             return {"Running": running, "ExitCode": None if running else exit_code}
 
@@ -296,3 +325,89 @@ class TestRunAgentFailureModes:
         assert env.save_agent_run.called
         assert env.save_agent_exploit.called
         assert env.save_agent_output.called
+
+
+class TestLiveLogMirror:
+    """Live mirroring of /app/agent_run/agent.log to host agent_logger."""
+
+    @pytest.fixture(autouse=True)
+    def _skip_drain_sleep(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Mirror teardown sleeps 0.5s to drain the tail socket; tests don't
+        # need to wait real-time for that.
+        monkeypatch.setattr(time, "sleep", lambda _: None)
+
+    def test_emits_external_lines_via_agent_logger(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        env = _make_env(
+            tmp_path,
+            result_dict={"status": "completed", "turns_taken": 1},
+            tail_chunks=[b"hello world\n", b"second line\n"],
+        )
+
+        with caplog.at_level("INFO"):
+            out = run_agent(env=env, task_dict=_task(), host_artifact_dir=tmp_path)
+
+        external = [
+            r.getMessage()
+            for r in caplog.records
+            if "[External Agent]" in r.getMessage()
+        ]
+        assert "[External Agent] hello world" in external
+        assert "[External Agent] second line" in external
+        assert out["status"] == "completed"
+
+    def test_mirror_start_failure_does_not_break_run(self, tmp_path: Path) -> None:
+        """Second exec_create (tail) raises APIError. The first exec_create
+        is /run-agent.sh; failure to start the live mirror must not affect
+        the main agent run."""
+        env = _make_env(
+            tmp_path,
+            result_dict={"status": "completed", "turns_taken": 1},
+            tail_create_raises=docker.errors.APIError("tail exec_create failed"),
+        )
+
+        out = run_agent(env=env, task_dict=_task(), host_artifact_dir=tmp_path)
+
+        assert out["status"] == "completed"
+
+    def test_mirror_pkill_completes_before_artifact_pull(self, tmp_path: Path) -> None:
+        """Blocking pkill (exec_start with detach=False) must finish before
+        _save_container_dir extracts the tar over the host's agent_run/agent.log
+        path; otherwise the still-live tail pump races the extract.
+
+        Asserting on `exec_create` ordering alone is insufficient — a later
+        change flipping pkill to `detach=True` would slip past that check
+        while reintroducing the race. We assert on `exec_start(exec-pkill,
+        detach=False)` instead.
+        """
+        env = _make_env(
+            tmp_path,
+            result_dict={"status": "completed", "turns_taken": 1},
+            tail_chunks=[b"line\n"],
+        )
+
+        ordered: list[str] = []
+
+        api = env.container.client.api
+        original_start = api.exec_start.side_effect
+
+        def _start_tracking(
+            exec_id: str, stream: bool = False, detach: bool = False
+        ) -> Any:
+            if exec_id == "exec-pkill":
+                ordered.append("pkill_blocking" if not detach else "pkill_detached")
+            return original_start(exec_id, stream=stream, detach=detach)
+
+        api.exec_start.side_effect = _start_tracking
+
+        def _save_run(_dest: Path) -> None:
+            ordered.append("save_agent_run")
+
+        env.save_agent_run.side_effect = _save_run
+
+        run_agent(env=env, task_dict=_task(), host_artifact_dir=tmp_path)
+
+        assert "pkill_blocking" in ordered, f"pkill must be blocking; got: {ordered}"
+        assert "save_agent_run" in ordered
+        assert ordered.index("pkill_blocking") < ordered.index("save_agent_run")
