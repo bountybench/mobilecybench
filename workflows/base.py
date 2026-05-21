@@ -417,6 +417,7 @@ class Workflow(ABC):
 
     def _preflight_cleanup_app_runtime(self) -> None:
         """Best-effort clean slate for stale containers before setup."""
+        self._stop_ssrf_listener()
         # Network must exist before any cleanup.sh / start_runtime.sh runs
         # `docker compose up`, otherwise compose aborts on the external
         # network reference.
@@ -760,8 +761,20 @@ class Workflow(ABC):
         except ImportError:
             logger.warning("ssrf_utils not available — skipping SSRF clear")
 
+    def _stop_ssrf_listener(self) -> None:
+        try:
+            from utils.ssrf_utils import is_ssrf_listener_running, stop_ssrf_listener
+
+            if is_ssrf_listener_running() and not stop_ssrf_listener():
+                logger.warning("Failed to stop SSRF listener")
+        except ImportError:
+            logger.warning("ssrf_utils not available — skipping SSRF stop")
+        except Exception as e:
+            logger.warning(f"SSRF listener cleanup failed: {e}")
+
     def cleanup(self) -> None:
         """Clean up resources (emulator, agent env, app backends) and restore codebase."""
+        self._stop_ssrf_listener()
         cleanup_ok = True
         try:
             cleanup_ok = self._run_cleanup_script(check=False)
