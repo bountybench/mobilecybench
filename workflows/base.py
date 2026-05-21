@@ -188,7 +188,9 @@ class Workflow(ABC):
             workflow=workflow,
             attacker_model=self.config.attacker_model,
             no_codebase=self.config.no_codebase,
-            allow_unregistered_models=self.config.allow_unregistered_models,
+            allow_unregistered_model_routing=(
+                self.config.allow_unregistered_models_in_custom_mode
+            ),
         )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 

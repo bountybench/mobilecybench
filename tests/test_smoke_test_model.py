@@ -238,9 +238,11 @@ def test_main_propagates_allow_unregistered_from_cli(smoke_test_module):
 
 
 def test_main_propagates_allow_unregistered_from_config(smoke_test_module, tmp_path):
-    """allow_unregistered_models=true in runner_config.json reaches the factory."""
+    """allow_unregistered_models_in_custom_mode=true reaches the factory."""
     cfg = tmp_path / "cfg.json"
-    cfg.write_text(json.dumps({"model": "x", "allow_unregistered_models": True}))
+    cfg.write_text(
+        json.dumps({"model": "x", "allow_unregistered_models_in_custom_mode": True})
+    )
 
     fake_provider = MagicMock()
     fake_provider.call.return_value = _provider_response(text="OK")
