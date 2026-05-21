@@ -764,6 +764,7 @@ class Workflow(ABC):
     def _stop_ssrf_listener(self) -> None:
         try:
             from utils.ssrf_utils import is_ssrf_listener_running, stop_ssrf_listener
+
             if is_ssrf_listener_running() and not stop_ssrf_listener():
                 logger.warning("Failed to stop SSRF listener")
         except ImportError:

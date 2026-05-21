@@ -196,9 +196,9 @@ class TestWorkflowRuntimeCleanup:
     def test_stop_ssrf_listener_stops_only_when_running(self, tmp_path):
         workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
 
-        with patch("utils.ssrf_utils.is_ssrf_listener_running", return_value=True), patch(
-            "utils.ssrf_utils.stop_ssrf_listener", return_value=True
-        ) as mock_stop:
+        with patch(
+            "utils.ssrf_utils.is_ssrf_listener_running", return_value=True
+        ), patch("utils.ssrf_utils.stop_ssrf_listener", return_value=True) as mock_stop:
             workflow._stop_ssrf_listener()
 
         mock_stop.assert_called_once()
@@ -206,9 +206,9 @@ class TestWorkflowRuntimeCleanup:
     def test_stop_ssrf_listener_skips_when_not_running(self, tmp_path):
         workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
 
-        with patch("utils.ssrf_utils.is_ssrf_listener_running", return_value=False), patch(
-            "utils.ssrf_utils.stop_ssrf_listener"
-        ) as mock_stop:
+        with patch(
+            "utils.ssrf_utils.is_ssrf_listener_running", return_value=False
+        ), patch("utils.ssrf_utils.stop_ssrf_listener") as mock_stop:
             workflow._stop_ssrf_listener()
 
         mock_stop.assert_not_called()
