@@ -7,7 +7,7 @@ mobilecybench evaluates agents through one of two paths:
 | `custom`     | Built-in in-process Python loop. Stays as-is; no contract surface.        |
 | `external`   | Your Docker image. The harness delivers a `task.json`, runs `/run-agent.sh`, and reads filesystem artifacts back. |
 
-This page documents the **`external`** contract. The reference codex and claude-code images ship as `cybench/mobilecybench:codex_0.130.0-r2` and `cybench/mobilecybench:claudecode_2.1.140-r2` (the `<cli-version>-r<revision>` tag pattern lets the harness bump independently of the CLI); a lab BYO image satisfies the same contract.
+This page documents the **`external`** contract. The reference codex, claude-code, and opencode images ship as `cybench/mobilecybench:codex_0.130.0-r2`, `cybench/mobilecybench:claudecode_2.1.140-r2`, and `cybench/mobilecybench:opencode_1.15.6-r1` (the `<cli-version>-r<revision>` tag pattern lets the harness bump independently of the CLI); a lab BYO image satisfies the same contract.
 
 ## The contract in one paragraph
 
@@ -148,7 +148,7 @@ Open object. Sub-fields the harness understands for cache-aware cost derivation:
 
 Forwarded by the harness:
 
-- **Auth tokens** (operator's `.env`, forwarded as-is — your CLI picks what it needs): `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_REFRESH_TOKEN`. Source of truth: `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`.
+- **Auth tokens** (operator's `.env`, forwarded as-is — your CLI picks what it needs): provider API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`) plus OAuth blobs (`CLAUDE_CODE_OAUTH_TOKEN`, `OPENCODE_AUTH_CONTENT`). Source of truth: `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`.
 - **Runtime wiring** (harness sets the values): `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` (Squid sidecar), `ADB_SERVER_SOCKET=tcp:adb-proxy:5037`.
 
 ## Model ownership
@@ -180,6 +180,20 @@ The parser layer in `agent/in_container/event_parser.py` (`BaseEventParser`) own
 ```bash
 docker exec kali-container tail -f /app/agent_run/conversation.jsonl
 ```
+
+## Opencode reference image
+
+The opencode image (`cybench/mobilecybench:opencode_1.15.6-r1`) ships a multi-provider CLI; the framework forwards `model` verbatim and opencode owns validation.
+
+- **Model id format:** `provider/model` (e.g. `anthropic/claude-opus-4-7`, `openai/gpt-5.5`, `google/gemini-3-pro-preview`, `moonshotai/kimi-k2.6`). The opencode CLI errors at runtime if the id is unknown.
+- **`reasoning_effort`** is forwarded as `opencode run --variant <value>`. The value is provider-specific (opencode's `--help`: "e.g., high, max, minimal"); a provider that doesn't recognize the harness's `low|medium|high` will reject the run.
+- **Gemini env alias.** Operators set `GEMINI_API_KEY`; the in-container runner mirrors it to `GOOGLE_GENERATIVE_AI_API_KEY` (the name opencode's Google SDK reads) only if the latter is unset, so an explicit operator value always wins.
+- **`OPENCODE_OPENAI_AUTH`** (experimental, OpenAI-only) selects which OpenAI credential opencode uses and strips the inactive one in-container so the source can't silently swap mid-run:
+  - `auto` (default): if `OPENCODE_AUTH_CONTENT` (ChatGPT OAuth blob) is present, strip `OPENAI_API_KEY`; otherwise keep the API key.
+  - `oauth`: force OAuth, strip `OPENAI_API_KEY`.
+  - `apikey`: force API key, strip `OPENCODE_AUTH_CONTENT`.
+
+  Non-OpenAI runs are unaffected.
 
 ## Operator config
 

@@ -17,6 +17,8 @@ import pytest
 
 from agent.claude_code.event_parser import ClaudeCodeEventParser
 from agent.codex.event_parser import CodexEventParser
+from agent.opencode import run_in_container as opencode_runner
+from agent.opencode.event_parser import OpencodeEventParser
 
 _TASK: dict[str, Any] = {"run_id": "lab-run-001", "model": "test-model"}
 
@@ -341,7 +343,7 @@ class TestFeedChunkResilience:
         assert totals["output_tokens"] == 50  # not 100
 
     def test_claude_captures_agent_cost_and_turns(self) -> None:
-        """Claude's result event populates agent_reported_cost + agent_reported_turns."""
+        """result event → agent_reported_cost + agent_reported_turns."""
         parser = ClaudeCodeEventParser()
         parser.feed_chunk(
             json.dumps(
@@ -363,3 +365,349 @@ class TestFeedChunkResilience:
         assert summary["turns_taken"] == 3
         assert summary["stop_reason"] == "end_turn"
         assert summary["timing"] == {"api_ms": 8000, "ttft_ms": 4500}
+
+
+class TestTerminalError:
+    """Parser-driven status override when a CLI signals failure without a
+    nonzero exit (opencode auth failure, claude result/error)."""
+
+    def test_opencode_terminal_error_forces_status_error_on_exit_zero(self) -> None:
+        parser = OpencodeEventParser()
+        parser.feed_chunk(
+            json.dumps(
+                {
+                    "type": "error",
+                    "error": {
+                        "name": "ProviderAuthError",
+                        "data": {"message": "API key missing"},
+                    },
+                }
+            )
+            + "\n"
+        )
+        summary = parser.summarize(_TASK, exit_code=0, elapsed=1.0)
+        assert summary["status"] == "error"
+        assert "ProviderAuthError" in summary["error_traceback"]
+        assert "API key missing" in summary["error_traceback"]
+
+    def test_opencode_recovery_clears_terminal_error(self) -> None:
+        # opencode also emits `error` for recoverable mid-run failures; a
+        # step_finish landing after proves recovery and must clear.
+        parser = OpencodeEventParser()
+        parser.feed_chunk(
+            json.dumps(
+                {
+                    "type": "error",
+                    "error": {"name": "Unknown", "data": {"message": "ENOENT"}},
+                }
+            )
+            + "\n"
+        )
+        assert parser.terminal_error is not None
+        parser.feed_chunk(_opencode_step_finish(input_t=1, output_t=1))
+        assert parser.terminal_error is None
+        assert (
+            parser.summarize(_TASK, exit_code=0, elapsed=1.0)["status"] == "completed"
+        )
+
+    def test_opencode_string_error_payload_does_not_crash(self) -> None:
+        parser = OpencodeEventParser()
+        parser.feed_chunk(
+            json.dumps({"type": "error", "error": "flat string error"}) + "\n"
+        )
+        assert parser.terminal_error is not None
+        assert "flat string error" in parser.terminal_error
+
+    def test_codex_turn_failed_is_terminal(self) -> None:
+        parser = CodexEventParser()
+        parser.feed_chunk(
+            json.dumps(
+                {
+                    "type": "turn.failed",
+                    "error": {"message": "model rejected the tool call"},
+                }
+            )
+            + "\n"
+        )
+        assert parser.terminal_error is not None
+        assert "model rejected" in parser.terminal_error
+
+    def test_codex_top_level_error_is_not_terminal(self) -> None:
+        # Codex may stash a top-level error then recover via a later
+        # turn.completed; only turn.failed is terminal.
+        parser = CodexEventParser()
+        parser.feed_chunk(
+            json.dumps({"type": "error", "message": "transient API blip"}) + "\n"
+        )
+        assert parser.terminal_error is None
+
+    def test_claude_result_error_is_terminal(self) -> None:
+        parser = ClaudeCodeEventParser()
+        parser.feed_chunk(
+            json.dumps(
+                {"type": "result", "subtype": "error", "error": "rate limit exceeded"}
+            )
+            + "\n"
+        )
+        assert parser.terminal_error is not None
+        assert "rate limit" in parser.terminal_error
+
+
+def _opencode_step_finish(
+    *, input_t: int, output_t: int, cache_read: int = 0, cost: float = 0.0
+) -> str:
+    return (
+        json.dumps(
+            {
+                "type": "step_finish",
+                "part": {
+                    "type": "step-finish",
+                    "reason": "stop",
+                    "tokens": {
+                        "input": input_t,
+                        "output": output_t,
+                        "reasoning": 0,
+                        "cache": {"read": cache_read, "write": 0},
+                    },
+                    "cost": cost,
+                },
+            }
+        )
+        + "\n"
+    )
+
+
+class TestOpencodeParser:
+    """OpencodeEventParser invariants the BYO contract depends on."""
+
+    def test_step_finish_tokens_are_per_step_and_sum(self) -> None:
+        # opencode emits per-step (not cumulative) usage; parser must sum.
+        parser = OpencodeEventParser()
+        parser.feed_chunk(_opencode_step_finish(input_t=800, output_t=40))
+        parser.feed_chunk(
+            _opencode_step_finish(input_t=400, output_t=40, cache_read=200)
+        )
+        parser.feed_chunk(
+            _opencode_step_finish(input_t=500, output_t=5, cache_read=200)
+        )
+        totals = parser.summarize(_TASK, 0, 0.0)["token_totals"]
+        assert totals["input_tokens"] == 1700
+        assert totals["output_tokens"] == 85
+        assert totals["cached_input_tokens"] == 400
+
+    @pytest.mark.parametrize(
+        "case,costs,expected_cost_usd",
+        [
+            # OAuth runs: every step reports 0 → omit cost so harness derives from totals.
+            ("all_zero_defers_to_derived", [0.0, 0.0], None),
+            # API-key runs: any non-zero step → trust the agent's sum.
+            ("any_nonzero_reported", [0.001, 0.002], 0.003),
+            ("mixed_zero_nonzero", [0.0, 0.005], 0.005),
+        ],
+        ids=lambda v: v if isinstance(v, str) else "",
+    )
+    def test_cost_aggregation(
+        self, case: str, costs: list, expected_cost_usd: float | None
+    ) -> None:
+        parser = OpencodeEventParser()
+        for c in costs:
+            parser.feed_chunk(_opencode_step_finish(input_t=10, output_t=5, cost=c))
+        summary = parser.summarize(_TASK, 0, 0.0)
+        if expected_cost_usd is None:
+            assert "cost_usd" not in summary
+        else:
+            assert summary["cost_usd"] == pytest.approx(expected_cost_usd)
+
+    def test_tool_use_normalizes_to_byo_shape(self) -> None:
+        parser = OpencodeEventParser()
+        parser.feed_chunk(
+            json.dumps(
+                {
+                    "type": "step_start",
+                    "sessionID": "ses_abc",
+                    "part": {"type": "step-start"},
+                }
+            )
+            + "\n"
+        )
+        parser.feed_chunk(
+            json.dumps(
+                {
+                    "type": "tool_use",
+                    "part": {
+                        "type": "tool",
+                        "tool": "bash",
+                        "callID": "call_xyz",
+                        "state": {
+                            "status": "completed",
+                            "input": {"command": "echo hi"},
+                            "output": "hi\n",
+                            "metadata": {"truncated": False},
+                        },
+                    },
+                }
+            )
+            + "\n"
+        )
+        parser.feed_chunk(_opencode_step_finish(input_t=1, output_t=1))
+        rec = parser.drain_records(_TASK)[0]
+        assert rec["tool_calls"][0] == {
+            "tool_call_id": "call_xyz",
+            "name": "bash",
+            "arguments": {"command": "echo hi"},
+        }
+        assert rec["observations"][0]["content"] == "hi\n"
+        assert parser.summarize({}, 0, 0.0)["session_id"] == "ses_abc"
+
+    def test_empty_run_produces_valid_summary_shape(self) -> None:
+        # SIGTERM before any step finishes — summary must still be valid.
+        parser = OpencodeEventParser()
+        result = parser.summarize(_TASK, exit_code=143, elapsed=0.5)
+        assert result["status"] == "error"
+        assert result["turns_taken"] == 0
+        assert result["token_totals"] == {}
+
+
+_AUTH_VARS = (
+    "OPENCODE_OPENAI_AUTH",
+    "OPENCODE_AUTH_CONTENT",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+)
+
+
+@pytest.fixture
+def clean_auth_env(monkeypatch: pytest.MonkeyPatch):
+    """Clear every auth var the opencode runner touches; return os.environ."""
+    import os
+
+    for k in _AUTH_VARS:
+        monkeypatch.delenv(k, raising=False)
+        os.environ.pop(k, None)
+    return os.environ
+
+
+class TestOpenAIAuthMode:
+    """OPENCODE_OPENAI_AUTH: experimental, OpenAI-only auth-source toggle.
+
+    Strips the inactive OpenAI credential so opencode cannot silently swap
+    mid-run. Never touches non-OpenAI provider keys.
+    """
+
+    @pytest.mark.parametrize(
+        "case,setup,stripped,kept",
+        [
+            # oauth: force ChatGPT-OAuth blob, strip API key.
+            (
+                "oauth",
+                {
+                    "OPENCODE_OPENAI_AUTH": "oauth",
+                    "OPENCODE_AUTH_CONTENT": "x",
+                    "OPENAI_API_KEY": "k",
+                    "ANTHROPIC_API_KEY": "a",
+                },
+                ("OPENAI_API_KEY",),
+                {"OPENCODE_AUTH_CONTENT": "x", "ANTHROPIC_API_KEY": "a"},
+            ),
+            # apikey: force API key, strip OAuth blob.
+            (
+                "apikey",
+                {
+                    "OPENCODE_OPENAI_AUTH": "apikey",
+                    "OPENCODE_AUTH_CONTENT": "x",
+                    "OPENAI_API_KEY": "k",
+                },
+                ("OPENCODE_AUTH_CONTENT",),
+                {"OPENAI_API_KEY": "k"},
+            ),
+            # auto + only API key: keep it (don't lock out API-only operators).
+            ("auto_apikey_only", {"OPENAI_API_KEY": "k"}, (), {"OPENAI_API_KEY": "k"}),
+            # auto + both creds: prefer OAuth, strip API key.
+            (
+                "auto_prefers_oauth",
+                {"OPENCODE_AUTH_CONTENT": "x", "OPENAI_API_KEY": "k"},
+                ("OPENAI_API_KEY",),
+                {"OPENCODE_AUTH_CONTENT": "x"},
+            ),
+            # Non-OpenAI creds never blocked (the bug the prior design had).
+            (
+                "non_openai_passthrough",
+                {"ANTHROPIC_API_KEY": "a"},
+                (),
+                {"ANTHROPIC_API_KEY": "a"},
+            ),
+        ],
+        ids=lambda v: v if isinstance(v, str) else "",
+    )
+    def test_apply_openai_auth_mode(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        clean_auth_env,
+        case: str,
+        setup: dict,
+        stripped: tuple,
+        kept: dict,
+    ) -> None:
+        for k, v in setup.items():
+            monkeypatch.setenv(k, v)
+
+        opencode_runner._apply_openai_auth_mode()
+
+        for k in stripped:
+            assert k not in clean_auth_env, f"[{case}] expected {k} stripped"
+        for k, v in kept.items():
+            assert clean_auth_env.get(k) == v, f"[{case}] expected {k}={v}"
+
+    def test_unknown_mode_fails_fast(
+        self, monkeypatch: pytest.MonkeyPatch, clean_auth_env
+    ) -> None:
+        monkeypatch.setenv("OPENCODE_OPENAI_AUTH", "potato")
+        with pytest.raises(SystemExit, match="'auto', 'oauth', or 'apikey'"):
+            opencode_runner._apply_openai_auth_mode()
+
+
+class TestNormalizeProviderEnv:
+    """_normalize_provider_env: operator env names -> opencode SDK names.
+
+    GEMINI_API_KEY → GOOGLE_GENERATIVE_AI_API_KEY (what opencode's Google
+    SDK reads). Mirror only when target is unset, so explicit operator
+    override always wins.
+    """
+
+    @pytest.mark.parametrize(
+        "case,initial,expected",
+        [
+            (
+                "alias_mirrored",
+                {"GEMINI_API_KEY": "g"},
+                {"GEMINI_API_KEY": "g", "GOOGLE_GENERATIVE_AI_API_KEY": "g"},
+            ),
+            ("no_source_no_target", {}, {"GOOGLE_GENERATIVE_AI_API_KEY": None}),
+            (
+                "explicit_target_wins",
+                {"GEMINI_API_KEY": "g", "GOOGLE_GENERATIVE_AI_API_KEY": "explicit"},
+                {"GOOGLE_GENERATIVE_AI_API_KEY": "explicit"},
+            ),
+        ],
+        ids=lambda v: v if isinstance(v, str) else "",
+    )
+    def test_normalize_provider_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        clean_auth_env,
+        case: str,
+        initial: dict,
+        expected: dict,
+    ) -> None:
+        for k, v in initial.items():
+            monkeypatch.setenv(k, v)
+
+        opencode_runner._normalize_provider_env()
+
+        for k, v in expected.items():
+            if v is None:
+                assert k not in clean_auth_env, f"[{case}] expected {k} unset"
+            else:
+                assert clean_auth_env.get(k) == v, f"[{case}] expected {k}={v}"
