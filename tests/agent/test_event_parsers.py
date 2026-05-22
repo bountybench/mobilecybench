@@ -599,7 +599,7 @@ class TestOpenAIAuthMode:
     @pytest.mark.parametrize(
         "case,setup,stripped,kept",
         [
-            # oauth: force ChatGPT-OAuth blob, strip API key.
+            # oauth: strip API key.
             (
                 "oauth",
                 {
@@ -611,7 +611,7 @@ class TestOpenAIAuthMode:
                 ("OPENAI_API_KEY",),
                 {"OPENCODE_AUTH_CONTENT": "x", "ANTHROPIC_API_KEY": "a"},
             ),
-            # apikey: force API key, strip OAuth blob.
+            # apikey: strip OAuth blob.
             (
                 "apikey",
                 {
@@ -622,16 +622,36 @@ class TestOpenAIAuthMode:
                 ("OPENCODE_AUTH_CONTENT",),
                 {"OPENAI_API_KEY": "k"},
             ),
-            # auto + only API key: keep it (don't lock out API-only operators).
+            # auto + only API key: keep.
             ("auto_apikey_only", {"OPENAI_API_KEY": "k"}, (), {"OPENAI_API_KEY": "k"}),
-            # auto + both creds: prefer OAuth, strip API key.
+            # auto + usable OAuth: strip API key.
             (
-                "auto_prefers_oauth",
-                {"OPENCODE_AUTH_CONTENT": "x", "OPENAI_API_KEY": "k"},
+                "auto_prefers_usable_oauth",
+                {
+                    "OPENCODE_AUTH_CONTENT": '{"openai":{"type":"oauth"}}',
+                    "OPENAI_API_KEY": "k",
+                },
                 ("OPENAI_API_KEY",),
-                {"OPENCODE_AUTH_CONTENT": "x"},
+                {"OPENCODE_AUTH_CONTENT": '{"openai":{"type":"oauth"}}'},
             ),
-            # Non-OpenAI creds never blocked (the bug the prior design had).
+            # auto + malformed blob: keep API key.
+            (
+                "auto_malformed_blob_keeps_api_key",
+                {"OPENCODE_AUTH_CONTENT": "not-json", "OPENAI_API_KEY": "k"},
+                (),
+                {"OPENAI_API_KEY": "k"},
+            ),
+            # auto + blob without openai entry: keep API key.
+            (
+                "auto_blob_without_openai_keeps_api_key",
+                {
+                    "OPENCODE_AUTH_CONTENT": '{"anthropic":{"type":"api"}}',
+                    "OPENAI_API_KEY": "k",
+                },
+                (),
+                {"OPENAI_API_KEY": "k"},
+            ),
+            # Non-OpenAI creds never touched.
             (
                 "non_openai_passthrough",
                 {"ANTHROPIC_API_KEY": "a"},
@@ -660,12 +680,21 @@ class TestOpenAIAuthMode:
         for k, v in kept.items():
             assert clean_auth_env.get(k) == v, f"[{case}] expected {k}={v}"
 
-    def test_unknown_mode_fails_fast(
-        self, monkeypatch: pytest.MonkeyPatch, clean_auth_env
+    def test_unknown_mode_warns_and_falls_back_to_auto(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        clean_auth_env,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
+        # OpenAI-only setting; a typo must not abort non-OpenAI runs.
         monkeypatch.setenv("OPENCODE_OPENAI_AUTH", "potato")
-        with pytest.raises(SystemExit, match="'auto', 'oauth', or 'apikey'"):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "a")
+        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        with caplog.at_level("WARNING"):
             opencode_runner._apply_openai_auth_mode()
+        assert clean_auth_env.get("OPENAI_API_KEY") == "k"
+        assert clean_auth_env.get("ANTHROPIC_API_KEY") == "a"
+        assert any("potato" in r.message for r in caplog.records)
 
 
 class TestNormalizeProviderEnv:

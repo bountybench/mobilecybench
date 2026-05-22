@@ -3,14 +3,14 @@
 OpenAI auth-source switch (experimental, OpenAI-only):
     OPENCODE_OPENAI_AUTH=auto    (default) strip OPENAI_API_KEY only when
                                  OPENCODE_AUTH_CONTENT is present; otherwise
-                                 keep API key. Avoids silent breakage when
-                                 only one credential is available.
+                                 keep API key.
     OPENCODE_OPENAI_AUTH=oauth   force ChatGPT-OAuth blob; strip OPENAI_API_KEY.
     OPENCODE_OPENAI_AUTH=apikey  force OPENAI_API_KEY; strip OPENCODE_AUTH_CONTENT.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from typing import Any
@@ -20,8 +20,6 @@ from agent.in_container.runner import run
 from agent.opencode.event_parser import OpencodeEventParser
 from utils.logger import logger
 
-# OpenAI auth-source switch. Scope: OpenAI only. Strip the inactive path's
-# OpenAI credential so opencode cannot silently swap auth source mid-run.
 _OPENAI_AUTH_STRIP = {
     "oauth": ("OPENAI_API_KEY",),
     "apikey": ("OPENCODE_AUTH_CONTENT",),
@@ -58,24 +56,36 @@ def _normalize_provider_env() -> None:
         os.environ.setdefault("GOOGLE_GENERATIVE_AI_API_KEY", gemini_key)
 
 
-def _apply_openai_auth_mode() -> None:
-    """Pick opencode's OpenAI auth source (experimental, OpenAI-only).
+def _oauth_blob_has_openai(blob: str | None) -> bool:
+    if not blob:
+        return False
+    try:
+        return isinstance(json.loads(blob).get("openai"), dict)
+    except (ValueError, TypeError):
+        return False
 
-    Default 'auto' prefers OAuth when its blob is present, else keeps the
-    API key — never strips a credential when no alternative is available.
-    Explicit 'oauth'/'apikey' force deterministic stripping. Non-OpenAI
-    runs are unaffected.
+
+def _apply_openai_auth_mode() -> None:
+    """OpenAI-only auth selector. 'auto' (default) prefers OAuth only when
+    the blob is parseable and has an openai entry; otherwise keeps the
+    API key. 'oauth'/'apikey' force stripping. Unknown values warn and
+    fall back to 'auto' so a typo cannot abort non-OpenAI runs.
     """
     mode = os.environ.get("OPENCODE_OPENAI_AUTH", "auto")
-    if mode == "auto":
-        strip = ("OPENAI_API_KEY",) if os.environ.get("OPENCODE_AUTH_CONTENT") else ()
-    elif mode in _OPENAI_AUTH_STRIP:
-        strip = _OPENAI_AUTH_STRIP[mode]
-    else:
-        sys.exit(
-            f"[opencode] OPENCODE_OPENAI_AUTH={mode!r} "
-            f"must be 'auto', 'oauth', or 'apikey'"
+    if mode not in {"auto", *_OPENAI_AUTH_STRIP}:
+        logger.warning(
+            "OPENCODE_OPENAI_AUTH=%r is not 'auto'|'oauth'|'apikey'; using 'auto'",
+            mode,
         )
+        mode = "auto"
+    if mode == "auto":
+        strip = (
+            ("OPENAI_API_KEY",)
+            if _oauth_blob_has_openai(os.environ.get("OPENCODE_AUTH_CONTENT"))
+            else ()
+        )
+    else:
+        strip = _OPENAI_AUTH_STRIP[mode]
     stripped = [k for k in strip if os.environ.pop(k, None)]
     logger.info("opencode openai auth: mode=%s (stripped: %s)", mode, stripped)
 
