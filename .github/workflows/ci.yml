@@ -107,16 +107,15 @@ jobs:
             system_image=$(jq -r '.system_image // "google_atd"' "$metadata")
             echo "  SDK: $sdk, Java: $java, System image: $system_image"
 
-            # Determine obfuscation opt-in for this app.
-            # Apps with apk_obfuscation in {default, force_on, upstream_forced}
-            # participate in the obfuscated CI variant. Apps with the field
-            # absent or set to "never" never produce obfuscated jobs.
-            apk_obfuscation=$(jq -r '.apk_obfuscation // ""' "$metadata")
+            # Determine obfuscation build capability for this app. The
+            # per-app build.sh is the source of truth: it must forward the
+            # repo-level init script to Gradle when build_apk.sh --obfuscate
+            # exports MCB_OBFUSCATE_INIT_SCRIPT.
             obfuscation_optin=false
-            case "$apk_obfuscation" in
-              default|force_on|upstream_forced) obfuscation_optin=true ;;
-            esac
-            echo "  apk_obfuscation: '${apk_obfuscation}' (opt-in: ${obfuscation_optin})"
+            if [ -f "$dir/build.sh" ] && grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$dir/build.sh"; then
+              obfuscation_optin=true
+            fi
+            echo "  obfuscation build support: ${obfuscation_optin}"
 
             # Per-app and repo-level obfuscation trigger detection.
             # Obfuscated rebuilds fire when: the app itself changed (existing

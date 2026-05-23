@@ -55,14 +55,9 @@
       "type": "array",
       "description": "An array of Docker container names that the generic probe `test_availability` can check for container health."
     },
-    "apk_obfuscation": {
-      "type": "string",
-      "enum": ["default", "force_on", "upstream_forced", "never"],
-      "description": "Opt-in posture for the APK obfuscation toggle. 'default': operator picks via runner_config (expected value for verified apps). 'force_on': always built obfuscated regardless of runner_config (deliberate project choice). 'upstream_forced': submodule's upstream already has minifyEnabled true, cannot be built un-obfuscated. 'never' (or field absent): obfuscation not supported for this app, only the default APK is published."
-    },
     "download_link_obfuscated": {
       "type": "string",
-      "description": "GitHub release URL to download the R8-minified APK bundle. Present only when `apk_obfuscation` is 'default', 'force_on', or 'upstream_forced'. Added via the two-commit publish protocol: PR A flips `apk_obfuscation` and documents the smoke-test result; CI on merge builds and publishes the obfuscated bundle; PR B (auto-opened by release CI or manual) lands this field with the resulting URL. Until PR B merges, runner_config requests for `apk_obfuscation: on` fall back to the default APK with a warning."
+      "description": "GitHub release URL to download the R8-minified APK bundle. Present only after the app's build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT and the obfuscated bundle has been published. If an experiment requests the obfuscated variant before this field is present, download tooling fails fast rather than falling back to the default APK."
     }
   },
   "required": [

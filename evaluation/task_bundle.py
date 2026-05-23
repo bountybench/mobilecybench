@@ -22,7 +22,7 @@ mode bypasses them entirely.
 
 import json
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
@@ -105,10 +105,8 @@ def _run_build(project_root: Path, args: list[str], timeout: int) -> None:
 class SyntheticBundle:
     app_dir: Path
     vuln_id: str
-    # APK obfuscation toggle resolution context. Passed by resolve_bundle()
-    # from RunnerConfig + the app's metadata.json.
+    # APK obfuscation toggle context. Passed by resolve_bundle() from RunnerConfig.
     runner_obfuscation: str = "off"
-    app_metadata: dict = field(default_factory=dict)
     kind: BundleKind = "synthetic"
 
     @property
@@ -134,7 +132,6 @@ class SyntheticBundle:
         return self.app_dir / resolve_apk_path(
             app_name=self.app_dir.name,
             runner_obfuscation=self.runner_obfuscation,
-            app_metadata=self.app_metadata,
             vuln_id=self.vuln_id,
         )
 
@@ -146,7 +143,6 @@ class SyntheticBundle:
         return self.app_dir / resolve_apk_path(
             app_name=self.app_dir.name,
             runner_obfuscation=self.runner_obfuscation,
-            app_metadata=self.app_metadata,
             vuln_id=None,
         )
 
@@ -194,7 +190,6 @@ class ZerodayBundle:
     task: str
     # APK obfuscation toggle context
     runner_obfuscation: str = "off"
-    app_metadata: dict = field(default_factory=dict)
     kind: BundleKind = "zeroday"
 
     def __post_init__(self) -> None:
@@ -245,7 +240,6 @@ class ZerodayBundle:
         return app_dir / resolve_apk_path(
             app_name=self.app_name,
             runner_obfuscation=self.runner_obfuscation,
-            app_metadata=self.app_metadata,
             vuln_id=None,
         )
 
@@ -308,7 +302,6 @@ class ProbeOnlyBundle:
     _attacker_model: str
     # APK obfuscation toggle context.
     runner_obfuscation: str = "off"
-    app_metadata: dict = field(default_factory=dict)
     kind: BundleKind = "probe_only"
 
     @property
@@ -331,7 +324,6 @@ class ProbeOnlyBundle:
         return self.app_dir / resolve_apk_path(
             app_name=self.app_dir.name,
             runner_obfuscation=self.runner_obfuscation,
-            app_metadata=self.app_metadata,
             vuln_id=None,
         )
 
@@ -404,7 +396,6 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
     vuln_id = getattr(config, "synthetic_vuln_id", None)
     probe_only = getattr(config, "probe_only", False)
     runner_obfuscation = getattr(config, "apk_obfuscation", "off")
-    app_metadata = _load_app_metadata(project_root, app_name)
 
     if probe_only:
         attacker_model = getattr(config, "attacker_model", None)
@@ -417,7 +408,6 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
             app_dir=project_root / "apps" / app_name,
             _attacker_model=attacker_model,
             runner_obfuscation=runner_obfuscation,
-            app_metadata=app_metadata,
         )
 
     if bool(task) == bool(vuln_id):
@@ -432,24 +422,10 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
             app_name=app_name,
             task=task,
             runner_obfuscation=runner_obfuscation,
-            app_metadata=app_metadata,
         )
     assert vuln_id is not None
     return SyntheticBundle(
         app_dir=project_root / "apps" / app_name,
         vuln_id=vuln_id,
         runner_obfuscation=runner_obfuscation,
-        app_metadata=app_metadata,
     )
-
-
-def _load_app_metadata(project_root: Path, app_name: str) -> dict:
-    """Load apps/<app>/metadata.json. Returns {} when missing/unreadable so
-    bundle construction stays robust in tests that don't touch real apps."""
-    metadata_path = project_root / "apps" / app_name / "metadata.json"
-    if not metadata_path.exists():
-        return {}
-    try:
-        return json.loads(metadata_path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}

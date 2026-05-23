@@ -93,7 +93,8 @@ show_usage() {
     echo "                       e.g. a task/report fix.patch)"
     echo "  --obfuscate         Build the release APK with R8 minify/shrink enabled via"
     echo "                      gradle/obfuscate.init.gradle. Output goes to"
-    echo "                      apps/<app>/apk/obfuscated/<app>.apk."
+    echo "                      apps/<app>/apk/obfuscated/<app>.apk. Fails unless"
+    echo "                      build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT."
     echo "  -h, --help          Show this help message"
     echo ""
     echo "Note: --vuln and --hardened-patch are mutually exclusive."
@@ -575,15 +576,15 @@ build_and_package() {
         echo -e "${INFO} Obfuscation enabled:"
         echo -e "${INFO}   MCB_OBFUSCATE_INIT_SCRIPT=$MCB_OBFUSCATE_INIT_SCRIPT"
         echo -e "${INFO}   MCB_APP_DIR=$MCB_APP_DIR"
-        # Loud warning: env vars are exported but if the per-app build.sh
-        # doesn't read MCB_OBFUSCATE and forward --init-script to gradlew,
-        # the built APK at the obfuscated/ output path will be identical
-        # to the non-obfuscated build (silent wrong-state experiment).
+        # Fail fast if the per-app build does not opt into the central init
+        # script. Otherwise build_apk.sh would put a normal APK under
+        # apk/obfuscated/, creating a silent wrong-state experiment.
         if ! grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$APP_DIR/build.sh" 2>/dev/null; then
-            echo -e "${WARNING} $APP_NAME/build.sh does not reference MCB_OBFUSCATE_INIT_SCRIPT."
-            echo -e "${WARNING} The produced APK at apk/obfuscated/ will NOT be R8-minified."
-            echo -e "${WARNING} Update $APP_NAME/build.sh to forward --init-script \"\$MCB_OBFUSCATE_INIT_SCRIPT\""
-            echo -e "${WARNING} to gradlew when MCB_OBFUSCATE=1. See apps/wallabag/build.sh for a reference."
+            echo -e "${ERROR} --obfuscate requested but $APP_NAME/build.sh does not reference MCB_OBFUSCATE_INIT_SCRIPT."
+            echo -e "${ERROR} Refusing to write a non-obfuscated APK under apk/obfuscated/."
+            echo -e "${ERROR} Update $APP_NAME/build.sh to forward --init-script \"\$MCB_OBFUSCATE_INIT_SCRIPT\""
+            echo -e "${ERROR} to gradlew when MCB_OBFUSCATE=1. See apps/wallabag/build.sh for a reference."
+            return 1
         fi
     else
         unset MCB_OBFUSCATE

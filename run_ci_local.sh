@@ -660,9 +660,9 @@ if [ ! -f "$metadata" ]; then
 fi
 check_metadata_schema "$metadata"
 
-# Enforce CI parity: CI never emits obfuscated jobs unless apk_obfuscation
-# is in {default, force_on, upstream_forced}. Fail-fast locally so a passing
-# local run can't diverge from what CI would actually exercise.
+# Enforce CI parity: CI never emits obfuscated jobs unless the app build.sh
+# forwards MCB_OBFUSCATE_INIT_SCRIPT. Fail-fast locally so a passing local run
+# can't diverge from what CI would actually exercise.
 if [ "$OBFUSCATE" = true ]; then
     # CI parity: synthetic_vuln is not emitted in the obfuscated matrix
     # because vulnerability.patch + R8 interactions produce false-negative
@@ -679,20 +679,14 @@ if [ "$OBFUSCATE" = true ]; then
         exit 1
     fi
 
-    apk_obfuscation_meta=$(jq -r '.apk_obfuscation // ""' "$metadata")
-    case "$apk_obfuscation_meta" in
-        default|force_on|upstream_forced)
-            echo -e "${INFO} --obfuscate: app opted in (apk_obfuscation='$apk_obfuscation_meta')"
-            ;;
-        *)
-            echo -e "${ERROR} --obfuscate passed but $DIR/metadata.json apk_obfuscation"
-            echo -e "${ERROR} is '${apk_obfuscation_meta:-<unset>}'. CI would not emit obfuscated"
-            echo -e "${ERROR} jobs for this app. Set apk_obfuscation to one of:"
-            echo -e "${ERROR}   default | force_on | upstream_forced"
-            echo -e "${ERROR} in metadata.json before running with --obfuscate."
-            exit 1
-            ;;
-    esac
+    if grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$DIR/build.sh" 2>/dev/null; then
+        echo -e "${INFO} --obfuscate: $DIR/build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT"
+    else
+        echo -e "${ERROR} --obfuscate passed but $DIR/build.sh does not reference"
+        echo -e "${ERROR} MCB_OBFUSCATE_INIT_SCRIPT. CI would not emit obfuscated"
+        echo -e "${ERROR} jobs for this app until build.sh forwards the init script."
+        exit 1
+    fi
 fi
 
 sdk=$(jq -r '.sdk' "$metadata")

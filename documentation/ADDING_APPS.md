@@ -89,12 +89,9 @@ Required fields (most important):
 
 Optional fields:
 
-- `apk_obfuscation`: opt the app into the R8-minified CI variant. Allowed values:
-  - omitted or `"never"` — app never produces an obfuscated APK (default).
-  - `"default"` — app supports both default and obfuscated builds; experiments choose via `runner_config.apk_obfuscation`.
-  - `"force_on"` — app always builds obfuscated regardless of the runner toggle (use when the un-minified APK is broken or unsupported upstream).
-  - `"upstream_forced"` — upstream `build.gradle` already sets `minifyEnabled true`; the init script detect-and-skips and uses the app's tested ProGuard config as-is.
-- `download_link_obfuscated`: GitHub release URL for the obfuscated APK bundle. `publish_apk_bundle.sh` sets this automatically when `apk/obfuscated/` exists alongside `apk/`.
+- `download_link_obfuscated`: GitHub release URL for the obfuscated APK bundle. `publish_apk_bundle.sh` sets this automatically when `apk/obfuscated/` exists alongside `apk/`. If an experiment resolves to the obfuscated variant with `build_type: "download-apk"`, this field is required; download tooling fails fast instead of falling back to `download_link`.
+
+For analysis, treat only apps with both `download_link` and `download_link_obfuscated` present as paired ablation rows. CI build support is intentionally not a metadata enum: the app opts into obfuscated CI builds by having `build.sh` forward `MCB_OBFUSCATE_INIT_SCRIPT` when `MCB_OBFUSCATE=1`.
 
 ## 6) Write build.sh
 
@@ -118,7 +115,7 @@ cp app/build/outputs/apk/release/app-release-unsigned.apk "$SCRIPT_DIR/unsigned.
 - App-specific build patches (SDK upgrades, dependency fixes, ProGuard rules, etc.) belong here
 - Keep it simple — most `build.sh` scripts are 10-20 lines
 
-If the app opts into `apk_obfuscation`, `build.sh` must forward the repo-level init script to gradlew when `MCB_OBFUSCATE=1` is in the environment (set by `build_apk.sh --obfuscate`). The init script flips `minifyEnabled` / `shrinkResources` on the release variant and appends `proguard-android-optimize.txt` plus an optional per-app `apps/<app>/obfuscation/extra-keep.pro`:
+To opt into obfuscated CI builds, `build.sh` must forward the repo-level init script to gradlew when `MCB_OBFUSCATE=1` is in the environment (set by `build_apk.sh --obfuscate`). The init script flips `minifyEnabled` / `shrinkResources` on the release variant and appends `proguard-android-optimize.txt` plus an optional per-app `apps/<app>/obfuscation/extra-keep.pro`:
 
 ```bash
 GRADLE_ARGS=()

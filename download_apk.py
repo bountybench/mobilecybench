@@ -38,8 +38,8 @@ Flags (order-insensitive):
   --obfuscated    Use download_link_obfuscated (the R8-minified bundle) instead
                   of the default download_link (the un-minified bundle).
                   If the app's metadata.json does not define
-                  download_link_obfuscated, get_download_url logs a warning
-                  and falls back to download_link automatically.
+                  download_link_obfuscated, the command fails instead of
+                  falling back to the default APK.
   --check         Validate URLs on GitHub instead of downloading. Combine with
                   --obfuscated to validate the obfuscated URLs.
 
@@ -93,9 +93,8 @@ def main():
 
     url = get_download_url(app_name, project_root, obfuscated=obfuscated)
     if not url:
-        print(
-            f"Error: No download_link in apps/{app_name}/metadata.json", file=sys.stderr
-        )
+        field = "download_link_obfuscated" if obfuscated else "download_link"
+        print(f"Error: No {field} in apps/{app_name}/metadata.json", file=sys.stderr)
         print("\nTo fix, build and publish the APK:", file=sys.stderr)
         print(f"  ./build_apk.sh {app_name}", file=sys.stderr)
         print(f"  ./publish_apk_bundle.sh apps/{app_name}", file=sys.stderr)

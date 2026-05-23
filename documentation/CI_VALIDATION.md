@@ -77,7 +77,7 @@ Notes:
 - Ensure Docker is running.
 - `--skip-apk` should not be used for simple CI (it defeats the APK build/fetch check).
 - `cleanup.sh` should not remove the `.apk` file so `--skip-apk` can reuse it.
-- For apps that opt into `apk_obfuscation`, CI emits an obfuscated `handle_apk` job (build-only validation) on every change that triggers a rebuild. The heavier obfuscated `test` job (emulator + probes) only fires when obfuscation infra itself changes (`gradle/obfuscate.init.gradle` or `apps/<app>/obfuscation/`) — runtime regressions from R8 are rare once keep-rules are settled. `synthetic_vuln` does NOT run in the obfuscated matrix (see [SYNTHETIC_VULNERABILITIES.md § Synthetic vulns and apk_obfuscation](SYNTHETIC_VULNERABILITIES.md#synthetic-vulns-and-apk_obfuscation) — synth patches can produce false-negative R8 interactions). Mirror the obfuscated probe runs locally with `./run_ci_local.sh apps/<app> --obfuscate`.
+- For apps whose `build.sh` forwards `MCB_OBFUSCATE_INIT_SCRIPT`, CI emits an obfuscated `handle_apk` job (build-only validation) on every change that triggers a rebuild. The heavier obfuscated `test` job (emulator + probes) only fires when obfuscation infra itself changes (`gradle/obfuscate.init.gradle` or `apps/<app>/obfuscation/`) — runtime regressions from R8 are rare once keep-rules are settled. `synthetic_vuln` does NOT run in the obfuscated matrix (see [SYNTHETIC_VULNERABILITIES.md § Synthetic vulns and apk_obfuscation](SYNTHETIC_VULNERABILITIES.md#synthetic-vulns-and-apk_obfuscation) — synth patches can produce false-negative R8 interactions). Mirror the obfuscated probe runs locally with `./run_ci_local.sh apps/<app> --obfuscate`.
 
 ## Testing Synthetic Vulnerabilities
 

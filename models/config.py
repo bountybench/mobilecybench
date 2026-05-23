@@ -64,6 +64,8 @@ class RunnerConfig(BaseModel):
       and ``synthetic_vuln_id``, requires ``attacker_model``, and is
       incompatible with ``gold_run``.
     * ``dry_run`` and ``gold_run`` are mutually exclusive.
+    * ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and
+      cannot be used with ``build_type == 'source'``.
 
     See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
     """
@@ -91,13 +93,11 @@ class RunnerConfig(BaseModel):
             "Research-instrument toggle selecting which pre-published APK "
             "variant to acquire: 'off' (default, un-minified release build, "
             "matches historical baselines) or 'on' (R8-minified release "
-            "build, approximating production obfuscation). The request is "
-            "resolved against each app's metadata.json `apk_obfuscation` "
-            "field and may be overridden if the app does not support the "
-            "requested variant (e.g. 'on' requested against an app tagged "
-            "'never' falls back to the default APK with a warning; 'off' "
-            "against an 'upstream_forced' app is honored as 'on' with a "
-            "log notice)."
+            "build, approximating production obfuscation). 'on' is only "
+            "valid when no_codebase is true and build_type is download-apk "
+            "or skip-apk. For download-apk, the selected app must publish "
+            "download_link_obfuscated; for skip-apk, the obfuscated APK must "
+            "already exist under apps/<app>/apk/obfuscated/."
         ),
     )
 

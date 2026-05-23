@@ -34,10 +34,9 @@ def get_download_url(
 ) -> Optional[str]:
     """Read download_link (or download_link_obfuscated) from an app's metadata.json.
 
-    Returns None if missing. When ``obfuscated=True`` and the app doesn't have
-    a ``download_link_obfuscated`` field, falls back to the default
-    ``download_link`` and logs a warning — the caller's request for the
-    obfuscated variant cannot be honored.
+    Returns None if missing. When ``obfuscated=True``, the obfuscated URL is
+    required; falling back to ``download_link`` would silently place a default
+    APK under ``apk/obfuscated/``.
     """
     metadata_file = project_root / "apps" / app_name / "metadata.json"
     if not metadata_file.exists():
@@ -48,14 +47,14 @@ def get_download_url(
         url = meta.get("download_link_obfuscated")
         if url:
             return url
-        logger.warning(
+        logger.error(
             "%s: obfuscated APK requested but download_link_obfuscated not set "
-            "in metadata.json; falling back to default download_link. The "
-            "two-commit publish protocol may be mid-flight (PR A flips "
-            "apk_obfuscation, PR B adds the URL), or this app is not on the "
-            "toggle.",
+            "in metadata.json; refusing to fall back to download_link because "
+            "that would store an un-obfuscated APK under apk/obfuscated/. "
+            "Publish the obfuscated bundle first or run with apk_obfuscation: off.",
             app_name,
         )
+        return None
     return meta.get("download_link")
 
 
@@ -63,11 +62,10 @@ def resolve_apk_path(
     *,
     app_name: str,
     runner_obfuscation: str,
-    app_metadata: dict,
     vuln_id: Optional[str] = None,
 ) -> Path:
     """Return the APK path under ``apps/<app>/apk/`` honoring the obfuscation
-    toggle, resolved against the app's metadata.
+    toggle.
 
     Returns a Path RELATIVE to ``apps/<app>/`` (matching the existing call-site
     convention in workflows/exploit.py and workflows/redteam.py). Callers
@@ -87,7 +85,6 @@ def resolve_apk_path(
 
     decision = resolve_obfuscation(
         runner_obfuscation,
-        app_metadata.get("apk_obfuscation"),
     )
     cache_key = (app_name, decision.effective, decision.log_message)
     if cache_key not in _RESOLVE_APK_PATH_LOG_CACHE:
@@ -253,8 +250,7 @@ def check_releases(
 
     Returns a dict of {app_name: status} where status is 'ok', 'missing',
     'no_link', or 'error: <message>'. When ``obfuscated=True``, validates
-    the ``download_link_obfuscated`` URL instead (falling back to
-    ``download_link`` with a warning, per ``get_download_url``).
+    the ``download_link_obfuscated`` URL instead.
     """
     results = {}
     for name in app_names:
