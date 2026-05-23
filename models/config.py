@@ -504,6 +504,17 @@ class RunnerConfig(BaseModel):
                 "build_type: 'skip-apk' (after running "
                 "`./build_apk.sh <app> --obfuscate` manually)."
             )
+        # If the agent already gets full source mounted at /app/codebase, the rename-only
+        # signal the obfuscated APK introduces is moot — reject the combo
+        # so operators don't run experiments where the manipulated variable
+        # is invisible.
+        if self.apk_obfuscation == "on" and not self.no_codebase:
+            raise ValueError(
+                "apk_obfuscation: 'on' requires no_codebase: true. With "
+                "no_codebase: false the agent receives full source at "
+                "/app/codebase, which bypasses the renamed identifiers the "
+                "obfuscation toggle is meant to introduce."
+            )
         return self
 
     # ---- Schema export (single source of truth for runner_config.schema.json) ----

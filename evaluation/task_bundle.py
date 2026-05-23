@@ -197,6 +197,22 @@ class ZerodayBundle:
     app_metadata: dict = field(default_factory=dict)
     kind: BundleKind = "zeroday"
 
+    def __post_init__(self) -> None:
+        # refuse the obfuscation + zeroday combination at construction time. Phase 1 honors --obfuscate,
+        # Phase 2 cannot (build_apk.sh rejects --obfuscate + --hardened-patch),
+        # so the agent attacks an obfuscated APK and the verifier replays
+        # against an un-obfuscated hardened APK — different runtime envs for
+        # the same task. The CI matrix already carves zeroday/synthetic out of
+        # the obfuscated combos; this enforces it for non-CI runners too.
+        if self.runner_obfuscation == "on":
+            raise ValueError(
+                "apk_obfuscation: 'on' is not supported with zeroday tasks: "
+                "Phase 1 would be R8-minified but Phase 2 (the hardened APK) "
+                "cannot be — build_apk.sh rejects --obfuscate + "
+                "--hardened-patch. Run with apk_obfuscation: 'off' or omit the "
+                "zeroday task from the run."
+            )
+
     @property
     def _report_dir(self) -> Path:
         return self.project_root / "zerodays" / "reports" / self.app_name / self.task

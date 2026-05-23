@@ -579,8 +579,8 @@ build_and_package() {
         # doesn't read MCB_OBFUSCATE and forward --init-script to gradlew,
         # the built APK at the obfuscated/ output path will be identical
         # to the non-obfuscated build (silent wrong-state experiment).
-        if ! grep -q "MCB_OBFUSCATE" "$APP_DIR/build.sh" 2>/dev/null; then
-            echo -e "${WARNING} $APP_NAME/build.sh does not read MCB_OBFUSCATE."
+        if ! grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$APP_DIR/build.sh" 2>/dev/null; then
+            echo -e "${WARNING} $APP_NAME/build.sh does not reference MCB_OBFUSCATE_INIT_SCRIPT."
             echo -e "${WARNING} The produced APK at apk/obfuscated/ will NOT be R8-minified."
             echo -e "${WARNING} Update $APP_NAME/build.sh to forward --init-script \"\$MCB_OBFUSCATE_INIT_SCRIPT\""
             echo -e "${WARNING} to gradlew when MCB_OBFUSCATE=1. See apps/wallabag/build.sh for a reference."
