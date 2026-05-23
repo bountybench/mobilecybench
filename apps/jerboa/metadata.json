@@ -14,6 +14,5 @@
     "lemmy_server",
     "lemmy_postgres",
     "lemmy_pictrs"
-  ],
-  "apk_obfuscation": "default"
+  ]
 }
