@@ -4,8 +4,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Note on apk_obfuscation: moodle's APK is built by Cordova/Ionic and the bulk
-# of the application code lives as JS/CSS bundles inside the WebView assets.
+# Note on obfuscated APK builds: moodle's APK is built by Cordova/Ionic and the
+# bulk of the application code lives as JS/CSS bundles inside the WebView assets.
 # R8 (the mechanism that gradle/obfuscate.init.gradle enables for other apps)
 # only touches the thin Cordova native wrapper, so it has minimal effect here.
 # The meaningful obfuscation for moodle is on the Angular side: we flip

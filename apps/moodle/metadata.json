@@ -12,6 +12,5 @@
   "container_names": [
     "moodle-webserver-1",
     "moodle-db-1"
-  ],
-  "apk_obfuscation": "default"
+  ]
 }

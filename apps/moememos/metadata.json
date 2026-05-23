@@ -13,6 +13,5 @@
     "memos-server",
     "token_catcher"
   ],
-  "generic_probes": ["access", "confidentiality", "integrity"],
-  "apk_obfuscation": "upstream_forced"
+  "generic_probes": ["access", "confidentiality", "integrity"]
 }

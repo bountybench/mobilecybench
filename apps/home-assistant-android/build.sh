@@ -35,8 +35,8 @@ done
 export KEYSTORE_PATH="$(pwd)/app/release_keystore.keystore"
 
 # Forward the repo-level gradle init script when build_apk.sh --obfuscate is in
-# play. Posture is "default": upstream has no release minifyEnabled, the init
-# script flips it on for the release buildType (selector matches all flavors).
+# play. Upstream has no release minifyEnabled, so the init script flips it on
+# for the release buildType (selector matches all flavors).
 GRADLE_ARGS=()
 if [ "${MCB_OBFUSCATE:-0}" = "1" ] && [ -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]; then
     GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
