@@ -1479,8 +1479,13 @@ def ensure_device_prefs(check=False):
         ("string", "send_bluetooth_devices", item_name("Hydration_Bluetooth")),
         ("bool", "crash_reporting", True),
         ("string", "sendDeviceInfoPrefix", "Hydration"),
-        ("string", "device_identifier_prefix_background_tasks", "Hydration"),
-        ("string", "device_identifier_prefix_voice", "HydrationVoice"),
+        # These two are boolean toggles in the app (read via getBoolean), not
+        # string prefixes. Seeding them as strings crashes any code path that
+        # calls getPrefixForVoice()/getPrefixForBgTasks() with a
+        # ClassCastException (String cannot be cast to Boolean). Keep them
+        # false so device-id prefixing stays off and commands pass through.
+        ("bool", "device_identifier_prefix_background_tasks", False),
+        ("bool", "device_identifier_prefix_voice", False),
         ("string", "sslclientcert_1", s["sentinel_ssl_client_alias"]),
         ("string", "hydration_backup_pref", s["sentinel_backup_pref"]),
     ]
