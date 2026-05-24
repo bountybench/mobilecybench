@@ -30,6 +30,7 @@ services:
     networks:
       - openhab_net
       - shared_net
+      - agent_net
 
   mosquitto:
     image: eclipse-mosquitto:2
@@ -54,5 +55,7 @@ networks:
   openhab_net:
     driver: bridge
   shared_net:
+    external: true
+  agent_net:
     external: true
 

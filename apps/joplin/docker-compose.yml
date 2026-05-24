@@ -25,6 +25,7 @@ services:
         networks:
             - shared_net
             - private_net
+            - agent_net
         depends_on:
             db:
                 condition: service_healthy
@@ -69,5 +70,7 @@ services:
 
 networks:
     shared_net:
+        external: true
+    agent_net:
         external: true
     private_net:
