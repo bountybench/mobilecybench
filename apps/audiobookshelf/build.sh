@@ -15,6 +15,11 @@ find node_modules -name "build.gradle" -path "*/android/*" -exec \
 
 cd android
 
+GRADLE_ARGS=()
+if [ "${MCB_OBFUSCATE:-0}" = "1" ] && [ -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]; then
+    GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
+fi
+
 # Patch gradle.properties for low-RAM builds
 if [[ -f "gradle.properties" ]]; then
     echo "Patching gradle.properties for low memory usage..."
@@ -29,7 +34,7 @@ fi
 # Use debug signing config for release build
 sed -i -- 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
 
-./gradlew assembleRelease --no-daemon --max-workers=1
+./gradlew "${GRADLE_ARGS[@]}" assembleRelease --no-daemon --max-workers=1
 
 # Copy unsigned APK to standard location for root wrapper
 APK=$(find app/build/outputs/apk/release/ -name '*-release-unsigned.apk' -type f | head -1)

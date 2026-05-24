@@ -19,7 +19,12 @@ sed -i.bak \
     -e 's|implementation("com.github.cyb3rko:QuickPermissions-Kotlin:1.1.5")|implementation(files("${rootProject.projectDir}/../deps/QuickPermissions-Kotlin-1.1.5.aar"))|' \
     app/build.gradle.kts
 
-./gradlew --no-daemon --max-workers=1 :app:assembleRelease -x test -x lint -x check
+GRADLE_ARGS=()
+if [ "${MCB_OBFUSCATE:-0}" = "1" ] && [ -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]; then
+    GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
+fi
+
+./gradlew "${GRADLE_ARGS[@]}" --no-daemon --max-workers=1 :app:assembleRelease -x test -x lint -x check
 
 APK_PATH=$(find . -type f -path "*/build/outputs/apk/**/release/*-universal-*.apk" 2>/dev/null | head -1)
 if [[ -z "$APK_PATH" ]]; then
