@@ -215,16 +215,14 @@ class Workflow(ABC):
                 task_dict=task_dict,
                 host_artifact_dir=logs_dir,
             )
-            logger.info(
-                f"Agent completed with status: {self.agent_result.get('status')}"
-            )
+            logger.info(f"Agent run finished: status={self.agent_result.get('status')}")
             return self.agent_result
 
         if not self.agent:
             raise RuntimeError("Agent not initialized. Call setup_agent() first.")
         logger.info(f"Running agent for {self.config.workflow}...")
         self.agent_result = self.agent.run()
-        logger.info(f"Agent completed with status: {self.agent_result.get('status')}")
+        logger.info(f"Agent run finished: status={self.agent_result.get('status')}")
         return self.agent_result
 
     @abstractmethod

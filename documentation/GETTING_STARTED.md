@@ -22,7 +22,7 @@ Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use t
 To run the AI agent, provide an API key. The built-in models cover three providers (see `agent/custom/model_providers/factory.py:SupportedModel` for the full list, including older entries kept for backwards compatibility):
 
 - **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`; `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`. Requires `OPENAI_API_KEY`.
-- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`; `claude-opus-4-6`, `claude-sonnet-4-5-20250929`. Requires `ANTHROPIC_API_KEY`.
+- **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`; `claude-opus-4-6`, `claude-opus-4-5`, `claude-opus-4-1`, `claude-sonnet-4-5-20250929`. Requires `ANTHROPIC_API_KEY`.
 - **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`. Requires `GEMINI_API_KEY`.
 
 To add a new model, append an entry to `SupportedModel` and a pricing row to `utils/token_pricing.json` — see [Adding a New Model](ADDING_MODELS.md). For one-off model-sweep exploration where cost telemetry doesn't matter, set `"allow_unregistered_models": true` in `runner_config.json` to bypass the registry.
@@ -32,7 +32,7 @@ echo OPENAI_API_KEY=sk-... > agent/.env
 python runner.py owncloud-android
 ```
 
-> The committed `runner_config.json` is a probe-only example (probe_only + malicious_app), which requires the target app to ship per-app probes and `generic_probe_config.json`. `owncloud-android` is one of the apps that satisfies this; see the README quickstart for the full list.
+> The committed `runner_config.json` is a probe-only example (probe_only + malicious_app), which requires the target app to ship per-app probes and `generic_probe_config.json`. `owncloud-android` is one of the apps that satisfies this.
 
 **Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle (start, install, cleanup) and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
 
@@ -167,7 +167,7 @@ List available apps:
 ls apps
 ```
 
-Pick any existing app directory. The committed `runner_config.json` defaults to probe-only + `malicious_app`, which requires per-app probes and `generic_probe_config.json`; `owncloud-android` is a known-supported choice (see the README quickstart for the full list of probe-only-ready apps).
+Pick an app that ships per-app probes and `generic_probe_config.json`. The committed `runner_config.json` defaults to probe-only + `malicious_app`; `owncloud-android` is a known-supported choice.
 
 ## 6) Run a baseline experiment
 

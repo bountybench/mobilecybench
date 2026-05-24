@@ -29,6 +29,44 @@ def _config(**overrides) -> RunnerConfig:
     return RunnerConfig(**{**defaults, **overrides})
 
 
+class TestRunAgentLogging:
+    """Workflow.run_agent emits one terminal log line per run with neutral
+    phrasing (`Agent run finished: status=...`). Two callsites exist (BYO +
+    custom branches in workflows/base.py); the runner-side duplicate was
+    removed. These tests guard against the old phrasings creeping back."""
+
+    @pytest.fixture
+    def workflow_with_mock_agent(self, tmp_path):
+        config = _config(workflow="exploit", agent_mode="custom", dry_run=False)
+        workflow = ExploitWorkflow(config, "test_app", tmp_path)
+        workflow.agent = MagicMock()
+        return workflow
+
+    def test_custom_path_logs_neutral_completion_phrasing(
+        self, workflow_with_mock_agent, caplog
+    ):
+        workflow_with_mock_agent.agent.run.return_value = {"status": "completed"}
+        with caplog.at_level("INFO", logger="MobileCyBench"):
+            workflow_with_mock_agent.run_agent()
+
+        messages = [r.message for r in caplog.records]
+        assert "Agent run finished: status=completed" in messages
+        assert not any("Agent completed with status:" in m for m in messages)
+        assert not any("Agent execution completed:" in m for m in messages)
+
+    def test_custom_path_logs_neutral_timeout_phrasing(
+        self, workflow_with_mock_agent, caplog
+    ):
+        workflow_with_mock_agent.agent.run.return_value = {"status": "timeout"}
+        with caplog.at_level("INFO", logger="MobileCyBench"):
+            workflow_with_mock_agent.run_agent()
+
+        messages = [r.message for r in caplog.records]
+        assert "Agent run finished: status=timeout" in messages
+        # No self-contradicting "Agent completed ... timeout" survives.
+        assert not any("Agent completed" in m and "timeout" in m for m in messages)
+
+
 class TestExploitWorkflow:
     """Tests for ExploitWorkflow."""
 
