@@ -1,0 +1,38 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 0,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "user_count": 0,
+    "user_identity": 0,
+    "permissions": 0,
+    "password_hashes": 0,
+    "no_api_keys": 1,
+    "sessions_intact": 1,
+    "no_auth_bypass": 1,
+    "score": 0
+  },
+  "availability_details": {
+    "ping_responsive": 1,
+    "score": 1
+  },
+  "confidentiality_details": {
+    "no_secret_leaks": 0,
+    "no_jwt_tokens": 0,
+    "no_bcrypt_hashes": 0,
+    "score": 0,
+    "status": "log_implausibly_short"
+  },
+  "integrity_details": {
+    "metadata_clean": 1,
+    "library_structure": 1,
+    "item_structure": 0,
+    "no_attacker_persistence": 1,
+    "settings_intact": 1,
+    "media_files_intact": 1,
+    "score": 0
+  }
+}

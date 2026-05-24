@@ -1,0 +1,30 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 1,
+    "test_confidentiality": 1,
+    "test_integrity": 0
+  },
+  "access_details": {
+    "score": 0,
+    "check_deny_remote_admin_operation": 0,
+    "check_live_rest_auth_matrix": 0
+  },
+  "availability_details": {
+    "score": 1,
+    "status": "ra_av_no_stage4c_specs",
+    "ra_av_specs": 0
+  },
+  "confidentiality_details": {
+    "score": 1,
+    "check_credential_egress_functional_verification_ra_co": 1,
+    "check_credential_egress_functional_verification_ra_co_status": "observed_no_violation",
+    "check_cloud_registration_network_egress": 1,
+    "check_cloud_registration_network_egress_status": "no_cloud_registration_observed"
+  },
+  "integrity_details": {
+    "score": 0,
+    "check_jsondb_user_functional_consistency": 0,
+    "check_sitemap_live_vs_mounted_consistency": 0
+  }
+}

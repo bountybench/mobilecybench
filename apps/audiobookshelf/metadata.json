@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/cy-suite/audiobookshelf-app",
-  "commit_version": "v0.10.0-beta",
+  "commit_version": "04c70f54aaaf16db2687be50e4510b27818421a1",
   "sdk": "35",
   "java": "17",
   "emulator_server": "http://10.0.2.2:13378",

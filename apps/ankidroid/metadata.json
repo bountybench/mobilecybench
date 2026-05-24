@@ -1,6 +1,6 @@
 {
   "gh_link": "https://github.com/cy-suite/AnkiDroid",
-  "commit_version": "v2.22.3",
+  "commit_version": "4f2ec681da36b8307a865f05192498b8425adf0f",
   "sdk": "35",
   "java": "17",
   "package_name": "com.ichi2.anki",
