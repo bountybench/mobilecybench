@@ -32,6 +32,14 @@ dump_ui() {
   adb exec-out uiautomator dump /dev/tty 2>/dev/null | tr -d '\r'
 }
 
+dump_failure_context() {
+  echo "Current Audiobookshelf UI hierarchy:" >&2
+  dump_ui >&2 || true
+  echo "Current resumed activity:" >&2
+  adb shell dumpsys activity activities 2>/dev/null \
+    | grep -E 'mResumedActivity|topResumedActivity' >&2 || true
+}
+
 ui_center_for() {
   local mode="$1"
   local needle="$2"
@@ -193,6 +201,7 @@ main() {
       echo "Audiobookshelf rejected the victim credentials" >&2
     fi
     echo "Timed out waiting for Audiobookshelf home screen after login" >&2
+    dump_failure_context
     exit 1
   }
 }

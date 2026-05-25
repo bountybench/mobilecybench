@@ -26,6 +26,12 @@
 -keep class kotlin.reflect.** { *; }
 -keep class com.fasterxml.jackson.module.kotlin.** { *; }
 -keep class com.audiobookshelf.app.data.** { *; }
+-keep enum com.audiobookshelf.app.data.** { *; }
 -keep class com.audiobookshelf.app.models.** { *; }
 -keep class com.audiobookshelf.app.plugins.**$* { *; }
 -keep class com.audiobookshelf.app.server.**$* { *; }
+
+# PaperDB/Kryo persists DeviceData during login. Its ProGuard guidance requires
+# preserving Kotlin empty collection implementations when models may contain
+# emptyList/emptyMap/emptySet values.
+-keep class kotlin.collections.* { *; }
