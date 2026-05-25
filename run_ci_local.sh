@@ -661,8 +661,10 @@ fi
 check_metadata_schema "$metadata"
 
 # Enforce CI parity: CI never emits obfuscated jobs unless the app build.sh
-# forwards MCB_OBFUSCATE_INIT_SCRIPT. Fail-fast locally so a passing local run
-# can't diverge from what CI would actually exercise.
+# handles MCB_OBFUSCATE. Most apps do that by forwarding
+# MCB_OBFUSCATE_INIT_SCRIPT to Gradle; custom build systems may run their own
+# obfuscation step. Fail-fast locally so a passing local run can't diverge from
+# what CI would actually exercise.
 if [ "$OBFUSCATE" = true ]; then
     # CI parity: synthetic_vuln is not emitted in the obfuscated matrix
     # because vulnerability.patch + R8 interactions produce false-negative
@@ -679,12 +681,12 @@ if [ "$OBFUSCATE" = true ]; then
         exit 1
     fi
 
-    if grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$DIR/build.sh" 2>/dev/null; then
-        echo -e "${INFO} --obfuscate: $DIR/build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT"
+    if grep -q "MCB_OBFUSCATE" "$DIR/build.sh" 2>/dev/null; then
+        echo -e "${INFO} --obfuscate: $DIR/build.sh handles MCB_OBFUSCATE"
     else
         echo -e "${ERROR} --obfuscate passed but $DIR/build.sh does not reference"
-        echo -e "${ERROR} MCB_OBFUSCATE_INIT_SCRIPT. CI would not emit obfuscated"
-        echo -e "${ERROR} jobs for this app until build.sh forwards the init script."
+        echo -e "${ERROR} MCB_OBFUSCATE. CI would not emit obfuscated jobs for this"
+        echo -e "${ERROR} app until build.sh opts into obfuscation mode."
         exit 1
     fi
 fi

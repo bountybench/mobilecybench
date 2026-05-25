@@ -271,20 +271,42 @@ out=$(run_build fake_app --cache)
 echo "$out" | grep -q "Cache HIT" || fail "clean cache should still hit after vuln patch edit"
 pass "tenth: vuln cache invalidated, clean cache untouched"
 
-# 11. --obfuscate requires the per-app build.sh to forward the init script.
+# 11. --obfuscate requires the per-app build.sh to handle MCB_OBFUSCATE.
 echo
-echo "=== Test 11: --obfuscate fails fast without init-script forwarding ==="
+echo "=== Test 11: --obfuscate fails fast without an MCB_OBFUSCATE opt-in ==="
 if out=$(run_build fake_app --obfuscate); then
     echo "$out" | tail -10
-    fail "--obfuscate should fail when build.sh does not reference MCB_OBFUSCATE_INIT_SCRIPT"
+    fail "--obfuscate should fail when build.sh does not reference MCB_OBFUSCATE"
 else
     echo "$out" | tail -10
-    echo "$out" | grep -q "does not reference MCB_OBFUSCATE_INIT_SCRIPT" \
-        || fail "expected missing MCB_OBFUSCATE_INIT_SCRIPT error"
+    echo "$out" | grep -q "does not reference MCB_OBFUSCATE" \
+        || fail "expected missing MCB_OBFUSCATE error"
     [ ! -f "$TMP/apps/fake_app/apk/obfuscated/fake_app.apk" ] \
         || fail "unsupported --obfuscate should not write apk/obfuscated/fake_app.apk"
     pass "eleventh: unsupported --obfuscate failed before producing an obfuscated-path APK"
 fi
+
+# 12. A build.sh that consumes MCB_OBFUSCATE directly is a valid opt-in. This
+# covers non-Gradle build wrappers such as Cordova/Ionic apps that do not use
+# MCB_OBFUSCATE_INIT_SCRIPT but still produce a distinct obfuscated APK.
+echo
+echo "=== Test 12: --obfuscate accepts direct MCB_OBFUSCATE handling ==="
+cat > "$TMP/apps/fake_app/build.sh" <<'EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "${MCB_OBFUSCATE:-0}" = "1" ]; then
+    echo "[fake build.sh] direct MCB_OBFUSCATE handling"
+fi
+echo "fake-apk-content-$(date +%s%N)" > "$SCRIPT_DIR/unsigned.apk"
+EOF
+chmod +x "$TMP/apps/fake_app/build.sh"
+out=$(run_build fake_app --obfuscate)
+echo "$out" | tail -10
+echo "$out" | grep -q "direct MCB_OBFUSCATE handling" \
+    || fail "expected direct MCB_OBFUSCATE branch to run"
+[ -f "$TMP/apps/fake_app/apk/obfuscated/fake_app.apk" ] \
+    || fail "expected obfuscated APK at apk/obfuscated/fake_app.apk"
+pass "twelfth: direct MCB_OBFUSCATE opt-in produces an obfuscated-path APK"
 
 echo
 echo "=========================================="
