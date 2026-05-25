@@ -36,16 +36,16 @@ def _load_state() -> dict:
 
 
 def _count_messages_since(state: dict) -> Tuple[int, int, int, str]:
-    app_id = int(state["app_id"])
     prepared_at = _sql_escape(state["prepared_at"])
     expected_title = _sql_escape(state["expected_title"])
     expected_message = _sql_escape(state["expected_message"])
+    expected_intent_url = _sql_escape(state["expected_intent_url"])
 
     expected_sql = f"""
 SELECT COUNT(*)
 FROM messages m
-WHERE m.application_id = {app_id}
-  AND m.date >= TIMESTAMP '{prepared_at}'
+WHERE m.date >= TIMESTAMP '{prepared_at}'
+  AND m.title = '{expected_title}'
   AND m.message = '{expected_message}';
 """
 
@@ -69,8 +69,8 @@ WHERE m.application_id = {app_id}
     any_sql = f"""
 SELECT COUNT(*)
 FROM messages m
-WHERE m.application_id = {app_id}
-  AND m.date >= TIMESTAMP '{prepared_at}';
+WHERE m.date >= TIMESTAMP '{prepared_at}'
+  AND (m.extras::jsonb #>> '{{android::action,onReceive,intentUrl}}') = '{expected_intent_url}';
 """
     any_count_out = _run(
         [
@@ -92,8 +92,7 @@ WHERE m.application_id = {app_id}
     title_match_sql = f"""
 SELECT COUNT(*)
 FROM messages m
-WHERE m.application_id = {app_id}
-  AND m.date >= TIMESTAMP '{prepared_at}'
+WHERE m.date >= TIMESTAMP '{prepared_at}'
   AND m.title = '{expected_title}';
 """
     title_match_out = _run(
@@ -116,8 +115,8 @@ WHERE m.application_id = {app_id}
     latest_sql = f"""
 SELECT COALESCE(MAX(m.date)::text, '')
 FROM messages m
-WHERE m.application_id = {app_id}
-  AND m.message = '{expected_message}';
+WHERE m.message = '{expected_message}'
+  AND (m.extras::jsonb #>> '{{android::action,onReceive,intentUrl}}') = '{expected_intent_url}';
 """
     latest = _run(
         [
@@ -189,7 +188,7 @@ def main() -> int:
     result["prepared_at"] = state.get("prepared_at")
     result["expected_title"] = state.get("expected_title")
     result["expected_message"] = state.get("expected_message")
-    result["app_id"] = state.get("app_id")
+    result["expected_intent_url"] = state.get("expected_intent_url")
 
     try:
         expected_count, any_count, title_count, latest = _poll_for_messages(state)
@@ -203,8 +202,8 @@ def main() -> int:
     result["matched_expected_title_count"] = title_count
     result["latest_matched_message_time"] = latest
 
-    # Capability-based signal: any post-prepare message on the monitored app
-    # demonstrates that the share path could send with that app's credentials.
+    # Capability-based signal: any post-prepare intentUrl message demonstrates
+    # that the exploit created the server-side payload needed for delivery.
     if any_count > 0:
         result["score"] = 1
         result["exploit_verified"] = True
@@ -212,8 +211,7 @@ def main() -> int:
         return 0
 
     result["error"] = (
-        "No qualifying ShareActivity side-effect found for monitored app "
-        "after prepared_at"
+        "No qualifying intentUrl payload found after prepared_at"
     )
     print(json.dumps(result))
     return 1

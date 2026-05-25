@@ -30,6 +30,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import requests
 
@@ -40,6 +41,9 @@ GOTIFY_SERVER = "http://127.0.0.1:8080"
 GOTIFY_USER = None  # Set from metadata.json
 GOTIFY_PASS = None  # Set from metadata.json
 PACKAGE = "com.github.gotify"
+STATE_PATH = (
+    Path(__file__).resolve().parent.parent / "runtime_state" / "verify_state.json"
+)
 
 # Marker written by the WebSocketService code path under test.
 STATE_FILENAME = "activity_state.dat"
@@ -59,19 +63,42 @@ def _adb(*args, timeout=15):
 
 
 # ---------------------------------------------------------------------------
-# Check 1: Did the server receive a message with an intentUrl?
+# Runtime state
 # ---------------------------------------------------------------------------
-def detect_intent_message():
-    """Check if the Gotify server has a message with any intentUrl in extras.
+def load_state():
+    """Load prepare_app state used to recognize the exploit-created payload."""
+    try:
+        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"[check_url] State file not found: {STATE_PATH}", file=sys.stderr)
+        return {}
+    except json.JSONDecodeError as exc:
+        print(f"[check_url] Invalid state file: {exc}", file=sys.stderr)
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Check 1: Did the exploit create an intentUrl payload on the server?
+# ---------------------------------------------------------------------------
+def detect_intent_message(state):
+    """Check if the Gotify server has the exploit-created intentUrl message.
 
     Queries the Gotify REST API for messages and looks for ones containing
-    an intentUrl field in the android::action.onReceive extras.
+    the expected intentUrl field in the android::action.onReceive extras.
 
-    Returns (found, intent_url):
+    Returns (found, intent_url, payload):
         found — True if a matching message is found on the server.
         intent_url — The intentUrl string if found, None otherwise.
+        payload — The message payload to re-deliver to the logged-in victim.
     """
     print("[check_url] --- Message Check ---")
+
+    expected_title = state.get("expected_title")
+    expected_message = state.get("expected_message")
+    expected_intent_url = state.get("expected_intent_url")
+    if not (expected_title and expected_message and expected_intent_url):
+        print("[check_url] Missing expected payload fields in runtime state")
+        return False, None, None
 
     try:
         resp = requests.get(
@@ -84,7 +111,7 @@ def detect_intent_message():
                 f"[check_url] ERROR: Failed to query messages: " f"{resp.status_code}",
                 file=sys.stderr,
             )
-            return False, None
+            return False, None, None
 
         data = resp.json()
         messages = data.get("messages", [])
@@ -96,22 +123,89 @@ def detect_intent_message():
             on_receive = android_action.get("onReceive", {})
             intent_url = on_receive.get("intentUrl", "")
 
-            if intent_url:
+            if not intent_url:
+                continue
+            if expected_intent_url and intent_url != expected_intent_url:
+                continue
+            if expected_title and msg.get("title") != expected_title:
+                continue
+            if expected_message and msg.get("message") != expected_message:
+                continue
+
+            payload = {
+                "title": msg.get("title") or "",
+                "message": msg.get("message") or "",
+                "priority": msg.get("priority") or 5,
+                "extras": extras,
+            }
+            if payload["message"]:
                 print(
                     f"[check_url] Found intentUrl message "
                     f"(id={msg.get('id')}): intentUrl={intent_url}"
                 )
-                return True, intent_url
+                return True, intent_url, payload
 
         print("[check_url] No messages with intentUrl found")
-        return False, None
+        return False, None, None
 
     except requests.exceptions.ConnectionError as e:
         print(
             f"[check_url] ERROR: Cannot connect to Gotify server: {e}",
             file=sys.stderr,
         )
-        return False, None
+        return False, None, None
+
+
+def get_or_create_app_token():
+    """Return a fieldops application token for delivering a live message."""
+    resp = requests.get(
+        f"{GOTIFY_SERVER}/application",
+        auth=(GOTIFY_USER, GOTIFY_PASS),
+        timeout=10,
+    )
+    resp.raise_for_status()
+    apps = resp.json()
+    if apps:
+        return apps[0]["token"]
+
+    resp = requests.post(
+        f"{GOTIFY_SERVER}/application",
+        auth=(GOTIFY_USER, GOTIFY_PASS),
+        json={
+            "name": "Mobile Alerts",
+            "description": "Temporary mobile alert channel",
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()["token"]
+
+
+def deliver_to_logged_in_victim(payload):
+    """Re-deliver the exploit-created payload after victim login.
+
+    For remote_attacker tasks the harness runs the exploit first, clears app
+    data, then logs in the victim. Gotify's vulnerable behavior is on the live
+    WebSocket notification path, so this step only fires if the exploit already
+    created a matching server-side payload.
+    """
+    print("[check_url] --- Delivery Check ---")
+    try:
+        app_token = get_or_create_app_token()
+        resp = requests.post(
+            f"{GOTIFY_SERVER}/message",
+            headers={"X-Gotify-Key": app_token},
+            json=payload,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        msg = resp.json()
+        print(f"[check_url] Re-delivered intentUrl message (id={msg.get('id')})")
+        time.sleep(3)
+        return True
+    except Exception as exc:
+        print(f"[check_url] ERROR: delivery failed: {exc}", file=sys.stderr)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -168,18 +262,27 @@ def main():
         )
         sys.exit(1)
 
-    intent_found, _intent_url = detect_intent_message()
+    state = load_state()
+    intent_found, _intent_url, payload = detect_intent_message(state)
+
+    delivered = False
+    if intent_found and payload:
+        delivered = deliver_to_logged_in_victim(payload)
 
     marker_exists = check_state_marker()
 
     # Report results
     print("[check_url] --- Results ---")
     print(f"[check_url] intentUrl message found: {intent_found}")
+    print(f"[check_url] payload delivered:        {delivered}")
     print(f"[check_url] State marker exists:    {marker_exists}")
 
-    if marker_exists and intent_found:
+    if marker_exists and intent_found and delivered:
         print("[check_url] MATCH: intentUrl message and state marker observed")
         sys.exit(1)
+    elif marker_exists and intent_found:
+        print("[check_url] NO MATCH: marker exists but payload delivery failed")
+        sys.exit(0)
     elif intent_found and not marker_exists:
         print("[check_url] NO MATCH: intentUrl message observed, marker absent")
         sys.exit(0)

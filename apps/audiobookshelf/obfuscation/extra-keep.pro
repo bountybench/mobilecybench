@@ -10,3 +10,20 @@
 -dontwarn org.openjsse.javax.net.ssl.SSLParameters
 -dontwarn org.openjsse.javax.net.ssl.SSLSocket
 -dontwarn org.openjsse.net.ssl.OpenJSSE
+
+# Capacitor dispatches native plugin methods from JavaScript by their source
+# method names. Keep only that bridge surface stable so R8 can still obfuscate
+# unrelated application code.
+-keep @com.getcapacitor.annotation.CapacitorPlugin class com.audiobookshelf.app.plugins.** { *; }
+-keepclassmembers class com.audiobookshelf.app.plugins.** {
+    @com.getcapacitor.PluginMethod <methods>;
+}
+
+# Login and device-state setup bind Kotlin/Jackson payloads reflectively.
+# Preserve model metadata and members used by that serializer boundary.
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,RuntimeInvisibleAnnotations,RuntimeInvisibleParameterAnnotations
+-keep class kotlin.Metadata { *; }
+-keep class com.audiobookshelf.app.data.** { *; }
+-keep class com.audiobookshelf.app.models.** { *; }
+-keep class com.audiobookshelf.app.plugins.**$* { *; }
+-keep class com.audiobookshelf.app.server.**$* { *; }
