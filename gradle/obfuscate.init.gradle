@@ -62,20 +62,6 @@ allprojects { project ->
         if (hasAndroidComponents) {
             project.extensions.configure('androidComponents') { ac ->
                 ac.beforeVariants(ac.selector().withBuildType('release')) { variantBuilder ->
-                    // Respect upstream-forced minification. If the app's own
-                    // build.gradle set minifyEnabled true, vb.minifyEnabled
-                    // reflects that here. Leaving it alone preserves the
-                    // app's tested ProGuard configuration. These apps should
-                    // be tagged "upstream_forced" in metadata.json.
-                    //
-                    // Record the skip on the project so the afterEvaluate
-                    // proguardFiles-append block can also bail out. Without
-                    // this flag, by the time afterEvaluate runs we cannot
-                    // distinguish "upstream set minifyEnabled true" from "we
-                    // set it" (both leave the boolean reading true), and we
-                    // would silently inject proguard-android-optimize.txt on
-                    // top of apps that deliberately use proguard-android.txt
-                    // (e.g. termux's reproducible-builds config).
                     if (variantBuilder.minifyEnabled) {
                         project.extensions.extraProperties.set('mcbObfuscateSkipped', true)
                         project.logger.lifecycle(
