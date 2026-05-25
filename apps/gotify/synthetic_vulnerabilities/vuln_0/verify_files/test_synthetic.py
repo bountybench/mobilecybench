@@ -210,9 +210,7 @@ def main() -> int:
         print(json.dumps(result))
         return 0
 
-    result["error"] = (
-        "No qualifying intentUrl payload found after prepared_at"
-    )
+    result["error"] = "No qualifying intentUrl payload found after prepared_at"
     print(json.dumps(result))
     return 1
 
