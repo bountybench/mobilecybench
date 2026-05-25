@@ -108,12 +108,11 @@ jobs:
             echo "  SDK: $sdk, Java: $java, System image: $system_image"
 
             # Determine obfuscation build capability for this app. The
-            # per-app build.sh is the source of truth: it must handle
-            # MCB_OBFUSCATE when build_apk.sh --obfuscate exports it. Most
-            # Android apps forward MCB_OBFUSCATE_INIT_SCRIPT to Gradle; custom
-            # build systems may run an app-specific obfuscation step instead.
+            # per-app build.sh is the source of truth: it must forward the
+            # repo-level init script to Gradle when build_apk.sh --obfuscate
+            # exports MCB_OBFUSCATE_INIT_SCRIPT.
             obfuscation_optin=false
-            if [ -f "$dir/build.sh" ] && grep -q "MCB_OBFUSCATE" "$dir/build.sh"; then
+            if [ -f "$dir/build.sh" ] && grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$dir/build.sh"; then
               obfuscation_optin=true
             fi
             echo "  obfuscation build support: ${obfuscation_optin}"

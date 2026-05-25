@@ -26,9 +26,8 @@
 #   ./build_apk.sh conversations --hardened-patch /path/to/fix.patch
 #     # Build a hardened APK from an explicit patch file (for example a task/report fix.patch)
 #   ./build_apk.sh conversations --obfuscate
-#     # Build an obfuscated release APK. Gradle apps normally use the repo-level
-#     # gradle/obfuscate.init.gradle init script; custom build systems may
-#     # consume MCB_OBFUSCATE directly.
+#     # Build a release APK with R8 minify/shrink enabled via the repo-level
+#     # gradle/obfuscate.init.gradle init script.
 #
 
 set -e
@@ -92,11 +91,10 @@ show_usage() {
     echo "                      Build a hardened APK by applying an explicit patch file"
     echo "                      (useful when the remediation patch lives outside the app dir,"
     echo "                       e.g. a task/report fix.patch)"
-    echo "  --obfuscate         Build an obfuscated release APK. Gradle apps normally"
-    echo "                      forward gradle/obfuscate.init.gradle; custom build"
-    echo "                      systems may consume MCB_OBFUSCATE directly. Output goes to"
+    echo "  --obfuscate         Build the release APK with R8 minify/shrink enabled via"
+    echo "                      gradle/obfuscate.init.gradle. Output goes to"
     echo "                      apps/<app>/apk/obfuscated/<app>.apk. Fails unless"
-    echo "                      build.sh handles MCB_OBFUSCATE."
+    echo "                      build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT."
     echo "  -h, --help          Show this help message"
     echo ""
     echo "Note: --vuln and --hardened-patch are mutually exclusive."
@@ -578,16 +576,14 @@ build_and_package() {
         echo -e "${INFO} Obfuscation enabled:"
         echo -e "${INFO}   MCB_OBFUSCATE_INIT_SCRIPT=$MCB_OBFUSCATE_INIT_SCRIPT"
         echo -e "${INFO}   MCB_APP_DIR=$MCB_APP_DIR"
-        # Fail fast if the per-app build does not opt into obfuscation mode.
-        # Most Android apps handle this by forwarding MCB_OBFUSCATE_INIT_SCRIPT
-        # to Gradle; non-Gradle wrappers may consume MCB_OBFUSCATE directly.
-        # Otherwise build_apk.sh would put a normal APK under apk/obfuscated/,
-        # creating a silent wrong-state experiment.
-        if ! grep -q "MCB_OBFUSCATE" "$APP_DIR/build.sh" 2>/dev/null; then
-            echo -e "${ERROR} --obfuscate requested but $APP_NAME/build.sh does not reference MCB_OBFUSCATE."
+        # Fail fast if the per-app build does not opt into the central init
+        # script. Otherwise build_apk.sh would put a normal APK under
+        # apk/obfuscated/, creating a silent wrong-state experiment.
+        if ! grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$APP_DIR/build.sh" 2>/dev/null; then
+            echo -e "${ERROR} --obfuscate requested but $APP_NAME/build.sh does not reference MCB_OBFUSCATE_INIT_SCRIPT."
             echo -e "${ERROR} Refusing to write a non-obfuscated APK under apk/obfuscated/."
-            echo -e "${ERROR} Update $APP_NAME/build.sh to handle MCB_OBFUSCATE=1 by forwarding"
-            echo -e "${ERROR} the Gradle init script or by running an app-specific obfuscation step."
+            echo -e "${ERROR} Update $APP_NAME/build.sh to forward --init-script \"\$MCB_OBFUSCATE_INIT_SCRIPT\""
+            echo -e "${ERROR} to gradlew when MCB_OBFUSCATE=1. See apps/wallabag/build.sh for a reference."
             return 1
         fi
     else
