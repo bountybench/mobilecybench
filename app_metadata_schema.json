@@ -54,6 +54,10 @@
     "container_names": {
       "type": "array",
       "description": "An array of Docker container names that the generic probe `test_availability` can check for container health."
+    },
+    "download_link_obfuscated": {
+      "type": "string",
+      "description": "GitHub release URL to download the R8-minified APK bundle. Present only after the app's build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT and the obfuscated bundle has been published. If an experiment requests the obfuscated variant before this field is present, download tooling fails fast rather than falling back to the default APK."
     }
   },
   "required": [

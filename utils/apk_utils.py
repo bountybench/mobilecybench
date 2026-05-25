@@ -15,32 +15,111 @@ from utils.command_executor import CommandExecutor
 logger = logging.getLogger("MobileCyBench.apk_utils")
 timeout_s = 600
 
+# Process-lifetime cache for resolve_apk_path's first-call-per-decision log
+# dedupe. Module-level (not a mutable default arg) so the scope is explicit
+# and there's no temptation to thread a per-call cache through internal APIs.
+_RESOLVE_APK_PATH_LOG_CACHE: dict = {}
+
 # Matches: https://github.com/<owner>/<repo>/releases/download/<tag>/<filename>
 _RELEASE_URL_RE = re.compile(
     r"https://github\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)"
 )
 
 
-def get_download_url(app_name: str, project_root: Path) -> Optional[str]:
-    """Read download_link from an app's metadata.json. Returns None if missing."""
+def get_download_url(
+    app_name: str,
+    project_root: Path,
+    *,
+    obfuscated: bool = False,
+) -> Optional[str]:
+    """Read download_link (or download_link_obfuscated) from an app's metadata.json.
+
+    Returns None if missing. When ``obfuscated=True``, the obfuscated URL is
+    required; falling back to ``download_link`` would silently place a default
+    APK under ``apk/obfuscated/``.
+    """
     metadata_file = project_root / "apps" / app_name / "metadata.json"
     if not metadata_file.exists():
         return None
     with open(metadata_file) as f:
-        return json.load(f).get("download_link")
+        meta = json.load(f)
+    if obfuscated:
+        url = meta.get("download_link_obfuscated")
+        if url:
+            return url
+        logger.error(
+            "%s: obfuscated APK requested but download_link_obfuscated not set "
+            "in metadata.json; refusing to fall back to download_link because "
+            "that would store an un-obfuscated APK under apk/obfuscated/. "
+            "Publish the obfuscated bundle first or run with apk_obfuscation: off.",
+            app_name,
+        )
+        return None
+    return meta.get("download_link")
+
+
+def resolve_apk_path(
+    *,
+    app_name: str,
+    runner_obfuscation: str,
+    vuln_id: Optional[str] = None,
+) -> Path:
+    """Return the APK path under ``apps/<app>/apk/`` honoring the obfuscation
+    toggle.
+
+    Returns a Path RELATIVE to ``apps/<app>/`` (matching the existing call-site
+    convention in workflows/exploit.py and workflows/redteam.py). Callers
+    typically prefix with ``self.app_dir`` to get an absolute path.
+
+    Path layout (mirrors ``build_apk.sh`` output paths):
+      off, no vuln:  Path("apk") / "<app>.apk"
+      off, vuln_id:  Path("apk") / "<vuln_id>" / "<app>.apk"
+      on,  no vuln:  Path("apk") / "obfuscated" / "<app>.apk"
+      on,  vuln_id:  Path("apk") / "obfuscated" / "<vuln_id>" / "<app>.apk"
+
+    The first call per (app, decision) emits the resolver's log message at
+    its specified level; subsequent calls in the same process are silent to
+    avoid log spam from repeated path resolutions during a single experiment.
+    """
+    from utils.obfuscation_resolver import resolve_obfuscation
+
+    decision = resolve_obfuscation(
+        runner_obfuscation,
+    )
+    cache_key = (app_name, decision.effective, decision.log_message)
+    if cache_key not in _RESOLVE_APK_PATH_LOG_CACHE:
+        log_fn = getattr(logger, decision.log_level)
+        log_fn("%s: %s", app_name, decision.log_message)
+        _RESOLVE_APK_PATH_LOG_CACHE[cache_key] = True
+
+    base = Path("apk")
+    if decision.effective == "on":
+        base = base / "obfuscated"
+    if vuln_id:
+        base = base / vuln_id
+    return base / f"{app_name}.apk"
 
 
 def download_apk(
-    app_name: str, url: str, project_root: Path, *, force: bool = False
+    app_name: str,
+    url: str,
+    project_root: Path,
+    *,
+    force: bool = False,
+    obfuscated: bool = False,
 ) -> Path:
     """Download APK from GitHub release URL into apps/<app>/apk/.
 
     Supports single APKs and zip bundles.
     Without force, skips files that already exist locally (fill gaps, never overwrite).
     With force, overwrites all existing files.
-    Returns the apk directory path.
+    When ``obfuscated=True``, downloads into apps/<app>/apk/obfuscated/ so the
+    obfuscated bundle never overwrites or commingles with the default bundle.
+    Returns the apk directory path that was written to.
     """
     apk_dir = project_root / "apps" / app_name / "apk"
+    if obfuscated:
+        apk_dir = apk_dir / "obfuscated"
     apk_dir.mkdir(parents=True, exist_ok=True)
 
     match = _RELEASE_URL_RE.match(url)
@@ -130,7 +209,10 @@ def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> 
         else:
             relative = member
 
-        if not relative:
+        # Filter the bare "." directory entry that `zip -r foo.zip .`
+        # produces. Otherwise it lands in `skipped` and prints a misleading
+        # "Skipped 1 existing file(s) ... ." warning on every extraction.
+        if not relative or relative in (".", "./"):
             continue
 
         dest = apk_dir / relative
@@ -158,15 +240,21 @@ def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> 
         )
 
 
-def check_releases(app_names: list[str], project_root: Path) -> dict[str, str]:
+def check_releases(
+    app_names: list[str],
+    project_root: Path,
+    *,
+    obfuscated: bool = False,
+) -> dict[str, str]:
     """Validate download_links exist on GitHub for the given apps.
 
     Returns a dict of {app_name: status} where status is 'ok', 'missing',
-    'no_link', or 'error: <message>'.
+    'no_link', or 'error: <message>'. When ``obfuscated=True``, validates
+    the ``download_link_obfuscated`` URL instead.
     """
     results = {}
     for name in app_names:
-        url = get_download_url(name, project_root)
+        url = get_download_url(name, project_root, obfuscated=obfuscated)
         if not url:
             results[name] = "no_link"
             continue

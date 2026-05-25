@@ -270,14 +270,37 @@ class Workflow(ABC):
 
         if self.config.build_type == "download-apk":
             from utils.apk_utils import download_apk, get_download_url
+            from utils.obfuscation_resolver import resolve_obfuscation
 
-            url = get_download_url(self.app_name, self.project_root)
+            decision = resolve_obfuscation(self.config.apk_obfuscation)
+            logger.log(
+                getattr(__import__("logging"), decision.log_level.upper()),
+                "%s: %s",
+                self.app_name,
+                decision.log_message,
+            )
+
+            url = get_download_url(
+                self.app_name,
+                self.project_root,
+                obfuscated=(decision.effective == "on"),
+            )
             if not url:
+                field = (
+                    "download_link_obfuscated"
+                    if decision.effective == "on"
+                    else "download_link"
+                )
                 raise FileNotFoundError(
-                    f"No download_link in apps/{self.app_name}/metadata.json. "
+                    f"No {field} in apps/{self.app_name}/metadata.json. "
                     f"Build and publish: ./publish_apk_bundle.sh apps/{self.app_name}"
                 )
-            download_apk(self.app_name, url, self.project_root)
+            download_apk(
+                self.app_name,
+                url,
+                self.project_root,
+                obfuscated=(decision.effective == "on"),
+            )
             return
 
         self._build_apks_from_source()

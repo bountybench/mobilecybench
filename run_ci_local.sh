@@ -462,17 +462,9 @@ run_build_apk_with_vuln_env() {
     fi
 
     if [ ${#VULN_BUILD_ENV_ARGS[@]} -gt 0 ]; then
-        if [ ${#build_args[@]} -gt 0 ]; then
-            env "${VULN_BUILD_ENV_ARGS[@]}" ./build_apk.sh "$app_name" "${build_args[@]}"
-        else
-            env "${VULN_BUILD_ENV_ARGS[@]}" ./build_apk.sh "$app_name"
-        fi
+        env "${VULN_BUILD_ENV_ARGS[@]}" ./build_apk.sh "$app_name" "${OBFUSCATE_BUILD_FLAG[@]}" "${build_args[@]}"
     else
-        if [ ${#build_args[@]} -gt 0 ]; then
-            ./build_apk.sh "$app_name" "${build_args[@]}"
-        else
-            ./build_apk.sh "$app_name"
-        fi
+        ./build_apk.sh "$app_name" "${OBFUSCATE_BUILD_FLAG[@]}" "${build_args[@]}"
     fi
 }
 
@@ -518,6 +510,9 @@ RUN_UNIT_TESTS=false
 TEST_SYNTHETIC_VULN=""
 TEST_ZERO_DAY_VULN=""
 TEST_ALL_SYNTHETIC_VULNS=false
+OBFUSCATE=false  # When true, build/download the R8-minified APK variant
+OBFUSCATE_BUILD_FLAG=()      # Appended to ./build_apk.sh   when OBFUSCATE=true
+OBFUSCATE_DOWNLOAD_FLAG=()   # Appended to download_apk.py  when OBFUSCATE=true
 VULN_METADATA_FILE=""
 VULN_CLEAN_APK_MODE="default"
 VULN_TASK_ID=""
@@ -543,6 +538,9 @@ show_usage() {
     echo "                    Test a zero-day vulnerability task (e.g., zero_day_vulnerabilities/location_spoofing)"
     echo "  --test-all-synthetic-vulns"
     echo "                    Test all synthetic vulnerabilities found in synthetic_vulnerabilities/"
+    echo "  --obfuscate       Build/download the R8-minified APK variant (mirrors CI's"
+    echo "                    obfuscated matrix; routes APKs to apk/obfuscated/ and"
+    echo "                    plumbs --obfuscate to build_apk.sh / --obfuscated to download_apk.py)"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
@@ -605,6 +603,16 @@ while [[ $# -gt 0 ]]; do
             TEST_ALL_SYNTHETIC_VULNS=true
             shift
             ;;
+        --obfuscate)
+            OBFUSCATE=true
+            OBFUSCATE_BUILD_FLAG=(--obfuscate)
+            OBFUSCATE_DOWNLOAD_FLAG=(--obfuscated)
+            # Export so child processes (start_runtime.sh sourcing
+            # utils/android.sh, parse_apk_path) route the default APK lookup
+            # to apk/obfuscated/<app>.apk. Mirrors CI's test_checks.sh.
+            export MCB_OBFUSCATE=1
+            shift
+            ;;
         -h|--help)
             show_usage
             exit 0
@@ -651,6 +659,35 @@ if [ ! -f "$metadata" ]; then
     exit 1
 fi
 check_metadata_schema "$metadata"
+
+# Enforce CI parity: CI never emits obfuscated jobs unless the app build.sh
+# forwards MCB_OBFUSCATE_INIT_SCRIPT. Fail-fast locally so a passing local run
+# can't diverge from what CI would actually exercise.
+if [ "$OBFUSCATE" = true ]; then
+    # CI parity: synthetic_vuln is not emitted in the obfuscated matrix
+    # because vulnerability.patch + R8 interactions produce false-negative
+    # exploit failures unrelated to agent capability. See
+    # documentation/SYNTHETIC_VULNERABILITIES.md for the rationale and the
+    # per-vuln keep-rules escape hatch.
+    if [ -n "$TEST_SYNTHETIC_VULN" ] || [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
+        echo -e "${ERROR} --obfuscate cannot be combined with --test-synthetic-vuln"
+        echo -e "${ERROR} or --test-all-synthetic-vulns. Synthetic-vuln tests are excluded"
+        echo -e "${ERROR} from the obfuscated CI matrix because R8 may inline lambdas,"
+        echo -e "${ERROR} strip debug logs, or rename reflection-discovered methods in ways"
+        echo -e "${ERROR} that break the vulnerability.patch's observable side effect."
+        echo -e "${ERROR} See documentation/SYNTHETIC_VULNERABILITIES.md for details."
+        exit 1
+    fi
+
+    if grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$DIR/build.sh" 2>/dev/null; then
+        echo -e "${INFO} --obfuscate: $DIR/build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT"
+    else
+        echo -e "${ERROR} --obfuscate passed but $DIR/build.sh does not reference"
+        echo -e "${ERROR} MCB_OBFUSCATE_INIT_SCRIPT. CI would not emit obfuscated"
+        echo -e "${ERROR} jobs for this app until build.sh forwards the init script."
+        exit 1
+    fi
+fi
 
 sdk=$(jq -r '.sdk' "$metadata")
 if [ "$?" -ne 0 ] || [ "$sdk" = "null" ] || [ -z "$sdk" ]; then
@@ -899,18 +936,21 @@ run_tests_for_mode() {
         echo -e "${INFO} apk_skip mode - checking for existing APKs..."
         app_name=$(basename "$dir")
         APK_DIR="$ROOT_DIR/$dir/apk"
+        if [ "$OBFUSCATE" = true ]; then
+            APK_DIR="$APK_DIR/obfuscated"
+        fi
 
         # Check if APKs exist locally
         APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
         if [ "$APK_COUNT" -eq 0 ]; then
             echo -e "${INFO} No local APKs found, attempting download from download_link..."
             cd "$ROOT_DIR"
-            if "$PYTHON_CMD" download_apk.py "$app_name"; then
+            if "$PYTHON_CMD" download_apk.py "${OBFUSCATE_DOWNLOAD_FLAG[@]}" "$app_name"; then
                 echo -e "${SUCCESS} Downloaded APKs successfully"
             else
                 echo -e "${ERROR} No local APKs and download failed."
                 echo -e "${ERROR} To fix: build APK and publish:"
-                echo -e "${ERROR}   ./build_apk.sh $app_name"
+                echo -e "${ERROR}   ./build_apk.sh $app_name ${OBFUSCATE_BUILD_FLAG[*]}"
                 echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
                 echo -e "${ERROR} Or remove --skip-apk to build from source."
                 exit 1
@@ -923,22 +963,25 @@ run_tests_for_mode() {
         echo -e "${INFO} Setting up app from APK link."
         app_name=$(basename "$dir")
         cd "$ROOT_DIR"
-        { "$PYTHON_CMD" download_apk.py "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
+        { "$PYTHON_CMD" download_apk.py "${OBFUSCATE_DOWNLOAD_FLAG[@]}" "$app_name"; } || { echo -e "${ERROR} download_apk.py failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     else
         echo -e "${INFO} Setting up app from source using build_apk.sh..."
         app_name=$(basename "$dir")
         cd "$ROOT_DIR"
-        { ./build_apk.sh "$app_name"; } || { echo -e "${ERROR} build_apk.sh failed"; exit 1; }
+        { ./build_apk.sh "$app_name" "${OBFUSCATE_BUILD_FLAG[@]}"; } || { echo -e "${ERROR} build_apk.sh failed"; exit 1; }
         cd "$ROOT_DIR/$dir"
     fi
     
     # Validate APK structure
     echo -e "${INFO} Validating APK structure..."
     APK_DIR="$ROOT_DIR/$dir/apk"
+    if [ "$OBFUSCATE" = true ]; then
+        APK_DIR="$APK_DIR/obfuscated"
+    fi
     if [ ! -d "$APK_DIR" ]; then
         echo -e "${ERROR} APK directory not found at $APK_DIR"
-        echo -e "${ERROR} APKs must be placed in ${dir}/apk/"
+        echo -e "${ERROR} APKs must be placed in $APK_DIR/"
         exit 1
     fi
 
@@ -1171,6 +1214,9 @@ run_vuln_test() {
     fi
 
     local APK_DIR="$ROOT_DIR/$app_dir/apk"
+    if [ "$OBFUSCATE" = true ]; then
+        APK_DIR="$APK_DIR/obfuscated"
+    fi
     local VULN_APK_DIR="$APK_DIR/$vuln_id"
     local CLEAN_APK_DIR="$APK_DIR"
     local skip_build=false
@@ -1186,7 +1232,7 @@ run_vuln_test() {
         if [ "$base_apk_count" -eq 0 ] || [ "$vuln_apk_count" -eq 0 ]; then
             echo -e "${INFO} Missing APKs (base: $base_apk_count, vuln: $vuln_apk_count), attempting download..."
             cd "$ROOT_DIR"
-            if "$PYTHON_CMD" download_apk.py "$app_name" 2>/dev/null; then
+            if "$PYTHON_CMD" download_apk.py "${OBFUSCATE_DOWNLOAD_FLAG[@]}" "$app_name" 2>/dev/null; then
                 echo -e "${SUCCESS} Downloaded APKs"
             fi
             cd "$ROOT_DIR/$app_dir"
@@ -1203,8 +1249,8 @@ run_vuln_test() {
             echo -e "${ERROR} Base APK: $CLEAN_APK_DIR/*.apk ($base_apk_count found)"
             echo -e "${ERROR} Vuln APK: $VULN_APK_DIR/*.apk ($vuln_apk_count found)"
             echo -e "${ERROR} To fix: build APKs and publish:"
-            echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name"
-            echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir"
+            echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name ${OBFUSCATE_BUILD_FLAG[*]}"
+            echo -e "${ERROR}   $(printf '%q ' "${VULN_BUILD_ENV_ARGS[@]}")./build_apk.sh $app_name --vuln $vuln_dir ${OBFUSCATE_BUILD_FLAG[*]}"
             echo -e "${ERROR}   ./publish_apk_bundle.sh apps/$app_name"
             exit 1
         fi
@@ -1278,7 +1324,7 @@ run_vuln_test() {
     print_header "$GREEN" "PHASE 1 PASSED: Clean build is NOT vulnerable"
 
     print_header "$CYAN" "PHASE 2: Testing Vulnerable Build (With Patch)"
-    local vuln_apk="apk/$vuln_id/${app_name}.apk"
+    local vuln_apk="$(mcb_apk_subdir)/${vuln_id}/${app_name}.apk"
     if [ ! -f "$vuln_apk" ]; then
         echo -e "${ERROR} Vulnerable APK not found: $vuln_apk"
         exit 1

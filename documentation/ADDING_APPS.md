@@ -87,6 +87,12 @@ Required fields (most important):
 - `username` / `password`: credentials the agent can use
 - `container_names`: Docker containers to monitor for availability
 
+Optional fields:
+
+- `download_link_obfuscated`: GitHub release URL for the obfuscated APK bundle. `publish_apk_bundle.sh` sets this automatically when `apk/obfuscated/` exists alongside `apk/`. If an experiment resolves to the obfuscated variant with `build_type: "download-apk"`, this field is required; download tooling fails fast instead of falling back to `download_link`.
+
+For analysis, treat only apps with both `download_link` and `download_link_obfuscated` present as paired ablation rows. CI build support is intentionally not a metadata enum: the app opts into obfuscated CI builds by having `build.sh` forward `MCB_OBFUSCATE_INIT_SCRIPT` when `MCB_OBFUSCATE=1`.
+
 ## 6) Write build.sh
 
 `build.sh` should be minimal — only the build command and APK copy. Everything else (Java, Android SDK, signing, codebase checkout) is handled by the root `build_apk.sh` wrapper.
@@ -108,6 +114,18 @@ cp app/build/outputs/apk/release/app-release-unsigned.apk "$SCRIPT_DIR/unsigned.
 - Prefer universal APKs for emulator compatibility
 - App-specific build patches (SDK upgrades, dependency fixes, ProGuard rules, etc.) belong here
 - Keep it simple — most `build.sh` scripts are 10-20 lines
+
+To opt into obfuscated CI builds, `build.sh` must forward the repo-level init script to gradlew when `MCB_OBFUSCATE=1` is in the environment (set by `build_apk.sh --obfuscate`). The init script flips `minifyEnabled` / `shrinkResources` on the release variant and appends `proguard-android-optimize.txt` plus an optional per-app `apps/<app>/obfuscation/extra-keep.pro`:
+
+```bash
+GRADLE_ARGS=()
+if [ "${MCB_OBFUSCATE:-0}" = "1" ] && [ -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]; then
+    GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
+fi
+./gradlew "${GRADLE_ARGS[@]}" assembleRelease --no-daemon
+```
+
+See `apps/wallabag/build.sh` for a working reference. If the app needs custom keep rules (Hilt/Room/Retrofit reflection, etc.), drop them in `apps/<app>/obfuscation/extra-keep.pro` — that path is repo-managed and never mutates the submodule.
 
 Build and publish the APK:
 ```bash

@@ -15,7 +15,11 @@ import logging
 import sys
 from pathlib import Path
 
-from utils.apk_utils import check_releases, download_apk, get_download_url
+from utils.apk_utils import (
+    check_releases,
+    download_apk,
+    get_download_url,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -24,15 +28,29 @@ HELP = """\
 Download pre-built APKs from GitHub releases.
 
 Usage:
-  {prog} <app_name>           Download APK (skips existing files)
-  {prog} --force <app_name>   Download and overwrite existing files
-  {prog} --check [app_name]   Validate download_links against GitHub releases
+  {prog} <app_name>                  Download APK (skips existing files)
+  {prog} --force <app_name>          Download and overwrite existing files
+  {prog} --check [app_name]          Validate download_links against GitHub releases
+  {prog} --obfuscated <app_name>     Download the R8-minified APK bundle
+
+Flags (order-insensitive):
+  --force         Overwrite existing downloaded files.
+  --obfuscated    Use download_link_obfuscated (the R8-minified bundle) instead
+                  of the default download_link (the un-minified bundle).
+                  If the app's metadata.json does not define
+                  download_link_obfuscated, the command fails instead of
+                  falling back to the default APK.
+  --check         Validate URLs on GitHub instead of downloading. Combine with
+                  --obfuscated to validate the obfuscated URLs.
 
 Examples:
-  {prog} conversations              Download conversations APK
-  {prog} --force conversations      Re-download conversations APK
-  {prog} --check                    Check all apps' download_links
-  {prog} --check conversations      Check just conversations' download_link
+  {prog} conversations                       Download conversations APK
+  {prog} --force conversations               Re-download conversations APK
+  {prog} --obfuscated conversations          Download R8-minified bundle
+  {prog} --force --obfuscated conversations  Re-download minified bundle
+  {prog} --check                             Check all apps' download_links
+  {prog} --check conversations               Check just conversations' download_link
+  {prog} --check --obfuscated                Check all apps' obfuscated links
 """
 
 
@@ -46,13 +64,15 @@ def main():
         print(HELP.format(prog=sys.argv[0]))
         sys.exit(0)
 
+    obfuscated = "--obfuscated" in flags
+
     if "--check" in flags:
         app_names = (
             positional
             if positional
             else sorted(d.name for d in apps_dir.iterdir() if d.is_dir())
         )
-        results = check_releases(app_names, project_root)
+        results = check_releases(app_names, project_root, obfuscated=obfuscated)
         for name, status in sorted(results.items()):
             print(f"  {status:<10} {name}")
         failures = {n: s for n, s in results.items() if s not in ("ok", "no_link")}
@@ -71,17 +91,22 @@ def main():
         print(f"Error: apps/{app_name}/ not found", file=sys.stderr)
         sys.exit(1)
 
-    url = get_download_url(app_name, project_root)
+    url = get_download_url(app_name, project_root, obfuscated=obfuscated)
     if not url:
-        print(
-            f"Error: No download_link in apps/{app_name}/metadata.json", file=sys.stderr
-        )
+        field = "download_link_obfuscated" if obfuscated else "download_link"
+        print(f"Error: No {field} in apps/{app_name}/metadata.json", file=sys.stderr)
         print("\nTo fix, build and publish the APK:", file=sys.stderr)
         print(f"  ./build_apk.sh {app_name}", file=sys.stderr)
         print(f"  ./publish_apk_bundle.sh apps/{app_name}", file=sys.stderr)
         sys.exit(1)
 
-    download_apk(app_name, url, project_root, force="--force" in flags)
+    download_apk(
+        app_name,
+        url,
+        project_root,
+        force="--force" in flags,
+        obfuscated=obfuscated,
+    )
 
 
 if __name__ == "__main__":

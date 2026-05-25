@@ -271,6 +271,21 @@ out=$(run_build fake_app --cache)
 echo "$out" | grep -q "Cache HIT" || fail "clean cache should still hit after vuln patch edit"
 pass "tenth: vuln cache invalidated, clean cache untouched"
 
+# 11. --obfuscate requires the per-app build.sh to forward the init script.
+echo
+echo "=== Test 11: --obfuscate fails fast without init-script forwarding ==="
+if out=$(run_build fake_app --obfuscate); then
+    echo "$out" | tail -10
+    fail "--obfuscate should fail when build.sh does not reference MCB_OBFUSCATE_INIT_SCRIPT"
+else
+    echo "$out" | tail -10
+    echo "$out" | grep -q "does not reference MCB_OBFUSCATE_INIT_SCRIPT" \
+        || fail "expected missing MCB_OBFUSCATE_INIT_SCRIPT error"
+    [ ! -f "$TMP/apps/fake_app/apk/obfuscated/fake_app.apk" ] \
+        || fail "unsupported --obfuscate should not write apk/obfuscated/fake_app.apk"
+    pass "eleventh: unsupported --obfuscate failed before producing an obfuscated-path APK"
+fi
+
 echo
 echo "=========================================="
 echo "PASS: $PASS_COUNT   FAIL: $FAIL_COUNT"
