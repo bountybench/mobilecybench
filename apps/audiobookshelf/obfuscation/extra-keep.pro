@@ -23,6 +23,8 @@
 # Preserve model metadata and members used by that serializer boundary.
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,RuntimeInvisibleAnnotations,RuntimeInvisibleParameterAnnotations
 -keep class kotlin.Metadata { *; }
+-keep class kotlin.reflect.** { *; }
+-keep class com.fasterxml.jackson.module.kotlin.** { *; }
 -keep class com.audiobookshelf.app.data.** { *; }
 -keep class com.audiobookshelf.app.models.** { *; }
 -keep class com.audiobookshelf.app.plugins.**$* { *; }
