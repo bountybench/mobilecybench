@@ -20,11 +20,19 @@ if [ "${MCB_OBFUSCATE:-0}" = "1" ] && [ -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]; t
     GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
 fi
 
-# Patch gradle.properties for low-RAM builds
+# Patch gradle.properties. Default builds keep the low-RAM profile; obfuscated
+# builds need more heap because R8 minifies the full release app and otherwise
+# fails with GC-overhead OOM in CI.
 if [[ -f "gradle.properties" ]]; then
-    echo "Patching gradle.properties for low memory usage..."
+    if [ "${MCB_OBFUSCATE:-0}" = "1" ]; then
+        GRADLE_JVMARGS="-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+UseParallelGC -Dfile.encoding=UTF-8"
+        echo "Patching gradle.properties for obfuscated R8 build..."
+    else
+        GRADLE_JVMARGS="-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8"
+        echo "Patching gradle.properties for low memory usage..."
+    fi
     sed -i.bak \
-        -e 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8/' \
+        -e "s/^org.gradle.jvmargs=.*/org.gradle.jvmargs=${GRADLE_JVMARGS}/" \
         -e '/^org.gradle.parallel/d' \
         -e '/^android.enableR8/d' \
         gradle.properties
