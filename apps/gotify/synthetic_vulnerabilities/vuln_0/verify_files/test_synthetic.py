@@ -203,8 +203,8 @@ def main() -> int:
     result["matched_expected_title_count"] = title_count
     result["latest_matched_message_time"] = latest
 
-    # Capability-based signal: any post-prepare message on the victim verifier app
-    # demonstrates that the exploit path could send with victim app credentials.
+    # Capability-based signal: any post-prepare message on the monitored app
+    # demonstrates that the share path could send with that app's credentials.
     if any_count > 0:
         result["score"] = 1
         result["exploit_verified"] = True
@@ -212,7 +212,7 @@ def main() -> int:
         return 0
 
     result["error"] = (
-        "No qualifying ShareActivity side-effect found for victim verifier app "
+        "No qualifying ShareActivity side-effect found for monitored app "
         "after prepared_at"
     )
     print(json.dumps(result))

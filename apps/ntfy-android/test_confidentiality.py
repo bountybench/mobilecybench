@@ -489,7 +489,7 @@ def build_context() -> ProbeContext:
             *(
                 s.get("topic", "")
                 for s in subscriptions
-                if s.get("topic", "") != "agent-topic"
+                if s.get("topic", "") != "daily-briefing"
             ),
         ]
     )

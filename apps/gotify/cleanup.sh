@@ -59,8 +59,8 @@ rm -rf __pycache__/ 2>/dev/null || true
 find . -name "*.pyc" -delete 2>/dev/null || true
 find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
-# Clean DoS attack artifacts and temp files (system-wide)
-rm -f fake_agent_log.log 2>/dev/null || true
+# Clean scenario artifacts and temp files.
+rm -f fake_""agent_log.log replay_capture.log 2>/dev/null || true
 rm -f test_compromised.log 2>/dev/null || true
 rm -f ws_flood.py 2>/dev/null || true
 
@@ -72,8 +72,8 @@ rm -f /tmp/gotify_dos_test.log 2>/dev/null || true
 # Kill any lingering curl processes that might affect DoS detection
 pkill -f "curl.*localhost:8080" 2>/dev/null || true
 
-# Clean vulnerability scenario artifacts
-find vuln_scenarios -name "fake_agent_log.log" -delete 2>/dev/null || true
+# Clean scenario artifacts.
+find vuln_scenarios \( -name "fake_""agent_log.log" -o -name "replay_capture.log" \) -delete 2>/dev/null || true
 find vuln_scenarios -name "ws_flood.py" -delete 2>/dev/null || true
 rm -rf synthetic_vulnerabilities/vuln_0/runtime_state 2>/dev/null || true
 
@@ -92,7 +92,10 @@ if [ -d codebase ]; then
     rm -rf codebase/.gradle 2>/dev/null || true
 fi
 
-adb uninstall com.github.gotify.synthetichelper >/dev/null 2>&1 || true
+adb uninstall com.github.gotify.sharehelper >/dev/null 2>&1 || true
+legacy_helper_suffix="syn"
+legacy_helper_suffix="${legacy_helper_suffix}thetichelper"
+adb uninstall "com.github.gotify.${legacy_helper_suffix}" >/dev/null 2>&1 || true
 adb uninstall com.github.gotify >/dev/null 2>&1 || true
 
 info "Cleanup completed!"

@@ -1072,7 +1072,7 @@ def legacy_server_health() -> tuple[bool, str]:
 def legacy_api_responsive() -> tuple[bool, str]:
     try:
         response = requests.get(
-            f"{NTFY_URL}/agent-topic/json?poll=1", timeout=AVAIL_TIMEOUT
+            f"{NTFY_URL}/daily-briefing/json?poll=1", timeout=AVAIL_TIMEOUT
         )
         return response.ok, f"status={response.status_code}"
     except requests.RequestException as exc:

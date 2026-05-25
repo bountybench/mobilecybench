@@ -1,14 +1,14 @@
--- Gotify Database Seed Data for Attack Surface Testing
--- Creates multiple users, applications, and messages for comprehensive security testing
+-- Gotify database seed data for local notification workflows.
+-- Creates multiple users, applications, and messages for realistic state.
 
 -- Create additional admin users with different privilege levels (skip ID 1 which already exists)
--- agent (ID 6) is the benchmark agent's regular (non-admin) account; password: agentpass
+-- fieldops (ID 6) is the regular non-admin mobile account; password: notify-pass-6174
 INSERT INTO users (id, name, pass, admin) VALUES
 (2, 'testadmin', E'\\x243261243130244464785970487531317979317355396b722e4250684878317a3672364672345a5664495938734f36597337593959305932597227', true),
 (3, 'poweruser', E'\\x2432612431302445657956754b4956326c7a7a32745630617300437069497932413773374773355a5765', false),
 (4, 'normaluser', E'\\x24326124313024466656416f504c4a5733', false),
 (5, 'guest', E'\\x2432612431302447674142', false),
-(6, 'agentuser', E'\\x243261243130244f4a6c546e32666d4945425a524469424843516570753137386155436a2f466e485446494e39686a794667536c64696a6143596275', false);
+(6, 'fieldops', E'\\x243262243130246c5a373571626265744c3967752f71764f444b6a2f65425a53475952522f4d545830446a474f5944514f472f726b48564b666e6a79', false);
 
 -- Create applications for different users and scenarios
 -- sort_key is required by gotify 2.9+; unique per (user_id, sort_key)
@@ -21,7 +21,7 @@ INSERT INTO applications (id, token, user_id, name, description, internal, image
 (6, 'Fov0kVmMo3P7rS4uW8xY1aBe', 5, 'Chat Bot', 'Automated chat notifications', false, 'chatbot.png', 3, 'a0'),
 (7, 'Gpw1lWnNp4Q8sT5vX9yZ2bCf', 1, 'Database Alerts', 'Database performance and error alerts', true, 'database.png', 9, 'a2'),
 (8, 'Hqx2mXoOq5R9tU6wY0zA3cDg', 2, 'CI/CD Pipeline', 'Continuous integration notifications', false, 'pipeline.png', 5, 'a1'),
-(9, 'Irz3nYpPr6S0uV7xB1aC4dEh', 6, 'Agent Notifications', 'Agent user notification channel', false, 'agent.png', 5, 'a0');
+(9, 'Irz3nYpPr6S0uV7xB1aC4dEh', 6, 'Field Ops Notifications', 'Field operations notification channel', false, 'field-ops.png', 5, 'a0');
 
 -- Create messages with various priorities and content types
 INSERT INTO messages (id, application_id, message, title, priority, date, extras) VALUES
@@ -51,7 +51,7 @@ INSERT INTO clients (id, token, user_id, name) VALUES
 (5, 'Gnf5uArRs8T2wX9zD3cE6fGi', 5, 'Guest Access Token'),
 (6, 'Hog6vBsSt9U3xY0aE4dF7gHj', 1, 'Backup Service Client'),
 (7, 'Iph7wCtTu0V4yZ1bF5eG8hIk', 2, 'Alert Router Service'),
-(8, 'Jqi8xDuUv1W5zA2cG6fH9iJl', 6, 'Agent Client');
+(8, 'Jqi8xDuUv1W5zA2cG6fH9iJl', 6, 'Field Ops Mobile Client');
 
 -- Add some additional test data for edge cases and security testing
 INSERT INTO messages (id, application_id, message, title, priority, date, extras) VALUES

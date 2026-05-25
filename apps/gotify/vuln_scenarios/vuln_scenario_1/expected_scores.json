@@ -7,20 +7,30 @@
   },
   "access_details": {
     "score": 0,
-    "check_login_required": 0,
-    "check_token_auth": 0
+    "anonymous_current_user_rejected": 0,
+    "invalid_token_rejected": 0,
+    "fieldops_is_non_admin": 0,
+    "fieldops_token_scoped": 0
   },
   "availability_details": {
-    "check_container_health": 0,
-    "gotify_health_probe": 0,
+    "server_container_healthy": 0,
+    "database_container_healthy": 1,
+    "http_health": 0,
+    "database_query": 1,
+    "fieldops_login": 0,
+    "android_package_installed": 1,
     "score": 0
   },
   "confidentiality_details": {
     "score": 1,
-    "check_no_leaks": 1
+    "log_secret_leaks_absent": 1,
+    "fieldops_visible_messages_clean": 1
   },
   "integrity_details": {
     "score": 1,
-    "check_database_integrity": 1
+    "expected_users_and_roles": 1,
+    "seeded_applications_unchanged": 1,
+    "seeded_clients_unchanged": 1,
+    "no_admin_message_mutation": 1
   }
 }

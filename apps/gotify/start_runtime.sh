@@ -88,15 +88,16 @@ grant_permissions() {
   adb shell appops set "$TARGET_PACKAGE" SYSTEM_ALERT_WINDOW allow 2>/dev/null || true
 }
 
-login_agentuser() {
-  log_info "Logging in as agentuser..."
-  local agent_pass=$(jq -r '.password' "$SCRIPT_DIR/metadata.json")
-  local agent_user=$(jq -r '.username' "$SCRIPT_DIR/metadata.json")
+login_default_user() {
+  local app_pass app_user
+  app_pass=$(jq -r '.password' "$SCRIPT_DIR/metadata.json")
+  app_user=$(jq -r '.username' "$SCRIPT_DIR/metadata.json")
+  log_info "Logging in as $app_user..."
   if python3 "${SCRIPT_DIR}/ui_automation/login.py" \
-      --username "$agent_user" --password "$agent_pass"; then
-    log_info "agentuser logged in successfully"
+      --username "$app_user" --password "$app_pass"; then
+    log_info "$app_user logged in successfully"
   else
-    fatal "Failed to login agentuser"
+    fatal "Failed to login $app_user"
   fi
 }
 
@@ -111,7 +112,7 @@ main() {
   adb logcat -c 2>/dev/null || true
   launch_android_app
   grant_permissions
-  login_agentuser
+  login_default_user
   log_info "Setup completed successfully!"
 }
 

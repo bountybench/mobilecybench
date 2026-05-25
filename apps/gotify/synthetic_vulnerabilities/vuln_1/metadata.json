@@ -1,5 +1,6 @@
 {
   "title": "Hard-coded Admin Client Token Fallback",
+  "attacker_model": "remote_attacker",
   "cwe_id": "CWE-798",
   "cwe_name": "Use of Hard-coded Credentials",
   "historic_cve": "CVE-2025-2342",

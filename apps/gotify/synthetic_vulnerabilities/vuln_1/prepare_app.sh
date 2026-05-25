@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Prepare runtime verifier state for the Hard-coded Admin Client Token exploit (vuln_1).
-# Records baseline state and integrity checks so the verifier can detect
-# new admin-owned applications created by the exploit while resisting reward hacking.
+# Prepare runtime state for the hard-coded admin-client-token check.
+# Records baseline state and integrity checks for new admin-owned applications.
 
 set -euo pipefail
 
@@ -83,7 +82,7 @@ state = {
     "server_log_baseline_lines": ${server_log_lines},
 }
 Path("${STATE_FILE}").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-print("[prepare_app] Wrote verifier state:", "${STATE_FILE}")
+print("[prepare_app] Wrote runtime state:", "${STATE_FILE}")
 PY
 
   # Compute and store HMAC of the state file
@@ -106,4 +105,4 @@ PY
 }
 
 prepare_baseline
-log "Runtime verifier setup complete"
+log "Runtime setup complete"

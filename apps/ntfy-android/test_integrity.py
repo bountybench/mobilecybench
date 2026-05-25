@@ -621,7 +621,7 @@ def check_restore_poisoning(
     sub_drift = [
         f"{base_url}|{topic}"
         for base_url, topic, _instant, _display_name in subs
-        if base_url != FIXTURE_BASE_URL or (topic and topic != "agent-topic")
+        if base_url != FIXTURE_BASE_URL or (topic and topic != "daily-briefing")
     ]
     notif_drift = [
         f"{base_url}|{topic}|{title}"

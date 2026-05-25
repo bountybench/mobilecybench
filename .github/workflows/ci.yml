@@ -107,15 +107,23 @@ jobs:
             system_image=$(jq -r '.system_image // "google_atd"' "$metadata")
             echo "  SDK: $sdk, Java: $java, System image: $system_image"
 
-            # Determine obfuscation build capability for this app. The
-            # per-app build.sh is the source of truth: it must forward the
-            # repo-level init script to Gradle when build_apk.sh --obfuscate
-            # exports MCB_OBFUSCATE_INIT_SCRIPT.
-            obfuscation_optin=false
+            # Determine obfuscation capability for this app. Source builds are
+            # supported only when the per-app build.sh forwards the repo-level
+            # init script. Prebuilt apklink jobs are supported only when
+            # metadata.json publishes download_link_obfuscated.
+            has_obfuscated_source=false
             if [ -f "$dir/build.sh" ] && grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$dir/build.sh"; then
+              has_obfuscated_source=true
+            fi
+            download_link_obfuscated=$(jq -r '.download_link_obfuscated // empty' "$metadata")
+            has_obfuscated_apklink=false
+            [ -n "$download_link_obfuscated" ] && has_obfuscated_apklink=true
+            obfuscation_optin=false
+            if [ "$has_obfuscated_source" = true ] || [ "$has_obfuscated_apklink" = true ]; then
               obfuscation_optin=true
             fi
             echo "  obfuscation build support: ${obfuscation_optin}"
+            echo "    source: ${has_obfuscated_source}, apklink: ${has_obfuscated_apklink}"
 
             # Per-app and repo-level obfuscation trigger detection.
             # Obfuscated rebuilds fire when: the app itself changed (existing
@@ -338,22 +346,46 @@ jobs:
                   run_obfuscated_test=true
                 fi
                 if [ "$run_obfuscated_build" = true ]; then
+                  obfuscated_modes=()
                   for mode in "${setup_modes[@]}"; do
+                    if [ "$mode" = "source" ] && [ "$has_obfuscated_source" != true ]; then
+                      echo "  Skipping obfuscated source handle_apk for $app_name: build.sh does not forward MCB_OBFUSCATE_INIT_SCRIPT"
+                      continue
+                    fi
+                    if [ "$mode" = "apklink" ] && [ "$has_obfuscated_apklink" != true ]; then
+                      echo "  Skipping obfuscated apklink handle_apk for $app_name: metadata.json has no download_link_obfuscated"
+                      continue
+                    fi
+                    obfuscated_modes+=("$mode")
                     apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                       --arg java "$java" --arg mode "$mode" \
                       '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode, "variant": "obfuscated"}]')
                   done
-                  echo "  Added obfuscated handle_apk for $app_name (modes: ${setup_modes[*]})"
+                  if [ "${#obfuscated_modes[@]}" -gt 0 ]; then
+                    echo "  Added obfuscated handle_apk for $app_name (modes: ${obfuscated_modes[*]})"
+                  fi
                 fi
                 if [ "$run_obfuscated_test" = true ]; then
+                  obfuscated_test_modes=()
                   for mode in "${setup_modes[@]}"; do
+                    if [ "$mode" = "source" ] && [ "$has_obfuscated_source" != true ]; then
+                      echo "  Skipping obfuscated source test jobs for $app_name: build.sh does not forward MCB_OBFUSCATE_INIT_SCRIPT"
+                      continue
+                    fi
+                    if [ "$mode" = "apklink" ] && [ "$has_obfuscated_apklink" != true ]; then
+                      echo "  Skipping obfuscated apklink test jobs for $app_name: metadata.json has no download_link_obfuscated"
+                      continue
+                    fi
+                    obfuscated_test_modes+=("$mode")
                     for test_type in "${test_types[@]}"; do
                       test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                         --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
                         '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type, "variant": "obfuscated"}]')
                     done
                   done
-                  echo "  Added obfuscated test jobs for $app_name (modes: ${setup_modes[*]}, types: ${test_types[*]}) — obfuscation infra changed"
+                  if [ "${#obfuscated_test_modes[@]}" -gt 0 ]; then
+                    echo "  Added obfuscated test jobs for $app_name (modes: ${obfuscated_test_modes[*]}, types: ${test_types[*]}) — obfuscation infra changed"
+                  fi
                 fi
               fi
             fi

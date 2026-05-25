@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Seed one library item with long HTML-bearing title metadata so the marquee exploit
+# Seed one library item with long HTML-bearing title metadata so the marquee flow
 # can find a "marquee-triggerable" field (path contains "title", value length >= 40).
 # Stock CI database may lack any such item; without this, CI fails with
-# "no marquee-triggerable malicious metadata found".
+# "no marquee-triggerable metadata found".
 #
-# Only for MCB_PHASE=vulnerable (see report-0 prepare_app.sh for rationale).
+# Only for MCB_PHASE=vulnerable.
 set -euo pipefail
 
 phase_lc="$(printf '%s' "${MCB_PHASE:-}" | tr '[:upper:]' '[:lower:]')"
@@ -29,9 +29,7 @@ spec = importlib.util.spec_from_file_location("audiobookshelf_common", COMMON_PY
 common = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(common)
 MIN_SCROLL_LENGTH = 40
-SEED_TITLE = (
-    "harmharmharm <img src=x onerror=alert(1)> audiobookshelf-ci-seed-marquee-padding-zz"
-)
+SEED_TITLE = "harmharmharm <img src=x onerror=alert(1)> library-marquee-padding-zz"
 try:
     common.wait_for_server(SERVER_URL)
     token = common.login(SERVER_URL, USERNAME, PASSWORD, timeout=60)

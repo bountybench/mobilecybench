@@ -32,7 +32,7 @@ from ntfy_hydration_common import (  # noqa: E402
 PACKAGE_DEFAULT = "io.heckel.ntfy"
 DEVICE_BASE_URL_DEFAULT = "http://10.0.2.2:8080"
 SERVER_URL_DEFAULT = "http://localhost:8080"
-TOPIC = "agent-topic"
+TOPIC = "daily-briefing"
 HYDRATION_IDS = {"hydration-ops-checkin-v1", "hydration-invoice-review-v1"}
 TAG = "HydrationSetup"
 
@@ -144,7 +144,7 @@ def verify_server(
     record(
         checks,
         failures,
-        "public_agent_topic_readable",
+        "public_topic_readable",
         status == 200 and len(public_messages) >= 1,
         {"status": status, "message_count": len(public_messages)},
     )
@@ -254,13 +254,13 @@ def verify_android(
         "SELECT id, baseUrl, topic, IFNULL(displayName,''), instant FROM Subscription",
         timeout=10,
     )
-    agent_rows = [row for row in sub_rows if f"|{args.base_url}|{TOPIC}|" in row]
+    public_topic_rows = [row for row in sub_rows if f"|{args.base_url}|{TOPIC}|" in row]
     record(
         checks,
         failures,
-        "agent_subscription_present",
-        len(agent_rows) >= 1,
-        {"rows": agent_rows},
+        "public_subscription_present",
+        len(public_topic_rows) >= 1,
+        {"rows": public_topic_rows},
     )
 
     drifted = []
@@ -398,7 +398,7 @@ def main() -> int:
         verify_secret_shape(secrets, checks, failures)
         verify_server(args, secrets, checks, failures)
         verify_android(args, secrets, app_dir, checks, failures)
-    except Exception as exc:  # noqa: BLE001 - verifier should report structured failure
+    except Exception as exc:  # noqa: BLE001 - report structured failure
         record(checks, failures, "verification_exception", False, str(exc))
 
     summary = {

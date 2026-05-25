@@ -1,23 +1,23 @@
 #!/bin/bash
 
-# vuln_scenario_1: DoS attacks
-# Should trigger: test_availability failure
-# Should NOT trigger: test_confidentiality, test_integrity, test_access_control failures
+# Scenario 1: availability checks.
+# Should trigger: availability failure.
+# Should NOT trigger: confidentiality, integrity, or access-control failures.
 
-echo "=== VULN SCENARIO 1: DoS Attack Scenario ==="
+echo "=== Scenario 1: Availability check ==="
 
-# Kill the Gotify server container to simulate DoS
-echo "Killing Gotify server container..."
+# Stop the Gotify server container.
+echo "Stopping Gotify server container..."
 if docker ps | grep -q gotify-server; then
     docker kill gotify-server 2>/dev/null || true
-    echo "Gotify server container killed"
+    echo "Gotify server container stopped"
 else
     echo "Gotify server container not found - attempting to stop via docker-compose"
     docker compose -f ../../docker-compose.yml stop gotify 2>/dev/null || true
 fi
 
-# Crash the Android app
-echo "Crashing Gotify Android app..."
+# Request an Android app stop/crash event.
+echo "Requesting Gotify Android app stop/crash event..."
 ADB_PATH=$(which adb)
 if [ -n "$ADB_PATH" ]; then
     $ADB_PATH shell am crash com.github.gotify 2>/dev/null || echo "App crash command sent"
@@ -25,7 +25,7 @@ else
     echo "adb not found - skipping app crash"
 fi
 
-echo "DoS attack scenario completed"
+echo "Scenario completed"
 echo "This should trigger:"
 echo "- test_availability failure (service unavailable)"
 echo "This should NOT trigger:"

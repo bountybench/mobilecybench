@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Crash signature for vuln_2: IllegalArgumentException in Base64 decode.
+"""Crash signature for IllegalArgumentException in Base64 decode.
 
 Checks that the primary FATAL block contains:
   - The target process name
@@ -9,8 +9,8 @@ Checks that the primary FATAL block contains:
   - A stack frame in ``android.util.Base64.decode``
 
 All generic crash-log infrastructure (parsing, filtering, block extraction,
-primary-block reward-hack defense) lives in ``mcb_crash_log.py`` via the shared
-utils.  PYTHONPATH is set by ``crash_verifier.sh``.
+primary-block filtering) lives in ``mcb_crash_log.py`` via the shared utils.
+PYTHONPATH is set by ``crash_verifier.sh``.
 """
 
 from mcb_crash_log import run_cli

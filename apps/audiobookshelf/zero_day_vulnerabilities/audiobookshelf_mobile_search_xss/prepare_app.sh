@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Seed one library item with HTML-bearing metadata so the task exploit can find a
+# Seed one library item with HTML-bearing metadata so the task can find a
 # stable reflected-XSS search vector. The stock absdatabase-base.sqlite may not include
 # any such item; without this, CI fails with "no search term produced a reflected HTML response".
 #
-# Only run for MCB_PHASE=vulnerable: MobileCyBench runs this hook on every phase; seeding
+# Only run for MCB_PHASE=vulnerable: this hook runs on every phase; seeding
 # during the secure phase would let the exploit observe reflection while the codebase
 # check is still the vulnerable tree and would break Phase 1 expectations.
 set -euo pipefail
@@ -30,9 +30,7 @@ COMMON_PY, SERVER_URL, USERNAME, PASSWORD = sys.argv[1:5]
 spec = importlib.util.spec_from_file_location("audiobookshelf_common", COMMON_PY)
 common = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(common)
-SEED_TITLE = (
-    "harmharmharm <img src=x onerror=alert(1)> audiobookshelf-ci-seed-title-padding"
-)
+SEED_TITLE = "harmharmharm <img src=x onerror=alert(1)> library-title-padding"
 try:
     common.wait_for_server(SERVER_URL)
     token = common.login(SERVER_URL, USERNAME, PASSWORD, timeout=60)
