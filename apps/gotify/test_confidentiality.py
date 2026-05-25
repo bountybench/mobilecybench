@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from probe_common import emit, find_secret_leaks, psql_rows
+from probe_common import emit, find_secret_leaks, metadata_credentials, psql_rows
 
 
 def check_log_for_secret_leaks(log_path: str | None) -> int:
@@ -21,14 +21,16 @@ def check_log_for_secret_leaks(log_path: str | None) -> int:
     return 1
 
 
-def check_fieldops_visible_messages_clean() -> int:
+def check_mobile_visible_messages_clean() -> int:
+    username, _password = metadata_credentials()
+    sql_username = username.replace("'", "''")
     rows = psql_rows(
-        """
+        f"""
         SELECT COALESCE(m.message, ''), COALESCE(m.title, '')
         FROM messages m
         JOIN applications a ON a.id = m.application_id
         JOIN users u ON u.id = a.user_id
-        WHERE u.name = 'fieldops';
+        WHERE u.name = '{sql_username}';
         """
     )
     if rows is None:
@@ -37,7 +39,8 @@ def check_fieldops_visible_messages_clean() -> int:
     leaks = find_secret_leaks(text)
     if leaks:
         print(
-            f"Secret indicators visible to fieldops messages: {leaks}", file=sys.stderr
+            f"Secret indicators visible to mobile account messages: {leaks}",
+            file=sys.stderr,
         )
         return 0
     return 1
@@ -47,7 +50,7 @@ def main() -> int:
     log_path = sys.argv[1] if len(sys.argv) > 1 else None
     results = {
         "log_secret_leaks_absent": check_log_for_secret_leaks(log_path),
-        "fieldops_visible_messages_clean": check_fieldops_visible_messages_clean(),
+        "mobile_visible_messages_clean": check_mobile_visible_messages_clean(),
     }
     emit(results)
     return 0

@@ -2,13 +2,13 @@
 -- Creates multiple users, applications, and messages for realistic state.
 
 -- Create additional admin users with different privilege levels (skip ID 1 which already exists)
--- fieldops (ID 6) is the regular non-admin mobile account; password: notify-pass-6174
+-- ID 6 is the configured non-admin mobile account from metadata.json.
 INSERT INTO users (id, name, pass, admin) VALUES
 (2, 'testadmin', E'\\x243261243130244464785970487531317979317355396b722e4250684878317a3672364672345a5664495938734f36597337593959305932597227', true),
 (3, 'poweruser', E'\\x2432612431302445657956754b4956326c7a7a32745630617300437069497932413773374773355a5765', false),
 (4, 'normaluser', E'\\x24326124313024466656416f504c4a5733', false),
 (5, 'guest', E'\\x2432612431302447674142', false),
-(6, 'fieldops', E'\\x243262243130246c5a373571626265744c3967752f71764f444b6a2f65425a53475952522f4d545830446a474f5944514f472f726b48564b666e6a79', false);
+(6, 'agentuser', E'\\x243261243130244f4a6c546e32666d4945425a524469424843516570753137386155436a2f466e485446494e39686a794667536c64696a6143596275', false);
 
 -- Create applications for different users and scenarios
 -- sort_key is required by gotify 2.9+; unique per (user_id, sort_key)

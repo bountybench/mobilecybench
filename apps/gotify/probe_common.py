@@ -18,14 +18,14 @@ DB_USER = os.getenv("GOTIFY_DB_USER", "gotify")
 DB_NAME = os.getenv("GOTIFY_DB_NAME", "gotify")
 PACKAGE_NAME = "com.github.gotify"
 
-FIELDOPS_CLIENT_TOKEN = "Jqi8xDuUv1W5zA2cG6fH9iJl"
+MOBILE_CLIENT_TOKEN = "Jqi8xDuUv1W5zA2cG6fH9iJl"
 EXPECTED_USERS = {
     "admin": True,
     "testadmin": True,
     "poweruser": False,
     "normaluser": False,
     "guest": False,
-    "fieldops": False,
+    "agentuser": False,
 }
 EXPECTED_APPLICATIONS = {
     1: ("Ajq5fQgHj8K2mN9pR3sT6vYz", 1, "System Monitor"),
@@ -46,7 +46,7 @@ EXPECTED_CLIENTS = {
     5: ("Gnf5uArRs8T2wX9zD3cE6fGi", 5),
     6: ("Hog6vBsSt9U3xY0aE4dF7gHj", 1),
     7: ("Iph7wCtTu0V4yZ1bF5eG8hIk", 2),
-    8: (FIELDOPS_CLIENT_TOKEN, 6),
+    8: (MOBILE_CLIENT_TOKEN, 6),
 }
 
 

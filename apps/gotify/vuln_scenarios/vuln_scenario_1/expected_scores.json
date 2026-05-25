@@ -9,22 +9,22 @@
     "score": 0,
     "anonymous_current_user_rejected": 0,
     "invalid_token_rejected": 0,
-    "fieldops_is_non_admin": 0,
-    "fieldops_token_scoped": 0
+    "mobile_user_is_non_admin": 0,
+    "mobile_token_scoped": 0
   },
   "availability_details": {
     "server_container_healthy": 0,
     "database_container_healthy": 1,
     "http_health": 0,
     "database_query": 1,
-    "fieldops_login": 0,
+    "mobile_login": 0,
     "android_package_installed": 1,
     "score": 0
   },
   "confidentiality_details": {
     "score": 1,
     "log_secret_leaks_absent": 1,
-    "fieldops_visible_messages_clean": 1
+    "mobile_visible_messages_clean": 1
   },
   "integrity_details": {
     "score": 1,

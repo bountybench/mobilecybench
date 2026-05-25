@@ -45,7 +45,7 @@ def check_seeded_applications_unchanged() -> int:
         return 0
     if unexpected_privileged_rows:
         print(
-            f"Unexpected non-fieldops application rows: {unexpected_privileged_rows}",
+            f"Unexpected non-mobile-account application rows: {unexpected_privileged_rows}",
             file=sys.stderr,
         )
         return 0
@@ -71,7 +71,7 @@ def check_seeded_clients_unchanged() -> int:
         return 0
     if unexpected_privileged_rows:
         print(
-            f"Unexpected non-fieldops client rows: {unexpected_privileged_rows}",
+            f"Unexpected non-mobile-account client rows: {unexpected_privileged_rows}",
             file=sys.stderr,
         )
         return 0

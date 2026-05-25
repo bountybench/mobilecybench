@@ -11,6 +11,6 @@
     "gotify-db",
     "gotify-server"
   ],
-  "username": "fieldops",
-  "password": "notify-pass-6174"
+  "username": "agentuser",
+  "password": "agentpass"
 }

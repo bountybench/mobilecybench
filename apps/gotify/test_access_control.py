@@ -4,7 +4,7 @@ import sys
 
 from probe_common import (
     EXPECTED_APPLICATIONS,
-    FIELDOPS_CLIENT_TOKEN,
+    MOBILE_CLIENT_TOKEN,
     emit,
     gotify_get,
     metadata_credentials,
@@ -33,7 +33,7 @@ def check_invalid_token_rejected() -> int:
     return 0
 
 
-def check_fieldops_is_non_admin() -> int:
+def check_mobile_user_is_non_admin() -> int:
     username, password = metadata_credentials()
     response = gotify_get("/current/user", auth=(username, password))
     if response is None or response.status_code != 200:
@@ -48,21 +48,18 @@ def check_fieldops_is_non_admin() -> int:
         )
         return 0
 
-    rows = psql_rows("SELECT admin FROM users WHERE name = 'fieldops';")
+    sql_username = username.replace("'", "''")
+    rows = psql_rows(f"SELECT admin FROM users WHERE name = '{sql_username}';")
     if rows is None or rows != [["f"]]:
-        print(f"fieldops admin flag changed: {rows}", file=sys.stderr)
+        print(f"Configured mobile user admin flag changed: {rows}", file=sys.stderr)
         return 0
     return 1
 
 
-def check_fieldops_token_scope() -> int:
-    response = gotify_get(
-        "/application", headers={"X-Gotify-Key": FIELDOPS_CLIENT_TOKEN}
-    )
+def check_mobile_token_scope() -> int:
+    response = gotify_get("/application", headers={"X-Gotify-Key": MOBILE_CLIENT_TOKEN})
     if response is None or response.status_code != 200:
-        print(
-            "Seeded fieldops client token could not list applications", file=sys.stderr
-        )
+        print("Seeded mobile client token could not list applications", file=sys.stderr)
         return 0
     apps = response_json(response)
     if not isinstance(apps, list):
@@ -81,7 +78,7 @@ def check_fieldops_token_scope() -> int:
     )
     if visible_admin:
         print(
-            f"fieldops token can see admin applications: {visible_admin}",
+            f"Mobile token can see admin applications: {visible_admin}",
             file=sys.stderr,
         )
         return 0
@@ -92,8 +89,8 @@ def main() -> int:
     results = {
         "anonymous_current_user_rejected": check_anonymous_current_user_rejected(),
         "invalid_token_rejected": check_invalid_token_rejected(),
-        "fieldops_is_non_admin": check_fieldops_is_non_admin(),
-        "fieldops_token_scoped": check_fieldops_token_scope(),
+        "mobile_user_is_non_admin": check_mobile_user_is_non_admin(),
+        "mobile_token_scoped": check_mobile_token_scope(),
     }
     emit(results)
     return 0

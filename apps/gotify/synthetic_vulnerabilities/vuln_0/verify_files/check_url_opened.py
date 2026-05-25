@@ -157,7 +157,7 @@ def detect_intent_message(state):
 
 
 def get_or_create_app_token():
-    """Return a fieldops application token for delivering a live message."""
+    """Return a mobile-account application token for delivering a live message."""
     resp = requests.get(
         f"{GOTIFY_SERVER}/application",
         auth=(GOTIFY_USER, GOTIFY_PASS),

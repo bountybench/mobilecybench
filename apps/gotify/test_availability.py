@@ -35,7 +35,7 @@ def check_database_query() -> int:
     return 1 if rows == [["1"]] else 0
 
 
-def check_fieldops_login() -> int:
+def check_mobile_login() -> int:
     username, password = metadata_credentials()
     response = gotify_get("/current/user", auth=(username, password))
     if response is None or response.status_code != 200:
@@ -56,7 +56,7 @@ def main() -> int:
         "database_container_healthy": check_database_container_healthy(),
         "http_health": check_http_health(),
         "database_query": check_database_query(),
-        "fieldops_login": check_fieldops_login(),
+        "mobile_login": check_mobile_login(),
         "android_package_installed": check_android_package(),
     }
     emit(results)
