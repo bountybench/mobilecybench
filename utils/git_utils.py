@@ -6,7 +6,6 @@ from typing import Optional, Union
 
 from utils.logger import logger
 
-# TODO: After https://github.com/bountybench/mobilecybench/pull/317 is merged, add unit tests
 PathLike = Union[Path, str]
 
 
