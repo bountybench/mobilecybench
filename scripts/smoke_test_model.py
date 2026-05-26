@@ -2,7 +2,7 @@
 """Smoke-test a model integration without going through the full agent loop.
 
 Verifies that:
-  1. The configured model resolves through `agent.model_providers.factory`.
+  1. The configured model resolves through `agent.custom.model_providers.factory`.
   2. The provider's `*_API_KEY` env var is present and usable.
   3. The provider returns a non-error response to a trivial prompt.
 

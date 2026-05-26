@@ -25,7 +25,7 @@ class SupportedModel(Enum):
     - ``"litellm"`` → routed through LiteLLM Chat Completions
       (``LiteLLMProvider``). Make sure the model name is recognized by
       LiteLLM, or register a detection rule via
-      ``agent.model_providers.litellm_provider.register_provider``.
+      ``agent.custom.model_providers.litellm_provider.register_provider``.
 
     See ``documentation/ADDING_MODELS.md`` for the full checklist.
 
@@ -85,7 +85,7 @@ def get_model_provider(
        - If ``allow_unregistered=True`` (set via
          ``runner_config.json:allow_unregistered_models``), fall through
          to :class:`LiteLLMProvider` with substring detection from
-         :func:`agent.model_providers.litellm_provider.lookup_rule` and
+         :func:`agent.custom.model_providers.litellm_provider.lookup_rule` and
          emit a loud WARNING. Intended for model-sweep / exploration runs
          where the operator is comparing many model variants and accepts
          that ``cost_usd`` will read $0 until pricing is registered.

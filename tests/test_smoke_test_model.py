@@ -10,7 +10,7 @@ smoke-test instruction in ADDING_MODELS.md (R2.22). It must:
   - Surface a clear error if the response is structurally empty
 
 These are unit tests — the provider call is mocked via
-agent.model_providers.factory.get_model_provider so we never hit a real
+agent.custom.model_providers.factory.get_model_provider so we never hit a real
 LLM endpoint.
 """
 

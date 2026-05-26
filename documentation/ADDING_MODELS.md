@@ -141,7 +141,7 @@ _PROVIDER_REGISTRY: List[ProviderRule] = [
 Or at runtime, from a bootstrap import before `setup_agent()` runs:
 
 ```python
-from agent.model_providers.litellm_provider import register_provider
+from agent.custom.model_providers.litellm_provider import register_provider
 register_provider(("myprovider",), "myprovider", "MYPROVIDER_API_KEY",
                   "MyProvider", litellm_prefix="openai/")
 ```
