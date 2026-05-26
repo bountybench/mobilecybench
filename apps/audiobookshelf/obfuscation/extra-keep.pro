@@ -36,6 +36,12 @@
 # emptyList/emptyMap/emptySet values.
 -keep class kotlin.collections.* { *; }
 
+# Audiobookshelf exits immediately after login only in the R8-minified APK.
+# Keep R8 shrinking and renaming enabled for the benchmark, but disable code
+# optimization for this app because this Capacitor/Kotlin/PaperDB path depends
+# heavily on runtime bridge and serialization behavior.
+-dontoptimize
+
 # The first-login path crosses from JavaScript into AbsDatabase, stores the
 # refresh token, and persists DeviceManager.deviceData via PaperDB/Kryo before
 # routing to the bookshelf. CI showed only the obfuscated runtime APK exiting at

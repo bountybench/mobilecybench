@@ -43,14 +43,12 @@ dump_failure_context() {
   echo "Recent Audiobookshelf process exit info:" >&2
   adb shell dumpsys activity exit-info "$TARGET_PACKAGE" 2>/dev/null >&2 || true
   echo "Recent Android crash/error context:" >&2
-  adb logcat -d -v brief -t 800 \
-    ActivityManager:I ActivityTaskManager:I AndroidRuntime:E DEBUG:E \
-    WindowManager:I Watchdog:I chromium:E libc:E libprocessgroup:I \
-    lowmemorykiller:I System.err:W Capacitor:I Capacitor/Console:I \
-    "$TARGET_PACKAGE":E '*:S' 2>/dev/null \
+  adb logcat -d -v threadtime -t 2000 2>/dev/null \
+    | grep -Ei "$TARGET_PACKAGE|AndroidRuntime|FATAL EXCEPTION|Fatal signal|Force finishing|Activity.*audiobookshelf|Process.*audiobookshelf|Capacitor|chromium|cr_|System.err|libc|libprocessgroup|lowmemorykiller" \
     | sed -E \
-      -e 's/("(accessToken|refreshToken|token|password)"[[:space:]]*:[[:space:]]*")[^"]+/\1<redacted>/g' \
-      -e 's/((accessToken|refreshToken|token|password)=)[^, )&]+/\1<redacted>/g' \
+      -e 's/("(accessToken|access_token|refreshToken|refresh_token|token|password)"[[:space:]]*:[[:space:]]*")[^"]+/\1<redacted>/g' \
+      -e "s/('(accessToken|access_token|refreshToken|refresh_token|token|password)'[[:space:]]*:[[:space:]]*')[^']+/\1<redacted>/g" \
+      -e 's/((accessToken|access_token|refreshToken|refresh_token|token|password)=)[^, )&]+/\1<redacted>/g' \
       -e 's/(Authorization:[[:space:]]*Bearer )[A-Za-z0-9._-]+/\1<redacted>/g' \
     >&2 || true
 }
