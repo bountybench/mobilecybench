@@ -230,25 +230,25 @@ class TestProbeOnlyValidators:
                 }
             )
 
-    def test_probe_only_with_dry_run_rejected(self, base_config):
-        """dry_run short-circuits into the interactive shell with no
-        scoring. probe_only=True + dry_run=True previously passed
-        validation and silently dropped the operator into Kali with no
-        probe verdict."""
-        with pytest.raises(
-            ValueError, match=r"probe_only is incompatible with dry_run"
-        ):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "workflow": "redteam",
-                    "task": None,
-                    "synthetic_vuln_id": None,
-                    "attacker_model": "malicious_app",
-                    "probe_only": True,
-                    "dry_run": True,
-                }
-            )
+    def test_probe_only_with_dry_run_accepted(self, base_config):
+        """probe_only + dry_run must validate: dry_run runs the full
+        setup (Docker, APK, emulator, Kali) then short-circuits before
+        agent invocation and scoring, giving an API-key-free smoke test
+        for the probe_only path. Contract pinned by
+        `runner_config_dryrun.json`."""
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "task": None,
+                "synthetic_vuln_id": None,
+                "attacker_model": "malicious_app",
+                "probe_only": True,
+                "dry_run": True,
+            }
+        )
+        assert config.probe_only is True
+        assert config.dry_run is True
 
 
 class TestRun:

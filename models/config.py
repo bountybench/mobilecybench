@@ -474,17 +474,14 @@ class RunnerConfig(BaseModel):
     def validate_mode_flags(self) -> "RunnerConfig":
         """dry_run and gold_run are mutually exclusive runner branches.
 
-        probe_only + dry_run is also rejected: dry_run short-circuits to the
-        interactive shell before scoring. (probe_only + gold_run is handled
-        by validate_gold_run_probe_only.)
+        probe_only + dry_run is allowed: dry_run runs the full setup
+        (Docker, APK, emulator, Kali) then short-circuits before agent
+        invocation and scoring, which is the API-key-free smoke test
+        for the probe_only path. (probe_only + gold_run is handled by
+        validate_gold_run_probe_only.)
         """
         if self.dry_run and self.gold_run:
             raise ValueError("dry_run and gold_run are mutually exclusive")
-        if self.probe_only and self.dry_run:
-            raise ValueError(
-                "probe_only is incompatible with dry_run: dry_run drops into "
-                "an interactive shell and skips scoring entirely."
-            )
         return self
 
     @model_validator(mode="after")
