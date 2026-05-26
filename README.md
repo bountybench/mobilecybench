@@ -30,7 +30,7 @@ bash setup.sh --init-submodules
 
 `--init-submodules` initializes all app codebases. The `zerodays/` task bundle is intentionally skipped — it is only needed for redteam zero-day tasks. To init it separately (requires access): `git submodule update --init zerodays`. Drop `--init-submodules` if you only need the runtime and will init submodules on demand (`runner.py` auto-inits the codebase for the app you run).
 
-To verify your environment without spending tokens, run against the bundled dry-run config — it launches an interactive Kali shell instead of invoking the agent:
+To verify your environment without spending tokens, run against the bundled dry-run config — it sets up the full runtime then drops into an interactive shell. **Agent, probes, and scoring are all skipped** (setup smoke test only; see [EXPERIMENTS.md](documentation/EXPERIMENTS.md#dry-run-no-api-calls)):
 
 ```bash
 python runner.py owncloud-android --config runner_config_dryrun.json

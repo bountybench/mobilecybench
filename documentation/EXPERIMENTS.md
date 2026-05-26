@@ -80,13 +80,11 @@ The runner will:
 
 ### Dry Run (no API calls)
 
-To test setup without access to an API key, use the committed dry-run config:
+`runner_config_dryrun.json` mirrors the canonical `runner_config.json` (probe-only redteam, `malicious_app`) with `dry_run: true`. The runner performs the full setup — Docker, APK install, emulator, Kali container — then drops into an interactive Kali shell so you can poke the environment manually. **The agent is not invoked, the probes do not run, and no scoring is produced.** Use this to verify your machine can stand the environment up; use a real run (or `python scripts/smoke_test_model.py`) to validate model integration.
 
 ```bash
 python runner.py <app_name> --config runner_config_dryrun.json
 ```
-
-This launches an interactive shell in the Kali container for manual testing.
 
 ## Configuration
 

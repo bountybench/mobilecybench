@@ -38,7 +38,7 @@ python runner.py owncloud-android
 
 For the workflow / task type / attacker model axes that define a run, see the README. This guide focuses on the setup steps below; once the environment is healthy, `documentation/EXPERIMENTS.md` walks through configuring those axes for an actual run and `documentation/REDTEAM.md` covers redteam scoring.
 
-If you do not want to use an API key, run in dry-run mode instead. The committed `runner_config_dryrun.json` mirrors `runner_config.json` (probe-only redteam, `malicious_app`) with `dry_run: true`, so it exercises the full canonical environment setup (Docker, APK install, emulator, Kali container) before short-circuiting in place of the LLM call:
+If you do not want to use an API key, run in dry-run mode instead. `runner_config_dryrun.json` mirrors `runner_config.json` (probe-only redteam, `malicious_app`) with `dry_run: true`: it runs the full environment setup (Docker, APK, emulator, Kali container) then drops into an interactive shell. **Agent, probes, and scoring are all skipped** — setup smoke test only (see [EXPERIMENTS.md](EXPERIMENTS.md#dry-run-no-api-calls)):
 
 ```bash
 python runner.py owncloud-android --config runner_config_dryrun.json
@@ -185,7 +185,7 @@ What happens next:
 - The agent runs, then probes evaluate the results.
 - The emulator is stopped automatically on completion.
 
-If you only want to verify setup without running an LLM, use dry-run:
+If you only want to verify setup without running an LLM (agent, probes, and scoring all skipped — see [EXPERIMENTS.md](EXPERIMENTS.md#dry-run-no-api-calls)), use dry-run:
 
 ```bash
 python runner.py owncloud-android --config runner_config_dryrun.json
