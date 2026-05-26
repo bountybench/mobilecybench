@@ -12,6 +12,18 @@ from typing import Optional
 logging.Formatter.converter = time.gmtime
 
 
+_PATH_UNSAFE_RE = re.compile(r"[/\\]")
+
+
+def _sanitize_path_token(value: str) -> str:
+    """Replace path separators with '-' so a token stays a single dir level.
+
+    Handles LiteLLM-style model IDs like ``openai/gpt-5.5`` which would
+    otherwise be interpreted as nested directories.
+    """
+    return _PATH_UNSAFE_RE.sub("-", value)
+
+
 class ColorConsoleFormatter(logging.Formatter):
     """Formatter that adds ANSI colors for WARNING (yellow) and ERROR (red)."""
 
@@ -316,10 +328,15 @@ class LoggerManager:
         model = self._config.get("model")
         short = self.run_id[:8]
         ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        if self._app_name and wf and model:
-            return f"{self._app_name}_{wf}_{model}_{ts}_{short}"
-        if self._app_name:
-            return f"{self._app_name}_{ts}_{short}"
+        # Sanitize path separators so provider-prefixed model IDs like
+        # "openai/gpt-5.5" don't fracture the dir into nested levels.
+        app = _sanitize_path_token(self._app_name) if self._app_name else None
+        wf = _sanitize_path_token(wf) if wf else None
+        model = _sanitize_path_token(model) if model else None
+        if app and wf and model:
+            return f"{app}_{wf}_{model}_{ts}_{short}"
+        if app:
+            return f"{app}_{ts}_{short}"
         return self.run_id
 
     def _default_config(self) -> dict:

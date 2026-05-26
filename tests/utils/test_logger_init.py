@@ -228,6 +228,32 @@ def test_bare_uuid_when_no_app_name(tmp_path: Path) -> None:
     assert _last_marker(out, "NAME=") == ("deadbeef-1111-2222-3333-444444444444")
 
 
+def test_slashed_model_id_does_not_nest_dir(tmp_path: Path) -> None:
+    """Provider-prefixed model IDs (e.g. ``openai/gpt-5.5``) must stay one level."""
+    logs_dir = tmp_path / "slashedlogs"
+    out = _run_python(
+        "from utils.logger import get_logger_manager\n"
+        "lm = get_logger_manager(\n"
+        "    config={'workflow': 'redteam', 'model': 'openai/gpt-5.5'},\n"
+        "    app_name='demo',\n"
+        ")\n"
+        "p = lm.get_logs_dir()\n"
+        "print('NAME=' + p.name)\n"
+        "print('PARENT=' + p.parent.name)\n",
+        env_extra={
+            "MOBILECYBENCH_LOGS_DIR": str(logs_dir),
+            "MOBILECYBENCH_SESSION_ID": "cafef00d-1111-2222-3333-444444444444",
+        },
+    )
+    name = _last_marker(out, "NAME=")
+    parent = _last_marker(out, "PARENT=")
+    pattern = rf"^demo_redteam_openai-gpt-5\.5_{NAMING_TIMESTAMP_RE}_cafef00d$"
+    assert re.match(pattern, name), f"got {name!r}; expected pattern {pattern!r}"
+    assert (
+        parent == "slashedlogs"
+    ), f"dir nested into {parent!r}; should stay under logs root"
+
+
 def test_app_name_preserved_across_reconfigure(tmp_path: Path) -> None:
     """A reconfigure() call without app_name keeps the previously-set value.
 
