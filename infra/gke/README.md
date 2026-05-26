@@ -54,7 +54,7 @@ kubectl create secret generic llm-api-keys \
 # Single experiment
 python infra/gke/generate_jobs.py \
   --apps moememos \
-  --models gpt-4o \
+  --models gpt-5.5 \
   --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
   --gcs-bucket $PROJECT_ID-mobilecybench-results \
   --apply
@@ -62,7 +62,7 @@ python infra/gke/generate_jobs.py \
 # Full matrix
 python infra/gke/generate_jobs.py \
   --all \
-  --models gpt-4o claude-sonnet-4-5-20250929 \
+  --models gpt-5.5 claude-sonnet-4-5-20250929 \
   --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
   --gcs-bucket $PROJECT_ID-mobilecybench-results \
   --apply
@@ -75,7 +75,7 @@ python infra/gke/generate_jobs.py \
 kubectl get jobs -n mobilecybench --watch
 
 # Check specific job logs
-kubectl logs -n mobilecybench job/mcb-moememos-vuln-0-gpt-4o -f
+kubectl logs -n mobilecybench job/mcb-moememos-vuln-0-gpt-5-5 -f
 
 # See pod status
 kubectl get pods -n mobilecybench

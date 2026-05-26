@@ -8,20 +8,20 @@ job-template.yaml.
 
 Usage:
     # Single app + model — print YAML
-    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o
+    python infra/gke/generate_jobs.py --apps moememos --models gpt-5.5
 
     # Apply directly to the cluster
-    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o --apply
+    python infra/gke/generate_jobs.py --apps moememos --models gpt-5.5 --apply
 
     # Full matrix (all apps × all vulns × multiple models)
-    python infra/gke/generate_jobs.py --all --models gpt-4o claude-sonnet-4-5-20250929 --apply
+    python infra/gke/generate_jobs.py --all --models gpt-5.5 claude-sonnet-4-5-20250929 --apply
 
     # Write YAMLs to a directory instead of stdout/apply
-    python infra/gke/generate_jobs.py --all --models gpt-4o --outdir /tmp/jobs
+    python infra/gke/generate_jobs.py --all --models gpt-5.5 --outdir /tmp/jobs
 
     # Dry run (no LLM calls) or gold run (reference exploits)
-    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o --dry-run
-    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o --gold-run
+    python infra/gke/generate_jobs.py --apps moememos --models gpt-5.5 --dry-run
+    python infra/gke/generate_jobs.py --apps moememos --models gpt-5.5 --gold-run
 """
 
 import argparse
@@ -148,7 +148,7 @@ def main():
     )
 
     parser.add_argument(
-        "--models", nargs="+", required=True, help="Model names (e.g., gpt-4o)"
+        "--models", nargs="+", required=True, help="Model names (e.g., gpt-5.5)"
     )
     parser.add_argument(
         "--image",
