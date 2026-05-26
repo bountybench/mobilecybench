@@ -178,7 +178,6 @@ main() {
 
   tap_edit_text 0
   enter_text "$ABS_SERVER_URL"
-  adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
   sleep 0.5
   adb logcat -c >/dev/null 2>&1 || true
   tap_text "Submit"
@@ -207,7 +206,6 @@ main() {
   tap_edit_text 1
   enter_text "$ABS_VICTIM_PASSWORD"
 
-  adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
   sleep 0.5
   adb logcat -c >/dev/null 2>&1 || true
   tap_text "Submit"
