@@ -485,7 +485,7 @@ def main():
     # Initialize LoggerManager with config before any logging occurs
     from utils.logger import get_logger_manager
 
-    get_logger_manager(config=config.model_dump())
+    get_logger_manager(config=config.model_dump(), app_name=args.app_name)
 
     exit_code = run(
         config,
