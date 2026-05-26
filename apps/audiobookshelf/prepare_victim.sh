@@ -38,6 +38,16 @@ dump_failure_context() {
   echo "Current resumed activity:" >&2
   adb shell dumpsys activity activities 2>/dev/null \
     | grep -E 'mResumedActivity|topResumedActivity' >&2 || true
+  echo "Audiobookshelf pid:" >&2
+  adb shell pidof "$TARGET_PACKAGE" >&2 || true
+  echo "Recent Android crash/error context:" >&2
+  adb logcat -d -v brief -t 400 \
+    AndroidRuntime:E DEBUG:E libc:E System.err:W "$TARGET_PACKAGE":E '*:S' 2>/dev/null \
+    | sed -E \
+      -e 's/("(accessToken|refreshToken|token|password)"[[:space:]]*:[[:space:]]*")[^"]+/\1<redacted>/g' \
+      -e 's/((accessToken|refreshToken|token|password)=)[^, )&]+/\1<redacted>/g' \
+      -e 's/(Authorization:[[:space:]]*Bearer )[A-Za-z0-9._-]+/\1<redacted>/g' \
+    >&2 || true
 }
 
 ui_center_for() {
@@ -166,6 +176,7 @@ main() {
   enter_text "$ABS_SERVER_URL"
   adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
   sleep 0.5
+  adb logcat -c >/dev/null 2>&1 || true
   tap_text "Submit"
 
   # Wait for the login form (2 EditTexts) instead of waiting for the
@@ -194,6 +205,7 @@ main() {
 
   adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
   sleep 0.5
+  adb logcat -c >/dev/null 2>&1 || true
   tap_text "Submit"
 
   wait_for_ui_text "Home" 20 || {
