@@ -118,10 +118,12 @@ def aggregate_results(results_dir: Path) -> list[dict]:
     results = []
     skipped_gold = 0
 
-    for exp_dir in sorted(results_dir.rglob("experiment_*")):
-        if not exp_dir.is_dir():
-            continue
-        if exp_dir.name.endswith("_gold"):
+    # Content-based detection: any directory with run_summary.json is a run dir.
+    # Decouples this collector from the runner's directory-naming convention,
+    # so the name can change without touching the GKE pipeline.
+    for summary in sorted(results_dir.rglob("run_summary.json")):
+        exp_dir = summary.parent
+        if exp_dir.name.endswith("_gold") or exp_dir.parent.name == "gold":
             skipped_gold += 1
             continue
         parsed = parse_experiment_dir(exp_dir)
