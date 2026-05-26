@@ -4,6 +4,19 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/codebase"
 
+if [ "${MCB_OBFUSCATE:-0}" = "1" ]; then
+    OBFUSCATION_PATCH="$SCRIPT_DIR/obfuscation/explicit-jackson-types.patch"
+    if git apply --check "$OBFUSCATION_PATCH"; then
+        echo "Patching Jackson reads for obfuscated build..."
+        git apply "$OBFUSCATION_PATCH"
+    elif git apply --reverse --check "$OBFUSCATION_PATCH"; then
+        echo "Jackson read patch already applied."
+    else
+        echo "ERROR: unable to apply Jackson read patch for obfuscated build" >&2
+        exit 1
+    fi
+fi
+
 npm install
 npm run generate
 npx cap sync android

@@ -1,0 +1,225 @@
+diff --git a/android/app/src/main/java/com/audiobookshelf/app/data/ItemInProgress.kt b/android/app/src/main/java/com/audiobookshelf/app/data/ItemInProgress.kt
+--- a/android/app/src/main/java/com/audiobookshelf/app/data/ItemInProgress.kt
++++ b/android/app/src/main/java/com/audiobookshelf/app/data/ItemInProgress.kt
+@@ -6,7 +6,6 @@ package com.audiobookshelf.app.data
+ 
+ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+ import com.fasterxml.jackson.databind.ObjectMapper
+-import com.fasterxml.jackson.module.kotlin.readValue
+ import org.json.JSONObject
+ 
+ @JsonIgnoreProperties(ignoreUnknown = true)
+@@ -18,11 +17,11 @@ data class ItemInProgress(
+ ) {
+   companion object {
+     fun makeFromServerObject(serverItem: JSONObject, jacksonMapper: ObjectMapper):ItemInProgress {
+-      val libraryItem = jacksonMapper.readValue<LibraryItem>(serverItem.toString())
++      val libraryItem = jacksonMapper.readValue(serverItem.toString(), LibraryItem::class.java)
+ 
+       var episode:PodcastEpisode? = null
+       if (serverItem.has("recentEpisode")) {
+-        episode = jacksonMapper.readValue<PodcastEpisode>(serverItem.get("recentEpisode").toString())
++        episode = jacksonMapper.readValue(serverItem.get("recentEpisode").toString(), PodcastEpisode::class.java)
+       }
+ 
+       val progressLastUpdate:Long = serverItem.getLong("progressLastUpdate")
+diff --git a/android/app/src/main/java/com/audiobookshelf/app/plugins/AbsDatabase.kt b/android/app/src/main/java/com/audiobookshelf/app/plugins/AbsDatabase.kt
+--- a/android/app/src/main/java/com/audiobookshelf/app/plugins/AbsDatabase.kt
++++ b/android/app/src/main/java/com/audiobookshelf/app/plugins/AbsDatabase.kt
+@@ -11,6 +11,5 @@ import com.audiobookshelf.app.managers.SecureStorage
+ import com.fasterxml.jackson.core.json.JsonReadFeature
+ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+-import com.fasterxml.jackson.module.kotlin.readValue
+ import com.getcapacitor.*
+ import com.getcapacitor.annotation.CapacitorPlugin
+ import kotlinx.coroutines.Dispatchers
+@@ -120,7 +119,7 @@ class AbsDatabase : Plugin() {
+   @PluginMethod
+   fun setCurrentServerConnectionConfig(call:PluginCall) {
+     Log.d(tag, "setCurrentServerConnectionConfig ${call.data}")
+-    val serverConfigPayload = jacksonMapper.readValue<ServerConnConfigPayload>(call.data.toString())
++    val serverConfigPayload = jacksonMapper.readValue(call.data.toString(), ServerConnConfigPayload::class.java)
+     var serverConnectionConfig = DeviceManager.deviceData.serverConnectionConfigs.find { it.id == serverConfigPayload.id }
+ 
+     val userId =  serverConfigPayload.userId
+@@ -323,6 +322,6 @@ class AbsDatabase : Plugin() {
+     var localMediaProgressId = call.getString("localMediaProgressId") ?: ""
+ 
+-    val mediaProgress =  jacksonMapper.readValue<MediaProgress>(serverMediaProgress)
++    val mediaProgress = jacksonMapper.readValue(serverMediaProgress, MediaProgress::class.java)
+ 
+     if (localMediaProgressId == "") {
+       val localLibraryItem = DeviceManager.dbManager.getLocalLibraryItem(localLibraryItemId)
+@@ -559,7 +558,7 @@ class AbsDatabase : Plugin() {
+   @PluginMethod
+   fun updateDeviceSettings(call:PluginCall) { // Returns device data
+     Log.d(tag, "updateDeviceSettings ${call.data}")
+-    val newDeviceSettings = jacksonMapper.readValue<DeviceSettings>(call.data.toString())
++    val newDeviceSettings = jacksonMapper.readValue(call.data.toString(), DeviceSettings::class.java)
+ 
+     Handler(Looper.getMainLooper()).post {
+       DeviceManager.deviceData.deviceSettings = newDeviceSettings
+diff --git a/android/app/src/main/java/com/audiobookshelf/app/server/ApiHandler.kt b/android/app/src/main/java/com/audiobookshelf/app/server/ApiHandler.kt
+--- a/android/app/src/main/java/com/audiobookshelf/app/server/ApiHandler.kt
++++ b/android/app/src/main/java/com/audiobookshelf/app/server/ApiHandler.kt
+@@ -18,7 +18,6 @@ import com.audiobookshelf.app.managers.SecureStorage
+ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+ import com.fasterxml.jackson.core.json.JsonReadFeature
+ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+-import com.fasterxml.jackson.module.kotlin.readValue
+ import com.getcapacitor.JSArray
+ import com.getcapacitor.JSObject
+ import okhttp3.*
+@@ -426,7 +425,7 @@ class ApiHandler(var ctx:Context) {
+         Log.e(tag, it.getString("error") ?: "getCurrentUser Failed")
+         cb(null)
+       } else {
+-        val user = jacksonMapper.readValue<User>(it.toString())
++        val user = jacksonMapper.readValue(it.toString(), User::class.java)
+         cb(user)
+       }
+     }
+@@ -445,7 +444,7 @@ class ApiHandler(var ctx:Context) {
+       }
+ 
+       for (i in 0 until array.length()) {
+-        libraries.add(mapper.readValue(array.get(i).toString()))
++        libraries.add(mapper.readValue(array.get(i).toString(), Library::class.java))
+       }
+       cb(libraries)
+     }
+@@ -460,7 +459,7 @@ class ApiHandler(var ctx:Context) {
+         val items = mutableListOf<LibraryShelfType>()
+         val array = it.getJSONArray("value")
+         for (i in 0 until array.length()) {
+-          val item = jacksonMapper.readValue<LibraryShelfType>(array.get(i).toString())
++          val item = jacksonMapper.readValue(array.get(i).toString(), LibraryShelfType::class.java)
+           items.add(item)
+         }
+         cb(items)
+@@ -474,7 +473,7 @@ class ApiHandler(var ctx:Context) {
+         Log.e(tag, it.getString("error") ?: "getLibraryItem Failed")
+         cb(null)
+       } else {
+-        val libraryItem = jacksonMapper.readValue<LibraryItem>(it.toString())
++        val libraryItem = jacksonMapper.readValue(it.toString(), LibraryItem::class.java)
+         cb(libraryItem)
+       }
+     }
+@@ -488,7 +487,7 @@ class ApiHandler(var ctx:Context) {
+         Log.e(tag, it.getString("error") ?: "getLibraryItemWithProgress Failed")
+         cb(null)
+       } else {
+-        val libraryItem = jacksonMapper.readValue<LibraryItem>(it.toString())
++        val libraryItem = jacksonMapper.readValue(it.toString(), LibraryItem::class.java)
+         cb(libraryItem)
+       }
+     }
+@@ -500,7 +499,7 @@ class ApiHandler(var ctx:Context) {
+       if (it.has("results")) {
+         val array = it.getJSONArray("results")
+         for (i in 0 until array.length()) {
+-          val item = jacksonMapper.readValue<LibraryItem>(array.get(i).toString())
++          val item = jacksonMapper.readValue(array.get(i).toString(), LibraryItem::class.java)
+           items.add(item)
+         }
+       }
+@@ -515,7 +514,7 @@ class ApiHandler(var ctx:Context) {
+       if (it.has("results")) {
+         val array = it.getJSONArray("results")
+         for (i in 0 until array.length()) {
+-          val item = jacksonMapper.readValue<LibrarySeriesItem>(array.get(i).toString())
++          val item = jacksonMapper.readValue(array.get(i).toString(), LibrarySeriesItem::class.java)
+           items.add(item)
+         }
+       }
+@@ -531,7 +530,7 @@ class ApiHandler(var ctx:Context) {
+       if (it.has("results")) {
+         val array = it.getJSONArray("results")
+         for (i in 0 until array.length()) {
+-          val item = jacksonMapper.readValue<LibraryItem>(array.get(i).toString())
++          val item = jacksonMapper.readValue(array.get(i).toString(), LibraryItem::class.java)
+           items.add(item)
+         }
+       }
+@@ -546,7 +545,7 @@ class ApiHandler(var ctx:Context) {
+       if (it.has("authors")) {
+         val array = it.getJSONArray("authors")
+         for (i in 0 until array.length()) {
+-          val item = jacksonMapper.readValue<LibraryAuthorItem>(array.get(i).toString())
++          val item = jacksonMapper.readValue(array.get(i).toString(), LibraryAuthorItem::class.java)
+           items.add(item)
+         }
+       }else{
+@@ -564,7 +563,7 @@ class ApiHandler(var ctx:Context) {
+       if (it.has("results")) {
+         val array = it.getJSONArray("results")
+         for (i in 0 until array.length()) {
+-          val item = jacksonMapper.readValue<LibraryItem>(array.get(i).toString())
++          val item = jacksonMapper.readValue(array.get(i).toString(), LibraryItem::class.java)
+           if (item.collapsedSeries != null) {
+             item.collapsedSeries?.libraryId = libraryId
+           }
+@@ -584,7 +583,7 @@ class ApiHandler(var ctx:Context) {
+       if (it.has("results")) {
+         val array = it.getJSONArray("results")
+         for (i in 0 until array.length()) {
+-          val item = jacksonMapper.readValue<LibraryCollection>(array.get(i).toString())
++          val item = jacksonMapper.readValue(array.get(i).toString(), LibraryCollection::class.java)
+           items.add(item)
+         }
+       }
+@@ -599,7 +598,7 @@ class ApiHandler(var ctx:Context) {
+         Log.e(tag, it.getString("error") ?: "getSearchResults Failed")
+         cb(null)
+       } else {
+-        val librarySearchResults = jacksonMapper.readValue<LibraryItemSearchResultType>(it.toString())
++        val librarySearchResults = jacksonMapper.readValue(it.toString(), LibraryItemSearchResultType::class.java)
+         cb(librarySearchResults)
+       }
+     }
+@@ -631,7 +630,7 @@ class ApiHandler(var ctx:Context) {
+       } else {
+         it.put("serverConnectionConfigId", DeviceManager.serverConnectionConfig?.id)
+         it.put("serverAddress", DeviceManager.serverAddress)
+-        val playbackSession = jacksonMapper.readValue<PlaybackSession>(it.toString())
++        val playbackSession = jacksonMapper.readValue(it.toString(), PlaybackSession::class.java)
+         cb(playbackSession)
+       }
+     }
+@@ -679,7 +678,7 @@ class ApiHandler(var ctx:Context) {
+         Log.e(tag, "getMediaProgress: Failed to get progress")
+         cb(null)
+       } else {
+-        val progress = jacksonMapper.readValue<MediaProgress>(it.toString())
++        val progress = jacksonMapper.readValue(it.toString(), MediaProgress::class.java)
+         cb(progress)
+       }
+     }
+@@ -693,7 +692,7 @@ class ApiHandler(var ctx:Context) {
+       if (!err.isNullOrEmpty()) {
+         cb(null)
+       } else {
+-        cb(jacksonMapper.readValue<PlaybackSession>(it.toString()))
++        cb(jacksonMapper.readValue(it.toString(), PlaybackSession::class.java))
+       }
+     }
+   }
+@@ -731,7 +730,7 @@ class ApiHandler(var ctx:Context) {
+         val user = it.getJSObject("user")
+         val mediaProgress = user?.getJSONArray("mediaProgress") ?: JSONArray()
+         for (i in 0 until mediaProgress.length()) {
+-          val mediaProg = jacksonMapper.readValue<MediaProgress>(mediaProgress.getJSONObject(i).toString())
++          val mediaProg = jacksonMapper.readValue(mediaProgress.getJSONObject(i).toString(), MediaProgress::class.java)
+           mediaProgressList.add(mediaProg)
+         }
+         Log.d(tag, "authorize: Authorize ${config.address} Successful")
+@@ -753,7 +752,7 @@ class ApiHandler(var ctx:Context) {
+         AbsLogger.error("ApiHandler", "sendSyncLocalSessions: Failed to sync local sessions. (${it.getString("error")})")
+         cb(false, it.getString("error"))
+       } else {
+-        val response = jacksonMapper.readValue<LocalSessionsSyncResponsePayload>(it.toString())
++        val response = jacksonMapper.readValue(it.toString(), LocalSessionsSyncResponsePayload::class.java)
+         response.results.forEach { localSessionSyncResult ->
+           Log.d(tag, "Synced session result ${localSessionSyncResult.id}|${localSessionSyncResult.progressSynced}|${localSessionSyncResult.success}")
+ 
