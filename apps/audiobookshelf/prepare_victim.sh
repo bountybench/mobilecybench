@@ -40,9 +40,13 @@ dump_failure_context() {
     | grep -E 'mResumedActivity|topResumedActivity' >&2 || true
   echo "Audiobookshelf pid:" >&2
   adb shell pidof "$TARGET_PACKAGE" >&2 || true
+  echo "Recent Audiobookshelf process exit info:" >&2
+  adb shell dumpsys activity exit-info "$TARGET_PACKAGE" 2>/dev/null >&2 || true
   echo "Recent Android crash/error context:" >&2
-  adb logcat -d -v brief -t 400 \
-    AndroidRuntime:E DEBUG:E libc:E System.err:W "$TARGET_PACKAGE":E '*:S' 2>/dev/null \
+  adb logcat -d -v brief -t 800 \
+    ActivityManager:I ActivityTaskManager:I AndroidRuntime:E DEBUG:E \
+    WindowManager:I Watchdog:I chromium:E libc:E libprocessgroup:I \
+    lowmemorykiller:I System.err:W "$TARGET_PACKAGE":E '*:S' 2>/dev/null \
     | sed -E \
       -e 's/("(accessToken|refreshToken|token|password)"[[:space:]]*:[[:space:]]*")[^"]+/\1<redacted>/g' \
       -e 's/((accessToken|refreshToken|token|password)=)[^, )&]+/\1<redacted>/g' \
