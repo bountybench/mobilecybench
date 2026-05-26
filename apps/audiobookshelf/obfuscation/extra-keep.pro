@@ -35,3 +35,15 @@
 # preserving Kotlin empty collection implementations when models may contain
 # emptyList/emptyMap/emptySet values.
 -keep class kotlin.collections.* { *; }
+
+# The first-login path crosses from JavaScript into AbsDatabase, stores the
+# refresh token, and persists DeviceManager.deviceData via PaperDB/Kryo before
+# routing to the bookshelf. CI showed only the obfuscated runtime APK exiting at
+# that boundary, so keep this storage layer stable while leaving unrelated app
+# code available for R8 renaming and shrinking.
+-keep class com.audiobookshelf.app.device.** { *; }
+-keep class com.audiobookshelf.app.managers.DbManager { *; }
+-keep class com.audiobookshelf.app.managers.SecureStorage { *; }
+-keep class io.paperdb.** { *; }
+-keep class com.esotericsoftware.kryo.** { *; }
+-keep class org.objenesis.** { *; }
