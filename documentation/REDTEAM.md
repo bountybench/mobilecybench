@@ -9,7 +9,7 @@ Two scoring modes:
 
 Both **zero-day** and **synthetic** task bundles are supported in two-phase (see [EXPERIMENTS.md](EXPERIMENTS.md#tasks) for the distinction). Set `task` (zero-day) or `synthetic_vuln_id` (synthetic); two-phase accepts exactly one of the two. The bundle's patch encodes the ground truth used to score the exploit; the differential signal is computed identically for either type.
 
-For the shared task-file contract (verifier design, env vars), see [TASK.md](TASK.md). For report-layer materials (advisory, disclosure state) on zero-day tasks, see [`zerodays/README.md`](../zerodays/README.md).
+For the shared task-file contract (verifier design, env vars), see [TASK.md](TASK.md). For report-layer materials (advisory, disclosure state) on zero-day tasks, see [`zerodays/README.md`](../zerodays/README.md) — access-gated; not required for the probe-only or synthetic-vuln paths above.
 
 ## Contents
 
