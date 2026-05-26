@@ -4,7 +4,7 @@ This guide gets a first-time user from zero to a working emulator and a basic ap
 
 ## Quickstart (most users)
 
-Docker should be running before you start (most apps use containers).
+Docker should be running before you start (most apps use containers). This repository is private — ensure your account has access and you've run `gh auth login` before cloning.
 
 ```bash
 git clone https://github.com/bountybench/mobilecybench
@@ -15,7 +15,7 @@ pip install -r requirements.txt
 bash setup.sh --init-submodules
 ```
 
-`--init-submodules` initializes all app codebases plus the `zerodays/` task bundle. To init only one app, use `--init-submodules <app_name>` (e.g. `conversations`).
+`--init-submodules` initializes all app codebases. The `zerodays/` task bundle is intentionally skipped — it is only needed for redteam zero-day tasks (init it separately with `git submodule update --init zerodays` if you have access). To init only one app, use `--init-submodules <app_name>` (e.g. `conversations`).
 
 Windows note: `setup.sh` and the emulator scripts require WSL or Git Bash. Use the Windows venv activation line above.
 

@@ -17,7 +17,7 @@ MobileCybench is a framework to capture agentic offensive cyber-capabilities in 
 
 ## Quick Start
 
-Docker should be running before you start (most apps use containers).
+Docker should be running before you start (most apps use containers). This repository is private — ensure your account has access and you've run `gh auth login` before cloning.
 
 ```bash
 git clone https://github.com/bountybench/mobilecybench
@@ -28,7 +28,7 @@ pip install -r requirements.txt
 bash setup.sh --init-submodules
 ```
 
-`--init-submodules` initializes all app codebases plus the `zerodays/` task bundle. Drop it if you only need the runtime and will init submodules on demand (`runner.py` auto-inits the codebase for the app you run).
+`--init-submodules` initializes all app codebases. The `zerodays/` task bundle is intentionally skipped — it is only needed for redteam zero-day tasks. To init it separately (requires access): `git submodule update --init zerodays`. Drop `--init-submodules` if you only need the runtime and will init submodules on demand (`runner.py` auto-inits the codebase for the app you run).
 
 To verify your environment without spending tokens, run against the bundled dry-run config — it launches an interactive Kali shell instead of invoking the agent:
 
