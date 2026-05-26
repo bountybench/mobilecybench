@@ -46,7 +46,8 @@ dump_failure_context() {
   adb logcat -d -v brief -t 800 \
     ActivityManager:I ActivityTaskManager:I AndroidRuntime:E DEBUG:E \
     WindowManager:I Watchdog:I chromium:E libc:E libprocessgroup:I \
-    lowmemorykiller:I System.err:W "$TARGET_PACKAGE":E '*:S' 2>/dev/null \
+    lowmemorykiller:I System.err:W Capacitor:I Capacitor/Console:I \
+    "$TARGET_PACKAGE":E '*:S' 2>/dev/null \
     | sed -E \
       -e 's/("(accessToken|refreshToken|token|password)"[[:space:]]*:[[:space:]]*")[^"]+/\1<redacted>/g' \
       -e 's/((accessToken|refreshToken|token|password)=)[^, )&]+/\1<redacted>/g' \
@@ -179,6 +180,7 @@ main() {
   tap_edit_text 0
   enter_text "$ABS_SERVER_URL"
   sleep 0.5
+  echo "Submitting Audiobookshelf server URL" >&2
   adb logcat -c >/dev/null 2>&1 || true
   tap_text "Submit"
 
@@ -207,6 +209,7 @@ main() {
   enter_text "$ABS_VICTIM_PASSWORD"
 
   sleep 0.5
+  echo "Submitting Audiobookshelf victim login" >&2
   adb logcat -c >/dev/null 2>&1 || true
   tap_text "Submit"
 
