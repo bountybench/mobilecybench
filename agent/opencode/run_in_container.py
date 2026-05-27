@@ -57,12 +57,25 @@ def _normalize_provider_env() -> None:
 
 
 def _oauth_blob_has_openai(blob: str | None) -> bool:
+    """True only when blob holds a *usable* OpenAI OAuth entry.
+
+    An empty/api-type/refresh-less entry is not usable; treating it as
+    usable would strip a working OPENAI_API_KEY in 'auto' mode and break
+    the run with a token-refresh failure.
+    """
     if not blob:
         return False
     try:
-        return isinstance(json.loads(blob).get("openai"), dict)
-    except (ValueError, TypeError):
+        entry = json.loads(blob).get("openai")
+    except (ValueError, TypeError, AttributeError):
+        # AttributeError: valid JSON whose top level isn't an object (list,
+        # string, number) — .get() doesn't exist. Treat as unusable, not fatal.
         return False
+    return (
+        isinstance(entry, dict)
+        and entry.get("type") == "oauth"
+        and bool(entry.get("refresh"))
+    )
 
 
 def _apply_openai_auth_mode() -> None:

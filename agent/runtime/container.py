@@ -1,5 +1,6 @@
 import io
 import os
+import shlex
 import shutil
 import subprocess
 import tarfile
@@ -219,7 +220,11 @@ class AgentEnvironment:
             # Persist environment variables into the container's shell
             # profile so that *every* shell session (including those
             # spawned by Claude Code's Bash tool) can see them.
-            env_lines = "\n".join(f"export {k}={v}" for k, v in environment.items())
+            # Quote values: auth blobs (e.g. OPENCODE_AUTH_CONTENT JSON)
+            # contain shell metacharacters that bare `export k=v` mangles.
+            env_lines = "\n".join(
+                f"export {k}={shlex.quote(str(v))}" for k, v in environment.items()
+            )
             self.container.exec_run(
                 ["bash", "-c", f"cat >> /root/.bashrc << 'ENVEOF'\n{env_lines}\nENVEOF"]
             )

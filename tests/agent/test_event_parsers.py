@@ -624,20 +624,47 @@ class TestOpenAIAuthMode:
             ),
             # auto + only API key: keep.
             ("auto_apikey_only", {"OPENAI_API_KEY": "k"}, (), {"OPENAI_API_KEY": "k"}),
-            # auto + usable OAuth: strip API key.
+            # auto + usable OAuth (oauth type + refresh): strip API key.
             (
                 "auto_prefers_usable_oauth",
+                {
+                    "OPENCODE_AUTH_CONTENT": '{"openai":{"type":"oauth","refresh":"r"}}',
+                    "OPENAI_API_KEY": "k",
+                },
+                ("OPENAI_API_KEY",),
+                {"OPENCODE_AUTH_CONTENT": '{"openai":{"type":"oauth","refresh":"r"}}'},
+            ),
+            # auto + refresh-less OAuth shell: unusable, keep API key.
+            (
+                "auto_oauth_without_refresh_keeps_api_key",
                 {
                     "OPENCODE_AUTH_CONTENT": '{"openai":{"type":"oauth"}}',
                     "OPENAI_API_KEY": "k",
                 },
-                ("OPENAI_API_KEY",),
-                {"OPENCODE_AUTH_CONTENT": '{"openai":{"type":"oauth"}}'},
+                (),
+                {"OPENAI_API_KEY": "k"},
+            ),
+            # auto + non-oauth (api) entry: unusable, keep API key.
+            (
+                "auto_api_type_keeps_api_key",
+                {
+                    "OPENCODE_AUTH_CONTENT": '{"openai":{"type":"api","key":"bad"}}',
+                    "OPENAI_API_KEY": "k",
+                },
+                (),
+                {"OPENAI_API_KEY": "k"},
             ),
             # auto + malformed blob: keep API key.
             (
                 "auto_malformed_blob_keeps_api_key",
                 {"OPENCODE_AUTH_CONTENT": "not-json", "OPENAI_API_KEY": "k"},
+                (),
+                {"OPENAI_API_KEY": "k"},
+            ),
+            # auto + valid JSON but non-object top level: keep API key (no crash).
+            (
+                "auto_non_object_json_keeps_api_key",
+                {"OPENCODE_AUTH_CONTENT": "[1, 2]", "OPENAI_API_KEY": "k"},
                 (),
                 {"OPENAI_API_KEY": "k"},
             ),
