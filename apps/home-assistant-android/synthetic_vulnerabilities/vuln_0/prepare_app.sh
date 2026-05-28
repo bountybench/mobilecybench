@@ -7,14 +7,6 @@ PACKAGE_NAME="io.homeassistant.companion.android"
 # verify_exploit.sh before the malicious APK exercises the companion app.
 docker exec ha-ssrf-listener rm -f /app/logs/ssrf_requests.json >/dev/null 2>&1 || true
 
-# Reset HA app data. The deep-link host-validation bypass only fires through
-# LinkActivity → OnboardingActivity → AuthenticationFragment's WebView, which
-# is reachable only when the companion app is logged out. prepare_victim.sh
-# now drives full UI onboarding (needed for vuln_1, LocationSensorManager
-# spoofing), so without this clear vuln_0 would silently no-op against an
-# already-authenticated app. Other vulns are unaffected by app-data reset.
-adb shell pm clear "$PACKAGE_NAME" >/dev/null 2>&1 || true
-
 tap_text_if_present() {
     local text="$1"
     local dump
