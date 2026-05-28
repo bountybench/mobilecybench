@@ -303,6 +303,51 @@ class TestRunAgentFailureModes:
         env.container.kill.assert_called_once_with(signal="SIGKILL")
         assert out["status"] == "timeout"
 
+    def test_timeout_overrides_stale_unknown_snapshot(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Per-chunk snapshots write status='unknown'. When SIGKILL pre-empts
+        # the in-container SIGTERM flush, that stale value lands on disk.
+        # Host overrides to 'timeout' since it knows it killed the run.
+        env = _make_env(
+            tmp_path,
+            result_dict={"status": "unknown", "turns_taken": 39},
+            exec_running_sequence=[True],
+        )
+        _set_deterministic_monotonic(monkeypatch)
+
+        out = run_agent(
+            env=env, task_dict=_task(wallclock=60), host_artifact_dir=tmp_path
+        )
+
+        env.container.kill.assert_called_once_with(signal="SIGKILL")
+        assert out["status"] == "timeout"
+        assert out["turns_taken"] == 39
+
+    def test_timeout_preserves_in_container_finalized_status(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Counterpart to the override: when the SIGTERM handler had time to
+        # finalize, that status is authoritative — host must not relabel.
+        env = _make_env(
+            tmp_path,
+            result_dict={
+                "status": "completed",
+                "turns_taken": 7,
+                "final_message": "done",
+            },
+            exec_running_sequence=[True, False],  # SIGTERM then graceful exit
+        )
+        _set_deterministic_monotonic(monkeypatch)
+
+        out = run_agent(
+            env=env, task_dict=_task(wallclock=60), host_artifact_dir=tmp_path
+        )
+
+        # Status preserved from the in-container finalization; host doesn't relabel.
+        assert out["status"] == "completed"
+        assert out["turns_taken"] == 7
+
     def test_timeout_sigterm_graceful_exit_skips_sigkill(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

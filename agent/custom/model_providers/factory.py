@@ -55,7 +55,7 @@ class SupportedModel(Enum):
     CLAUDE_HAIKU_4_5 = ModelConfig("claude-haiku-4-5", "litellm")
 
     # Google — LiteLLM provider
-    GEMINI_3_1_PRO = ModelConfig("gemini-3.1-pro", "litellm")
+    GEMINI_3_1_PRO = ModelConfig("gemini-3.1-pro-preview", "litellm")
     GEMINI_3_PRO = ModelConfig("gemini-3-pro-preview", "litellm")
 
 
