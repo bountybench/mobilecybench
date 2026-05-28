@@ -20,7 +20,10 @@ services:
       start_period: 2s
     networks:
       - shared_net
+      - agent_net
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true

@@ -195,6 +195,16 @@ def test_zeroday_validate_build_artifacts_requires_hardened_apk(tmp_path):
         bundle.validate_build_artifacts(tmp_path / "apps" / "x")
 
 
+def test_zeroday_bundle_rejects_obfuscation_phase_mismatch(tmp_path):
+    with pytest.raises(ValueError, match="not supported with zeroday tasks"):
+        ZerodayBundle(
+            project_root=tmp_path,
+            app_name="x",
+            task="t",
+            runner_obfuscation="on",
+        )
+
+
 def test_probe_only_bundle_kind_and_apk_paths(tmp_path):
     app_dir = tmp_path / "apps" / "myapp"
     bundle = ProbeOnlyBundle(app_dir=app_dir, _attacker_model="malicious_app")

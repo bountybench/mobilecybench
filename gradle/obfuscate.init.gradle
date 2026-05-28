@@ -1,0 +1,201 @@
+// gradle/obfuscate.init.gradle
+//
+// =============================================================================
+// SUMMARY
+// =============================================================================
+// Gradle init script injected at build time (via `gradlew --init-script <abs>`)
+// to enable R8 minification, resource shrinking, and the AGP-default ProGuard
+// rules on the `release` buildType of any Android *application* subproject in
+// the evaluated build, WITHOUT modifying the submodule's `build.gradle`. The
+// script is opt-in: it is only applied when build_apk.sh detects the
+// `--obfuscate` flag (sets MCB_OBFUSCATE=1 + MCB_OBFUSCATE_INIT_SCRIPT +
+// MCB_APP_DIR in the environment) and forwards `--init-script` to gradlew.
+//
+//
+// Key invariants (DO NOT change without testing on a fresh build):
+//   1. minifyEnabled / shrinkResources MUST be flipped via the AndroidComponents
+//      `beforeVariants` hook, not in `afterEvaluate`. AGP 7.1+ creates the
+//      variant task graph (including the conditional minifyReleaseWithR8 task)
+//      from `beforeVariants`; setting BuildType.minifyEnabled in afterEvaluate
+//      runs AFTER task creation and silently produces a non-minified APK.
+//      (Diagnosed against AGP 8.7.3 on wallabag: afterEvaluate path logged
+//      "minifyEnabled=true" but no R8 task ever ran. The fix is documented.)
+//   2. Detect-and-skip when the app already has `minifyEnabled true` upstream
+//      (e.g. moememos). Preserve the upstream-tested ProGuard configuration.
+//   3. APPEND to proguardFiles via getProguardFiles()+setProguardFiles(). The
+//      DSL helper `release.proguardFiles(...)` REPLACES the list and would
+//      silently drop the app's own `proguard-rules.pro`. ProGuard file
+//      registration happens in `afterEvaluate` (BuildType DSL, not Variant API).
+//   4. Operate only on the `release` buildType. Debug builds stay un-minified
+//      so developer tooling continues to work.
+//   5. Never throw fatally on missing optional inputs (MCB_APP_DIR unset,
+//      androidComponents extension absent on ancient AGP, extra-keep.pro
+//      absent). Log lifecycle/warn notices so the operator can see what
+//      happened.
+// =============================================================================
+
+// `allprojects` so this fires for every subproject in a multi-module build.
+// Apps in this benchmark have varying layouts — AnkiDroid's `:AnkiDroid`,
+// Thunderbird's `:app-thunderbird`, OpenVPN's `:main`, plus simple flat
+// `:app` projects. Iterating allprojects + filtering by plugin id is the
+// only selector that catches all of them without per-app knowledge.
+allprojects { project ->
+    // `plugins.withId('com.android.application')` runs the closure only after
+    // the AGP application plugin is applied to this subproject. This filters
+    // out library subprojects (com.android.library), pure-Java/Kotlin
+    // subprojects, and the root project — none of which have an `android {}`
+    // block or a release buildType to mutate.
+    project.plugins.withId('com.android.application') {
+
+        // ---------------------------------------------------------------------
+        // PHASE 1 — beforeVariants: flip minifyEnabled / shrinkResources.
+        // ---------------------------------------------------------------------
+        // This must run BEFORE AGP creates the variant task graph, which is
+        // why it cannot live in afterEvaluate. The AndroidComponents extension
+        // exposes `beforeVariants` for exactly this kind of late-stage DSL
+        // override that still needs to influence task creation.
+        //
+        // If `androidComponents` is absent (ancient AGP < 7.1), fall back to
+        // the afterEvaluate path. That path WILL produce a non-minified APK
+        // on modern AGP, so we log a hard warning when we take it.
+        def hasAndroidComponents = project.extensions.findByName('androidComponents') != null
+        if (hasAndroidComponents) {
+            project.extensions.configure('androidComponents') { ac ->
+                ac.beforeVariants(ac.selector().withBuildType('release')) { variantBuilder ->
+                    if (variantBuilder.minifyEnabled) {
+                        project.extensions.extraProperties.set('mcbObfuscateSkipped', true)
+                        project.logger.lifecycle(
+                            "[mcb-obfuscate] ${project.path}: release already has " +
+                            "minifyEnabled true; leaving config alone (upstream-configured)"
+                        )
+                        return
+                    }
+                    variantBuilder.minifyEnabled = true
+                    // shrinkResources is exposed directly on the AGP 8.x
+                    // VariantBuilder. Wrap in try/catch since the property
+                    // exists in 8.x but may be absent or read-only in some
+                    // experimental variants.
+                    try {
+                        variantBuilder.shrinkResources = true
+                    } catch (Throwable t) {
+                        project.logger.warn(
+                            "[mcb-obfuscate] ${project.path}: could not set " +
+                            "shrinkResources on VariantBuilder (${t.message}); " +
+                            "proceeding with minifyEnabled only"
+                        )
+                    }
+                    project.logger.lifecycle(
+                        "[mcb-obfuscate] ${project.path}: beforeVariants enabled " +
+                        "minify+shrink on release"
+                    )
+                }
+            }
+        } else {
+            project.logger.warn(
+                "[mcb-obfuscate] ${project.path}: androidComponents extension " +
+                "not found (AGP < 7.1?). Falling back to afterEvaluate path; " +
+                "the produced APK will likely NOT be R8-minified."
+            )
+        }
+
+        // ---------------------------------------------------------------------
+        // PHASE 2 — afterEvaluate: append proguardFiles on the BuildType DSL.
+        // ---------------------------------------------------------------------
+        // ProGuard file lists are consumed at task-config time (after our
+        // hooks fire), so the BuildType.proguardFiles mutation in
+        // afterEvaluate IS still picked up by R8 — unlike the boolean
+        // minifyEnabled flag, which gates the task's existence.
+        project.afterEvaluate {
+            def android = project.extensions.findByName('android')
+            if (android == null) {
+                return
+            }
+            def release = android.buildTypes.findByName('release')
+            if (release == null) {
+                return
+            }
+
+            // If beforeVariants decided to leave this project's config alone
+            // (upstream already had minifyEnabled true), do not touch
+            // proguardFiles either. Appending our defaults would silently
+            // change the rule set the app is tested against — for example
+            // injecting proguard-android-optimize.txt over a deliberate
+            // proguard-android.txt choice.
+            if (project.extensions.extraProperties.has('mcbObfuscateSkipped') &&
+                project.extensions.extraProperties.get('mcbObfuscateSkipped')) {
+                project.logger.lifecycle(
+                    "[mcb-obfuscate] ${project.path}: skipping proguardFiles " +
+                    "append (upstream-configured)"
+                )
+                return
+            }
+
+            // On the AGP-less-than-7.1 fallback path we still need to flip
+            // minifyEnabled here (and shrinkResources via the BuildType
+            // shim). The R8 task may not be created, but the configuration
+            // will at least be visible to anything that inspects it.
+            if (!hasAndroidComponents) {
+                if (release.minifyEnabled) {
+                    project.logger.lifecycle(
+                        "[mcb-obfuscate] ${project.path}: (fallback) release " +
+                        "already has minifyEnabled true; leaving alone"
+                    )
+                    return
+                }
+                release.minifyEnabled = true
+                try {
+                    if (release.metaClass.respondsTo(release, 'setShrinkResources', boolean)) {
+                        release.shrinkResources = true
+                    } else if (release.hasProperty('androidResources')) {
+                        release.androidResources.shrinkResources = true
+                    }
+                } catch (Exception e) {
+                    project.logger.warn(
+                        "[mcb-obfuscate] ${project.path}: (fallback) could not " +
+                        "set shrinkResources (${e.message})"
+                    )
+                }
+            }
+
+            // ProGuard files: APPEND, do not REPLACE.
+            // The DSL helper `release.proguardFiles(a, b, c)` is a SETTER that
+            // replaces the entire list. Using it here would silently drop any
+            // `proguard-rules.pro` the app already registered. The safe
+            // pattern is read-modify-write via getProguardFiles() +
+            // setProguardFiles().
+            def existing = release.getProguardFiles() as List
+            def additions = [
+                // AGP-shipped default optimization rules. Contents vary across
+                // AGP versions — a known measurement caveat, not a bug.
+                android.getDefaultProguardFile('proguard-android-optimize.txt'),
+            ]
+
+            // Optional per-app extra-keep.pro lookup. MCB_APP_DIR is set by
+            // build_apk.sh to the absolute path of the current app's
+            // directory and lets us inject keep rules that live in the
+            // repo (not in the submodule).
+            def appRoot = System.getenv('MCB_APP_DIR')
+            if (!appRoot) {
+                project.logger.lifecycle(
+                    "[mcb-obfuscate] ${project.path}: MCB_APP_DIR not set; " +
+                    "skipping per-app extra-keep.pro lookup"
+                )
+            } else {
+                def extra = new File(appRoot, 'obfuscation/extra-keep.pro')
+                if (extra.exists()) {
+                    additions << extra
+                    project.logger.lifecycle(
+                        "[mcb-obfuscate] ${project.path}: appending ${extra.absolutePath}"
+                    )
+                }
+            }
+
+            release.setProguardFiles(existing + additions)
+
+            project.logger.lifecycle(
+                "[mcb-obfuscate] ${project.path}: afterEvaluate registered " +
+                "${(existing + additions).size()} proguard files on release"
+            )
+        }
+    }
+}

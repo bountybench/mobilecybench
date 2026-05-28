@@ -110,8 +110,23 @@ def _make_env(
         run_dir.mkdir(parents=True, exist_ok=True)
         if result_dict is not None:
             (run_dir / "result.json").write_text(json.dumps(result_dict))
+        # Conforms to schemas/conversation_turn.schema.json.
         (run_dir / "conversation.jsonl").write_text(
-            '{"role":"assistant","content":"echo done","turn":1}\n'
+            json.dumps(
+                {
+                    "run_id": "test-run",
+                    "turn_number": 1,
+                    "timestamp": "2026-05-18T00:00:00+00:00",
+                    "role": "assistant",
+                    "response_id": None,
+                    "assistant_text": "echo done",
+                    "reasoning_summary": None,
+                    "tool_calls": [],
+                    "observations": [],
+                    "status": "ok",
+                }
+            )
+            + "\n"
         )
         (run_dir / "agent.log").write_text("agent.log contents\n")
 

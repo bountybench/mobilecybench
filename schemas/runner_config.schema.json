@@ -3,7 +3,7 @@
   "$id": "https://mobilecybench.dev/schemas/runner_config.schema.json",
   "title": "Runner Config",
   "additionalProperties": false,
-  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)\n  or ``synthetic_vuln_id`` (synthetic).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``\n  and ``synthetic_vuln_id``, requires ``attacker_model``, and is\n  incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
+  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)\n  or ``synthetic_vuln_id`` (synthetic).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``\n  and ``synthetic_vuln_id``, requires ``attacker_model``, and is\n  incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n* ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and\n  cannot be used with ``build_type == 'source'``.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
   "properties": {
     "build_type": {
       "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
@@ -20,6 +20,16 @@
       "description": "When true, the agent receives only the APK at /app/apk/. When false (default), full source is mounted at /app/codebase.",
       "title": "No Codebase",
       "type": "boolean"
+    },
+    "apk_obfuscation": {
+      "default": "off",
+      "description": "Research-instrument toggle selecting which pre-published APK variant to acquire: 'off' (default, un-minified release build, matches historical baselines) or 'on' (R8-minified release build, approximating production obfuscation). 'on' is only valid when no_codebase is true and build_type is download-apk or skip-apk. For download-apk, the selected app must publish download_link_obfuscated; for skip-apk, the obfuscated APK must already exist under apps/<app>/apk/obfuscated/.",
+      "enum": [
+        "off",
+        "on"
+      ],
+      "title": "Apk Obfuscation",
+      "type": "string"
     },
     "model": {
       "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",

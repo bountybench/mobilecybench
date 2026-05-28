@@ -627,6 +627,44 @@ class TestAttackerModelConfig:
             )
 
 
+class TestApkObfuscationConfig:
+    """Tests for apk_obfuscation cross-field invariants."""
+
+    def test_obfuscation_requires_no_codebase(self, base_config):
+        with pytest.raises(ValueError, match="requires no_codebase: true"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "build_type": "download-apk",
+                    "apk_obfuscation": "on",
+                    "no_codebase": False,
+                }
+            )
+
+    def test_obfuscation_allowed_with_downloaded_apk_and_no_codebase(self, base_config):
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "build_type": "download-apk",
+                "apk_obfuscation": "on",
+                "no_codebase": True,
+            }
+        )
+        assert config.apk_obfuscation == "on"
+        assert config.no_codebase is True
+
+    def test_obfuscation_rejects_source_build_even_without_codebase(self, base_config):
+        with pytest.raises(ValueError, match="build_type: 'source'"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "build_type": "source",
+                    "apk_obfuscation": "on",
+                    "no_codebase": True,
+                }
+            )
+
+
 class TestTaskMetadataOverride:
     """task/metadata.json overrides config.attacker_model before workflow creation."""
 

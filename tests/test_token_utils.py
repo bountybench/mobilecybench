@@ -46,7 +46,7 @@ def test_compute_cost_with_cache_read_only():
         p,
         input_tokens=2000,
         output_tokens=1000,
-        cache_input_tokens=500,
+        cached_input_tokens=500,
     )
     scale = 1_000_000.0
     expected_cost = (1500 / scale) * 5.0 + (1000 / scale) * 15.0 + (500 / scale) * 0.5
@@ -325,11 +325,32 @@ def test_tracker_record_known_model_no_cache_details():
     assert rec.input_tokens == 1000
     assert rec.output_tokens == 500
     assert rec.reasoning_tokens == 0
-    assert rec.cache_input_tokens == 0
+    assert rec.cached_input_tokens == 0
     assert rec.cost_usd > 0
 
     totals = tracker.totals()
     assert totals["calls"] == 1
+
+
+@pytest.mark.token_tracker
+def test_custom_agent_result_token_totals_omits_calls_and_cost():
+    """Custom agent strips `cost_usd` (top-level field) and `calls`
+    (lives in metrics.timing.llm_call_count) from token_totals before
+    shipping them to result.json. Mirrors agent/custom/agent.py."""
+    tracker = TokenTracker(jsonl_path="token_test.jsonl")
+    tracker.record_from_openai_response(
+        _Resp(rid="r1", usage=_Usage(input_tokens=1000, output_tokens=500)),
+        model="gpt-4.1",
+    )
+
+    totals = tracker.totals()
+    totals.pop("cost_usd", None)
+    totals.pop("calls", None)
+
+    assert "calls" not in totals
+    assert "cost_usd" not in totals
+    assert totals["input_tokens"] == 1000
+    assert totals["output_tokens"] == 500
 
 
 @pytest.mark.token_tracker
@@ -343,7 +364,7 @@ def test_tracker_record_known_model_with_cache_details():
     assert rec.input_tokens == 200
     assert rec.output_tokens == 100
     assert rec.reasoning_tokens == 0
-    assert rec.cache_input_tokens == 50
+    assert rec.cached_input_tokens == 50
 
 
 @pytest.mark.token_tracker
@@ -371,7 +392,7 @@ def test_tracker_record_known_model_with_reasoning_details():
     assert rec.input_tokens == 200
     assert rec.output_tokens == 100
     assert rec.reasoning_tokens == 40
-    assert rec.cache_input_tokens == 50
+    assert rec.cached_input_tokens == 50
 
     totals = tracker.totals()
     assert totals["reasoning_tokens"] == 40
@@ -389,7 +410,7 @@ def test_tracker_extracts_chat_completions_style_reasoning_details():
     assert rec.input_tokens == 200
     assert rec.output_tokens == 100
     assert rec.reasoning_tokens == 40
-    assert rec.cache_input_tokens == 50
+    assert rec.cached_input_tokens == 50
 
 
 @pytest.mark.token_tracker
@@ -408,7 +429,7 @@ def test_tracker_extracts_top_level_reasoning_tokens_from_dict_usage():
     assert rec.input_tokens == 200
     assert rec.output_tokens == 100
     assert rec.reasoning_tokens == 40
-    assert rec.cache_input_tokens == 0
+    assert rec.cached_input_tokens == 0
 
 
 @pytest.mark.token_tracker
@@ -450,7 +471,7 @@ def test_tracker_multiple_records_accumulate_totals():
         pricing=get_pricing_for_model("gpt-4.1", tracker._pricing_map),
         input_tokens=800,
         output_tokens=300,
-        cache_input_tokens=50,
+        cached_input_tokens=50,
         reasoning_tokens=0,
     )
     assert totals["cost_usd"] == pytest.approx(excepted_cost, rel=1e-9)

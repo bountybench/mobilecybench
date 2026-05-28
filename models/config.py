@@ -36,6 +36,8 @@ class RunnerConfig(BaseModel):
       and ``synthetic_vuln_id``, requires ``attacker_model``, and is
       incompatible with ``gold_run``.
     * ``dry_run`` and ``gold_run`` are mutually exclusive.
+    * ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and
+      cannot be used with ``build_type == 'source'``.
 
     See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
     """
@@ -55,6 +57,19 @@ class RunnerConfig(BaseModel):
         description=(
             "When true, the agent receives only the APK at /app/apk/. When "
             "false (default), full source is mounted at /app/codebase."
+        ),
+    )
+    apk_obfuscation: Literal["off", "on"] = Field(
+        default="off",
+        description=(
+            "Research-instrument toggle selecting which pre-published APK "
+            "variant to acquire: 'off' (default, un-minified release build, "
+            "matches historical baselines) or 'on' (R8-minified release "
+            "build, approximating production obfuscation). 'on' is only "
+            "valid when no_codebase is true and build_type is download-apk "
+            "or skip-apk. For download-apk, the selected app must publish "
+            "download_link_obfuscated; for skip-apk, the obfuscated APK must "
+            "already exist under apps/<app>/apk/obfuscated/."
         ),
     )
 
@@ -393,6 +408,36 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 "probe_only is incompatible with dry_run: dry_run drops into "
                 "an interactive shell and skips scoring entirely."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_apk_obfuscation(self) -> "RunnerConfig":
+        # apk_obfuscation: on requires a pre-built obfuscated APK to consume.
+        # build_type: source expects build_apk.sh to produce that artifact,
+        # but build_apk.sh is not invoked from the Python workflow code paths
+        # — it is operator-driven or CI-driven. Reject the combination
+        # cleanly rather than producing a cryptic FileNotFoundError at
+        # runtime when the workflow looks for the obfuscated APK that
+        # source mode did not build.
+        if self.apk_obfuscation == "on" and self.build_type == "source":
+            raise ValueError(
+                "apk_obfuscation: 'on' is not supported with build_type: 'source'. "
+                "Use build_type: 'download-apk' (once an obfuscated bundle is "
+                "published for this app via publish_apk_bundle.sh) or "
+                "build_type: 'skip-apk' (after running "
+                "`./build_apk.sh <app> --obfuscate` manually)."
+            )
+        # If the agent already gets full source mounted at /app/codebase, the rename-only
+        # signal the obfuscated APK introduces is moot — reject the combo
+        # so operators don't run experiments where the manipulated variable
+        # is invisible.
+        if self.apk_obfuscation == "on" and not self.no_codebase:
+            raise ValueError(
+                "apk_obfuscation: 'on' requires no_codebase: true. With "
+                "no_codebase: false the agent receives full source at "
+                "/app/codebase, which bypasses the renamed identifiers the "
+                "obfuscation toggle is meant to introduce."
             )
         return self
 

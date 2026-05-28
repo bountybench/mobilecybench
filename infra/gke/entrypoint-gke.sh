@@ -99,10 +99,14 @@ if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
     RUN_ID="${RUN_ID:-$(date +%s)}"
     GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"
     echo "Uploading results to $GCS_PATH"
-    # Real runs land at logs/experiment_*; gold runs at logs/gold/experiment_*_gold (see utils/logger.py).
-    shopt -s nullglob
-    dirs=("$MOBILECYBENCH_LOGS_DIR"/experiment_* "$MOBILECYBENCH_LOGS_DIR"/gold/experiment_*)
-    shopt -u nullglob
+    # Identify run dirs by the presence of run_summary.json (content-based,
+    # decoupled from the runner's directory-naming convention so the name
+    # can change without touching the GKE pipeline). Covers both real runs
+    # (logs/<run>/) and gold runs (logs/gold/<run>_gold/).
+    dirs=()
+    while IFS= read -r summary; do
+        dirs+=("$(dirname "$summary")")
+    done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)
     if [ ${#dirs[@]} -gt 0 ]; then
         gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
     else

@@ -330,9 +330,6 @@ def run(
             logger.info("Starting agent execution...")
             try:
                 run_result = normalize_agent_result(workflow.run_agent())
-                logger.info(
-                    f"Agent execution completed: {run_result.get('status', 'unknown')}"
-                )
             finally:
                 # Always extract artifacts and tear down the container, even
                 # if run_agent() raised. Without this, a transient API error
@@ -488,7 +485,7 @@ def main():
     # Initialize LoggerManager with config before any logging occurs
     from utils.logger import get_logger_manager
 
-    get_logger_manager(config=config.model_dump())
+    get_logger_manager(config=config.model_dump(), app_name=args.app_name)
 
     exit_code = run(
         config,

@@ -33,6 +33,33 @@ def test_get_download_url_missing_key(tmp_path):
     assert get_download_url("myapp", tmp_path) is None
 
 
+def test_get_download_url_obfuscated_returns_obfuscated_link(tmp_path):
+    app_dir = tmp_path / "apps" / "myapp"
+    app_dir.mkdir(parents=True)
+    obfuscated_url = (
+        "https://github.com/owner/repo/releases/download/v1/"
+        "apk-myapp-obfuscated-bundle.zip"
+    )
+    (app_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "download_link": GITHUB_URL,
+                "download_link_obfuscated": obfuscated_url,
+            }
+        )
+    )
+    assert get_download_url("myapp", tmp_path, obfuscated=True) == obfuscated_url
+
+
+def test_get_download_url_obfuscated_missing_link_fails_fast(tmp_path, caplog):
+    app_dir = tmp_path / "apps" / "myapp"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(json.dumps({"download_link": GITHUB_URL}))
+
+    assert get_download_url("myapp", tmp_path, obfuscated=True) is None
+    assert any("refusing to fall back" in message for message in caplog.messages)
+
+
 def test_get_download_url_no_metadata(tmp_path):
     assert get_download_url("nonexistent", tmp_path) is None
 
@@ -183,6 +210,35 @@ def test_download_apk_zip_bundle(mock_run, tmp_path):
     assert result == apk_dir
     assert (apk_dir / "myapp.apk").read_bytes() == b"zip-apk"
     assert (apk_dir / "extra.apk").read_bytes() == b"zip-extra"
+
+
+@patch("utils.apk_utils.subprocess.run")
+def test_download_apk_obfuscated_zip_bundle_lands_under_obfuscated(mock_run, tmp_path):
+    """Obfuscated bundles are zipped from apk/obfuscated/, so extraction
+    should not create apk/obfuscated/obfuscated/.
+    """
+    apk_dir = tmp_path / "apps" / "myapp" / "apk" / "obfuscated"
+    obfuscated_bundle_url = (
+        "https://github.com/owner/repo/releases/download/v1/"
+        "apk-myapp-obfuscated-bundle.zip"
+    )
+
+    def fake_gh_download(*args, **kwargs):
+        cmd = args[0]
+        tmpdir = cmd[cmd.index("--dir") + 1]
+        zp = Path(tmpdir) / "apk-myapp-obfuscated-bundle.zip"
+        with zipfile.ZipFile(zp, "w") as zf:
+            zf.writestr("./", b"")
+            zf.writestr("myapp.apk", b"obfuscated-apk")
+            zf.writestr("vuln_0/myapp.apk", b"obfuscated-vuln-apk")
+
+    mock_run.side_effect = fake_gh_download
+    result = download_apk("myapp", obfuscated_bundle_url, tmp_path, obfuscated=True)
+
+    assert result == apk_dir
+    assert (apk_dir / "myapp.apk").read_bytes() == b"obfuscated-apk"
+    assert (apk_dir / "vuln_0" / "myapp.apk").read_bytes() == b"obfuscated-vuln-apk"
+    assert not (apk_dir / "obfuscated").exists()
 
 
 @patch("utils.apk_utils.subprocess.run")
