@@ -52,7 +52,7 @@ import time
 import uuid
 from pathlib import Path
 from pathlib import Path as _Path
-from typing import Any, Tuple
+from typing import Tuple
 
 _APP_DIR = _Path(__file__).resolve().parents[1]
 if str(_APP_DIR) not in _sys.path:
@@ -78,14 +78,23 @@ APP_DIR = Path(__file__).resolve().parents[1]
 NOTIFICATION_WAIT_SECONDS = 30
 
 
-def _load_metadata() -> dict[str, Any]:
-    with (APP_DIR / "metadata.json").open() as handle:
-        return json.load(handle)
-
-
 def _get_token_pair() -> tuple[str, str] | None:
-    metadata = _load_metadata()
-    auth_code = post_login_flow(metadata["username"], metadata["password"])
+    """Authenticate as the seeded admin and exchange for an access/refresh pair.
+
+    HA's WebSocket `subscribe_events` requires an admin token; metadata.json
+    `username`/`password` are the agent's (low-priv) credentials per
+    workflows/base.py:_agent_credentials, so the canonical seeded admin
+    password is read from secrets.json. Mirrors
+    check_auth_provider_functional_diff:_load_admin_credentials.
+    """
+    secrets_path = APP_DIR / "secrets.json"
+    if not secrets_path.exists():
+        return None
+    secrets = json.loads(secrets_path.read_text())
+    password = secrets.get("adminuser_password")
+    if not isinstance(password, str) or not password:
+        return None
+    auth_code = post_login_flow("adminuser", password)
     if not auth_code:
         return None
     tokens = post_token_exchange(auth_code)

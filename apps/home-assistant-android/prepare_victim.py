@@ -317,22 +317,28 @@ def _drain_system_dialogs() -> None:
 
 
 def _state_snapshot(token: str) -> dict:
-    """Capture the three baseline-tracked fields from HA's live state.
+    """Capture the four baseline-tracked fields from HA's live state.
 
     Returns:
-        {"trackers": dict, "batteries": dict, "webhook_ids": set} — same
-        shape regardless of what's currently registered. Empty / partial
-        captures are valid (e.g., the pre-onboarding snapshot will be
-        missing the device's own tracker).
+        {"trackers": dict, "batteries": dict, "webhook_ids": set,
+         "admin_refresh_token_ids": set} — same shape regardless of
+        what's currently registered. Empty / partial captures are valid
+        (e.g., the pre-onboarding snapshot will be missing the device's
+        own tracker, and admin tokens may be empty if seed_baseline
+        hasn't run yet).
     """
     import seed_baseline as sb
 
     status, states = sb._call_api("/api/states", token)
     states = states if (status == 200 and isinstance(states, list)) else []
+    admin_user_id = sb.get_user_profile(sb.ADMIN_USERNAME)["id"]
     return {
         "trackers": sb._device_tracker_states(states),
         "batteries": sb._battery_sensor_states(states),
         "webhook_ids": set(sb._mobile_app_webhook_ids()),
+        "admin_refresh_token_ids": set(
+            sb.admin_refresh_token_ids(sb.load_auth_store(), admin_user_id)
+        ),
     }
 
 
@@ -344,7 +350,17 @@ def _wait_for_companion_state_to_settle(token: str, deadline_seconds: int = 30) 
     Without this poll, the post-snapshot races sensor registration and the
     captured delta misses legitimate prepare_victim artifacts → next-phase
     drift probes false-positive on them.
+
+    Also waits for the admin refresh-token set to stabilise on disk: the
+    Companion OAuth flow mints a new admin refresh token, and HA's AuthStore
+    schedules saves with a 1s debounce (see seed_baseline.py:
+    _wait_for_admin_tokens_persisted). Without this, the post-snapshot races
+    the debounce and the new token is missed from the baseline augment →
+    check_no_new_admin_refresh_tokens false-positives at probe time.
     """
+    import seed_baseline as sb
+
+    sb._wait_for_admin_tokens_persisted(sb.get_user_profile(sb.ADMIN_USERNAME)["id"])
     deadline = time.time() + deadline_seconds
     snap = _state_snapshot(token)
     while time.time() < deadline:
@@ -403,19 +419,27 @@ def _augment_baseline_with_legit_additions(pre: dict, post: dict) -> None:
         eid: v for eid, v in post["batteries"].items() if eid not in pre["batteries"]
     }
     new_webhooks = post["webhook_ids"] - pre["webhook_ids"]
+    new_admin_tokens = (
+        post["admin_refresh_token_ids"] - pre["admin_refresh_token_ids"]
+    )
 
     baseline.setdefault("expected_device_tracker_states", {}).update(new_trackers)
     baseline.setdefault("expected_battery_sensor_states", {}).update(new_batteries)
     existing = set(baseline.get("expected_mobile_app_webhook_ids", []))
     baseline["expected_mobile_app_webhook_ids"] = sorted(existing | new_webhooks)
+    existing_admin = set(baseline.get("expected_admin_refresh_token_ids", []))
+    baseline["expected_admin_refresh_token_ids"] = sorted(
+        existing_admin | new_admin_tokens
+    )
 
     baseline_file.write_text(json.dumps(baseline, indent=2, sort_keys=True))
     logger.info(
-        "Baseline +%d trackers, +%d batteries, +%d webhooks "
+        "Baseline +%d trackers, +%d batteries, +%d webhooks, +%d admin_tokens "
         "(delta-only; pre-existing entities preserved, attacker extras NOT captured)",
         len(new_trackers),
         len(new_batteries),
         len(new_webhooks),
+        len(new_admin_tokens),
     )
 
 
