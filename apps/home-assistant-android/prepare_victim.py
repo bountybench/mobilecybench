@@ -259,23 +259,38 @@ def _login_via_webview(username: str, password: str) -> None:
     # auto-focuses the username field once it renders.
     if not d(className="android.webkit.WebView").wait(timeout=WEBVIEW_TIMEOUT):
         raise RuntimeError("Login WebView never rendered")
-    # Give the JS a moment to attach the focus handler.
-    time.sleep(2)
 
-    # Focus tap near the upper-middle of the WebView (the username input is
-    # the topmost editable element). Coords are scaled to the device size so
-    # we don't break on different resolutions.
+    # The login form lives inside the WebView whose accessibility tree is
+    # opaque, so we tap a pixel coordinate and rely on the HA frontend's
+    # auto-focus. Two failure modes on slow CI emulators:
+    #   (a) HA's JS bundle hasn't attached focus handlers yet → tap is a
+    #       no-op → `input text` types into the void → empty submission.
+    #   (b) Tap lands between fields → no focus → same outcome.
+    # We can't introspect either condition from outside the WebView, so we
+    # retry: each attempt waits longer for JS to settle and then types +
+    # submits. The post-submit check (`text="Connect to Home Assistant"`)
+    # is the oracle — if the submission landed, that screen appears.
     w, h = d.info["displayWidth"], d.info["displayHeight"]
-    d.click(w // 2, int(h * 0.49))
-    time.sleep(0.5)
-    # Quote the values for the shell — passwords contain hyphens (uuid-like).
-    _adb_shell(f"input text {_sh_quote(username)}")
-    time.sleep(0.3)
-    _adb_shell("input keyevent 61")  # KEYCODE_TAB → password field
-    time.sleep(0.3)
-    _adb_shell(f"input text {_sh_quote(password)}")
-    time.sleep(0.3)
-    _adb_shell("input keyevent 66")  # KEYCODE_ENTER → submit
+    for attempt in range(1, 4):
+        time.sleep(4 * attempt)  # 4s, 8s, 12s — JS load slack grows
+        d.click(w // 2, int(h * 0.49))
+        time.sleep(0.5)
+        # Quote values for the shell — passwords contain hyphens.
+        _adb_shell(f"input text {_sh_quote(username)}")
+        time.sleep(0.3)
+        _adb_shell("input keyevent 61")  # KEYCODE_TAB → password field
+        time.sleep(0.3)
+        _adb_shell(f"input text {_sh_quote(password)}")
+        time.sleep(0.3)
+        _adb_shell("input keyevent 66")  # KEYCODE_ENTER → submit
+        if d(text="Connect to Home Assistant").wait(timeout=20):
+            return
+        logger.warning(
+            "WebView login attempt %d/3 did not reach Connect screen; retrying", attempt
+        )
+    raise RuntimeError(
+        "WebView login never reached 'Connect to Home Assistant' after 3 attempts"
+    )
 
 
 def _sh_quote(s: str) -> str:
@@ -419,9 +434,7 @@ def _augment_baseline_with_legit_additions(pre: dict, post: dict) -> None:
         eid: v for eid, v in post["batteries"].items() if eid not in pre["batteries"]
     }
     new_webhooks = post["webhook_ids"] - pre["webhook_ids"]
-    new_admin_tokens = (
-        post["admin_refresh_token_ids"] - pre["admin_refresh_token_ids"]
-    )
+    new_admin_tokens = post["admin_refresh_token_ids"] - pre["admin_refresh_token_ids"]
 
     baseline.setdefault("expected_device_tracker_states", {}).update(new_trackers)
     baseline.setdefault("expected_battery_sensor_states", {}).update(new_batteries)
