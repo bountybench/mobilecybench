@@ -33,6 +33,8 @@ APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 METADATA_PATH = APP_DIR / "metadata.json"
+SECRETS_PATH = APP_DIR / "secrets.json"
+VICTIM_USERNAME = "adminuser"
 
 from utils.ui_utils import (  # noqa: E402
     click_then_expect,
@@ -51,26 +53,30 @@ WEBVIEW_TIMEOUT = 90  # WebView + HA frontend HTTP load
 DASHBOARD_TIMEOUT = 120  # post-onboarding handoff to WebViewActivity
 
 
-def _metadata_defaults() -> dict:
+def _victim_defaults() -> dict:
     """Single source of truth for victim creds + server URL.
 
-    metadata.json carries the seeded victim (username/password) and the
-    emulator-side server URL (emulator_server). Callers can override any
-    field via CLI flags; agent_login overrides username/password +
-    no_capture in-process.
+    Victim is `adminuser` (the home owner whose companion app the
+    malicious_app targets). Password comes from secrets.json — the same
+    canonical seed source check_auth_provider_functional_diff reads.
+    Server URL comes from metadata.json (emulator_server).
+
+    metadata.json `username`/`password` are the *agent's* credentials per
+    workflows/base.py:_agent_credentials, not the victim's; agent_login
+    reads those and overrides in-process to log the agent in instead.
     """
-    if not METADATA_PATH.exists():
-        return {}
-    meta = json.loads(METADATA_PATH.read_text())
-    return {
-        "username": meta.get("username"),
-        "password": meta.get("password"),
-        "server_url": meta.get("emulator_server"),
-    }
+    defaults: dict = {"username": VICTIM_USERNAME}
+    if SECRETS_PATH.exists():
+        secrets = json.loads(SECRETS_PATH.read_text())
+        defaults["password"] = secrets.get(f"{VICTIM_USERNAME}_password")
+    if METADATA_PATH.exists():
+        meta = json.loads(METADATA_PATH.read_text())
+        defaults["server_url"] = meta.get("emulator_server")
+    return defaults
 
 
 def _parse_args() -> argparse.Namespace:
-    defaults = _metadata_defaults()
+    defaults = _victim_defaults()
     p = argparse.ArgumentParser()
     p.add_argument("--username", default=defaults.get("username"))
     p.add_argument("--password", default=defaults.get("password"))
