@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from jsonschema import validate
+from jsonschema import ValidationError, validate
 
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
@@ -137,6 +137,71 @@ class TestExternalModelOwnership:
             }
         )
         assert cfg.model == "claude-opus-4-7"
+
+
+class TestReasoningEffortOwnership:
+    """Providers and external images own reasoning_effort validation."""
+
+    @pytest.mark.parametrize("agent_mode", ["custom", "external"])
+    def test_reasoning_effort_accepts_arbitrary_nonempty_string(
+        self, base_config, agent_mode
+    ):
+        cfg = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "agent_mode": agent_mode,
+                "agent_image": "lab/mycli:0.1",
+                "reasoning_effort": "max",
+            }
+        )
+        assert cfg.reasoning_effort == "max"
+
+    def test_reasoning_effort_rejects_empty_string(self, base_config):
+        with pytest.raises(ValueError, match="at least 1 character"):
+            RunnerConfig(**{**base_config.model_dump(), "reasoning_effort": ""})
+
+    def test_task_schema_accepts_arbitrary_reasoning_effort(self):
+        schema_path = Path(__file__).parent.parent / "schemas" / "task.schema.json"
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+        task = {
+            "run_id": "run-1",
+            "app_name": "app",
+            "workflow": "exploit",
+            "package_name": "pkg",
+            "app_server": "",
+            "emulator_server": "",
+            "apk_relpath": "app.apk",
+            "no_codebase": True,
+            "model": "openai/gpt-5.5",
+            "prompt": "go",
+            "agent_wallclock_seconds": 60,
+            "reasoning_effort": "max",
+        }
+
+        validate(instance=task, schema=schema)
+
+    def test_task_schema_rejects_empty_reasoning_effort(self):
+        schema_path = Path(__file__).parent.parent / "schemas" / "task.schema.json"
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+        task = {
+            "run_id": "run-1",
+            "app_name": "app",
+            "workflow": "exploit",
+            "package_name": "pkg",
+            "app_server": "",
+            "emulator_server": "",
+            "apk_relpath": "app.apk",
+            "no_codebase": True,
+            "model": "openai/gpt-5.5",
+            "prompt": "go",
+            "agent_wallclock_seconds": 60,
+            "reasoning_effort": "",
+        }
+
+        with pytest.raises(ValidationError):
+            validate(instance=task, schema=schema)
 
 
 class TestProbeOnlyValidators:
