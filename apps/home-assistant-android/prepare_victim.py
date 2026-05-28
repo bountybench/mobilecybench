@@ -39,7 +39,6 @@ VICTIM_USERNAME = "adminuser"
 from utils.ui_utils import (  # noqa: E402
     click_then_expect,
     initialize_ui_automation,
-    wait_and_set_text,
 )
 
 logger = logging.getLogger("ha.prepare_victim")
@@ -208,16 +207,22 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
         timeout=SCREEN_TIMEOUT,
     )
 
-    # Screen 3: URL EditText is plain (not in WebView). Use the shared
-    # wait_and_set_text for input + Connect.
-    wait_and_set_text(d, d(className="android.widget.EditText"), server_url)
-    click_then_expect(
-        d,
-        d(text="Connect"),
-        # WebView frontend renders inside ComposeView/WebView; wait for it.
-        d(className="android.webkit.WebView"),
-        timeout=WEBVIEW_TIMEOUT,
-    )
+    # Screen 3: URL EditText is a Compose TextField. uiautomator2's set_text
+    # bypasses the IME and never fires onValueChange, so the ViewModel's
+    # `manualContinueEnabled = URLUtil.isValidUrl(url)` stays false and the
+    # Connect button is rendered disabled. Drive the IME path instead: focus
+    # the field, type via `adb input text`, then KEYCODE_ENTER → ImeAction.Done
+    # → keyboardActions.onDone → connectedClicked() (see ManualSetupView.kt).
+    url_field = d(className="android.widget.EditText")
+    if not url_field.wait(timeout=SCREEN_TIMEOUT):
+        raise RuntimeError("URL EditText never appeared")
+    url_field.click()
+    time.sleep(0.5)
+    _adb_shell(f"input text {_sh_quote(server_url)}")
+    time.sleep(0.5)
+    _adb_shell("input keyevent 66")  # ENTER → ImeAction.Done → connectedClicked
+    if not d(className="android.webkit.WebView").wait(timeout=WEBVIEW_TIMEOUT):
+        raise RuntimeError("Login WebView never rendered after Connect")
 
     # Screen 4: WebView login. Tab order trick — autofocus is on the username
     # field in HA's auth frontend; type, TAB, type, ENTER.
