@@ -2,7 +2,7 @@
 # Build a runner_config.json for a GKE Job by layering env-var overrides onto
 # the committed base config. Factored out of entrypoint-gke.sh so the override
 # logic is unit-testable without booting DinD + the emulator
-# (see tests/infra/gke/test_runner_config_overrides.py).
+# (see tests/infra/gke/test_external_agent_jobs.py).
 #
 # Usage: build_runner_config.sh <config_src> <config_dst>
 #
