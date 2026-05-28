@@ -210,9 +210,18 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
     # Screen 3: URL EditText is a Compose TextField. uiautomator2's set_text
     # bypasses the IME and never fires onValueChange, so the ViewModel's
     # `manualContinueEnabled = URLUtil.isValidUrl(url)` stays false and the
-    # Connect button is rendered disabled. Drive the IME path instead: focus
-    # the field, type via `adb input text`, then KEYCODE_ENTER → ImeAction.Done
+    # Connect button is rendered disabled. Drive the IME path instead: type
+    # via `adb input text`, then KEYCODE_ENTER → ImeAction.Done
     # → keyboardActions.onDone → connectedClicked() (see ManualSetupView.kt).
+    #
+    # Two observed failure modes on slow emulators:
+    #   (a) ENTER landed before the keyboard attached to the TextField, so
+    #       ImeAction.Done never fired and we stayed on the URL screen.
+    #   (b) HA Core's /auth/authorize served an error page, the WebView flashed
+    #       briefly, then HA dismissed it back to the URL form.
+    # The recovery for both is the same: click the Connect button (now enabled
+    # thanks to the IME-driven onValueChange) and wait again. Loop until a
+    # WebView is up *and stays up*, or the overall budget expires.
     url_field = d(className="android.widget.EditText")
     if not url_field.wait(timeout=SCREEN_TIMEOUT):
         raise RuntimeError("URL EditText never appeared")
@@ -221,8 +230,22 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
     _adb_shell(f"input text {_sh_quote(server_url)}")
     time.sleep(0.5)
     _adb_shell("input keyevent 66")  # ENTER → ImeAction.Done → connectedClicked
-    if not d(className="android.webkit.WebView").wait(timeout=WEBVIEW_TIMEOUT):
-        raise RuntimeError("Login WebView never rendered after Connect")
+
+    deadline = time.time() + WEBVIEW_TIMEOUT
+    while time.time() < deadline:
+        if d(className="android.webkit.WebView").exists:
+            time.sleep(2)  # confirm WebView stays, not a transient flash
+            if d(className="android.webkit.WebView").exists:
+                break
+        elif d(text="Connect").exists:
+            # Bounced back to URL form: ENTER missed or WebView flashed away.
+            # Connect button is enabled (onValueChange already fired); click it.
+            d(text="Connect").click()
+            time.sleep(2)
+        else:
+            time.sleep(1)
+    else:
+        raise RuntimeError("Login WebView never stabilized after Connect")
 
     # Screen 4: WebView login. Tab order trick — autofocus is on the username
     # field in HA's auth frontend; type, TAB, type, ENTER.
