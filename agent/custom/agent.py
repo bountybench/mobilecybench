@@ -2,7 +2,6 @@ import json
 import os
 import subprocess
 import time
-from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -15,7 +14,6 @@ from agent.custom.codebase_tree import get_directory_tree
 from agent.custom.model_providers import get_model_provider
 from agent.custom.tools.runtime import ToolRuntime
 from agent.prompts.prompts import MISSING_OUTPUT_NUDGE
-from utils.agent_utils import take_screenshot
 from utils.command_executor import CommandExecutor
 from utils.json_io import load_validator
 from utils.logger import agent_logger, logger_manager
@@ -71,7 +69,6 @@ class CustomAgent:
         model: str,
         max_iterations: int,
         max_model_response_tokens: int,
-        screenshot_enabled: bool,
         app_name: str,
         instructions: str,
         llm_request_timeout_ms: int = DEFAULT_TIMEOUT_MS,
@@ -80,7 +77,7 @@ class CustomAgent:
         workflow: str = "exploit",
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
-        allow_unregistered_models: bool = False,
+        allow_unregistered_model_routing: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
@@ -101,7 +98,6 @@ class CustomAgent:
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
         self.llm_request_timeout_ms = llm_request_timeout_ms
-        self.screenshot_enabled = screenshot_enabled
         self.app_name = app_name
 
         self.runtime = ToolRuntime()
@@ -116,7 +112,7 @@ class CustomAgent:
             max_output_tokens=max_model_response_tokens,
             timeout_ms=llm_request_timeout_ms,
             reasoning_effort=reasoning_effort,
-            allow_unregistered=allow_unregistered_models,
+            allow_unregistered=allow_unregistered_model_routing,
         )
 
         self._initial_tree_context = get_directory_tree(self.no_codebase)
@@ -265,9 +261,11 @@ class CustomAgent:
 
         self._archive_conversation()
 
-        # cost_usd lives at the top level of result; token_totals carries token counts only.
+        # cost_usd lives at result top level; calls lives in metrics.timing.
+        # Neither belongs in token_totals.
         totals = self.token_tracker.totals()
         cost_usd = totals.pop("cost_usd", None)
+        totals.pop("calls", None)
 
         result = {
             "status": "completed",
@@ -356,44 +354,6 @@ class CustomAgent:
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
             )
             agent_logger.info("-" * 40)
-
-            # Add screenshot if enabled
-            if self.screenshot_enabled:
-                try:
-                    screenshot_result = take_screenshot()
-                    if screenshot_result.get("success"):
-                        # Rename the captured file for better organization within the turn
-                        if "file_path" in screenshot_result:
-                            try:
-                                old_path = Path(screenshot_result["file_path"])
-                                new_path = old_path.parent / f"turn_{turn + 1}.png"
-                                old_path.rename(new_path)
-                            except Exception:
-                                pass
-
-                        # On the first turn, next_input is a string; convert to list
-                        if isinstance(next_input, str):
-                            next_input = [
-                                {
-                                    "type": "message",
-                                    "role": "user",
-                                    "content": next_input,
-                                }
-                            ]
-                        next_input.append(
-                            {
-                                "type": "message",
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "input_image",
-                                        "image_url": f"data:image/png;base64,{screenshot_result.get('image_data', '')}",
-                                    }
-                                ],
-                            }
-                        )
-                except Exception as e:
-                    agent_logger.error(f"Error taking screenshot: {e}")
 
             call_input = next_input
 

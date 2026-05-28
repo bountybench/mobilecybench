@@ -2,9 +2,26 @@ import logging
 import os
 import re
 import sys
+import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+# Log records use UTC so timestamps line up with run_summary.json's UTC ISO.
+logging.Formatter.converter = time.gmtime
+
+
+_PATH_UNSAFE_RE = re.compile(r"[/\\]")
+
+
+def _sanitize_path_token(value: str) -> str:
+    """Replace path separators with '-' so a token stays a single dir level.
+
+    Handles LiteLLM-style model IDs like ``openai/gpt-5.5`` which would
+    otherwise be interpreted as nested directories.
+    """
+    return _PATH_UNSAFE_RE.sub("-", value)
 
 
 class ColorConsoleFormatter(logging.Formatter):
@@ -64,7 +81,7 @@ class FilteringFormatter(logging.Formatter):
         if bracket_count == 0:
             before = text[:start_pos]
             after = text[pos:]
-            return before + '"[truncated - see debug log]"' + after
+            return before + '"[truncated]"' + after
         return text
 
 
@@ -112,9 +129,11 @@ class LoggerManager:
         name: str = "MobileCyBench",
         config: dict = None,
         *,
+        app_name: Optional[str] = None,
         announce: bool = True,
     ) -> None:
         self._name = name
+        self._app_name = app_name
         # Filesystem setup (creating logs/experiment_<uuid>/ + file handlers)
         # is the heaviest part of init. We trigger it eagerly only when:
         #   1. a real config dict was passed (the runner's explicit
@@ -133,7 +152,11 @@ class LoggerManager:
             or "MOBILECYBENCH_SESSION_ID" in os.environ
         )
         if config is not None or env_hint:
-            self.configure(config or self._default_config(), announce=announce)
+            self.configure(
+                config or self._default_config(),
+                app_name=app_name,
+                announce=announce,
+            )
         else:
             self._configure_minimal()
 
@@ -152,6 +175,10 @@ class LoggerManager:
         ``runner.py:498`` (config-load failure) which we want persisted.
         """
         self._config = self._default_config()
+        # _app_name may already be set by __init__; preserve if so. The bare
+        # UUID fallback in _compute_dirname() handles the unset case.
+        if not hasattr(self, "_app_name"):
+            self._app_name = None
         self._log_level = self._get_log_level()
         self._logger = logging.getLogger(self._name)
         self._logger.setLevel(self._log_level)
@@ -167,7 +194,6 @@ class LoggerManager:
         self._logs_dir: Optional[Path] = None
         self._log_file = None
         self._agent_log_file = None
-        self._ui_debug_log_file = None
         self._error_log_file = None
         self._error_buffer_handler = None
 
@@ -193,9 +219,34 @@ class LoggerManager:
         self._logger.addFilter(bootstrap)
         self._agent_logger.addFilter(bootstrap)
 
-    def configure(self, config: dict, *, announce: bool = True) -> None:
+    def configure(
+        self,
+        config: dict,
+        *,
+        app_name: Optional[str] = None,
+        announce: bool = True,
+    ) -> None:
         """(Re)configure the logger manager with new settings."""
         self._config = config
+        # Preserve a previously-set app_name across re-configure calls when the
+        # caller doesn't pass a new one (e.g. test/agent code paths that
+        # reconfigure with just a config dict).
+        if app_name is not None:
+            self._app_name = app_name
+
+        # Drop any one-shot _BootstrapFilter armed by a prior
+        # _configure_minimal(). The filter exists to lazily trigger configure()
+        # on the first log emit, but is obsolete once configure() is called
+        # explicitly. Leaving it in place means the very first emit *during*
+        # this configure() (e.g. the "Logging initialized" announce line)
+        # re-enters configure() with _default_config(), wiping workflow/model
+        # and causing the experiment dir to be renamed to a partial-format
+        # name. Has to run before handlers attach so the filter can't fire.
+        for _name in (self._name, f"{self._name}.Agent"):
+            _lg = logging.getLogger(_name)
+            for _f in list(_lg.filters):
+                if isinstance(_f, _BootstrapFilter):
+                    _lg.removeFilter(_f)
 
         logger = logging.getLogger(self._name)
         for handler in logger.handlers[:]:
@@ -214,7 +265,6 @@ class LoggerManager:
         self._log_file: Optional[str] = None
         self._agent_log_file: Optional[str] = None
         self._agent_logger: Optional[logging.Logger] = None
-        self._ui_debug_log_file: Optional[str] = None
 
         # Setup logs directory
         if "MOBILECYBENCH_LOGS_DIR" in os.environ:
@@ -233,7 +283,7 @@ class LoggerManager:
             logs_base = logs_base / "gold"
 
         logs_base.mkdir(exist_ok=True, parents=True)
-        self._logs_dir = logs_base / f"experiment_{self.run_id}{suffix}"
+        self._logs_dir = logs_base / f"{self._compute_dirname()}{suffix}"
 
         # Move (not recreate) on reconfigure so logs written during import-time
         # auto-init migrate to the final path instead of being orphaned.
@@ -245,9 +295,6 @@ class LoggerManager:
         self._ensure_handlers()
         self._setup_agent_logger()
         self._setup_error_logging()
-
-        if self._should_filter_ui():
-            self._setup_ui_debug_logger()
 
         # Keep canonical UUID for machines while surfacing a short human-friendly hint.
         if announce:
@@ -267,6 +314,30 @@ class LoggerManager:
         new_id = str(uuid.uuid4())
         os.environ["MOBILECYBENCH_SESSION_ID"] = new_id
         return new_id
+
+    def _compute_dirname(self) -> str:
+        """Compute the experiment directory name from create-time fields.
+
+        Format: ``<app>_<workflow>_<model>_<YYYYMMDD-HHMMSS>_<short-uuid>``.
+        Falls back to ``<app>_<ts>_<short>`` or just the bare ``run_id`` when
+        fields aren't available (bootstrap-time call or non-runner caller).
+        Consumers identify run dirs by the presence of ``run_summary.json``
+        rather than by name prefix, so all three forms coexist safely.
+        """
+        wf = self._config.get("workflow")
+        model = self._config.get("model")
+        short = self.run_id[:8]
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        # Sanitize path separators so provider-prefixed model IDs like
+        # "openai/gpt-5.5" don't fracture the dir into nested levels.
+        app = _sanitize_path_token(self._app_name) if self._app_name else None
+        wf = _sanitize_path_token(wf) if wf else None
+        model = _sanitize_path_token(model) if model else None
+        if app and wf and model:
+            return f"{app}_{wf}_{model}_{ts}_{short}"
+        if app:
+            return f"{app}_{ts}_{short}"
+        return self.run_id
 
     def _default_config(self) -> dict:
         return {"log_level": "info", "filter_ui_elements": True}
@@ -289,30 +360,19 @@ class LoggerManager:
         console_handler.setLevel(self._log_level)
 
         formatter_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        datefmt = "%Y-%m-%dT%H:%M:%S+0000"
         if self._should_filter_ui():
-            file_formatter = FilteringFormatter(formatter_str)
+            file_formatter = FilteringFormatter(formatter_str, datefmt=datefmt)
         else:
-            file_formatter = logging.Formatter(formatter_str)
+            file_formatter = logging.Formatter(formatter_str, datefmt=datefmt)
 
         file_handler.setFormatter(file_formatter)
-        console_handler.setFormatter(ColorConsoleFormatter(formatter_str))
+        console_handler.setFormatter(
+            ColorConsoleFormatter(formatter_str, datefmt=datefmt)
+        )
 
         self._logger.addHandler(file_handler)
         self._logger.addHandler(console_handler)
-
-    def _setup_ui_debug_logger(self) -> None:
-        self._ui_debug_log_file = str(self._logs_dir / "ui_debug.log")
-
-        debug_handler = logging.FileHandler(self._ui_debug_log_file, encoding="utf-8")
-        debug_handler.setLevel(self._log_level)
-
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        debug_handler.setFormatter(formatter)
-
-        if self._agent_logger:
-            self._agent_logger.addHandler(debug_handler)
 
     def _setup_error_logging(self) -> None:
         self._error_log_file = str(self._logs_dir / "errors.log")
@@ -350,10 +410,11 @@ class LoggerManager:
         agent_handler.setLevel(self._log_level)
 
         formatter_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        datefmt = "%Y-%m-%dT%H:%M:%S+0000"
         if self._should_filter_ui():
-            formatter = FilteringFormatter(formatter_str)
+            formatter = FilteringFormatter(formatter_str, datefmt=datefmt)
         else:
-            formatter = logging.Formatter(formatter_str)
+            formatter = logging.Formatter(formatter_str, datefmt=datefmt)
 
         agent_handler.setFormatter(formatter)
         self._agent_logger.addHandler(agent_handler)
@@ -371,9 +432,6 @@ class LoggerManager:
 
     def get_agent_log_file_name(self) -> str:
         return self._agent_log_file or ""
-
-    def get_ui_debug_log_file_name(self) -> str:
-        return self._ui_debug_log_file or ""
 
     def get_logs_dir(self) -> Optional[Path]:
         """Return the experiment logs directory, or None if not yet configured.
@@ -475,17 +533,22 @@ class ErrorBufferHandler(logging.Handler):
 _instance: Optional[LoggerManager] = None
 
 
-def get_logger_manager(config: dict = None) -> LoggerManager:
+def get_logger_manager(
+    config: dict = None, app_name: Optional[str] = None
+) -> LoggerManager:
     """Lazy singleton factory for LoggerManager.
 
     Ensures only one LoggerManager exists and allows initialization/re-configuration
-    with a specific config dictionary.
+    with a specific config dictionary. ``app_name`` participates in the
+    experiment directory name; see ``LoggerManager._compute_dirname``.
     """
     global _instance
     if _instance is None:
-        _instance = LoggerManager(config=config, announce=config is not None)
+        _instance = LoggerManager(
+            config=config, app_name=app_name, announce=config is not None
+        )
     elif config is not None:
-        _instance.configure(config, announce=True)
+        _instance.configure(config, app_name=app_name, announce=True)
     return _instance
 
 

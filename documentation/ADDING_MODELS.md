@@ -1,10 +1,13 @@
 # Adding a New Model
 
-The model id you put in `runner_config.json:model` is sent to the underlying
-API. By default the runner only accepts models declared in
-`agent/custom/model_providers/factory.py:SupportedModel`; this doc covers how to
-add one (the standard path) and how to bypass the registry temporarily for
-exploration (only use if you do not care about cost tracking).
+The model id you put in `runner_config.json:model` is sent to the selected
+agent path. `SupportedModel` is the framework-owned registry for models we
+first-class support in the built-in `agent_mode: "custom"` loop and in
+cost-aware benchmark baselines. External BYO images own their own model
+catalogs; the harness forwards the model id and lets the image validate it.
+
+This doc covers how to register a model for the custom path (the standard
+path) and how to bypass that registry temporarily for exploration.
 
 ## Standard path — register the model
 
@@ -86,22 +89,24 @@ Open `logs/latest/conversation.jsonl` and confirm the single turn has non-empty 
 
 ---
 
-## Quick alternative — `allow_unregistered_models`
+## Quick alternative — `allow_unregistered_models_in_custom_mode`
 
-Set this in `runner_config.json` to skip the registry check:
+Set this in `runner_config.json` to skip the custom-agent registry check:
 
 ```json
-{ "model": "claude-some-variant", "allow_unregistered_models": true }
+{ "model": "claude-some-variant", "allow_unregistered_models_in_custom_mode": true }
 ```
 
-The agent logs a `WARNING` and proceeds. The model still has to route
-through LiteLLM, so its name needs a substring the detection registry
-recognises (or a runtime rule via `register_provider`); see
-[Custom provider name](#custom-provider-name) below.
+In `agent_mode: "custom"`, the agent logs a `WARNING` and proceeds through
+LiteLLM best-effort. The model still has to route through LiteLLM, so its name
+needs a substring the detection registry recognises (or a runtime rule via
+`register_provider`); see [Custom provider name](#custom-provider-name) below.
+In `agent_mode: "external"`, this flag has no effect because the BYO image
+owns model callability.
 
-`cost_usd` will report `$0` for any model not in
-`utils/token_pricing.json`, so any cost-aware downstream consumer
-(dashboards, budget checks, cost-per-task aggregation) will be wrong.
+When the agent does not report `cost_usd`, the harness derives cost from
+`utils/token_pricing.json`. Missing pricing is surfaced explicitly as
+`cost_source="derived_unpriced"` with `cost_usd=0`.
 
 When to use it:
 - Comparing 5-10 model variants in a one-off shootout you'll throw away.
@@ -110,7 +115,7 @@ When to use it:
 
 When **not** to use it:
 - Sustained eval runs whose results feed reports or comparisons.
-- Anything where someone might later read `cost_usd` from the run summary.
+- Anything where someone needs derived cost rather than `derived_unpriced`.
 
 For one-off use, register the winner permanently after the sweep so future
 runs land on the standard path.
@@ -198,11 +203,11 @@ Notes:
 ## Common pitfalls
 
 - **`ValueError: Unsupported model`.** Default deny. Register the model
-  per the standard path, or set `allow_unregistered_models: true` for
-  exploration only.
+  per the standard path, or set
+  `allow_unregistered_models_in_custom_mode: true` for exploration only.
 - **Cost reported as `0`.** Missing `token_pricing.json` row. The
-  `allow_unregistered_models` flag does not fix this; pricing is a
-  separate edit.
+  `allow_unregistered_models_in_custom_mode` flag does not fix this;
+  pricing is a separate edit.
 - **Agent loops with empty responses.** Your provider isn't filling
   `ProviderResponse.assistant_text` or `function_calls`; the agent
   nudges and retries until `max_iterations`.

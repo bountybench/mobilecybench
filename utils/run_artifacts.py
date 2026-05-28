@@ -34,14 +34,18 @@ def _resolve_cost(result: dict[str, Any]) -> None:
     """Resolve cost_usd + cost_source in place.
 
     Agent-reported cost wins whenever present (including a legitimate $0).
-    Agents that don't know their cost MUST omit the key — never write 0 as a placeholder.
+    Agents that don't know their cost MUST omit the key -- never write 0
+    as a placeholder.
 
-    Idempotent: ``cost_source`` already set ⇒ a prior resolve already happened;
-    re-running would mis-attribute a derived 0.0 as 'agent' (the value is
-    legitimately present, but its provenance was already decided).
+    ``cost_source`` is runner-only provenance per ``result.schema.json``.
+    Idempotent on a fully resolved state (both keys set). An agent-supplied
+    ``cost_source`` without ``cost_usd`` is the suppression spoof (write
+    provenance to skip derivation); strip and re-resolve.
     """
     if result.get("cost_source") is not None:
-        return
+        if result.get("cost_usd") is not None:
+            return
+        result.pop("cost_source", None)
     agent = result.get("cost_usd")
     if agent is not None:
         result["cost_usd"] = float(agent)
@@ -101,9 +105,11 @@ def _run_git_value(project_root: Path, args: list[str]) -> str:
 
 def _timing_summary_from_calls(calls: list[Any]) -> dict:
     if not calls:
+        # Unmeasured: null over 0 so dispatches that bypass time_tracker
+        # don't contradict their own tool/token counters.
         return {
-            "total_llm_time": 0.0,
-            "llm_call_count": 0,
+            "total_llm_time": None,
+            "llm_call_count": None,
             "p50": None,
             "p95": None,
             "max": None,
@@ -249,17 +255,12 @@ def write_run_summary(
     if not isinstance(token_totals, dict):
         token_totals = {}
 
-    # Timing summary: prefer time_tracker data (one llm_timing call per
-    # model request, recorded by the custom in-process provider). External
-    # agents bypass time_tracker, so fall back to whatever timing dict the
-    # agent surfaced — without this fallback their metrics would be zero.
+    # Canonical 5 keys from time_tracker; agent's CLI-native fields
+    # (claudecode: api_ms, ttft_ms) overlay when populated.
     time_tracker_timing = _timing_summary_from_calls(llm_calls_this_run)
     agent_timing_raw = run_result.get("timing")
     agent_timing = agent_timing_raw if isinstance(agent_timing_raw, dict) else {}
-    if llm_calls_this_run:
-        timing_summary = {**agent_timing, **time_tracker_timing}
-    else:
-        timing_summary = agent_timing or time_tracker_timing
+    timing_summary = {**time_tracker_timing, **agent_timing}
 
     scores = evaluation.get("scores") if isinstance(evaluation, dict) else {}
 
@@ -315,7 +316,6 @@ def write_run_summary(
             "dry_run": config.dry_run,
             "emulator_backend": config.emulator_backend,
             "emulator_display": config.emulator_display,
-            "screenshot_mode": config.screenshot_mode,
             "max_iterations": config.max_iterations,
             "max_model_response_tokens": config.max_model_response_tokens,
             "reasoning_effort": config.reasoning_effort,
@@ -362,11 +362,6 @@ def write_run_summary(
             "token_usage_jsonl": _rel_if_exists(token_usage_path, logs_dir),
             "conversation_jsonl": relative_artifact_path(conversation_path, logs_dir),
             "system_prompt_file": relative_artifact_path(system_prompt_path, logs_dir),
-            "screenshots_dir": (
-                relative_artifact_path(logs_dir / "screenshots", logs_dir)
-                if (logs_dir / "screenshots").is_dir()
-                else None
-            ),
             "squid_access_log": _rel_if_exists(squid_access_log, logs_dir),
             "squid_cache_log": _rel_if_exists(squid_cache_log, logs_dir),
             **score_artifact_paths,

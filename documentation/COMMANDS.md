@@ -32,7 +32,6 @@ Flags:
 
 - `python runner.py <app_name>` — run the workflow declared in `runner_config.json` against `<app_name>`.
 - `--config <path>` — use an alternate runner config file (default: `runner_config.json`).
-- `--replay-run <logs/experiment_<uuid>>` — replay a prior redteam exploit artifact instead of running the agent again. App name is derived from the source. Probe-only snapshots are not replayable (no patched-phase comparison exists); attempting to replay one fails fast with a clear error.
 - `--explain-config` — print the JSON Schema for `runner_config.json` (field names, types, defaults, descriptions) and exit. Same content as `schemas/runner_config.schema.json`.
 
 Agent implementation (`custom` in-process Python loop, or `external` BYO Docker image) is selected via the `agent_mode` field in `runner_config.json`. See `documentation/EXPERIMENTS.md#agent-mode` and `documentation/BRING_YOUR_OWN_AGENT.md`.
@@ -52,6 +51,7 @@ Flags:
 - `python download_apk.py <app_name>` — download APK (skips existing files)
 - `--force` — overwrite existing files
 - `--check [app_name]` — validate `download_links` against GitHub releases
+- `--obfuscated` — fetch the R8-minified bundle (`download_link_obfuscated`) into `apps/<app>/apk/obfuscated/` instead of the default bundle. Fails if the obfuscated link is not published; it never falls back to `download_link`. Combines with `--force` and `--check`.
 
 ## Build and publish APKs
 
@@ -69,9 +69,10 @@ Flags:
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
 - `./build_apk.sh <app_name> --hardened` (uses `security.patch` from `zerodays` submodule)
 - `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file; for zero-day tasks, point it at `apps/<app>/zero_day_vulnerabilities/<task_id>/fix.patch` or `reports/<app>/<report>/task/fix.patch`)
-- `./publish_apk_bundle.sh apps/<app_name>`
+- `./build_apk.sh <app_name> --obfuscate` — build with R8 minify + resource shrinking enabled via the repo-level `gradle/obfuscate.init.gradle` init script. Output goes to `apps/<app>/apk/obfuscated/<app>.apk`. Fails unless the per-app `build.sh` forwards `--init-script "$MCB_OBFUSCATE_INIT_SCRIPT"` to gradlew (see `documentation/ADDING_APPS.md`).
+- `./publish_apk_bundle.sh apps/<app_name>` — when `apk/obfuscated/` exists, automatically publishes both bundles at lockstep `vN` and updates both `download_link` and `download_link_obfuscated`. Use `--default-only` / `--obfuscated-only` to override.
 
-Note: `--vuln`, `--hardened`, and `--hardened-patch` are mutually exclusive.
+Note: `--vuln`, `--hardened`, and `--hardened-patch` are mutually exclusive. `--obfuscate` is incompatible with `--hardened-patch`.
 
 ## Local CI validation
 
@@ -89,6 +90,7 @@ Flags:
 - `--unit-tests`
 - `--test-synthetic-vuln <vuln_dir>`
 - `--test-zero-day-vuln <task_dir>`
+- `--obfuscate` — mirror CI's obfuscated matrix: passes `--obfuscate` to `build_apk.sh` / `--obfuscated` to `download_apk.py` and resolves all APK paths under `apk/obfuscated/`. Fails fast unless the app's `build.sh` forwards `MCB_OBFUSCATE_INIT_SCRIPT`.
 
 ## Zero-day task validation
 

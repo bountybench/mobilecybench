@@ -129,6 +129,14 @@ docker_compose(){
         docker network connect shared_net $container 2>/dev/null || true
     done
 
+    # The compose lives in the jitsi-docker submodule, so we can't declare
+    # agent_net there without bumping the submodule pointer. Attach the
+    # agent-facing frontend (jitsi_tls_proxy, the app_server) to agent_net at
+    # runtime instead — the workflow creates agent_net before this runs, and
+    # `|| true` keeps standalone runs (no agent_net) working.
+    echo "Connecting TLS proxy to agent_net..."
+    docker network connect agent_net jitsi_tls_proxy 2>/dev/null || true
+
     cd - > /dev/null
     echo "Docker containers started."
 }

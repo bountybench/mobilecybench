@@ -77,7 +77,6 @@ def test_main_returns_0_on_successful_call(smoke_test_module, tmp_path):
         "agent_image": "x:latest",
         "max_iterations": 1,
         "max_model_response_tokens": 64,
-        "screenshot_mode": False,
         "dry_run": False,
         "workflow": "exploit",
         "synthetic_vuln_id": "vuln_0",
@@ -239,9 +238,11 @@ def test_main_propagates_allow_unregistered_from_cli(smoke_test_module):
 
 
 def test_main_propagates_allow_unregistered_from_config(smoke_test_module, tmp_path):
-    """allow_unregistered_models=true in runner_config.json reaches the factory."""
+    """allow_unregistered_models_in_custom_mode=true reaches the factory."""
     cfg = tmp_path / "cfg.json"
-    cfg.write_text(json.dumps({"model": "x", "allow_unregistered_models": True}))
+    cfg.write_text(
+        json.dumps({"model": "x", "allow_unregistered_models_in_custom_mode": True})
+    )
 
     fake_provider = MagicMock()
     fake_provider.call.return_value = _provider_response(text="OK")

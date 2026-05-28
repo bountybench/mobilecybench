@@ -26,7 +26,7 @@ jobs:
 
       - name: Disable Git ownership check
         run: git config --global --add safe.directory '*'
-        
+
       - name: Fetch main branch
         run: git fetch origin main:refs/remotes/origin/main
 
@@ -106,6 +106,26 @@ jobs:
             java=$(jq -r '.java // 17' "$metadata")
             system_image=$(jq -r '.system_image // "google_atd"' "$metadata")
             echo "  SDK: $sdk, Java: $java, System image: $system_image"
+
+            # Determine obfuscation build capability for this app. The
+            # per-app build.sh is the source of truth: it must forward the
+            # repo-level init script to Gradle when build_apk.sh --obfuscate
+            # exports MCB_OBFUSCATE_INIT_SCRIPT.
+            obfuscation_optin=false
+            if [ -f "$dir/build.sh" ] && grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$dir/build.sh"; then
+              obfuscation_optin=true
+            fi
+            echo "  obfuscation build support: ${obfuscation_optin}"
+
+            # Per-app and repo-level obfuscation trigger detection.
+            # Obfuscated rebuilds fire when: the app itself changed (existing
+            # per-app gate), the repo-level gradle/obfuscate.init.gradle
+            # changed, the app's obfuscation/ keep-rules changed, the PR
+            # targets main (post-merge style coverage), or cross-cutting
+            # infra (core build files) changed for an opt-in app.
+            obfuscate_init_changed=$(git diff --name-only origin/main...HEAD | grep -qE "^gradle/obfuscate\.init\.gradle$" && echo "true" || echo "false")
+            app_obfuscation_changed=$(git diff --name-only origin/main...HEAD | grep -qE "^${dir}/obfuscation/" && echo "true" || echo "false")
+            targets_main=$([ "${{ github.base_ref }}" = "main" ] && echo "true" || echo "false")
 
             # Check for probes
             has_probes=false
@@ -245,14 +265,25 @@ jobs:
 
                 apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                   --arg java "$java" --arg mode "$synth_mode" --arg vuln_id "$vuln_id" \
-                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode, "vuln_id": $vuln_id}]')
+                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode, "vuln_id": $vuln_id, "variant": "default"}]')
 
                 test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                   --arg sdk "$sdk" --arg image "$system_image" --arg mode "$synth_mode" \
                   --arg type "synthetic_vuln" --arg vuln_id "$vuln_id" \
-                  '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type, "vuln_id": $vuln_id}]')
+                  '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type, "vuln_id": $vuln_id, "variant": "default"}]')
 
                 echo "  Added synthetic_vuln jobs for $vuln_id"
+
+                # synthetic_vuln intentionally does NOT run in the obfuscated
+                # matrix. The synth-vuln framework injects controlled-leakage
+                # paths via vulnerability.patch; R8 may inline lambdas, drop
+                # debug logs, or rename reflection-discovered methods in ways
+                # that break the patch's observable side effect without
+                # breaking app semantics — producing a false-negative exploit
+                # failure that's a synth-infra / R8 interaction, not an
+                # agent-capability signal. Obfuscated probe-based jobs
+                # (baseline, vuln_scenarios) still run below — those measure
+                # what we actually care about: probe robustness against R8.
               done
             fi
 
@@ -265,7 +296,7 @@ jobs:
               for mode in "${setup_modes[@]}"; do
                 apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                   --arg java "$java" --arg mode "$mode" \
-                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode}]')
+                  '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode, "variant": "default"}]')
               done
 
               # Build test jobs for this app
@@ -280,9 +311,51 @@ jobs:
                 for test_type in "${test_types[@]}"; do
                   test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
                     --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
-                    '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type}]')
+                    '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type, "variant": "default"}]')
                 done
               done
+
+              # Obfuscated variant for opt-in apps. Cost policy:
+              # always emit obfuscated handle_apk (build) jobs to catch
+              # minify breakage cheaply on any change that requires
+              # rebuilding the APK (app source, obfuscation init script,
+              # per-app keep-rules, PR-to-main, or core infra). Only emit
+              # the obfuscated test (emulator + probes) jobs when
+              # obfuscation infra itself changed — runtime breakage from
+              # minify is rare once keep-rules are settled, so paying the
+              # heavy probe run on every app-source PR is wasteful.
+              if [ "$obfuscation_optin" = true ]; then
+                run_obfuscated_build=false
+                if [ -n "$non_synth_changes" ] \
+                   || [ "$obfuscate_init_changed" = "true" ] \
+                   || [ "$app_obfuscation_changed" = "true" ] \
+                   || [ "$targets_main" = "true" ] \
+                   || [ "$core_modified" = "true" ]; then
+                  run_obfuscated_build=true
+                fi
+                run_obfuscated_test=false
+                if [ "$obfuscate_init_changed" = "true" ] || [ "$app_obfuscation_changed" = "true" ]; then
+                  run_obfuscated_test=true
+                fi
+                if [ "$run_obfuscated_build" = true ]; then
+                  for mode in "${setup_modes[@]}"; do
+                    apk_jobs=$(echo "$apk_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                      --arg java "$java" --arg mode "$mode" \
+                      '. += [{"app_dir": $dir, "app_name": $name, "java": $java, "setup_mode": $mode, "variant": "obfuscated"}]')
+                  done
+                  echo "  Added obfuscated handle_apk for $app_name (modes: ${setup_modes[*]})"
+                fi
+                if [ "$run_obfuscated_test" = true ]; then
+                  for mode in "${setup_modes[@]}"; do
+                    for test_type in "${test_types[@]}"; do
+                      test_jobs=$(echo "$test_jobs" | jq -c --arg dir "$dir" --arg name "$app_name" \
+                        --arg sdk "$sdk" --arg image "$system_image" --arg mode "$mode" --arg type "$test_type" \
+                        '. += [{"app_dir": $dir, "app_name": $name, "sdk": $sdk, "system_image": $image, "setup_mode": $mode, "test_type": $type, "variant": "obfuscated"}]')
+                    done
+                  done
+                  echo "  Added obfuscated test jobs for $app_name (modes: ${setup_modes[*]}, types: ${test_types[*]}) — obfuscation infra changed"
+                fi
+              fi
             fi
           done <<< "${{ steps.modified-dirs.outputs.modified_dirs }}"
 
@@ -405,7 +478,7 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: "temurin"
           java-version: "${{ matrix.java }}"
           cache: ${{ steps.check-gradle.outputs.has_gradle == 'true' && 'gradle' || ''}}
 
@@ -415,7 +488,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ matrix.app_dir }}/apk
-          key: apk-${{ matrix.app_name }}-${{ matrix.vuln_id || 'clean' }}-${{ hashFiles(format('{0}/metadata.json', matrix.app_dir), format('{0}/build.sh', matrix.app_dir), format('{0}/synthetic_vulnerabilities/{1}/vulnerability.patch', matrix.app_dir, matrix.vuln_id), 'build_apk.sh', 'utils/*.sh') }}
+          key: apk-${{ matrix.app_name }}-${{ matrix.variant || 'default' }}-${{ matrix.vuln_id || 'clean' }}-${{ hashFiles(format('{0}/metadata.json', matrix.app_dir), format('{0}/build.sh', matrix.app_dir), format('{0}/synthetic_vulnerabilities/{1}/vulnerability.patch', matrix.app_dir, matrix.vuln_id), format('{0}/obfuscation/extra-keep.pro', matrix.app_dir), 'build_apk.sh', 'utils/*.sh', 'gradle/obfuscate.init.gradle') }}
 
       - name: Build or download APK
         if: matrix.setup_mode != 'source' || steps.apk-cache.outputs.cache-hit != 'true'
@@ -427,17 +500,25 @@ jobs:
 
           echo "Setup mode: ${{ matrix.setup_mode }}"
 
+          OBFUSCATE_FLAG=""
+          DOWNLOAD_OBFUSCATE_FLAG=""
+          if [ "${{ matrix.variant }}" = "obfuscated" ]; then
+            OBFUSCATE_FLAG="--obfuscate"
+            DOWNLOAD_OBFUSCATE_FLAG="--obfuscated"
+            echo "Variant: obfuscated (passing $OBFUSCATE_FLAG / $DOWNLOAD_OBFUSCATE_FLAG)"
+          fi
+
           if [ "${{ matrix.setup_mode }}" = "apklink" ]; then
             echo "Downloading APK from link..."
             cd ../..
-            python download_apk.py "${{ matrix.app_name }}"
+            python download_apk.py "${{ matrix.app_name }}" $DOWNLOAD_OBFUSCATE_FLAG
             cd "${{ matrix.app_dir }}"
           else
             echo "Building APK from source..."
             if [ -f "build.sh" ]; then
               echo "Using new build system (build.sh + build_apk.sh)"
               cd ../..
-              ./build_apk.sh "${{ matrix.app_name }}"
+              ./build_apk.sh "${{ matrix.app_name }}" $OBFUSCATE_FLAG
               cd "${{ matrix.app_dir }}"
             else
               echo "ERROR: build.sh not found for ${{ matrix.app_name }}"
@@ -458,19 +539,24 @@ jobs:
             fi
           fi
 
-          # Validate APK Path
+          # Validate APK Path. Obfuscated builds/downloads land under
+          # apk/obfuscated/ (see build_apk.sh output paths + download_apk.py
+          # routing); validate the variant-specific dir, not bare apk/.
           echo "Validating APK path..."
           APK_DIR="apk"
+          if [ "${{ matrix.variant }}" = "obfuscated" ]; then
+            APK_DIR="apk/obfuscated"
+          fi
           if [ ! -d "$APK_DIR" ]; then
             echo "ERROR: APK directory not found at $APK_DIR"
-            echo "ERROR: APKs must be placed in ${{ matrix.app_dir }}/apk/"
+            echo "ERROR: APKs must be placed in ${{ matrix.app_dir }}/$APK_DIR/"
             exit 1
           fi
 
           APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -eq 0 ]; then
             echo "ERROR: No APK found in $APK_DIR/"
-            echo "ERROR: build_apk.sh or download_apk.py must place APKs in ${{ matrix.app_dir }}/apk/"
+            echo "ERROR: build_apk.sh or download_apk.py must place APKs in ${{ matrix.app_dir }}/$APK_DIR/"
             exit 1
           fi
 
@@ -478,7 +564,7 @@ jobs:
 
           # For apklink + synthetic vuln, verify the bundle includes the vuln APK
           if [ "${{ matrix.setup_mode }}" = "apklink" ] && [ -n "${{ matrix.vuln_id }}" ]; then
-            VULN_APK_DIR="apk/${{ matrix.vuln_id }}"
+            VULN_APK_DIR="$APK_DIR/${{ matrix.vuln_id }}"
             VULN_APK_COUNT=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
             if [ "$VULN_APK_COUNT" -eq 0 ]; then
               echo "ERROR: Downloaded APK bundle does not contain vulnerable APK for ${{ matrix.vuln_id }}."
@@ -499,16 +585,22 @@ jobs:
         run: |
           cd "${{ matrix.app_dir }}"
           cd ../..
-          ./build_apk.sh "${{ matrix.app_name }}" --vuln "${{ matrix.vuln_id }}"
+          OBFUSCATE_FLAG=""
+          if [ "${{ matrix.variant }}" = "obfuscated" ]; then
+            OBFUSCATE_FLAG="--obfuscate"
+          fi
+          ./build_apk.sh "${{ matrix.app_name }}" --vuln "${{ matrix.vuln_id }}" $OBFUSCATE_FLAG
           cd "${{ matrix.app_dir }}"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}${{ matrix.vuln_id && format('-{0}', matrix.vuln_id) || '' }}-${{ github.run_id }}
+          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}-${{ matrix.variant || 'default' }}${{ matrix.vuln_id && format('-{0}', matrix.vuln_id) || '' }}-${{ github.run_id }}
           path: |
             ${{ matrix.app_dir }}/apk/*.apk
             ${{ matrix.app_dir }}/apk/${{ matrix.vuln_id }}/*.apk
+            ${{ matrix.app_dir }}/apk/obfuscated/*.apk
+            ${{ matrix.app_dir }}/apk/obfuscated/${{ matrix.vuln_id }}/*.apk
           retention-days: 1
           if-no-files-found: error
 
@@ -772,8 +864,8 @@ jobs:
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
@@ -818,6 +910,19 @@ jobs:
 
           echo "dir=\"${{ matrix.app_dir }}\"" >> test_checks.sh
           echo "test_type=\"${{ matrix.test_type }}\"" >> test_checks.sh
+          echo "variant=\"${{ matrix.variant || 'default' }}\"" >> test_checks.sh
+          # When variant=obfuscated, export MCB_OBFUSCATE so parse_apk_path
+          # (utils/android.sh) routes start_runtime.sh's default APK lookup
+          # to apk/obfuscated/<app>.apk. apk_subdir is sourced from the
+          # shared mcb_apk_subdir helper for any code path that needs to
+          # build an explicit APK path (e.g. synthetic_vuln Phase 2).
+          cat <<'EOF' >> test_checks.sh
+          if [ "$variant" = "obfuscated" ]; then
+            export MCB_OBFUSCATE=1
+          fi
+          source "${GITHUB_WORKSPACE}/utils/android.sh"
+          apk_subdir="$(mcb_apk_subdir)"
+          EOF
 
 
           case "${{ matrix.test_type }}" in
@@ -835,11 +940,11 @@ jobs:
           DUMMY_EOF
 
           cd "$dir"
-          
+
           # Get package_name from metadata.json (required field) and verify before setup
           package_name=$(jq -r '.package_name' metadata.json)
           echo "Found package_name in metadata.json: $package_name"
-          
+
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
             echo "ERROR: Package $package_name is already installed before start_runtime.sh"
@@ -848,7 +953,7 @@ jobs:
           else
             echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
           fi
-          
+
           echo "Running setup..."
           ./start_runtime.sh
 
@@ -878,10 +983,10 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
-          
+
           # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
-          
+
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -905,7 +1010,7 @@ jobs:
 
           echo "Running baseline and generic probe checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
-          
+
           if ! jq -e '[.. | select(type == "number")] | all(. == 1)' scores.json > /dev/null; then
             echo "ERROR: Baseline scores.json does not contain all 1s."
             cat scores.json
@@ -970,7 +1075,7 @@ jobs:
               fi
             fi
           }
-          
+
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
             echo "ERROR: Package $package_name is already installed before start_runtime.sh"
@@ -979,7 +1084,7 @@ jobs:
           else
             echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
           fi
-          
+
           echo "Running setup..."
           ./start_runtime.sh
 
@@ -992,10 +1097,10 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
-          
+
           # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
-          
+
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -1021,13 +1126,13 @@ jobs:
           cd vuln_scenarios/vuln_scenario_0
           ./vuln.sh
           cd -
-          
+
           echo "Running checks..."
           ../../run_checks.sh . "vuln_scenarios/vuln_scenario_0/fake_agent_log.log"
-          
+
           score1="vuln_scenarios/vuln_scenario_0/expected_scores.json"
           score2="scores.json"
-          
+
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
             echo "Vuln scenario 0 scores match."
           else
@@ -1103,7 +1208,7 @@ jobs:
               fi
             fi
           }
-          
+
           # Check if package is NOT installed before setup
           if adb shell pm list packages | grep -q "^package:$package_name$"; then
             echo "ERROR: Package $package_name is already installed before start_runtime.sh"
@@ -1112,7 +1217,7 @@ jobs:
           else
             echo "SUCCESS: Package $package_name is not installed (as expected before setup)"
           fi
-          
+
           echo "Running setup..."
           ./start_runtime.sh
 
@@ -1125,10 +1230,10 @@ jobs:
             ./cleanup.sh
             exit 1
           fi
-          
+
           # Wait for app-specific containers to be ready (after start_runtime.sh starts them)
           check_app_containers_ready
-          
+
           verify_shared_net_connectivity
           adb logcat -c
 
@@ -1154,13 +1259,13 @@ jobs:
           cd vuln_scenarios/vuln_scenario_1
           ./vuln.sh
           cd -
-          
+
           echo "Running checks..."
           ../../run_checks.sh . "/tmp/dummy_log.log"
-          
+
           score1="vuln_scenarios/vuln_scenario_1/expected_scores.json"
           score2="scores.json"
-          
+
           if diff <(jq -S . "$score1") <(jq -S . "$score2") >/dev/null; then
             echo "Vuln scenario 1 scores match."
           else
@@ -1337,7 +1442,7 @@ jobs:
           echo "Phase 2: Testing vulnerable build (SHOULD be vulnerable)"
           echo "============================================"
 
-          if ! task_validation_run_phase "Vulnerable build" "vulnerable" "apk/${vuln_id}/${app_name}.apk" "true" "synthetic_phase_apply_vulnerability_patch"; then
+          if ! task_validation_run_phase "Vulnerable build" "vulnerable" "${apk_subdir}/${vuln_id}/${app_name}.apk" "true" "synthetic_phase_apply_vulnerability_patch"; then
             echo "ERROR: Phase 2 (vulnerable build) failed"
             restore_codebase
             task_validation_cleanup_runtime
@@ -1442,17 +1547,24 @@ jobs:
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}${{ matrix.vuln_id && format('-{0}', matrix.vuln_id) || '' }}-${{ github.run_id }}
+          name: apk-${{ matrix.app_name }}-${{ matrix.setup_mode }}-${{ matrix.variant || 'default' }}${{ matrix.vuln_id && format('-{0}', matrix.vuln_id) || '' }}-${{ github.run_id }}
           path: ${{ matrix.app_dir }}/apk/
 
       - name: Verify downloaded APK
         run: |
-          echo "Verifying APK downloaded for ${{ matrix.app_name }} (setup_mode: ${{ matrix.setup_mode }})"
-          ls -lhR "${{ matrix.app_dir }}/apk/"
+          echo "Verifying APK downloaded for ${{ matrix.app_name }} (setup_mode: ${{ matrix.setup_mode }}, variant: ${{ matrix.variant || 'default' }})"
+          # Obfuscated builds/downloads land under apk/obfuscated/ (see
+          # build_apk.sh output paths + download_apk.py routing). Validate
+          # the variant-specific dir, not bare apk/.
+          APK_DIR="${{ matrix.app_dir }}/apk"
+          if [ "${{ matrix.variant }}" = "obfuscated" ]; then
+            APK_DIR="$APK_DIR/obfuscated"
+          fi
+          ls -lhR "$APK_DIR/"
 
-          APK_COUNT=$(find "${{ matrix.app_dir }}/apk/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK found after download"
+            echo "ERROR: No APK found after download in $APK_DIR/"
             exit 1
           fi
 
@@ -1460,7 +1572,7 @@ jobs:
 
           # For synthetic_vuln, also verify the vulnerable APK exists
           if [ "${{ matrix.test_type }}" = "synthetic_vuln" ] && [ -n "${{ matrix.vuln_id }}" ]; then
-            VULN_APK_DIR="${{ matrix.app_dir }}/apk/${{ matrix.vuln_id }}"
+            VULN_APK_DIR="$APK_DIR/${{ matrix.vuln_id }}"
             VULN_APK_COUNT=$(find "$VULN_APK_DIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
             if [ "$VULN_APK_COUNT" -eq 0 ]; then
               echo "ERROR: No vulnerable APK found in $VULN_APK_DIR/"
@@ -1524,7 +1636,7 @@ jobs:
       - name: Pre-emulator Resource Check
         run: |
           echo "=== Pre-Emulator Resource Check ==="
-          
+
           # Check if CPU usage is acceptable
           CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' | cut -d'.' -f1)
           if [ "$CPU_USAGE" -gt 25 ]; then
@@ -1537,14 +1649,14 @@ jobs:
             sudo pkill -f firefox || true
             sleep 10
           fi
-          
+
           # Check memory
           AVAILABLE_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7/1024}')
           if [ "$AVAILABLE_MEM" -lt 2 ]; then
             echo "WARNING: Low available memory (${AVAILABLE_MEM}GB)"
             free -h
           fi
-          
+
           echo "System ready for emulator. CPU: ${CPU_USAGE}%, Available Memory: ${AVAILABLE_MEM}GB"
 
       - name: Run emulator test with action

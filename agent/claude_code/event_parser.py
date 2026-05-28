@@ -155,7 +155,10 @@ class ClaudeCodeEventParser(BaseEventParser):
                 f"[ClaudeCode] Completed: {self.agent_reported_turns} turns, cost={cost_str}"
             )
         elif data.get("subtype") == "error":
-            logger.error(f"[ClaudeCode] Error: {data.get('error')}")
+            # Terminal — `result` is end-of-run by definition.
+            err = data.get("error")
+            self.terminal_error = f"claude-code: {err}"
+            logger.error(f"[ClaudeCode] Error: {err}")
 
     def _record_usage(self, usage: dict[str, Any]) -> None:
         """Project claude's ``usage`` blob onto canonical token_totals names.
@@ -168,6 +171,3 @@ class ClaudeCodeEventParser(BaseEventParser):
             return
         self._accumulate_token_usage(usage, _USAGE_FIELD_MAP)
         self._accumulate_token_usage(usage.get("cache_creation") or {}, _USAGE_TTL_MAP)
-        # Contract requires input/output keys to be present.
-        self.token_usage.setdefault("input_tokens", 0)
-        self.token_usage.setdefault("output_tokens", 0)

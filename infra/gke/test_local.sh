@@ -180,7 +180,6 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "max_iterations": 1,
   "max_model_response_tokens": 100,
   "model": "notarealmodel",
-  "screenshot_mode": false,
   "dry_run": $DRY_RUN,
   "gold_run": $GOLD_RUN,
   "workflow": "exploit",

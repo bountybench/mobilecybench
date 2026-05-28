@@ -180,7 +180,6 @@ class Workflow(ABC):
             model=self.config.model,
             max_iterations=self.config.max_iterations,
             max_model_response_tokens=self.config.max_model_response_tokens,
-            screenshot_enabled=self.config.screenshot_mode,
             app_name=self.app_name,
             instructions=self._build_agent_prompt(),
             llm_request_timeout_ms=self.config.llm_request_timeout_ms,
@@ -189,7 +188,9 @@ class Workflow(ABC):
             workflow=workflow,
             attacker_model=self.config.attacker_model,
             no_codebase=self.config.no_codebase,
-            allow_unregistered_models=self.config.allow_unregistered_models,
+            allow_unregistered_model_routing=(
+                self.config.allow_unregistered_models_in_custom_mode
+            ),
         )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 
@@ -216,16 +217,14 @@ class Workflow(ABC):
                 task_dict=task_dict,
                 host_artifact_dir=logs_dir,
             )
-            logger.info(
-                f"Agent completed with status: {self.agent_result.get('status')}"
-            )
+            logger.info(f"Agent run finished: status={self.agent_result.get('status')}")
             return self.agent_result
 
         if not self.agent:
             raise RuntimeError("Agent not initialized. Call setup_agent() first.")
         logger.info(f"Running agent for {self.config.workflow}...")
         self.agent_result = self.agent.run()
-        logger.info(f"Agent completed with status: {self.agent_result.get('status')}")
+        logger.info(f"Agent run finished: status={self.agent_result.get('status')}")
         return self.agent_result
 
     @abstractmethod
@@ -273,14 +272,37 @@ class Workflow(ABC):
 
         if self.config.build_type == "download-apk":
             from utils.apk_utils import download_apk, get_download_url
+            from utils.obfuscation_resolver import resolve_obfuscation
 
-            url = get_download_url(self.app_name, self.project_root)
+            decision = resolve_obfuscation(self.config.apk_obfuscation)
+            logger.log(
+                getattr(__import__("logging"), decision.log_level.upper()),
+                "%s: %s",
+                self.app_name,
+                decision.log_message,
+            )
+
+            url = get_download_url(
+                self.app_name,
+                self.project_root,
+                obfuscated=(decision.effective == "on"),
+            )
             if not url:
+                field = (
+                    "download_link_obfuscated"
+                    if decision.effective == "on"
+                    else "download_link"
+                )
                 raise FileNotFoundError(
-                    f"No download_link in apps/{self.app_name}/metadata.json. "
+                    f"No {field} in apps/{self.app_name}/metadata.json. "
                     f"Build and publish: ./publish_apk_bundle.sh apps/{self.app_name}"
                 )
-            download_apk(self.app_name, url, self.project_root)
+            download_apk(
+                self.app_name,
+                url,
+                self.project_root,
+                obfuscated=(decision.effective == "on"),
+            )
             return
 
         self._build_apks_from_source()
@@ -418,6 +440,7 @@ class Workflow(ABC):
 
     def _preflight_cleanup_app_runtime(self) -> None:
         """Best-effort clean slate for stale containers before setup."""
+        self._stop_ssrf_listener()
         # Network must exist before any cleanup.sh / start_runtime.sh runs
         # `docker compose up`, otherwise compose aborts on the external
         # network reference.
@@ -761,8 +784,20 @@ class Workflow(ABC):
         except ImportError:
             logger.warning("ssrf_utils not available — skipping SSRF clear")
 
+    def _stop_ssrf_listener(self) -> None:
+        try:
+            from utils.ssrf_utils import is_ssrf_listener_running, stop_ssrf_listener
+
+            if is_ssrf_listener_running() and not stop_ssrf_listener():
+                logger.warning("Failed to stop SSRF listener")
+        except ImportError:
+            logger.warning("ssrf_utils not available — skipping SSRF stop")
+        except Exception as e:
+            logger.warning(f"SSRF listener cleanup failed: {e}")
+
     def cleanup(self) -> None:
         """Clean up resources (emulator, agent env, app backends) and restore codebase."""
+        self._stop_ssrf_listener()
         cleanup_ok = True
         try:
             cleanup_ok = self._run_cleanup_script(check=False)

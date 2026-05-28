@@ -20,35 +20,7 @@ import json
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
-
-from agent.custom.model_providers.factory import MODEL_REGISTRY
-from agent.custom.model_providers.litellm_provider import lookup_rule
-
-# Image-tag prefix (the part before "_<version>" in the Docker tag) →
-# set of ProviderRule.provider tags ("anthropic", "openai", "gemini",
-# ...) that the CLI in that image can call. Reference images follow
-# the `<prefix>_<version>-r<rev>` tag convention documented in
-# BRING_YOUR_OWN_AGENT.md. Unknown prefixes skip the compat check;
-# lab/BYO images are unconstrained.
-_CLI_IMAGE_COMPAT: dict[str, set[str]] = {
-    "claudecode": {"anthropic"},
-    "codex": {"openai"},
-}
-
-
-def _cli_family(agent_image: str) -> Optional[str]:
-    """Return the CLI prefix for a known reference image, else None.
-
-    Strips the registry/repo portion of ``agent_image`` and matches the
-    tag's ``<prefix>_`` head against ``_CLI_IMAGE_COMPAT`` keys.
-    Example: ``cybench/mobilecybench:claudecode_2.1.140-r2`` -> ``"claudecode"``.
-    """
-    tag = agent_image.rsplit(":", 1)[-1] if ":" in agent_image else agent_image
-    for prefix in _CLI_IMAGE_COMPAT:
-        if tag.startswith(prefix + "_"):
-            return prefix
-    return None
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RunnerConfig(BaseModel):
@@ -63,10 +35,14 @@ class RunnerConfig(BaseModel):
     * ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``
       and ``synthetic_vuln_id``, requires ``attacker_model``, and is
       incompatible with ``gold_run``.
-    * ``dry_run``, ``gold_run``, and ``replay_run`` are mutually exclusive.
+    * ``dry_run`` and ``gold_run`` are mutually exclusive.
+    * ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and
+      cannot be used with ``build_type == 'source'``.
 
     See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     # ---- App, build & access ------------------------------------------------
     build_type: Literal["source", "download-apk", "skip-apk"] = Field(
@@ -83,13 +59,26 @@ class RunnerConfig(BaseModel):
             "false (default), full source is mounted at /app/codebase."
         ),
     )
+    apk_obfuscation: Literal["off", "on"] = Field(
+        default="off",
+        description=(
+            "Research-instrument toggle selecting which pre-published APK "
+            "variant to acquire: 'off' (default, un-minified release build, "
+            "matches historical baselines) or 'on' (R8-minified release "
+            "build, approximating production obfuscation). 'on' is only "
+            "valid when no_codebase is true and build_type is download-apk "
+            "or skip-apk. For download-apk, the selected app must publish "
+            "download_link_obfuscated; for skip-apk, the obfuscated APK must "
+            "already exist under apps/<app>/apk/obfuscated/."
+        ),
+    )
 
     # ---- Model & agent ------------------------------------------------------
     model: str = Field(
         ...,
         min_length=1,
         description=(
-            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). "
+            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). "
             "Custom path: routed via agent/custom/model_providers/factory.py. "
             "External path: forwarded to the in-container CLI."
         ),
@@ -138,16 +127,19 @@ class RunnerConfig(BaseModel):
             "Models without a reasoning-effort knob ignore this field."
         ),
     )
-    allow_unregistered_models: bool = Field(
+    allow_unregistered_models_in_custom_mode: bool = Field(
         default=False,
+        title="Allow Unregistered Models in Custom Mode",
         description=(
             "Permit models that are not declared in "
-            "agent/custom/model_providers/factory.py:SupportedModel. Custom "
-            "mode falls through to LiteLLM with auto-detected routing and a "
-            "runtime WARNING; external mode skips the config-load model "
-            "registration check (image/CLI compatibility is still enforced). "
-            "cost_usd reports $0 for any model that lacks a row in "
-            "utils/token_pricing.json regardless of this flag."
+            "agent/custom/model_providers/factory.py:SupportedModel when "
+            "agent_mode='custom'. Custom mode then falls through to LiteLLM "
+            "with auto-detected routing and a runtime WARNING. External "
+            "mode is BYO-owned and does not use this custom-mode registry; "
+            "the external image owns model validation. Models without a row "
+            "in utils/token_pricing.json "
+            "report cost_source='derived_unpriced' unless the agent reports "
+            "cost."
         ),
     )
 
@@ -214,22 +206,6 @@ class RunnerConfig(BaseModel):
             "instead of invoking the agent. Mutually exclusive with dry_run."
         ),
     )
-    replay_run: Optional[str] = Field(
-        default=None,
-        description=(
-            "Replay a prior redteam exploit artifact from "
-            "logs/experiment_<uuid>. May also be set via runner.py "
-            "--replay-run. Mutually exclusive with dry_run and gold_run."
-        ),
-    )
-    screenshot_mode: bool = Field(
-        ...,
-        description=(
-            "Capture a per-turn PNG screenshot under logs/experiment_<uuid>"
-            "/screenshots/. Adds ~10s per turn plus disk usage."
-        ),
-    )
-
     # ---- Emulator -----------------------------------------------------------
     emulator_backend: Literal["native", "container"] = Field(
         default="native",
@@ -313,9 +289,8 @@ class RunnerConfig(BaseModel):
         except Exception as e:
             raise ValueError(f"Unexpected error reading config file: {e}")
 
-        # `$schema` (and any future tooling-only keys) are ignored by
-        # pydantic's default extra='ignore', but strip them explicitly so
-        # config-export round trips stay clean.
+        # Strip tooling-only keys before validation; the model is strict
+        # (``extra='forbid'``) and would reject them otherwise.
         c_dict.pop("$schema", None)
 
         if overrides:
@@ -331,65 +306,24 @@ class RunnerConfig(BaseModel):
             return data
         mode = data.get("agent_mode")
         if mode in ("codex", "claude-code"):
-            ref = {
-                "codex": "cybench/mobilecybench:codex_0.130.0-r2",
-                "claude-code": "cybench/mobilecybench:claudecode_2.1.140-r2",
-            }[mode]
             raise ValueError(
                 f"agent_mode={mode!r} is no longer supported. "
-                f'Migrate to: agent_mode="external" + agent_image="{ref}". '
-                f"See documentation/BRING_YOUR_OWN_AGENT.md."
+                f'Migrate to: agent_mode="external" with the {mode} reference image. '
+                f"See documentation/BRING_YOUR_OWN_AGENT.md for the current tag."
             )
         return data
 
     @model_validator(mode="after")
-    def validate_model_registered_external(self) -> "RunnerConfig":
-        """For external mode, reject model ids not in ``SupportedModel``.
-
-        Custom mode is gated when the provider is constructed in
-        ``agent/custom/model_providers/factory.py:get_model_provider``;
-        external mode otherwise forwards the model id verbatim to the
-        container CLI, so a typo (``opus-4-7`` vs ``claude-opus-4-7``)
-        only fails after image pull + emulator boot + API call.
-        ``allow_unregistered_models=True`` bypasses this check for
-        exploration runs.
+    def validate_probe_only_workflow(self) -> "RunnerConfig":
+        """probe_only is a redteam-only mode. Declared before
+        ``validate_attacker_model`` so on ``workflow=exploit + probe_only=True``
+        the operator sees the probe_only mismatch, not the secondary
+        attacker_model symptom (validators run in declaration order).
         """
-        if self.agent_mode != "external" or self.allow_unregistered_models:
-            return self
-        if self.model not in MODEL_REGISTRY:
+        if self.probe_only and self.workflow != "redteam":
             raise ValueError(
-                f"Unknown model {self.model!r}. Supported: {sorted(MODEL_REGISTRY)}. "
-                f"Add to SupportedModel + utils/token_pricing.json, or set "
-                f"allow_unregistered_models=true. See documentation/ADDING_MODELS.md."
-            )
-        return self
-
-    @model_validator(mode="after")
-    def validate_image_model_compat(self) -> "RunnerConfig":
-        """Reject obvious image/model mismatches for external-mode reference CLIs.
-
-        The reference ``claudecode_*`` image only talks to Anthropic and
-        ``codex_*`` only to OpenAI; pairing one with a model from another
-        provider fails inside the container after setup. Unknown image
-        tags (lab / BYO) skip — they declare their own contract per
-        ``documentation/BRING_YOUR_OWN_AGENT.md``. Unlike
-        :meth:`validate_model_registered_external`, this check is not
-        bypassed by ``allow_unregistered_models``: the constraint is a
-        property of the CLI in the image, not of the model registry.
-        """
-        if self.agent_mode != "external":
-            return self
-        cli = _cli_family(self.agent_image)
-        if cli is None:
-            return self
-        allowed = _CLI_IMAGE_COMPAT[cli]
-        rule = lookup_rule(self.model)
-        if rule.provider not in allowed:
-            raise ValueError(
-                f"agent_image '{self.agent_image}' uses the {cli} CLI which "
-                f"only supports {sorted(allowed)} models; got model={self.model!r} "
-                f"(provider={rule.provider}). Use a model from the supported "
-                f"provider(s), or switch agent_image."
+                f"probe_only=True requires workflow='redteam'; "
+                f"got workflow={self.workflow!r}"
             )
         return self
 
@@ -398,18 +332,6 @@ class RunnerConfig(BaseModel):
         if self.attacker_model is not None and self.workflow != "redteam":
             raise ValueError(
                 f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def validate_probe_only_workflow(self) -> "RunnerConfig":
-        """probe_only is a redteam-only mode. On other workflows it would
-        be silently ignored, which violates the truthful-config contract
-        (operator reads probe_only=True and assumes it took effect)."""
-        if self.probe_only and self.workflow != "redteam":
-            raise ValueError(
-                f"probe_only=True requires workflow='redteam'; "
-                f"got workflow={self.workflow!r}"
             )
         return self
 
@@ -436,10 +358,7 @@ class RunnerConfig(BaseModel):
         - redteam + probe_only: bundle-less mode is allowed when neither
           task nor synthetic_vuln_id is set, but attacker_model must be
           set on the config (no task metadata.json to read it from).
-          replay_run bypasses validation.
         """
-        if self.replay_run:
-            return self
         if self.workflow == "exploit":
             if not self.synthetic_vuln_id:
                 raise ValueError("workflow='exploit' requires synthetic_vuln_id")
@@ -477,10 +396,49 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_mode_flags(self) -> "RunnerConfig":
-        replay_enabled = bool(self.replay_run)
-        enabled_modes = [self.dry_run, self.gold_run, replay_enabled]
-        if sum(bool(flag) for flag in enabled_modes) > 1:
-            raise ValueError("dry_run, gold_run, and replay_run are mutually exclusive")
+        """dry_run and gold_run are mutually exclusive runner branches.
+
+        probe_only + dry_run is also rejected: dry_run short-circuits to the
+        interactive shell before scoring. (probe_only + gold_run is handled
+        by validate_gold_run_probe_only.)
+        """
+        if self.dry_run and self.gold_run:
+            raise ValueError("dry_run and gold_run are mutually exclusive")
+        if self.probe_only and self.dry_run:
+            raise ValueError(
+                "probe_only is incompatible with dry_run: dry_run drops into "
+                "an interactive shell and skips scoring entirely."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_apk_obfuscation(self) -> "RunnerConfig":
+        # apk_obfuscation: on requires a pre-built obfuscated APK to consume.
+        # build_type: source expects build_apk.sh to produce that artifact,
+        # but build_apk.sh is not invoked from the Python workflow code paths
+        # — it is operator-driven or CI-driven. Reject the combination
+        # cleanly rather than producing a cryptic FileNotFoundError at
+        # runtime when the workflow looks for the obfuscated APK that
+        # source mode did not build.
+        if self.apk_obfuscation == "on" and self.build_type == "source":
+            raise ValueError(
+                "apk_obfuscation: 'on' is not supported with build_type: 'source'. "
+                "Use build_type: 'download-apk' (once an obfuscated bundle is "
+                "published for this app via publish_apk_bundle.sh) or "
+                "build_type: 'skip-apk' (after running "
+                "`./build_apk.sh <app> --obfuscate` manually)."
+            )
+        # If the agent already gets full source mounted at /app/codebase, the rename-only
+        # signal the obfuscated APK introduces is moot — reject the combo
+        # so operators don't run experiments where the manipulated variable
+        # is invisible.
+        if self.apk_obfuscation == "on" and not self.no_codebase:
+            raise ValueError(
+                "apk_obfuscation: 'on' requires no_codebase: true. With "
+                "no_codebase: false the agent receives full source at "
+                "/app/codebase, which bypasses the renamed identifiers the "
+                "obfuscation toggle is meant to introduce."
+            )
         return self
 
     # ---- Schema export (single source of truth for runner_config.schema.json) ----

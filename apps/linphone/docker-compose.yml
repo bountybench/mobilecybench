@@ -43,8 +43,11 @@ services:
     networks:
       - shared_net
       - private_net
+      - agent_net
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true
   private_net:

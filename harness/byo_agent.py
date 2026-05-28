@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import json
 import tarfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,7 @@ from typing import Any
 import docker.errors
 
 from agent.in_container.paths import TASK_JSON
-from utils.logger import logger
+from utils.logger import agent_logger, logger
 
 # Matches utils.docker_utils.run_command_in_container's polling cadence.
 _POLL_INTERVAL_SECONDS = 1.0
@@ -27,6 +28,19 @@ _POLL_INTERVAL_SECONDS = 1.0
 # Window the in-container runner.py has to handle SIGTERM and flush
 # conversation.jsonl + result.json before we escalate to SIGKILL.
 _GRACEFUL_STOP_SECONDS = 10.0
+
+# Live mirror of /app/agent_run/agent.log to host operator. Best-effort
+# observability layer; canonical artifact is still the post-run pull.
+_TAIL_CMD = ["sh", "-lc", "tail -n +1 -F /app/agent_run/agent.log 2>/dev/null"]
+# pkill -f matches a regex; [t] avoids self-matching the pkill grep,
+# and \+ escapes the regex metachar in the tail flag.
+_TAIL_PATTERN = r"[t]ail -n \+1 -F /app/agent_run"
+# Flush an unterminated buffer when it grows past this size so a runaway
+# agent emitting bytes without newlines can't bloat host memory.
+_BUF_FLUSH_BYTES = 64 * 1024
+# Window for last tail bytes to drain to the docker stream socket before
+# we kill tail.
+_MIRROR_DRAIN_SECONDS = 0.5
 
 
 def _put_task_json(container, task_dict: dict[str, Any]) -> None:
@@ -41,6 +55,85 @@ def _put_task_json(container, task_dict: dict[str, Any]) -> None:
         info.mode = 0o644
         tar.addfile(info, io.BytesIO(payload))
     container.put_archive(path=str(target.parent), data=tar_stream.getvalue())
+
+
+class _LogMirror:
+    """Best-effort live mirror of container `agent.log` to host `agent_logger`.
+
+    Uses only the low-level docker APIClient; failures cannot break the
+    main agent run.
+    """
+
+    def __init__(self, api, container_id: str):
+        self._api = api
+        self._container_id = container_id
+        self._exec_id: str | None = None
+        self._stream = None
+        self._thread: threading.Thread | None = None
+        self._started = False
+
+    @property
+    def started(self) -> bool:
+        return self._started
+
+    def start(self) -> None:
+        try:
+            self._exec_id = self._api.exec_create(self._container_id, _TAIL_CMD)["Id"]
+            self._stream = self._api.exec_start(self._exec_id, stream=True)
+        except Exception as e:
+            logger.warning("live log mirror failed to start: %s", e)
+            return
+        self._thread = threading.Thread(
+            target=self._pump, daemon=True, name="byo-log-mirror"
+        )
+        self._started = True
+        self._thread.start()
+
+    def _pump(self) -> None:
+        stream = self._stream
+        if stream is None:
+            return
+        buf = b""
+        try:
+            for chunk in stream:
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    agent_logger.info(
+                        "[External Agent] %s", line.decode(errors="replace")
+                    )
+                if len(buf) >= _BUF_FLUSH_BYTES:
+                    agent_logger.info(
+                        "[External Agent] %s", buf.decode(errors="replace")
+                    )
+                    buf = b""
+            if buf:
+                agent_logger.info("[External Agent] %s", buf.decode(errors="replace"))
+        except Exception as e:
+            logger.debug("live log mirror stream ended: %s", e)
+
+    def stop(self) -> None:
+        # Blocking pkill: tail -F never EOFs on its own, and if we let
+        # the artifact tar extraction run while the pump is still writing
+        # to host agent_run/agent.log the two writers race over the same
+        # file (agent/runtime/container.py:637).
+        try:
+            kill_id = self._api.exec_create(
+                self._container_id, ["pkill", "-f", _TAIL_PATTERN]
+            )["Id"]
+            self._api.exec_start(kill_id, detach=False)
+        except Exception as e:
+            logger.debug("live log mirror pkill failed: %s", e)
+        try:
+            close = getattr(self._stream, "close", None)
+            if close:
+                close()
+        except Exception as e:
+            logger.debug("live log mirror stream close failed: %s", e)
+
+    def join(self, timeout: float) -> None:
+        if self._thread is not None:
+            self._thread.join(timeout=timeout)
 
 
 def _wait_for_exec(api, exec_id: str, deadline: float) -> tuple[bool, int | None]:
@@ -124,11 +217,14 @@ def run_agent(
     exit_code: int | None = None
     daemon_error: str | None = None
 
+    mirror = _LogMirror(api, container.id)
+
     try:
         try:
             _put_task_json(container, task_dict)
             exec_id = api.exec_create(container.id, "/run-agent.sh")["Id"]
             api.exec_start(exec_id, detach=True)
+            mirror.start()
             timed_out, exit_code = _wait_for_exec(api, exec_id, deadline)
             if timed_out:
                 # Two-phase termination: SIGTERM first so the in-container
@@ -161,16 +257,29 @@ def run_agent(
             daemon_error = f"docker.errors.APIError: {e}"
             logger.error(daemon_error)
     finally:
+        if mirror.started:
+            time.sleep(_MIRROR_DRAIN_SECONDS)  # let final tail bytes reach the socket
+            mirror.stop()
+            mirror.join(timeout=_MIRROR_DRAIN_SECONDS)
         _pull_artifacts(env, host_artifact_dir)
 
     raw, decoder_error = _read_result_json(host_artifact_dir)
-    if raw is None:
+    synthesized = raw is None
+    if synthesized:
         raw = _synthesize_result(
             timed_out=timed_out,
             exit_code=exit_code,
             decoder_error=decoder_error,
             daemon_error=daemon_error,
         )
+
+    # SIGKILL can fire before the in-container runner's SIGTERM handler
+    # writes a final status, leaving the in-flight "unknown" snapshot on
+    # disk. Override only that stale case; preserve real completed/error
+    # statuses the runner finalized in time, and preserve daemon_error /
+    # decoder_error precedence from _synthesize_result.
+    if timed_out and not synthesized and raw.get("status") == "unknown":
+        raw["status"] = "timeout"
 
     # Stamp the image-identity fields so write_run_summary picks them up.
     # Returns the raw dict; runner-side normalize_agent_result is the single

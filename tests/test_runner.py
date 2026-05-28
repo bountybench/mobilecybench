@@ -9,7 +9,6 @@ from jsonschema import validate
 
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
-from utils.exploit_source import ExploitSource
 from utils.logger import logger_manager
 from workflows import ExploitWorkflow
 
@@ -28,7 +27,6 @@ def base_config():
         max_iterations=10,
         max_model_response_tokens=1000,
         model="gpt-4",
-        screenshot_mode=False,
         dry_run=False,
         agent_image="test-image:latest",
         emulator_display="headed",
@@ -106,117 +104,81 @@ class TestCreateWorkflow:
                 }
             )
 
-    @pytest.mark.parametrize(
-        "legacy_mode, expected_image_hint",
-        [
-            ("codex", "codex_0.130.0-r2"),
-            ("claude-code", "claudecode_2.1.140-r2"),
-        ],
-    )
-    def test_legacy_agent_mode_raises_migration_hint(
-        self, base_config, legacy_mode, expected_image_hint
-    ):
+    @pytest.mark.parametrize("legacy_mode", ["codex", "claude-code"])
+    def test_legacy_agent_mode_raises_migration_hint(self, base_config, legacy_mode):
         """Pre-BYO ``agent_mode`` values are rejected with a migration string."""
-        with pytest.raises(ValueError, match=expected_image_hint):
+        with pytest.raises(ValueError, match="BRING_YOUR_OWN_AGENT.md"):
             RunnerConfig(**{**base_config.model_dump(), "agent_mode": legacy_mode})
 
 
-class TestImageModelCompat:
-    """agent_image (CLI family) ↔ model (provider family) compatibility."""
+class TestExternalModelOwnership:
+    """External images own model validation; RunnerConfig forwards model ids."""
 
-    @pytest.mark.parametrize(
-        "image, model",
-        [
-            ("cybench/mobilecybench:claudecode_2.1.140-r2", "claude-opus-4-7"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "gpt-5.5"),
-        ],
-    )
-    def test_matching_cli_and_provider_ok(self, base_config, image, model):
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": image,
-                "model": model,
-            }
-        )
-        assert cfg.agent_image == image and cfg.model == model
-
-    @pytest.mark.parametrize(
-        "image, model, cli",
-        [
-            ("cybench/mobilecybench:claudecode_2.1.140-r2", "gpt-5.5", "claudecode"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "claude-opus-4-7", "codex"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "gemini-3.1-pro", "codex"),
-        ],
-    )
-    def test_mismatch_rejected(self, base_config, image, model, cli):
-        with pytest.raises(ValueError, match=cli):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "agent_mode": "external",
-                    "agent_image": image,
-                    "model": model,
-                }
-            )
-
-    def test_unknown_image_tag_is_permissive(self, base_config):
-        """Lab/BYO images that don't match a known CLI prefix bypass the check."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": "lab/mycli:0.1",
-                "model": "gemini-3.1-pro",
-            }
-        )
-        assert cfg.agent_image == "lab/mycli:0.1"
-
-    def test_custom_mode_skips_check(self, base_config):
-        """Custom mode is gated by SupportedModel; image-compat is irrelevant."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "custom",
-                "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-                "model": "gpt-5.5",
-            }
-        )
-        assert cfg.agent_mode == "custom"
-
-    @pytest.mark.parametrize(
-        "model",
-        [
-            "opus-4-7",  # missing claude- prefix (real-world typo)
-            "claude-opus-4-typoz",  # substring matches anthropic but model nonexistent
-            "gpt-5.5-typo",
-        ],
-    )
-    def test_external_unknown_model_rejected(self, base_config, model):
-        """External-mode model ids must be in SupportedModel (catches typos)."""
-        with pytest.raises(ValueError, match="Unknown model"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "agent_mode": "external",
-                    "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-                    "model": model,
-                }
-            )
-
-    def test_external_unknown_model_allowed_with_opt_in(self, base_config):
-        """allow_unregistered_models=true bypasses the registered-model check."""
+    def test_external_unknown_model_allowed_for_byo_image(self, base_config):
+        """SupportedModel is not a universal gate for external mode."""
         cfg = RunnerConfig(
             **{
                 **base_config.model_dump(),
                 "agent_mode": "external",
                 "agent_image": "lab/mycli:0.1",
                 "model": "future-model-not-yet-registered",
-                "allow_unregistered_models": True,
             }
         )
         assert cfg.model == "future-model-not-yet-registered"
+
+    def test_external_reference_image_model_pair_left_to_image(self, base_config):
+        """Even reference images own their runtime model contract."""
+        cfg = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "agent_mode": "external",
+                "agent_image": "cybench/mobilecybench:codex_0.130.0-r2",
+                "model": "claude-opus-4-7",
+            }
+        )
+        assert cfg.model == "claude-opus-4-7"
+
+
+class TestProbeOnlyValidators:
+    """probe_only is a redteam-only mode; subtle interactions with other
+    flags are guarded at validation so operators don't silently lose
+    scoring or chase the wrong error."""
+
+    def test_probe_only_workflow_check_precedes_attacker_model(self, base_config):
+        """workflow=exploit + probe_only=True + attacker_model trips two
+        validators. probe_only is the real root cause; surface it rather
+        than the secondary attacker_model symptom. Locks declaration
+        order in models/config.py — pydantic runs ``mode='after'``
+        validators in source order."""
+        with pytest.raises(ValueError, match=r"probe_only=True requires workflow"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "exploit",
+                    "probe_only": True,
+                    "attacker_model": "malicious_app",
+                }
+            )
+
+    def test_probe_only_with_dry_run_rejected(self, base_config):
+        """dry_run short-circuits into the interactive shell with no
+        scoring. probe_only=True + dry_run=True previously passed
+        validation and silently dropped the operator into Kali with no
+        probe verdict."""
+        with pytest.raises(
+            ValueError, match=r"probe_only is incompatible with dry_run"
+        ):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "redteam",
+                    "task": None,
+                    "synthetic_vuln_id": None,
+                    "attacker_model": "malicious_app",
+                    "probe_only": True,
+                    "dry_run": True,
+                }
+            )
 
 
 class TestRun:
@@ -665,6 +627,44 @@ class TestAttackerModelConfig:
             )
 
 
+class TestApkObfuscationConfig:
+    """Tests for apk_obfuscation cross-field invariants."""
+
+    def test_obfuscation_requires_no_codebase(self, base_config):
+        with pytest.raises(ValueError, match="requires no_codebase: true"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "build_type": "download-apk",
+                    "apk_obfuscation": "on",
+                    "no_codebase": False,
+                }
+            )
+
+    def test_obfuscation_allowed_with_downloaded_apk_and_no_codebase(self, base_config):
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "build_type": "download-apk",
+                "apk_obfuscation": "on",
+                "no_codebase": True,
+            }
+        )
+        assert config.apk_obfuscation == "on"
+        assert config.no_codebase is True
+
+    def test_obfuscation_rejects_source_build_even_without_codebase(self, base_config):
+        with pytest.raises(ValueError, match="build_type: 'source'"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "build_type": "source",
+                    "apk_obfuscation": "on",
+                    "no_codebase": True,
+                }
+            )
+
+
 class TestTaskMetadataOverride:
     """task/metadata.json overrides config.attacker_model before workflow creation."""
 
@@ -736,14 +736,16 @@ class TestZerodaySubmoduleInit:
                 "attacker_model": "remote_attacker",
             }
         )
-        # Make task metadata read succeed so flow reaches the init step.
         task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
-        task_dir.mkdir(parents=True)
-        (task_dir / "metadata.json").write_text(
-            json.dumps({"attacker_model": "remote_attacker"})
-        )
 
         order = []
+
+        def init_zerodays(*_args, **_kwargs):
+            order.append("zerodays_init")
+            task_dir.mkdir(parents=True)
+            (task_dir / "metadata.json").write_text(
+                json.dumps({"attacker_model": "remote_attacker"})
+            )
 
         def fail_validate(self):
             order.append("validate")
@@ -751,140 +753,13 @@ class TestZerodaySubmoduleInit:
 
         with patch(
             "runner.ensure_zerodays_submodule",
-            side_effect=lambda *a, **k: order.append("zerodays_init"),
+            side_effect=init_zerodays,
         ), patch("runner.ensure_app_submodule"), patch(
             "workflows.RedTeamWorkflow.validate_arguments", new=fail_validate
         ):
             run(config, "testapp", tmp_path)
 
         assert order == ["zerodays_init", "validate"]
-
-
-class TestReplayMetadataOverride:
-    """Replay metadata must normalize selectors for TaskBundle XOR."""
-
-    def test_zeroday_replay_clears_stale_synthetic_vuln_id(self, base_config, tmp_path):
-        config = RunnerConfig(
-            **{**base_config.model_dump(), "replay_run": "logs/exp-1"}
-        )
-        replay = ExploitSource(
-            kind="replay",
-            source_dir=tmp_path / "logs" / "exp-1" / "agent_exploit",
-            app_name="testapp",
-            workflow="redteam",
-            task="report-9",
-            synthetic_vuln_id=None,
-            attacker_model="remote_attacker",
-        )
-        captured = {}
-
-        def spy(cfg, app_name, project_root):
-            captured["workflow"] = cfg.workflow
-            captured["task"] = cfg.task
-            captured["synthetic_vuln_id"] = cfg.synthetic_vuln_id
-            captured["attacker_model"] = cfg.attacker_model
-            raise RuntimeError("stop before workflow setup")
-
-        with patch("runner.ensure_app_submodule"), patch(
-            "runner.create_workflow", side_effect=spy
-        ):
-            run(config, "testapp", tmp_path, exploit_source=replay)
-
-        assert captured == {
-            "workflow": "redteam",
-            "task": "report-9",
-            "synthetic_vuln_id": None,
-            "attacker_model": "remote_attacker",
-        }
-
-    def test_synthetic_redteam_replay_clears_stale_task(self, base_config, tmp_path):
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "task": "stale-report",
-                "replay_run": "logs/exp-2",
-            }
-        )
-        replay = ExploitSource(
-            kind="replay",
-            source_dir=tmp_path / "logs" / "exp-2" / "agent_exploit",
-            app_name="testapp",
-            workflow="redteam",
-            task=None,
-            synthetic_vuln_id="vuln_7",
-            attacker_model="malicious_app",
-        )
-        captured = {}
-
-        def spy(cfg, app_name, project_root):
-            captured["workflow"] = cfg.workflow
-            captured["task"] = cfg.task
-            captured["synthetic_vuln_id"] = cfg.synthetic_vuln_id
-            captured["attacker_model"] = cfg.attacker_model
-            raise RuntimeError("stop before workflow setup")
-
-        with patch("runner.ensure_app_submodule"), patch(
-            "runner.create_workflow", side_effect=spy
-        ):
-            run(config, "testapp", tmp_path, exploit_source=replay)
-
-        assert captured == {
-            "workflow": "redteam",
-            "task": None,
-            "synthetic_vuln_id": "vuln_7",
-            "attacker_model": "malicious_app",
-        }
-
-    def test_redteam_replay_clears_stale_probe_only_flag(self, base_config, tmp_path):
-        """Operator's current config may carry probe_only=True (their last
-        run) while replaying a two-phase saved run. The replay-validation
-        bypass in models/config.py would otherwise let probe_only=True
-        survive into resolve_bundle, which routes on probe_only first and
-        would silently return ProbeOnlyBundle — converting a two-phase
-        replay into probe-only with no warning. Force probe_only=False
-        for any accepted replay source (resolve_replay_source already
-        rejects probe-only snapshots upstream)."""
-        # probe_only is redteam-only; the realistic scenario is the operator's
-        # current (saved) config is a redteam probe-only run, then they
-        # invoke replay against an unrelated two-phase artifact.
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": None,
-                "synthetic_vuln_id": None,
-                "attacker_model": "malicious_app",
-                "probe_only": True,  # stale from a prior probe-only run
-                "replay_run": "logs/exp-3",
-            }
-        )
-        replay = ExploitSource(
-            kind="replay",
-            source_dir=tmp_path / "logs" / "exp-3" / "agent_exploit",
-            app_name="testapp",
-            workflow="redteam",
-            task="report-5",
-            synthetic_vuln_id=None,
-            attacker_model="remote_attacker",
-        )
-        captured = {}
-
-        def spy(cfg, app_name, project_root):
-            captured["probe_only"] = cfg.probe_only
-            captured["task"] = cfg.task
-            captured["attacker_model"] = cfg.attacker_model
-            raise RuntimeError("stop before workflow setup")
-
-        with patch("runner.ensure_app_submodule"), patch(
-            "runner.create_workflow", side_effect=spy
-        ):
-            run(config, "testapp", tmp_path, exploit_source=replay)
-
-        assert captured == {
-            "probe_only": False,
-            "task": "report-5",
-            "attacker_model": "remote_attacker",
-        }
 
 
 class TestMain:

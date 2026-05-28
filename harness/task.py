@@ -37,7 +37,6 @@ def build_task_dict(
         "prompt": prompt,
         "agent_wallclock_seconds": config.agent_wallclock_seconds,
         "reasoning_effort": config.reasoning_effort,
-        "screenshot_mode": getattr(config, "screenshot_mode", None),
     }
     _TASK_VALIDATOR.validate(task)
     return task

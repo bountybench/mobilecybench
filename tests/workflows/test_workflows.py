@@ -19,7 +19,6 @@ def _config(**overrides) -> RunnerConfig:
         "agent_image": "test-image:latest",
         "max_iterations": 10,
         "max_model_response_tokens": 1000,
-        "screenshot_mode": False,
         "dry_run": False,
         "emulator_display": "headed",
         "emulator_backend": "native",
@@ -28,6 +27,44 @@ def _config(**overrides) -> RunnerConfig:
         "synthetic_vuln_id": "vuln_0",
     }
     return RunnerConfig(**{**defaults, **overrides})
+
+
+class TestRunAgentLogging:
+    """Workflow.run_agent emits one terminal log line per run with neutral
+    phrasing (`Agent run finished: status=...`). Two callsites exist (BYO +
+    custom branches in workflows/base.py); the runner-side duplicate was
+    removed. These tests guard against the old phrasings creeping back."""
+
+    @pytest.fixture
+    def workflow_with_mock_agent(self, tmp_path):
+        config = _config(workflow="exploit", agent_mode="custom", dry_run=False)
+        workflow = ExploitWorkflow(config, "test_app", tmp_path)
+        workflow.agent = MagicMock()
+        return workflow
+
+    def test_custom_path_logs_neutral_completion_phrasing(
+        self, workflow_with_mock_agent, caplog
+    ):
+        workflow_with_mock_agent.agent.run.return_value = {"status": "completed"}
+        with caplog.at_level("INFO", logger="MobileCyBench"):
+            workflow_with_mock_agent.run_agent()
+
+        messages = [r.message for r in caplog.records]
+        assert "Agent run finished: status=completed" in messages
+        assert not any("Agent completed with status:" in m for m in messages)
+        assert not any("Agent execution completed:" in m for m in messages)
+
+    def test_custom_path_logs_neutral_timeout_phrasing(
+        self, workflow_with_mock_agent, caplog
+    ):
+        workflow_with_mock_agent.agent.run.return_value = {"status": "timeout"}
+        with caplog.at_level("INFO", logger="MobileCyBench"):
+            workflow_with_mock_agent.run_agent()
+
+        messages = [r.message for r in caplog.records]
+        assert "Agent run finished: status=timeout" in messages
+        # No self-contradicting "Agent completed ... timeout" survives.
+        assert not any("Agent completed" in m and "timeout" in m for m in messages)
 
 
 class TestExploitWorkflow:
@@ -169,7 +206,9 @@ class TestWorkflowRuntimeCleanup:
 
         workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
 
-        with patch("workflows.base.subprocess.run") as mock_run:
+        with patch.object(workflow, "_stop_ssrf_listener"), patch(
+            "workflows.base.subprocess.run"
+        ) as mock_run:
             workflow.cleanup()
 
         mock_run.assert_called_once_with(
@@ -180,6 +219,37 @@ class TestWorkflowRuntimeCleanup:
             text=True,
             check=False,
         )
+
+    def test_cleanup_stops_ssrf_listener(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+
+        with patch.object(workflow, "_stop_ssrf_listener") as mock_stop:
+            workflow.cleanup()
+
+        mock_stop.assert_called_once()
+
+    def test_stop_ssrf_listener_stops_only_when_running(self, tmp_path):
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+
+        with patch(
+            "utils.ssrf_utils.is_ssrf_listener_running", return_value=True
+        ), patch("utils.ssrf_utils.stop_ssrf_listener", return_value=True) as mock_stop:
+            workflow._stop_ssrf_listener()
+
+        mock_stop.assert_called_once()
+
+    def test_stop_ssrf_listener_skips_when_not_running(self, tmp_path):
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+
+        with patch(
+            "utils.ssrf_utils.is_ssrf_listener_running", return_value=False
+        ), patch("utils.ssrf_utils.stop_ssrf_listener") as mock_stop:
+            workflow._stop_ssrf_listener()
+
+        mock_stop.assert_not_called()
 
     def test_cleanup_clears_active_backend_marker(self, tmp_path):
         app_dir = tmp_path / "apps" / "test_app"
@@ -289,6 +359,19 @@ class TestWorkflowRuntimeCleanup:
         ):
             with pytest.raises(subprocess.CalledProcessError):
                 workflow._preflight_cleanup_app_runtime()
+
+    def test_preflight_cleanup_stops_stale_ssrf_listener(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+
+        workflow = ExploitWorkflow(_config(workflow="exploit"), "test_app", tmp_path)
+
+        with patch.object(workflow, "_stop_ssrf_listener") as mock_stop, patch(
+            "agent.runtime.container.create_docker_network"
+        ):
+            workflow._preflight_cleanup_app_runtime()
+
+        mock_stop.assert_called_once()
 
     def test_preflight_cleanup_creates_shared_net_before_cleanup(self, tmp_path):
         """_preflight_cleanup_app_runtime must create shared_net BEFORE running
