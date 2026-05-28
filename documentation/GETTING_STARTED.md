@@ -23,9 +23,9 @@ To run the AI agent, provide an API key. The built-in models cover three provide
 
 - **OpenAI** (Responses API) — `gpt-5.5`, `gpt-5.5-pro`; `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.2-codex`. Requires `OPENAI_API_KEY`.
 - **Anthropic** (via LiteLLM) — `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`; `claude-opus-4-6`, `claude-opus-4-5`, `claude-opus-4-1`, `claude-sonnet-4-5-20250929`. Requires `ANTHROPIC_API_KEY`.
-- **Google** (via LiteLLM) — `gemini-3.1-pro`; `gemini-3-pro-preview`. Requires `GEMINI_API_KEY`.
+- **Google** (via LiteLLM) — `gemini-3.1-pro-preview`; `gemini-3-pro-preview`. Requires `GEMINI_API_KEY`.
 
-To add a new model, append an entry to `SupportedModel` and a pricing row to `utils/token_pricing.json` — see [Adding a New Model](ADDING_MODELS.md). For one-off model-sweep exploration where cost telemetry doesn't matter, set `"allow_unregistered_models": true` in `runner_config.json` to bypass the registry.
+To add a new model, append an entry to `SupportedModel` and a pricing row to `utils/token_pricing.json` — see [Adding a New Model](ADDING_MODELS.md). For one-off custom-mode model-sweep exploration where cost telemetry doesn't matter, set `"allow_unregistered_models_in_custom_mode": true` in `runner_config.json` to bypass the registry.
 
 ```bash
 echo OPENAI_API_KEY=sk-... > agent/.env

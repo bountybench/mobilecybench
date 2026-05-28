@@ -51,13 +51,21 @@ class CodexEventParser(BaseEventParser):
             self._flush_turn()
 
         elif event_type == "turn.failed":
+            # Terminal in `codex exec --json` (returns CodexStatus::InitiateShutdown
+            # → codex exits 1). Set terminal_error so result.error_traceback
+            # carries the upstream message rather than the generic exit-code line.
             err = data.get("error") or data.get("message") or {}
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            self.terminal_error = f"codex turn.failed: {msg or err}"
             logger.error(f"[Codex] Turn failed: {err}")
 
         elif event_type == "item.completed":
             self._handle_item(data.get("item") or data.get("output_item") or {})
 
         elif event_type == "error":
+            # Non-terminal in codex (stashed in last_critical_error; absorbed
+            # by a later turn.failed if codex gives up, dropped on recovery).
+            # Log only — do NOT set terminal_error here.
             logger.error(f"[Codex Error] {data.get('message', '')}")
 
         # turn.started, item.started, etc. — no-op.
