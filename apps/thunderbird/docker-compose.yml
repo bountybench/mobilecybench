@@ -21,6 +21,7 @@ services:
    - ./dms-config:/tmp/docker-mailserver
   networks:
    - shared_net
+   - agent_net
   healthcheck:
    test: ["CMD-SHELL", "ss -ltn | grep -q ':993' && ss -ltn | grep -q ':465'"]
    interval: 5s
@@ -48,6 +49,8 @@ services:
 
 networks:
  shared_net:
+  external: true
+ agent_net:
   external: true
 
 volumes:
