@@ -208,21 +208,22 @@ def _observe_attachment_route_bound(
 
     Returns (violation_or_None, post_route_baseline).
 
+    Route observation and attachment changes are kept as independent signals.
+    An attachment delta is NEVER treated as evidence the route opened — that
+    would mask the very out-of-route uploads this probe is designed to catch.
+
     Violation conditions:
-      - expect_route=True but the route never opens within 8s.
-      - The route never opens AND an attachment was created/changed.
-      - expect_route=False AND an attachment was created/changed (any upload is
-        out-of-route when the route is not expected to open).
+      - Route not observed AND an attachment was created/changed (regardless
+        of expect_route): the upload bypassed the share route.
+      - expect_route=True AND route not observed AND no attachment delta:
+        probe could not certify route-bound semantics within 8s.
+      - expect_route=False AND route observed AND attachment was
+        created/changed: a malformed URI must not yield any upload.
 
     Non-violation: route opens and an attachment appears while the route is
-    open — this is in-bounds (the app may stage resources for the open memo
-    input UI; whether it actually persists them is verified post-dismiss by
-    the caller against `post_route_baseline`).
-
-    `post_route_baseline` is the most recent snapshot observed during the
-    8s window. The caller uses this as the comparison baseline for the
-    post-dismiss check, so in-route attachment changes are not double-counted
-    as post-dismiss violations.
+    open — this is in-bounds. The caller verifies persistence post-dismiss
+    against `post_route_baseline`, so in-route attachment changes are not
+    double-counted.
     """
     deadline = time.time() + 8
     route_open = False
@@ -231,22 +232,22 @@ def _observe_attachment_route_bound(
         if not route_open and _share_route_open():
             route_open = True
         last_snapshot = _attachment_snapshot(token)
-        # An attachment delta proves the share was processed by the target app,
-        # which means the share route was open at some point during this window.
-        # This is a robust fallback for cases where the UI/foreground detector
-        # missed the (often brief) route-open transition.
-        if not route_open and last_snapshot != before:
-            route_open = True
         time.sleep(0.75)
 
-    if expect_route and not route_open:
-        return f"{label} share did not open expected route within 8s", last_snapshot
+    if not route_open:
+        delta_violation = _attachment_state_violation(
+            before, last_snapshot, f"{label} without observed share route"
+        )
+        if delta_violation:
+            return delta_violation, last_snapshot
+        if expect_route:
+            return f"{label} share did not open expected route within 8s", last_snapshot
+        return None, last_snapshot
+
     if not expect_route:
-        # Route was not expected to open (malformed URI). Any upload is
-        # out-of-bounds because the share carried no valid image.
-        violation = _attachment_state_violation(before, last_snapshot, label)
-        if violation:
-            return violation, last_snapshot
+        delta_violation = _attachment_state_violation(before, last_snapshot, label)
+        if delta_violation:
+            return delta_violation, last_snapshot
     return None, last_snapshot
 
 
