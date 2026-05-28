@@ -258,6 +258,11 @@ def build_legacy_jobs(
                 emulator_backend=args.emulator_backend,
                 dry_run=args.dry_run,
                 gold_run=args.gold_run,
+                # A synthetic vuln always carries a bundle, so it can never be
+                # probe-only. Force probe_only=false rather than inheriting it
+                # from the base config (whose committed default is probe-only),
+                # which would make synthetic_vuln_id invalid against RunnerConfig.
+                probe_only=False,
             )
             jobs.append((job_name, yaml_str))
     return jobs
@@ -375,9 +380,28 @@ def main():
     if external:
         if not args.attacker_models:
             parser.error("--attacker-models is required with --agent-image")
+        if not args.models:
+            print(
+                "WARNING: --models not set; jobs use the base runner_config.json "
+                "model. Ensure it matches the agent image's CLI (e.g. a claudecode_* "
+                "image needs an Anthropic model).",
+                file=sys.stderr,
+            )
     else:
         if not args.models:
             parser.error("--models is required (or pass --agent-image)")
+
+    # probe_only + dry_run/gold_run is rejected by RunnerConfig at load time.
+    # Don't hard-fail (so --dry-run stays usable for rendering smoke-tests), but
+    # warn so the operator doesn't submit jobs that can't actually run.
+    if args.probe_only and (args.dry_run or args.gold_run):
+        flag = "--dry-run" if args.dry_run else "--gold-run"
+        print(
+            f"WARNING: --probe-only with {flag} renders jobs that RunnerConfig "
+            f"rejects at load (probe-only skips scoring). Use only to smoke-test "
+            f"rendering; drop {flag} for runnable jobs.",
+            file=sys.stderr,
+        )
 
     project_root = Path(__file__).resolve().parent.parent.parent
     apps_dir = project_root / "apps"
@@ -399,6 +423,18 @@ def main():
             )
             return 1
         jobs = build_legacy_jobs(template, experiments, args)
+
+    # Names are sanitized + truncated to 63 chars; collisions would make
+    # `kubectl apply` silently overwrite an earlier job. Fail loudly instead.
+    names = [name for name, _ in jobs]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    if dupes:
+        print(
+            f"ERROR: duplicate job names after sanitization: {', '.join(dupes)}. "
+            "Disambiguate inputs (e.g. use shorter/distinct model ids).",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.outdir:
         Path(args.outdir).mkdir(parents=True, exist_ok=True)

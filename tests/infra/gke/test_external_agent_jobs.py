@@ -174,10 +174,13 @@ def test_legacy_path_still_renders_and_omits_external_labels() -> None:
     env = _env_of(job)
     assert env["VULN_ID"] == "vuln_0"
     assert env["MODEL"] == "gpt-4o"
-    # New env vars are present but empty so the entrypoint leaves the base config
-    # untouched (backward compatible).
-    for k in ("AGENT_IMAGE", "AGENT_MODE", "WORKFLOW", "PROBE_ONLY", "ATTACKER_MODEL"):
+    # Most new env vars are empty so the entrypoint leaves the base config
+    # untouched (backward compatible)...
+    for k in ("AGENT_IMAGE", "AGENT_MODE", "WORKFLOW", "ATTACKER_MODEL"):
         assert env[k] == ""
+    # ...except probe_only, which the legacy path forces false (a synthetic vuln
+    # is never probe-only) so synthetic_vuln_id stays valid against RunnerConfig.
+    assert env["PROBE_ONLY"] == "false"
     # Empty experiment-* labels are stripped; legacy labels remain.
     labels = job["metadata"]["labels"]
     assert labels["experiment-vuln"] == "vuln-0"
@@ -249,3 +252,61 @@ def test_builder_no_codebase_false_is_written_not_skipped(tmp_path: Path) -> Non
     """NO_CODEBASE='false' must override base (true) -> distinguishes unset from false."""
     cfg = _build_config({"NO_CODEBASE": "false"}, BASE_CONFIG, tmp_path)
     assert cfg["no_codebase"] is False
+
+
+# ── end-to-end: built config validates against the real RunnerConfig ──────────
+# These feed the *committed* runner_config.json (the actual CONFIG_SRC in the
+# image) through the builder and assert the result loads, which is the invariant
+# that ultimately matters: a job that renders but fails RunnerConfig at load
+# wastes an image pull + emulator boot in-cluster.
+
+COMMITTED_BASE = json.loads((REPO_ROOT / "runner_config.json").read_text())
+
+
+def _runner_config_or_skip():
+    config = pytest.importorskip("models.config")
+    return config.RunnerConfig
+
+
+@pytest.mark.parametrize("no_codebase", ["true", "false"])
+def test_committed_base_external_probe_only_is_valid(
+    tmp_path: Path, no_codebase: str
+) -> None:
+    RunnerConfig = _runner_config_or_skip()
+    cfg = _build_config(
+        {
+            "AGENT_MODE": "external",
+            "AGENT_IMAGE": AGENT_IMAGE,
+            "WORKFLOW": "redteam",
+            "PROBE_ONLY": "true",
+            "ATTACKER_MODEL": "remote_attacker",
+            "NO_CODEBASE": no_codebase,
+            "EMULATOR_BACKEND": "container",
+            "AGENT_WALLCLOCK_SECONDS": "1800",
+            "MODEL": "",
+            "VULN_ID": "",
+            "DRY_RUN": "false",  # probe_only forbids dry_run
+        },
+        COMMITTED_BASE,
+        tmp_path,
+    )
+    cfg.pop("$schema", None)
+    RunnerConfig(**cfg)  # raises if invalid
+
+
+def test_committed_base_legacy_synthetic_is_valid(tmp_path: Path) -> None:
+    """Regression: legacy path must not inherit probe_only=true from the base.
+
+    End-to-end: render a real legacy job, push its env through the builder
+    against the committed base, and assert the result loads. Would fail if
+    build_legacy_jobs ever stopped forcing probe_only=false.
+    """
+    RunnerConfig = _runner_config_or_skip()
+    res = _generate("--apps", "conversations", "--models", "gpt-5.5")
+    assert res.returncode == 0, res.stderr
+    job = [d for d in yaml.safe_load_all(res.stdout) if d][0]
+    cfg = _build_config(_env_of(job), COMMITTED_BASE, tmp_path)
+    cfg.pop("$schema", None)
+    loaded = RunnerConfig(**cfg)
+    assert loaded.probe_only is False
+    assert loaded.synthetic_vuln_id == "vuln_0"
