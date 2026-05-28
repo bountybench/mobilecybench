@@ -21,17 +21,11 @@ from typing import Any
 from agent.in_container.event_parser import BaseEventParser
 from utils.logger import agent_logger, logger
 
-# step_finish.tokens names -> canonical token_totals. opencode emits
-# per-step (not cumulative) values, so we sum across step_finish events.
-_USAGE_FIELD_MAP = {
-    "input": "input_tokens",
-    "output": "output_tokens",
-    "reasoning": "reasoning_tokens",
-}
-_CACHE_FIELD_MAP = {
-    "read": "cached_input_tokens",
-    "write": "cache_creation_tokens",
-}
+
+def _count(value: Any) -> int:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return 0
+    return max(int(value), 0)
 
 
 class OpencodeEventParser(BaseEventParser):
@@ -119,8 +113,28 @@ class OpencodeEventParser(BaseEventParser):
         self.terminal_error = None
 
         tokens = part.get("tokens") or {}
-        self._accumulate_token_usage(tokens, _USAGE_FIELD_MAP)
-        self._accumulate_token_usage(tokens.get("cache") or {}, _CACHE_FIELD_MAP)
+        cache = tokens.get("cache") or {}
+
+        # opencode's step-finish tokens are component counts: input/output
+        # already exclude cache/reasoning. Convert to the BYO canonical shape
+        # expected by utils.token_costs, where input/output are inclusive.
+        fresh_input = _count(tokens.get("input"))
+        visible_output = _count(tokens.get("output"))
+        reasoning = _count(tokens.get("reasoning"))
+        cache_read = _count(cache.get("read"))
+        cache_write = _count(cache.get("write"))
+
+        for key, value in (
+            ("input_tokens", fresh_input + cache_read + cache_write),
+            ("output_tokens", visible_output + reasoning),
+            ("reasoning_tokens", reasoning),
+            ("cached_input_tokens", cache_read),
+            ("cache_creation_tokens", cache_write),
+        ):
+            if value:
+                self.token_usage[key] = self.token_usage.get(key, 0) + value
+        self.token_usage.setdefault("input_tokens", 0)
+        self.token_usage.setdefault("output_tokens", 0)
 
         # Skip cost=0: OAuth/ChatGPT-sub runs report 0 per step; honoring
         # those would set cost_source="agent" with $0 and the harness loses

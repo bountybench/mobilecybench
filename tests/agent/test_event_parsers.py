@@ -454,7 +454,13 @@ class TestTerminalError:
 
 
 def _opencode_step_finish(
-    *, input_t: int, output_t: int, cache_read: int = 0, cost: float = 0.0
+    *,
+    input_t: int,
+    output_t: int,
+    reasoning: int = 0,
+    cache_read: int = 0,
+    cache_write: int = 0,
+    cost: float = 0.0,
 ) -> str:
     return (
         json.dumps(
@@ -466,8 +472,8 @@ def _opencode_step_finish(
                     "tokens": {
                         "input": input_t,
                         "output": output_t,
-                        "reasoning": 0,
-                        "cache": {"read": cache_read, "write": 0},
+                        "reasoning": reasoning,
+                        "cache": {"read": cache_read, "write": cache_write},
                     },
                     "cost": cost,
                 },
@@ -481,7 +487,8 @@ class TestOpencodeParser:
     """OpencodeEventParser invariants the BYO contract depends on."""
 
     def test_step_finish_tokens_are_per_step_and_sum(self) -> None:
-        # opencode emits per-step (not cumulative) usage; parser must sum.
+        # opencode emits per-step component usage; parser must normalize to
+        # inclusive BYO totals and then sum.
         parser = OpencodeEventParser()
         parser.feed_chunk(_opencode_step_finish(input_t=800, output_t=40))
         parser.feed_chunk(
@@ -491,9 +498,30 @@ class TestOpencodeParser:
             _opencode_step_finish(input_t=500, output_t=5, cache_read=200)
         )
         totals = parser.summarize(_TASK, 0, 0.0)["token_totals"]
-        assert totals["input_tokens"] == 1700
+        assert totals["input_tokens"] == 2100
         assert totals["output_tokens"] == 85
         assert totals["cached_input_tokens"] == 400
+
+    def test_step_finish_tokens_are_normalized_to_byo_shape(self) -> None:
+        parser = OpencodeEventParser()
+        parser.feed_chunk(
+            _opencode_step_finish(
+                input_t=500,
+                output_t=400,
+                reasoning=100,
+                cache_read=200,
+                cache_write=300,
+            )
+        )
+
+        totals = parser.summarize(_TASK, 0, 0.0)["token_totals"]
+        assert totals == {
+            "input_tokens": 1000,
+            "output_tokens": 500,
+            "reasoning_tokens": 100,
+            "cached_input_tokens": 200,
+            "cache_creation_tokens": 300,
+        }
 
     @pytest.mark.parametrize(
         "case,costs,expected_cost_usd",
