@@ -31,8 +31,18 @@ EOF
 chmod +x "$EXPLOIT_DIR/exploit.sh"
 
 # One synthetic turn into conversation.jsonl.
-echo '{"role":"assistant","content":"echo-agent done","turn":1}' \
-  > "$RUN_DIR/conversation.jsonl"
+jq -nc --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '{
+  run_id: "echo-agent",
+  turn_number: 1,
+  timestamp: $ts,
+  role: "assistant",
+  response_id: null,
+  assistant_text: "echo-agent done",
+  reasoning_summary: null,
+  tool_calls: [],
+  observations: [],
+  status: "ok"
+}' > "$RUN_DIR/conversation.jsonl"
 
 write_result \
   --arg msg "echo-agent finished" \
