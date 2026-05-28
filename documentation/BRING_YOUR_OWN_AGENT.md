@@ -151,6 +151,15 @@ Forwarded by the harness:
 - **Auth tokens** (operator's `.env`, forwarded as-is — your CLI picks what it needs): `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_REFRESH_TOKEN`. Source of truth: `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`.
 - **Runtime wiring** (harness sets the values): `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` (Squid sidecar), `ADB_SERVER_SOCKET=tcp:adb-proxy:5037`.
 
+## Model ownership
+
+`SupportedModel` is the framework registry for models first-class supported by
+the built-in `agent_mode: "custom"` loop and cost-aware benchmark baselines. A
+BYO image owns its own model catalog: the harness forwards
+`runner_config.json:model` to the container and does not require it to appear in
+`SupportedModel`. If the model id is wrong for that image, the image should
+fail with its own setup or runtime error.
+
 ## How the reference images plug in
 
 Both reference images use a thin bash bootstrap that delegates parsing + result emission to Python:
