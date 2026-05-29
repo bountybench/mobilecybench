@@ -6,7 +6,14 @@
 **/.env.*
 
 # Build bloat
-.git/
+# Previously excluded ALL of .git/ but runner.py inside the image calls
+# `git submodule update --init` (via ensure_app_submodule). Without
+# .git/config + .git/modules, that fails with "not a git repository".
+# Include the minimal git metadata needed; exclude pure bloat.
+.git/objects/pack/
+.git/lfs/
+.git/logs/
+.git/hooks/
 .pytest_cache/
 .ruff_cache/
 **/*.egg-info/

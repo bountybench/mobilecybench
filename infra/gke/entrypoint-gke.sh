@@ -1,6 +1,17 @@
 #!/bin/bash
 set -e
 
+# ─── GCS auth fallback ──────────────────────────────────────────────────────
+# When Workload Identity isn't usable (e.g. Stanford org policy blocks
+# iam.serviceAccounts.setIamPolicy), we mount a SA key as a secret at
+# /etc/gcp-sa/key.json. Activate it for gcloud + gsutil so the final
+# GCS upload works. Skipped silently if the key file isn't mounted.
+if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+    echo "Activating SA key for GCS auth: ${GOOGLE_APPLICATION_CREDENTIALS}"
+    gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}" \
+        --quiet 2>&1 | tail -2 || echo "WARNING: SA key activation failed (continuing)"
+fi
+
 # ─── DinD setup (same as orchestrator/entrypoint.sh) ───────────────────────
 rm -f /var/run/docker.pid
 # Use explicit DNS servers to prevent the Android emulator's virtual DNS
