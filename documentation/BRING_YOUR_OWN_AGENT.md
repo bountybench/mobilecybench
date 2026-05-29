@@ -98,7 +98,7 @@ Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritat
 | `prompt` | Fully assembled workflow prompt — relay to your CLI / API verbatim. Test credentials and any `additional_system_prompt` from operator config are pre-merged into this string by the harness. |
 | `model` | Model id. Forward to your CLI. |
 | `agent_wallclock_seconds` | Harness-side SIGKILL deadline (see "Wall-clock termination" above); the agent can also use it for internal pacing. |
-| `reasoning_effort` | `"low"` / `"medium"` / `"high"` / null. Forwarded to providers that accept it; ignored otherwise. |
+| `reasoning_effort` | Optional non-empty string. Forwarded verbatim to the agent image; provider/CLI owns validation. |
 | `no_codebase` | When true, `/app/apk/` is mounted (not `/app/codebase/`). |
 | `apk_relpath` | Path to the built target APK, relative to `/app/codebase` (or `/app/apk` when `no_codebase=true`). |
 | `vuln_id` | Synthetic vuln id when `synthetic_vuln_id` is set on the operator config (either `workflow="exploit"` or `workflow="redteam"` with synthetic mode). Null for zero-day redteam. |
@@ -186,7 +186,7 @@ docker exec kali-container tail -f /app/agent_run/conversation.jsonl
 The opencode image (`cybench/mobilecybench:opencode_1.15.6-r1`) ships a multi-provider CLI; the framework forwards `model` verbatim and opencode owns validation.
 
 - **Model id format:** `provider/model` (e.g. `anthropic/claude-opus-4-7`, `openai/gpt-5.5`, `google/gemini-3-pro-preview`, `moonshotai/kimi-k2.6`). The opencode CLI errors at runtime if the id is unknown.
-- **`reasoning_effort`** is forwarded as `opencode run --variant <value>`. The value is provider-specific (opencode's `--help`: "e.g., high, max, minimal"); a provider that doesn't recognize the harness's `low|medium|high` will reject the run.
+- **`reasoning_effort`** is forwarded as `opencode run --variant <value>`. The value is provider-specific (opencode's `--help`: "e.g., high, max, minimal"); a provider that doesn't recognize the value will reject the run.
 - **Gemini env alias.** Operators set `GEMINI_API_KEY`; the in-container runner mirrors it to `GOOGLE_GENERATIVE_AI_API_KEY` (the name opencode's Google SDK reads) only if the latter is unset, so an explicit operator value always wins.
 - **`OPENCODE_OPENAI_AUTH`** (experimental, OpenAI-only) selects which OpenAI credential opencode uses and strips the inactive one in-container so the source can't silently swap mid-run:
   - `auto` (default): if `OPENCODE_AUTH_CONTENT` (ChatGPT OAuth blob) is present, strip `OPENAI_API_KEY`; otherwise keep the API key.

@@ -93,7 +93,7 @@ def main() -> int:
     parser.add_argument(
         "--reasoning-effort",
         default=None,
-        help="Optional reasoning_effort (low/medium/high).",
+        help="Optional reasoning_effort / variant string forwarded verbatim.",
     )
     args = parser.parse_args()
 

@@ -81,11 +81,7 @@
     "reasoning_effort": {
       "anyOf": [
         {
-          "enum": [
-            "low",
-            "medium",
-            "high"
-          ],
+          "minLength": 1,
           "type": "string"
         },
         {
@@ -93,7 +89,7 @@
         }
       ],
       "default": null,
-      "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
+      "description": "Opaque reasoning effort / variant string forwarded verbatim to the selected provider or external agent image. Provider/CLI owns value validation.",
       "title": "Reasoning Effort"
     },
     "allow_unregistered_models_in_custom_mode": {

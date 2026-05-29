@@ -120,11 +120,13 @@ class RunnerConfig(BaseModel):
             "to all agent modes."
         ),
     )
-    reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
+    reasoning_effort: Optional[str] = Field(
         default=None,
+        min_length=1,
         description=(
-            "Reasoning effort hint forwarded to providers that accept it. "
-            "Models without a reasoning-effort knob ignore this field."
+            "Opaque reasoning effort / variant string forwarded verbatim to "
+            "the selected provider or external agent image. Provider/CLI owns "
+            "value validation."
         ),
     )
     allow_unregistered_models_in_custom_mode: bool = Field(
