@@ -72,7 +72,7 @@ jq --arg model "${MODEL:-}" \
     | if $no_codebase != "" then .no_codebase = ($no_codebase == "true") else . end
     | if $wallclock != "" then .agent_wallclock_seconds = ($wallclock | tonumber) else . end
     | if $reasoning_effort != "" then .reasoning_effort = $reasoning_effort else . end
-    | if $allow_unreg != "" then .allow_unregistered_models = ($allow_unreg == "true") else . end
+    | if $allow_unreg != "" then .allow_unregistered_models_in_custom_mode = ($allow_unreg == "true") else . end
     | if $probe_only == "true" then
           .probe_only = true | .synthetic_vuln_id = null | .task = null
       elif $probe_only == "false" then
