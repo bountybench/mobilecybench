@@ -15,6 +15,26 @@
 >
 > **Cost note:** the active gcloud account's billing account pays for everything. Don't burn personal cards on research workloads.
 
+> ## ⏰ OAUTH TOKEN EXPIRY — CHECK BEFORE KICKING OFF RUNS
+>
+> Claude Code OAuth tokens last **~8 hours** before expiring. The runner does NOT refresh mid-job — if the token expires while a 2hr experiment is running, the agent dies with `401 Invalid authentication credentials`. **All work in that pod is lost.**
+>
+> **Rule of thumb: don't start new runs if the access token expires in less than 2 hours.** That's enough headroom for a typical 2hr-capped experiment to finish.
+>
+> Check the current token's expiry:
+> ```bash
+> bash ops/check_oauth_expiry.sh
+> ```
+> Output is `OK` (>2hr left) or `WARNING` (refresh now). Refreshes:
+> ```bash
+> # 1. on your Mac
+> claude   # any short interaction with claude triggers OAuth refresh in the Keychain
+> # OR you can `claude --help` and let it idle for a sec
+>
+> # 2. push the new token to the GKE secret
+> bash ops/refresh_gke_oauth.sh
+> ```
+
 ---
 
 This guide walks through provisioning a Google Cloud Compute Engine VM and running a probe-only `conversations` evaluation end-to-end with `gpt-5.5`. Every step has an explicit validation check so you can isolate failures before they cascade.
