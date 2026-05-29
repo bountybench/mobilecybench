@@ -233,7 +233,11 @@ class RemoteAttackerOps:
                     timeout=10,
                 )
             except subprocess.TimeoutExpired as e:
-                logger.warning("ADB wait timed out before pm clear (attempt %s/%s)", attempt, attempts)
+                logger.warning(
+                    "ADB wait timed out before pm clear (attempt %s/%s)",
+                    attempt,
+                    attempts,
+                )
                 if e.stdout:
                     logger.warning("ADB wait stdout:\n%s", str(e.stdout).strip())
                 if e.stderr:
@@ -317,7 +321,9 @@ class RemoteAttackerOps:
 
             logger.info(f"Clearing app data (pm clear {package_name})")
             if not self._wait_for_adb_device():
-                logger.error("ADB device unavailable before pm clear for %s", package_name)
+                logger.error(
+                    "ADB device unavailable before pm clear for %s", package_name
+                )
                 return app_data_reset_failed()
             try:
                 clear_result = subprocess.run(

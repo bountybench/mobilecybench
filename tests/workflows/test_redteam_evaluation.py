@@ -469,9 +469,11 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
             side_effect=lambda cmd, **_kwargs: (
                 MagicMock(returncode=0, stdout="device\n")
                 if cmd[:2] == ["adb", "get-state"]
-                else MagicMock(returncode=0, stdout="")
-                if cmd[:2] == ["adb", "wait-for-device"]
-                else order.append("pm_clear") or MagicMock(returncode=0)
+                else (
+                    MagicMock(returncode=0, stdout="")
+                    if cmd[:2] == ["adb", "wait-for-device"]
+                    else order.append("pm_clear") or MagicMock(returncode=0)
+                )
             ),
         ),
     ):
@@ -508,12 +510,14 @@ def test_remote_attacker_pm_clear_failure_is_infrastructure_error(
             side_effect=lambda cmd, **_kwargs: (
                 MagicMock(returncode=0, stdout="device\n")
                 if cmd[:2] == ["adb", "get-state"]
-                else MagicMock(returncode=0, stdout="")
-                if cmd[:2] == ["adb", "wait-for-device"]
-                else MagicMock(
-                    returncode=1,
-                    stdout="Failure",
-                    stderr="package not found",
+                else (
+                    MagicMock(returncode=0, stdout="")
+                    if cmd[:2] == ["adb", "wait-for-device"]
+                    else MagicMock(
+                        returncode=1,
+                        stdout="Failure",
+                        stderr="package not found",
+                    )
                 )
             ),
         ),
@@ -554,14 +558,16 @@ def test_remote_attacker_pm_clear_timeout_is_infrastructure_error(
             side_effect=lambda cmd, **_kwargs: (
                 MagicMock(returncode=0, stdout="device\n")
                 if cmd[:2] == ["adb", "get-state"]
-                else MagicMock(returncode=0, stdout="")
-                if cmd[:2] == ["adb", "wait-for-device"]
-                else (_ for _ in ()).throw(
-                    subprocess.TimeoutExpired(
-                        ["adb", "shell", "pm", "clear", "com.test.app"],
-                        timeout=30,
-                        output="partial stdout",
-                        stderr="partial stderr",
+                else (
+                    MagicMock(returncode=0, stdout="")
+                    if cmd[:2] == ["adb", "wait-for-device"]
+                    else (_ for _ in ()).throw(
+                        subprocess.TimeoutExpired(
+                            ["adb", "shell", "pm", "clear", "com.test.app"],
+                            timeout=30,
+                            output="partial stdout",
+                            stderr="partial stderr",
+                        )
                     )
                 )
             ),
