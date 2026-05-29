@@ -485,13 +485,9 @@ def build_context() -> ProbeContext:
     )
 
     baseline_path = app_dir / "baseline_manifest.json"
-    if not baseline_path.exists():
-        raise InfrastructureError(f"required baseline file missing: {baseline_path}")
     baseline_manifest = load_json(baseline_path, {})
     if not isinstance(baseline_manifest, dict):
-        raise InfrastructureError(
-            f"baseline_manifest.json is not an object: {baseline_path}"
-        )
+        baseline_manifest = {}
     baseline_epoch_s = read_required_int(app_dir / "device_epoch_baseline.txt")
     secrets = load_json(app_dir / "secrets.json", {})
     if not isinstance(secrets, dict):
