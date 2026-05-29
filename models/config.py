@@ -120,10 +120,11 @@ class RunnerConfig(BaseModel):
             "to all agent modes."
         ),
     )
-    reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
+    reasoning_effort: Optional[Literal["low", "medium", "high", "max"]] = Field(
         default=None,
         description=(
             "Reasoning effort hint forwarded to providers that accept it. "
+            "Claude Code CLI accepts 'max' as the highest tier. "
             "Models without a reasoning-effort knob ignore this field."
         ),
     )

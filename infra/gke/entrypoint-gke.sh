@@ -1,6 +1,17 @@
 #!/bin/bash
 set -e
 
+# ─── GCS auth fallback ──────────────────────────────────────────────────────
+# When Workload Identity isn't usable (e.g. Stanford org policy blocks
+# iam.serviceAccounts.setIamPolicy), we mount a SA key as a secret at
+# /etc/gcp-sa/key.json. Activate it for gcloud + gsutil so the final
+# GCS upload works. Skipped silently if the key file isn't mounted.
+if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+    echo "Activating SA key for GCS auth: ${GOOGLE_APPLICATION_CREDENTIALS}"
+    gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}" \
+        --quiet 2>&1 | tail -2 || echo "WARNING: SA key activation failed (continuing)"
+fi
+
 # ─── DinD setup (same as orchestrator/entrypoint.sh) ───────────────────────
 rm -f /var/run/docker.pid
 # Use explicit DNS servers to prevent the Android emulator's virtual DNS
@@ -33,6 +44,16 @@ if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ "${DOCKERHUB_USERNAME}" != "placeholder
         echo "WARNING: Docker Hub login failed (continuing without auth)"
 fi
 
+# Artifact Registry auth for DinD (so it can pull agent_image from AR).
+# DinD is a SEPARATE daemon from the host docker; node-level pull creds
+# don't carry over. Auth with the SA key (same one used for gsutil).
+if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+    echo "Authing DinD docker to us-central1-docker.pkg.dev"
+    cat "${GOOGLE_APPLICATION_CREDENTIALS}" | docker login -u _json_key --password-stdin \
+        https://us-central1-docker.pkg.dev 2>&1 | tail -2 || \
+        echo "WARNING: DinD AR login failed"
+fi
+
 # ─── Pre-pull emulator image ─────────────────────────────────────────────
 # The Python Docker SDK has a 60s default timeout on containers.run(), which
 # is not enough for pulling the ~10 GB emulator image. Pre-pulling here
@@ -53,33 +74,12 @@ fi
 adb -a start-server
 
 # ─── Build runner config with GKE overrides ─────────────────────────────────
+# Override logic lives in build_runner_config.sh so it can be unit-tested
+# without a full DinD/emulator boot.
 CONFIG_SRC="/mobilecybench/runner_config.json"
 CONFIG_DST="/tmp/runner_config.json"
 
-EMULATOR_BACKEND="${EMULATOR_BACKEND:-container}"
-
-# Normalize boolean env vars to JSON-safe "true"/"false" for jq --argjson
-normalize_bool() { [[ "${1,,}" == "true" || "$1" == "1" ]] && echo true || echo false; }
-DRY_RUN="$(normalize_bool "${DRY_RUN:-false}")"
-GOLD_RUN="$(normalize_bool "${GOLD_RUN:-false}")"
-
-if [ -f "$CONFIG_SRC" ]; then
-    jq --arg model "$MODEL" \
-       --arg vuln "$VULN_ID" \
-       --arg em "$EMULATOR_BACKEND" \
-       --argjson dryrun "$DRY_RUN" \
-       --argjson goldrun "$GOLD_RUN" \
-       '.emulator_display = "headless"
-        | .emulator_backend = $em
-        | .dry_run = $dryrun
-        | .gold_run = $goldrun
-        | if $model != "" then .model = $model else . end
-        | if $vuln != "" then .synthetic_vuln_id = $vuln else . end' \
-       "$CONFIG_SRC" > "$CONFIG_DST"
-else
-    echo "ERROR: $CONFIG_SRC not found"
-    exit 1
-fi
+bash /mobilecybench/infra/gke/build_runner_config.sh "$CONFIG_SRC" "$CONFIG_DST"
 
 echo "Runner config:"
 cat "$CONFIG_DST"
@@ -97,7 +97,14 @@ set -e
 # ─── Upload results to GCS ──────────────────────────────────────────────────
 if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
     RUN_ID="${RUN_ID:-$(date +%s)}"
-    GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"
+    # Build the object prefix from non-empty segments only — VULN_ID (and
+    # sometimes MODEL) are empty in probe-only mode and would otherwise
+    # produce empty "//" path components.
+    path_segs=("$APP_NAME")
+    [ -n "${VULN_ID:-}" ] && path_segs+=("$VULN_ID")
+    [ -n "${MODEL:-}" ] && path_segs+=("$MODEL")
+    path_segs+=("$RUN_ID")
+    GCS_PATH="gs://$GCS_BUCKET/$(IFS=/; echo "${path_segs[*]}")/"
     echo "Uploading results to $GCS_PATH"
     # Identify run dirs by the presence of run_summary.json (content-based,
     # decoupled from the runner's directory-naming convention so the name
@@ -108,7 +115,14 @@ if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
         dirs+=("$(dirname "$summary")")
     done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)
     if [ ${#dirs[@]} -gt 0 ]; then
-        gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
+        # Force gsutil to use the SA key explicitly (gcloud auth state alone
+        # doesn't always reach gsutil; metadata server falls back to 403 on
+        # GKE pods without Workload Identity).
+        GSUTIL_AUTH=""
+        if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+            GSUTIL_AUTH="-o Credentials:gs_service_key_file=${GOOGLE_APPLICATION_CREDENTIALS}"
+        fi
+        gsutil $GSUTIL_AUTH -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
     else
         echo "WARNING: no experiment logs found to upload"
     fi

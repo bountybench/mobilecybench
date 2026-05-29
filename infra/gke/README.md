@@ -68,6 +68,31 @@ python infra/gke/generate_jobs.py \
   --apply
 ```
 
+#### External coding agent (probe-only redteam)
+
+Pass `--agent-image` to run a BYO coding-agent image (`agent_mode=external`)
+over the redteam workflow instead of the legacy synthetic-vuln path. The matrix
+becomes (app × attacker_model × no_codebase leg); `--models` is optional (the
+image carries the model, but a passed model is still plumbed through for
+labeling). `synthetic_vuln_id` / `VULN_ID` are unused in this mode.
+
+```bash
+python infra/gke/generate_jobs.py \
+  --apps conversations \
+  --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \
+  --probe-only \
+  --attacker-models malicious_app remote_attacker \
+  --no-codebase-ablation \
+  --agent-wallclock-seconds 1800 \
+  --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
+  --gcs-bucket $PROJECT_ID-mobilecybench-results \
+  --apply
+```
+
+`--no-codebase-ablation` renders both legs (source mounted vs. APK-only). The
+`--image` flag is still the GKE **runner** pod image; `--agent-image` is a
+separate value forwarded into `runner_config.agent_image`.
+
 ### 5. Monitor
 
 ```bash
@@ -110,6 +135,7 @@ Set via `EMULATOR_BACKEND` env var (default: `container`):
 |------|---------|
 | `Dockerfile.runner` | Extends orchestrator image + gcloud CLI |
 | `entrypoint-gke.sh` | DinD startup + run experiment + GCS upload |
+| `build_runner_config.sh` | Layer Job env-var overrides onto the base runner config |
 | `job-template.yaml` | Reference K8s Job spec |
 | `namespace.yaml` | Namespace + ResourceQuota |
 | `setup-cluster.sh` | GKE + Artifact Registry + GCS setup |
