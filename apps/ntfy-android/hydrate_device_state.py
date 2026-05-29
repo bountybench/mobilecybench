@@ -401,7 +401,7 @@ def relaunch_and_wait(package: str) -> str:
     )
     launch_app(package, timeout=10)
     pid = ""
-    for _ in range(20):
+    for _ in range(40):
         result = adb(["shell", "pidof", package], timeout=5)
         pid = result.stdout.strip().replace("\r", "")
         if result.returncode == 0 and pid:
