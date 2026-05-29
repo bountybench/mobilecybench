@@ -7,7 +7,7 @@ cd "$SCRIPT_DIR"
 
 ADB_RESTART_ATTEMPTS=${ADB_RESTART_ATTEMPTS:-4}
 ADB_RESTART_RETRY_DELAY_SECONDS=${ADB_RESTART_RETRY_DELAY_SECONDS:-5}
-PACKAGE_READY_TIMEOUT=${PACKAGE_READY_TIMEOUT:-60}
+PACKAGE_READY_TIMEOUT=${PACKAGE_READY_TIMEOUT:-180}
 TARGET_PACKAGE="me.mudkip.moememos"
 
 wait_for_adb_shell_ready() {
@@ -17,6 +17,10 @@ wait_for_adb_shell_ready() {
 
   log_info "Waiting for adb shell readiness (timeout ${timeout}s)"
   while true; do
+    # adbd can be unresponsive for an extended window after adb root/unroot
+    # cycles (notably under GKE container-mode); drop the stale transport and
+    # re-establish it so a restarted adbd is awaited rather than failed against.
+    adb reconnect >/dev/null 2>&1 || true
     adb wait-for-device >/dev/null 2>&1 || true
 
     local boot_state
