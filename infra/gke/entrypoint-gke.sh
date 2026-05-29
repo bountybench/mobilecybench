@@ -44,6 +44,16 @@ if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ "${DOCKERHUB_USERNAME}" != "placeholder
         echo "WARNING: Docker Hub login failed (continuing without auth)"
 fi
 
+# Artifact Registry auth for DinD (so it can pull agent_image from AR).
+# DinD is a SEPARATE daemon from the host docker; node-level pull creds
+# don't carry over. Auth with the SA key (same one used for gsutil).
+if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+    echo "Authing DinD docker to us-central1-docker.pkg.dev"
+    cat "${GOOGLE_APPLICATION_CREDENTIALS}" | docker login -u _json_key --password-stdin \
+        https://us-central1-docker.pkg.dev 2>&1 | tail -2 || \
+        echo "WARNING: DinD AR login failed"
+fi
+
 # ─── Pre-pull emulator image ─────────────────────────────────────────────
 # The Python Docker SDK has a 60s default timeout on containers.run(), which
 # is not enough for pulling the ~10 GB emulator image. Pre-pulling here
@@ -105,7 +115,14 @@ if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
         dirs+=("$(dirname "$summary")")
     done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)
     if [ ${#dirs[@]} -gt 0 ]; then
-        gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
+        # Force gsutil to use the SA key explicitly (gcloud auth state alone
+        # doesn't always reach gsutil; metadata server falls back to 403 on
+        # GKE pods without Workload Identity).
+        GSUTIL_AUTH=""
+        if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+            GSUTIL_AUTH="-o Credentials:gs_service_key_file=${GOOGLE_APPLICATION_CREDENTIALS}"
+        fi
+        gsutil $GSUTIL_AUTH -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
     else
         echo "WARNING: no experiment logs found to upload"
     fi
