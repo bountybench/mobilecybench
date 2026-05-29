@@ -31,6 +31,11 @@ class BaseEventParser(ABC):
         self.agent_reported_cost: float | None = None
         self.agent_reported_turns: int | None = None
         self.timing: dict[str, int] = {}
+        # Set by subclasses on terminal-class events that the CLI itself
+        # treats as run-ending (codex turn.failed, claude result/error,
+        # opencode error). Forces result.status="error" even when the
+        # process exits 0 — opencode does that on auth failure.
+        self.terminal_error: str | None = None
 
         # Per-turn (cleared on _flush_turn).
         self._turn_text: list[str] = []
@@ -84,7 +89,14 @@ class BaseEventParser(ABC):
         self, task: dict[str, Any], exit_code: int, elapsed: float
     ) -> dict[str, Any]:
         """Build the result.json shape from accumulated state."""
-        status = "completed" if exit_code == 0 else "error"
+        # Parser-detected terminal error wins over exit_code=0. Some CLIs
+        # (opencode on auth failure) emit a terminal error event then exit
+        # cleanly; without this, the run would be falsely reported as
+        # completed. The runner promotes to "timeout" later if applicable.
+        if self.terminal_error and exit_code == 0:
+            status = "error"
+        else:
+            status = "completed" if exit_code == 0 else "error"
         turns_taken = (
             self.agent_reported_turns
             if self.agent_reported_turns is not None
@@ -114,7 +126,7 @@ class BaseEventParser(ABC):
         if self.timing:
             result["timing"] = dict(self.timing)
         if status == "error":
-            result["error_traceback"] = (
+            result["error_traceback"] = self.terminal_error or (
                 f"{self.raw_log_prefix} exit_code={exit_code}, elapsed={elapsed:.1f}s"
             )
         return result

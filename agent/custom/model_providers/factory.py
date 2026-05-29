@@ -55,7 +55,7 @@ class SupportedModel(Enum):
     CLAUDE_HAIKU_4_5 = ModelConfig("claude-haiku-4-5", "litellm")
 
     # Google — LiteLLM provider
-    GEMINI_3_1_PRO = ModelConfig("gemini-3.1-pro", "litellm")
+    GEMINI_3_1_PRO = ModelConfig("gemini-3.1-pro-preview", "litellm")
     GEMINI_3_PRO = ModelConfig("gemini-3-pro-preview", "litellm")
 
 
@@ -83,8 +83,8 @@ def get_model_provider(
          model in ``SupportedModel`` and ``utils/token_pricing.json`` so
          cost telemetry stays accurate for sustained use.
        - If ``allow_unregistered=True`` (set via
-         ``runner_config.json:allow_unregistered_models``), fall through
-         to :class:`LiteLLMProvider` with substring detection from
+         ``runner_config.json:allow_unregistered_models_in_custom_mode``),
+         fall through to :class:`LiteLLMProvider` with substring detection from
          :func:`agent.model_providers.litellm_provider.lookup_rule` and
          emit a loud WARNING. Intended for model-sweep / exploration runs
          where the operator is comparing many model variants and accepts
@@ -112,7 +112,8 @@ def get_model_provider(
             "agent/custom/model_providers/factory.py:SupportedModel and add a "
             "pricing row to utils/token_pricing.json. For model-sweep "
             "exploration where you don't need accurate cost telemetry, "
-            "set 'allow_unregistered_models': true in runner_config.json. "
+            "set 'allow_unregistered_models_in_custom_mode': true in "
+            "runner_config.json. "
             "See documentation/ADDING_MODELS.md."
         )
 
@@ -120,7 +121,7 @@ def get_model_provider(
     rule = lookup_rule(model)
     logger.warning(
         "Model '%s' is not in SupportedModel but "
-        "allow_unregistered_models=true; routing through LiteLLM as %s "
+        "allow_unregistered_models_in_custom_mode=true; routing through LiteLLM as %s "
         "(env var %s). cost_usd will report $0 for this run because "
         "'%s' has no row in utils/token_pricing.json. Register the "
         "model permanently for sustained use. "

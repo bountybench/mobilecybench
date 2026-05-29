@@ -58,9 +58,17 @@ def _snapshot(
     elapsed: float,
     exit_code: int = 0,
 ) -> None:
-    """Write a best-effort result.json so partial state survives crash/kill."""
+    """Write a best-effort result.json so partial state survives crash/kill.
+
+    Status precedence: timeout > parser.terminal_error > caller-provided.
+    Timeout is set on SIGTERM and always wins. Parser-detected terminal
+    error promotes "completed" to "error" — needed because opencode emits
+    its terminal error event then exits 0.
+    """
     try:
         result = parser.summarize(task, exit_code, elapsed)
+        if status != "timeout" and parser.terminal_error:
+            status = "error"
         result["status"] = status
         write_json_atomic(result_path, result)
     except Exception as e:

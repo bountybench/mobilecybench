@@ -22,34 +22,6 @@ from typing import Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agent.custom.model_providers.factory import MODEL_REGISTRY
-from agent.custom.model_providers.litellm_provider import lookup_rule
-
-# Image-tag prefix (the part before "_<version>" in the Docker tag) →
-# set of ProviderRule.provider tags ("anthropic", "openai", "gemini",
-# ...) that the CLI in that image can call. Reference images follow
-# the `<prefix>_<version>-r<rev>` tag convention documented in
-# BRING_YOUR_OWN_AGENT.md. Unknown prefixes skip the compat check;
-# lab/BYO images are unconstrained.
-_CLI_IMAGE_COMPAT: dict[str, set[str]] = {
-    "claudecode": {"anthropic"},
-    "codex": {"openai"},
-}
-
-
-def _cli_family(agent_image: str) -> Optional[str]:
-    """Return the CLI prefix for a known reference image, else None.
-
-    Strips the registry/repo portion of ``agent_image`` and matches the
-    tag's ``<prefix>_`` head against ``_CLI_IMAGE_COMPAT`` keys.
-    Example: ``cybench/mobilecybench:claudecode_2.1.140-r2`` -> ``"claudecode"``.
-    """
-    tag = agent_image.rsplit(":", 1)[-1] if ":" in agent_image else agent_image
-    for prefix in _CLI_IMAGE_COMPAT:
-        if tag.startswith(prefix + "_"):
-            return prefix
-    return None
-
 
 class RunnerConfig(BaseModel):
     """Configuration for a single ``runner.py`` invocation.
@@ -106,7 +78,7 @@ class RunnerConfig(BaseModel):
         ...,
         min_length=1,
         description=(
-            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). "
+            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). "
             "Custom path: routed via agent/custom/model_providers/factory.py. "
             "External path: forwarded to the in-container CLI."
         ),
@@ -156,16 +128,19 @@ class RunnerConfig(BaseModel):
             "Models without a reasoning-effort knob ignore this field."
         ),
     )
-    allow_unregistered_models: bool = Field(
+    allow_unregistered_models_in_custom_mode: bool = Field(
         default=False,
+        title="Allow Unregistered Models in Custom Mode",
         description=(
             "Permit models that are not declared in "
-            "agent/custom/model_providers/factory.py:SupportedModel. Custom "
-            "mode falls through to LiteLLM with auto-detected routing and a "
-            "runtime WARNING; external mode skips the config-load model "
-            "registration check (image/CLI compatibility is still enforced). "
-            "cost_usd reports $0 for any model that lacks a row in "
-            "utils/token_pricing.json regardless of this flag."
+            "agent/custom/model_providers/factory.py:SupportedModel when "
+            "agent_mode='custom'. Custom mode then falls through to LiteLLM "
+            "with auto-detected routing and a runtime WARNING. External "
+            "mode is BYO-owned and does not use this custom-mode registry; "
+            "the external image owns model validation. Models without a row "
+            "in utils/token_pricing.json "
+            "report cost_source='derived_unpriced' unless the agent reports "
+            "cost."
         ),
     )
 
@@ -338,57 +313,6 @@ class RunnerConfig(BaseModel):
                 f"See documentation/BRING_YOUR_OWN_AGENT.md for the current tag."
             )
         return data
-
-    @model_validator(mode="after")
-    def validate_model_registered_external(self) -> "RunnerConfig":
-        """For external mode, reject model ids not in ``SupportedModel``.
-
-        Custom mode is gated when the provider is constructed in
-        ``agent/custom/model_providers/factory.py:get_model_provider``;
-        external mode otherwise forwards the model id verbatim to the
-        container CLI, so a typo (``opus-4-7`` vs ``claude-opus-4-7``)
-        only fails after image pull + emulator boot + API call.
-        ``allow_unregistered_models=True`` bypasses this check for
-        exploration runs.
-        """
-        if self.agent_mode != "external" or self.allow_unregistered_models:
-            return self
-        if self.model not in MODEL_REGISTRY:
-            raise ValueError(
-                f"Unknown model {self.model!r}. Supported: {sorted(MODEL_REGISTRY)}. "
-                f"Add to SupportedModel + utils/token_pricing.json, or set "
-                f"allow_unregistered_models=true. See documentation/ADDING_MODELS.md."
-            )
-        return self
-
-    @model_validator(mode="after")
-    def validate_image_model_compat(self) -> "RunnerConfig":
-        """Reject obvious image/model mismatches for external-mode reference CLIs.
-
-        The reference ``claudecode_*`` image only talks to Anthropic and
-        ``codex_*`` only to OpenAI; pairing one with a model from another
-        provider fails inside the container after setup. Unknown image
-        tags (lab / BYO) skip — they declare their own contract per
-        ``documentation/BRING_YOUR_OWN_AGENT.md``. Unlike
-        :meth:`validate_model_registered_external`, this check is not
-        bypassed by ``allow_unregistered_models``: the constraint is a
-        property of the CLI in the image, not of the model registry.
-        """
-        if self.agent_mode != "external":
-            return self
-        cli = _cli_family(self.agent_image)
-        if cli is None:
-            return self
-        allowed = _CLI_IMAGE_COMPAT[cli]
-        rule = lookup_rule(self.model)
-        if rule.provider not in allowed:
-            raise ValueError(
-                f"agent_image '{self.agent_image}' uses the {cli} CLI which "
-                f"only supports {sorted(allowed)} models; got model={self.model!r} "
-                f"(provider={rule.provider}). Use a model from the supported "
-                f"provider(s), or switch agent_image."
-            )
-        return self
 
     @model_validator(mode="after")
     def validate_probe_only_workflow(self) -> "RunnerConfig":

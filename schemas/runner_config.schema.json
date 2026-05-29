@@ -32,7 +32,7 @@
       "type": "string"
     },
     "model": {
-      "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",
+      "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",
       "minLength": 1,
       "title": "Model",
       "type": "string"
@@ -96,10 +96,10 @@
       "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
       "title": "Reasoning Effort"
     },
-    "allow_unregistered_models": {
+    "allow_unregistered_models_in_custom_mode": {
       "default": false,
-      "description": "Permit models that are not declared in agent/custom/model_providers/factory.py:SupportedModel. Custom mode falls through to LiteLLM with auto-detected routing and a runtime WARNING; external mode skips the config-load model registration check (image/CLI compatibility is still enforced). cost_usd reports $0 for any model that lacks a row in utils/token_pricing.json regardless of this flag.",
-      "title": "Allow Unregistered Models",
+      "description": "Permit models that are not declared in agent/custom/model_providers/factory.py:SupportedModel when agent_mode='custom'. Custom mode then falls through to LiteLLM with auto-detected routing and a runtime WARNING. External mode is BYO-owned and does not use this custom-mode registry; the external image owns model validation. Models without a row in utils/token_pricing.json report cost_source='derived_unpriced' unless the agent reports cost.",
+      "title": "Allow Unregistered Models in Custom Mode",
       "type": "boolean"
     },
     "workflow": {

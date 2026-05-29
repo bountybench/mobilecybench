@@ -111,102 +111,32 @@ class TestCreateWorkflow:
             RunnerConfig(**{**base_config.model_dump(), "agent_mode": legacy_mode})
 
 
-class TestImageModelCompat:
-    """agent_image (CLI family) ↔ model (provider family) compatibility."""
+class TestExternalModelOwnership:
+    """External images own model validation; RunnerConfig forwards model ids."""
 
-    @pytest.mark.parametrize(
-        "image, model",
-        [
-            ("cybench/mobilecybench:claudecode_2.1.140-r2", "claude-opus-4-7"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "gpt-5.5"),
-        ],
-    )
-    def test_matching_cli_and_provider_ok(self, base_config, image, model):
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": image,
-                "model": model,
-            }
-        )
-        assert cfg.agent_image == image and cfg.model == model
-
-    @pytest.mark.parametrize(
-        "image, model, cli",
-        [
-            ("cybench/mobilecybench:claudecode_2.1.140-r2", "gpt-5.5", "claudecode"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "claude-opus-4-7", "codex"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "gemini-3.1-pro", "codex"),
-        ],
-    )
-    def test_mismatch_rejected(self, base_config, image, model, cli):
-        with pytest.raises(ValueError, match=cli):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "agent_mode": "external",
-                    "agent_image": image,
-                    "model": model,
-                }
-            )
-
-    def test_unknown_image_tag_is_permissive(self, base_config):
-        """Lab/BYO images that don't match a known CLI prefix bypass the check."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": "lab/mycli:0.1",
-                "model": "gemini-3.1-pro",
-            }
-        )
-        assert cfg.agent_image == "lab/mycli:0.1"
-
-    def test_custom_mode_skips_check(self, base_config):
-        """Custom mode is gated by SupportedModel; image-compat is irrelevant."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "custom",
-                "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-                "model": "gpt-5.5",
-            }
-        )
-        assert cfg.agent_mode == "custom"
-
-    @pytest.mark.parametrize(
-        "model",
-        [
-            "opus-4-7",  # missing claude- prefix (real-world typo)
-            "claude-opus-4-typoz",  # substring matches anthropic but model nonexistent
-            "gpt-5.5-typo",
-        ],
-    )
-    def test_external_unknown_model_rejected(self, base_config, model):
-        """External-mode model ids must be in SupportedModel (catches typos)."""
-        with pytest.raises(ValueError, match="Unknown model"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "agent_mode": "external",
-                    "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-                    "model": model,
-                }
-            )
-
-    def test_external_unknown_model_allowed_with_opt_in(self, base_config):
-        """allow_unregistered_models=true bypasses the registered-model check."""
+    def test_external_unknown_model_allowed_for_byo_image(self, base_config):
+        """SupportedModel is not a universal gate for external mode."""
         cfg = RunnerConfig(
             **{
                 **base_config.model_dump(),
                 "agent_mode": "external",
                 "agent_image": "lab/mycli:0.1",
                 "model": "future-model-not-yet-registered",
-                "allow_unregistered_models": True,
             }
         )
         assert cfg.model == "future-model-not-yet-registered"
+
+    def test_external_reference_image_model_pair_left_to_image(self, base_config):
+        """Even reference images own their runtime model contract."""
+        cfg = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "agent_mode": "external",
+                "agent_image": "cybench/mobilecybench:codex_0.130.0-r2",
+                "model": "claude-opus-4-7",
+            }
+        )
+        assert cfg.model == "claude-opus-4-7"
 
 
 class TestProbeOnlyValidators:

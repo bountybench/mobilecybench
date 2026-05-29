@@ -14,7 +14,7 @@
   "max_iterations": 30,
   "max_model_response_tokens": 8192,
   "additional_system_prompt": null,
-  "allow_unregistered_models": false,
+  "allow_unregistered_models_in_custom_mode": false,
 
   "agent_image": "cybench/mobilecybench:latest",
   "build_type": "download-apk",

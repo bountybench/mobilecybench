@@ -35,6 +35,7 @@ services:
     networks:
       - shared_net
       - private_net
+      - agent_net
     healthcheck:
       test: ["CMD", "curl", "-fsk", "https://localhost"]
       interval: 10s
@@ -79,6 +80,8 @@ services:
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true
   private_net:
     driver: bridge
