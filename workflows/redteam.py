@@ -866,6 +866,22 @@ class RedTeamWorkflow(Workflow):
                     score=0,
                     reason="Probe evaluator failed to produce valid JSON",
                 )
+            elif p1["exit_code"] != 0:
+                logger.info(
+                    "[scoring] probe_only mode: replay failed with "
+                    f"exit_code={p1['exit_code']}; ignoring probe triggers"
+                )
+                result = self._make_result(
+                    "no_signal",
+                    score=0,
+                    reason=(
+                        "Exploit replay failed before probes could be trusted "
+                        f"(exit_code={p1['exit_code']})"
+                    ),
+                    signals={"probe_vuln": 0},
+                    phases={"probe": self._phase_summary(p1)},
+                    probe_results={"probe": p1["probe_results"]},
+                )
             else:
                 probe_vuln = int(p1["probes_triggered"])
                 # signal/no_signal: probe_only lacks a comparison build, so we

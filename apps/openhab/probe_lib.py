@@ -265,6 +265,15 @@ def is_auth_rejection(status: int) -> bool:
     return status in {401, 403}
 
 
+def probe_status_for(success: bool, message: str) -> str:
+    """Fallback structured status for app-specific probe results."""
+    if success:
+        return "observed_no_violation"
+    if message.startswith("infra error:"):
+        return "infra_error"
+    return "violation"
+
+
 def load_runtime_restauth_config() -> dict[str, bool]:
     """Read stable runtime.cfg REST auth settings from the mounted config file."""
     config_path = APP_DIR / "openhab_conf" / "services" / "runtime.cfg"

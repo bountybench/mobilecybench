@@ -11,6 +11,8 @@ APP_DIR = Path(__file__).resolve().parents[1]
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
+from probe_lib import probe_status_for  # noqa: E402
+
 from remote_attacker.checks.check_ra_co_hydration_oracles import (  # noqa: E402
     check_cloud_registration_network_egress,
     check_credential_egress_functional_verification_ra_co,
@@ -36,10 +38,13 @@ def main() -> int:
         except Exception as e:
             success = False
             message = f"infra error: {e!r}"
-            extra_status = {f"{fn.__name__}_status": "infra_error"}
+            extra_status = {}
         prefix = "[PASS]" if success else "[FAIL]"
         print(f"{prefix} {fn.__name__}: {message}", file=sys.stderr)
         results[fn.__name__] = 1 if success else 0
+        results[f"{fn.__name__}_status"] = probe_status_for(success, message)
+        # Explicit check statuses override the fallback when they provide a
+        # more precise status such as blocked_missing_hydration_manifest.
         results.update(extra_status)
         overall_secure = overall_secure and success
     results_with_score = {"score": 1 if overall_secure else 0, **results}

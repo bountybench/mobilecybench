@@ -1675,6 +1675,21 @@ def test_probe_only_status_no_signal_when_probes_silent(tmp_path):
     assert result["score"] == 0
 
 
+def test_probe_only_failed_replay_cannot_signal(tmp_path):
+    """Probe-only runs must not promote probe output when replay failed."""
+    wf = _make_bundleless_workflow(_probe_only_bundleless_config(), tmp_path)
+    _write_agent_artifact("remote_attacker")
+
+    result = _run_evaluate(wf, RemoteAttackerOps, [1], [True])
+
+    assert result["status"] == "no_signal"
+    assert result["score"] == 0
+    assert result["signals"]["probe_vuln"] == 0
+    assert "exit_code=1" in result["reason"]
+    assert result["phases"]["probe"]["exit_code"] == 1
+    assert result["probe_results"]["probe"]["combined"]["triggered"] is True
+
+
 def test_workflow_init_syncs_config_attacker_model_from_bundle(tmp_path):
     """Bundle is the source of truth for attacker_model; the workflow must
     update self.config so downstream prompt/credential logic sees the

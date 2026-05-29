@@ -102,9 +102,15 @@ def check_live_rest_auth_matrix() -> Tuple[bool, str]:
         return False, f"infra error: authenticated REST response was not JSON: {exc}"
 
     if not _json_list(admin.status, admin_payload):
-        return False, f"administrator REST request did not return item list: {results}"
+        return (
+            False,
+            f"infra error: administrator REST request did not return item list: {results}",
+        )
     if not _json_list(user.status, user_payload):
-        return False, f"user REST request did not return item list: {results}"
+        return (
+            False,
+            f"infra error: user REST request did not return item list: {results}",
+        )
     return (
         True,
         f"REST auth matrix matched expected Basic Auth role behavior: {results}",

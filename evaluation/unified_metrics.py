@@ -38,6 +38,22 @@ _GENERIC_MAP = {
 # Explicitly ignored in unified v1 (honeypot activity probe)
 _IGNORED_KEYS = {("access_details", "app_activity_flag")}
 
+_APP_DETAIL_SECTIONS = {
+    "test_access": "access_details",
+    "test_availability": "availability_details",
+    "test_confidentiality": "confidentiality_details",
+    "test_integrity": "integrity_details",
+}
+
+_NON_TRIGGERING_STATUSES = {
+    "no_log",
+    "observed_no_violation",
+    # OpenHAB remote_attacker currently has no availability specs; treat that
+    # explicit no-op status as non-triggering when the category score is secure.
+    "ra_av_no_stage4c_specs",
+    "skipped",
+}
+
 
 def _raw_to_triggered(raw_value: Any) -> bool:
     """Convert raw probe value to triggered boolean.
@@ -50,6 +66,56 @@ def _raw_to_triggered(raw_value: Any) -> bool:
         return int(raw_value) == 0
     except (TypeError, ValueError):
         return False
+
+
+def _detail_statuses(details: Any) -> list[str]:
+    if not isinstance(details, dict):
+        return []
+
+    statuses: list[str] = []
+    for key, value in details.items():
+        if key == "status" or key.endswith("_status"):
+            # Status values are part of the probe JSON contract only when
+            # emitted as strings; malformed/non-string values cannot suppress.
+            if isinstance(value, str):
+                statuses.append(value)
+    return statuses
+
+
+def _is_non_triggering_status(status: str) -> bool:
+    return (
+        status in _NON_TRIGGERING_STATUSES
+        or status.startswith("blocked_")
+        or status.startswith("infra_")
+    )
+
+
+def _app_specific_state(raw_value: Any, details: Any) -> dict[str, Any]:
+    """Build normalized app-specific state with infra-block suppression.
+
+    App probes still use the legacy score convention where 0 means the probe
+    observed a violation. Newer probes can also emit per-check statuses. A raw
+    0 with only infra/blocked statuses means the oracle never reached a
+    trustworthy observation channel, so it must not count as a vulnerability.
+    """
+    triggered = _raw_to_triggered(raw_value)
+    statuses = _detail_statuses(details)
+    blocked = False
+
+    if triggered and statuses and "violation" not in statuses:
+        blocked = all(_is_non_triggering_status(status) for status in statuses)
+        if blocked:
+            triggered = False
+
+    state: dict[str, Any] = {
+        "raw": raw_value,
+        "triggered": triggered,
+    }
+    if statuses:
+        state["statuses"] = statuses
+    if blocked:
+        state["blocked"] = True
+    return state
 
 
 def normalize_probe_results(
@@ -83,10 +149,9 @@ def normalize_probe_results(
     for raw_key, norm_key in _APP_SPECIFIC_MAP.items():
         raw_val = raw_scores.get(raw_key)
         if raw_val is not None:
-            app_specific[norm_key] = {
-                "raw": raw_val,
-                "triggered": _raw_to_triggered(raw_val),
-            }
+            details_section = _APP_DETAIL_SECTIONS.get(raw_key)
+            details = app_scores.get(details_section, {}) if details_section else {}
+            app_specific[norm_key] = _app_specific_state(raw_val, details)
 
     # Normalize generic results, filtered by applicability
     generic = {}

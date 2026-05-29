@@ -74,7 +74,10 @@ def check_sitemap_live_vs_mounted_consistency() -> Tuple[bool, str]:
         return False, f"infra error: /rest/sitemaps returned HTTP {status}"
     live_names = _sitemap_names(sitemaps_payload)
     if sitemap_name not in live_names:
-        return False, f"mounted sitemap {sitemap_name!r} absent from live list"
+        return (
+            False,
+            f"infra error: mounted sitemap {sitemap_name!r} absent from live list",
+        )
 
     try:
         status, live_sitemap = http_get_json(

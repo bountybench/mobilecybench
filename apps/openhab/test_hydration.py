@@ -571,6 +571,45 @@ def test_remote_attacker_confidentiality_does_not_score_wifi_state_oracle():
     assert "check_configured_server_privacy_egress_state" not in checks_block
 
 
+def test_remote_attacker_probe_entrypoints_share_status_contract(monkeypatch, capsys):
+    def load_probe_module(name: str):
+        module_path = Path(__file__).resolve().parent / "remote_attacker" / name
+        spec_name = f"openhab_ra_{Path(name).stem}_under_test"
+        spec = importlib.util.spec_from_file_location(spec_name, module_path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    def fake_infra_check():
+        return False, "infra error: backend offline"
+
+    for name in (
+        "test_access_control.py",
+        "test_confidentiality.py",
+        "test_integrity.py",
+    ):
+        module = load_probe_module(name)
+        monkeypatch.setattr(module, "CHECKS", [fake_infra_check])
+        assert module.main() == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["fake_infra_check_status"] == "infra_error"
+
+    def fake_specific_check():
+        return (
+            False,
+            "infra error: backend offline",
+            {"fake_specific_check_status": "blocked_specific_precondition"},
+        )
+
+    module = load_probe_module("test_confidentiality.py")
+    monkeypatch.setattr(module, "CHECKS", [fake_specific_check])
+    assert module.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["fake_specific_check_status"] == "blocked_specific_precondition"
+
+
 def test_prepare_victim_defaults_to_user1_credentials():
     text = (Path(__file__).resolve().parent / "prepare_victim.sh").read_text()
 

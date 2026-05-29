@@ -74,8 +74,7 @@ def check_jsondb_user_functional_consistency() -> Tuple[bool, str]:
         except ProbeInfraError as exc:
             return False, f"infra error: REST auth channel unavailable: {exc}"
         if status != 200:
-            failures.append(f"{username} REST auth returned HTTP {status}")
-            continue
+            return False, f"infra error: {username} REST auth returned HTTP {status}"
 
         value = users_db.get(username, {}).get("value", {})
         failures.extend(
