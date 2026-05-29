@@ -65,6 +65,10 @@ spec:
               value: "NO_CODEBASE"
             - name: AGENT_WALLCLOCK_SECONDS
               value: "AGENT_WALLCLOCK_SECONDS"
+            - name: REASONING_EFFORT
+              value: "REASONING_EFFORT"
+            - name: ALLOW_UNREGISTERED_MODELS
+              value: "ALLOW_UNREGISTERED_MODELS"
             - name: RUN_ID
               valueFrom:
                 fieldRef:
@@ -74,6 +78,12 @@ spec:
                 name: llm-api-keys
             - secretRef:
                 name: dockerhub-credentials
+                optional: true
+            # claude-code (external agent mode) reads CLAUDE_CODE_OAUTH_TOKEN
+            # + REFRESH_TOKEN from env. Optional so legacy synthetic-vuln +
+            # non-claude-code agents still apply cleanly.
+            - secretRef:
+                name: claude-code-oauth
                 optional: true
           volumeMounts:
             - name: dev-kvm

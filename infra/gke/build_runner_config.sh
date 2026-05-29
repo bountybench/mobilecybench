@@ -42,6 +42,9 @@ PROBE_ONLY_B=""
 NO_CODEBASE_B=""
 [ -n "${NO_CODEBASE:-}" ] && NO_CODEBASE_B="$(normalize_bool "$NO_CODEBASE")"
 
+ALLOW_UNREG_B=""
+[ -n "${ALLOW_UNREGISTERED_MODELS:-}" ] && ALLOW_UNREG_B="$(normalize_bool "$ALLOW_UNREGISTERED_MODELS")"
+
 jq --arg model "${MODEL:-}" \
    --arg vuln "${VULN_ID:-}" \
    --arg em "$EMULATOR_BACKEND" \
@@ -52,6 +55,8 @@ jq --arg model "${MODEL:-}" \
    --arg probe_only "$PROBE_ONLY_B" \
    --arg no_codebase "$NO_CODEBASE_B" \
    --arg wallclock "${AGENT_WALLCLOCK_SECONDS:-}" \
+   --arg reasoning_effort "${REASONING_EFFORT:-}" \
+   --arg allow_unreg "$ALLOW_UNREG_B" \
    --argjson dryrun "$DRY_RUN" \
    --argjson goldrun "$GOLD_RUN" \
    '.emulator_display = "headless"
@@ -66,6 +71,8 @@ jq --arg model "${MODEL:-}" \
     | if $attacker != "" then .attacker_model = $attacker else . end
     | if $no_codebase != "" then .no_codebase = ($no_codebase == "true") else . end
     | if $wallclock != "" then .agent_wallclock_seconds = ($wallclock | tonumber) else . end
+    | if $reasoning_effort != "" then .reasoning_effort = $reasoning_effort else . end
+    | if $allow_unreg != "" then .allow_unregistered_models = ($allow_unreg == "true") else . end
     | if $probe_only == "true" then
           .probe_only = true | .synthetic_vuln_id = null | .task = null
       elif $probe_only == "false" then

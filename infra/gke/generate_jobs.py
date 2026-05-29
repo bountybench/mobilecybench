@@ -132,6 +132,8 @@ def render_job(
     attacker_model: str = "",
     no_codebase: bool | None = None,
     agent_wallclock_seconds: int | None = None,
+    reasoning_effort: str = "",
+    allow_unregistered_models: bool | None = None,
 ) -> str:
     """Render a K8s Job YAML by substituting placeholders in the template.
 
@@ -162,6 +164,8 @@ def render_job(
         '"ATTACKER_MODEL"': f'"{attacker_model}"',
         '"NO_CODEBASE"': f'"{_env_bool(no_codebase)}"',
         '"AGENT_WALLCLOCK_SECONDS"': f'"{wallclock}"',
+        '"REASONING_EFFORT"': f'"{reasoning_effort}"',
+        '"ALLOW_UNREGISTERED_MODELS"': f'"{_env_bool(allow_unregistered_models)}"',
     }
     for placeholder, value in env_replacements.items():
         rendered = rendered.replace(placeholder, value)
@@ -232,6 +236,8 @@ def build_external_jobs(template: str, apps: list[str], args) -> list[tuple[str,
                         attacker_model=attacker,
                         no_codebase=no_codebase,
                         agent_wallclock_seconds=args.agent_wallclock_seconds,
+                        reasoning_effort=args.reasoning_effort,
+                        allow_unregistered_models=args.allow_unregistered_models,
                     )
                     jobs.append((job_name, yaml_str))
     return jobs
@@ -338,6 +344,16 @@ def main():
         "--agent-wallclock-seconds",
         type=int,
         help="Wall-clock kill budget for the external agent (seconds)",
+    )
+    ext.add_argument(
+        "--reasoning-effort",
+        default="",
+        help="Reasoning effort hint (e.g. low/medium/high/max). Empty = leave base config value.",
+    )
+    ext.add_argument(
+        "--allow-unregistered-models",
+        action="store_true",
+        help="Set allow_unregistered_models=true so models not in SupportedModel pass validation (e.g. claude-opus-4-8).",
     )
 
     run_mode = parser.add_mutually_exclusive_group()
