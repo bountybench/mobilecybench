@@ -164,22 +164,39 @@ def test_entrypoint_gke_find_picks_up_same_dirs(tmp_path: Path) -> None:
     ), f"shell find returned {dir_names}, expected {expected}"
 
 
-def test_entrypoint_gke_script_uploads_block_dry_run(tmp_path: Path) -> None:
-    """End-to-end smoke of the entrypoint's upload block with a fake gsutil shim.
+def test_entrypoint_gke_script_uploads_block_and_verifies(tmp_path: Path) -> None:
+    """End-to-end smoke of the entrypoint's fail-closed upload block.
 
     We can't talk to real GCS in a unit test, so we shim ``gsutil`` to a
     no-op script on PATH and run the relevant snippet. Verifies that
-    (a) the `find`-derived ``dirs`` array is non-empty and (b) gsutil gets
-    invoked with the right set of run dirs.
+    (a) the `find`-derived ``dirs`` array is non-empty, (b) gsutil gets
+    invoked with the right set of run dirs, and (c) upload verification runs.
     """
     paths = _make_fixture(tmp_path)
 
-    # Fake gsutil that just prints its args, one per line.
+    # Fake gcloud so the upload block falls back to gsutil even on developer
+    # machines that have gcloud installed.
     shim_dir = tmp_path / "bin"
     shim_dir.mkdir()
+    fake_gcloud = shim_dir / "gcloud"
+    fake_gcloud.write_text("#!/usr/bin/env bash\nexit 1\n")
+    fake_gcloud.chmod(0o755)
+
     fake_gsutil = shim_dir / "gsutil"
     fake_gsutil.write_text(
-        "#!/usr/bin/env bash\n" 'for arg in "$@"; do echo "GSUTIL_ARG=$arg"; done\n'
+        "#!/usr/bin/env bash\n"
+        'orig=("$@")\n'
+        'if [ "${1:-}" = "-m" ]; then shift; fi\n'
+        'cmd="${1:-}"\n'
+        'if [ "$cmd" = "cp" ]; then\n'
+        '  for arg in "${orig[@]}"; do echo "GSUTIL_CP_ARG=$arg"; done\n'
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$cmd" = "ls" ]; then\n'
+        '  echo "GSUTIL_LS_ARG=$2"\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 1\n"
     )
     fake_gsutil.chmod(0o755)
 
@@ -197,15 +214,36 @@ def test_entrypoint_gke_script_uploads_block_dry_run(tmp_path: Path) -> None:
         "MODEL=claude-opus-4-7\n"
         "RUN_ID=fake-run\n"
         'GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"\n'
+        "UPLOAD_EXIT_CODE=0\n"
         "dirs=()\n"
         "while IFS= read -r summary; do\n"
         '  dirs+=("$(dirname "$summary")")\n'
         'done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)\n'
         "if [ ${#dirs[@]} -gt 0 ]; then\n"
-        '  gsutil -m cp -r "${dirs[@]}" "$GCS_PATH"\n'
+        "  upload_ok=0\n"
+        "  if command -v gcloud >/dev/null 2>&1 && gcloud storage cp --help >/dev/null 2>&1; then\n"
+        '    gcloud storage cp -r "${dirs[@]}" "$GCS_PATH" && upload_ok=1 || gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" && upload_ok=1 || true\n'
+        "  else\n"
+        '    gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" && upload_ok=1 || true\n'
+        "  fi\n"
+        '  if [ "$upload_ok" -eq 1 ]; then\n'
+        "    if command -v gcloud >/dev/null 2>&1 && gcloud storage ls --help >/dev/null 2>&1; then\n"
+        '      gcloud storage ls "${GCS_PATH}**/run_summary.json" >/dev/null 2>&1 || upload_ok=0\n'
+        "    else\n"
+        '      gsutil ls "${GCS_PATH}**/run_summary.json" >/dev/null 2>&1 || upload_ok=0\n'
+        "    fi\n"
+        "  fi\n"
+        '  if [ "$upload_ok" -ne 1 ]; then\n'
+        '    echo "ERROR: GCS upload verification failed for $GCS_PATH" >&2\n'
+        "    UPLOAD_EXIT_CODE=1\n"
+        "  else\n"
+        '    echo "Verified GCS upload at $GCS_PATH"\n'
+        "  fi\n"
         "else\n"
-        "  echo NO_DIRS_FOUND\n"
+        '  echo "ERROR: no experiment logs found to upload" >&2\n'
+        "  UPLOAD_EXIT_CODE=1\n"
         "fi\n"
+        'exit "$UPLOAD_EXIT_CODE"\n'
     )
 
     env = {
@@ -222,9 +260,9 @@ def test_entrypoint_gke_script_uploads_block_dry_run(tmp_path: Path) -> None:
 
     # gsutil should have been called with the 4 run dirs + the gs:// dest.
     gsutil_args = [
-        ln.removeprefix("GSUTIL_ARG=")
+        ln.removeprefix("GSUTIL_CP_ARG=")
         for ln in proc.stdout.splitlines()
-        if ln.startswith("GSUTIL_ARG=")
+        if ln.startswith("GSUTIL_CP_ARG=")
     ]
     assert gsutil_args[:3] == ["-m", "cp", "-r"], f"got {gsutil_args!r}"
 
@@ -240,5 +278,63 @@ def test_entrypoint_gke_script_uploads_block_dry_run(tmp_path: Path) -> None:
             paths["gold"].name,
         ]
     )
-    # 'NO_DIRS_FOUND' should not appear.
-    assert "NO_DIRS_FOUND" not in proc.stdout
+    assert (
+        "Verified GCS upload at gs://fake-bucket/ntfy-android/none/claude-opus-4-7/fake-run/"
+        in proc.stdout
+    )
+
+
+def test_entrypoint_gke_upload_block_fails_without_logs(tmp_path: Path) -> None:
+    """A non-dry-run GKE job must fail if no run_summary.json exists."""
+    block = (
+        "set -e\n"
+        f"export MOBILECYBENCH_LOGS_DIR={tmp_path!s}\n"
+        "GCS_BUCKET=fake-bucket\n"
+        "APP_NAME=wallabag\n"
+        "VULN_ID=probe-only\n"
+        "MODEL=gpt-5.5\n"
+        "RUN_ID=fake-run\n"
+        'GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"\n'
+        "UPLOAD_EXIT_CODE=0\n"
+        "dirs=()\n"
+        "while IFS= read -r summary; do\n"
+        '  dirs+=("$(dirname "$summary")")\n'
+        'done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)\n'
+        "if [ ${#dirs[@]} -gt 0 ]; then\n"
+        "  echo UNEXPECTED_DIRS\n"
+        "else\n"
+        '  if [ "${DRY_RUN:-false}" = "true" ]; then\n'
+        '    echo "Dry run produced no experiment logs; skipping upload verification"\n'
+        "  else\n"
+        '    echo "ERROR: no experiment logs found to upload" >&2\n'
+        "    UPLOAD_EXIT_CODE=1\n"
+        "  fi\n"
+        "fi\n"
+        'exit "$UPLOAD_EXIT_CODE"\n'
+    )
+
+    proc = subprocess.run(["bash", "-c", block], capture_output=True, text=True)
+    assert proc.returncode == 1
+    assert "ERROR: no experiment logs found to upload" in proc.stderr
+
+
+def test_entrypoint_gke_persists_failure_artifacts_for_upload() -> None:
+    """Failed GKE runs should create a run_summary-backed diagnostic artifact.
+
+    This is intentionally a script-level assertion: the full entrypoint starts
+    Docker-in-Docker and an emulator, but the persistence contract we need for
+    deleted pods is that a failed runner writes a discoverable run_summary.json
+    under MOBILECYBENCH_LOGS_DIR before the GCS upload block runs.
+    """
+    script = ENTRYPOINT.read_text()
+
+    assert 'exec > >(tee -a "$ENTRYPOINT_LOG") 2>&1' in script
+    assert 'collect_gke_failure_artifacts "$EXIT_CODE"' in script
+    assert (
+        'local failure_dir="$MOBILECYBENCH_LOGS_DIR/gke_failure/${RUN_ID:-unknown-run}"'
+        in script
+    )
+    assert 'docker ps -a > "$failure_dir/docker_ps.txt" 2>&1 || true' in script
+    assert 'adb devices -l > "$failure_dir/adb_devices.txt" 2>&1 || true' in script
+    assert '> "$failure_dir/run_summary.json"' in script
+    assert 'find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json' in script
