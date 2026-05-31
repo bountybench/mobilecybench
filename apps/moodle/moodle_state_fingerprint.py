@@ -219,12 +219,14 @@ FIELD_QUERIES = {
 }
 
 # These fields are useful in the raw sidecar for debugging, but not stable
-# enough for the aggregate fingerprint: normal app/API activity appends
-# non-agent logstore rows during baseline probes. Exact-hashing them makes
-# a clean baseline fail after legitimate reads.
+# enough for the aggregate fingerprint. Normal app/API activity appends
+# non-agent logstore rows during baseline probes. Moodle Mobile may also
+# re-register the victim device after a harness pm clear, changing pushid
+# without any boundary violation.
 FINGERPRINT_EXCLUDED_FIELDS = {
     "non_agent_logstore_count",
     "non_agent_logstore_id_set_md5",
+    "non_agent_user_devices_md5",
 }
 
 
