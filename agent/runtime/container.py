@@ -167,11 +167,6 @@ class AgentEnvironment:
                 apk_volumes = self._setup_agent_apk()
                 if apk_volumes:
                     volumes.update(apk_volumes)
-                # Exploit replay still reads from agent_codebase on the host
-                # (run_exploit_container.sh --codebase-dir). Stage it but do
-                # not add its bind-mount — the agent only sees /app/apk/.
-                if self.workflow == "exploit":
-                    self._setup_agent_codebase()
             else:
                 volumes = self._setup_agent_codebase()
 

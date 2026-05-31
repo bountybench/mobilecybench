@@ -934,8 +934,10 @@ class RedTeamWorkflow(Workflow):
 
         # ---- Phase 2: Patched app ----
         logger.info("[phase 2/2] patched app")
-        self._bundle.prepare_phase2_codebase(codebase_dir)
-        try:
+        if self.config.no_codebase:
+            logger.info(
+                "Skipping phase-2 codebase prep/restore because no_codebase=true"
+            )
             phase2_result = self._ops.run_phase(
                 self,
                 replays_dir / "phase2_patched",
@@ -949,10 +951,26 @@ class RedTeamWorkflow(Workflow):
                     perm_log_path=ma_perm_log_path,
                 ),
             )
-        finally:
-            # Bundle resets its target repository so that
-            # verifier/probes after phase 2 observe a clean tree.
-            self._bundle.restore_codebase(codebase_dir)
+        else:
+            self._bundle.prepare_phase2_codebase(codebase_dir)
+            try:
+                phase2_result = self._ops.run_phase(
+                    self,
+                    replays_dir / "phase2_patched",
+                    **self._ops.get_phase_kwargs(
+                        agent_exploit_dir,
+                        self._bundle.phase2_apk(),
+                        needs_flags=needs_flags,
+                        needs_ssrf=needs_ssrf,
+                        apk_path=ma_artifact.apk_path if ma_artifact else None,
+                        gate=ma_artifact.gate if ma_artifact else None,
+                        perm_log_path=ma_perm_log_path,
+                    ),
+                )
+            finally:
+                # Bundle resets its target repository so that
+                # verifier/probes after phase 2 observe a clean tree.
+                self._bundle.restore_codebase(codebase_dir)
 
         p2 = self._evaluate_phase(
             "Phase 2 (patched)", phase2_result, replays_dir, "phase2"

@@ -269,9 +269,10 @@ class RunnerConfig(BaseModel):
         gt=0,
         description=(
             "Wall-clock budget for agent execution. External agents are "
-            "terminated by the harness on expiry; custom agents stop before "
-            "starting the next turn after this budget, with max_iterations "
-            "remaining as a safety ceiling."
+            "terminated by the harness on expiry. Custom agents honor this "
+            "limit when the field is explicitly set by the run configuration, "
+            "stopping before the next turn with max_iterations remaining as a "
+            "safety ceiling."
         ),
     )
 
@@ -416,13 +417,12 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_apk_obfuscation(self) -> "RunnerConfig":
-        # apk_obfuscation: on requires a pre-built obfuscated APK to consume.
-        # build_type: source expects build_apk.sh to produce that artifact,
-        # but build_apk.sh is not invoked from the Python workflow code paths
-        # — it is operator-driven or CI-driven. Reject the combination
-        # cleanly rather than producing a cryptic FileNotFoundError at
-        # runtime when the workflow looks for the obfuscated APK that
-        # source mode did not build.
+        # apk_obfuscation: on is intentionally limited to prebuilt APK
+        # consumption paths. Even where source builds can produce obfuscated
+        # artifacts, the benchmark mode we want here is APK-only: no source
+        # tree assumptions during the run and no source-build-only behavior
+        # deciding which binary the agent sees. Keep operators on
+        # download-apk / skip-apk and fail early on source.
         if self.apk_obfuscation == "on" and self.build_type == "source":
             raise ValueError(
                 "apk_obfuscation: 'on' is not supported with build_type: 'source'. "

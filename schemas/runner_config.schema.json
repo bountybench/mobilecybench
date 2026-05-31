@@ -235,7 +235,7 @@
     },
     "agent_wallclock_seconds": {
       "default": 1800,
-      "description": "Wall-clock budget for agent execution. External agents are terminated by the harness on expiry; custom agents stop before starting the next turn after this budget, with max_iterations remaining as a safety ceiling.",
+      "description": "Wall-clock budget for agent execution. External agents are terminated by the harness on expiry. Custom agents honor this limit when the field is explicitly set by the run configuration, stopping before the next turn with max_iterations remaining as a safety ceiling.",
       "exclusiveMinimum": 0,
       "title": "Agent Wallclock Seconds",
       "type": "integer"

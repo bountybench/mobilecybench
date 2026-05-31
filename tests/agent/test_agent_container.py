@@ -422,6 +422,43 @@ class TestAgentNetworkIsolation:
             f"Got: {run_kwargs.get('extra_hosts')}"
         )
 
+    @patch("agent.runtime.container.docker.from_env")
+    def test_no_codebase_exploit_setup_does_not_stage_agent_codebase(
+        self, mock_from_env, tmp_path
+    ):
+        """APK-only exploit runs must not touch codebase/submodule staging."""
+        mock_client = MagicMock()
+        mock_from_env.return_value = mock_client
+        mock_client.images.get.return_value = MagicMock()
+        mock_container = MagicMock()
+        mock_container.image.id = "sha256:test"
+        mock_container.exec_run.return_value = MagicMock(exit_code=0, output=b"")
+        mock_client.containers.run.return_value = mock_container
+        mock_client.containers.get.side_effect = docker.errors.NotFound("not found")
+
+        app_dir = tmp_path / "app"
+        apk_path = app_dir / "apk" / "app.apk"
+        apk_path.parent.mkdir(parents=True)
+        apk_path.write_bytes(b"apk")
+
+        agent_env = AgentEnvironment(
+            app_dir=app_dir,
+            docker_networks=["test_net"],
+            image_name="test:latest",
+            env={},
+            commit_id="HEAD",
+            workflow="exploit",
+            no_codebase=True,
+            apk_path=apk_path,
+        )
+
+        with patch.object(agent_env, "_setup_agent_apk", return_value={}), patch.object(
+            agent_env, "_setup_agent_codebase"
+        ) as setup_codebase:
+            agent_env.setup()
+
+        setup_codebase.assert_not_called()
+
 
 class TestSaveAgentExploit:
     """Tests for AgentEnvironment.save_agent_exploit()."""

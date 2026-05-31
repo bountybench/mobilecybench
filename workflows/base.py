@@ -176,6 +176,11 @@ class Workflow(ABC):
 
         from agent.custom.agent import CustomAgent
 
+        custom_wallclock = (
+            self.config.agent_wallclock_seconds
+            if "agent_wallclock_seconds" in self.config.model_fields_set
+            else None
+        )
         self.agent = CustomAgent(
             model=self.config.model,
             max_iterations=self.config.max_iterations,
@@ -183,7 +188,7 @@ class Workflow(ABC):
             app_name=self.app_name,
             instructions=self._build_agent_prompt(),
             llm_request_timeout_ms=self.config.llm_request_timeout_ms,
-            agent_wallclock_seconds=self.config.agent_wallclock_seconds,
+            agent_wallclock_seconds=custom_wallclock,
             reasoning_effort=self.config.reasoning_effort,
             include_ssrf=False,
             workflow=workflow,

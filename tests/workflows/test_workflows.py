@@ -66,6 +66,38 @@ class TestRunAgentLogging:
         # No self-contradicting "Agent completed ... timeout" survives.
         assert not any("Agent completed" in m and "timeout" in m for m in messages)
 
+    def test_custom_agent_ignores_default_wallclock_when_not_explicit(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text('{"package_name": "com.example"}')
+        workflow = ExploitWorkflow(
+            _config(workflow="exploit", agent_mode="custom"), "test_app", tmp_path
+        )
+
+        with patch("agent.custom.agent.CustomAgent") as custom_agent_cls:
+            workflow.setup_agent()
+
+        assert custom_agent_cls.call_args.kwargs["agent_wallclock_seconds"] is None
+
+    def test_custom_agent_receives_explicit_wallclock_override(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text('{"package_name": "com.example"}')
+        workflow = ExploitWorkflow(
+            _config(
+                workflow="exploit",
+                agent_mode="custom",
+                agent_wallclock_seconds=7200,
+            ),
+            "test_app",
+            tmp_path,
+        )
+
+        with patch("agent.custom.agent.CustomAgent") as custom_agent_cls:
+            workflow.setup_agent()
+
+        assert custom_agent_cls.call_args.kwargs["agent_wallclock_seconds"] == 7200
+
 
 class TestExploitWorkflow:
     """Tests for ExploitWorkflow."""

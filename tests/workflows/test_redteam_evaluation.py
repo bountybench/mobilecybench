@@ -1439,6 +1439,49 @@ def test_bundleless_probe_only_evaluate_skips_runtime_codebase_prep(tmp_path):
     prep.assert_not_called()
 
 
+def test_two_phase_no_codebase_evaluate_skips_phase2_codebase_mutation(tmp_path):
+    """Two-phase APK-only redteam must not touch source prep/restore in either phase."""
+    config = RunnerConfig(
+        **{
+            **_BASE_CONFIG,
+            "task": None,
+            "synthetic_vuln_id": "vuln_0",
+            "attacker_model": "remote_attacker",
+            "no_codebase": True,
+        }
+    )
+    wf = _make_workflow(config, tmp_path, synthetic=True)
+
+    with (
+        patch.object(RedTeamWorkflow, "_prepare_runtime_codebase") as prep_runtime,
+        patch.object(type(wf._bundle), "prepare_phase2_codebase") as prep_phase2,
+        patch.object(type(wf._bundle), "restore_codebase") as restore_phase2,
+        patch.object(
+            RemoteAttackerOps,
+            "run_phase",
+            side_effect=lambda *_args, **_kwargs: _phase_result(
+                0 if "phase1" in str(_args[1]) else 1, _args[1]
+            ),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_verifier",
+            side_effect=[0, 1],
+        ),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            side_effect=[_probe_result(True), _probe_result(False)],
+        ),
+        patch("subprocess.run"),
+    ):
+        wf.evaluate()
+
+    prep_runtime.assert_not_called()
+    prep_phase2.assert_not_called()
+    restore_phase2.assert_not_called()
+
+
 def test_config_probe_only_bundleless_requires_attacker_model():
     """probe_only without bundle must declare attacker_model on config."""
     bad = {
