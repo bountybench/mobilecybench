@@ -466,8 +466,21 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
         ),
         patch(
             "workflows.redteam.subprocess.run",
-            side_effect=lambda cmd, **_kwargs: order.append("pm_clear")
-            or MagicMock(returncode=0),
+            side_effect=lambda cmd, **_kwargs: (
+                order.append("pm_clear")
+                if cmd[:4] == ["adb", "shell", "pm", "clear"]
+                else None
+            )
+            or MagicMock(
+                returncode=0,
+                stdout=(
+                    "package:com.test.app\n"
+                    if cmd[:6]
+                    == ["adb", "shell", "pm", "list", "packages", "com.test.app"]
+                    else ""
+                ),
+                stderr="",
+            ),
         ),
     ):
         result = RemoteAttackerOps().run_phase(
@@ -553,6 +566,107 @@ def test_remote_attacker_pm_clear_timeout_is_infrastructure_error(
             tmp_path / "phase",
             exploit_dir=tmp_path,
             target_apk=Path("apk/test.apk"),
+        )
+
+    assert result.exit_code == 2
+    assert result.failure_kind == "app_data_reset_failed"
+    assert result.evidence_log_path is not None
+    assert result.evidence_log_path.exists()
+    mock_prepare_victim.assert_not_called()
+
+
+def test_remote_attacker_reinstalls_target_apk_if_package_disappears_after_clear(
+    remote_attacker_config, tmp_path
+):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    target_apk = tmp_path / "apk" / "test.apk"
+    target_apk.parent.mkdir(parents=True, exist_ok=True)
+    target_apk.write_bytes(b"apk")
+
+    def fake_exploit(*args, **kwargs):
+        phase_dir = args[1]
+        phase_dir.mkdir(parents=True, exist_ok=True)
+        evidence = phase_dir / "replay_evidence.log"
+        evidence.write_text("exploit output")
+        return {"replay_exit_code": 0, "replay_evidence_path": str(evidence)}
+
+    def fake_run(cmd, **_kwargs):
+        if cmd[:4] == ["adb", "shell", "pm", "clear"]:
+            return MagicMock(returncode=0, stdout="Success\n", stderr="")
+        if cmd[:6] == ["adb", "shell", "pm", "list", "packages", "com.test.app"]:
+            call_count = getattr(fake_run, "package_checks", 0)
+            fake_run.package_checks = call_count + 1
+            stdout = "" if call_count == 0 else "package:com.test.app\n"
+            return MagicMock(returncode=0, stdout=stdout, stderr="")
+        if cmd[:2] == ["adb", "wait-for-device"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
+        if cmd[:3] == ["adb", "install", "-r"]:
+            return MagicMock(returncode=0, stdout="Success\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch.object(RedTeamWorkflow, "_run_prepare_victim") as mock_prepare_victim,
+        patch("workflows.redteam.subprocess.run", side_effect=fake_run) as mock_run,
+    ):
+        result = RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=target_apk,
+        )
+
+    assert result.exit_code == 0
+    assert result.failure_kind is None
+    mock_prepare_victim.assert_called_once()
+    install_calls = [
+        call.args[0]
+        for call in mock_run.call_args_list
+        if call.args and call.args[0][:3] == ["adb", "install", "-r"]
+    ]
+    assert install_calls == [["adb", "install", "-r", str(target_apk)]]
+
+
+def test_remote_attacker_reinstall_failure_is_infrastructure_error(
+    remote_attacker_config, tmp_path
+):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    target_apk = tmp_path / "apk" / "test.apk"
+    target_apk.parent.mkdir(parents=True, exist_ok=True)
+    target_apk.write_bytes(b"apk")
+
+    def fake_exploit(*args, **kwargs):
+        phase_dir = args[1]
+        phase_dir.mkdir(parents=True, exist_ok=True)
+        evidence = phase_dir / "replay_evidence.log"
+        evidence.write_text("exploit output")
+        return {"replay_exit_code": 0, "replay_evidence_path": str(evidence)}
+
+    def fake_run(cmd, **_kwargs):
+        if cmd[:4] == ["adb", "shell", "pm", "clear"]:
+            return MagicMock(returncode=0, stdout="Success\n", stderr="")
+        if cmd[:6] == ["adb", "shell", "pm", "list", "packages", "com.test.app"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
+        if cmd[:2] == ["adb", "wait-for-device"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
+        if cmd[:3] == ["adb", "install", "-r"]:
+            return MagicMock(returncode=1, stdout="", stderr="INSTALL_FAILED")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch.object(RedTeamWorkflow, "_run_prepare_victim") as mock_prepare_victim,
+        patch("workflows.redteam.subprocess.run", side_effect=fake_run),
+    ):
+        result = RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=target_apk,
         )
 
     assert result.exit_code == 2
@@ -1266,8 +1380,20 @@ echo "prepare_victim:$MCB_ATTACKER_MODEL" >> "{order_log}"
 
     def fake_subprocess_run(cmd, **_kwargs):
         if isinstance(cmd, list) and cmd[:3] == ["adb", "shell", "pm"]:
-            order_log.write_text(order_log.read_text() + "pm_clear\n")
-        return MagicMock(returncode=0)
+            if cmd[:4] == ["adb", "shell", "pm", "clear"]:
+                order_log.write_text(order_log.read_text() + "pm_clear\n")
+            if cmd[:6] == [
+                "adb",
+                "shell",
+                "pm",
+                "list",
+                "packages",
+                "com.test.app",
+            ]:
+                return MagicMock(
+                    returncode=0, stdout="package:com.test.app\n", stderr=""
+                )
+        return MagicMock(returncode=0, stdout="", stderr="")
 
     with (
         patch.object(RedTeamWorkflow, "_restart_runtime"),

@@ -222,6 +222,84 @@ class RemoteAttackerOps:
             return True, str(exploit_sh)
         return False, f"No exploit.sh found in {exploit_dir}"
 
+    @staticmethod
+    def _is_package_installed(package_name: str) -> bool:
+        result = subprocess.run(
+            ["adb", "shell", "pm", "list", "packages", package_name],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        stdout = result.stdout if isinstance(result.stdout, str) else ""
+        if not isinstance(result.stdout, str):
+            logger.warning(
+                "Package check for %s returned non-string stdout (%s); "
+                "treating returncode=%s as authoritative",
+                package_name,
+                type(result.stdout).__name__,
+                result.returncode,
+            )
+            return result.returncode == 0
+        packages = stdout.replace("\r", "").splitlines()
+        return f"package:{package_name}" in packages
+
+    @classmethod
+    def _reinstall_target_apk(cls, package_name: str, apk_path: Path) -> bool:
+        logger.warning(
+            "Target package %s disappeared after replay; reinstalling %s",
+            package_name,
+            apk_path,
+        )
+        try:
+            wait_result = subprocess.run(
+                ["adb", "wait-for-device"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if wait_result.returncode != 0:
+                if isinstance(wait_result.stdout, str) and wait_result.stdout:
+                    logger.error(
+                        "adb wait-for-device stdout:\n%s", wait_result.stdout.strip()
+                    )
+                if isinstance(wait_result.stderr, str) and wait_result.stderr:
+                    logger.error(
+                        "adb wait-for-device stderr:\n%s", wait_result.stderr.strip()
+                    )
+                return False
+
+            install_result = subprocess.run(
+                ["adb", "install", "-r", str(apk_path)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as e:
+            logger.error("Timed out reinstalling %s from %s", package_name, apk_path)
+            if e.stdout:
+                logger.error("adb install stdout:\n%s", str(e.stdout).strip())
+            if e.stderr:
+                logger.error("adb install stderr:\n%s", str(e.stderr).strip())
+            return False
+
+        if isinstance(install_result.stdout, str) and install_result.stdout:
+            logger.info("adb install stdout:\n%s", install_result.stdout.strip())
+        if isinstance(install_result.stderr, str) and install_result.stderr:
+            logger.info("adb install stderr:\n%s", install_result.stderr.strip())
+        if install_result.returncode != 0:
+            logger.error(
+                "Failed reinstalling %s from %s (exit %s)",
+                package_name,
+                apk_path,
+                install_result.returncode,
+            )
+            return False
+
+        return cls._is_package_installed(package_name)
+
     def run_phase(
         self, workflow: "RedTeamWorkflow", phase_dir: Path, **kwargs
     ) -> PhaseResult:
@@ -301,6 +379,10 @@ class RemoteAttackerOps:
                     clear_result.returncode,
                 )
                 return app_data_reset_failed()
+
+            if not self._is_package_installed(package_name):
+                if not self._reinstall_target_apk(package_name, kwargs["target_apk"]):
+                    return app_data_reset_failed()
 
         # Per-app victim seed: pm clear wiped /data/data/<package>/, so re-seed
         # the victim's logged-in state before the verifier runs. Mirrors CI's
