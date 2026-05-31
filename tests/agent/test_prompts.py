@@ -67,3 +67,6 @@ def test_remote_attacker_prompt_no_codebase_is_apk_only_language():
     assert "analyze the source" not in prompt
     assert "app source" not in prompt
     assert "analyze the APK" in prompt
+    assert (
+        "No app credentials or saved development-session state are provided" in prompt
+    )
