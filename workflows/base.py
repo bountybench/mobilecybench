@@ -183,6 +183,7 @@ class Workflow(ABC):
             app_name=self.app_name,
             instructions=self._build_agent_prompt(),
             llm_request_timeout_ms=self.config.llm_request_timeout_ms,
+            agent_wallclock_seconds=self.config.agent_wallclock_seconds,
             reasoning_effort=self.config.reasoning_effort,
             include_ssrf=False,
             workflow=workflow,
@@ -267,11 +268,22 @@ class Workflow(ABC):
         For source builds, delegates to subclass ``_build_apks_from_source()``.
         """
         if self.config.build_type == "skip-apk":
+            from utils.apk_utils import ensure_resolved_apk_available
+
             logger.info("skip-apk: assuming APKs already present")
+            ensure_resolved_apk_available(
+                app_name=self.app_name,
+                project_root=self.project_root,
+                runner_obfuscation=self.config.apk_obfuscation,
+            )
             return
 
         if self.config.build_type == "download-apk":
-            from utils.apk_utils import download_apk, get_download_url
+            from utils.apk_utils import (
+                download_apk,
+                ensure_resolved_apk_available,
+                get_download_url,
+            )
             from utils.obfuscation_resolver import resolve_obfuscation
 
             decision = resolve_obfuscation(self.config.apk_obfuscation)
@@ -302,6 +314,11 @@ class Workflow(ABC):
                 url,
                 self.project_root,
                 obfuscated=(decision.effective == "on"),
+            )
+            ensure_resolved_apk_available(
+                app_name=self.app_name,
+                project_root=self.project_root,
+                runner_obfuscation=self.config.apk_obfuscation,
             )
             return
 
@@ -822,15 +839,19 @@ class Workflow(ABC):
             self.agent_env.cleanup()
 
         # Restore codebase to clean state — workflows may apply patches during
-        # setup or evaluate. This is a no-op if codebase is already clean.
-        codebase_dir = self.app_dir / "codebase"
-        if codebase_dir.exists():
-            try:
-                from utils.git_utils import git_restore_clean
+        # setup or evaluate. For no_codebase jobs, there is no source tree to
+        # restore, so skip the git cleanup path entirely.
+        if self.config.no_codebase:
+            logger.info("Skipping codebase restore because no_codebase=true")
+        else:
+            codebase_dir = self.app_dir / "codebase"
+            if codebase_dir.exists():
+                try:
+                    from utils.git_utils import git_restore_clean
 
-                git_restore_clean(codebase_dir)
-            except Exception as e:
-                logger.warning(f"Failed to restore codebase: {e}")
+                    git_restore_clean(codebase_dir)
+                except Exception as e:
+                    logger.warning(f"Failed to restore codebase: {e}")
 
         # Drop per-run staging dirs (agent_codebase: needed through evaluate();
         # agent_apk: created only under no_codebase=True). Neither should persist

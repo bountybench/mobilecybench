@@ -266,6 +266,56 @@ class TestRun:
             result = run(base_config, "test_app", tmp_path)
             assert result == 0
 
+    def test_no_codebase_skips_app_submodule_init(self, base_config, tmp_path):
+        """no_codebase=True should not try to initialize apps/<app>/codebase."""
+
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "no_codebase": True,
+                "build_type": "download-apk",
+                "apk_obfuscation": "on",
+            }
+        )
+
+        class FakeWorkflow:
+            metadata = {}
+            agent_env = None
+            emulator = None
+
+            def __init__(self):
+                self.app_dir = tmp_path / "apps" / "test_app"
+                self.app_dir.mkdir(parents=True)
+
+            def validate_arguments(self):
+                pass
+
+            def setup_runtime_environment(self):
+                pass
+
+            def setup_agent(self):
+                pass
+
+            def run_agent(self):
+                return {"status": "completed"}
+
+            def save_artifacts(self, logs_dir):
+                pass
+
+            def evaluate(self):
+                return {"score": 1}
+
+            def cleanup(self):
+                pass
+
+        with patch("runner.ensure_app_submodule") as ensure_submodule, patch(
+            "runner.create_workflow", return_value=FakeWorkflow()
+        ):
+            result = run(config, "test_app", tmp_path)
+
+        assert result == 0
+        ensure_submodule.assert_not_called()
+
     def test_redteam_missing_evaluation_score_fails(self, base_config, tmp_path):
         """Redteam evaluation without a top-level score is a runner failure."""
 

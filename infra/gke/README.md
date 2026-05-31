@@ -45,8 +45,12 @@ kubectl create secret generic llm-api-keys \
   --namespace=mobilecybench \
   --from-literal=OPENAI_API_KEY=sk-... \
   --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+  --from-literal=GH_TOKEN=github_pat_... \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+`GH_TOKEN` is used by `download-apk` jobs because the runner downloads APK
+bundles with the GitHub CLI.
 
 ### 4. Submit Experiments
 

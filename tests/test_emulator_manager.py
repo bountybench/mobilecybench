@@ -401,6 +401,133 @@ def test_successive_emulator_runs(mock_sleep, mock_popen, mock_run, mock_env):
 
 
 @patch("utils.emulator_manager.subprocess.run")
+@patch("utils.emulator_manager.time.sleep")
+def test_wait_until_ready_retries_container_boot_once(mock_sleep, mock_run, mock_env):
+    """Container-mode boot should retry once after a death during startup."""
+    with patch("utils.emulator_manager.Path.exists", return_value=True):
+        manager = EmulatorManager(
+            project_root=Path("/mock/project"),
+            sdk_version="35",
+            app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="container",
+        )
+
+    fake_container = MagicMock()
+    fake_container.status = "running"
+    fake_container.logs.return_value = b"emulator died while booting"
+    manager.emulator_container = fake_container
+    manager.state = EmulatorState.RUNNING
+    manager._devices_before_start = set()
+
+    wait_once = MagicMock(
+        side_effect=[
+            RuntimeError("Emulator container died during boot"),
+            None,
+        ]
+    )
+    stop_container = MagicMock()
+    start_container = MagicMock(
+        side_effect=lambda: setattr(manager, "state", EmulatorState.RUNNING)
+    )
+
+    manager._wait_until_ready_once = wait_once  # type: ignore[method-assign]
+    manager._stop_container_emulator = stop_container  # type: ignore[method-assign]
+    manager._start_container_emulator = start_container  # type: ignore[method-assign]
+
+    manager.wait_until_ready(timeout=30)
+
+    assert wait_once.call_count == 2
+    stop_container.assert_called_once()
+    start_container.assert_called_once()
+    fake_container.logs.assert_called_once_with(tail=200)
+    assert manager.state == EmulatorState.RUNNING
+
+
+@patch("utils.emulator_manager.subprocess.run")
+@patch("utils.emulator_manager.time.sleep")
+def test_wait_until_ready_retries_container_boot_timeout(
+    mock_sleep, mock_run, mock_env
+):
+    """Container-mode boot timeouts are treated as retryable emulator flakes."""
+    with patch("utils.emulator_manager.Path.exists", return_value=True):
+        manager = EmulatorManager(
+            project_root=Path("/mock/project"),
+            sdk_version="35",
+            app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="container",
+        )
+
+    fake_container = MagicMock()
+    fake_container.status = "running"
+    fake_container.logs.return_value = b"boot timeout diagnostics"
+    manager.emulator_container = fake_container
+    manager.state = EmulatorState.RUNNING
+    manager._devices_before_start = set()
+
+    wait_once = MagicMock(
+        side_effect=[
+            RuntimeError("Emulator boot timeout after 30s"),
+            None,
+        ]
+    )
+    manager._wait_until_ready_once = wait_once  # type: ignore[method-assign]
+    manager._stop_container_emulator = MagicMock()  # type: ignore[method-assign]
+    manager._start_container_emulator = MagicMock(
+        side_effect=lambda: setattr(manager, "state", EmulatorState.RUNNING)
+    )  # type: ignore[method-assign]
+    mock_run.return_value = MagicMock(
+        returncode=0, stdout="List of devices attached\n", stderr=""
+    )
+
+    manager.wait_until_ready(timeout=30)
+
+    assert wait_once.call_count == 2
+    manager._stop_container_emulator.assert_called_once()
+    manager._start_container_emulator.assert_called_once()
+
+
+@patch("utils.emulator_manager.subprocess.run")
+@patch("utils.emulator_manager.time.sleep")
+def test_wait_until_ready_honors_container_boot_attempt_env(
+    mock_sleep, mock_run, mock_env
+):
+    """MCB_EMULATOR_BOOT_ATTEMPTS controls how many container boot tries run."""
+    with patch("utils.emulator_manager.Path.exists", return_value=True):
+        manager = EmulatorManager(
+            project_root=Path("/mock/project"),
+            sdk_version="35",
+            app_name="test_app",
+            emulator_display="headed",
+            emulator_backend="container",
+        )
+
+    manager.emulator_container = MagicMock(status="running")
+    manager.emulator_container.logs.return_value = b"dead"
+    manager.state = EmulatorState.RUNNING
+    manager._devices_before_start = set()
+    manager._wait_until_ready_once = MagicMock(
+        side_effect=RuntimeError("Emulator container died during boot")
+    )  # type: ignore[method-assign]
+    manager._stop_container_emulator = MagicMock()  # type: ignore[method-assign]
+    manager._start_container_emulator = MagicMock(
+        side_effect=lambda: setattr(manager, "state", EmulatorState.RUNNING)
+    )  # type: ignore[method-assign]
+    mock_run.return_value = MagicMock(
+        returncode=0, stdout="List of devices attached\n", stderr=""
+    )
+
+    with patch.dict("os.environ", {"MCB_EMULATOR_BOOT_ATTEMPTS": "2"}):
+        with pytest.raises(RuntimeError, match="container died"):
+            manager.wait_until_ready(timeout=30)
+
+    assert manager._wait_until_ready_once.call_count == 2
+    assert manager._stop_container_emulator.call_count == 1
+    assert manager._start_container_emulator.call_count == 1
+
+
+@patch("utils.emulator_manager.subprocess.run")
 def test_device_id_cleanup_between_runs(mock_run, mock_env):
     """Test that device_id is properly reset between EmulatorManager instances"""
 

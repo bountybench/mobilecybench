@@ -246,7 +246,12 @@ def run(
         # task bundle paths, so preconditions belong at the top of the run.
         if config.workflow == "redteam" and config.task:
             ensure_zerodays_submodule(project_root)
-        ensure_app_submodule(project_root, app_name)
+        if not config.no_codebase:
+            ensure_app_submodule(project_root, app_name)
+        else:
+            logger.info(
+                "Skipping app submodule initialization because no_codebase=true"
+            )
 
         # Redteam: bundle owns attacker_model. Sync into config so downstream
         # gold-source resolution sees the authoritative value.

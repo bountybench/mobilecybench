@@ -72,6 +72,7 @@ class CustomAgent:
         app_name: str,
         instructions: str,
         llm_request_timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        agent_wallclock_seconds: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
         include_ssrf: bool = True,
         workflow: str = "exploit",
@@ -98,6 +99,7 @@ class CustomAgent:
         self.max_iterations = max_iterations
         self.max_model_response_tokens = max_model_response_tokens
         self.llm_request_timeout_ms = llm_request_timeout_ms
+        self.agent_wallclock_seconds = agent_wallclock_seconds
         self.app_name = app_name
 
         self.runtime = ToolRuntime()
@@ -145,6 +147,10 @@ class CustomAgent:
         agent_logger.info("Agent Run Started")
         agent_logger.info(f"Model: {self.model}")
         agent_logger.info(f"Max Iterations: {self.max_iterations}")
+        if self.agent_wallclock_seconds:
+            agent_logger.info(
+                f"Agent wall-clock budget: {self.agent_wallclock_seconds}s"
+            )
         agent_logger.info(f"System prompt artifact: {self._system_prompt_file}")
         agent_logger.info("=" * 80)
 
@@ -348,8 +354,22 @@ class CustomAgent:
 
     def run(self) -> dict:
         next_input = "Begin. Read your instructions and start working."
+        deadline = (
+            time.monotonic() + self.agent_wallclock_seconds
+            if self.agent_wallclock_seconds
+            else None
+        )
 
         for turn in range(self.max_iterations):
+            if deadline is not None and time.monotonic() >= deadline:
+                agent_logger.info(
+                    "Agent wall-clock budget reached before starting next turn."
+                )
+                result = self._finish_run(turns=turn)
+                result["status"] = "timeout"
+                result["timeout_reason"] = "agent_wallclock_seconds"
+                return result
+
             agent_logger.info(
                 f"{'=' * 20} TURN {turn + 1}/{self.max_iterations} {'=' * 20}"
             )

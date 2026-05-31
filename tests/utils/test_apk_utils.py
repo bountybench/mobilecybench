@@ -1,3 +1,4 @@
+import hashlib
 import json
 import zipfile
 from pathlib import Path
@@ -9,6 +10,7 @@ from utils.apk_utils import (
     _extract_zip,
     check_releases,
     download_apk,
+    ensure_resolved_apk_available,
     get_download_url,
 )
 
@@ -239,6 +241,95 @@ def test_download_apk_obfuscated_zip_bundle_lands_under_obfuscated(mock_run, tmp
     assert (apk_dir / "myapp.apk").read_bytes() == b"obfuscated-apk"
     assert (apk_dir / "vuln_0" / "myapp.apk").read_bytes() == b"obfuscated-vuln-apk"
     assert not (apk_dir / "obfuscated").exists()
+
+
+@patch("utils.apk_utils.subprocess.run")
+def test_download_apk_obfuscated_zip_bundle_strips_full_obfuscated_prefix(
+    mock_run, tmp_path
+):
+    """Bundles zipped from apk/obfuscated should not double-nest obfuscated/."""
+    apk_dir = tmp_path / "apps" / "myapp" / "apk" / "obfuscated"
+    obfuscated_bundle_url = (
+        "https://github.com/owner/repo/releases/download/v1/"
+        "apk-myapp-obfuscated-bundle.zip"
+    )
+
+    def fake_gh_download(*args, **kwargs):
+        cmd = args[0]
+        tmpdir = cmd[cmd.index("--dir") + 1]
+        zp = Path(tmpdir) / "apk-myapp-obfuscated-bundle.zip"
+        with zipfile.ZipFile(zp, "w") as zf:
+            zf.writestr("apk/obfuscated/myapp.apk", b"obfuscated-apk")
+            zf.writestr("apk/obfuscated/vuln_0/myapp.apk", b"obfuscated-vuln-apk")
+
+    mock_run.side_effect = fake_gh_download
+    result = download_apk("myapp", obfuscated_bundle_url, tmp_path, obfuscated=True)
+
+    assert result == apk_dir
+    assert (apk_dir / "myapp.apk").read_bytes() == b"obfuscated-apk"
+    assert (apk_dir / "vuln_0" / "myapp.apk").read_bytes() == b"obfuscated-vuln-apk"
+    assert not (apk_dir / "obfuscated").exists()
+
+
+@patch("utils.apk_utils.subprocess.run")
+def test_download_apk_bundle_missing_primary_apk_raises(mock_run, tmp_path):
+    """A bundle with only nested APKs is not enough for probe-only redteam setup."""
+
+    def fake_gh_download(*args, **kwargs):
+        cmd = args[0]
+        tmpdir = cmd[cmd.index("--dir") + 1]
+        zp = Path(tmpdir) / "apk-bundle.zip"
+        with zipfile.ZipFile(zp, "w") as zf:
+            zf.writestr("apk/vuln_0/myapp.apk", b"nested-only")
+
+    mock_run.side_effect = fake_gh_download
+    with pytest.raises(FileNotFoundError, match="expected APK"):
+        download_apk("myapp", BUNDLE_URL, tmp_path)
+
+
+def test_ensure_resolved_apk_available_checks_obfuscated_path(tmp_path):
+    apk_path = tmp_path / "apps" / "myapp" / "apk" / "obfuscated" / "myapp.apk"
+    apk_path.parent.mkdir(parents=True)
+    apk_path.write_bytes(b"apk")
+
+    assert (
+        ensure_resolved_apk_available(
+            app_name="myapp",
+            project_root=tmp_path,
+            runner_obfuscation="on",
+        )
+        == apk_path
+    )
+
+
+def test_ensure_resolved_apk_available_logs_apk_sha256(tmp_path, caplog):
+    apk_bytes = b"apk-under-test"
+    apk_path = tmp_path / "apps" / "myapp" / "apk" / "obfuscated" / "myapp.apk"
+    apk_path.parent.mkdir(parents=True)
+    apk_path.write_bytes(apk_bytes)
+
+    ensure_resolved_apk_available(
+        app_name="myapp",
+        project_root=tmp_path,
+        runner_obfuscation="on",
+    )
+
+    assert str(apk_path) in caplog.text
+    assert "apk_obfuscation=on" in caplog.text
+    assert hashlib.sha256(apk_bytes).hexdigest() in caplog.text
+
+
+def test_ensure_resolved_apk_available_fails_on_missing_obfuscated_path(tmp_path):
+    default_apk = tmp_path / "apps" / "myapp" / "apk" / "myapp.apk"
+    default_apk.parent.mkdir(parents=True)
+    default_apk.write_bytes(b"default")
+
+    with pytest.raises(FileNotFoundError, match="apk_obfuscation=on"):
+        ensure_resolved_apk_available(
+            app_name="myapp",
+            project_root=tmp_path,
+            runner_obfuscation="on",
+        )
 
 
 @patch("utils.apk_utils.subprocess.run")

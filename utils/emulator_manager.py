@@ -20,6 +20,21 @@ logger = logging.getLogger("MobileCyBench.emulator_manager")
 EMULATOR_CONTAINER_NAME = "emulator-container"
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("%s=%r is not an integer; using %d", name, raw, default)
+        return default
+    if value < 1:
+        logger.warning("%s=%r must be >= 1; using %d", name, raw, default)
+        return default
+    return value
+
+
 def _emulator_pidfile(project_root: Path) -> Path:
     """Path of the pid file recording the running native emulator.
 
@@ -414,6 +429,19 @@ class EmulatorManager:
             "Emulator container started (boot-wait deferred to wait_until_ready)"
         )
 
+    def _container_log_tail(self, tail: int = 200) -> str:
+        """Best-effort capture of recent emulator container logs."""
+        if not self.emulator_container:
+            return ""
+        try:
+            raw = self.emulator_container.logs(tail=tail)
+        except Exception as e:
+            logger.warning(f"Failed to read emulator container logs: {e}")
+            return ""
+        if isinstance(raw, bytes):
+            return raw.decode(errors="replace").strip()
+        return str(raw).strip()
+
     def _start_native_emulator(self):
         """Start emulator as a native subprocess (original behavior)."""
         # Reap any orphan from a previous Python crash *first*, before any
@@ -549,6 +577,71 @@ class EmulatorManager:
         logger.info("=" * 60)
         logger.info(f"Waiting up to {timeout}s for device to boot...")
 
+        attempt = 1
+        max_attempts = (
+            _positive_int_env("MCB_EMULATOR_BOOT_ATTEMPTS", 3)
+            if self.emulator_backend == "container"
+            else 1
+        )
+        while True:
+            try:
+                self._wait_until_ready_once(timeout)
+                return
+            except RuntimeError as e:
+                retryable = self._is_retryable_container_boot_failure(e)
+                if (
+                    self.emulator_backend == "container"
+                    and retryable
+                    and attempt < max_attempts
+                ):
+                    self._log_container_boot_failure(attempt, max_attempts, e)
+                    try:
+                        self._stop_container_emulator()
+                    except Exception as stop_err:
+                        logger.warning(
+                            f"Failed to stop failed emulator container: {stop_err}"
+                        )
+                    self.device_id = None
+                    self._devices_before_start = set()
+                    self.state = EmulatorState.NOT_STARTED
+                    self._start_container_emulator()
+                    attempt += 1
+                    continue
+                if self.emulator_backend == "container" and retryable:
+                    self._log_container_boot_failure(attempt, max_attempts, e)
+                raise
+
+    def _is_retryable_container_boot_failure(self, error: RuntimeError) -> bool:
+        message = str(error)
+        return (
+            "Emulator container died during boot" in message
+            or "Emulator boot timeout" in message
+        )
+
+    def _log_container_boot_failure(
+        self, attempt: int, max_attempts: int, error: RuntimeError
+    ) -> None:
+        logs = self._container_log_tail()
+        devices = ""
+        try:
+            result = self._run_adb(
+                ["devices"], capture_output=True, text=True, timeout=5
+            )
+            devices = result.stdout.strip()
+        except Exception as adb_err:
+            devices = f"failed to query adb devices: {adb_err}"
+
+        message = (
+            "Emulator container boot failed on attempt %d/%d: %s" "\nADB devices:\n%s"
+        )
+        if logs:
+            message += "\nRecent emulator container logs:\n%s"
+            logger.warning(message, attempt, max_attempts, error, devices, logs)
+        else:
+            logger.warning(message, attempt, max_attempts, error, devices)
+
+    def _wait_until_ready_once(self, timeout: int) -> None:
+        """Wait for a single emulator boot attempt to finish."""
         start_time = time.time()
         last_dot_time = time.time()
         device_detected = False

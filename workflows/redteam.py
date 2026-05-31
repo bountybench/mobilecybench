@@ -484,6 +484,8 @@ class RedTeamWorkflow(Workflow):
           baseline so no patch is ever applied.
         - probe_only without codebase (APK-only / closed-source): no-op.
         """
+        if self.config.no_codebase:
+            return
         if self.config.probe_only:
             if not codebase_dir.exists():
                 return
@@ -827,7 +829,10 @@ class RedTeamWorkflow(Workflow):
             phase_tag = "phase1"
             logger.info("[phase 1/2] original app (vulnerable)")
         codebase_dir = self.app_dir / "codebase"
-        self._prepare_runtime_codebase(codebase_dir)
+        if self.config.no_codebase:
+            logger.info("Skipping runtime codebase prep because no_codebase=true")
+        else:
+            self._prepare_runtime_codebase(codebase_dir)
         phase1_result = self._ops.run_phase(
             self,
             replays_dir / ("probe" if self.config.probe_only else "phase1_original"),

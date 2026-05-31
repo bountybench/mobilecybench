@@ -56,37 +56,83 @@ adb -a start-server
 CONFIG_SRC="/mobilecybench/runner_config.json"
 CONFIG_DST="/tmp/runner_config.json"
 
+if [ ! -f "$CONFIG_SRC" ]; then
+    echo "ERROR: $CONFIG_SRC not found" >&2
+    exit 1
+fi
+
 EMULATOR_BACKEND="${EMULATOR_BACKEND:-container}"
 
-# Normalize boolean env vars to JSON-safe "true"/"false" for jq --argjson
-normalize_bool() { [[ "${1,,}" == "true" || "$1" == "1" ]] && echo true || echo false; }
+normalize_bool() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        true | 1) echo true ;;
+        *) echo false ;;
+    esac
+}
+
 DRY_RUN="$(normalize_bool "${DRY_RUN:-false}")"
 GOLD_RUN="$(normalize_bool "${GOLD_RUN:-false}")"
 
-if [ -f "$CONFIG_SRC" ]; then
-    jq --arg model "$MODEL" \
-       --arg vuln "$VULN_ID" \
-       --arg em "$EMULATOR_BACKEND" \
-       --argjson dryrun "$DRY_RUN" \
-       --argjson goldrun "$GOLD_RUN" \
-       '.emulator_display = "headless"
-        | .emulator_backend = $em
-        | .dry_run = $dryrun
-        | .gold_run = $goldrun
-        | if $model != "" then .model = $model else . end
-        | if $vuln != "" then .synthetic_vuln_id = $vuln else . end' \
-       "$CONFIG_SRC" > "$CONFIG_DST"
-else
-    echo "ERROR: $CONFIG_SRC not found"
-    exit 1
-fi
+# Optional booleans: normalize only when explicitly set. Empty string is the
+# "unset" sentinel the jq filter below checks before overriding.
+PROBE_ONLY_B=""
+[ -n "${PROBE_ONLY:-}" ] && PROBE_ONLY_B="$(normalize_bool "$PROBE_ONLY")"
+NO_CODEBASE_B=""
+[ -n "${NO_CODEBASE:-}" ] && NO_CODEBASE_B="$(normalize_bool "$NO_CODEBASE")"
+
+jq --arg model "${MODEL:-}" \
+   --arg vuln "${VULN_ID:-}" \
+   --arg em "$EMULATOR_BACKEND" \
+   --arg agent_image "${AGENT_IMAGE:-}" \
+   --arg agent_mode "${AGENT_MODE:-}" \
+   --arg build_type "${BUILD_TYPE:-}" \
+   --arg workflow "${WORKFLOW:-}" \
+   --arg attacker "${ATTACKER_MODEL:-}" \
+   --arg probe_only "$PROBE_ONLY_B" \
+   --arg no_codebase "$NO_CODEBASE_B" \
+   --arg apk_obfuscation "${APK_OBFUSCATION:-}" \
+   --arg max_iterations "${MAX_ITERATIONS:-}" \
+   --arg wallclock "${AGENT_WALLCLOCK_SECONDS:-}" \
+   --arg reasoning "${REASONING_EFFORT:-}" \
+   --arg additional_system_prompt "${ADDITIONAL_SYSTEM_PROMPT:-}" \
+   --argjson dryrun "$DRY_RUN" \
+   --argjson goldrun "$GOLD_RUN" \
+   '.emulator_display = "headless"
+    | .emulator_backend = $em
+    | .dry_run = $dryrun
+    | .gold_run = $goldrun
+    | if $model != "" then .model = $model else . end
+    | if $vuln != "" then .synthetic_vuln_id = $vuln else . end
+    | if $agent_image != "" then .agent_image = $agent_image else . end
+    | if $agent_mode != "" then .agent_mode = $agent_mode else . end
+    | if $build_type != "" then .build_type = $build_type else . end
+    | if $workflow != "" then .workflow = $workflow else . end
+    | if $attacker != "" then .attacker_model = $attacker else . end
+    | if $no_codebase != "" then .no_codebase = ($no_codebase == "true") else . end
+    | if $apk_obfuscation != "" then .apk_obfuscation = $apk_obfuscation else . end
+    | if $max_iterations != "" then .max_iterations = ($max_iterations | tonumber) else . end
+    | if $wallclock != "" then .agent_wallclock_seconds = ($wallclock | tonumber) else . end
+    | if $reasoning != "" then .reasoning_effort = $reasoning else . end
+    | if $additional_system_prompt != "" then .additional_system_prompt = $additional_system_prompt else . end
+    | if $probe_only == "true" then
+          .probe_only = true | .synthetic_vuln_id = null | .task = null
+      elif $probe_only == "false" then
+          .probe_only = false
+      else . end' \
+   "$CONFIG_SRC" > "$CONFIG_DST"
 
 echo "Runner config:"
 cat "$CONFIG_DST"
 
-# ─── Run experiment ─────────────────────────────────────────────────────────
-# Set logs dir so GCS upload can find experiment results
-export MOBILECYBENCH_LOGS_DIR="${MOBILECYBENCH_LOGS_DIR:-/mobilecybench/logs}"
+# Keep shell-side app scripts aligned with the runner config. Some runtime
+# helpers (notably app-specific setup shells) key off MCB_OBFUSCATE to choose
+# apk/ vs apk/obfuscated/ layout, so mirror the resolved config here before the
+# Python runner starts.
+if jq -e '.apk_obfuscation == "on"' "$CONFIG_DST" >/dev/null 2>&1; then
+    export MCB_OBFUSCATE=1
+else
+    unset MCB_OBFUSCATE || true
+fi
 
 cd /mobilecybench
 set +e

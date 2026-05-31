@@ -133,9 +133,113 @@ class TestExploitWorkflow:
         ):
             workflow.validate_arguments()
 
+    def test_no_codebase_setup_uses_prebuilt_apks_without_source_patch(self, tmp_path):
+        """APK-only setup must not checkout/apply source patches."""
+        app_dir = tmp_path / "apps" / "test_app"
+        vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
+        (app_dir / "apk" / "vuln_0").mkdir(parents=True)
+        vuln_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text('{"package_name": "com.example"}')
+        (app_dir / "apk" / "test_app.apk").write_bytes(b"clean")
+        (app_dir / "apk" / "vuln_0" / "test_app.apk").write_bytes(b"vuln")
+        (vuln_dir / "prepare_app.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = ExploitWorkflow(
+            _config(
+                workflow="exploit",
+                build_type="skip-apk",
+                no_codebase=True,
+                emulator_backend="container",
+            ),
+            "test_app",
+            tmp_path,
+        )
+        workflow.patch_paths = [vuln_dir / "vulnerability.patch"]
+
+        fake_emulator = MagicMock()
+        fake_emulator.start_in_background.return_value = None
+        fake_emulator.wait_until_ready.return_value = None
+        fake_emulator.setup_port_forwards.return_value = None
+
+        with patch.object(workflow, "_preflight_cleanup_app_runtime"), patch(
+            "utils.emulator_manager.EmulatorManager", return_value=fake_emulator
+        ), patch("utils.git_utils.git_checkout") as git_checkout, patch(
+            "utils.synthetic_utils.apply_synthetic_patch"
+        ) as apply_patch, patch(
+            "utils.setup_utils.install_app_and_setup_backend"
+        ), patch(
+            "agent.runtime.container.setup_agent_environment"
+        ):
+            workflow.setup_runtime_environment()
+
+        git_checkout.assert_not_called()
+        apply_patch.assert_not_called()
+
 
 class TestExploitWorkflowEvaluation:
     """Tests for exploit evaluation result classification."""
+
+    def test_no_codebase_evaluation_does_not_reverse_source_patch(self, tmp_path):
+        """APK-only evaluation must compare prebuilt APKs without git/apply work."""
+        app_dir = tmp_path / "apps" / "test_app"
+        logs_dir = tmp_path / "logs"
+        agent_exploit_dir = logs_dir / "agent_exploit"
+        exploit_runner = tmp_path / "utils" / "run_exploit_container.sh"
+        (app_dir / "apk" / "vuln_0").mkdir(parents=True)
+        agent_exploit_dir.mkdir(parents=True)
+        exploit_runner.parent.mkdir(parents=True)
+        (app_dir / "apk" / "test_app.apk").write_bytes(b"clean")
+        (app_dir / "apk" / "vuln_0" / "test_app.apk").write_bytes(b"vuln")
+        (agent_exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0")
+        exploit_runner.write_text("#!/bin/bash\nexit 0")
+
+        workflow = ExploitWorkflow(
+            _config(
+                workflow="exploit",
+                build_type="skip-apk",
+                no_codebase=True,
+            ),
+            "test_app",
+            tmp_path,
+        )
+        workflow.metadata = {}
+        workflow.patch_paths = [
+            app_dir / "synthetic_vulnerabilities" / "vuln_0" / "vulnerability.patch"
+        ]
+
+        with patch("utils.logger.logger_manager.get_logs_dir", return_value=logs_dir):
+            with patch.object(workflow, "_restart_runtime"), patch.object(
+                workflow,
+                "_run_exploit",
+                return_value={
+                    "replay_exit_code": 0,
+                    "replay_stdout": "",
+                    "replay_stderr": "",
+                },
+            ), patch.object(
+                workflow,
+                "_run_verify",
+                side_effect=[
+                    {
+                        "exit_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "status": "vulnerable",
+                    },
+                    {
+                        "exit_code": 1,
+                        "stdout": "",
+                        "stderr": "",
+                        "status": "not_vulnerable",
+                    },
+                ],
+            ), patch(
+                "workflows.exploit.subprocess.run"
+            ) as subprocess_run:
+                result = workflow.evaluate()
+
+        assert result["status"] == "true_positive"
+        subprocess_run.assert_not_called()
 
     def test_evaluate_returns_verifier_error_when_clean_verify_exits_gt_one(
         self, tmp_path
@@ -314,6 +418,22 @@ class TestWorkflowRuntimeCleanup:
         workflow.agent_env.cleanup.assert_called_once()
         mock_restore.assert_called_once_with(codebase_dir)
         assert not agent_codebase.exists()
+
+    def test_cleanup_skips_codebase_restore_under_no_codebase(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
+
+        workflow = ExploitWorkflow(
+            _config(workflow="exploit", no_codebase=True), "test_app", tmp_path
+        )
+        workflow.emulator = MagicMock()
+        workflow.agent_env = MagicMock()
+
+        with patch("utils.git_utils.git_restore_clean") as mock_restore:
+            workflow.cleanup()
+
+        mock_restore.assert_not_called()
 
     def test_restart_runtime_marks_backend_active_before_install(self, tmp_path):
         app_dir = tmp_path / "apps" / "test_app"

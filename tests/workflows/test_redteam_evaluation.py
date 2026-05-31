@@ -1406,6 +1406,39 @@ def test_bundleless_probe_only_codebase_present_is_restored(tmp_path):
     git_restore.assert_called_once_with(codebase)
 
 
+def test_bundleless_probe_only_evaluate_skips_runtime_codebase_prep(tmp_path):
+    """Bundleless probe-only evaluation must not touch codebase restore."""
+    wf = _make_bundleless_malicious_app_workflow(
+        _probe_only_bundleless_config(), tmp_path
+    )
+    codebase = tmp_path / "apps" / "testapp" / "codebase"
+    codebase.mkdir(parents=True)
+
+    with (
+        patch.object(RedTeamWorkflow, "_prepare_runtime_codebase") as prep,
+        patch.object(
+            RedTeamWorkflow,
+            "_prepare_ma_artifact",
+            return_value=(_FAKE_MA_ARTIFACT, None),
+        ),
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=lambda *_args, **_kwargs: _phase_result(0, _args[1]),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            side_effect=lambda *_args, **_kwargs: _probe_result(True),
+        ),
+        patch("subprocess.run"),
+    ):
+        wf.evaluate()
+
+    prep.assert_not_called()
+
+
 def test_config_probe_only_bundleless_requires_attacker_model():
     """probe_only without bundle must declare attacker_model on config."""
     bad = {

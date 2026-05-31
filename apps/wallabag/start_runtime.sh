@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -o errtrace
+
+trap 'rc=$?; echo "wallabag start_runtime.sh failed at line ${BASH_LINENO[0]}: ${BASH_COMMAND} (exit $rc)" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
@@ -302,10 +305,22 @@ PY
 # Main setup flow
 # ===========================================================================
 
+ensure_runtime_networks() {
+    log_info "Ensuring shared Docker networks exist..."
+    docker network inspect shared_net >/dev/null 2>&1 || docker network create shared_net >/dev/null
+    docker network inspect agent_net >/dev/null 2>&1 || docker network create agent_net >/dev/null
+}
+
 log_info "Setup begin..."
 
+ensure_runtime_networks
 docker compose down --remove-orphans -v 2>/dev/null || true
-docker compose up --build -d
+# Compose's default build progress can be noisy and has been flaky in the
+# GKE runner. Build explicitly with plain progress, then start the stack
+# without re-triggering the build step. This keeps the backend bootstrap
+# deterministic and gives us better logs if the image build itself fails.
+DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose build --progress plain
+docker compose up -d --no-build
 
 wait_healthy wallabag_tls_proxy 180 || fatal "wallabag TLS proxy not healthy after 180s"
 

@@ -13,6 +13,7 @@ pointing at the canonical generator.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -80,7 +81,7 @@ def test_explain_config_emits_committed_schema():
 
     project_root = SCHEMA_PATH.parent.parent
     proc = subprocess.run(
-        ["python3", "runner.py", "--explain-config"],
+        [sys.executable, "runner.py", "--explain-config"],
         cwd=project_root,
         capture_output=True,
         text=True,

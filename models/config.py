@@ -268,9 +268,10 @@ class RunnerConfig(BaseModel):
         default=1800,
         gt=0,
         description=(
-            "Harness-side wall-clock kill budget for external agents "
-            "(SIGKILL on expiry). Custom agent ignores this and is bounded "
-            "by max_iterations + llm_request_timeout_ms."
+            "Wall-clock budget for agent execution. External agents are "
+            "terminated by the harness on expiry; custom agents stop before "
+            "starting the next turn after this budget, with max_iterations "
+            "remaining as a safety ceiling."
         ),
     )
 

@@ -38,6 +38,15 @@ def _run_git_command(
         raise
 
 
+def _is_git_repo(directory: Path) -> bool:
+    """Return True when directory looks like a git working tree.
+
+    We treat missing directories and empty placeholder directories as
+    non-repos so no-codebase APK-only runs can skip cleanup safely.
+    """
+    return directory.exists() and (directory / ".git").exists()
+
+
 def git_submodule_update(directory_path: PathLike) -> None:
     """Update git submodules."""
     directory = Path(directory_path)
@@ -164,8 +173,27 @@ def git_restore_clean(directory_path: PathLike) -> None:
     Recurse into submodules.  Safe to call on repos without submodules.
     """
     directory = Path(directory_path)
-    _run_git_command(directory, ["reset", "--hard", "HEAD"])
-    _run_git_command(directory, ["clean", "-fdx"])
+    if not _is_git_repo(directory):
+        logger.info("Skipping git restore for non-repo path: %s", directory)
+        return
+    best_effort = os.environ.get("MCB_BEST_EFFORT_GIT_RESTORE", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    try:
+        _run_git_command(directory, ["reset", "--hard", "HEAD"])
+        _run_git_command(directory, ["clean", "-fdx"])
+    except subprocess.CalledProcessError as e:
+        if not best_effort:
+            raise
+        logger.warning(
+            "Best-effort git restore failed for %s; continuing because "
+            "MCB_BEST_EFFORT_GIT_RESTORE is set: %s",
+            directory,
+            e,
+        )
+        return
     # Submodules — best-effort (not all repos have them)
     try:
         _run_git_command(

@@ -21,6 +21,7 @@ from utils.git_utils import (
     delete_non_current_branches,
     ensure_zerodays_submodule,
     git_checkout,
+    git_restore_clean,
     initialize_git_repository,
     onerror,
     prepare_git_directory,
@@ -222,3 +223,14 @@ def test_cleanup_git_branches_main_reset():
         assert "temp1" not in branches_output
         assert "temp2" not in branches_output
     print("cleanup_git_branches passed")
+
+
+def test_git_restore_clean_skips_non_repo_directory():
+    with tempfile.TemporaryDirectory() as temp:
+        directory = Path(temp) / "placeholder"
+        directory.mkdir()
+
+        with patch("utils.git_utils._run_git_command") as mock_git:
+            git_restore_clean(directory)
+
+        mock_git.assert_not_called()

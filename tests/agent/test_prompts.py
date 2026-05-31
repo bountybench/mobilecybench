@@ -11,7 +11,7 @@ consolidation. Those wrappers are gone; the prompt is built directly by
 ``build_synthetic_prompt`` is the single source of truth and is covered here.
 """
 
-from agent.prompts.prompts import build_synthetic_prompt
+from agent.prompts.prompts import build_remote_attacker_prompt, build_synthetic_prompt
 
 
 def test_synthetic_prompt_renders_provided_vuln_id():
@@ -54,3 +54,16 @@ def test_synthetic_prompt_renders_vuln_id_in_both_locations():
     assert (
         occurrences == 2
     ), f"expected 2 references to /app/verify_files/vuln_2, got {occurrences}"
+
+
+def test_remote_attacker_prompt_no_codebase_is_apk_only_language():
+    prompt = build_remote_attacker_prompt(
+        package_name="com.example.app",
+        no_codebase=True,
+    )
+
+    assert "/app/apk" in prompt
+    assert "/app/codebase" not in prompt
+    assert "analyze the source" not in prompt
+    assert "app source" not in prompt
+    assert "analyze the APK" in prompt

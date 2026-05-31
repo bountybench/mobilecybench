@@ -3,7 +3,11 @@ set -euo pipefail
 UTIL_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="/mobilecybench"
 if [[ ! -f "/.dockerenv" ]]; then
-    ROOT_DIR="$(git -C "$UTIL_SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
+    if git_root="$(git -C "$UTIL_SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"; then
+        ROOT_DIR="$git_root"
+    else
+        ROOT_DIR="$(cd "$UTIL_SCRIPT_DIR/.." && pwd)"
+    fi
 fi
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"

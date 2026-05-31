@@ -1,5 +1,6 @@
 """APK building, downloading, and handling utilities."""
 
+import hashlib
 import json
 import logging
 import re
@@ -172,6 +173,7 @@ def download_apk(
                         f"Zip bundle {filename} contains no .apk files: {zf.namelist()}"
                     )
                 _extract_zip(zf, apk_dir, force=force)
+            _ensure_downloaded_primary_apk(app_name, apk_dir)
             return apk_dir
 
         # Single APK file
@@ -193,21 +195,84 @@ def download_apk(
     return apk_dir
 
 
+def ensure_resolved_apk_available(
+    *,
+    app_name: str,
+    project_root: Path,
+    runner_obfuscation: str,
+    vuln_id: Optional[str] = None,
+) -> Path:
+    """Validate that the APK path selected by runner config exists and is usable."""
+    rel_path = resolve_apk_path(
+        app_name=app_name,
+        runner_obfuscation=runner_obfuscation,
+        vuln_id=vuln_id,
+    )
+    apk_path = project_root / "apps" / app_name / rel_path
+    if not apk_path.exists():
+        found = sorted(
+            str(path.relative_to(project_root / "apps" / app_name))
+            for path in (project_root / "apps" / app_name / "apk").rglob("*.apk")
+        )
+        suffix = f" Found APKs: {found}" if found else " No APKs found under apk/."
+        raise FileNotFoundError(
+            f"Resolved APK does not exist for app={app_name}, "
+            f"apk_obfuscation={runner_obfuscation}: {apk_path}.{suffix}"
+        )
+    if apk_path.stat().st_size == 0:
+        raise FileNotFoundError(f"Resolved APK is empty: {apk_path}")
+    apk_size = apk_path.stat().st_size
+    logger.info(
+        "Resolved APK for app=%s apk_obfuscation=%s path=%s size_bytes=%d sha256=%s",
+        app_name,
+        runner_obfuscation,
+        apk_path,
+        apk_size,
+        sha256_file(apk_path),
+    )
+    return apk_path
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _ensure_downloaded_primary_apk(app_name: str, apk_dir: Path) -> None:
+    apk_path = apk_dir / f"{app_name}.apk"
+    if not apk_path.exists():
+        found = sorted(
+            str(path.relative_to(apk_dir)) for path in apk_dir.rglob("*.apk")
+        )
+        raise FileNotFoundError(
+            f"Downloaded bundle did not produce expected APK {apk_path}. "
+            f"Found APKs under {apk_dir}: {found}"
+        )
+    if apk_path.stat().st_size == 0:
+        raise FileNotFoundError(f"Downloaded APK is empty: {apk_path}")
+
+
 def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> None:
     """Extract zip contents into apk_dir.
 
     Without force, skips existing files and logs a warning.
     With force, overwrites everything.
     """
-    has_prefix = any(n.startswith("apk/") for n in zf.namelist())
-    prefix = "apk/" if has_prefix else ""
+    prefixes: list[str] = []
+    if apk_dir.name == "obfuscated":
+        prefixes.append("apk/obfuscated/")
+    prefixes.append("apk/")
 
     extracted, skipped = [], []
     for member in zf.namelist():
-        if prefix and member.startswith(prefix):
-            relative = member[len(prefix) :]
-        else:
-            relative = member
+        relative = member
+        for prefix in prefixes:
+            if member.startswith(prefix):
+                relative = member[len(prefix) :]
+                break
 
         # Filter the bare "." directory entry that `zip -r foo.zip .`
         # produces. Otherwise it lands in `skipped` and prints a misleading
