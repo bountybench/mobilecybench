@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 UI automation to login and view a memo in MoeMemos app.
-This script acts as the victim - navigating to and viewing the malicious memo.
+This script drives a client session — navigating to and viewing a memo
+authored elsewhere.
 """
 import argparse
 import sys
@@ -64,12 +65,12 @@ def ensure_app_foreground(d: u2.Device, package: str) -> None:
 
 def configure_app_with_token(d: u2.Device, server_url: str, token: str) -> bool:
     """
-    Configure the app with server URL and access token.
-    This simulates the victim logging in with their credentials.
+    Configure the app with server URL and access token, simulating a
+    user logging in with their credentials.
 
     Returns True if successful, False otherwise.
     """
-    log("Configuring app with victim's credentials...")
+    log("Configuring app with client credentials...")
     log(f"  Server: {server_url}")
     log(f"  Token: {token[:20]}...")
 
@@ -306,7 +307,7 @@ def view_malicious_memo(d: u2.Device) -> bool:
 
     log("Memo opened - waiting for images to load...")
     log(
-        "The vulnerable app will now send the victim's Bearer token to the malicious image URL"
+        "The vulnerable app will now attach the client's Bearer token to the external image URL"
     )
 
     # Give time for markdown rendering and image loading.
@@ -319,12 +320,12 @@ def view_malicious_memo(d: u2.Device) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="View memo in MoeMemos (victim perspective)"
+        description="View memo in MoeMemos (client perspective)"
     )
     parser.add_argument(
         "--server", required=True, help="Memos server URL (e.g., http://10.0.2.2:5230)"
     )
-    parser.add_argument("--token", required=True, help="Victim's access token")
+    parser.add_argument("--token", required=True, help="Client access token")
     parser.add_argument(
         "--package", default="me.mudkip.moememos", help="App package name"
     )
@@ -334,7 +335,7 @@ def main():
         log("Connecting to device...")
         d = initialize_ui_automation()
 
-        # Configure app with victim's credentials
+        # Configure app with client credentials
         if not configure_app_with_token(d, args.server, args.token):
             log("Failed to configure app with credentials")
             return 1
@@ -345,8 +346,10 @@ def main():
             return 1
 
         log("UI automation completed successfully")
-        log("  Victim has viewed the memo")
-        log("  If vulnerable, victim's token should have been sent to malicious server")
+        log("  Client has viewed the memo")
+        log(
+            "  If vulnerable, the client token should have been sent to the external server"
+        )
         return 0
 
     except Exception as e:

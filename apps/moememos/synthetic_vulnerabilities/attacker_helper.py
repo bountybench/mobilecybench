@@ -99,7 +99,7 @@ def malicious_image():
     Serve a fake image after capture_request records the inbound request.
 
     This endpoint mimics an external image server (like S3) that receives
-    the victim's Bearer token due to the vulnerability.
+    the client's Bearer token due to the vulnerability.
     """
 
     # Return a 1x1 transparent PNG
