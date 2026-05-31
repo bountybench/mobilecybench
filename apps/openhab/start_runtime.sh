@@ -97,6 +97,43 @@ wait_for_docker_container_ready() {
     fatal "Container '$container' did not become healthy after ${timeout}s"
 }
 
+ensure_bind_mount_file() {
+  local path="$1"
+  local fallback_contents="$2"
+
+  # Docker creates a missing bind-mount source as a directory.  A previous
+  # failed run (or a runner image missing the committed fixture file) can
+  # therefore leave e.g. openhab_conf/services/runtime.cfg as a directory,
+  # causing the next `docker compose up` to fail with "not a directory" while
+  # trying to mount it onto a file in the container.
+  if [ -d "$path" ]; then
+    log_warn "Bind-mount source $path is a directory; replacing it with a file"
+    rm -rf "$path"
+  fi
+
+  mkdir -p "$(dirname "$path")" 2>/dev/null || true
+  if [ ! -f "$path" ]; then
+    log_warn "Bind-mount source $path is missing; creating fallback file"
+    printf "%s\n" "$fallback_contents" > "$path"
+  fi
+  chmod 644 "$path" 2>/dev/null || true
+}
+
+ensure_openhab_bind_mount_sources() {
+  local cfg_file="$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
+  local sitemap_file="$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap"
+
+  ensure_bind_mount_file "$cfg_file" \
+"org.apache.karaf.shell:sshHost = 0.0.0.0
+org.openhab.restauth:allowBasicAuth = true
+org.openhab.restauth:implicitUserRole=false"
+
+  ensure_bind_mount_file "$sitemap_file" \
+"sitemap home label=\"Smart Home\" {
+    Text label=\"Smart Home\"
+}"
+}
+
 update_runtime_cfg() {
   local cfg_file="$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
 
@@ -403,11 +440,13 @@ main() {
   create_env_file
 
   "$SCRIPT_DIR/setup_mosquitto.sh"
+  ensure_openhab_bind_mount_sources
+  update_runtime_cfg
+
   log_info "Starting docker compose services..."
   docker compose up -d
 
   wait_for_docker_container_ready 600
-  update_runtime_cfg
 
   # Users are pre-committed in openhab_userdata/jsondb/users.json and
   # bind-mounted into the container. Only run Karaf as a fallback.
