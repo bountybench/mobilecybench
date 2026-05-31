@@ -1,9 +1,12 @@
 # Applies to repo-root builds (codex / claudecode BYO images).
 # Must exist BEFORE the first COPY — added later, the secret stays in layer history.
 
-# Secrets — agent/.env holds operator API tokens, read at runtime via load_dotenv.
+# Secrets — root/agent .env files hold operator API tokens, read at runtime via load_dotenv.
 **/.env
 **/.env.*
+
+# App .env files are committed benchmark fixture config (mirrors .gitignore).
+!apps/**/.env
 
 # Build bloat
 .git/
