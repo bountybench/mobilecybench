@@ -1,9 +1,9 @@
-# Sentinel script seeded at start_runtime time. Probes diff
+# Seeded script. The host-side checks diff
 # baseline_manifest.json["expected_script_entities"] against /api/states for
 # `script.*` entities.
-sentinel_lights_off:
-  alias: Sentinel Lights Off
-  description: Probe sentinel — turns off all lights.
+lights_off:
+  alias: Lights Off
+  description: Turns off all lights.
   sequence:
     - service: light.turn_off
       target:

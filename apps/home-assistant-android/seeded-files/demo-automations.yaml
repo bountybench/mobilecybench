@@ -1,16 +1,16 @@
-# Sentinel automation seeded at start_runtime time. Probes diff
+# Seeded automation. The host-side checks diff
 # baseline_manifest.json["expected_automation_entities"] against /api/states
 # for `automation.*` entities to detect injected backdoors.
-- id: sentinel_midnight_notification
-  alias: Sentinel Midnight Notification
-  description: Probe sentinel — fires at midnight; never modified by exploits.
+- id: midnight_notification
+  alias: Midnight Notification
+  description: Scheduled notification at midnight.
   trigger:
     - platform: time
       at: "00:00:00"
   action:
     - service: persistent_notification.create
       data:
-        notification_id: sentinel_midnight
-        title: Sentinel
-        message: "Sentinel automation fired."
+        notification_id: midnight_reminder
+        title: Home
+        message: "Scheduled automation triggered."
   mode: single

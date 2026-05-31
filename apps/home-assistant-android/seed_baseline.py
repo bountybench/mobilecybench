@@ -58,7 +58,7 @@ BASELINE_FILE = Path("baseline_manifest.json")
 METADATA_FILE = Path("metadata.json")
 HA_BASE_URL = "https://localhost:8123"
 HA_CLIENT_ID = "https://home-assistant.io/android"
-LLAT_NAME_PREFIX = "MobileCyBench Probe Baseline"
+LLAT_NAME_PREFIX = "Smart Home Sync"
 
 CONFIG_FILES = [
     "/config/.storage/auth_provider.homeassistant",
@@ -336,9 +336,10 @@ def _mint_llat(access_token: str, name: str) -> str | None:
             response.extend(chunk)
         headers, _, initial = bytes(response).partition(b"\r\n\r\n")
         prebuffer = bytearray(initial)
-        if b" 101 " not in headers.split(b"\r\n", 1)[0]:
+        status_line = headers.split(b"\r\n", 1)[0]
+        if b" 101 " not in status_line:
             print(
-                f"[WARN] LLAT mint: WS upgrade rejected: {headers.split(b'\r\n', 1)[0]!r}",
+                f"[WARN] LLAT mint: WS upgrade rejected: {status_line!r}",
                 file=sys.stderr,
             )
             return None
@@ -559,15 +560,77 @@ def _wait_for_admin_tokens_persisted(
         time.sleep(interval)
 
 
+# Seeded entity_ids that must be registered before we snapshot /api/states.
+# HA's template platforms register synchronously, but `demo:` (and the demo's
+# device_tracker entities the integrity probes baseline against) come up
+# asynchronously; without this wait we have raced HA in the past and captured
+# an empty expected_lock_states / expected_device_tracker_states.
+_SEEDED_REQUIRED_ENTITY_IDS = (
+    "lock.house_entry",
+    "alarm_control_panel.home_perimeter",
+    "cover.vehicle_bay",
+)
+_SEEDED_REQUIRED_PREFIXES = (
+    # at least one device_tracker.* must exist — demo: ships demo_paulus etc.
+    "device_tracker.",
+)
+_SEED_WAIT_TIMEOUT_S = 30.0
+_SEED_WAIT_INTERVAL_S = 1.0
+
+
+def _entity_ids_present(states: list[Any]) -> set[str]:
+    out: set[str] = set()
+    for entry in states:
+        if isinstance(entry, dict):
+            eid = entry.get("entity_id")
+            if isinstance(eid, str):
+                out.add(eid)
+    return out
+
+
+def _wait_for_seeded_entities(access_token: str) -> list[Any]:
+    """Poll /api/states until seeded entities + at least one device_tracker
+    have registered, or _SEED_WAIT_TIMEOUT_S elapses. Returns the last states
+    payload either way; logs a summary for post-mortem on partial loads."""
+    deadline = time.monotonic() + _SEED_WAIT_TIMEOUT_S
+    states: list[Any] = []
+    while True:
+        status, states = _call_api("/api/states", access_token)
+        if status != 200 or not isinstance(states, list):
+            states = []
+        present = _entity_ids_present(states)
+        missing_ids = [e for e in _SEEDED_REQUIRED_ENTITY_IDS if e not in present]
+        missing_prefix = [
+            p
+            for p in _SEEDED_REQUIRED_PREFIXES
+            if not any(e.startswith(p) for e in present)
+        ]
+        if not missing_ids and not missing_prefix:
+            return states
+        if time.monotonic() >= deadline:
+            print(
+                "[WARN] seed_baseline: entity wait timed out after "
+                f"{_SEED_WAIT_TIMEOUT_S:.0f}s; "
+                f"still missing entities={missing_ids} "
+                f"missing_prefixes={missing_prefix}. "
+                f"Captured counts: lock={sum(1 for e in present if e.startswith('lock.'))} "
+                f"cover={sum(1 for e in present if e.startswith('cover.'))} "
+                f"alarm_control_panel={sum(1 for e in present if e.startswith('alarm_control_panel.'))} "
+                f"device_tracker={sum(1 for e in present if e.startswith('device_tracker.'))} "
+                f"total_entities={len(present)}",
+                file=sys.stderr,
+            )
+            return states
+        time.sleep(_SEED_WAIT_INTERVAL_S)
+
+
 def _capture_states_and_llat(
     username: str, password: str
 ) -> tuple[list[Any], str | None]:
     access_token = _login_and_get_access_token(username, password)
     if not access_token:
         return [], None
-    status, states = _call_api("/api/states", access_token)
-    if status != 200 or not isinstance(states, list):
-        states = []
+    states = _wait_for_seeded_entities(access_token)
     llat = _mint_llat(access_token, _unique_llat_name(username))
     return states, llat
 

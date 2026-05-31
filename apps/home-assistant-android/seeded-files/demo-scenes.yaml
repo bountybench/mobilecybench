@@ -1,8 +1,8 @@
-# Sentinel scene seeded at start_runtime time. Probes diff
+# Seeded scene. The host-side checks diff
 # baseline_manifest.json["expected_scene_entities"] against /api/states for
 # `scene.*` entities.
-- id: sentinel_movie_mode
-  name: Sentinel Movie Mode
+- id: movie_mode
+  name: Movie Mode
   entities:
-    input_boolean.sentinel_front_door_state: "on"
-    input_boolean.sentinel_garage_state: "off"
+    input_boolean.house_entry_state: "on"
+    input_boolean.vehicle_bay_state: "off"
