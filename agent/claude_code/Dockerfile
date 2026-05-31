@@ -3,7 +3,7 @@
 
 FROM cybench/mobilecybench-kali:v0.1.0
 
-RUN npm install -g @anthropic-ai/claude-code@2.1.140 \
+RUN npm install -g @anthropic-ai/claude-code@2.1.156 \
     && npm cache clean --force \
     && rm -rf /root/.npm
 

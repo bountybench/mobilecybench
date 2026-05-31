@@ -10,6 +10,9 @@ metadata:
     experiment-app: APP_NAME
     experiment-vuln: VULN_ID
     experiment-model: MODEL
+    experiment-workflow: WORKFLOW
+    experiment-attacker: ATTACKER_MODEL
+    experiment-no-codebase: NO_CODEBASE
 spec:
   backoffLimit: 1
   ttlSecondsAfterFinished: 86400  # auto-cleanup after 24h
@@ -46,6 +49,26 @@ spec:
               value: "GOLD_RUN"
             - name: GCS_BUCKET
               value: "GCS_BUCKET"
+            # External-agent / probe-only fields (empty in the legacy
+            # synthetic-vuln path; build_runner_config.sh ignores empties).
+            - name: AGENT_IMAGE
+              value: "AGENT_IMAGE"
+            - name: AGENT_MODE
+              value: "AGENT_MODE"
+            - name: WORKFLOW
+              value: "WORKFLOW"
+            - name: PROBE_ONLY
+              value: "PROBE_ONLY"
+            - name: ATTACKER_MODEL
+              value: "ATTACKER_MODEL"
+            - name: NO_CODEBASE
+              value: "NO_CODEBASE"
+            - name: AGENT_WALLCLOCK_SECONDS
+              value: "AGENT_WALLCLOCK_SECONDS"
+            - name: REASONING_EFFORT
+              value: "REASONING_EFFORT"
+            - name: ALLOW_UNREGISTERED_MODELS
+              value: "ALLOW_UNREGISTERED_MODELS"
             - name: RUN_ID
               valueFrom:
                 fieldRef:
@@ -55,6 +78,12 @@ spec:
                 name: llm-api-keys
             - secretRef:
                 name: dockerhub-credentials
+                optional: true
+            # claude-code (external agent mode) reads CLAUDE_CODE_OAUTH_TOKEN
+            # + REFRESH_TOKEN from env. Optional so legacy synthetic-vuln +
+            # non-claude-code agents still apply cleanly.
+            - secretRef:
+                name: claude-code-oauth
                 optional: true
           volumeMounts:
             - name: dev-kvm

@@ -51,7 +51,7 @@ gcloud container clusters create "$CLUSTER_NAME" \
   --enable-autoscaling --min-nodes=0 --max-nodes=20 \
   --spot \
   --disk-size=200 --disk-type=pd-ssd \
-  --metadata=enable-nested-virtualization=TRUE \
+  --enable-nested-virtualization \
   --workload-pool="${PROJECT_ID}.svc.id.goog"
 
 echo "--- Getting cluster credentials ---"

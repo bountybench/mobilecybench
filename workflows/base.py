@@ -721,6 +721,19 @@ class Workflow(ABC):
         if not self.metadata.get("container_names"):
             env["SKIP_SSRF_CHECK"] = "1"
 
+        # Make the parent app dir importable from probe scripts. Needed for
+        # remote_attacker mode (probe_dir = apps/<app>/remote_attacker, scripts
+        # may import shared modules from apps/<app>/, e.g. probe_helpers.py).
+        # Harmless for malicious_app mode where probe_dir IS apps/<app> and the
+        # parent is apps/ — nothing useful is importable from there as a
+        # top-level module so no namespace clash. Without this, RA probes that
+        # rely on PYTHONPATH (per the in-script comment contract) fail with
+        # ModuleNotFoundError before any CIA check runs, surfacing as
+        # `probe_evaluator_error` and masking real exploit signals.
+        parent = str(check_dir.parent.resolve())
+        existing_pp = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = f"{parent}:{existing_pp}" if existing_pp else parent
+
         args = [str(check_dir)]
         if exploit_log_path:
             args.append(exploit_log_path)
