@@ -4,7 +4,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/codebase"
 
-./gradlew clean
-./gradlew :app:assembleRelease --no-daemon
+GRADLE_ARGS=()
+if [ "${MCB_OBFUSCATE:-0}" = "1" ] && [ -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]; then
+    GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
+fi
+
+./gradlew "${GRADLE_ARGS[@]}" clean
+./gradlew "${GRADLE_ARGS[@]}" :app:assembleRelease --no-daemon
 
 cp app/build/outputs/apk/release/*release-unsigned.apk "$SCRIPT_DIR/unsigned.apk"
