@@ -685,7 +685,7 @@ def live_sitemap_items(sitemap_name):
     return collect_named_items(json.loads(data.decode()))
 
 
-def wait_live_sitemap_refs(sitemap_name, expected_items, timeout=90):
+def wait_live_sitemap_refs(sitemap_name, expected_items, timeout=240):
     deadline = time.time() + timeout
     last_missing = sorted(expected_items)
     last_error = ""
