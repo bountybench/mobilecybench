@@ -1,10 +1,15 @@
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from utils.emulator_manager import EmulatorManager, EmulatorState
+from utils.emulator_manager import (
+    EMULATOR_CONTAINER_NAME,
+    EmulatorManager,
+    EmulatorState,
+)
 
 
 @pytest.fixture
@@ -288,6 +293,66 @@ def test_wait_detects_reused_device_after_reset(mock_sleep, mock_run, emulator_m
 
     # Verify device was detected (as a new device since _devices_before_start was empty)
     assert emulator_manager.device_id == "emulator-5554"
+
+
+##########################################
+#      Container Port Forward Tests      #
+##########################################
+
+
+@patch("utils.emulator_manager.subprocess.run")
+def test_setup_port_forwards_uses_extra_forwards_without_primary_server(
+    mock_run, mock_env, tmp_path
+):
+    """Container mode honors extra_forwards even when an app has no primary server."""
+    app_dir = tmp_path / "termux"
+    app_dir.mkdir()
+    (app_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "app_server": "",
+                "container_names": [],
+                "extra_forwards": ["8087:termux-local-repo:8080"],
+            }
+        )
+    )
+    manager = EmulatorManager(
+        project_root=tmp_path,
+        sdk_version="34",
+        app_name="termux",
+        emulator_display="headless",
+        emulator_backend="container",
+    )
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    manager.setup_port_forwards(app_dir)
+
+    mock_run.assert_any_call(
+        [
+            "docker",
+            "exec",
+            EMULATOR_CONTAINER_NAME,
+            "pkill",
+            "-f",
+            "socat.*8087",
+        ],
+        capture_output=True,
+        timeout=10,
+    )
+    mock_run.assert_any_call(
+        [
+            "docker",
+            "exec",
+            "-d",
+            EMULATOR_CONTAINER_NAME,
+            "socat",
+            "TCP-LISTEN:8087,fork,reuseaddr",
+            "TCP:termux-local-repo:8080",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
 
 
 ##########################################
