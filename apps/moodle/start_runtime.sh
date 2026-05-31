@@ -102,12 +102,24 @@ restore_database(){
   log_info "Database restored successfully"
 }
 
+seed_baselines(){
+  # Capture baselines before any exploit can mutate state. Later
+  # prepare_victim invocations must see the sentinel and only rehydrate device
+  # state, never recapture attacker-mutated server state.
+  rm -f /tmp/.mcb_moodle_* 2>/dev/null || true
+  if [ -x "$SCRIPT_DIR/prepare_victim.sh" ]; then
+    log_info "Seeding probe baselines (pre-exploit)..."
+    bash "$SCRIPT_DIR/prepare_victim.sh" || fatal "prepare_victim seed failed"
+  fi
+}
+
 main(){
   setup_moodle_server
   configure_webserver
   restore_database
   install_moodle
   launch_moodle
+  seed_baselines
   log_info "Moodle setup complete"
 }
 

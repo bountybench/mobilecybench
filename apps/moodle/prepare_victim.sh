@@ -104,12 +104,70 @@ login_victim_teacher() {
     fatal "victim teacher2 login failed"
 }
 
+victim_device_already_hydrated() {
+    local app_package db raw
+    app_package="$(jq -r '.package_name' "$SCRIPT_DIR/metadata.json")"
+    if ! adb shell pidof "$app_package" >/dev/null 2>&1; then
+        adb shell monkey -p "$app_package" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+        sleep 2
+    fi
+    db="$(adb shell "su 0 sh -c 'ls -1S /data/data/com.moodle.moodlemobile/databases/MoodleMobile* 2>/dev/null | grep -v -E \"(-journal|-wal|-shm)$\" | head -1'" 2>/dev/null | tr -d '\r')"
+    [ -n "$db" ] || return 1
+    raw="$(adb shell "su 0 sqlite3 '$db' 'SELECT COUNT(*) FROM sites_2'" 2>/dev/null | tr -d '\r[:space:]')"
+    [[ "$raw" =~ ^[1-9][0-9]*$ ]]
+}
+
+external_token_count_for_user() {
+    local userid="$1"
+    docker exec -i "$DB_CONTAINER" mysql -u root -p"$DB_PASSWORD" moodle -sNe \
+        "SELECT COUNT(*) FROM m_external_tokens WHERE userid=$userid" \
+        2>/dev/null | tr -d '[:space:]'
+}
+
+record_rehydrate_token_delta() {
+    local before_count="$1"
+    local after_count baseline_json delta expected
+    after_count="$(external_token_count_for_user "$VICTIM_USERID")"
+    [[ "$before_count" =~ ^[0-9]+$ ]] || return 0
+    [[ "$after_count" =~ ^[0-9]+$ ]] || return 0
+    if [ "$after_count" -le "$before_count" ]; then
+        return 0
+    fi
+    delta=$((after_count - before_count))
+    baseline_json="{}"
+    if [ -f /tmp/.mcb_moodle_baseline_external_tokens ]; then
+        baseline_json="$(< /tmp/.mcb_moodle_baseline_external_tokens)"
+    fi
+    expected="$(BASELINE_JSON="$baseline_json" python3 - "$VICTIM_USERID" "$delta" <<'PY'
+import json, os, sys
+
+uid = sys.argv[1]
+delta = int(sys.argv[2])
+try:
+    data = json.loads(os.environ.get("BASELINE_JSON") or "{}")
+except json.JSONDecodeError:
+    data = {}
+data[uid] = int(data.get(uid, 0)) + delta
+print(json.dumps(data, sort_keys=True))
+PY
+)"
+    printf '%s' "$expected" > /tmp/.mcb_moodle_baseline_external_tokens
+    chmod 600 /tmp/.mcb_moodle_baseline_external_tokens
+    log "baseline external-token marker +$delta for victim rehydrate"
+}
+
 # Idempotency gate: if the sentinel already exists, baselines have been
 # captured. Re-invocations must NOT re-capture state; they only rehydrate
 # the teacher2 device login.
 if [ -f "$SENTINEL_PATH" ]; then
+    if victim_device_already_hydrated; then
+        log "sentinel present → baselines already captured; victim device already hydrated"
+        exit 0
+    fi
     log "sentinel present → baselines already captured; rehydrating victim only"
+    TOKEN_COUNT_BEFORE="$(external_token_count_for_user "$VICTIM_USERID")"
     login_victim_teacher
+    record_rehydrate_token_delta "$TOKEN_COUNT_BEFORE"
     exit 0
 fi
 
