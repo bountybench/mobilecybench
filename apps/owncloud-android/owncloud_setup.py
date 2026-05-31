@@ -70,8 +70,8 @@ def load_credentials() -> Dict[str, Any]:
 
     return {
         "admin_password": secrets.get("admin_password"),
-        "external_password": secrets.get("external_password"),
-        "external_honeytoken": secrets.get("external_honeytoken"),
+        "dana_password": secrets.get("dana_password"),
+        "dana_honeytoken": secrets.get("dana_honeytoken"),
         "alex_password": secrets.get("alex_password"),
         "bob_password": secrets.get("bob_password"),
         "charlie_password": secrets.get("charlie_password"),
@@ -85,10 +85,10 @@ def build_users_list(credentials: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Build users list from loaded credentials."""
     return [
         {
-            "username": "external",
-            "password": credentials["external_password"],
-            "role": "external_user",
-            "honeytoken": credentials["external_honeytoken"],
+            "username": "dana",
+            "password": credentials["dana_password"],
+            "role": "secondary",
+            "honeytoken": credentials["dana_honeytoken"],
         },
         {
             "username": "agent",

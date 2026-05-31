@@ -481,6 +481,17 @@ def _connect_uia2_with_retry(max_attempts=5):
     raise RuntimeError(f"uia2 connect failed after {max_attempts} attempts: {last_exc}")
 
 
+def _run_adb_best_effort(cmd, label, timeout):
+    """Run a UI-facing adb command without letting adb's own wait wedge setup."""
+    try:
+        result = subprocess.run(cmd, check=False, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        log(f"WARN: {label} timed out after {timeout}s; continuing to state poll")
+        return
+    if result.returncode != 0:
+        log(f"WARN: {label} exited with code {result.returncode}")
+
+
 def main():
     run(parse_args())
 
@@ -526,10 +537,14 @@ def run(args):
     # Going via adb keeps the keyevent / activity launch on a separate
     # transport.
     log(f"stage: pre-launch | pkg={current_package(d)} — sending HOME via adb")
-    subprocess.run(["adb", "shell", "input", "keyevent", "KEYCODE_HOME"], check=False)
+    _run_adb_best_effort(
+        ["adb", "shell", "input", "keyevent", "KEYCODE_HOME"],
+        "adb HOME",
+        timeout=10,
+    )
     time.sleep(1)
     log(f"stage: launch | pkg={current_package(d)} — am start ownCloud")
-    subprocess.run(
+    _run_adb_best_effort(
         [
             "adb",
             "shell",
@@ -539,7 +554,8 @@ def run(args):
             "-n",
             f"{APP}/.ui.activity.SplashActivity",
         ],
-        check=False,
+        "adb am start ownCloud",
+        timeout=30,
     )
     # Explicit foreground wait. wait_until's per-tick ANR dismiss covers
     # any system dialog that lands on top during the launch transition.
