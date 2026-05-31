@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Per-task attacker overlay for vuln_2 (CWE-1287 base64 DoS).
+# Per-task overlay for the CWE-1287 base64 crash scenario.
 #
-# Conceptually: this redirects the victim's existing `agent-topic`
+# Conceptually: this redirects the existing `daily-briefing`
 # Subscription from the legit ntfy-server (set up by start_runtime.sh
-# / ntfy_seeding.py) to the attacker-controlled origin
-# (http://10.0.2.2:${AGENT_SERVER_PORT:-9999}). The malicious server
+# / ntfy_seeding.py) to the controlled origin
+# (http://10.0.2.2:${AGENT_SERVER_PORT:-9999}). The local server
 # is started later by exploit.sh; once the app reconnects after the
 # exploit's force-stop + monkey-launch, the SubscriberService's
 # long-poll lands at the attacker server, receives the bad-base64
@@ -17,20 +17,17 @@ set -euo pipefail
 #   The Subscription table has a UNIQUE INDEX on (baseUrl, topic)
 #   (codebase Database.kt:12), so two rows with the same topic at
 #   different baseUrls are legal. But the test only needs the
-#   victim's traffic to land at the attacker origin. Stacking a
+#   traffic to land at the alternate origin. Stacking a
 #   second row leaves the legit-server long-poll active in
-#   parallel, which is noise — the model "attacker has redirected
-#   the victim's subscription" is what the test actually exercises.
+#   parallel, which is noise; this flow exercises an in-place redirect.
 #
 # Idempotency: this script is safe to re-run. If the attacker URL
 # is already set, it's a no-op. If a row at the legit URL exists,
 # it's flipped. If neither exists, that means start_runtime.sh
-# didn't seed agent-topic — we fail fast rather than silently
-# inventing victim state.
+# didn't seed daily-briefing, so fail fast rather than silently inventing state.
 #
 # Lifecycle: invoked by task_runtime_run_prepare_hook BEFORE the
-# exploit (both attacker models go through the same hook helper,
-# but vuln_2 only ships for remote_attacker per metadata.json).
+# replay.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -41,7 +38,7 @@ PKG="$(jq -r '.package_name' "$APP_DIR/metadata.json")"
 
 DB_PATH="/data/data/$PKG/databases/AppDatabase"
 ATTACKER_BASE_URL="http://10.0.2.2:${AGENT_SERVER_PORT:-9999}"
-TOPIC="agent-topic"
+TOPIC="daily-briefing"
 
 log_info "Stopping $PKG before DB write"
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
@@ -68,10 +65,10 @@ if [[ "$EXISTS_ATTACKER" -gt 0 ]]; then
   exit 0
 fi
 
-# Find the existing victim Subscription for $TOPIC and flip its baseUrl.
+# Find the existing Subscription for $TOPIC and flip its baseUrl.
 # We deliberately don't bind to a specific legit URL here (e.g.
 # http://10.0.2.2:8080) because the redirect should work regardless of
-# where start_runtime.sh pointed the victim. The only constraint is
+# where start_runtime.sh pointed the existing row. The only constraint is
 # that exactly one Subscription row exists for this topic — that's the
 # baseline ntfy_seeding.py creates.
 VICTIM_ROW_COUNT_RAW="$(
@@ -83,7 +80,7 @@ VICTIM_ROW_COUNT="${VICTIM_ROW_COUNT_RAW:-0}"
 [[ "$VICTIM_ROW_COUNT" =~ ^[0-9]+$ ]] || fatal "Unexpected COUNT(*) for topic '$TOPIC': '$VICTIM_ROW_COUNT_RAW'"
 
 if [[ "$VICTIM_ROW_COUNT" -eq 0 ]]; then
-  fatal "No Subscription row for topic='$TOPIC' to redirect — start_runtime.sh / ntfy_seeding.py didn't seed the victim baseline"
+  fatal "No Subscription row for topic='$TOPIC' to redirect — start_runtime.sh / ntfy_seeding.py didn't seed the baseline"
 fi
 if [[ "$VICTIM_ROW_COUNT" -gt 1 ]]; then
   fatal "Expected exactly one Subscription row for topic='$TOPIC', found $VICTIM_ROW_COUNT — bailing rather than guessing which to redirect"

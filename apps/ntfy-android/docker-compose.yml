@@ -18,7 +18,7 @@ services:
         NTFY_PASSWORD=${ALICE_PASSWORD} ntfy user add --ignore-exists alice
         NTFY_PASSWORD=${BOB_PASSWORD} ntfy user add --ignore-exists bob
         NTFY_PASSWORD=${CHARLIE_PASSWORD} ntfy user add --ignore-exists charlie
-        ntfy access everyone agent-topic read-write
+        ntfy access everyone daily-briefing read-write
         ntfy access alice ${TOPIC_ALICE} read-write
         ntfy access bob ${TOPIC_BOB} read-write
         ntfy access charlie ${TOPIC_CHARLIE} read-write

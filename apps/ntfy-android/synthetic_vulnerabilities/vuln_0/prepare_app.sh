@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Seed alice's credentials into the ntfy app's User table.
-# The vulnerability patch (CWE-927) leaks these via implicit broadcast.
+# Seed the account row used by the implicit-broadcast check.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
