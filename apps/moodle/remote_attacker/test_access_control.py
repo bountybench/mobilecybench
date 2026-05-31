@@ -22,10 +22,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from probe_common import (  # noqa: E402
     AGENT_USERID,
     BASELINE_EXTERNAL_TOKENS_HOST_PATH,
-    VICTIM_USERID,
-    VICTIM_USERNAME,
     VICTIM_HOST_PATH,
     VICTIM_TOKEN_HOST_PATH,
+    VICTIM_USERID,
+    VICTIM_USERNAME,
     query_db_safe,
     read_baseline,
     read_host_marker,

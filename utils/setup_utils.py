@@ -8,7 +8,6 @@ from typing import Optional
 
 from utils.logger import logger
 
-
 _ADB_READY_TIMEOUT_SECONDS = 120
 _INJECT_FLAGS_TIMEOUT_SECONDS = 180
 
