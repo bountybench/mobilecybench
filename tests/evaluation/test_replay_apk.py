@@ -140,9 +140,9 @@ class TestGateCheckPermissions:
 
         with self._mock_lookup({future_perm: None}):
             result = gate_check_permissions([future_perm])
-        assert result.accepted is True, (
-            "future-API platform perms must not block the gate"
-        )
+        assert (
+            result.accepted is True
+        ), "future-API platform perms must not block the gate"
         assert result.declared[0].gate_verdict == "skip"
         assert "silently drop" in result.declared[0].reject_reason.lower()
 
