@@ -9,6 +9,7 @@ baseline_manifest.json
 __pycache__/
 .reports/
 logs/
+vm_runs/
 scores.json
 scores_remote_attacker.json
 redteam_scores.json
@@ -42,3 +43,7 @@ apps/*/zero_day_vulnerabilities/artifacts/
 synthetic_scores.json
 .apk_backup_path
 .claude
+.vscode
+gke-retest-gcs/
+gke-retest2-gcs/
+gke-fanout-logs/
