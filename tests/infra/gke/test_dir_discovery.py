@@ -476,6 +476,11 @@ def test_entrypoint_gke_persists_failure_artifacts_for_upload() -> None:
     assert "manual_retrieval.txt" in script
     assert "UPLOAD_FAILURE_HOLD_SECONDS" in script
     assert "kubectl cp ${POD_NAMESPACE:-mobilecybench}/${RUN_ID:-unknown-run}" in script
+    assert (
+        'if [ "$exit_code" -eq 0 ] && [ -n "${UPLOAD_FAILURE_BUNDLE:-}" ] '
+        '&& [ -f "${UPLOAD_FAILURE_BUNDLE:-}" ]; then' in script
+    )
+    assert "duplicate Kubernetes retry" in script
 
 
 def test_gke_job_template_exports_pod_namespace() -> None:

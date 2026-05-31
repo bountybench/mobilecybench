@@ -399,6 +399,7 @@ perform_gcs_upload() {
 
 finalize_gke_exit() {
     local exit_code="$1"
+    local final_exit_code="$exit_code"
 
     trap - EXIT
     set +e
@@ -408,12 +409,16 @@ finalize_gke_exit() {
     if [ "$UPLOAD_EXIT_CODE" -ne 0 ]; then
         create_upload_failure_bundle
         hold_for_manual_artifact_copy
+        if [ "$exit_code" -eq 0 ] && [ -n "${UPLOAD_FAILURE_BUNDLE:-}" ] && [ -f "${UPLOAD_FAILURE_BUNDLE:-}" ]; then
+            echo "Experiment finished successfully, but artifact upload failed."
+            echo "Manual-retrieval bundle preserved; exiting 0 to avoid a duplicate Kubernetes retry."
+            final_exit_code=0
+        elif [ "$exit_code" -eq 0 ]; then
+            final_exit_code="$UPLOAD_EXIT_CODE"
+        fi
     fi
 
-    if [ "$exit_code" -eq 0 ] && [ "$UPLOAD_EXIT_CODE" -ne 0 ]; then
-        exit "$UPLOAD_EXIT_CODE"
-    fi
-    exit "$exit_code"
+    exit "$final_exit_code"
 }
 
 trap 'finalize_gke_exit "$?"' EXIT
