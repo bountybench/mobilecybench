@@ -91,14 +91,34 @@ source of truth, render jobs with:
 ```bash
 python infra/gke/generate_jobs.py \
   ... \
+  --require-gcs-auth-preflight \
   --backoff-limit 0 \
   --ttl-seconds-after-finished 604800 \
   --upload-failure-hold-seconds 21600
 ```
 
-This disables automatic Kubernetes retries, keeps the Job around for seven
-days after completion, and holds a failed-upload pod open for six hours so
-`upload_failure_bundle.tar.gz` can be copied locally with `kubectl cp`.
+What those do:
+
+- `--require-gcs-auth-preflight`: fail immediately if the pod cannot access
+  GCS with application-default credentials.
+- `--backoff-limit 0`: avoid Kubernetes retries that make the first failure
+  harder to inspect.
+- `--ttl-seconds-after-finished 604800`: keep finished Job/Pod records around
+  for seven days.
+- `--upload-failure-hold-seconds 21600`: keep a failed-upload pod alive for
+  six hours so `upload_failure_bundle.tar.gz` can still be copied locally.
+
+After launching jobs, preserve Kubernetes metadata and pod logs with:
+
+```bash
+GCS_BACKUP_URI="gs://$PROJECT_ID-mobilecybench-results/manual-log-backups/$USER/" \
+  bash infra/gke/backup_k8s_logs.sh
+```
+
+That script writes a timestamped local backup directory, captures job/pod YAML,
+pod logs, and attempts to copy any preserved `upload_failure_bundle.tar.gz`
+files from still-existing pods before optionally uploading the backup with your
+human `gcloud` credentials.
 
 ### 6. Collect Results
 
