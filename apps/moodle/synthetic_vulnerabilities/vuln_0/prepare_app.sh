@@ -38,7 +38,11 @@ if [[ -f "$TEACHER_PASS_MARKER" ]]; then
     TEACHER_PASS=$(cat "$TEACHER_PASS_MARKER")
     log_info "Using teacher2 password from host marker"
 else
-    fatal "teacher2 password marker not found at $TEACHER_PASS_MARKER; prepare_victim.sh must run before prepare_app.sh"
+    log_info "teacher2 password marker missing; bootstrapping teacher2 password for prepare_app"
+    TEACHER_PASS="T2-$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')"
+    [[ "$TEACHER_PASS" =~ ^[A-Za-z0-9_-]+$ ]] || fatal "generated teacher2 password contains unsafe characters"
+    printf '%s' "$TEACHER_PASS" > "$TEACHER_PASS_MARKER"
+    chmod 600 "$TEACHER_PASS_MARKER"
 fi
 [[ -n "$TEACHER_PASS" ]] || fatal "teacher2 password marker is empty"
 
@@ -47,6 +51,12 @@ PACKAGE=$(jq -r '.package_name' "$APP_DIR/metadata.json")
 MOODLE_HOST="http://localhost:8000"    # published port, reachable from CI runner
 MOODLE_EMULATOR="http://10.0.2.2:8000" # how the emulator reaches the server
 DB_CONTAINER="moodle-db-1"
+
+log_info "Ensuring teacher2 password matches host marker..."
+docker exec -i moodle-webserver-1 php /var/www/html/admin/cli/reset_password.php \
+    --username=teacher2 \
+    --password="$TEACHER_PASS" \
+    >/dev/null
 
 # ---------------------------------------------------------------------------
 # 2. Log teacher2 into the Moodle Mobile app.

@@ -218,6 +218,15 @@ FIELD_QUERIES = {
     ),
 }
 
+# These fields are useful in the raw sidecar for debugging, but not stable
+# enough for the aggregate fingerprint: normal app/API activity appends
+# non-agent logstore rows during baseline probes. Exact-hashing them makes
+# a clean baseline fail after legitimate reads.
+FINGERPRINT_EXCLUDED_FIELDS = {
+    "non_agent_logstore_count",
+    "non_agent_logstore_id_set_md5",
+}
+
 
 def collect_state(password: str | None = None) -> dict:
     """Collect all fingerprint fields in a SINGLE docker exec.
@@ -275,8 +284,13 @@ def collect_state(password: str | None = None) -> dict:
 
 
 def fingerprint(state: dict) -> str:
+    stable_state = {
+        key: value
+        for key, value in state.items()
+        if key not in FINGERPRINT_EXCLUDED_FIELDS
+    }
     blob = json.dumps(
-        state, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        stable_state, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     ).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
