@@ -2,6 +2,7 @@
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -98,6 +99,72 @@ class TestRunAgentLogging:
 
         assert custom_agent_cls.call_args.kwargs["agent_wallclock_seconds"] == 7200
 
+    def test_external_task_dict_uses_staged_apk_filename_for_no_codebase(
+        self, tmp_path
+    ):
+        workflow = ExploitWorkflow(
+            _config(
+                workflow="exploit",
+                agent_mode="external",
+                model="gpt-5.5",
+                build_type="download-apk",
+                no_codebase=True,
+                apk_obfuscation="on",
+            ),
+            "test_app",
+            tmp_path,
+        )
+        workflow.metadata = {"package_name": "com.example"}
+        workflow.agent_env = SimpleNamespace(apk_path=Path("/tmp/staged/minified.apk"))
+
+        with patch("workflows.base.logger_manager.get_run_id", return_value="run-123"):
+            task = workflow._build_task_dict()
+
+        assert task["apk_relpath"] == "minified.apk"
+        assert task["probe_only"] is False
+        assert task["task"] is None
+
+    def test_external_task_dict_uses_empty_apk_relpath_with_source_access(
+        self, tmp_path
+    ):
+        workflow = ExploitWorkflow(
+            _config(workflow="exploit", agent_mode="external", model="gpt-5.5"),
+            "test_app",
+            tmp_path,
+        )
+        workflow.metadata = {"package_name": "com.example"}
+
+        with patch("workflows.base.logger_manager.get_run_id", return_value="run-123"):
+            task = workflow._build_task_dict()
+
+        assert task["apk_relpath"] == ""
+        assert task["probe_only"] is False
+        assert task["task"] is None
+
+    def test_download_apk_runtime_forces_clean_refresh(self, tmp_path):
+        workflow = ExploitWorkflow(
+            _config(
+                workflow="exploit",
+                build_type="download-apk",
+                no_codebase=True,
+                apk_obfuscation="on",
+            ),
+            "test_app",
+            tmp_path,
+        )
+
+        with patch(
+            "utils.apk_utils.get_download_url",
+            return_value="https://github.com/o/r/releases/download/v1/bundle.zip",
+        ), patch("utils.apk_utils.download_apk") as download_apk, patch(
+            "utils.apk_utils.ensure_resolved_apk_available"
+        ):
+            workflow.setup_apks()
+
+        download_apk.assert_called_once()
+        assert download_apk.call_args.kwargs["force"] is True
+        assert download_apk.call_args.kwargs["clean_target"] is True
+
 
 class TestExploitWorkflow:
     """Tests for ExploitWorkflow."""
@@ -165,6 +232,27 @@ class TestExploitWorkflow:
         ):
             workflow.validate_arguments()
 
+    def test_validate_arguments_rejects_apk_only_hook_with_codebase_reference(
+        self, tmp_path
+    ):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text("{}")
+        vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
+        verify_dir = vuln_dir / "verify_files"
+        verify_dir.mkdir(parents=True)
+        (vuln_dir / "vulnerability.patch").write_text("patch content")
+        (verify_dir / "verify_exploit.sh").write_text(
+            "#!/bin/bash\ncat /app/codebase/secret.txt\n"
+        )
+        workflow = ExploitWorkflow(
+            _config(workflow="exploit", no_codebase=True, build_type="skip-apk"),
+            "test_app",
+            tmp_path,
+        )
+        with pytest.raises(ValueError, match="no_codebase=true would execute"):
+            workflow.validate_arguments()
+
     def test_no_codebase_setup_uses_prebuilt_apks_without_source_patch(self, tmp_path):
         """APK-only setup must not checkout/apply source patches."""
         app_dir = tmp_path / "apps" / "test_app"
@@ -206,6 +294,38 @@ class TestExploitWorkflow:
 
         git_checkout.assert_not_called()
         apply_patch.assert_not_called()
+
+    def test_no_codebase_setup_rejects_empty_vuln_apk_early(self, tmp_path):
+        app_dir = tmp_path / "apps" / "test_app"
+        vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
+        (app_dir / "apk" / "vuln_0").mkdir(parents=True)
+        vuln_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text('{"package_name": "com.example"}')
+        (app_dir / "apk" / "test_app.apk").write_bytes(b"clean")
+        (app_dir / "apk" / "vuln_0" / "test_app.apk").write_bytes(b"")
+        (vuln_dir / "vulnerability.patch").write_text("patch")
+
+        workflow = ExploitWorkflow(
+            _config(
+                workflow="exploit",
+                build_type="skip-apk",
+                no_codebase=True,
+                emulator_backend="container",
+            ),
+            "test_app",
+            tmp_path,
+        )
+
+        fake_emulator = MagicMock()
+        fake_emulator.start_in_background.return_value = None
+
+        with patch.object(workflow, "_preflight_cleanup_app_runtime"), patch(
+            "utils.emulator_manager.EmulatorManager", return_value=fake_emulator
+        ):
+            with pytest.raises(
+                FileNotFoundError, match="Vulnerable APK for vuln_0 is empty"
+            ):
+                workflow.setup_runtime_environment()
 
 
 class TestExploitWorkflowEvaluation:
@@ -457,7 +577,9 @@ class TestWorkflowRuntimeCleanup:
         (app_dir / "cleanup.sh").write_text("#!/usr/bin/env bash\n")
 
         workflow = ExploitWorkflow(
-            _config(workflow="exploit", no_codebase=True), "test_app", tmp_path
+            _config(workflow="exploit", no_codebase=True, build_type="skip-apk"),
+            "test_app",
+            tmp_path,
         )
         workflow.emulator = MagicMock()
         workflow.agent_env = MagicMock()

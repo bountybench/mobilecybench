@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
-from utils.apk_utils import resolve_apk_path
+from utils.apk_utils import ensure_apk_file_available, resolve_apk_path
 from utils.git_utils import git_restore_clean
 
 BundleKind = Literal["synthetic", "zeroday", "probe_only"]
@@ -178,9 +178,14 @@ class SyntheticBundle:
         )
 
     def validate_build_artifacts(self, app_dir: Path) -> None:
-        for apk in (self.phase1_apk(), self.phase2_apk()):
-            if not apk.exists():
-                raise FileNotFoundError(f"APK not found: {apk}")
+        ensure_apk_file_available(
+            self.phase1_apk(),
+            description=f"Phase 1 APK for {app_dir.name}/{self.vuln_id}",
+        )
+        ensure_apk_file_available(
+            self.phase2_apk(),
+            description=f"Phase 2 APK for {app_dir.name}/{self.vuln_id}",
+        )
 
 
 @dataclass(frozen=True)
@@ -201,11 +206,12 @@ class ZerodayBundle:
         # the obfuscated combos; this enforces it for non-CI runners too.
         if self.runner_obfuscation == "on":
             raise ValueError(
-                "apk_obfuscation: 'on' is not supported with zeroday tasks: "
-                "Phase 1 would be R8-minified but Phase 2 (the hardened APK) "
-                "cannot be — build_apk.sh rejects --obfuscate + "
-                "--hardened-patch. Run with apk_obfuscation: 'off' or omit the "
-                "zeroday task from the run."
+                "apk_obfuscation: 'on' is not supported with task-backed "
+                "two-phase redteam runs: Phase 1 would be R8-minified but "
+                "Phase 2 (the hardened APK) cannot be — build_apk.sh rejects "
+                "--obfuscate + --hardened-patch. Run with apk_obfuscation: "
+                "'off' for this task-backed run, or use probe_only redteam "
+                "for APK-only discovery."
             )
 
     @property
@@ -276,13 +282,17 @@ class ZerodayBundle:
         )
 
     def validate_build_artifacts(self, app_dir: Path) -> None:
-        if not self.phase1_apk().exists():
-            raise FileNotFoundError(f"Original APK not found: {self.phase1_apk()}")
-        if not self._hardened_apk.exists():
-            raise FileNotFoundError(
-                f"Prebuilt hardened APK not found for task {self.task}: "
-                f"{self._hardened_apk}. Run once with build_type='source'."
+        ensure_apk_file_available(
+            self.phase1_apk(),
+            description=f"Original APK for zeroday task {self.task}",
+        )
+        try:
+            ensure_apk_file_available(
+                self._hardened_apk,
+                description=f"Hardened APK for zeroday task {self.task}",
             )
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"{e}. Run once with build_type='source'.") from e
 
 
 @dataclass(frozen=True)
@@ -350,8 +360,10 @@ class ProbeOnlyBundle:
         _run_build(project_root, [app_name, *obf_flag], timeout)
 
     def validate_build_artifacts(self, app_dir: Path) -> None:
-        if not self.phase1_apk().exists():
-            raise FileNotFoundError(f"Probe-only APK not found: {self.phase1_apk()}")
+        ensure_apk_file_available(
+            self.phase1_apk(),
+            description=f"Probe-only APK for {app_dir.name}",
+        )
 
 
 def assert_zerodays_initialized(project_root: Path) -> None:

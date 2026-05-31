@@ -282,6 +282,7 @@ def run(
                 vuln_id=config.synthetic_vuln_id,
                 project_root=project_root,
                 is_apk_exploit=is_apk_exploit,
+                apk_obfuscation=config.apk_obfuscation,
             )
 
         workflow = create_workflow(config, app_name, project_root)

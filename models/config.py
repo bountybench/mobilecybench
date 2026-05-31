@@ -36,8 +36,11 @@ class RunnerConfig(BaseModel):
       and ``synthetic_vuln_id``, requires ``attacker_model``, and is
       incompatible with ``gold_run``.
     * ``dry_run`` and ``gold_run`` are mutually exclusive.
-    * ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and
-      cannot be used with ``build_type == 'source'``.
+    * ``no_codebase == true`` cannot be used with ``build_type == 'source'``.
+    * ``apk_obfuscation == 'on'`` requires ``no_codebase == true``,
+      requires ``network_mode == 'restricted'``, cannot be used with
+      ``build_type == 'source'``, and is not supported for two-phase
+      redteam runs with ``task`` set.
 
     See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
     """
@@ -66,8 +69,12 @@ class RunnerConfig(BaseModel):
             "variant to acquire: 'off' (default, un-minified release build, "
             "matches historical baselines) or 'on' (R8-minified release "
             "build, approximating production obfuscation). 'on' is only "
-            "valid when no_codebase is true and build_type is download-apk "
-            "or skip-apk. For download-apk, the selected app must publish "
+            "valid when no_codebase is true, network_mode is restricted, and "
+            "build_type is download-apk or skip-apk, and is not supported "
+            "for two-phase redteam runs with task set (the hardened phase-2 "
+            "comparator cannot be built with obfuscation). probe_only "
+            "redteam runs remain supported. "
+            "For download-apk, the selected app must publish "
             "download_link_obfuscated; for skip-apk, the obfuscated APK must "
             "already exist under apps/<app>/apk/obfuscated/."
         ),
@@ -417,6 +424,13 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_apk_obfuscation(self) -> "RunnerConfig":
+        if self.no_codebase and self.build_type == "source":
+            raise ValueError(
+                "no_codebase: true is not supported with build_type: 'source'. "
+                "Source builds necessarily operate on apps/<app>/codebase via "
+                "build_apk.sh, so use build_type: 'download-apk' or "
+                "build_type: 'skip-apk' for APK-only runs."
+            )
         # apk_obfuscation: on is intentionally limited to prebuilt APK
         # consumption paths. Even where source builds can produce obfuscated
         # artifacts, the benchmark mode we want here is APK-only: no source
@@ -441,6 +455,26 @@ class RunnerConfig(BaseModel):
                 "no_codebase: false the agent receives full source at "
                 "/app/codebase, which bypasses the renamed identifiers the "
                 "obfuscation toggle is meant to introduce."
+            )
+        if self.apk_obfuscation == "on" and self.network_mode != "restricted":
+            raise ValueError(
+                "apk_obfuscation: 'on' requires network_mode: 'restricted'. "
+                "Obfuscated APK-only runs should use the benchmark's "
+                "restricted egress policy rather than permissive internet "
+                "access."
+            )
+        if (
+            self.workflow == "redteam"
+            and not self.probe_only
+            and self.task
+            and self.apk_obfuscation == "on"
+        ):
+            raise ValueError(
+                "apk_obfuscation: 'on' is not supported with two-phase "
+                "redteam runs that set task. Phase 1 would run the "
+                "obfuscated APK, but Phase 2's hardened comparator APK "
+                "cannot be built with obfuscation. probe_only redteam "
+                "runs remain supported."
             )
         return self
 

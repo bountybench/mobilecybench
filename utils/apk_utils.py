@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -107,6 +108,7 @@ def download_apk(
     project_root: Path,
     *,
     force: bool = False,
+    clean_target: bool = False,
     obfuscated: bool = False,
 ) -> Path:
     """Download APK from GitHub release URL into apps/<app>/apk/.
@@ -114,6 +116,10 @@ def download_apk(
     Supports single APKs and zip bundles.
     Without force, skips files that already exist locally (fill gaps, never overwrite).
     With force, overwrites all existing files.
+    When ``clean_target=True``, removes previously extracted files from the
+    target namespace before downloading so runtime ``download-apk`` runs do not
+    accidentally reuse stale APKs baked into an image or left by an older
+    bundle.
     When ``obfuscated=True``, downloads into apps/<app>/apk/obfuscated/ so the
     obfuscated bundle never overwrites or commingles with the default bundle.
     Returns the apk directory path that was written to.
@@ -121,7 +127,7 @@ def download_apk(
     apk_dir = project_root / "apps" / app_name / "apk"
     if obfuscated:
         apk_dir = apk_dir / "obfuscated"
-    apk_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_download_target(apk_dir, clean_target=clean_target, obfuscated=obfuscated)
 
     match = _RELEASE_URL_RE.match(url)
     if not match:
@@ -219,18 +225,67 @@ def ensure_resolved_apk_available(
             f"Resolved APK does not exist for app={app_name}, "
             f"apk_obfuscation={runner_obfuscation}: {apk_path}.{suffix}"
         )
+    return ensure_apk_file_available(
+        apk_path,
+        description=(
+            f"Resolved APK for app={app_name} apk_obfuscation={runner_obfuscation}"
+        ),
+    )
+
+
+def ensure_apk_file_available(apk_path: Path, *, description: str = "APK") -> Path:
+    """Validate that an APK file exists, is non-empty, and log its provenance."""
+    if not apk_path.exists():
+        raise FileNotFoundError(f"{description} not found: {apk_path}")
     if apk_path.stat().st_size == 0:
-        raise FileNotFoundError(f"Resolved APK is empty: {apk_path}")
+        raise FileNotFoundError(f"{description} is empty: {apk_path}")
     apk_size = apk_path.stat().st_size
+    apk_sha256 = sha256_file(apk_path)
     logger.info(
-        "Resolved APK for app=%s apk_obfuscation=%s path=%s size_bytes=%d sha256=%s",
-        app_name,
-        runner_obfuscation,
+        "%s path=%s size_bytes=%d sha256=%s",
+        description,
         apk_path,
         apk_size,
-        sha256_file(apk_path),
+        apk_sha256,
+    )
+    _append_apk_provenance_record(
+        description=description,
+        apk_path=apk_path,
+        size_bytes=apk_size,
+        sha256=apk_sha256,
     )
     return apk_path
+
+
+def _append_apk_provenance_record(
+    *,
+    description: str,
+    apk_path: Path,
+    size_bytes: int,
+    sha256: str,
+) -> None:
+    """Best-effort append of APK provenance into the current run logs dir."""
+    try:
+        from utils.logger import logger_manager
+
+        logs_dir = Path(logger_manager.get_logs_dir())
+    except Exception:
+        return
+
+    try:
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        record_path = logs_dir / "apk_provenance.jsonl"
+        record = {
+            "description": description,
+            "path": str(apk_path),
+            "size_bytes": size_bytes,
+            "sha256": sha256,
+            "session_id": os.environ.get("MOBILECYBENCH_SESSION_ID"),
+        }
+        with open(record_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, sort_keys=True) + "\n")
+    except Exception:
+        return
 
 
 def sha256_file(path: Path) -> str:
@@ -253,6 +308,25 @@ def _ensure_downloaded_primary_apk(app_name: str, apk_dir: Path) -> None:
         )
     if apk_path.stat().st_size == 0:
         raise FileNotFoundError(f"Downloaded APK is empty: {apk_path}")
+
+
+def _prepare_download_target(
+    apk_dir: Path, *, clean_target: bool = False, obfuscated: bool = False
+) -> None:
+    """Create and optionally clean the target subtree for a download-apk run."""
+    if clean_target:
+        if obfuscated:
+            if apk_dir.exists():
+                shutil.rmtree(apk_dir)
+        else:
+            for child in list(apk_dir.iterdir()) if apk_dir.exists() else []:
+                if child.name == "obfuscated":
+                    continue
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+    apk_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _extract_zip(zf: zipfile.ZipFile, apk_dir: Path, *, force: bool = False) -> None:

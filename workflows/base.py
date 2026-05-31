@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -63,6 +64,50 @@ class Workflow(ABC):
 
         with open(metadata_path, encoding="utf-8") as f:
             self.metadata = json.load(f)
+
+    _APK_ONLY_FORBIDDEN_SCRIPT_PATTERNS = (
+        (
+            re.compile(r"\bgit\s+(apply|checkout|restore|submodule|rev-parse|reset)\b"),
+            "git mutation/state command",
+        ),
+        (re.compile(r"/app/codebase\b"), "mounted codebase path"),
+        (re.compile(r"\bMCB_CODEBASE_DIR\b"), "MCB_CODEBASE_DIR reference"),
+        (re.compile(r"\bcodebase/"), "codebase-relative path"),
+    )
+
+    def _validate_apk_only_script_paths(self, paths: list[Path]) -> None:
+        """Fail fast when APK-only runs would execute hooks that assume source/git."""
+        if not self.config.no_codebase:
+            return
+
+        findings: list[str] = []
+        for path in paths:
+            if not path.exists() or not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError as e:
+                raise ValueError(
+                    f"Failed to read APK-only hook candidate {path}: {e}"
+                ) from e
+
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                for pattern, label in self._APK_ONLY_FORBIDDEN_SCRIPT_PATTERNS:
+                    if pattern.search(line):
+                        findings.append(
+                            f"{path.relative_to(self.project_root)}:{lineno}: {label}: {stripped}"
+                        )
+
+        if findings:
+            joined = "\n  - ".join(findings)
+            raise ValueError(
+                "no_codebase=true would execute app/task scripts that still assume "
+                "git or source-code access. Fix the hook or guard it for APK-only "
+                f"runs before continuing:\n  - {joined}"
+            )
 
     def _agent_credentials(self) -> tuple[str | None, str | None]:
         """Return credentials to expose to the agent prompt.
@@ -153,8 +198,19 @@ class Workflow(ABC):
             app_name=self.app_name,
             prompt=self._build_agent_prompt(),
             run_id=logger_manager.get_run_id(),
-            apk_relpath="",
+            apk_relpath=self._task_apk_relpath(),
         )
+
+    def _task_apk_relpath(self) -> str:
+        """Return the APK path exposed to a BYO agent, relative to its mount."""
+        if not self.config.no_codebase:
+            return ""
+        if not self.agent_env or not getattr(self.agent_env, "apk_path", None):
+            raise RuntimeError(
+                "no_codebase=true requires setup_runtime_environment() to stage an APK "
+                "before building task.json"
+            )
+        return Path(self.agent_env.apk_path).name
 
     def setup_agent(self) -> None:
         """Configure and initialize the agent."""
@@ -318,6 +374,8 @@ class Workflow(ABC):
                 self.app_name,
                 url,
                 self.project_root,
+                force=True,
+                clean_target=True,
                 obfuscated=(decision.effective == "on"),
             )
             ensure_resolved_apk_available(

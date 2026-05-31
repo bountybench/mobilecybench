@@ -58,6 +58,8 @@ spec:
               value: "NO_CODEBASE"
             - name: APK_OBFUSCATION
               value: "APK_OBFUSCATION"
+            - name: NETWORK_MODE
+              value: "NETWORK_MODE"
             - name: AGENT_MODE
               value: "AGENT_MODE"
             - name: AGENT_IMAGE

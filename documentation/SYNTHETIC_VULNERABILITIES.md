@@ -14,7 +14,7 @@ The CI matrix does **not** auto-run synthetic_vuln tests against the obfuscated 
 
 Probe-based obfuscated jobs (`baseline`, `vuln_scenarios`) still run, because probe robustness against R8 is the obfuscation experiment's actual target.
 
-**To run a synthetic-vuln experiment with `apk_obfuscation: on` manually**, invoke `runner.py` directly with both fields set in `runner_config.json` (use `no_codebase: true` plus `build_type: "download-apk"` or `"skip-apk"`). The local CI wrapper `run_ci_local.sh` **hard-blocks** the `--obfuscate + --test-synthetic-vuln` combination so its behavior stays in lockstep with the CI matrix; the wrapper is for CI-parity smoke tests, not standalone experimentation.
+**To run a synthetic-vuln experiment with `apk_obfuscation: on` manually**, invoke `runner.py` directly with those fields set in `runner_config.json` and use `no_codebase: true`, `network_mode: "restricted"`, and `build_type: "download-apk"` or `"skip-apk"`. The local CI wrapper `run_ci_local.sh` **hard-blocks** the `--obfuscate + --test-synthetic-vuln` combination so its behavior stays in lockstep with the CI matrix; the wrapper is for CI-parity smoke tests, not standalone experimentation.
 
 If your specific synthetic vuln's patch needs R8 keep-rules to survive minification, add them to `apps/<app>/obfuscation/extra-keep.pro` — the init script picks them up.
 

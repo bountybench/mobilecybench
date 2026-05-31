@@ -130,6 +130,8 @@
         "token_usage_jsonl": { "type": ["string", "null"] },
         "conversation_jsonl": { "type": ["string", "null"] },
         "system_prompt_file": { "type": ["string", "null"] },
+        "task_json": { "type": ["string", "null"] },
+        "apk_provenance_jsonl": { "type": ["string", "null"] },
         "squid_access_log": { "type": ["string", "null"] },
         "squid_cache_log": { "type": ["string", "null"] },
         "scores_json": { "type": ["string", "null"] },

@@ -244,6 +244,8 @@ def write_run_summary(
     system_prompt_path = _existing_path(run_result.get("system_prompt_file"))
 
     token_usage_path = logs_dir / "agent_run" / "token_usage.jsonl"
+    task_json_path = logs_dir / "task.json"
+    apk_provenance_path = logs_dir / "apk_provenance.jsonl"
     token_usage_path.parent.mkdir(parents=True, exist_ok=True)
     llm_calls_this_run = time_tracker.llm_calls[timing_start_idx:]
 
@@ -362,6 +364,8 @@ def write_run_summary(
             "token_usage_jsonl": _rel_if_exists(token_usage_path, logs_dir),
             "conversation_jsonl": relative_artifact_path(conversation_path, logs_dir),
             "system_prompt_file": relative_artifact_path(system_prompt_path, logs_dir),
+            "task_json": _rel_if_exists(task_json_path, logs_dir),
+            "apk_provenance_jsonl": _rel_if_exists(apk_provenance_path, logs_dir),
             "squid_access_log": _rel_if_exists(squid_access_log, logs_dir),
             "squid_cache_log": _rel_if_exists(squid_cache_log, logs_dir),
             **score_artifact_paths,

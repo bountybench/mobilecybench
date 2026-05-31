@@ -10,6 +10,7 @@ from utils.apk_utils import (
     _extract_zip,
     check_releases,
     download_apk,
+    ensure_apk_file_available,
     ensure_resolved_apk_available,
     get_download_url,
 )
@@ -332,6 +333,48 @@ def test_ensure_resolved_apk_available_fails_on_missing_obfuscated_path(tmp_path
         )
 
 
+def test_ensure_apk_file_available_rejects_empty_file(tmp_path):
+    apk_path = tmp_path / "empty.apk"
+    apk_path.write_bytes(b"")
+
+    with pytest.raises(FileNotFoundError, match="is empty"):
+        ensure_apk_file_available(apk_path, description="Phase 2 APK")
+
+
+def test_ensure_apk_file_available_logs_sha256(tmp_path, caplog):
+    apk_bytes = b"standalone-apk"
+    apk_path = tmp_path / "phase2.apk"
+    apk_path.write_bytes(apk_bytes)
+
+    ensure_apk_file_available(apk_path, description="Phase 2 APK")
+
+    assert "Phase 2 APK" in caplog.text
+    assert str(apk_path) in caplog.text
+    assert hashlib.sha256(apk_bytes).hexdigest() in caplog.text
+
+
+def test_ensure_apk_file_available_persists_provenance_jsonl(tmp_path, monkeypatch):
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    class _FakeLoggerManager:
+        @staticmethod
+        def get_logs_dir():
+            return logs_dir
+
+    monkeypatch.setenv("MOBILECYBENCH_SESSION_ID", "session-123")
+    monkeypatch.setattr("utils.logger.logger_manager", _FakeLoggerManager())
+
+    apk_path = tmp_path / "phase2.apk"
+    apk_path.write_bytes(b"standalone-apk")
+
+    ensure_apk_file_available(apk_path, description="Phase 2 APK")
+
+    provenance = (logs_dir / "apk_provenance.jsonl").read_text(encoding="utf-8")
+    assert '"description": "Phase 2 APK"' in provenance
+    assert '"session_id": "session-123"' in provenance
+
+
 @patch("utils.apk_utils.subprocess.run")
 def test_download_apk_zip_no_apk_entries_raises(mock_run, tmp_path):
     """Zip bundle with no .apk files raises ValueError."""
@@ -383,6 +426,39 @@ def test_download_apk_force_overwrites(mock_run, tmp_path):
     mock_run.side_effect = fake_gh_download
     download_apk("myapp", GITHUB_URL, tmp_path, force=True)
     assert (apk_dir / "myapp.apk").read_bytes() == b"new-data"
+
+
+@patch("utils.apk_utils.subprocess.run")
+def test_download_apk_clean_target_removes_stale_default_tree_preserving_obfuscated(
+    mock_run, tmp_path
+):
+    apk_dir = tmp_path / "apps" / "myapp" / "apk"
+    apk_dir.mkdir(parents=True)
+    (apk_dir / "myapp.apk").write_bytes(b"stale-default")
+    (apk_dir / "vuln_0").mkdir()
+    (apk_dir / "vuln_0" / "myapp.apk").write_bytes(b"stale-vuln")
+    (apk_dir / "obfuscated").mkdir()
+    (apk_dir / "obfuscated" / "myapp.apk").write_bytes(b"keep-obfuscated")
+
+    def fake_gh_download(*args, **kwargs):
+        cmd = args[0]
+        tmpdir = cmd[cmd.index("--dir") + 1]
+        zp = Path(tmpdir) / "apk-bundle.zip"
+        with zipfile.ZipFile(zp, "w") as zf:
+            zf.writestr("apk/myapp.apk", b"fresh-default")
+
+    mock_run.side_effect = fake_gh_download
+    download_apk(
+        "myapp",
+        BUNDLE_URL,
+        tmp_path,
+        force=True,
+        clean_target=True,
+    )
+
+    assert (apk_dir / "myapp.apk").read_bytes() == b"fresh-default"
+    assert not (apk_dir / "vuln_0").exists()
+    assert (apk_dir / "obfuscated" / "myapp.apk").read_bytes() == b"keep-obfuscated"
 
 
 @patch("utils.apk_utils.subprocess.run")

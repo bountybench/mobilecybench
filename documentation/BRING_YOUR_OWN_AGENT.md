@@ -88,22 +88,24 @@ No `trap` / no `setsid` / no graceful-shutdown logic in this example. The harnes
 
 ## `task.json` (input)
 
-Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `vuln_id`, `attacker_model`, `reasoning_effort` (in practice the harness always emits these too).
+Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `probe_only`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `task`, `vuln_id`, `attacker_model`, `reasoning_effort` (in practice the harness always emits these too).
 
 | Field | Notes |
 | --- | --- |
 | `run_id` | Bare uuid (e.g. `03e2c121-cb4d-481e-b668-da0dee5d84cf`). Embed in conversation events. |
 | `app_name` | Directory name under `apps/` (e.g. `wallabag`). Useful for logging / artifact naming. |
 | `workflow` | `"exploit"` or `"redteam"`. |
+| `probe_only` | Distinguishes bundle-less redteam discovery from two-phase runs. |
 | `prompt` | Fully assembled workflow prompt — relay to your CLI / API verbatim. Test credentials and any `additional_system_prompt` from operator config are pre-merged into this string by the harness. |
 | `model` | Model id. Forward to your CLI. |
-| `agent_wallclock_seconds` | Harness-side SIGKILL deadline (see "Wall-clock termination" above); the agent can also use it for internal pacing. |
+| `agent_wallclock_seconds` | Harness-side wall-clock termination budget (SIGTERM first, then SIGKILL if the runner does not exit); the agent can also use it for internal pacing. |
 | `reasoning_effort` | Optional non-empty string. Forwarded verbatim to the agent image; provider/CLI owns validation. |
 | `no_codebase` | When true, `/app/apk/` is mounted (not `/app/codebase/`). |
-| `apk_relpath` | Path to the built target APK, relative to `/app/codebase` (or `/app/apk` when `no_codebase=true`). |
+| `apk_relpath` | Path to the mounted target APK, relative to the agent-visible resource root. In APK-only runs this is usually the filename under `/app/apk/`. When the harness does not mount an APK separately, this is the empty string. |
+| `task` | Zero-day task id for two-phase redteam. Null for exploit, synthetic redteam, and probe-only. |
 | `vuln_id` | Synthetic vuln id when `synthetic_vuln_id` is set on the operator config (either `workflow="exploit"` or `workflow="redteam"` with synthetic mode). Null for zero-day redteam. |
 | `attacker_model` | `"malicious_app"` / `"remote_attacker"` for redteam; `""` for exploit. |
-| `app_server`, `emulator_server`, `package_name` | Live runtime endpoints + target package the harness pre-wires. Forward into your CLI's context. |
+| `app_server`, `emulator_server`, `package_name` | Live runtime endpoints + target package the harness pre-wires. `emulator_server` is the app endpoint as seen from Android (often `10.0.2.2:...`), not the ADB proxy socket. Forward them into your CLI's context. |
 
 ## `result.json` (output)
 

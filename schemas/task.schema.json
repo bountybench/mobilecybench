@@ -19,6 +19,10 @@
       "description": "Workflow class.",
       "enum": ["exploit", "redteam"]
     },
+    "probe_only": {
+      "description": "True for bundle-less redteam probe-only runs; false for exploit and two-phase redteam runs.",
+      "type": "boolean"
+    },
     "package_name": {
       "description": "Android package name of the target app.",
       "type": "string",
@@ -29,15 +33,19 @@
       "type": "string"
     },
     "emulator_server": {
-      "description": "Hostname:port for the ADB proxy (e.g. adb-proxy:5037).",
+      "description": "App endpoint reachable from the emulator (for example https://10.0.2.2:8080 or 10.0.2.2:5222). This is not the ADB proxy socket.",
       "type": "string"
     },
+    "task": {
+      "description": "Zero-day task id for two-phase redteam runs. Null for exploit, synthetic redteam, and probe-only runs.",
+      "type": ["string", "null"]
+    },
     "vuln_id": {
-      "description": "Synthetic vuln id. Mirrors RunnerConfig.synthetic_vuln_id — set for workflow='exploit' and for workflow='redteam' in synthetic mode; null for zero-day redteam.",
+      "description": "Synthetic vuln id. Mirrors RunnerConfig.synthetic_vuln_id — set for workflow='exploit' and for workflow='redteam' in synthetic mode; null for zero-day redteam and probe-only runs.",
       "type": ["string", "null"]
     },
     "apk_relpath": {
-      "description": "Path to the built target APK, relative to /app/codebase (or /app/apk when no_codebase=true).",
+      "description": "Path to the mounted target APK, relative to the agent-visible resource root. When no_codebase=true this is typically the APK filename under /app/apk/. When the harness does not mount an APK separately, this is the empty string.",
       "type": "string"
     },
     "no_codebase": {
@@ -59,7 +67,7 @@
       "minLength": 1
     },
     "agent_wallclock_seconds": {
-      "description": "Harness-side wall-clock kill budget. After this many seconds, the harness sends SIGKILL to the container.",
+      "description": "Harness-side wall-clock kill budget. After this many seconds, the harness sends SIGTERM to the in-container runner, waits briefly for artifact flush, then escalates to SIGKILL if needed.",
       "type": "integer",
       "exclusiveMinimum": 0
     },
@@ -73,6 +81,7 @@
     "run_id",
     "app_name",
     "workflow",
+    "probe_only",
     "package_name",
     "app_server",
     "emulator_server",

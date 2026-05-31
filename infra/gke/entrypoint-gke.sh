@@ -5,9 +5,82 @@ set -e
 # to GCS. Kubernetes pod logs disappear with deleted pods unless cluster-level
 # logging is enabled, so keep a local copy as a normal benchmark artifact.
 export MOBILECYBENCH_LOGS_DIR="${MOBILECYBENCH_LOGS_DIR:-/mobilecybench/logs}"
-mkdir -p "$MOBILECYBENCH_LOGS_DIR/gke"
 ENTRYPOINT_LOG="${ENTRYPOINT_LOG:-$MOBILECYBENCH_LOGS_DIR/gke/entrypoint.log}"
-exec > >(tee -a "$ENTRYPOINT_LOG") 2>&1
+CONFIG_DST=""
+UPLOAD_EXIT_CODE=0
+UPLOAD_DIRS=()
+
+append_unique_upload_dir() {
+    local candidate="$1"
+    local existing
+
+    [ -n "$candidate" ] || return
+    [ -e "$candidate" ] || return
+
+    for existing in "${UPLOAD_DIRS[@]:-}"; do
+        [ "$existing" = "$candidate" ] && return
+    done
+    UPLOAD_DIRS+=("$candidate")
+}
+
+discover_upload_dirs() {
+    local summary
+    local artifact
+
+    UPLOAD_DIRS=()
+    append_unique_upload_dir "$MOBILECYBENCH_LOGS_DIR/gke"
+
+    while IFS= read -r summary; do
+        append_unique_upload_dir "$(dirname "$summary")"
+    done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)
+
+    while IFS= read -r artifact; do
+        append_unique_upload_dir "$(dirname "$(dirname "$artifact")")"
+    done < <(
+        find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 5 -type f \
+            \( \
+                -path '*/agent_run/agent.log' -o \
+                -path '*/agent_run/conversation.jsonl' -o \
+                -path '*/agent_run/result.json' \
+            \) 2>/dev/null
+    )
+
+    while IFS= read -r artifact; do
+        append_unique_upload_dir "$(dirname "$artifact")"
+    done < <(
+        find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -type f \
+            \( \
+                -name task.json -o \
+                -name system_prompt.txt -o \
+                -name apk_provenance.jsonl \
+            \) 2>/dev/null
+    )
+}
+
+write_gke_progress_artifacts() {
+    mkdir -p "$MOBILECYBENCH_LOGS_DIR/gke"
+
+    if [ -f "${CONFIG_DST:-}" ]; then
+        cp "$CONFIG_DST" "$MOBILECYBENCH_LOGS_DIR/gke/runner_config.json" || true
+    fi
+
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 5 -type f | sort \
+        > "$MOBILECYBENCH_LOGS_DIR/gke/log_files.txt" 2>/dev/null || true
+
+    discover_upload_dirs
+    printf '%s\n' "${UPLOAD_DIRS[@]}" \
+        > "$MOBILECYBENCH_LOGS_DIR/gke/upload_manifest.txt" 2>/dev/null || true
+}
+
+gcs_glob_exists() {
+    local pattern="$1"
+
+    if command -v gcloud >/dev/null 2>&1 && gcloud storage ls --help >/dev/null 2>&1; then
+        gcloud storage ls "$pattern" >/dev/null 2>&1
+    else
+        gsutil ls "$pattern" >/dev/null 2>&1
+    fi
+}
 
 collect_gke_failure_artifacts() {
     local exit_code="$1"
@@ -44,6 +117,12 @@ collect_gke_failure_artifacts() {
     df -h > "$failure_dir/df_h.txt" 2>&1 || true
     find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -type f \
         > "$failure_dir/log_files.txt" 2>&1 || true
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -name task.json -type f \
+        -exec cp {} "$failure_dir"/ \; 2>/dev/null || true
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -name system_prompt.txt -type f \
+        -exec cp {} "$failure_dir"/ \; 2>/dev/null || true
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -name apk_provenance.jsonl -type f \
+        -exec cp {} "$failure_dir"/ \; 2>/dev/null || true
 
     if command -v jq >/dev/null 2>&1; then
         jq -n \
@@ -80,6 +159,126 @@ collect_gke_failure_artifacts() {
             > "$failure_dir/run_summary.json"
     fi
 }
+
+perform_gcs_upload() {
+    local run_exit_code="$1"
+    local GCS_PATH
+    local upload_ok
+    local has_local_summary=0
+    local has_local_agent_log=0
+    local has_local_conversation=0
+    local has_local_result_json=0
+    local has_local_task_json=0
+    local has_local_system_prompt=0
+    local has_local_apk_provenance=0
+
+    UPLOAD_EXIT_CODE=0
+    if [ -z "${GCS_BUCKET:-}" ] || [ -z "${MOBILECYBENCH_LOGS_DIR:-}" ]; then
+        return
+    fi
+
+    GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"
+    echo "Uploading results to $GCS_PATH"
+
+    write_gke_progress_artifacts
+
+    if find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f \
+        -print -quit 2>/dev/null | grep -q .
+    then
+        has_local_summary=1
+    fi
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 5 -path '*/agent_run/agent.log' -type f \
+        -print -quit 2>/dev/null | grep -q . && has_local_agent_log=1
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 5 -path '*/agent_run/conversation.jsonl' -type f \
+        -print -quit 2>/dev/null | grep -q . && has_local_conversation=1
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 5 -path '*/agent_run/result.json' -type f \
+        -print -quit 2>/dev/null | grep -q . && has_local_result_json=1
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -name task.json -type f \
+        -print -quit 2>/dev/null | grep -q . && has_local_task_json=1
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -name system_prompt.txt -type f \
+        -print -quit 2>/dev/null | grep -q . && has_local_system_prompt=1
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -name apk_provenance.jsonl -type f \
+        -print -quit 2>/dev/null | grep -q . && has_local_apk_provenance=1
+
+    if [ ${#UPLOAD_DIRS[@]} -gt 0 ]; then
+        upload_ok=0
+        if command -v gcloud >/dev/null 2>&1 && gcloud storage cp --help >/dev/null 2>&1; then
+            gcloud storage cp -r "${UPLOAD_DIRS[@]}" "$GCS_PATH" && upload_ok=1 || \
+                gsutil -m cp -r "${UPLOAD_DIRS[@]}" "$GCS_PATH" && upload_ok=1 || true
+        else
+            gsutil -m cp -r "${UPLOAD_DIRS[@]}" "$GCS_PATH" && upload_ok=1 || true
+        fi
+        if [ "$upload_ok" -eq 1 ]; then
+            gcs_glob_exists "${GCS_PATH}**/entrypoint.log" || upload_ok=0
+        fi
+        if [ "$upload_ok" -eq 1 ] && [ "$has_local_summary" -eq 1 ]; then
+            gcs_glob_exists "${GCS_PATH}**/run_summary.json" || upload_ok=0
+        fi
+        if [ "$upload_ok" -eq 1 ] && [ "$has_local_agent_log" -eq 1 ]; then
+            gcs_glob_exists "${GCS_PATH}**/agent.log" || upload_ok=0
+        fi
+        if [ "$upload_ok" -eq 1 ] && [ "$has_local_conversation" -eq 1 ]; then
+            gcs_glob_exists "${GCS_PATH}**/conversation.jsonl" || upload_ok=0
+        fi
+        if [ "$upload_ok" -eq 1 ] && [ "$has_local_result_json" -eq 1 ]; then
+            gcs_glob_exists "${GCS_PATH}**/result.json" || upload_ok=0
+        fi
+        if [ "$upload_ok" -eq 1 ] && [ "$has_local_task_json" -eq 1 ]; then
+            gcs_glob_exists "${GCS_PATH}**/task.json" || upload_ok=0
+        fi
+        if [ "$upload_ok" -eq 1 ] && [ "$has_local_system_prompt" -eq 1 ]; then
+            gcs_glob_exists "${GCS_PATH}**/system_prompt.txt" || upload_ok=0
+        fi
+        if [ "$upload_ok" -eq 1 ] && [ "$has_local_apk_provenance" -eq 1 ]; then
+            gcs_glob_exists "${GCS_PATH}**/apk_provenance.jsonl" || upload_ok=0
+        fi
+        if [ "$upload_ok" -eq 1 ] && [ "$has_local_summary" -eq 0 ] && \
+            [ "$has_local_agent_log" -eq 0 ] && \
+            [ "$has_local_conversation" -eq 0 ] && \
+            [ "$has_local_result_json" -eq 0 ] && \
+            [ "$has_local_task_json" -eq 0 ] && \
+            [ "$has_local_system_prompt" -eq 0 ] && \
+            [ "$has_local_apk_provenance" -eq 0 ] && \
+            [ "${DRY_RUN:-false}" != "true" ] && [ "$run_exit_code" -eq 0 ]
+        then
+            echo "ERROR: no experiment logs found to upload" >&2
+            UPLOAD_EXIT_CODE=1
+            return
+        fi
+        if [ "$upload_ok" -ne 1 ]; then
+            echo "ERROR: GCS upload verification failed for $GCS_PATH" >&2
+            UPLOAD_EXIT_CODE=1
+        else
+            echo "Verified GCS upload at $GCS_PATH"
+        fi
+    else
+        if [ "${DRY_RUN:-false}" = "true" ]; then
+            echo "Dry run produced no experiment logs; skipping upload verification"
+        else
+            echo "ERROR: no experiment logs found to upload" >&2
+            UPLOAD_EXIT_CODE=1
+        fi
+    fi
+}
+
+finalize_gke_exit() {
+    local exit_code="$1"
+
+    trap - EXIT
+    set +e
+    RUN_ID="${RUN_ID:-$(date +%s)}"
+    collect_gke_failure_artifacts "$exit_code"
+    perform_gcs_upload "$exit_code"
+
+    if [ "$exit_code" -eq 0 ] && [ "$UPLOAD_EXIT_CODE" -ne 0 ]; then
+        exit "$UPLOAD_EXIT_CODE"
+    fi
+    exit "$exit_code"
+}
+
+trap 'finalize_gke_exit "$?"' EXIT
+mkdir -p "$MOBILECYBENCH_LOGS_DIR/gke"
+exec > >(tee -a "$ENTRYPOINT_LOG") 2>&1
 
 # ─── DinD setup (same as orchestrator/entrypoint.sh) ───────────────────────
 rm -f /var/run/docker.pid
@@ -165,6 +364,7 @@ jq --arg model "${MODEL:-}" \
    --arg em "$EMULATOR_BACKEND" \
    --arg agent_image "${AGENT_IMAGE:-}" \
    --arg agent_mode "${AGENT_MODE:-}" \
+   --arg network_mode "${NETWORK_MODE:-}" \
    --arg build_type "${BUILD_TYPE:-}" \
    --arg workflow "${WORKFLOW:-}" \
    --arg attacker "${ATTACKER_MODEL:-}" \
@@ -185,6 +385,7 @@ jq --arg model "${MODEL:-}" \
     | if $vuln != "" then .synthetic_vuln_id = $vuln else . end
     | if $agent_image != "" then .agent_image = $agent_image else . end
     | if $agent_mode != "" then .agent_mode = $agent_mode else . end
+    | if $network_mode != "" then .network_mode = $network_mode else . end
     | if $build_type != "" then .build_type = $build_type else . end
     | if $workflow != "" then .workflow = $workflow else . end
     | if $attacker != "" then .attacker_model = $attacker else . end
@@ -219,54 +420,4 @@ set +e
 python3 runner.py "$APP_NAME" --config "$CONFIG_DST"
 EXIT_CODE=$?
 set -e
-RUN_ID="${RUN_ID:-$(date +%s)}"
-collect_gke_failure_artifacts "$EXIT_CODE"
-
-# ─── Upload results to GCS ──────────────────────────────────────────────────
-UPLOAD_EXIT_CODE=0
-if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
-    GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"
-    echo "Uploading results to $GCS_PATH"
-    # Identify run dirs by the presence of run_summary.json (content-based,
-    # decoupled from the runner's directory-naming convention so the name
-    # can change without touching the GKE pipeline). Covers both real runs
-    # (logs/<run>/) and gold runs (logs/gold/<run>_gold/).
-    dirs=()
-    while IFS= read -r summary; do
-        dirs+=("$(dirname "$summary")")
-    done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)
-    if [ ${#dirs[@]} -gt 0 ]; then
-        upload_ok=0
-        if command -v gcloud >/dev/null 2>&1 && gcloud storage cp --help >/dev/null 2>&1; then
-            gcloud storage cp -r "${dirs[@]}" "$GCS_PATH" && upload_ok=1 || \
-                gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" && upload_ok=1 || true
-        else
-            gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" && upload_ok=1 || true
-        fi
-        if [ "$upload_ok" -eq 1 ]; then
-            if command -v gcloud >/dev/null 2>&1 && gcloud storage ls --help >/dev/null 2>&1; then
-                gcloud storage ls "${GCS_PATH}**/run_summary.json" >/dev/null 2>&1 || upload_ok=0
-            else
-                gsutil ls "${GCS_PATH}**/run_summary.json" >/dev/null 2>&1 || upload_ok=0
-            fi
-        fi
-        if [ "$upload_ok" -ne 1 ]; then
-            echo "ERROR: GCS upload verification failed for $GCS_PATH" >&2
-            UPLOAD_EXIT_CODE=1
-        else
-            echo "Verified GCS upload at $GCS_PATH"
-        fi
-    else
-        if [ "${DRY_RUN:-false}" = "true" ]; then
-            echo "Dry run produced no experiment logs; skipping upload verification"
-        else
-            echo "ERROR: no experiment logs found to upload" >&2
-            UPLOAD_EXIT_CODE=1
-        fi
-    fi
-fi
-
-if [ "$EXIT_CODE" -eq 0 ] && [ "$UPLOAD_EXIT_CODE" -ne 0 ]; then
-    exit "$UPLOAD_EXIT_CODE"
-fi
-exit $EXIT_CODE
+exit "$EXIT_CODE"

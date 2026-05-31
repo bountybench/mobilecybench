@@ -430,6 +430,12 @@ class RedTeamWorkflow(Workflow):
                     app_server=self.metadata.get("app_server", ""),
                 )
             self._ops.validate(self)
+            self._validate_apk_only_script_paths(
+                [
+                    self.app_dir / "agent_login.sh",
+                    self.app_dir / "prepare_victim.sh",
+                ]
+            )
             return
 
         for required in (
@@ -460,6 +466,14 @@ class RedTeamWorkflow(Workflow):
             )
 
         self._ops.validate(self)
+        self._validate_apk_only_script_paths(
+            [
+                self.app_dir / "agent_login.sh",
+                self.app_dir / "prepare_victim.sh",
+                self._bundle.task_dir / "prepare_app.sh",
+                self._bundle.task_dir / "verify_files" / "verify_exploit.sh",
+            ]
+        )
 
     # ------------------------------------------------------------------
     # Runtime setup

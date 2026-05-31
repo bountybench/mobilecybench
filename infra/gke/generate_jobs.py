@@ -30,6 +30,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -60,8 +61,33 @@ def discover_experiments(apps_dir: Path, app_filter: list[str] | None) -> list[d
     return experiments
 
 
+_PROBE_ONLY_REQUIRED_FILES = (
+    "test_access_control.py",
+    "test_availability.py",
+    "test_confidentiality.py",
+    "test_integrity.py",
+)
+
+
+def _has_probe_suite(probe_dir: Path) -> bool:
+    return probe_dir.exists() and all(
+        (probe_dir / name).exists() for name in _PROBE_ONLY_REQUIRED_FILES
+    )
+
+
+def supports_probe_only_attacker(app_dir: Path, attacker_model: str) -> bool:
+    """Return whether ``app_dir`` supports probe-only for ``attacker_model``."""
+    if attacker_model == "malicious_app":
+        return (app_dir / "generic_probe_config.json").exists() and _has_probe_suite(
+            app_dir
+        )
+    if attacker_model == "remote_attacker":
+        return _has_probe_suite(app_dir / "remote_attacker")
+    raise ValueError(f"Unknown attacker model: {attacker_model}")
+
+
 def discover_probe_only_apps(
-    apps_dir: Path, app_filter: list[str] | None
+    apps_dir: Path, app_filter: list[str] | None, attacker_models: list[str]
 ) -> list[dict]:
     """Scan apps/ for app dirs that can run redteam probe-only mode."""
     experiments = []
@@ -70,10 +96,41 @@ def discover_probe_only_apps(
             continue
         if app_filter and app_dir.name not in app_filter:
             continue
-        if not (app_dir / "generic_probe_config.json").exists():
+        if not any(
+            supports_probe_only_attacker(app_dir, attacker_model)
+            for attacker_model in attacker_models
+        ):
             continue
         experiments.append({"app_name": app_dir.name, "vuln_id": "probe-only"})
     return experiments
+
+
+def validate_download_apk_links(
+    experiments: list[dict],
+    project_root: Path,
+    *,
+    obfuscated_states: list[bool],
+) -> None:
+    """Fail fast if a download-apk matrix references apps with no published URL."""
+    missing: list[str] = []
+    app_names = sorted({exp["app_name"] for exp in experiments})
+    for app_name in app_names:
+        metadata_path = project_root / "apps" / app_name / "metadata.json"
+        metadata = {}
+        if metadata_path.exists():
+            metadata = json.loads(metadata_path.read_text())
+        for obfuscated in obfuscated_states:
+            field = "download_link_obfuscated" if obfuscated else "download_link"
+            if metadata.get(field):
+                continue
+            missing.append(f"{app_name}: missing {field}")
+
+    if missing:
+        joined = "\n  - ".join(missing)
+        raise ValueError(
+            "download-apk requested, but some apps are missing published APK "
+            f"metadata:\n  - {joined}"
+        )
 
 
 def sanitize_k8s_name(name: str) -> str:
@@ -82,6 +139,22 @@ def sanitize_k8s_name(name: str) -> str:
     name = re.sub(r"[^a-z0-9-]", "-", name)
     name = re.sub(r"-+", "-", name).strip("-")
     return name[:63].rstrip("-")
+
+
+def yaml_quote(value: str) -> str:
+    """Render a scalar as a JSON-quoted string, which YAML accepts verbatim."""
+    return json.dumps(value)
+
+
+def resolve_network_mode_for_job(
+    *, requested_network_mode: str | None, apk_obfuscation: str
+) -> str:
+    """Return the effective network_mode env override for a rendered job."""
+    if apk_obfuscation == "on":
+        if requested_network_mode and requested_network_mode != "restricted":
+            raise ValueError("--apk-obfuscation on requires --network-mode restricted.")
+        return "restricted"
+    return requested_network_mode or ""
 
 
 def validate_runner_models(models: list[str], *, allow_provider_prefix: bool) -> None:
@@ -124,6 +197,7 @@ def render_job(
     apk_obfuscation: str,
     agent_mode: str,
     agent_image: str,
+    network_mode: str,
     reasoning_effort: str,
     max_iterations: str,
     agent_wallclock_seconds: str,
@@ -152,38 +226,40 @@ def render_job(
     # Phase 2: replace quoted env value placeholders only — avoids clobbering
     # env var *name* fields which share the same identifier strings.
     env_replacements = {
-        '"APP_NAME"': f'"{app_name}"',
-        '"MODEL"': f'"{model}"',
-        '"VULN_ID"': f'"{vuln_id}"',
-        '"EMULATOR_BACKEND"': f'"{emulator_backend}"',
-        '"DRY_RUN"': f'"{str(dry_run).lower()}"',
-        '"GOLD_RUN"': f'"{str(gold_run).lower()}"',
-        '"GCS_BUCKET"': f'"{gcs_bucket}"',
-        '"WORKFLOW"': f'"{workflow}"',
-        '"PROBE_ONLY"': f'"{str(probe_only).lower()}"',
-        '"ATTACKER_MODEL"': f'"{attacker_model}"',
-        '"BUILD_TYPE"': f'"{build_type}"',
-        '"NO_CODEBASE"': f'"{str(no_codebase).lower()}"',
-        '"APK_OBFUSCATION"': f'"{apk_obfuscation}"',
-        '"AGENT_MODE"': f'"{agent_mode}"',
-        '"AGENT_IMAGE"': f'"{agent_image}"',
-        '"REASONING_EFFORT"': f'"{reasoning_effort}"',
-        '"MAX_ITERATIONS"': f'"{max_iterations}"',
-        '"AGENT_WALLCLOCK_SECONDS"': f'"{agent_wallclock_seconds}"',
-        '"ADDITIONAL_SYSTEM_PROMPT"': f'"{additional_system_prompt}"',
+        '"APP_NAME"': yaml_quote(app_name),
+        '"MODEL"': yaml_quote(model),
+        '"VULN_ID"': yaml_quote(vuln_id),
+        '"EMULATOR_BACKEND"': yaml_quote(emulator_backend),
+        '"DRY_RUN"': yaml_quote(str(dry_run).lower()),
+        '"GOLD_RUN"': yaml_quote(str(gold_run).lower()),
+        '"GCS_BUCKET"': yaml_quote(gcs_bucket),
+        '"WORKFLOW"': yaml_quote(workflow),
+        '"PROBE_ONLY"': yaml_quote(str(probe_only).lower()),
+        '"ATTACKER_MODEL"': yaml_quote(attacker_model),
+        '"BUILD_TYPE"': yaml_quote(build_type),
+        '"NO_CODEBASE"': yaml_quote(str(no_codebase).lower()),
+        '"APK_OBFUSCATION"': yaml_quote(apk_obfuscation),
+        '"AGENT_MODE"': yaml_quote(agent_mode),
+        '"AGENT_IMAGE"': yaml_quote(agent_image),
+        '"NETWORK_MODE"': yaml_quote(network_mode),
+        '"REASONING_EFFORT"': yaml_quote(reasoning_effort),
+        '"MAX_ITERATIONS"': yaml_quote(max_iterations),
+        '"AGENT_WALLCLOCK_SECONDS"': yaml_quote(agent_wallclock_seconds),
+        '"ADDITIONAL_SYSTEM_PROMPT"': yaml_quote(additional_system_prompt),
     }
     for placeholder, value in env_replacements.items():
         rendered = rendered.replace(placeholder, value)
 
     # Replace label values
     rendered = rendered.replace(
-        "experiment-app: APP_NAME", f'experiment-app: "{app_name}"'
+        "experiment-app: APP_NAME", f"experiment-app: {yaml_quote(app_name)}"
     )
     rendered = rendered.replace(
-        "experiment-vuln: VULN_ID", f'experiment-vuln: "{vuln_id}"'
+        "experiment-vuln: VULN_ID", f"experiment-vuln: {yaml_quote(vuln_id)}"
     )
     rendered = rendered.replace(
-        "experiment-model: MODEL", f'experiment-model: "{sanitize_k8s_name(model)}"'
+        "experiment-model: MODEL",
+        f"experiment-model: {yaml_quote(sanitize_k8s_name(model))}",
     )
 
     # Remove the header comment lines from the template (lines before the YAML doc)
@@ -201,7 +277,12 @@ def render_job(
 
 
 def build_probe_only_jobs(
-    template: str, apps: list[dict], args, workflow: str, build_type: str
+    template: str,
+    apps: list[dict],
+    args,
+    workflow: str,
+    build_type: str,
+    apps_dir: Path,
 ) -> list[tuple[str, str]]:
     """Render the probe-only matrix for redteam runs.
 
@@ -221,9 +302,17 @@ def build_probe_only_jobs(
         for model in args.models:
             for attacker in attacker_models:
                 for no_codebase in no_codebase_legs:
+                    if not supports_probe_only_attacker(
+                        apps_dir / exp["app_name"], attacker
+                    ):
+                        continue
                     apk_obfuscation = args.apk_obfuscation
                     if args.no_codebase_ablation and not no_codebase:
                         apk_obfuscation = "off"
+                    network_mode = resolve_network_mode_for_job(
+                        requested_network_mode=args.network_mode,
+                        apk_obfuscation=apk_obfuscation,
+                    )
                     leg_tag = "apk" if no_codebase else "src"
                     name_parts = [
                         "mcb",
@@ -254,6 +343,7 @@ def build_probe_only_jobs(
                         apk_obfuscation=apk_obfuscation,
                         agent_mode=args.agent_mode,
                         agent_image=args.agent_image,
+                        network_mode=network_mode,
                         reasoning_effort=args.reasoning_effort,
                         max_iterations=args.max_iterations,
                         agent_wallclock_seconds=args.agent_wallclock_seconds,
@@ -345,6 +435,15 @@ def main():
         help="Agent image override, required for meaningful external-mode runs",
     )
     parser.add_argument(
+        "--network-mode",
+        default=(os.environ.get("NETWORK_MODE") or None),
+        choices=["restricted", "permissive"],
+        help=(
+            "Optional runner network_mode override. apk_obfuscation=on forces "
+            "restricted even if omitted."
+        ),
+    )
+    parser.add_argument(
         "--reasoning-effort",
         default=os.environ.get("REASONING_EFFORT", ""),
         help=(
@@ -427,14 +526,20 @@ def main():
     template = load_template(template_path)
 
     app_filter = None if args.all else args.apps
+    requested_attacker_models = args.attacker_models or [args.attacker_model]
     if args.probe_only:
-        experiments = discover_probe_only_apps(apps_dir, app_filter)
+        experiments = discover_probe_only_apps(
+            apps_dir, app_filter, requested_attacker_models
+        )
     else:
         experiments = discover_experiments(apps_dir, app_filter)
 
     if not experiments:
         if args.probe_only:
-            msg = "No probe-only apps found. Check apps have generic_probe_config.json."
+            msg = (
+                "No probe-only apps found. Check the requested apps ship the "
+                "probe suite for the requested attacker model(s)."
+            )
         else:
             msg = (
                 "No experiments found. Check that apps have synthetic_vulnerabilities/."
@@ -444,10 +549,16 @@ def main():
 
     workflow = "redteam" if args.probe_only else "exploit"
     build_type = args.build_type or ("download-apk" if args.probe_only else "")
+    if args.no_codebase_ablation and not args.probe_only:
+        print(
+            "ERROR: --no-codebase-ablation is only valid with --probe-only.",
+            file=sys.stderr,
+        )
+        return 1
     if (
         args.apk_obfuscation == "on"
         and not args.no_codebase
-        and not args.no_codebase_ablation
+        and not (args.probe_only and args.no_codebase_ablation)
     ):
         print(
             "ERROR: --apk-obfuscation on requires --no-codebase.",
@@ -460,27 +571,55 @@ def main():
             file=sys.stderr,
         )
         return 1
+    try:
+        default_network_mode = resolve_network_mode_for_job(
+            requested_network_mode=args.network_mode or None,
+            apk_obfuscation=args.apk_obfuscation,
+        )
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if build_type == "download-apk":
+        required_obfuscated_states = [args.apk_obfuscation == "on"]
+        if (
+            args.probe_only
+            and args.no_codebase_ablation
+            and args.apk_obfuscation == "on"
+        ):
+            required_obfuscated_states = [False, True]
+        try:
+            validate_download_apk_links(
+                experiments,
+                project_root,
+                obfuscated_states=required_obfuscated_states,
+            )
+        except ValueError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
 
     if args.outdir:
         Path(args.outdir).mkdir(parents=True, exist_ok=True)
 
     all_yamls = []
+    if args.agent_mode == "external" and not args.agent_image:
+        print(
+            "ERROR: --agent-image is required for --agent-mode external jobs.",
+            file=sys.stderr,
+        )
+        return 1
+
     if args.probe_only and (
         args.agent_mode == "external"
         or args.attacker_models
         or args.no_codebase_ablation
     ):
         if not args.agent_image:
-            if args.agent_mode == "external":
-                print(
-                    "ERROR: --agent-image is required for --agent-mode external probe-only jobs.",
-                    file=sys.stderr,
-                )
-                return 1
             # Custom probe-only jobs use the base kali image unless the caller
             # overrides it explicitly.
             args.agent_image = "cybench/mobilecybench:latest"
-        jobs = build_probe_only_jobs(template, experiments, args, workflow, build_type)
+        jobs = build_probe_only_jobs(
+            template, experiments, args, workflow, build_type, apps_dir
+        )
     else:
         jobs = []
         for exp in experiments:
@@ -503,6 +642,7 @@ def main():
                     apk_obfuscation=args.apk_obfuscation,
                     agent_mode=args.agent_mode,
                     agent_image=args.agent_image,
+                    network_mode=default_network_mode,
                     reasoning_effort=args.reasoning_effort,
                     max_iterations=args.max_iterations,
                     agent_wallclock_seconds=args.agent_wallclock_seconds,
@@ -517,6 +657,16 @@ def main():
                         yaml_str,
                     )
                 )
+
+    if not jobs:
+        if args.probe_only:
+            print(
+                "No probe-only jobs found for the requested apps/attacker-models.",
+                file=sys.stderr,
+            )
+        else:
+            print("No jobs found for the requested arguments.", file=sys.stderr)
+        return 1
 
     for job_name, yaml_str in jobs:
         all_yamls.append(yaml_str)

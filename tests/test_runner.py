@@ -168,6 +168,7 @@ class TestReasoningEffortOwnership:
             "run_id": "run-1",
             "app_name": "app",
             "workflow": "exploit",
+            "probe_only": False,
             "package_name": "pkg",
             "app_server": "",
             "emulator_server": "",
@@ -189,6 +190,7 @@ class TestReasoningEffortOwnership:
             "run_id": "run-1",
             "app_name": "app",
             "workflow": "exploit",
+            "probe_only": False,
             "package_name": "pkg",
             "app_server": "",
             "emulator_server": "",
@@ -576,6 +578,41 @@ class TestRun:
         ) == "TCP_DENIED example.com\n"
         validate(instance=summary, schema=_load_run_summary_schema())
 
+    def test_run_summary_includes_task_and_apk_provenance_artifacts(
+        self, base_config, tmp_path
+    ):
+        def run_agent_and_write_artifacts():
+            logs_dir = logger_manager.get_logs_dir()
+            (logs_dir / "task.json").write_text('{"run_id":"abc"}', encoding="utf-8")
+            (logs_dir / "apk_provenance.jsonl").write_text(
+                '{"description":"Probe-only APK"}\n',
+                encoding="utf-8",
+            )
+            return {"status": "completed"}
+
+        with patch("runner.ensure_app_submodule"), patch.object(
+            ExploitWorkflow, "validate_arguments"
+        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
+            ExploitWorkflow, "setup_agent"
+        ), patch.object(
+            ExploitWorkflow,
+            "run_agent",
+            side_effect=run_agent_and_write_artifacts,
+        ), patch.object(
+            ExploitWorkflow, "evaluate", return_value={"scores": {"probe_a": 1}}
+        ), patch.object(
+            ExploitWorkflow, "cleanup"
+        ):
+            assert run(base_config, "test_app", tmp_path) == 0
+
+        summary_path = logger_manager.get_logs_dir() / "run_summary.json"
+        with open(summary_path, "r", encoding="utf-8") as f:
+            summary = json.load(f)
+
+        assert summary["artifacts"]["task_json"] == "task.json"
+        assert summary["artifacts"]["apk_provenance_jsonl"] == "apk_provenance.jsonl"
+        validate(instance=summary, schema=_load_run_summary_schema())
+
     def test_run_summary_cost_usd_prefers_top_level(self, base_config, tmp_path):
         """When run_result reports top-level cost_usd (claude-code path),
         run_summary surfaces that value instead of the nested one."""
@@ -745,6 +782,19 @@ class TestAttackerModelConfig:
 class TestApkObfuscationConfig:
     """Tests for apk_obfuscation cross-field invariants."""
 
+    def test_no_codebase_rejects_source_build(self, base_config):
+        with pytest.raises(
+            ValueError,
+            match="no_codebase: true is not supported with build_type: 'source'",
+        ):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "build_type": "source",
+                    "no_codebase": True,
+                }
+            )
+
     def test_obfuscation_requires_no_codebase(self, base_config):
         with pytest.raises(ValueError, match="requires no_codebase: true"):
             RunnerConfig(
@@ -768,12 +818,43 @@ class TestApkObfuscationConfig:
         assert config.apk_obfuscation == "on"
         assert config.no_codebase is True
 
+    def test_obfuscation_requires_restricted_network(self, base_config):
+        with pytest.raises(
+            ValueError,
+            match="apk_obfuscation: 'on' requires network_mode: 'restricted'",
+        ):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "build_type": "download-apk",
+                    "apk_obfuscation": "on",
+                    "no_codebase": True,
+                    "network_mode": "permissive",
+                }
+            )
+
     def test_obfuscation_rejects_source_build_even_without_codebase(self, base_config):
         with pytest.raises(ValueError, match="build_type: 'source'"):
             RunnerConfig(
                 **{
                     **base_config.model_dump(),
                     "build_type": "source",
+                    "apk_obfuscation": "on",
+                    "no_codebase": True,
+                }
+            )
+
+    def test_obfuscation_rejects_redteam_zeroday(self, base_config):
+        with pytest.raises(
+            ValueError, match="not supported with two-phase redteam runs that set task"
+        ):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "redteam",
+                    "task": "report-0",
+                    "synthetic_vuln_id": None,
+                    "build_type": "download-apk",
                     "apk_obfuscation": "on",
                     "no_codebase": True,
                 }

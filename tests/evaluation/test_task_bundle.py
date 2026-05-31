@@ -182,21 +182,23 @@ def test_synthetic_validate_build_artifacts_requires_both_apks(tmp_path):
         bundle.validate_build_artifacts(tmp_path)
 
     (tmp_path / "apk" / "vuln_0").mkdir(parents=True)
-    (tmp_path / "apk" / "vuln_0" / f"{tmp_path.name}.apk").touch()
-    (tmp_path / "apk" / f"{tmp_path.name}.apk").touch()
+    (tmp_path / "apk" / "vuln_0" / f"{tmp_path.name}.apk").write_bytes(b"phase1")
+    (tmp_path / "apk" / f"{tmp_path.name}.apk").write_bytes(b"phase2")
     bundle.validate_build_artifacts(tmp_path)
 
 
 def test_zeroday_validate_build_artifacts_requires_hardened_apk(tmp_path):
     bundle = ZerodayBundle(project_root=tmp_path, app_name="x", task="t")
     (tmp_path / "apps" / "x" / "apk").mkdir(parents=True)
-    (tmp_path / "apps" / "x" / "apk" / "x.apk").touch()
+    (tmp_path / "apps" / "x" / "apk" / "x.apk").write_bytes(b"baseline")
     with pytest.raises(FileNotFoundError, match="hardened"):
         bundle.validate_build_artifacts(tmp_path / "apps" / "x")
 
 
 def test_zeroday_bundle_rejects_obfuscation_phase_mismatch(tmp_path):
-    with pytest.raises(ValueError, match="not supported with zeroday tasks"):
+    with pytest.raises(
+        ValueError, match="not supported with task-backed two-phase redteam runs"
+    ):
         ZerodayBundle(
             project_root=tmp_path,
             app_name="x",
@@ -254,7 +256,7 @@ def test_probe_only_bundle_validate_build_artifacts(tmp_path):
         bundle.validate_build_artifacts(tmp_path / "apps" / "myapp")
     apk = tmp_path / "apps" / "myapp" / "apk" / "myapp.apk"
     apk.parent.mkdir(parents=True)
-    apk.touch()
+    apk.write_bytes(b"probe-only")
     bundle.validate_build_artifacts(tmp_path / "apps" / "myapp")
 
 

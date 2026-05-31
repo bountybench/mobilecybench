@@ -1365,6 +1365,19 @@ def test_bundleless_probe_only_validate_arguments_requires_probes(tmp_path):
         wf.validate_arguments()
 
 
+def test_bundleless_probe_only_validate_arguments_rejects_git_hook_under_no_codebase(
+    tmp_path,
+):
+    wf = _make_bundleless_workflow(
+        _probe_only_bundleless_config(no_codebase=True), tmp_path
+    )
+    (tmp_path / "apps" / "testapp" / "prepare_victim.sh").write_text(
+        "#!/bin/bash\ngit checkout -- config.json\n"
+    )
+    with pytest.raises(ValueError, match="no_codebase=true would execute"):
+        wf.validate_arguments()
+
+
 def test_bundleless_probe_only_codebase_absent_is_noop(tmp_path):
     """When the codebase dir does not exist on disk (APK-only checkout),
     _prepare_runtime_codebase must return cleanly without invoking
