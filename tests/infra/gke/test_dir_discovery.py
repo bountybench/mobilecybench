@@ -467,3 +467,23 @@ def test_entrypoint_gke_persists_failure_artifacts_for_upload() -> None:
     assert 'gcs_glob_exists "${GCS_PATH}**/entrypoint.log"' in script
     assert 'gcs_glob_exists "${GCS_PATH}**/conversation.jsonl"' in script
     assert 'gcs_glob_exists "${GCS_PATH}**/system_prompt.txt"' in script
+    assert "record_gcs_auth_preflight()" in script
+    assert "gcloud auth application-default print-access-token" in script
+    assert 'gcloud storage ls "gs://${GCS_BUCKET}/"' in script
+    assert "create_upload_failure_bundle()" in script
+    assert "hold_for_manual_artifact_copy()" in script
+    assert "upload_failure_bundle.tar.gz" in script
+    assert "manual_retrieval.txt" in script
+    assert "UPLOAD_FAILURE_HOLD_SECONDS" in script
+    assert "kubectl cp ${POD_NAMESPACE:-mobilecybench}/${RUN_ID:-unknown-run}" in script
+
+
+def test_gke_job_template_exports_pod_namespace() -> None:
+    """The GKE job template should pass pod namespace to the runner.
+
+    This keeps the manual-retrieval command exact when upload fallback
+    bundles need to be copied from a still-running pod.
+    """
+    template = (REPO_ROOT / "infra" / "gke" / "job-template.yaml").read_text()
+    assert "- name: POD_NAMESPACE" in template
+    assert "fieldPath: metadata.namespace" in template

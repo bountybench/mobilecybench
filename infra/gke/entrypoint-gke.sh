@@ -9,6 +9,8 @@ ENTRYPOINT_LOG="${ENTRYPOINT_LOG:-$MOBILECYBENCH_LOGS_DIR/gke/entrypoint.log}"
 CONFIG_DST=""
 UPLOAD_EXIT_CODE=0
 UPLOAD_DIRS=()
+GCS_AUTH_PREFLIGHT_OK=1
+UPLOAD_FAILURE_BUNDLE=""
 
 append_unique_upload_dir() {
     local candidate="$1"
@@ -70,6 +72,65 @@ write_gke_progress_artifacts() {
     discover_upload_dirs
     printf '%s\n' "${UPLOAD_DIRS[@]}" \
         > "$MOBILECYBENCH_LOGS_DIR/gke/upload_manifest.txt" 2>/dev/null || true
+}
+
+record_gcs_auth_preflight() {
+    local preflight_log="$MOBILECYBENCH_LOGS_DIR/gke/gcs_auth_preflight.txt"
+    local auth_ok=1
+
+    mkdir -p "$MOBILECYBENCH_LOGS_DIR/gke"
+
+    {
+        echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "bucket=gs://${GCS_BUCKET:-}"
+        echo "run_id=${RUN_ID:-}"
+        echo
+    } > "$preflight_log"
+
+    if [ -z "${GCS_BUCKET:-}" ]; then
+        echo "skip: GCS_BUCKET is unset" >> "$preflight_log"
+        GCS_AUTH_PREFLIGHT_OK=1
+        return
+    fi
+
+    if command -v curl >/dev/null 2>&1; then
+        echo "== metadata email ==" >> "$preflight_log"
+        if ! curl -fsS \
+            -H "Metadata-Flavor: Google" \
+            http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email \
+            >> "$preflight_log" 2>&1
+        then
+            auth_ok=0
+        fi
+        echo >> "$preflight_log"
+    fi
+
+    if command -v gcloud >/dev/null 2>&1; then
+        echo "== gcloud auth application-default print-access-token ==" >> "$preflight_log"
+        if ! gcloud auth application-default print-access-token >> "$preflight_log" 2>&1; then
+            auth_ok=0
+        fi
+        echo >> "$preflight_log"
+
+        echo "== gcloud storage ls gs://${GCS_BUCKET}/ ==" >> "$preflight_log"
+        if ! gcloud storage ls "gs://${GCS_BUCKET}/" >> "$preflight_log" 2>&1; then
+            auth_ok=0
+        fi
+        echo >> "$preflight_log"
+    fi
+
+    GCS_AUTH_PREFLIGHT_OK="$auth_ok"
+    if [ "$GCS_AUTH_PREFLIGHT_OK" -ne 1 ]; then
+        echo "WARNING: GCS auth preflight failed; uploads may not work. See $preflight_log" \
+            | tee -a "$preflight_log"
+        if [ "${REQUIRE_GCS_AUTH_PREFLIGHT:-false}" = "true" ]; then
+            echo "ERROR: REQUIRE_GCS_AUTH_PREFLIGHT=true and auth preflight failed" \
+                | tee -a "$preflight_log" >&2
+            exit 1
+        fi
+    else
+        echo "GCS auth preflight ok" >> "$preflight_log"
+    fi
 }
 
 gcs_glob_exists() {
@@ -158,6 +219,81 @@ collect_gke_failure_artifacts() {
             "${APP_NAME:-}" "${MODEL:-}" "${RUN_ID:-}" "$exit_code" \
             > "$failure_dir/run_summary.json"
     fi
+}
+
+create_upload_failure_bundle() {
+    local failure_dir="$MOBILECYBENCH_LOGS_DIR/gke_failure/${RUN_ID:-unknown-run}"
+    local bundle_tmp="/tmp/${RUN_ID:-unknown-run}-gke-artifacts.tar.gz"
+    local bundle_dst="$failure_dir/upload_failure_bundle.tar.gz"
+    local manifest="$failure_dir/manual_retrieval.txt"
+    local rel
+    local src
+    local bundle_sources=()
+
+    mkdir -p "$failure_dir"
+    write_gke_progress_artifacts
+
+    for src in "${UPLOAD_DIRS[@]:-}"; do
+        [ -d "$src" ] || continue
+        case "$src" in
+            "$MOBILECYBENCH_LOGS_DIR")
+                continue
+                ;;
+            "$MOBILECYBENCH_LOGS_DIR"/*)
+                rel="${src#"$MOBILECYBENCH_LOGS_DIR"/}"
+                ;;
+            *)
+                continue
+                ;;
+        esac
+        bundle_sources+=("$rel")
+    done
+
+    if [ ${#bundle_sources[@]} -eq 0 ]; then
+        return
+    fi
+
+    rm -f "$bundle_tmp"
+    if tar -C "$MOBILECYBENCH_LOGS_DIR" -czf "$bundle_tmp" "${bundle_sources[@]}"; then
+        cp "$bundle_tmp" "$bundle_dst"
+        if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$bundle_dst" > "$bundle_dst.sha256" || true
+        elif command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$bundle_dst" > "$bundle_dst.sha256" || true
+        fi
+        UPLOAD_FAILURE_BUNDLE="$bundle_dst"
+        {
+            echo "GCS upload failed; retrieve the preserved artifact bundle with:"
+            echo "  kubectl cp ${POD_NAMESPACE:-mobilecybench}/${RUN_ID:-unknown-run}:$bundle_dst ./$(basename "$bundle_dst")"
+            echo
+            echo "Bundle sources:"
+            printf '  %s\n' "${bundle_sources[@]}"
+        } > "$manifest"
+        echo "Preserved manual-retrieval bundle at $bundle_dst"
+        cat "$manifest"
+    else
+        echo "WARNING: failed to create upload fallback bundle $bundle_tmp" >&2
+    fi
+}
+
+hold_for_manual_artifact_copy() {
+    local hold_seconds="${UPLOAD_FAILURE_HOLD_SECONDS:-1800}"
+
+    if [ -z "${UPLOAD_FAILURE_BUNDLE:-}" ] || [ ! -f "${UPLOAD_FAILURE_BUNDLE:-}" ]; then
+        return
+    fi
+    if ! [[ "$hold_seconds" =~ ^[0-9]+$ ]]; then
+        echo "WARNING: invalid UPLOAD_FAILURE_HOLD_SECONDS=$hold_seconds; skipping hold" >&2
+        return
+    fi
+    if [ "$hold_seconds" -le 0 ]; then
+        return
+    fi
+
+    echo "Holding container for ${hold_seconds}s so artifacts can be copied manually."
+    echo "Run:"
+    echo "  kubectl cp ${POD_NAMESPACE:-mobilecybench}/${RUN_ID:-unknown-run}:${UPLOAD_FAILURE_BUNDLE} ./$(basename "$UPLOAD_FAILURE_BUNDLE")"
+    sleep "$hold_seconds"
 }
 
 perform_gcs_upload() {
@@ -269,6 +405,10 @@ finalize_gke_exit() {
     RUN_ID="${RUN_ID:-$(date +%s)}"
     collect_gke_failure_artifacts "$exit_code"
     perform_gcs_upload "$exit_code"
+    if [ "$UPLOAD_EXIT_CODE" -ne 0 ]; then
+        create_upload_failure_bundle
+        hold_for_manual_artifact_copy
+    fi
 
     if [ "$exit_code" -eq 0 ] && [ "$UPLOAD_EXIT_CODE" -ne 0 ]; then
         exit "$UPLOAD_EXIT_CODE"
@@ -416,6 +556,7 @@ else
 fi
 
 cd /mobilecybench
+record_gcs_auth_preflight
 set +e
 python3 runner.py "$APP_NAME" --config "$CONFIG_DST"
 EXIT_CODE=$?
