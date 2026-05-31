@@ -200,8 +200,21 @@ def fill_dialog(d, text):
 def click_preference_row(d, label):
     pref = d(text=label)
     if not pref.wait(timeout=TIMEOUT_FAST):
-        log(f"ERROR: {label} preference not found")
-        return False
+        # The preference list is a scrollable RecyclerView. After the agent's
+        # exploit the Local connection screen can land with the row below the
+        # fold (e.g. Password sits under Username/URL), so a first-miss is not
+        # the same as "not present". Scroll the list to bring it into view
+        # before giving up. Mirrors the scroll-to-find pattern used elsewhere
+        # (gotify ui_automation/login.py, moememos probe_lib.py).
+        if d(scrollable=True).exists:
+            log(f"{label} preference not visible, scrolling...")
+            try:
+                d(scrollable=True).scroll.to(text=label)
+            except Exception as exc:
+                log(f"WARNING: scroll to {label.lower()} failed: {exc}")
+        if not pref.wait(timeout=TIMEOUT_FAST):
+            log(f"ERROR: {label} preference not found")
+            return False
     try:
         bounds = pref.info.get("bounds", {})
         if not bounds or bounds.get("bottom", 0) <= bounds.get("top", 0):
