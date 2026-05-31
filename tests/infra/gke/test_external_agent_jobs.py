@@ -247,6 +247,53 @@ def test_obfuscated_jobs_reject_permissive_network_mode() -> None:
     assert "--apk-obfuscation on requires --network-mode restricted" in res.stderr
 
 
+def test_gke_evidence_controls_render_into_job_yaml() -> None:
+    res = _generate(
+        "--apps",
+        "wallabag",
+        "--models",
+        "gpt-5.4",
+        "--probe-only",
+        "--attacker-model",
+        "remote_attacker",
+        "--agent-mode",
+        "custom",
+        "--no-codebase",
+        "--apk-obfuscation",
+        "on",
+        "--backoff-limit",
+        "0",
+        "--ttl-seconds-after-finished",
+        "604800",
+        "--upload-failure-hold-seconds",
+        "21600",
+        "--require-gcs-auth-preflight",
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+    assert len(docs) == 1
+    job = docs[0]
+    env = _env_of(job)
+
+    assert job["spec"]["backoffLimit"] == 0
+    assert job["spec"]["ttlSecondsAfterFinished"] == 604800
+    assert env["UPLOAD_FAILURE_HOLD_SECONDS"] == "21600"
+    assert env["REQUIRE_GCS_AUTH_PREFLIGHT"] == "true"
+
+
+def test_negative_backoff_limit_rejected() -> None:
+    res = _generate(
+        "--apps",
+        "wallabag",
+        "--models",
+        "gpt-5.4",
+        "--backoff-limit",
+        "-1",
+    )
+    assert res.returncode != 0
+    assert "must be >= 0" in res.stderr
+
+
 def test_validate_download_apk_links_rejects_missing_obfuscated_metadata(
     tmp_path,
 ) -> None:

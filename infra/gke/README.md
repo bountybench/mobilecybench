@@ -85,6 +85,21 @@ kubectl logs -n mobilecybench job/mcb-moememos-vuln-0-gpt-4o -f
 kubectl get pods -n mobilecybench
 ```
 
+For evidence-sensitive reruns where the first failing pod must remain the
+source of truth, render jobs with:
+
+```bash
+python infra/gke/generate_jobs.py \
+  ... \
+  --backoff-limit 0 \
+  --ttl-seconds-after-finished 604800 \
+  --upload-failure-hold-seconds 21600
+```
+
+This disables automatic Kubernetes retries, keeps the Job around for seven
+days after completion, and holds a failed-upload pod open for six hours so
+`upload_failure_bundle.tar.gz` can be copied locally with `kubectl cp`.
+
 ### 6. Collect Results
 
 ```bash

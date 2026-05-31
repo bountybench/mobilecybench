@@ -38,6 +38,14 @@ import sys
 from pathlib import Path
 
 
+def nonnegative_int(value: str) -> int:
+    """argparse type: integer >= 0."""
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return parsed
+
+
 def discover_experiments(apps_dir: Path, app_filter: list[str] | None) -> list[dict]:
     """Scan apps/ for (app_name, vuln_id) pairs with synthetic vulnerabilities."""
     experiments = []
@@ -202,6 +210,10 @@ def render_job(
     max_iterations: str,
     agent_wallclock_seconds: str,
     additional_system_prompt: str,
+    upload_failure_hold_seconds: str,
+    require_gcs_auth_preflight: bool,
+    backoff_limit: int,
+    ttl_seconds_after_finished: int,
     job_name_suffix: str = "",
     job_name: str | None = None,
 ) -> str:
@@ -217,6 +229,8 @@ def render_job(
     replacements = {
         "mcb-APP_NAME-VULN_ID-MODEL": job_name,
         "IMAGE_URI": image_uri,
+        "BACKOFF_LIMIT": str(backoff_limit),
+        "TTL_SECONDS_AFTER_FINISHED": str(ttl_seconds_after_finished),
     }
 
     rendered = template
@@ -246,6 +260,10 @@ def render_job(
         '"MAX_ITERATIONS"': yaml_quote(max_iterations),
         '"AGENT_WALLCLOCK_SECONDS"': yaml_quote(agent_wallclock_seconds),
         '"ADDITIONAL_SYSTEM_PROMPT"': yaml_quote(additional_system_prompt),
+        '"UPLOAD_FAILURE_HOLD_SECONDS"': yaml_quote(upload_failure_hold_seconds),
+        '"REQUIRE_GCS_AUTH_PREFLIGHT"': yaml_quote(
+            str(require_gcs_auth_preflight).lower()
+        ),
     }
     for placeholder, value in env_replacements.items():
         rendered = rendered.replace(placeholder, value)
@@ -298,6 +316,11 @@ def build_probe_only_jobs(
         no_codebase_legs = [args.no_codebase]
 
     jobs = []
+    upload_failure_hold_seconds = (
+        ""
+        if args.upload_failure_hold_seconds is None
+        else str(args.upload_failure_hold_seconds)
+    )
     for exp in apps:
         for model in args.models:
             for attacker in attacker_models:
@@ -348,6 +371,10 @@ def build_probe_only_jobs(
                         max_iterations=args.max_iterations,
                         agent_wallclock_seconds=args.agent_wallclock_seconds,
                         additional_system_prompt=args.additional_system_prompt,
+                        upload_failure_hold_seconds=upload_failure_hold_seconds,
+                        require_gcs_auth_preflight=args.require_gcs_auth_preflight,
+                        backoff_limit=args.backoff_limit,
+                        ttl_seconds_after_finished=args.ttl_seconds_after_finished,
                         job_name_suffix=args.job_name_suffix,
                     )
                     jobs.append((job_name, yaml_str))
@@ -465,6 +492,44 @@ def main():
         "--additional-system-prompt",
         default=os.environ.get("ADDITIONAL_SYSTEM_PROMPT", ""),
         help="Optional prompt suffix appended to the built system prompt",
+    )
+    parser.add_argument(
+        "--upload-failure-hold-seconds",
+        type=nonnegative_int,
+        default=(
+            nonnegative_int(os.environ["UPLOAD_FAILURE_HOLD_SECONDS"])
+            if os.environ.get("UPLOAD_FAILURE_HOLD_SECONDS")
+            else None
+        ),
+        help=(
+            "How long a pod should stay alive after preserving a manual "
+            "artifact bundle for upload failures. Omit to keep the "
+            "entrypoint default."
+        ),
+    )
+    parser.add_argument(
+        "--require-gcs-auth-preflight",
+        action="store_true",
+        default=(os.environ.get("REQUIRE_GCS_AUTH_PREFLIGHT", "").lower() == "true"),
+        help=(
+            "Fail fast before the experiment starts if the pod cannot access "
+            "the configured GCS bucket with application-default credentials."
+        ),
+    )
+    parser.add_argument(
+        "--backoff-limit",
+        type=nonnegative_int,
+        default=nonnegative_int(os.environ.get("BACKOFF_LIMIT", "1")),
+        help=(
+            "Kubernetes Job backoffLimit. Set 0 when first-failure evidence "
+            "must not be obscured by an automatic retry."
+        ),
+    )
+    parser.add_argument(
+        "--ttl-seconds-after-finished",
+        type=nonnegative_int,
+        default=nonnegative_int(os.environ.get("TTL_SECONDS_AFTER_FINISHED", "86400")),
+        help="Kubernetes Job TTL after completion/failure before cleanup.",
     )
     parser.add_argument(
         "--image",
@@ -622,6 +687,11 @@ def main():
         )
     else:
         jobs = []
+        upload_failure_hold_seconds = (
+            ""
+            if args.upload_failure_hold_seconds is None
+            else str(args.upload_failure_hold_seconds)
+        )
         for exp in experiments:
             for model in args.models:
                 yaml_str = render_job(
@@ -647,6 +717,10 @@ def main():
                     max_iterations=args.max_iterations,
                     agent_wallclock_seconds=args.agent_wallclock_seconds,
                     additional_system_prompt=args.additional_system_prompt,
+                    upload_failure_hold_seconds=upload_failure_hold_seconds,
+                    require_gcs_auth_preflight=args.require_gcs_auth_preflight,
+                    backoff_limit=args.backoff_limit,
+                    ttl_seconds_after_finished=args.ttl_seconds_after_finished,
                     job_name_suffix=args.job_name_suffix,
                 )
                 jobs.append(

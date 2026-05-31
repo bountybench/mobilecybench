@@ -490,5 +490,9 @@ def test_gke_job_template_exports_pod_namespace() -> None:
     bundles need to be copied from a still-running pod.
     """
     template = (REPO_ROOT / "infra" / "gke" / "job-template.yaml").read_text()
+    assert "backoffLimit: BACKOFF_LIMIT" in template
+    assert "ttlSecondsAfterFinished: TTL_SECONDS_AFTER_FINISHED" in template
+    assert "- name: UPLOAD_FAILURE_HOLD_SECONDS" in template
+    assert "- name: REQUIRE_GCS_AUTH_PREFLIGHT" in template
     assert "- name: POD_NAMESPACE" in template
     assert "fieldPath: metadata.namespace" in template

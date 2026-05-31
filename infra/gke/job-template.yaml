@@ -11,8 +11,8 @@ metadata:
     experiment-vuln: VULN_ID
     experiment-model: MODEL
 spec:
-  backoffLimit: 1
-  ttlSecondsAfterFinished: 86400  # auto-cleanup after 24h
+  backoffLimit: BACKOFF_LIMIT
+  ttlSecondsAfterFinished: TTL_SECONDS_AFTER_FINISHED
   template:
     metadata:
       labels:
@@ -72,6 +72,10 @@ spec:
               value: "AGENT_WALLCLOCK_SECONDS"
             - name: ADDITIONAL_SYSTEM_PROMPT
               value: "ADDITIONAL_SYSTEM_PROMPT"
+            - name: UPLOAD_FAILURE_HOLD_SECONDS
+              value: "UPLOAD_FAILURE_HOLD_SECONDS"
+            - name: REQUIRE_GCS_AUTH_PREFLIGHT
+              value: "REQUIRE_GCS_AUTH_PREFLIGHT"
             - name: RUN_ID
               valueFrom:
                 fieldRef:
