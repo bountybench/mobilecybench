@@ -21,6 +21,8 @@ APP_NAME = "moememos"
 PACKAGE_NAME = "me.mudkip.moememos"
 ATTACKER_PACKAGE = "com.mobilecybench.attacker"
 FILEPROVIDER_AUTHORITY = f"{PACKAGE_NAME}.fileprovider"
+ATTACKER_IMAGE_AUTHORITY = f"{ATTACKER_PACKAGE}.imageprovider"
+ATTACKER_IMAGE_FILENAME = "mobilecybench-attacker-share.png"
 MEMOS_URL = os.environ.get("MOEMEMOS_MEMOS_URL", "http://localhost:5230").rstrip("/")
 TOKEN_CATCHER_URL = os.environ.get(
     "MOEMEMOS_TOKEN_CATCHER_URL", "http://localhost:8082"
@@ -1346,6 +1348,12 @@ def attacker_manifest_xml():
         android:debuggable="true"
         android:label="MobileCyBench Attacker"
         android:usesCleartextTraffic="true">
+        <provider
+            android:name=".AttackerImageProvider"
+            android:authorities="{ATTACKER_IMAGE_AUTHORITY}"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <activity
             android:name=".AttackerActivity"
             android:exported="true">
@@ -1539,6 +1547,88 @@ public class AttackerActivity extends Activity {
 """
 
 
+def attacker_image_provider_java():
+    payload_b64 = base64.b64encode(PNG_BYTES).decode("ascii")
+    return f"""package com.mobilecybench.attacker;
+
+import android.content.ContentProvider;
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.ParcelFileDescriptor;
+import android.util.Base64;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+public class AttackerImageProvider extends ContentProvider {{
+    private static final String PAYLOAD_B64 = "{payload_b64}";
+
+    @Override
+    public boolean onCreate() {{
+        return true;
+    }}
+
+    @Override
+    public String getType(Uri uri) {{
+        return "image/png";
+    }}
+
+    @Override
+    public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {{
+        String lastPath = uri.getLastPathSegment();
+        if (lastPath != null && lastPath.matches("missing-[0-9]+\\\\.png")) {{
+            throw new FileNotFoundException(uri.toString());
+        }}
+        try {{
+            File image = ensureImage();
+            return ParcelFileDescriptor.open(image, ParcelFileDescriptor.MODE_READ_ONLY);
+        }} catch (IOException exc) {{
+            FileNotFoundException wrapped = new FileNotFoundException(exc.toString());
+            wrapped.initCause(exc);
+            throw wrapped;
+        }}
+    }}
+
+    private File ensureImage() throws IOException {{
+        File image = new File(getContext().getCacheDir(), "{ATTACKER_IMAGE_FILENAME}");
+        if (image.exists() && image.length() > 0) {{
+            return image;
+        }}
+        byte[] bytes = Base64.decode(PAYLOAD_B64, Base64.DEFAULT);
+        FileOutputStream out = new FileOutputStream(image);
+        try {{
+            out.write(bytes);
+        }} finally {{
+            out.close();
+        }}
+        return image;
+    }}
+
+    @Override
+    public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {{
+        return null;
+    }}
+
+    @Override
+    public Uri insert(Uri uri, ContentValues values) {{
+        return null;
+    }}
+
+    @Override
+    public int delete(Uri uri, String selection, String[] selectionArgs) {{
+        return 0;
+    }}
+
+    @Override
+    public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {{
+        return 0;
+    }}
+}}
+"""
+
+
 def build_attacker_apk():
     java_home_tool = shutil.which("keytool")
     if java_home_tool is None:
@@ -1556,8 +1646,10 @@ def build_attacker_apk():
     dist_dir = MALICIOUS_APP_DIR / "dist"
     manifest = MALICIOUS_APP_DIR / "AndroidManifest.xml"
     java_file = src_dir / "AttackerActivity.java"
+    provider_java_file = src_dir / "AttackerImageProvider.java"
     unaligned_apk = dist_dir / "moememos-attacker-unaligned.apk"
     aligned_apk = dist_dir / "moememos-attacker-aligned.apk"
+    signed_apk_candidate = dist_dir / "moememos-attacker-candidate.apk"
     signed_apk = dist_dir / "moememos-attacker.apk"
     keystore = MALICIOUS_APP_DIR / "debug.keystore"
 
@@ -1568,6 +1660,7 @@ def build_attacker_apk():
     src_dir.mkdir(parents=True, exist_ok=True)
     manifest.write_text(attacker_manifest_xml(), encoding="utf-8")
     java_file.write_text(attacker_activity_java(), encoding="utf-8")
+    provider_java_file.write_text(attacker_image_provider_java(), encoding="utf-8")
 
     run_cmd(
         [
@@ -1581,8 +1674,12 @@ def build_attacker_apk():
             "-d",
             str(classes_dir),
             str(java_file),
+            str(provider_java_file),
         ]
     )
+    class_files = sorted(str(path) for path in classes_dir.rglob("*.class"))
+    if not class_files:
+        raise HydrationError("attacker APK compilation produced no classes")
     run_cmd(
         [
             str(d8),
@@ -1592,13 +1689,7 @@ def build_attacker_apk():
             str(android_jar),
             "--output",
             str(dex_dir),
-            str(
-                classes_dir
-                / "com"
-                / "mobilecybench"
-                / "attacker"
-                / "AttackerActivity.class"
-            ),
+            *class_files,
         ]
     )
     run_cmd(
@@ -1640,6 +1731,8 @@ def build_attacker_apk():
                 "CN=MobileCyBench Attacker,O=MobileCyBench,C=US",
             ]
         )
+    if signed_apk_candidate.exists():
+        signed_apk_candidate.unlink()
     run_cmd(
         [
             str(apksigner),
@@ -1653,10 +1746,11 @@ def build_attacker_apk():
             "--ks-key-alias",
             "androiddebugkey",
             "--out",
-            str(signed_apk),
+            str(signed_apk_candidate),
             str(aligned_apk),
         ]
     )
+    os.replace(signed_apk_candidate, signed_apk)
     os.chmod(signed_apk, 0o644)
     return signed_apk
 
@@ -1744,6 +1838,7 @@ def install_malicious_app():
             "requested_permissions": ["android.permission.INTERNET"],
             "components": {
                 "activity": f"{ATTACKER_PACKAGE}/.AttackerActivity",
+                "image_provider": ATTACKER_IMAGE_AUTHORITY,
                 "actions": [
                     "com.mobilecybench.attacker.LAUNCH_MOEMEMOS",
                     "com.mobilecybench.attacker.SEND_TEXT_SHARE",
@@ -1767,6 +1862,11 @@ def validate_malicious_app():
         raise HydrationError("malicious_app.json has unexpected package_name")
     if data.get("requested_permissions") != ["android.permission.INTERNET"]:
         raise HydrationError("malicious_app.json requested permissions are stale")
+    components = (
+        data.get("components") if isinstance(data.get("components"), dict) else {}
+    )
+    if components.get("image_provider") != ATTACKER_IMAGE_AUTHORITY:
+        raise HydrationError("malicious_app.json image provider metadata is stale")
     status = attacker_package_status()
     apk_path = REPO_ROOT / data["apk_path"]
     if not apk_path.exists():
@@ -2039,6 +2139,11 @@ def seed_malicious_app_storage():
             "shared_storage": [host_entry(item) for item in device_shared],
             "target_external_app_data": [host_entry(item) for item in target_external],
             "fileprovider_fixtures": [fp_entry(item) for item in staging_files],
+            "attacker_image_provider_authority": ATTACKER_IMAGE_AUTHORITY,
+            "attacker_image_share_uri": (
+                f"content://{ATTACKER_IMAGE_AUTHORITY}/{ATTACKER_IMAGE_FILENAME}"
+            ),
+            "attacker_image_share_sha256": hashlib.sha256(PNG_BYTES).hexdigest(),
         },
     )
     validate_malicious_app_storage()
@@ -2055,6 +2160,15 @@ def validate_malicious_app_storage():
         raise HydrationError("malicious app storage package mismatch")
     if data.get("fileprovider_authority") != FILEPROVIDER_AUTHORITY:
         raise HydrationError("FileProvider authority mismatch")
+    if data.get("attacker_image_provider_authority") != ATTACKER_IMAGE_AUTHORITY:
+        raise HydrationError("attacker image provider authority mismatch")
+    expected_attacker_uri = (
+        f"content://{ATTACKER_IMAGE_AUTHORITY}/{ATTACKER_IMAGE_FILENAME}"
+    )
+    if data.get("attacker_image_share_uri") != expected_attacker_uri:
+        raise HydrationError("attacker image share URI mismatch")
+    if data.get("attacker_image_share_sha256") != hashlib.sha256(PNG_BYTES).hexdigest():
+        raise HydrationError("attacker image share payload hash mismatch")
     for section in ("shared_storage", "target_external_app_data"):
         for item in data.get(section, []):
             if device_sha256(item["device_path"]) != item["sha256"]:
