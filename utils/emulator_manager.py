@@ -270,10 +270,13 @@ class EmulatorManager:
         ]
 
         if self.emulator_display == "headless":
+            gpu_mode = os.getenv("MOBILECYBENCH_EMULATOR_GPU", "swiftshader").strip()
+            if not gpu_mode:
+                gpu_mode = "swiftshader"
             emulator_args += [
                 "-no-window",
                 "-gpu",
-                "swiftshader",
+                gpu_mode,
             ]
         else:
             emulator_args += [

@@ -115,11 +115,16 @@ class MaliciousAppOps:
             workflow._clear_ssrf_requests()
 
         logger.info("[phase] Restarting runtime with target APK...")
-        workflow._restart_runtime(
-            kwargs["target_apk"],
-            inject_flags=kwargs.get("needs_flags", False),
-            start_ssrf=kwargs.get("needs_ssrf", False),
-        )
+        try:
+            workflow._restart_runtime(
+                kwargs["target_apk"],
+                inject_flags=kwargs.get("needs_flags", False),
+                start_ssrf=kwargs.get("needs_ssrf", False),
+            )
+        except Exception as e:
+            logger.error(f"runtime restart failed: {e}")
+            phase_dir.mkdir(parents=True, exist_ok=True)
+            return PhaseResult(exit_code=2, failure_kind="runtime_restart_failed")
 
         logger.info("[phase] Running prepare_app.sh (per-task)...")
         try:

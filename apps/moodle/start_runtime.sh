@@ -13,7 +13,8 @@ DB_CONTAINER="moodle-db-1"
 install_moodle(){
   log_info "Installing Moodle on Android device"
   adb uninstall "$TARGET_PACKAGE" 2>/dev/null || true
-  adb_install_apk "$APK_PATH"
+  wait_for_device_boot 120 || fatal "Device not ready for APK install"
+  adb install -r -g "$APK_PATH"
 }
 
 launch_moodle() {
@@ -101,45 +102,12 @@ restore_database(){
   log_info "Database restored successfully"
 }
 
-login_student(){
-  log_info "Logging in as student (janedoe)..."
-
-  local app_package="$TARGET_PACKAGE"
-  adb shell pm grant "$app_package" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
-
-  # Use metadata.json credentials
-  local username=$(jq -r '.username' metadata.json)
-  local password=$(jq -r '.password' metadata.json)
-
-  if python3 "${SCRIPT_DIR}/ui_automation/login.py" \
-      --username "$username" \
-      --password "$password"; then
-    log_info "Student logged in successfully"
-  else
-    log_warn "Failed to login student (non-fatal)"
-  fi
-}
-
-seed_baselines(){
-  # Clear markers from any previous CI phase before re-seeding.
-  # Without this, a Phase 1 sentinel blocks Phase 2 prepare_victim from
-  # regenerating teacher2's password, causing prepare_app.sh to authenticate
-  # with a stale credential and silently fail teacher2 login.
-  rm -f /tmp/.mcb_moodle_* 2>/dev/null || true
-  if [ -x "$SCRIPT_DIR/prepare_victim.sh" ]; then
-    log_info "Seeding probe baselines (pre-exploit)..."
-    bash "$SCRIPT_DIR/prepare_victim.sh" || log_warn "prepare_victim seed failed (non-fatal at start_runtime; probes will fail-closed)"
-  fi
-}
-
 main(){
   setup_moodle_server
   configure_webserver
   restore_database
   install_moodle
   launch_moodle
-  login_student
-  seed_baselines
   log_info "Moodle setup complete"
 }
 
