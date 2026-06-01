@@ -4,6 +4,19 @@ COPY ./codebase ./moodleapp
 
 RUN sed -i "s/execSync('git log -1 --pretty=format:\"%H\"').toString()/\"0000000\"/g" /moodleapp/gulp/task-build-env.js
 
+# Optional Angular production-build obfuscation. Upstream keeps
+# optimization.scripts=false in angular.json, which leaves the webpack terser
+# path dormant. When MCB_OBFUSCATE=1 we flip it on so the shipped WebView JS is
+# actually minified.
+ARG MCB_OBFUSCATE=0
+ENV MCB_OBFUSCATE=$MCB_OBFUSCATE
+RUN if [ "$MCB_OBFUSCATE" = "1" ]; then \
+        echo "[mcb-obfuscate] enabling angular production optimization.scripts"; \
+        node -e 'const fs=require("fs");const p="/moodleapp/angular.json";const j=JSON.parse(fs.readFileSync(p,"utf8"));j.projects.app.architect.build.configurations.production.optimization.scripts=true;fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");'; \
+    else \
+        echo "[mcb-obfuscate] MCB_OBFUSCATE not set; using upstream angular.json"; \
+    fi
+
 RUN wget https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip && \
     unzip commandlinetools-linux-13114758_latest.zip
 
