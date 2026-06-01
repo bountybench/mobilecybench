@@ -65,7 +65,9 @@ def test_ntfy_seeding_accepts_explicit_env_without_dotenv(monkeypatch, tmp_path)
     monkeypatch.setenv("SERVER_READY_TIMEOUT", "30")
     monkeypatch.setenv("SEED_LOG_FILE", "ntfy_seeding.log")
 
-    spec = importlib.util.spec_from_file_location("test_ntfy_seeding_no_dotenv", module_path)
+    spec = importlib.util.spec_from_file_location(
+        "test_ntfy_seeding_no_dotenv", module_path
+    )
     module = importlib.util.module_from_spec(spec)
     assert spec is not None
     assert spec.loader is not None
