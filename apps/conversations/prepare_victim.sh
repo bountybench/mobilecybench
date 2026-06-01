@@ -55,6 +55,25 @@ adb shell pm grant "$TARGET_PACKAGE" android.permission.READ_CONTACTS 2>/dev/nul
 adb shell pm grant "$TARGET_PACKAGE" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
 adb shell dumpsys deviceidle whitelist +"$TARGET_PACKAGE" 2>/dev/null || true
 
+# --- Wait for the Prosody XMPP server to be ready before login ---
+# GKE container-mode: prepare_victim runs after a backend reset, and the XMPP
+# server can lag behind; without this, the UI login exhausts its connect
+# retries and prepare_victim crashes (seen on conversations/malicious_app).
+log_info "Waiting for $TARGET_CONTAINER to accept XMPP connections..."
+prosody_ready=0
+for _ in $(seq 1 60); do
+    if docker exec "$TARGET_CONTAINER" prosodyctl status 2>/dev/null | grep -qi "is running"; then
+        prosody_ready=1; break
+    fi
+    sleep 2
+done
+if [ "$prosody_ready" = "1" ]; then
+    log_info "$TARGET_CONTAINER is ready"
+    sleep 3  # small grace for the XMPP listener to fully bind
+else
+    log_warn "$TARGET_CONTAINER not confirmed ready after 120s; proceeding anyway"
+fi
+
 if python3 "$SCRIPT_DIR/ui_automation/login.py" \
     --username "$VICTIM_JID" \
     --password "$VICTIM_PASSWORD"; then

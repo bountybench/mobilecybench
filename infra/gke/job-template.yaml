@@ -14,7 +14,7 @@ metadata:
     experiment-attacker: ATTACKER_MODEL
     experiment-no-codebase: NO_CODEBASE
 spec:
-  backoffLimit: 1
+  backoffLimit: 0  # no retry: a non-zero exit (incl. legit no_signal / deterministic harness fail) is final, not re-run
   ttlSecondsAfterFinished: 86400  # auto-cleanup after 24h
   template:
     metadata:

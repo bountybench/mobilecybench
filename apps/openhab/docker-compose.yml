@@ -9,8 +9,11 @@ services:
       - "8101:8101"   # Karaf console
       - "5007:5007"   # LSP for rules (optional)
     volumes:
-      - ./openhab_conf/services/runtime.cfg:/openhab/conf/services/runtime.cfg
-      - ./openhab_conf/sitemaps/home.sitemap:/openhab/conf/sitemaps/home.sitemap
+      # runtime.cfg + home.sitemap are copied in via `docker cp` in
+      # start_runtime.sh AFTER the container is healthy. Single-file bind-mounts
+      # fail under GKE Docker-in-Docker (runc auto-creates the target as a
+      # directory before openHAB populates /openhab/conf, then rejects the file
+      # mount: "not a directory"). Directory binds (jsondb) are unaffected.
       - ./openhab_userdata/jsondb:/openhab/userdata/jsondb
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro

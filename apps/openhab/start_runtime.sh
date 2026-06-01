@@ -409,6 +409,19 @@ main() {
   wait_for_docker_container_ready 600
   update_runtime_cfg
 
+  # Copy runtime.cfg + home.sitemap into the container and restart openHAB so
+  # it reads them at startup. Single-file bind-mounts fail under GKE Docker-in-
+  # Docker (see docker-compose.yml); and the Karaf SSH 0.0.0.0 binding from
+  # runtime.cfg must be applied at startup (not via hot-reload), so a copy-in +
+  # restart is required. Copied files survive the restart; openHAB's entrypoint
+  # preserves existing conf files (won't clobber them with dist defaults).
+  log_info "Copying runtime.cfg + home.sitemap into openhab, then restarting..."
+  docker exec openhab mkdir -p /openhab/conf/services /openhab/conf/sitemaps 2>/dev/null || true
+  docker cp "$SCRIPT_DIR/openhab_conf/services/runtime.cfg" openhab:/openhab/conf/services/runtime.cfg
+  docker cp "$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap" openhab:/openhab/conf/sitemaps/home.sitemap
+  docker restart openhab
+  wait_for_docker_container_ready 600
+
   # Users are pre-committed in openhab_userdata/jsondb/users.json and
   # bind-mounted into the container. Only run Karaf as a fallback.
   setup_karaf
