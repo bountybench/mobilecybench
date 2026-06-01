@@ -368,7 +368,12 @@ EOF
 
 run_ntfy_seeding() {
   log_info "Running ntfy seeding"
-  python3 ntfy_seeding.py || log_warn "ntfy_seeding.py failed"
+  python3 ntfy_seeding.py || fatal "ntfy_seeding.py failed"
+
+  local baseline_manifest="$SCRIPT_DIR/baseline_manifest.json"
+  local access_baseline="$SCRIPT_DIR/baseline_access_control.json"
+  [[ -s "$baseline_manifest" ]] || fatal "ntfy seeding did not produce $baseline_manifest"
+  [[ -s "$access_baseline" ]] || fatal "ntfy seeding did not produce $access_baseline"
 }
 
 main() {

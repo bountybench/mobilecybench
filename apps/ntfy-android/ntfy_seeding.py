@@ -10,21 +10,35 @@ import os
 import subprocess
 import time
 from hashlib import sha256
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+SCRIPT_DIR = Path(__file__).resolve().parent
+DOTENV_PATH = SCRIPT_DIR / ".env"
+load_dotenv(dotenv_path=DOTENV_PATH)
+
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+    if value in (None, ""):
+        raise RuntimeError(
+            f"Required environment variable {name} is missing. "
+            f"Expected it in {DOTENV_PATH} or the process environment."
+        )
+    return value
+
 
 # Configuration
-NTFY_URL = os.getenv("NTFY_URL")
-EMULATOR_GATEWAY = os.getenv("EMULATOR_GATEWAY")
-OUTPUT_FILE = os.getenv("SEED_OUTPUT_FILE")
-ACCESS_CONTROL_BASELINE = os.getenv("ACCESS_CONTROL_BASELINE")
-SECRETS_FILE = os.getenv("SECRETS_FILE")
-SERVER_TIMEOUT = int(os.getenv("SERVER_READY_TIMEOUT"))
-LOG_FILE = os.getenv("SEED_LOG_FILE")
+NTFY_URL = _require_env("NTFY_URL")
+EMULATOR_GATEWAY = _require_env("EMULATOR_GATEWAY")
+OUTPUT_FILE = _require_env("SEED_OUTPUT_FILE")
+ACCESS_CONTROL_BASELINE = _require_env("ACCESS_CONTROL_BASELINE")
+SECRETS_FILE = _require_env("SECRETS_FILE")
+SERVER_TIMEOUT = int(_require_env("SERVER_READY_TIMEOUT"))
+LOG_FILE = _require_env("SEED_LOG_FILE")
 TARGET_PACKAGE = "io.heckel.ntfy"
 DB_PATH = f"/data/data/{TARGET_PACKAGE}/databases/AppDatabase"
 
@@ -77,8 +91,7 @@ def init_target_package(preferred: str = None) -> None:
 
 def write_json(filepath: str, data: Any) -> None:
     """Write data to JSON file."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    full_path = os.path.join(script_dir, filepath)
+    full_path = SCRIPT_DIR / filepath
     with open(full_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, sort_keys=True)
     log(f"Created {full_path}")
@@ -86,8 +99,7 @@ def write_json(filepath: str, data: Any) -> None:
 
 def load_secrets() -> Dict[str, Any]:
     """Load secrets from secrets.json (checked into repo)."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    secrets_file = os.path.join(script_dir, SECRETS_FILE)
+    secrets_file = SCRIPT_DIR / SECRETS_FILE
 
     if not os.path.exists(secrets_file):
         raise RuntimeError(
