@@ -142,6 +142,59 @@ org.openhab.restauth:implicitUserRole=false"
 }"
 }
 
+ensure_jsondb_users_file() {
+  local users_file="$SCRIPT_DIR/openhab_userdata/jsondb/users.json"
+
+  if [ -d "$users_file" ]; then
+    log_warn "JSONDB users path $users_file is a directory; replacing it with a file"
+    rm -rf "$users_file"
+  fi
+
+  mkdir -p "$(dirname "$users_file")" 2>/dev/null || true
+  if [ -f "$users_file" ]; then
+    chmod 644 "$users_file" 2>/dev/null || true
+    return 0
+  fi
+
+  if [ "${ADMINUSER_USERNAME:-adminuser}" != "adminuser" ] || [ "${NONADMINUSER_USERNAME:-nonadminuser}" != "nonadminuser" ]; then
+    log_warn "JSONDB users file is missing and usernames are non-default; Karaf SSH user setup may be needed"
+    return 0
+  fi
+
+  log_warn "JSONDB users file is missing; creating committed default users fallback"
+  cat > "$users_file" <<'EOF_USERS'
+{
+  "adminuser": {
+    "class": "org.openhab.core.auth.ManagedUser",
+    "value": {
+      "name": "adminuser",
+      "passwordHash": "LXGfTUMnABcKNEIWcHNy73Oyd5U3+QEKdbcSnl5sFnnkdeaAHlm87vqqCNBmLjZK1HngyjClJdimqy+zW+lG/Q\u003d\u003d",
+      "passwordSalt": "MMkkeG/UAyzFchzLCMGST9yhk8I+1DRlALxaYg1vX5YeioZAqiTsbo94M5PuvNqtKIidZ3WwxrtTL97ZEZoXvg\u003d\u003d",
+      "roles": [
+        "administrator"
+      ],
+      "sessions": [],
+      "apiTokens": []
+    }
+  },
+  "nonadminuser": {
+    "class": "org.openhab.core.auth.ManagedUser",
+    "value": {
+      "name": "nonadminuser",
+      "passwordHash": "9GKyfcPQvSPhvvIQLD29Tua1tcvrK+opc6ZBsmGAoDcTUx3mSBk/erqnFMhQ+Ob0qkwKrtnU8b27h94O2mpuig\u003d\u003d",
+      "passwordSalt": "SF76khh5iu7dYOMI0fvzsV+4gEwvankSwnL9F92j1YC0qhoSpRrtDMCAIGqG78O6bGIbqvdx/AM6go/BMnbRHg\u003d\u003d",
+      "roles": [
+        "user"
+      ],
+      "sessions": [],
+      "apiTokens": []
+    }
+  }
+}
+EOF_USERS
+  chmod 644 "$users_file" 2>/dev/null || true
+}
+
 restore_committed_runtime_state_files() {
   if ! command -v git >/dev/null 2>&1; then
     return 0
@@ -151,11 +204,37 @@ restore_committed_runtime_state_files() {
   # Docker data directory where old restart-policy containers can briefly come
   # back before cleanup runs. Restore again immediately before runtime setup so
   # stale containers or previous vuln runs cannot leave JSONDB users missing.
-  git -C "$SCRIPT_DIR" checkout -- \
-    openhab_userdata/jsondb/users.json \
-    openhab_conf/services/runtime.cfg \
-    openhab_conf/sitemaps/home.sitemap \
-    2>/dev/null || true
+  #
+  # Do not use `git checkout -- <path>` here: validation/runner images can be
+  # built from clones whose .git object store uses host-local alternates. Once
+  # copied into an image, Git may be unable to resolve HEAD objects and checkout
+  # can remove the existing working-tree file before failing. `git show` writes
+  # to a temp file only after proving the object is readable, so a broken Git
+  # database cannot destroy the packaged fixture.
+  local repo_root rel dest tmp
+  repo_root="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  [ -n "$repo_root" ] || return 0
+
+  for rel in \
+    apps/openhab/openhab_userdata/jsondb/users.json \
+    apps/openhab/openhab_conf/services/runtime.cfg \
+    apps/openhab/openhab_conf/sitemaps/home.sitemap
+  do
+    dest="$repo_root/$rel"
+    if git -C "$repo_root" cat-file -e "HEAD:$rel" 2>/dev/null; then
+      mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+      tmp="${dest}.gitrestore.$$"
+      if git -C "$repo_root" show "HEAD:$rel" > "$tmp" 2>/dev/null; then
+        mv "$tmp" "$dest"
+        chmod 644 "$dest" 2>/dev/null || true
+      else
+        rm -f "$tmp" 2>/dev/null || true
+        log_warn "Could not restore $rel from git; keeping existing file"
+      fi
+    else
+      log_warn "Git object for $rel is unavailable; keeping existing file"
+    fi
+  done
 }
 
 update_runtime_cfg() {
@@ -508,6 +587,7 @@ main() {
   "$SCRIPT_DIR/setup_mosquitto.sh"
   restore_committed_runtime_state_files
   ensure_openhab_bind_mount_sources
+  ensure_jsondb_users_file
   update_runtime_cfg
   ensure_runtime_file_ownership
   record_preseeded_jsondb_users
