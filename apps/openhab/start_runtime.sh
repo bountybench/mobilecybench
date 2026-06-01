@@ -164,10 +164,10 @@ restore_committed_runtime_state_files() {
     return 0
   fi
 
-  # cleanup.sh normally restores these files, but containerized runs may reuse
-  # Docker state where old restart-policy containers can briefly come back
-  # before cleanup runs. Restore again immediately before runtime setup so stale
-  # containers or previous vuln runs cannot leave JSONDB users missing.
+  # Restore the mutable OpenHAB fixture files immediately before runtime setup.
+  # Previous runs and vuln scenarios can modify these bind-mounted files, and
+  # start_runtime.sh depends on them being regular files with the committed
+  # baseline contents before docker compose starts.
   #
   # Do not use `git checkout -- <path>` here: some packaged workspaces can have
   # incomplete or unreadable Git metadata. In that state checkout can remove the
