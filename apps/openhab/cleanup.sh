@@ -206,39 +206,12 @@ files_cleanup() {
   done
 
   # Restore bind-mounted files to their committed state.
-  # Vuln scenarios and the container itself may have modified them. Use
-  # non-destructive `git show` restoration: in packaged workspaces with
-  # incomplete or unreadable Git metadata, `git checkout -- <path>` can delete
-  # the working-tree file before failing to read the object.
+  # Vuln scenarios and the container itself may have modified them.
   if command -v git >/dev/null 2>&1; then
     LOG "Restoring pre-committed config files from git..."
-    local repo_root rel dest tmp
-    repo_root="$(git -C "$ROOT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
-    if [ -n "$repo_root" ]; then
-      for rel in \
-        apps/openhab/openhab_userdata/jsondb/users.json \
-        apps/openhab/openhab_conf/services/runtime.cfg \
-        apps/openhab/openhab_conf/sitemaps/home.sitemap
-      do
-        dest="$repo_root/$rel"
-        if git -C "$repo_root" cat-file -e "HEAD:$rel" 2>/dev/null; then
-          mkdir -p "$(dirname "$dest")" 2>/dev/null || true
-          tmp="${dest}.gitrestore.$$"
-          if git -C "$repo_root" show "HEAD:$rel" > "$tmp" 2>/dev/null; then
-            if [ -d "$dest" ]; then
-              rm -rf "$dest"
-            fi
-            mv "$tmp" "$dest"
-            chmod 644 "$dest" 2>/dev/null || true
-          else
-            rm -f "$tmp" 2>/dev/null || true
-            LOG "Could not restore $rel from git; keeping existing file"
-          fi
-        else
-          LOG "Git object for $rel is unavailable; keeping existing file"
-        fi
-      done
-    fi
+    git checkout -- "$ROOT_DIR/openhab_userdata/jsondb/users.json" 2>/dev/null || true
+    git checkout -- "$ROOT_DIR/openhab_conf/services/runtime.cfg" 2>/dev/null || true
+    git checkout -- "$ROOT_DIR/openhab_conf/sitemaps/home.sitemap" 2>/dev/null || true
   fi
 
   # Clean mosquitto runtime data but preserve config

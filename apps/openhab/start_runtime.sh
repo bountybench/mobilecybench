@@ -12,8 +12,6 @@ ANDROID_APK_HASH_FILE="${SCRIPT_DIR}/apk_hash_baseline.txt"
 
 KARAF_PASSWORD=${KARAF_PASSWORD:-}
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
-OPENHAB_USER_ID=""
-OPENHAB_GROUP_ID=""
 OPENHAB_JSONDB_USERS_PRESEEDED=0
 
 read_secrets() {
@@ -109,11 +107,9 @@ ensure_bind_mount_file() {
   local path="$1"
   local fallback_contents="$2"
 
-  # Docker creates a missing bind-mount source as a directory. A previous
-  # failed run, stale state, or missing fixture can therefore leave e.g.
-  # openhab_conf/services/runtime.cfg as a directory, causing the next
-  # `docker compose up` to fail with "not a directory" while trying to mount it
-  # onto a file in the container.
+  # Docker requires the host side of these file bind mounts to be files. If the
+  # path is absent or has become a directory, `docker compose up` fails with
+  # "not a directory" while mounting it onto the file path in the container.
   if [ -d "$path" ]; then
     log_warn "Bind-mount source $path is a directory; replacing it with a file"
     rm -rf "$path"
@@ -142,66 +138,6 @@ org.openhab.restauth:implicitUserRole=false"
 }"
 }
 
-ensure_jsondb_users_file() {
-  local users_file="$SCRIPT_DIR/openhab_userdata/jsondb/users.json"
-
-  if [ -d "$users_file" ]; then
-    log_warn "JSONDB users path $users_file is a directory; replacing it with a file"
-    rm -rf "$users_file"
-  fi
-
-  mkdir -p "$(dirname "$users_file")" 2>/dev/null || true
-  if [ -f "$users_file" ]; then
-    chmod 644 "$users_file" 2>/dev/null || true
-    return 0
-  fi
-
-  log_warn "JSONDB users file is missing; Karaf SSH user setup may be needed"
-}
-
-restore_committed_runtime_state_files() {
-  if ! command -v git >/dev/null 2>&1; then
-    return 0
-  fi
-
-  # Restore the mutable OpenHAB fixture files immediately before runtime setup.
-  # Previous runs and vuln scenarios can modify these bind-mounted files, and
-  # start_runtime.sh depends on them being regular files with the committed
-  # baseline contents before docker compose starts.
-  #
-  # Do not use `git checkout -- <path>` here: some packaged workspaces can have
-  # incomplete or unreadable Git metadata. In that state checkout can remove the
-  # existing working-tree file before failing to restore it. `git show` writes
-  # to a temp file only after proving the object is readable, so broken Git
-  # metadata cannot destroy the packaged fixture.
-  local repo_root rel dest tmp
-  repo_root="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
-  [ -n "$repo_root" ] || return 0
-
-  for rel in \
-    apps/openhab/openhab_userdata/jsondb/users.json \
-    apps/openhab/openhab_conf/services/runtime.cfg \
-    apps/openhab/openhab_conf/sitemaps/home.sitemap
-  do
-    dest="$repo_root/$rel"
-    if git -C "$repo_root" cat-file -e "HEAD:$rel" 2>/dev/null; then
-      mkdir -p "$(dirname "$dest")" 2>/dev/null || true
-      tmp="${dest}.gitrestore.$$"
-      if git -C "$repo_root" show "HEAD:$rel" > "$tmp" 2>/dev/null; then
-        if [ -d "$dest" ]; then
-          rm -rf "$dest"
-        fi
-        mv "$tmp" "$dest"
-        chmod 644 "$dest" 2>/dev/null || true
-      else
-        rm -f "$tmp" 2>/dev/null || true
-        log_warn "Could not restore $rel from git; keeping existing file"
-      fi
-    else
-      log_warn "Git object for $rel is unavailable; keeping existing file"
-    fi
-  done
-}
 
 update_runtime_cfg() {
   local cfg_file="$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
@@ -303,10 +239,8 @@ PY
 }
 
 record_preseeded_jsondb_users() {
-  # Check before docker compose starts. openHAB can rewrite JSONDB files during
-  # boot, but a valid committed users.json is already sufficient for the
-  # benchmark and should avoid the fragile Karaf SSH fallback in containerized
-  # runs.
+  # If the committed JSONDB users are present before startup, they are
+  # sufficient for this benchmark; no Karaf SSH user creation is needed.
   if users_exist_in_jsondb; then
     OPENHAB_JSONDB_USERS_PRESEEDED=1
     log_info "Valid preseeded users found in JSONDB; Karaf SSH user setup will be skipped"
@@ -517,31 +451,9 @@ USER_ID=${user_id}
 GROUP_ID=${group_id}
 EOF
 
-  OPENHAB_USER_ID="$user_id"
-  OPENHAB_GROUP_ID="$group_id"
-
   log_info ".env file created with USER_ID=${user_id} and GROUP_ID=${group_id}"
 
   chmod 644 "$env_file" 2>/dev/null || true
-}
-
-ensure_runtime_file_ownership() {
-  if [ -z "${OPENHAB_USER_ID:-}" ] || [ -z "${OPENHAB_GROUP_ID:-}" ]; then
-    log_warn "OpenHAB UID/GID unknown; skipping runtime ownership normalization"
-    return 0
-  fi
-
-  local target
-  for target in \
-    "$SCRIPT_DIR/openhab_userdata" \
-    "$SCRIPT_DIR/openhab_conf/services/runtime.cfg" \
-    "$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap"
-  do
-    [ -e "$target" ] || continue
-    if ! chown -R "${OPENHAB_USER_ID}:${OPENHAB_GROUP_ID}" "$target" 2>/dev/null; then
-      log_warn "Could not chown $target to ${OPENHAB_USER_ID}:${OPENHAB_GROUP_ID}; continuing"
-    fi
-  done
 }
 
 main() {
@@ -551,11 +463,8 @@ main() {
   create_env_file
 
   "$SCRIPT_DIR/setup_mosquitto.sh"
-  restore_committed_runtime_state_files
   ensure_openhab_bind_mount_sources
-  ensure_jsondb_users_file
   update_runtime_cfg
-  ensure_runtime_file_ownership
   record_preseeded_jsondb_users
 
   log_info "Starting docker compose services..."
