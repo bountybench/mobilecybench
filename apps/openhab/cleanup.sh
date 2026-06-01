@@ -209,9 +209,9 @@ files_cleanup() {
   # Vuln scenarios and the container itself may have modified them.
   if command -v git >/dev/null 2>&1; then
     LOG "Restoring pre-committed config files from git..."
-    git checkout -- "$ROOT_DIR/openhab_userdata/jsondb/users.json" 2>/dev/null || true
-    git checkout -- "$ROOT_DIR/openhab_conf/services/runtime.cfg" 2>/dev/null || true
-    git checkout -- "$ROOT_DIR/openhab_conf/sitemaps/home.sitemap" 2>/dev/null || true
+    git -C "$ROOT_DIR" checkout -- openhab_userdata/jsondb/users.json 2>/dev/null || true
+    git -C "$ROOT_DIR" checkout -- openhab_conf/services/runtime.cfg 2>/dev/null || true
+    git -C "$ROOT_DIR" checkout -- openhab_conf/sitemaps/home.sitemap 2>/dev/null || true
   fi
 
   # Clean mosquitto runtime data but preserve config

@@ -12,27 +12,35 @@ ANDROID_APK_HASH_FILE="${SCRIPT_DIR}/apk_hash_baseline.txt"
 
 KARAF_PASSWORD=${KARAF_PASSWORD:-}
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
+OPENHAB_USER_ID=""
+OPENHAB_GROUP_ID=""
+OPENHAB_JSONDB_USERS_PRESEEDED=0
 
 read_secrets() {
   local secrets_file="$SCRIPT_DIR/secrets.json"
   local metadata_file="$SCRIPT_DIR/metadata.json"
+  ADMINUSER_USERNAME="${ADMINUSER_USERNAME:-adminuser}"
+  ADMINUSER_PASSWORD="${ADMINUSER_PASSWORD:-}"
+  NONADMINUSER_USERNAME="${NONADMINUSER_USERNAME:-nonadminuser}"
+  NONADMINUSER_PASSWORD="${NONADMINUSER_PASSWORD:-}"
+
   if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
-    ADMINUSER_USERNAME=$(jq -r '.adminuser_username' "$secrets_file" 2>/dev/null || echo "adminuser")
-    ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    ADMINUSER_USERNAME=$(jq -r '.adminuser_username // "adminuser"' "$secrets_file" 2>/dev/null || echo "adminuser")
+    ADMINUSER_PASSWORD=$(jq -r '.adminuser_password // ""' "$secrets_file" 2>/dev/null || echo "")
 
     if [ -f "$metadata_file" ]; then
-      NONADMINUSER_USERNAME=$(jq -r '.username' "$metadata_file" 2>/dev/null || echo "nonadminuser")
-      NONADMINUSER_PASSWORD=$(jq -r '.password' "$metadata_file" 2>/dev/null || echo "")
+      NONADMINUSER_USERNAME=$(jq -r '.username // "nonadminuser"' "$metadata_file" 2>/dev/null || echo "nonadminuser")
+      NONADMINUSER_PASSWORD=$(jq -r '.password // ""' "$metadata_file" 2>/dev/null || echo "")
     else
       log_warn "metadata.json not found, skipping nonadminuser setup"
       NONADMINUSER_USERNAME=""
       NONADMINUSER_PASSWORD=""
     fi
-
-    export ADMINUSER_USERNAME ADMINUSER_PASSWORD NONADMINUSER_USERNAME NONADMINUSER_PASSWORD
   else
     log_warn "secrets.json not found or jq not available, using default users"
   fi
+
+  export ADMINUSER_USERNAME ADMINUSER_PASSWORD NONADMINUSER_USERNAME NONADMINUSER_PASSWORD
 }
 
 if [ -z "${KARAF_SSH_KEY:-}" ] && [ -f "$SCRIPT_DIR/.ssh/openhab_karaf_id" ]; then
@@ -134,6 +142,22 @@ org.openhab.restauth:implicitUserRole=false"
 }"
 }
 
+restore_committed_runtime_state_files() {
+  if ! command -v git >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # cleanup.sh normally restores these files, but GKE/DinD runs may reuse a
+  # Docker data directory where old restart-policy containers can briefly come
+  # back before cleanup runs. Restore again immediately before runtime setup so
+  # stale containers or previous vuln runs cannot leave JSONDB users missing.
+  git -C "$SCRIPT_DIR" checkout -- \
+    openhab_userdata/jsondb/users.json \
+    openhab_conf/services/runtime.cfg \
+    openhab_conf/sitemaps/home.sitemap \
+    2>/dev/null || true
+}
+
 update_runtime_cfg() {
   local cfg_file="$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
 
@@ -220,22 +244,42 @@ users_exist_in_jsondb() {
     return 1
   fi
   # Check that both admin and nonadmin users exist
-  python3 -c "
+  python3 - "$users_file" "${ADMINUSER_USERNAME:-adminuser}" "${NONADMINUSER_USERNAME:-nonadminuser}" <<'PY' 2>/dev/null
 import json, sys
-with open('$users_file') as f:
+users_file, admin_username, nonadmin_username = sys.argv[1:4]
+with open(users_file) as f:
     db = json.load(f)
-admin = db.get('$ADMINUSER_USERNAME', {}).get('value', {})
-nonadmin = db.get('$NONADMINUSER_USERNAME', {}).get('value', {})
+admin = db.get(admin_username, {}).get('value', {})
+nonadmin = db.get(nonadmin_username, {}).get('value', {})
 if 'administrator' in admin.get('roles', []) and nonadmin.get('name'):
     sys.exit(0)
 sys.exit(1)
-" 2>/dev/null
+PY
+}
+
+record_preseeded_jsondb_users() {
+  # Check before docker compose starts. openHAB can rewrite JSONDB files during
+  # boot, but a valid committed users.json is already sufficient for the
+  # benchmark and should avoid the fragile Karaf SSH fallback in container/GKE
+  # runs.
+  if users_exist_in_jsondb; then
+    OPENHAB_JSONDB_USERS_PRESEEDED=1
+    log_info "Valid preseeded users found in JSONDB; Karaf SSH user setup will be skipped"
+  else
+    OPENHAB_JSONDB_USERS_PRESEEDED=0
+    log_warn "Preseeded JSONDB users were not found/valid; Karaf SSH user setup may be needed"
+  fi
 }
 
 setup_karaf() {
   # Skip Karaf SSH user creation if users already exist in JSONDB.
   # The JSONDB is a bind-mounted file that persists across container restarts,
   # so openHAB will load these users automatically.
+  if [ "${OPENHAB_JSONDB_USERS_PRESEEDED:-0}" = "1" ]; then
+    log_info "Users were preseeded in JSONDB before startup — skipping Karaf SSH setup"
+    return 0
+  fi
+
   if users_exist_in_jsondb; then
     log_info "Users already exist in JSONDB — skipping Karaf SSH setup"
     return 0
@@ -428,9 +472,31 @@ USER_ID=${user_id}
 GROUP_ID=${group_id}
 EOF
 
+  OPENHAB_USER_ID="$user_id"
+  OPENHAB_GROUP_ID="$group_id"
+
   log_info ".env file created with USER_ID=${user_id} and GROUP_ID=${group_id}"
 
   chmod 644 "$env_file" 2>/dev/null || true
+}
+
+ensure_runtime_file_ownership() {
+  if [ -z "${OPENHAB_USER_ID:-}" ] || [ -z "${OPENHAB_GROUP_ID:-}" ]; then
+    log_warn "OpenHAB UID/GID unknown; skipping runtime ownership normalization"
+    return 0
+  fi
+
+  local target
+  for target in \
+    "$SCRIPT_DIR/openhab_userdata" \
+    "$SCRIPT_DIR/openhab_conf/services/runtime.cfg" \
+    "$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap"
+  do
+    [ -e "$target" ] || continue
+    if ! chown -R "${OPENHAB_USER_ID}:${OPENHAB_GROUP_ID}" "$target" 2>/dev/null; then
+      log_warn "Could not chown $target to ${OPENHAB_USER_ID}:${OPENHAB_GROUP_ID}; continuing"
+    fi
+  done
 }
 
 main() {
@@ -440,8 +506,11 @@ main() {
   create_env_file
 
   "$SCRIPT_DIR/setup_mosquitto.sh"
+  restore_committed_runtime_state_files
   ensure_openhab_bind_mount_sources
   update_runtime_cfg
+  ensure_runtime_file_ownership
+  record_preseeded_jsondb_users
 
   log_info "Starting docker compose services..."
   docker compose up -d

@@ -171,7 +171,7 @@ create_test_users() {
     fi
     # Use shorter delay with exponential backoff up to 2s
     local delay=$(( tcp_check_count > 20 ? 2 : (tcp_check_count + 4) / 5 ))
-    read -t "$delay" -N 1 < /dev/null 2>/dev/null || true
+    sleep "$delay"
   done
   LOG "create_test_users: karaf SSH port is available after $tcp_check_count attempts"
 
@@ -202,7 +202,7 @@ create_test_users() {
     elif [ $check_count -gt 5 ]; then
       delay="1.5"
     fi
-    read -t "$delay" -N 1 < /dev/null 2>/dev/null || true
+    sleep "$delay"
   done
 
   # Create users based on available credentials
@@ -263,7 +263,7 @@ create_user() {
       elif [ $attempt -gt 2 ]; then
         backoff_delay="2.0"
       fi
-      read -t "$backoff_delay" -N 1 < /dev/null 2>/dev/null || true
+      sleep "$backoff_delay"
       continue
     fi
     # unknown failure -> don't retry further
