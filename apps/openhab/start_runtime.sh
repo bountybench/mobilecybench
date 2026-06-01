@@ -417,6 +417,13 @@ main() {
   # preserves existing conf files (won't clobber them with dist defaults).
   log_info "Copying runtime.cfg + home.sitemap into openhab, then restarting..."
   docker exec openhab mkdir -p /openhab/conf/services /openhab/conf/sitemaps 2>/dev/null || true
+  # Self-heal: if a live config file is missing (e.g. cleanup couldn't restore it
+  # in-image), seed it from the pristine .dist copy baked into the image so the
+  # docker cp below can't fail with "no such file or directory".
+  [ -f "$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap" ] || \
+    cp -f "$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap.dist" "$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap"
+  [ -f "$SCRIPT_DIR/openhab_conf/services/runtime.cfg" ] || \
+    cp -f "$SCRIPT_DIR/openhab_conf/services/runtime.cfg.dist" "$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
   docker cp "$SCRIPT_DIR/openhab_conf/services/runtime.cfg" openhab:/openhab/conf/services/runtime.cfg
   docker cp "$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap" openhab:/openhab/conf/sitemaps/home.sitemap
   docker restart openhab

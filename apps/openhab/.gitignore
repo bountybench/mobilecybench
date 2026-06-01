@@ -8,9 +8,11 @@ openhab_conf/*
 !openhab_conf/services/
 openhab_conf/services/*
 !openhab_conf/services/runtime.cfg
+!openhab_conf/services/runtime.cfg.dist
 !openhab_conf/sitemaps/
 openhab_conf/sitemaps/*
 !openhab_conf/sitemaps/home.sitemap
+!openhab_conf/sitemaps/home.sitemap.dist
 
 openhab_addons/
 

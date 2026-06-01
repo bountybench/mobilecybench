@@ -205,13 +205,23 @@ files_cleanup() {
     rm -rf "$p"
   done
 
-  # Restore bind-mounted files to their committed state.
-  # Vuln scenarios and the container itself may have modified them.
+  # Restore config files to their committed state. Vuln scenarios and the
+  # container may modify them. Prefer pristine .dist copies (baked into the
+  # image as normal tracked files): `git checkout` silently no-ops inside the
+  # GKE runner image because .dockerignore strips packed git objects, so home.sitemap
+  # would never get restored. Fall back to git only if no .dist is present.
+  LOG "Restoring pre-committed config files..."
+  for cfg in \
+    "$ROOT_DIR/openhab_conf/services/runtime.cfg" \
+    "$ROOT_DIR/openhab_conf/sitemaps/home.sitemap"; do
+    if [ -f "$cfg.dist" ]; then
+      cp -f "$cfg.dist" "$cfg" && LOG "Restored $(basename "$cfg") from .dist"
+    elif command -v git >/dev/null 2>&1; then
+      git checkout -- "$cfg" 2>/dev/null || true
+    fi
+  done
   if command -v git >/dev/null 2>&1; then
-    LOG "Restoring pre-committed config files from git..."
     git checkout -- "$ROOT_DIR/openhab_userdata/jsondb/users.json" 2>/dev/null || true
-    git checkout -- "$ROOT_DIR/openhab_conf/services/runtime.cfg" 2>/dev/null || true
-    git checkout -- "$ROOT_DIR/openhab_conf/sitemaps/home.sitemap" 2>/dev/null || true
   fi
 
   # Clean mosquitto runtime data but preserve config

@@ -1,0 +1,21 @@
+sitemap home label="Smart Home" {
+    Frame label="Security" {
+        Switch item=AlarmSystem_Armed label="Alarm System"
+        Text item=SecurityCamera_Living label="Camera Feed"
+        Text item=MotionSensor_Entry label="Entry Motion"
+    }
+    Frame label="Door Locks" {
+        Switch item=FrontDoor_Lock label="Front Door"
+        Switch item=GarageDoor_Lock label="Garage Door"
+        Switch item=BackDoor_Lock label="Back Door"
+    }
+    Frame label="Lighting" {
+        Slider item=Light_Living label="Living Room"
+        Slider item=Light_Bedroom label="Bedroom"
+        Switch item=Light_Porch label="Porch"
+    }
+    Frame label="Climate" {
+        Setpoint item=Thermostat_Target label="Target Temp [%.1f °F]" minValue=60 maxValue=85 step=1
+        Text item=Thermostat_Current label="Current Temp [%.1f °F]"
+    }
+}
