@@ -974,6 +974,78 @@ def test_remote_attacker_preserves_evidence_on_prepare_victim_crash(
     assert result.failure_kind == "prepare_victim_crash"
 
 
+def test_remote_attacker_retries_prepare_victim_after_package_loss(
+    remote_attacker_config, tmp_path
+):
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    target_apk = tmp_path / "apk" / "test.apk"
+    target_apk.parent.mkdir(parents=True, exist_ok=True)
+    target_apk.write_bytes(b"apk")
+
+    def fake_exploit(*args, **kwargs):
+        phase_dir = args[1]
+        phase_dir.mkdir(parents=True, exist_ok=True)
+        evidence = phase_dir / "replay_evidence.log"
+        evidence.write_text("exploit output")
+        return {"replay_exit_code": 0, "replay_evidence_path": str(evidence)}
+
+    prepare_attempts = {"count": 0}
+
+    def fake_prepare_victim():
+        prepare_attempts["count"] += 1
+        if prepare_attempts["count"] == 1:
+            raise RuntimeError("package missing")
+
+    def fake_run(cmd, **_kwargs):
+        if cmd[:4] == ["adb", "shell", "pm", "clear"]:
+            return MagicMock(returncode=0, stdout="Success\n", stderr="")
+        if cmd[:6] == ["adb", "shell", "pm", "list", "packages", "com.test.app"]:
+            call_count = getattr(fake_run, "package_checks", 0)
+            fake_run.package_checks = call_count + 1
+            # First check after pm clear says package is present; first check after
+            # prepare_victim failure says missing; final check after reinstall says present.
+            if call_count == 0:
+                stdout = "package:com.test.app\n"
+            elif call_count == 1:
+                stdout = ""
+            else:
+                stdout = "package:com.test.app\n"
+            return MagicMock(returncode=0, stdout=stdout, stderr="")
+        if cmd[:2] == ["adb", "wait-for-device"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
+        if cmd[:3] == ["adb", "install", "-r"]:
+            return MagicMock(returncode=0, stdout="Success\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime"),
+        patch.object(RedTeamWorkflow, "_run_prepare_app"),
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch.object(
+            RedTeamWorkflow,
+            "_run_prepare_victim",
+            side_effect=fake_prepare_victim,
+        ),
+        patch("workflows.redteam.subprocess.run", side_effect=fake_run) as mock_run,
+    ):
+        result = RemoteAttackerOps().run_phase(
+            wf,
+            tmp_path / "phase",
+            exploit_dir=tmp_path,
+            target_apk=target_apk,
+        )
+
+    assert result.exit_code == 0
+    assert result.failure_kind is None
+    assert prepare_attempts["count"] == 2
+    install_calls = [
+        call.args[0]
+        for call in mock_run.call_args_list
+        if call.args and call.args[0][:3] == ["adb", "install", "-r"]
+    ]
+    assert install_calls == [["adb", "install", "-r", str(target_apk)]]
+
+
 def test_remote_attacker_prepare_app_crash_short_circuits_before_exploit(
     remote_attacker_config, tmp_path
 ):

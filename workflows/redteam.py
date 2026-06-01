@@ -380,7 +380,13 @@ class RemoteAttackerOps:
                 )
                 return app_data_reset_failed()
 
-            if not self._is_package_installed(package_name):
+            package_installed_after_clear = self._is_package_installed(package_name)
+            logger.info(
+                "Package %s installed after pm clear: %s",
+                package_name,
+                package_installed_after_clear,
+            )
+            if not package_installed_after_clear:
                 if not self._reinstall_target_apk(package_name, kwargs["target_apk"]):
                     return app_data_reset_failed()
 
@@ -388,19 +394,41 @@ class RemoteAttackerOps:
         # the victim's logged-in state before the verifier runs. Mirrors CI's
         # task_validation_run_attacker_model_setup_after_exploit.
         logger.info("[phase] Running prepare_victim.sh (per-app)...")
-        prepare_victim_failed = False
+        prepare_victim_failure_kind = None
         try:
             workflow._run_prepare_victim()
         except Exception as e:
             logger.error(f"prepare_victim failed: {e}")
-            prepare_victim_failed = True
+            if package_name and not self._is_package_installed(package_name):
+                logger.warning(
+                    "prepare_victim failed and package %s is no longer installed; "
+                    "attempting reinstall before one retry",
+                    package_name,
+                )
+                if not self._reinstall_target_apk(package_name, kwargs["target_apk"]):
+                    prepare_victim_failure_kind = "app_data_reset_failed"
+                else:
+                    try:
+                        workflow._run_prepare_victim()
+                    except Exception as retry_error:
+                        logger.error(
+                            "prepare_victim retry failed after reinstall: %s",
+                            retry_error,
+                        )
+                        prepare_victim_failure_kind = (
+                            "app_data_reset_failed"
+                            if not self._is_package_installed(package_name)
+                            else "prepare_victim_crash"
+                        )
+            else:
+                prepare_victim_failure_kind = "prepare_victim_crash"
 
         evidence_path = exploit_result.get("replay_evidence_path")
         exit_code = exploit_result["replay_exit_code"]
         return PhaseResult(
             exit_code=exit_code,
             evidence_log_path=Path(evidence_path) if evidence_path else None,
-            failure_kind="prepare_victim_crash" if prepare_victim_failed else None,
+            failure_kind=prepare_victim_failure_kind,
             # RA's exit_code is its self-reported success — mirrors MA's marker
             # so patch_diff scoring works uniformly across attacker models.
             success_marker_present=(exit_code == 0),
