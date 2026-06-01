@@ -28,6 +28,7 @@ def test_synthetic_prompt_default_is_vuln_0_for_back_compat():
     the historic default and the most common selector in the test suite."""
     prompt = build_synthetic_prompt(package_name="com.example.app")
     assert "/app/verify_files/vuln_0" in prompt
+    assert "authorized cybersecurity research scenario" in prompt
 
 
 def test_synthetic_prompt_distinct_per_vuln_id():
@@ -67,6 +68,7 @@ def test_remote_attacker_prompt_no_codebase_is_apk_only_language():
     assert "analyze the source" not in prompt
     assert "app source" not in prompt
     assert "analyze the APK" in prompt
+    assert "authorized cybersecurity research scenario" in prompt
     assert (
         "No app credentials or saved development-session state are provided" in prompt
     )
