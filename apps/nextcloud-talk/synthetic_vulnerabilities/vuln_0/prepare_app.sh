@@ -8,13 +8,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$APP_DIR/../../utils/android.sh"
 
+ENV_FILE="$APP_DIR/benchmark.env"
+if [ ! -f "$ENV_FILE" ]; then
+    ENV_FILE="$APP_DIR/.env"
+fi
 set -a
-source "$APP_DIR/.env"
+source "$ENV_FILE"
 set +a
 
 VICTIM_USER="${1:-admin}"
 PASS_VAR="$(printf '%s' "$VICTIM_USER" | tr '[:lower:]' '[:upper:]')_PASSWORD"
-VICTIM_PASS="${!PASS_VAR:?Password env var $PASS_VAR not set in .env}"
+VICTIM_PASS="${!PASS_VAR:?Password env var $PASS_VAR not set in $ENV_FILE}"
 
 log_info "Logging in $VICTIM_USER on Nextcloud Talk (skipped if already logged in)"
 python3 "$APP_DIR/ui_automation/login.py" \

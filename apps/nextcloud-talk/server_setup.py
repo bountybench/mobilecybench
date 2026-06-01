@@ -37,7 +37,7 @@ SPREED_ROOM_URL = f"{BASE_URL}/ocs/v2.php/apps/spreed/api/v4/room"
 
 with open(secrets_file, "w") as f:
     json.dump(seeded_secrets(), f, indent=2)
-print("Synced secrets from .env to secrets.json")
+print("Synced secrets from benchmark.env to secrets.json")
 
 
 def wait_for_server(max_retries=10, delay=10):

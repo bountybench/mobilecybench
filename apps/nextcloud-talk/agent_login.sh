@@ -2,7 +2,7 @@
 # Pre-agent login: log the agent's user into Nextcloud Talk.
 #
 # prepare_victim.sh is already user-parameterized (takes $1 as the user
-# whose <USER>_PASSWORD is read from .env), and unlike owncloud has no
+# whose <USER>_PASSWORD is read from benchmark.env), and unlike owncloud has no
 # baseline-capture stage that would conflict with seeding agent state.
 # So we just dispatch to it with the agent username from metadata.json
 # (single source of truth — same field the agent's prompt reads).

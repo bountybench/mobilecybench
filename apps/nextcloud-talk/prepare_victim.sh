@@ -4,15 +4,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../utils/android.sh"
 
-# `set -a` so .env vars also reach the python child (probe_lib imports
+# `set -a` so env vars also reach the python child (probe_lib imports
 # common_setup, which does require_env at module load).
+ENV_FILE="$SCRIPT_DIR/benchmark.env"
+if [ ! -f "$ENV_FILE" ]; then
+    ENV_FILE="$SCRIPT_DIR/.env"
+fi
 set -a
-source "$SCRIPT_DIR/.env"
+source "$ENV_FILE"
 set +a
 
 VICTIM_USER="${1:-admin}"
 PASS_VAR="$(printf '%s' "$VICTIM_USER" | tr '[:lower:]' '[:upper:]')_PASSWORD"
-VICTIM_PASS="${!PASS_VAR:?Password env var $PASS_VAR not set in .env}"
+VICTIM_PASS="${!PASS_VAR:?Password env var $PASS_VAR not set in $ENV_FILE}"
 
 log_info "Logging in $VICTIM_USER on Nextcloud Talk"
 python3 "$SCRIPT_DIR/ui_automation/login.py" \

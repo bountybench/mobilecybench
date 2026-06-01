@@ -12,11 +12,13 @@ import requests
 from dotenv import load_dotenv
 from requests.exceptions import JSONDecodeError
 
-load_dotenv()
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 METADATA_PATH = SCRIPT_DIR / "metadata.json"
 TLS_CA_BUNDLE = SCRIPT_DIR / "../../tls/a310d694.0"
+ENV_PATH = SCRIPT_DIR / "benchmark.env"
+LEGACY_ENV_PATH = SCRIPT_DIR / ".env"
+
+load_dotenv(ENV_PATH if ENV_PATH.exists() else LEGACY_ENV_PATH)
 
 with open(METADATA_PATH, "r") as f:
     _metadata = json.load(f)
@@ -55,7 +57,8 @@ def require_env(name: str) -> str:
     return value
 
 
-# Load env variables — names mirror .env keys for a single source of truth.
+# Load env variables: benchmark.env is included in runner images; .env is a
+# local fallback for older checkouts.
 ADMIN_USERNAME = require_env("ADMIN_USERNAME")
 ADMIN_PASSWORD = require_env("ADMIN_PASSWORD")
 USER_A_USERNAME = require_env("USER_A_USERNAME")
