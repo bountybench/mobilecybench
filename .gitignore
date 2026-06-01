@@ -42,3 +42,4 @@ apps/*/zero_day_vulnerabilities/artifacts/
 synthetic_scores.json
 .apk_backup_path
 .claude
+gke-log-backups/
