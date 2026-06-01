@@ -368,6 +368,16 @@ EOF
 
 run_ntfy_seeding() {
   log_info "Running ntfy seeding"
+  # Runner images exclude repo .env files via the root .dockerignore, so pass
+  # the ntfy seeding configuration explicitly instead of relying on
+  # apps/ntfy-android/.env being present in the image.
+  NTFY_URL="${NTFY_URL:-http://localhost:8080}" \
+  EMULATOR_GATEWAY="${EMULATOR_GATEWAY}" \
+  SEED_OUTPUT_FILE="baseline_manifest.json" \
+  ACCESS_CONTROL_BASELINE="baseline_access_control.json" \
+  SECRETS_FILE="secrets.json" \
+  SEED_LOG_FILE="ntfy_seeding.log" \
+  SERVER_READY_TIMEOUT="${SERVER_READY_TIMEOUT:-30}" \
   python3 ntfy_seeding.py || fatal "ntfy_seeding.py failed"
 
   local baseline_manifest="$SCRIPT_DIR/baseline_manifest.json"
