@@ -109,11 +109,11 @@ ensure_bind_mount_file() {
   local path="$1"
   local fallback_contents="$2"
 
-  # Docker creates a missing bind-mount source as a directory.  A previous
-  # failed run (or a runner image missing the committed fixture file) can
-  # therefore leave e.g. openhab_conf/services/runtime.cfg as a directory,
-  # causing the next `docker compose up` to fail with "not a directory" while
-  # trying to mount it onto a file in the container.
+  # Docker creates a missing bind-mount source as a directory. A previous
+  # failed run, stale state, or missing fixture can therefore leave e.g.
+  # openhab_conf/services/runtime.cfg as a directory, causing the next
+  # `docker compose up` to fail with "not a directory" while trying to mount it
+  # onto a file in the container.
   if [ -d "$path" ]; then
     log_warn "Bind-mount source $path is a directory; replacing it with a file"
     rm -rf "$path"
@@ -156,43 +156,7 @@ ensure_jsondb_users_file() {
     return 0
   fi
 
-  if [ "${ADMINUSER_USERNAME:-adminuser}" != "adminuser" ] || [ "${NONADMINUSER_USERNAME:-nonadminuser}" != "nonadminuser" ]; then
-    log_warn "JSONDB users file is missing and usernames are non-default; Karaf SSH user setup may be needed"
-    return 0
-  fi
-
-  log_warn "JSONDB users file is missing; creating committed default users fallback"
-  cat > "$users_file" <<'EOF_USERS'
-{
-  "adminuser": {
-    "class": "org.openhab.core.auth.ManagedUser",
-    "value": {
-      "name": "adminuser",
-      "passwordHash": "LXGfTUMnABcKNEIWcHNy73Oyd5U3+QEKdbcSnl5sFnnkdeaAHlm87vqqCNBmLjZK1HngyjClJdimqy+zW+lG/Q\u003d\u003d",
-      "passwordSalt": "MMkkeG/UAyzFchzLCMGST9yhk8I+1DRlALxaYg1vX5YeioZAqiTsbo94M5PuvNqtKIidZ3WwxrtTL97ZEZoXvg\u003d\u003d",
-      "roles": [
-        "administrator"
-      ],
-      "sessions": [],
-      "apiTokens": []
-    }
-  },
-  "nonadminuser": {
-    "class": "org.openhab.core.auth.ManagedUser",
-    "value": {
-      "name": "nonadminuser",
-      "passwordHash": "9GKyfcPQvSPhvvIQLD29Tua1tcvrK+opc6ZBsmGAoDcTUx3mSBk/erqnFMhQ+Ob0qkwKrtnU8b27h94O2mpuig\u003d\u003d",
-      "passwordSalt": "SF76khh5iu7dYOMI0fvzsV+4gEwvankSwnL9F92j1YC0qhoSpRrtDMCAIGqG78O6bGIbqvdx/AM6go/BMnbRHg\u003d\u003d",
-      "roles": [
-        "user"
-      ],
-      "sessions": [],
-      "apiTokens": []
-    }
-  }
-}
-EOF_USERS
-  chmod 644 "$users_file" 2>/dev/null || true
+  log_warn "JSONDB users file is missing; Karaf SSH user setup may be needed"
 }
 
 restore_committed_runtime_state_files() {
@@ -200,17 +164,16 @@ restore_committed_runtime_state_files() {
     return 0
   fi
 
-  # cleanup.sh normally restores these files, but GKE/DinD runs may reuse a
-  # Docker data directory where old restart-policy containers can briefly come
-  # back before cleanup runs. Restore again immediately before runtime setup so
-  # stale containers or previous vuln runs cannot leave JSONDB users missing.
+  # cleanup.sh normally restores these files, but containerized runs may reuse
+  # Docker state where old restart-policy containers can briefly come back
+  # before cleanup runs. Restore again immediately before runtime setup so stale
+  # containers or previous vuln runs cannot leave JSONDB users missing.
   #
-  # Do not use `git checkout -- <path>` here: validation/runner images can be
-  # built from clones whose .git object store uses host-local alternates. Once
-  # copied into an image, Git may be unable to resolve HEAD objects and checkout
-  # can remove the existing working-tree file before failing. `git show` writes
-  # to a temp file only after proving the object is readable, so a broken Git
-  # database cannot destroy the packaged fixture.
+  # Do not use `git checkout -- <path>` here: some packaged workspaces can have
+  # incomplete or unreadable Git metadata. In that state checkout can remove the
+  # existing working-tree file before failing to restore it. `git show` writes
+  # to a temp file only after proving the object is readable, so broken Git
+  # metadata cannot destroy the packaged fixture.
   local repo_root rel dest tmp
   repo_root="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
   [ -n "$repo_root" ] || return 0
@@ -225,6 +188,9 @@ restore_committed_runtime_state_files() {
       mkdir -p "$(dirname "$dest")" 2>/dev/null || true
       tmp="${dest}.gitrestore.$$"
       if git -C "$repo_root" show "HEAD:$rel" > "$tmp" 2>/dev/null; then
+        if [ -d "$dest" ]; then
+          rm -rf "$dest"
+        fi
         mv "$tmp" "$dest"
         chmod 644 "$dest" 2>/dev/null || true
       else
@@ -339,7 +305,7 @@ PY
 record_preseeded_jsondb_users() {
   # Check before docker compose starts. openHAB can rewrite JSONDB files during
   # boot, but a valid committed users.json is already sufficient for the
-  # benchmark and should avoid the fragile Karaf SSH fallback in container/GKE
+  # benchmark and should avoid the fragile Karaf SSH fallback in containerized
   # runs.
   if users_exist_in_jsondb; then
     OPENHAB_JSONDB_USERS_PRESEEDED=1
