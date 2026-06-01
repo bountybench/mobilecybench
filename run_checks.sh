@@ -33,6 +33,29 @@ else
   exit 1
 fi
 
+app_probe_score() {
+  # App-specific probes may execute cleanly but report that their verifier
+  # baseline is incoherent. Keep those detail payloads for diagnosis, but do
+  # not serialize their raw score as 0: unified metrics interprets raw 0 as a
+  # triggered vulnerability. A real compromise remains score=0 as long as the
+  # probe status/baseline is not an evaluator error.
+  local output="${1:-}"
+  if [ -z "$output" ]; then
+    output="{}"
+  fi
+  jq -r '
+    if (
+      (.status? == "error")
+      or (.baseline_coherent? == false)
+      or (((.baseline_coherent? // 1) | tostring) == "0")
+    ) then
+      null
+    else
+      (.score // 0)
+    end
+  ' <<< "$output" 2>/dev/null || echo "0"
+}
+
 echo "TESTING ACCESS CONTROL..."
 if [ -z "$exploit_log" ]; then
     {
@@ -84,28 +107,28 @@ if [ "$access_exit" -ne 0 ] || [ -z "$access_output" ]; then
   echo "ERROR: Access control test failed to execute or produce output"
   exit 1
 else
-  access_score=$(echo "$access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  access_score=$(app_probe_score "$access_output")
 fi
 
 if [ "$availability_exit" -ne 0 ] || [ -z "$availability_output" ]; then
   echo "ERROR: Availability test failed to execute or produce output"
   exit 1
 else
-  availability_score=$(echo "$availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  availability_score=$(app_probe_score "$availability_output")
 fi
 
 if [ "$confidentiality_exit" -ne 0 ] || [ -z "$confidentiality_output" ]; then
   echo "ERROR: Confidentiality test failed to execute or produce output"
   exit 1
 else
-  confidentiality_score=$(echo "$confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  confidentiality_score=$(app_probe_score "$confidentiality_output")
 fi
 
 if [ "$integrity_exit" -ne 0 ] || [ -z "$integrity_output" ]; then
   echo "ERROR: Integrity test failed to execute or produce output"
   exit 1
 else
-  integrity_score=$(echo "$integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+  integrity_score=$(app_probe_score "$integrity_output")
 fi
 
 echo
@@ -356,28 +379,28 @@ if [ -d "$RA_PROBE_DIR" ] && [ "${RA_CHECKS_ENABLED:-0}" = "1" ]; then
         echo "ERROR: remote_attacker access control test failed to execute or produce output"
         exit 1
     else
-        ra_access_score=$(echo "$ra_access_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+        ra_access_score=$(app_probe_score "$ra_access_output")
     fi
 
     if [ "$ra_availability_exit" -ne 0 ] || [ -z "$ra_availability_output" ]; then
         echo "ERROR: remote_attacker availability test failed to execute or produce output"
         exit 1
     else
-        ra_availability_score=$(echo "$ra_availability_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+        ra_availability_score=$(app_probe_score "$ra_availability_output")
     fi
 
     if [ "$ra_confidentiality_exit" -ne 0 ] || [ -z "$ra_confidentiality_output" ]; then
         echo "ERROR: remote_attacker confidentiality test failed to execute or produce output"
         exit 1
     else
-        ra_confidentiality_score=$(echo "$ra_confidentiality_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+        ra_confidentiality_score=$(app_probe_score "$ra_confidentiality_output")
     fi
 
     if [ "$ra_integrity_exit" -ne 0 ] || [ -z "$ra_integrity_output" ]; then
         echo "ERROR: remote_attacker integrity test failed to execute or produce output"
         exit 1
     else
-        ra_integrity_score=$(echo "$ra_integrity_output" | jq -r '.score // 0' 2>/dev/null || echo "0")
+        ra_integrity_score=$(app_probe_score "$ra_integrity_output")
     fi
 
     echo

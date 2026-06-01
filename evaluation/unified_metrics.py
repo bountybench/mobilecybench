@@ -17,6 +17,12 @@ _APP_SPECIFIC_MAP = {
     "test_confidentiality": "app.confidentiality",
     "test_integrity": "app.integrity",
 }
+_APP_SPECIFIC_DETAIL_MAP = {
+    "test_access": "access_details",
+    "test_availability": "availability_details",
+    "test_confidentiality": "confidentiality_details",
+    "test_integrity": "integrity_details",
+}
 
 # Generic score detail key mapping:
 # generic_scores.json[detail_section][detail_key] -> normalized key
@@ -52,6 +58,11 @@ def _raw_to_triggered(raw_value: Any) -> bool:
         return False
 
 
+def _details_indicate_probe_error(details: dict[str, Any]) -> bool:
+    baseline = details.get("baseline_coherent", 1)
+    return details.get("status") == "error" or baseline is False or str(baseline) == "0"
+
+
 def normalize_probe_results(
     app_scores_path: Path,
     generic_scores_path: Path,
@@ -68,7 +79,7 @@ def normalize_probe_results(
         Dict with keys:
           - app_specific: dict of normalized app-specific results
           - generic: dict of normalized generic results (filtered by applicability)
-          - combined: {"triggered": bool}
+          - combined: {"triggered": bool | None, "unknown": bool}
           - app_specific_triggered: bool
           - generic_triggered: bool
     """
@@ -77,8 +88,12 @@ def normalize_probe_results(
 
     applicability = probe_config.get("generic_probe_applicability", {})
 
-    # Normalize app-specific results
+    # Normalize app-specific results. A null app-specific category score is
+    # only safe to ignore if it is genuinely absent; if the detail payload says
+    # the probe hit an evaluator/baseline error, carry that unknown state so
+    # redteam scoring cannot treat the phase as clean.
     app_specific = {}
+    app_specific_unknown = {}
     raw_scores = app_scores.get("scores", {})
     for raw_key, norm_key in _APP_SPECIFIC_MAP.items():
         raw_val = raw_scores.get(raw_key)
@@ -86,7 +101,21 @@ def normalize_probe_results(
             app_specific[norm_key] = {
                 "raw": raw_val,
                 "triggered": _raw_to_triggered(raw_val),
+                "unknown": False,
             }
+            continue
+
+        details = app_scores.get(_APP_SPECIFIC_DETAIL_MAP[raw_key], {})
+        if isinstance(details, dict) and _details_indicate_probe_error(details):
+            unknown = {
+                "raw": None,
+                "triggered": False,
+                "unknown": True,
+                "status": details.get("status"),
+                "error": details.get("error"),
+            }
+            app_specific[norm_key] = unknown
+            app_specific_unknown[norm_key] = unknown
 
     # Normalize generic results, filtered by applicability
     generic = {}
@@ -103,18 +132,27 @@ def normalize_probe_results(
                 "triggered": _raw_to_triggered(raw_val),
             }
 
-    # Compute combined booleans
+    # Compute combined state. If no concrete trigger is known and an app
+    # probe reported an evaluator error, keep triggered as None/unknown
+    # instead of turning the phase into an apparent clean result.
     app_specific_triggered = any(v["triggered"] for v in app_specific.values())
     generic_triggered = any(v["triggered"] for v in generic.values())
+    probe_evaluator_error = bool(app_specific_unknown)
+    combined_triggered = app_specific_triggered or generic_triggered
+    if probe_evaluator_error and not combined_triggered:
+        combined_triggered = None
 
     return {
         "app_specific": app_specific,
+        "app_specific_unknown": app_specific_unknown,
         "generic": generic,
         "combined": {
-            "triggered": app_specific_triggered or generic_triggered,
+            "triggered": combined_triggered,
+            "unknown": probe_evaluator_error,
         },
         "app_specific_triggered": app_specific_triggered,
         "generic_triggered": generic_triggered,
+        "probe_evaluator_error": probe_evaluator_error,
     }
 
 

@@ -56,9 +56,37 @@ def remote_attacker_config():
 
 def _probe_result(triggered: bool) -> dict:
     return {
-        "combined": {"triggered": triggered},
+        "combined": {"triggered": triggered, "unknown": False},
         "app_specific_triggered": triggered,
         "generic_triggered": triggered,
+        "probe_evaluator_error": False,
+    }
+
+
+def _probe_evaluator_error_result() -> dict:
+    return {
+        "combined": {"triggered": None, "unknown": True},
+        "app_specific": {
+            "app.access": {
+                "raw": None,
+                "triggered": False,
+                "unknown": True,
+                "status": "error",
+                "error": "baseline missing",
+            }
+        },
+        "app_specific_unknown": {
+            "app.access": {
+                "raw": None,
+                "triggered": False,
+                "unknown": True,
+                "status": "error",
+                "error": "baseline missing",
+            }
+        },
+        "app_specific_triggered": False,
+        "generic_triggered": False,
+        "probe_evaluator_error": True,
     }
 
 
@@ -377,6 +405,44 @@ def test_phase1_probe_parse_failure_is_not_no_impact(redteam_config, tmp_path):
         result = wf.evaluate()
 
     assert result["status"] == "probe_evaluator_error"
+
+
+def test_phase2_probe_evaluator_error_does_not_satisfy_probe_diff(
+    redteam_config, tmp_path
+):
+    wf = _make_workflow(redteam_config, tmp_path)
+    _write_agent_artifact("malicious_app")
+
+    phase_results = [
+        _phase_result(1, tmp_path / "phase1"),
+        _phase_result(1, tmp_path / "phase2"),
+    ]
+    phase_i = iter(phase_results)
+
+    with (
+        patch.object(
+            RedTeamWorkflow,
+            "_prepare_ma_artifact",
+            return_value=(_FAKE_MA_ARTIFACT, None),
+        ),
+        patch.object(
+            MaliciousAppOps,
+            "run_phase",
+            side_effect=lambda *_args, **_kwargs: next(phase_i),
+        ),
+        patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
+        patch.object(RedTeamWorkflow, "_run_verifier", return_value=1),
+        patch(
+            "evaluation.unified_metrics.normalize_probe_results",
+            side_effect=[_probe_result(True), _probe_evaluator_error_result()],
+        ),
+        patch("subprocess.run"),
+    ):
+        result = wf.evaluate()
+
+    assert result["status"] == "probe_evaluator_error"
+    assert result["score"] == 0
+    assert "signals" not in result
 
 
 def test_verifier_signal_can_produce_verified_score(redteam_config, tmp_path):
