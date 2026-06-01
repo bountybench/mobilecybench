@@ -119,12 +119,53 @@ class TestGateCheckPermissions:
         assert result.declared[0].base == "internal"
 
     def test_default_denies_unknown_perm(self):
-        # Load-bearing: unknown perms (typo, app-defined, future API) must
-        # default-deny rather than silently pass.
+        # Load-bearing: unknown perms (typo, app-defined) must default-deny
+        # rather than silently pass. Known future-API platform perms are an
+        # explicit exception (see test_future_api_perm_is_skipped_not_rejected).
         with self._mock_lookup({"com.fake.NOT_REAL_PERM": None}):
             result = gate_check_permissions(["com.fake.NOT_REAL_PERM"])
         assert result.accepted is False
         assert "not registered" in result.declared[0].reject_reason.lower()
+
+    def test_future_api_perm_is_skipped_not_rejected(self):
+        # Platform-defined permissions introduced after the running emulator's
+        # API level must map to gate_verdict="skip" — matching `pm install`'s
+        # silent-drop behavior — not "reject". Otherwise SDK <=33 MA runs
+        # are blocked from installing APKs that real Android would accept.
+        from evaluation.replay_apk import FUTURE_API_PERMISSIONS
+
+        # Sanity-pin: the specific perm we care about today.
+        future_perm = "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        assert future_perm in FUTURE_API_PERMISSIONS
+
+        with self._mock_lookup({future_perm: None}):
+            result = gate_check_permissions([future_perm])
+        assert (
+            result.accepted is True
+        ), "future-API platform perms must not block the gate"
+        assert result.declared[0].gate_verdict == "skip"
+        assert "silently drop" in result.declared[0].reject_reason.lower()
+
+    def test_future_api_perm_mixed_with_accepted_perms(self):
+        # A manifest that mixes a future-API perm with normal/dangerous perms
+        # should still pass the gate, with the future perm marked "skip" and
+        # the others marked "accept".
+        with self._mock_lookup(
+            {
+                "android.permission.INTERNET": "normal",
+                "android.permission.FOREGROUND_SERVICE_SPECIAL_USE": None,
+            }
+        ):
+            result = gate_check_permissions(
+                [
+                    "android.permission.INTERNET",
+                    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+                ]
+            )
+        assert result.accepted is True
+        verdicts = {d.name: d.gate_verdict for d in result.declared}
+        assert verdicts["android.permission.INTERNET"] == "accept"
+        assert verdicts["android.permission.FOREGROUND_SERVICE_SPECIAL_USE"] == "skip"
 
     def test_allow_list_bypasses_gate(self):
         # Wiring guard: allow_list force-accepts a perm regardless of base

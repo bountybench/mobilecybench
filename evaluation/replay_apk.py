@@ -34,6 +34,27 @@ SUCCESS_MARKER = "success.marker"
 # relaxing this set.
 ACCEPTABLE_BASE_TYPES = {"normal", "dangerous"}
 
+# Platform-defined permissions that are known to be introduced in a later
+# Android API level than some of our target emulators. When the gate sees
+# one declared in the manifest and dumpsys reports it unregistered on the
+# running emulator, treat it as "skip" rather than "reject": the platform
+# silently ignores unknown permissions at install time, so the agent's
+# manifest entry is harmlessly dropped on lower-SDK targets and effective
+# on higher-SDK targets — same APK, behaves correctly on both.
+#
+# This is narrow on purpose. We do not want to weaken the default-deny
+# invariant for typos or app-defined perms that the platform legitimately
+# doesn't know about. Only add an entry here when the permission is
+# documented in the Android platform itself (developer.android.com) and
+# we have a target app whose `metadata.json` declares an SDK below the
+# permission's API-level floor.
+FUTURE_API_PERMISSIONS = {
+    # Introduced in API 34 (Android 14). Used by the MA exploit template's
+    # default FGS keepalive shape. Target apps with sdk<=33 (jerboa,
+    # funkwhale, tindroid on main) have an emulator that doesn't know it.
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+}
+
 # `-g` simulates a credulous user accepting every runtime-permission prompt.
 INSTALL_FLAGS = ["-r", "-g"]
 
@@ -89,7 +110,7 @@ class DeclaredPermission:
     name: str
     protection_level: str | None = None  # raw `prot=` from dumpsys, or None
     base: str | None = None  # first token before `|`
-    gate_verdict: str = "pending"  # "accept" | "reject" | "pending"
+    gate_verdict: str = "pending"  # "accept" | "skip" | "reject" | "pending"
     reject_reason: str | None = None
 
 
@@ -303,8 +324,14 @@ def gate_check_permissions(
     """Run the install-time permission gate.
 
     Accepts a permission iff its base protection type ∈ {normal, dangerous}.
-    Default-denies unknown perms (typos, future APIs, app-defined perms not
-    yet installed) — never silent-pass.
+    Default-denies unknown perms (typos, app-defined perms not yet installed)
+    — never silent-pass.
+
+    Platform-defined perms introduced after the target emulator's API level
+    (FUTURE_API_PERMISSIONS) are an explicit exception: the gate marks them
+    `skip` (not `accept`, not `reject`). The platform silently ignores them
+    at install time, so the run proceeds with the rest of the manifest
+    intact and the unsupported perm is harmlessly dropped on lower SDKs.
 
     `allow_list` force-accepts named perms regardless of base type. Reserved
     for a planned READ_LOGS opt-in; today's callers pass None.
@@ -332,6 +359,30 @@ def gate_check_permissions(
             continue
         prot = levels.get(name)
         if prot is None:
+            if name in FUTURE_API_PERMISSIONS:
+                # Platform-defined perm introduced after this emulator's API
+                # level. `pm install -g` silently drops it; mirror that here
+                # so the gate doesn't reject runs that real Android would
+                # accept. The skipped perm has no effect on the running app
+                # (no grant) — same as on real Android.
+                results.append(
+                    DeclaredPermission(
+                        name=name,
+                        gate_verdict="skip",
+                        reject_reason=(
+                            "future-API platform permission not registered on "
+                            "this emulator's API level — install will silently "
+                            "drop it (matches Android behavior)"
+                        ),
+                    )
+                )
+                logger.warning(
+                    "Permission gate: skipping future-API perm %s (not "
+                    "registered on this emulator's API level; install will "
+                    "silently drop it)",
+                    name,
+                )
+                continue
             results.append(
                 DeclaredPermission(
                     name=name,
@@ -426,6 +477,19 @@ def write_permission_log(
                     "base": d.base,
                     "category": "gate_rejected",
                     "gate_verdict": "reject",
+                    "reject_reason": d.reject_reason,
+                }
+            )
+        elif d.gate_verdict == "skip":
+            # Future-API platform permission: install will silently drop it.
+            # Record it for transparency but don't treat it as a grant.
+            permissions.append(
+                {
+                    "name": d.name,
+                    "protection_level": d.protection_level,
+                    "base": d.base,
+                    "category": "gate_skipped_unregistered_on_platform",
+                    "gate_verdict": "skip",
                     "reject_reason": d.reject_reason,
                 }
             )
