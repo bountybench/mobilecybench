@@ -26,7 +26,7 @@ EXTERNAL_BRIDGE = "bridge"  # Docker's default bridge — the sidecar's path to 
 
 EGRESS_PROXY_CONTAINER = "egress-proxy"
 EGRESS_PROXY_REPO = "cybench/agent-firewall"
-EGRESS_PROXY_TAG = "v0.1.0"
+EGRESS_PROXY_TAG = "v0.2.0"
 EGRESS_PROXY_PORT = 3128
 VALID_NETWORK_MODES = ("restricted", "permissive")
 SQUID_LOG_ARTIFACTS = (

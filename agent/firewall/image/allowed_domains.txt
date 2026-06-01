@@ -16,3 +16,9 @@ files.pythonhosted.org
 # (Kali's CDN, stable hostname) in agent/kali/Dockerfile.kali. http.kali.org
 # redirects to regional mirrors that an allowlist cannot track — don't add it.
 kali.download
+
+# opencode BYO agent (gpt-5.5 oauth).
+chatgpt.com         # oauth API: POST /backend-api/codex/responses
+auth.openai.com     # oauth token refresh: POST /oauth/token
+models.dev          # model registry: GET /api.json (every startup)
+registry.npmjs.org  # msgpackr native build + LSP servers on code edits
