@@ -173,6 +173,14 @@ def on_browser_login_handoff_screen(d):
     )
 
 
+def server_url_handoff_started(d):
+    return (
+        current_package(d) == BROWSER_PACKAGE
+        or on_browser_login_handoff_screen(d)
+        or on_ssl_cert_dialog(d)
+    )
+
+
 def on_chrome_welcome_screen(d):
     return (
         current_package(d) == BROWSER_PACKAGE
@@ -309,20 +317,38 @@ def wait_for_browser(d, timeout=30):
 
 
 def submit_server_url(d, timeout=30):
-    def expected():
-        return (
-            current_package(d) == BROWSER_PACKAGE
-            or on_browser_login_handoff_screen(d)
-            or on_ssl_cert_dialog(d)
-        )
+    deadline = time.time() + timeout
 
-    arrow = d(resourceId=f"{PACKAGE}:id/text_input_end_icon")
-    if arrow.exists:
-        return click_then_expect(d, arrow, expected, timeout=timeout)
+    for attempt in range(1, 4):
+        if server_url_handoff_started(d):
+            return True
 
-    log("Server URL submit icon not found; submitting with keyboard action")
-    d.press("enter")
-    return wait_for_condition(expected, timeout=timeout)
+        arrow = d(resourceId=f"{PACKAGE}:id/text_input_end_icon")
+        if arrow.exists:
+            try:
+                arrow.click()
+                log(f"Submitted server URL (attempt {attempt}/3)")
+            except Exception as exc:
+                log(f"Server URL submit click failed (attempt {attempt}/3): {exc}")
+        elif on_server_url_screen(d):
+            log(
+                "Server URL submit icon not found; "
+                f"pressing enter (attempt {attempt}/3)"
+            )
+            d.press("enter")
+        else:
+            log("Server URL submit controls not visible; waiting for handoff")
+
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+        if wait_for_condition(
+            lambda: server_url_handoff_started(d),
+            timeout=min(10, remaining),
+        ):
+            return True
+
+    return server_url_handoff_started(d)
 
 
 def handle_chrome_first_run(d):
@@ -359,6 +385,7 @@ def handle_server_url(d, server_url):
     if not submit_server_url(d, timeout=30):
         log("ERROR: Browser handoff did not start after submitting server URL")
         log_ui_state(d)
+        log_recent_logcat(d)
         sys.exit(1)
 
     # Accept self-signed certificate if prompted
@@ -371,6 +398,7 @@ def handle_server_url(d, server_url):
             if not submit_server_url(d, timeout=30):
                 log("ERROR: Browser handoff did not start after accepting certificate")
                 log_ui_state(d)
+                log_recent_logcat(d)
                 sys.exit(1)
 
     log("Server URL submitted")

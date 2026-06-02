@@ -88,6 +88,68 @@ def test_launch_app_retries_with_monkey_when_launcher_stays_foreground(monkeypat
     )
 
 
+def test_submit_server_url_accepts_browser_when_submit_icon_disappears(monkeypatch):
+    module = load_login_module(monkeypatch)
+
+    class MissingElement:
+        exists = False
+
+    class Device:
+        def __init__(self):
+            self.pressed = []
+
+        def __call__(self, **_kwargs):
+            return MissingElement()
+
+        def app_current(self):
+            return {
+                "package": module.BROWSER_PACKAGE,
+                "activity": "org.chromium.chrome.browser.firstrun.FirstRunActivity",
+            }
+
+        def press(self, key):
+            self.pressed.append(key)
+
+    device = Device()
+
+    assert module.submit_server_url(device, timeout=1) is True
+    assert device.pressed == []
+
+
+def test_submit_server_url_waits_for_browser_after_arrow_click(monkeypatch):
+    module = load_login_module(monkeypatch)
+
+    class Element:
+        def __init__(self, exists, click=None):
+            self.exists = exists
+            self._click = click
+
+        def click(self):
+            if self._click is not None:
+                self._click()
+
+    class Device:
+        def __init__(self):
+            self.clicked = False
+
+        def __call__(self, **kwargs):
+            if kwargs.get("resourceId") == f"{module.PACKAGE}:id/text_input_end_icon":
+                return Element(not self.clicked, self._mark_clicked)
+            return Element(False)
+
+        def _mark_clicked(self):
+            self.clicked = True
+
+        def app_current(self):
+            package = module.BROWSER_PACKAGE if self.clicked else module.PACKAGE
+            return {"package": package, "activity": ".Activity"}
+
+    device = Device()
+
+    assert module.submit_server_url(device, timeout=1) is True
+    assert device.clicked is True
+
+
 def test_handle_grant_access_accepts_direct_return_to_app(monkeypatch):
     module = load_login_module(monkeypatch)
 
