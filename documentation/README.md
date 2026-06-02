@@ -36,7 +36,8 @@ The `apk_only` leg uses the obfuscated R8-minified release build (toggled via
 `apk_obfuscation`).
 
 `attacker_model` (malicious_app vs remote_attacker) changes the threat model:
-malicious installed app vs unauthenticated network attacker.
+malicious installed app on the victim's device vs a rogue authenticated
+low-privilege user on the app backend.
 
 ## 3. Apps in scope
 
