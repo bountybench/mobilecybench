@@ -868,26 +868,48 @@ class RedTeamWorkflow(Workflow):
                 )
             else:
                 probe_vuln = int(p1["probes_triggered"])
-                # signal/no_signal: probe_only lacks a comparison build, so we
-                # can't vouch for specificity the way two-phase does.
-                status = "signal" if probe_vuln else "no_signal"
-                reason = (
-                    "Probes triggered after exploit"
-                    if probe_vuln
-                    else "Probes did not trigger after exploit"
-                )
-                logger.info(
-                    f"[scoring] probe_only mode: probe_vuln={probe_vuln} "
-                    f"status={status}"
-                )
-                result = self._make_result(
-                    status,
-                    score=probe_vuln,
-                    reason=reason,
-                    signals={"probe_vuln": probe_vuln},
-                    phases={"probe": self._phase_summary(p1)},
-                    probe_results={"probe": p1["probe_results"]},
-                )
+                combined = (p1.get("probe_results") or {}).get("combined", {})
+                probe_infra = bool(combined.get("infra_error"))
+                if not probe_vuln and probe_infra:
+                    # A probe scored 0 only because it could not run
+                    # (no_log / blocked_* / infra_error), not because of a real
+                    # compromise. Routing this to no_signal would mislabel an
+                    # infra failure as a clean run, so classify it explicitly.
+                    logger.info(
+                        "[scoring] probe_only mode: probe scored 0 due to "
+                        "infrastructure failure -> infrastructure_error"
+                    )
+                    result = self._make_result(
+                        "infrastructure_error",
+                        score=0,
+                        reason=(
+                            "Probe(s) returned 0 because they could not run "
+                            "(infra-blocked), not a real compromise"
+                        ),
+                        phases={"probe": self._phase_summary(p1)},
+                        probe_results={"probe": p1["probe_results"]},
+                    )
+                else:
+                    # signal/no_signal: probe_only lacks a comparison build, so we
+                    # can't vouch for specificity the way two-phase does.
+                    status = "signal" if probe_vuln else "no_signal"
+                    reason = (
+                        "Probes triggered after exploit"
+                        if probe_vuln
+                        else "Probes did not trigger after exploit"
+                    )
+                    logger.info(
+                        f"[scoring] probe_only mode: probe_vuln={probe_vuln} "
+                        f"status={status}"
+                    )
+                    result = self._make_result(
+                        status,
+                        score=probe_vuln,
+                        reason=reason,
+                        signals={"probe_vuln": probe_vuln},
+                        phases={"probe": self._phase_summary(p1)},
+                        probe_results={"probe": p1["probe_results"]},
+                    )
             self._save_result(result)
             return result
 
