@@ -7,7 +7,7 @@ cd "$SCRIPT_DIR"
 
 ADB_RESTART_ATTEMPTS=${ADB_RESTART_ATTEMPTS:-4}
 ADB_RESTART_RETRY_DELAY_SECONDS=${ADB_RESTART_RETRY_DELAY_SECONDS:-5}
-PACKAGE_READY_TIMEOUT=${PACKAGE_READY_TIMEOUT:-60}
+PACKAGE_READY_TIMEOUT=${PACKAGE_READY_TIMEOUT:-180}
 TARGET_PACKAGE="me.mudkip.moememos"
 
 wait_for_adb_shell_ready() {
@@ -95,11 +95,24 @@ wait_for_package_installed() {
   log_info "Waiting for ${TARGET_PACKAGE} to be visible to PackageManager (timeout ${timeout}s)"
   wait_for_adb_shell_ready "$timeout" || return 1
 
+  local iters=0
   while true; do
     adb wait-for-device >/dev/null 2>&1 || true
-    if adb shell pm list packages 2>/dev/null | tr -d '\r' |
-      grep -q "^package:${TARGET_PACKAGE}$"; then
+    # Two independent visibility probes: `pm list packages` can transiently return an
+    # empty/partial list right after an adb root/unroot cycle even though the package
+    # IS installed (adbd not fully settled); `pm path` is a second opinion.
+    if adb shell pm list packages 2>/dev/null | tr -d '\r' | grep -q "^package:${TARGET_PACKAGE}$" \
+       || adb shell pm path "${TARGET_PACKAGE}" 2>/dev/null | tr -d '\r' | grep -q "^package:"; then
       return 0
+    fi
+
+    iters=$((iters + 1))
+    # Every ~20s bounce the adb server to recover a wedged adbd before giving up.
+    if (( iters % 20 == 0 )); then
+      log_info "package not yet visible after ${iters}s; restarting adb server"
+      adb kill-server >/dev/null 2>&1 || true
+      adb start-server >/dev/null 2>&1 || true
+      adb wait-for-device >/dev/null 2>&1 || true
     fi
 
     local now
