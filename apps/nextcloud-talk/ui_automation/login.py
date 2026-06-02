@@ -187,6 +187,41 @@ def wait_for_condition(condition, timeout=30, interval=1):
     return False
 
 
+def launch_app(d, timeout=30):
+    """Bring Nextcloud Talk to the foreground.
+
+    uiautomator2's app_start can return while the launcher remains foreground
+    on slower CI emulators. Retrying with monkey matches start_runtime.sh and
+    gives the launcher a second route to the app's MAIN activity.
+    """
+    deadline = time.time() + timeout
+    attempt = 0
+
+    while time.time() < deadline:
+        attempt += 1
+        try:
+            d.app_start(PACKAGE, wait=True)
+        except Exception as exc:
+            log(f"app_start attempt {attempt} failed: {exc}")
+        time.sleep(3)
+
+        if current_package(d) in {PACKAGE, BROWSER_PACKAGE}:
+            return True
+
+        try:
+            d.shell(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
+        except Exception as exc:
+            log(f"monkey launch attempt {attempt} failed: {exc}")
+        time.sleep(3)
+
+        if current_package(d) in {PACKAGE, BROWSER_PACKAGE}:
+            return True
+
+    log("ERROR: Nextcloud Talk did not come to foreground after launch attempts")
+    log_ui_state(d)
+    return False
+
+
 def wait_for_initial_login_state(d, timeout=60, interval=1):
     log("Waiting for initial login state")
     start = time.time()
@@ -374,16 +409,22 @@ def handle_grant_access(d):
     grant_btn = d(text="Grant access", className="android.widget.Button")
 
     if not click_then_expect(
-        d, grant_btn, lambda: on_account_connected_page(d), timeout=20
+        d,
+        grant_btn,
+        lambda: on_account_connected_page(d) or current_package(d) == PACKAGE,
+        timeout=30,
     ):
         log("ERROR: Account connected page did not appear after granting access")
+        log_ui_state(d)
         sys.exit(1)
 
     log("Access granted, returning to app")
-    d.app_start(PACKAGE, wait=True)
+    if current_package(d) != PACKAGE and not launch_app(d, timeout=30):
+        sys.exit(1)
 
     if not wait_for_condition(lambda: is_logged_in(d), timeout=45):
         log("ERROR: Main screen not reached after returning to app")
+        log_ui_state(d)
         sys.exit(1)
     log("Main screen reached")
 
@@ -395,9 +436,8 @@ def main():
 
     d = u2.connect()
 
-    # Launch app
-    d.app_start(PACKAGE, wait=True)
-    time.sleep(3)
+    if not launch_app(d):
+        sys.exit(1)
 
     # Already logged in?
     if is_logged_in(d):
