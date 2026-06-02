@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -604,3 +605,43 @@ def test_start_allows_non_emulator_adb_devices(mock_popen, mock_run, emulator_ma
 
     # Should have started successfully
     assert emulator_manager.state == EmulatorState.RUNNING
+
+
+@patch("utils.emulator_manager.subprocess.run")
+def test_home_assistant_metadata_forwards_ssrf_listener(mock_run, tmp_path, mock_env):
+    repo_root = Path(__file__).resolve().parents[1]
+    source_metadata = (
+        repo_root / "apps/home-assistant-android/metadata.json"
+    ).read_text()
+    metadata = json.loads(source_metadata)
+
+    assert "14378:ha-ssrf-listener:14378" in metadata["extra_forwards"]
+
+    app_dir = tmp_path / "apps" / "home-assistant-android"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(json.dumps(metadata))
+
+    with patch("utils.emulator_manager.Path.exists", return_value=True):
+        manager = EmulatorManager(
+            project_root=tmp_path,
+            sdk_version="35",
+            app_name="home-assistant-android",
+            emulator_display="headless",
+            emulator_backend="container",
+        )
+
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    manager.setup_port_forwards(app_dir)
+
+    docker_commands = [" ".join(call.args[0]) for call in mock_run.call_args_list]
+    assert any(
+        "TCP-LISTEN:8123,fork,reuseaddr" in command
+        and "TCP:home-assistant_tls_proxy:443" in command
+        for command in docker_commands
+    )
+    assert any(
+        "TCP-LISTEN:14378,fork,reuseaddr" in command
+        and "TCP:ha-ssrf-listener:14378" in command
+        for command in docker_commands
+    )
