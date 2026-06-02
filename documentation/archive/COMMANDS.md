@@ -62,7 +62,7 @@ Flags:
 ./publish_apk_bundle.sh apps/conversations
 ```
 
-Details: `documentation/ADDING_APPS.md`, `documentation/SYNTHETIC_VULNERABILITIES.md`, and `documentation/ZERODAY_TASKS.md`
+Details: `documentation/ADDING_APPS.md`. (Synthetic-vuln and zero-day flows are no longer the central benchmark path; their docs are archived at `documentation/archive/SYNTHETIC_VULNERABILITIES.md` and `documentation/archive/ZERODAY_TASKS.md`.)
 
 Flags:
 
@@ -100,7 +100,7 @@ Flags:
   --task-dir /path/to/task
 ```
 
-Details: `documentation/CI_VALIDATION.md` and `documentation/ZERODAY_TASKS.md`
+Details: `documentation/CI_VALIDATION.md` and `documentation/archive/ZERODAY_TASKS.md` (zero-day flow archived).
 
 ## External zero-day report wrapper
 
@@ -110,7 +110,7 @@ Details: `documentation/CI_VALIDATION.md` and `documentation/ZERODAY_TASKS.md`
   --report-dir /path/to/reports/app-name/report-n
 ```
 
-Details: `documentation/CI_VALIDATION.md` and `documentation/ZERODAY_TASKS.md`
+Details: `documentation/CI_VALIDATION.md` and `documentation/archive/ZERODAY_TASKS.md` (zero-day flow archived).
 
 ## Flag injection utilities
 
