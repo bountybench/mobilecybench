@@ -168,6 +168,19 @@
       "title": "Gold Run",
       "type": "boolean"
     },
+    "replay_exploit_dir": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Stage-2-only ('replay') mode: path to a previously-saved agent_exploit/ directory (e.g. a prior run's logs/<app>_redteam_*/agent_exploit). The runner copies it into the fresh run's logs dir and evaluates it (replay + probes + scoring) WITHOUT running the agent — useful for iterating on probe/scoring fixes without paying for the agent phase. setup_runtime_environment still runs (emulator + backend must be live). Mutually exclusive with dry_run and gold_run; compatible with probe_only. attacker_model must match the saved exploit.",
+      "title": "Replay Exploit Dir"
+    },
     "emulator_backend": {
       "default": "native",
       "description": "Run the emulator as a host process ('native') or as a separate Docker container ('container', used by GKE).",

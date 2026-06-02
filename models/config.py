@@ -208,6 +208,20 @@ class RunnerConfig(BaseModel):
             "instead of invoking the agent. Mutually exclusive with dry_run."
         ),
     )
+    replay_exploit_dir: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stage-2-only ('replay') mode: path to a previously-saved "
+            "agent_exploit/ directory (e.g. a prior run's "
+            "logs/<app>_redteam_*/agent_exploit). The runner copies it into "
+            "the fresh run's logs dir and evaluates it (replay + probes + "
+            "scoring) WITHOUT running the agent — useful for iterating on "
+            "probe/scoring fixes without paying for the agent phase. "
+            "setup_runtime_environment still runs (emulator + backend must be "
+            "live). Mutually exclusive with dry_run and gold_run; compatible "
+            "with probe_only. attacker_model must match the saved exploit."
+        ),
+    )
     # ---- Emulator -----------------------------------------------------------
     emulator_backend: Literal["native", "container"] = Field(
         default="native",
@@ -398,11 +412,13 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_mode_flags(self) -> "RunnerConfig":
-        """dry_run and gold_run are mutually exclusive runner branches.
+        """dry_run, gold_run, and replay_exploit_dir are mutually exclusive
+        runner branches.
 
         probe_only + dry_run is also rejected: dry_run short-circuits to the
         interactive shell before scoring. (probe_only + gold_run is handled
-        by validate_gold_run_probe_only.)
+        by validate_gold_run_probe_only.) replay_exploit_dir replays a saved
+        agent_exploit/ and is compatible with probe_only.
         """
         if self.dry_run and self.gold_run:
             raise ValueError("dry_run and gold_run are mutually exclusive")
@@ -410,6 +426,10 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 "probe_only is incompatible with dry_run: dry_run drops into "
                 "an interactive shell and skips scoring entirely."
+            )
+        if self.replay_exploit_dir and (self.dry_run or self.gold_run):
+            raise ValueError(
+                "replay_exploit_dir is mutually exclusive with dry_run and " "gold_run."
             )
         return self
 
