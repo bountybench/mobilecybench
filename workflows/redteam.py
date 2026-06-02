@@ -17,6 +17,7 @@ Two attacker models share the pipeline via lightweight strategy objects:
 import json
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Protocol
@@ -215,6 +216,50 @@ class MaliciousAppOps:
 class RemoteAttackerOps:
     """Model-specific operations for the remote_attacker attacker model."""
 
+    def _wait_for_adb_device(self, attempts: int = 3) -> bool:
+        """ADB can briefly disappear after exploit replay cleanup toggles adbd."""
+        for attempt in range(1, attempts + 1):
+            try:
+                wait_result = subprocess.run(
+                    ["adb", "wait-for-device"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                state_result = subprocess.run(
+                    ["adb", "get-state"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except subprocess.TimeoutExpired as e:
+                logger.warning(
+                    "ADB wait timed out before pm clear (attempt %s/%s)",
+                    attempt,
+                    attempts,
+                )
+                if e.stdout:
+                    logger.warning("ADB wait stdout:\n%s", str(e.stdout).strip())
+                if e.stderr:
+                    logger.warning("ADB wait stderr:\n%s", str(e.stderr).strip())
+            else:
+                if (
+                    wait_result.returncode == 0
+                    and state_result.returncode == 0
+                    and state_result.stdout.strip() == "device"
+                ):
+                    return True
+                logger.warning(
+                    "ADB not ready before pm clear (attempt %s/%s): wait_rc=%s state_rc=%s state=%r",
+                    attempt,
+                    attempts,
+                    wait_result.returncode,
+                    state_result.returncode,
+                    state_result.stdout.strip(),
+                )
+            time.sleep(2)
+        return False
+
     def check_artifact(self, exploit_dir: Path) -> tuple[bool, str]:
         """Check that exploit.sh was produced."""
         exploit_sh = exploit_dir / "exploit.sh"
@@ -275,6 +320,11 @@ class RemoteAttackerOps:
                 )
 
             logger.info(f"Clearing app data (pm clear {package_name})")
+            if not self._wait_for_adb_device():
+                logger.error(
+                    "ADB device unavailable before pm clear for %s", package_name
+                )
+                return app_data_reset_failed()
             try:
                 clear_result = subprocess.run(
                     ["adb", "shell", "pm", "clear", package_name],

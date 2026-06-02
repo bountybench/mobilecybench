@@ -532,8 +532,15 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
         ),
         patch(
             "workflows.redteam.subprocess.run",
-            side_effect=lambda cmd, **_kwargs: order.append("pm_clear")
-            or MagicMock(returncode=0),
+            side_effect=lambda cmd, **_kwargs: (
+                MagicMock(returncode=0, stdout="device\n")
+                if cmd[:2] == ["adb", "get-state"]
+                else (
+                    MagicMock(returncode=0, stdout="")
+                    if cmd[:2] == ["adb", "wait-for-device"]
+                    else order.append("pm_clear") or MagicMock(returncode=0)
+                )
+            ),
         ),
     ):
         result = RemoteAttackerOps().run_phase(
@@ -566,10 +573,18 @@ def test_remote_attacker_pm_clear_failure_is_infrastructure_error(
         patch.object(RedTeamWorkflow, "_run_prepare_victim") as mock_prepare_victim,
         patch(
             "workflows.redteam.subprocess.run",
-            return_value=MagicMock(
-                returncode=1,
-                stdout="Failure",
-                stderr="package not found",
+            side_effect=lambda cmd, **_kwargs: (
+                MagicMock(returncode=0, stdout="device\n")
+                if cmd[:2] == ["adb", "get-state"]
+                else (
+                    MagicMock(returncode=0, stdout="")
+                    if cmd[:2] == ["adb", "wait-for-device"]
+                    else MagicMock(
+                        returncode=1,
+                        stdout="Failure",
+                        stderr="package not found",
+                    )
+                )
             ),
         ),
     ):
@@ -606,11 +621,21 @@ def test_remote_attacker_pm_clear_timeout_is_infrastructure_error(
         patch.object(RedTeamWorkflow, "_run_prepare_victim") as mock_prepare_victim,
         patch(
             "workflows.redteam.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(
-                ["adb", "shell", "pm", "clear", "com.test.app"],
-                timeout=30,
-                output="partial stdout",
-                stderr="partial stderr",
+            side_effect=lambda cmd, **_kwargs: (
+                MagicMock(returncode=0, stdout="device\n")
+                if cmd[:2] == ["adb", "get-state"]
+                else (
+                    MagicMock(returncode=0, stdout="")
+                    if cmd[:2] == ["adb", "wait-for-device"]
+                    else (_ for _ in ()).throw(
+                        subprocess.TimeoutExpired(
+                            ["adb", "shell", "pm", "clear", "com.test.app"],
+                            timeout=30,
+                            output="partial stdout",
+                            stderr="partial stderr",
+                        )
+                    )
+                )
             ),
         ),
     ):
@@ -910,7 +935,11 @@ def test_remote_attacker_preserves_evidence_on_prepare_victim_crash(
         ),
         patch(
             "workflows.redteam.subprocess.run",
-            return_value=MagicMock(returncode=0),
+            side_effect=lambda cmd, **_kwargs: (
+                MagicMock(returncode=0, stdout="device\n")
+                if cmd[:2] == ["adb", "get-state"]
+                else MagicMock(returncode=0, stdout="")
+            ),
         ),
     ):
         result = RemoteAttackerOps().run_phase(
@@ -1331,9 +1360,11 @@ echo "prepare_victim:$MCB_ATTACKER_MODEL" >> "{order_log}"
         return {"replay_exit_code": 1, "replay_evidence_path": str(evidence)}
 
     def fake_subprocess_run(cmd, **_kwargs):
+        if isinstance(cmd, list) and cmd[:2] == ["adb", "get-state"]:
+            return MagicMock(returncode=0, stdout="device\n")
         if isinstance(cmd, list) and cmd[:3] == ["adb", "shell", "pm"]:
             order_log.write_text(order_log.read_text() + "pm_clear\n")
-        return MagicMock(returncode=0)
+        return MagicMock(returncode=0, stdout="")
 
     with (
         patch.object(RedTeamWorkflow, "_restart_runtime"),
