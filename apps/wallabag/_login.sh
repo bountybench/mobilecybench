@@ -67,11 +67,8 @@ for v in CLIENT_ID CLIENT_SECRET ACCESS_TOKEN REFRESH_TOKEN; do
     fi
 done
 
-# `adb root` restarts adbd on CI images. A fixed sleep can race the restart and
-# leave the next private-data command talking to a disappeared emulator.
 adb root >/dev/null 2>&1 || true
-adb wait-for-device >/dev/null 2>&1 || true
-wait_for_device_boot 60 || fatal "Device not ready after adb root"
+sleep 1
 
 # Kill any running app process before overwriting prefs. SharedPreferences are
 # cached in memory; if the process is alive, the running app keeps serving the
