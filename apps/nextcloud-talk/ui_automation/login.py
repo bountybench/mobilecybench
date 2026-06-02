@@ -51,7 +51,18 @@ def log(msg):
 
 
 def current_package(d):
-    return d.app_current().get("package", "")
+    try:
+        return d.app_current().get("package", "")
+    except Exception:
+        return ""
+
+
+def shell_text(result):
+    if hasattr(result, "output"):
+        return result.output or ""
+    if isinstance(result, str):
+        return result
+    return str(result)
 
 
 def log_ui_state(d):
@@ -78,6 +89,30 @@ def log_ui_state(d):
         f"activity={app_state.get('activity', '')} "
         f"texts={snippets}"
     )
+
+
+def log_recent_logcat(d):
+    try:
+        output = shell_text(d.shell("logcat -d -t 200"))
+    except Exception as exc:
+        log(f"Recent logcat unavailable: {exc}")
+        return
+
+    markers = (
+        PACKAGE,
+        "AndroidRuntime",
+        "FATAL EXCEPTION",
+        "ActivityTaskManager",
+        "ActivityManager",
+        "am_crash",
+    )
+    interesting = [
+        line
+        for line in output.splitlines()
+        if any(marker in line for marker in markers)
+    ]
+    for line in interesting[-40:]:
+        log(f"logcat: {line[:300]}")
 
 
 def parse_args():
@@ -181,13 +216,24 @@ def on_account_connected_page(d):
 def wait_for_condition(condition, timeout=30, interval=1):
     start = time.time()
     while time.time() - start < timeout:
-        if condition():
-            return True
+        try:
+            if condition():
+                return True
+        except Exception as exc:
+            log(f"Condition check failed while waiting: {exc}")
         time.sleep(interval)
     return False
 
 
-def launch_app(d, timeout=30):
+def wait_for_foreground(d, timeout=5, accept_browser=True):
+    def foreground_ready():
+        package = current_package(d)
+        return package == PACKAGE or (accept_browser and package == BROWSER_PACKAGE)
+
+    return wait_for_condition(foreground_ready, timeout=timeout, interval=1)
+
+
+def launch_app(d, timeout=45, accept_browser=True):
     """Bring Nextcloud Talk to the foreground.
 
     uiautomator2's app_start can return while the launcher remains foreground
@@ -205,7 +251,7 @@ def launch_app(d, timeout=30):
             log(f"app_start attempt {attempt} failed: {exc}")
         time.sleep(3)
 
-        if current_package(d) in {PACKAGE, BROWSER_PACKAGE}:
+        if wait_for_foreground(d, timeout=1, accept_browser=accept_browser):
             return True
 
         try:
@@ -214,11 +260,12 @@ def launch_app(d, timeout=30):
             log(f"monkey launch attempt {attempt} failed: {exc}")
         time.sleep(3)
 
-        if current_package(d) in {PACKAGE, BROWSER_PACKAGE}:
+        if wait_for_foreground(d, timeout=1, accept_browser=accept_browser):
             return True
 
     log("ERROR: Nextcloud Talk did not come to foreground after launch attempts")
     log_ui_state(d)
+    log_recent_logcat(d)
     return False
 
 
@@ -419,7 +466,9 @@ def handle_grant_access(d):
         sys.exit(1)
 
     log("Access granted, returning to app")
-    if current_package(d) != PACKAGE and not launch_app(d, timeout=30):
+    if current_package(d) != PACKAGE and not launch_app(
+        d, timeout=45, accept_browser=False
+    ):
         sys.exit(1)
 
     if not wait_for_condition(lambda: is_logged_in(d), timeout=45):

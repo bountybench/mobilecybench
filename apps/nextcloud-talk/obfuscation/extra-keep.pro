@@ -4,3 +4,8 @@
 # by the benchmark init script.
 -dontwarn com.google.common.base.Objects$ToStringHelper
 -dontwarn org.slf4j.impl.StaticLoggerBinder
+
+# WebRTC's native library reflects into org.webrtc.WebRtcClassLoader during
+# PeerConnectionFactory initialization. R8-renaming org.webrtc classes causes
+# the obfuscated APK to SIGTRAP on app startup before Talk reaches foreground.
+-keep class org.webrtc.** { *; }

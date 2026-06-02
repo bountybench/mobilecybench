@@ -72,7 +72,7 @@ def test_launch_app_retries_with_monkey_when_launcher_stays_foreground(monkeypat
             self.shell_calls.append(command)
 
         def app_current(self):
-            if self.shell_calls:
+            if any(call.startswith("monkey ") for call in self.shell_calls):
                 return {"package": module.PACKAGE, "activity": ".MainActivity"}
             return {
                 "package": "com.google.android.apps.nexuslauncher",
@@ -82,9 +82,10 @@ def test_launch_app_retries_with_monkey_when_launcher_stays_foreground(monkeypat
     device = Device()
 
     assert module.launch_app(device, timeout=1) is True
-    assert device.shell_calls == [
-        f"monkey -p {module.PACKAGE} -c android.intent.category.LAUNCHER 1"
-    ]
+    assert any(
+        call == f"monkey -p {module.PACKAGE} -c android.intent.category.LAUNCHER 1"
+        for call in device.shell_calls
+    )
 
 
 def test_handle_grant_access_accepts_direct_return_to_app(monkeypatch):
@@ -115,3 +116,38 @@ def test_handle_grant_access_accepts_direct_return_to_app(monkeypatch):
     )
 
     module.handle_grant_access(device)
+
+
+def test_handle_grant_access_does_not_accept_browser_as_app_return(monkeypatch):
+    module = load_login_module(monkeypatch)
+    launch_kwargs = {}
+
+    class Device:
+        def __call__(self, **_kwargs):
+            return object()
+
+        def app_current(self):
+            return {
+                "package": module.BROWSER_PACKAGE,
+                "activity": "org.chromium.chrome.browser.ChromeTabbedActivity",
+            }
+
+    device = Device()
+
+    monkeypatch.setattr(module, "on_account_connected_page", lambda _device: True)
+    monkeypatch.setattr(module, "is_logged_in", lambda _device: True)
+    monkeypatch.setattr(
+        module,
+        "click_then_expect",
+        lambda _device, _target, expected, **_kwargs: expected(),
+    )
+
+    def fake_launch(_device, **kwargs):
+        launch_kwargs.update(kwargs)
+        return True
+
+    monkeypatch.setattr(module, "launch_app", fake_launch)
+
+    module.handle_grant_access(device)
+
+    assert launch_kwargs["accept_browser"] is False
