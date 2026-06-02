@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -53,6 +54,32 @@ def current_package(d):
     return d.app_current().get("package", "")
 
 
+def log_ui_state(d):
+    try:
+        app_state = d.app_current()
+    except Exception as exc:
+        log(f"Current UI unavailable: {exc}")
+        return
+
+    snippets = []
+    try:
+        hierarchy = d.dump_hierarchy(compressed=True)
+        for text in re.findall(r'text="([^"]{1,80})"', hierarchy):
+            if text and text not in snippets:
+                snippets.append(text)
+            if len(snippets) >= 8:
+                break
+    except Exception as exc:
+        snippets.append(f"<hierarchy unavailable: {exc}>")
+
+    log(
+        "Current UI: "
+        f"package={app_state.get('package', '')} "
+        f"activity={app_state.get('activity', '')} "
+        f"texts={snippets}"
+    )
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Nextcloud Talk login automation")
     parser.add_argument("--username", required=True)
@@ -78,8 +105,30 @@ def on_ssl_cert_dialog(d):
     ).exists
 
 
+def server_url_field(d):
+    by_id = d(resourceId=f"{PACKAGE}:id/serverEntryTextInputEditText")
+    if by_id.exists:
+        return by_id
+
+    # Resource IDs are brittle under APK obfuscation and across UI revisions.
+    # Fall back to the visible server-address prompt plus the active EditText.
+    if current_package(d) != PACKAGE:
+        return None
+    if not (
+        d(textContains="Server address").exists
+        or d(textContains="https://").exists
+        or d(textContains="server").exists
+    ):
+        return None
+
+    edit_text = d(className="android.widget.EditText")
+    if edit_text.exists:
+        return edit_text
+    return None
+
+
 def on_server_url_screen(d):
-    return d(resourceId=f"{PACKAGE}:id/serverEntryTextInputEditText").exists
+    return server_url_field(d) is not None
 
 
 def on_browser_login_handoff_screen(d):
@@ -138,6 +187,25 @@ def wait_for_condition(condition, timeout=30, interval=1):
     return False
 
 
+def wait_for_initial_login_state(d, timeout=60, interval=1):
+    log("Waiting for initial login state")
+    start = time.time()
+    while time.time() - start < timeout:
+        if is_logged_in(d):
+            return "logged_in"
+        if on_server_url_screen(d):
+            return "server_url"
+        if on_ssl_cert_dialog(d):
+            return "ssl_cert"
+        if current_package(d) == BROWSER_PACKAGE or on_browser_login_handoff_screen(d):
+            return "browser"
+        time.sleep(interval)
+
+    log("ERROR: Initial login screen did not become ready")
+    log_ui_state(d)
+    sys.exit(1)
+
+
 def wait_for_browser(d, timeout=30):
     log("Waiting for external browser")
     if not wait_for_condition(
@@ -156,6 +224,23 @@ def wait_for_browser(d, timeout=30):
             sys.exit(1)
 
     log("External browser opened")
+
+
+def submit_server_url(d, timeout=30):
+    def expected():
+        return (
+            current_package(d) == BROWSER_PACKAGE
+            or on_browser_login_handoff_screen(d)
+            or on_ssl_cert_dialog(d)
+        )
+
+    arrow = d(resourceId=f"{PACKAGE}:id/text_input_end_icon")
+    if arrow.exists:
+        return click_then_expect(d, arrow, expected, timeout=timeout)
+
+    log("Server URL submit icon not found; submitting with keyboard action")
+    d.press("enter")
+    return wait_for_condition(expected, timeout=timeout)
 
 
 def handle_chrome_first_run(d):
@@ -180,20 +265,18 @@ def handle_chrome_first_run(d):
 def handle_server_url(d, server_url):
     """Enter server URL and submit."""
     log("Step 1: Server URL screen")
-    server_field = d(resourceId=f"{PACKAGE}:id/serverEntryTextInputEditText")
+    server_field = server_url_field(d)
+    if server_field is None:
+        log("ERROR: Server URL field is not visible")
+        log_ui_state(d)
+        sys.exit(1)
+
     server_field.set_text(server_url)
     time.sleep(0.5)
 
-    arrow = d(resourceId=f"{PACKAGE}:id/text_input_end_icon")
-    if not click_then_expect(
-        d,
-        arrow,
-        lambda: current_package(d) == BROWSER_PACKAGE
-        or on_browser_login_handoff_screen(d)
-        or on_ssl_cert_dialog(d),
-        timeout=30,
-    ):
+    if not submit_server_url(d, timeout=30):
         log("ERROR: Browser handoff did not start after submitting server URL")
+        log_ui_state(d)
         sys.exit(1)
 
     # Accept self-signed certificate if prompted
@@ -203,15 +286,9 @@ def handle_server_url(d, server_url):
         time.sleep(2)
         # After accepting, the app retries the connection — tap arrow again
         if on_server_url_screen(d):
-            arrow = d(resourceId=f"{PACKAGE}:id/text_input_end_icon")
-            if not click_then_expect(
-                d,
-                arrow,
-                lambda: current_package(d) == BROWSER_PACKAGE
-                or on_browser_login_handoff_screen(d),
-                timeout=30,
-            ):
+            if not submit_server_url(d, timeout=30):
                 log("ERROR: Browser handoff did not start after accepting certificate")
+                log_ui_state(d)
                 sys.exit(1)
 
     log("Server URL submitted")
@@ -328,7 +405,11 @@ def main():
         sys.exit(0)
 
     # Run login flow
-    if on_server_url_screen(d):
+    initial_state = wait_for_initial_login_state(d)
+    if initial_state == "logged_in":
+        log("Already logged in")
+        sys.exit(0)
+    if initial_state in {"server_url", "ssl_cert"}:
         handle_server_url(d, args.server_url)
 
     wait_for_browser(d)
