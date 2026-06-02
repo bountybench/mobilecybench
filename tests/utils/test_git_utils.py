@@ -13,12 +13,13 @@ if __name__ == "__main__":
     """
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from utils.git_utils import (
     _get_main_branch,
     cleanup_git_branches,
     delete_non_current_branches,
+    ensure_app_submodule,
     ensure_zerodays_submodule,
     git_checkout,
     initialize_git_repository,
@@ -198,6 +199,82 @@ def test_ensure_zerodays_submodule_inits_when_registered_else_skips():
         mock_git.assert_called_once_with(
             repo, ["submodule", "update", "--init", "zerodays"]
         )
+
+
+def test_ensure_app_submodule_initializes_all_registered_app_submodules():
+    """Runner lazy-init must include app infra siblings, not just codebase."""
+    with tempfile.TemporaryDirectory() as temp:
+        repo = _create_basic_repo(Path(temp))
+        (repo / ".gitmodules").write_text(
+            "\n".join(
+                [
+                    '[submodule "apps/jitsi-meet/codebase"]',
+                    "\tpath = apps/jitsi-meet/codebase",
+                    "\turl = ../jitsi-meet.git",
+                    '[submodule "apps/jitsi-meet/jitsi-docker"]',
+                    "\tpath = apps/jitsi-meet/jitsi-docker",
+                    "\turl = ../jitsi-docker.git",
+                    '[submodule "apps/owntracks/codebase"]',
+                    "\tpath = apps/owntracks/codebase",
+                    "\turl = ../owntracks.git",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with patch("utils.git_utils._run_git_command") as mock_git:
+            ensure_app_submodule(repo, "jitsi-meet")
+
+        assert mock_git.call_args_list == [
+            call(
+                repo,
+                ["submodule", "update", "--init", "apps/jitsi-meet/codebase"],
+            ),
+            call(
+                repo,
+                ["submodule", "update", "--init", "apps/jitsi-meet/jitsi-docker"],
+            ),
+        ]
+
+
+def test_ensure_app_submodule_skips_populated_paths_but_inits_empty_siblings():
+    """Already-populated app submodules should not hide empty sibling submodules."""
+    with tempfile.TemporaryDirectory() as temp:
+        repo = _create_basic_repo(Path(temp))
+        codebase = repo / "apps/jitsi-meet/codebase"
+        codebase.mkdir(parents=True)
+        (codebase / "README.md").write_text("already initialized", encoding="utf-8")
+        (repo / ".gitmodules").write_text(
+            "\n".join(
+                [
+                    '[submodule "apps/jitsi-meet/codebase"]',
+                    "\tpath = apps/jitsi-meet/codebase",
+                    "\turl = ../jitsi-meet.git",
+                    '[submodule "apps/jitsi-meet/jitsi-docker"]',
+                    "\tpath = apps/jitsi-meet/jitsi-docker",
+                    "\turl = ../jitsi-docker.git",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with patch("utils.git_utils._run_git_command") as mock_git:
+            ensure_app_submodule(repo, "jitsi-meet")
+
+        mock_git.assert_called_once_with(
+            repo, ["submodule", "update", "--init", "apps/jitsi-meet/jitsi-docker"]
+        )
+
+
+def test_ensure_app_submodule_skips_when_no_registered_app_paths():
+    """Closed-source or partner checkouts may have no app submodule entries."""
+    with tempfile.TemporaryDirectory() as temp:
+        repo = _create_basic_repo(Path(temp))
+
+        with patch("utils.git_utils._run_git_command") as mock_git:
+            ensure_app_submodule(repo, "closed-source-app")
+
+        mock_git.assert_not_called()
 
 
 def test_cleanup_git_branches_main_reset():

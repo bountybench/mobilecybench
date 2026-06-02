@@ -45,6 +45,40 @@ def git_submodule_update(directory_path: PathLike) -> None:
     logger.debug(f"Updated submodules in {directory}")
 
 
+def _registered_submodule_paths(project_root: PathLike) -> list[str]:
+    """Return submodule paths registered in the repository's ``.gitmodules``.
+
+    ``.gitmodules`` uses git-config syntax, but for our purposes we only need
+    the literal ``path = ...`` entries. Reading the file directly keeps this
+    helper side-effect free and easy to use in lazy-init preflight paths.
+    """
+    gitmodules = Path(project_root) / ".gitmodules"
+    if not gitmodules.exists():
+        return []
+
+    paths: list[str] = []
+    for raw_line in gitmodules.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(("#", ";")) or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        if key.strip() != "path":
+            continue
+
+        submodule_path = value.strip()
+        if (
+            len(submodule_path) >= 2
+            and submodule_path[0] == submodule_path[-1]
+            and submodule_path[0] in {"'", '"'}
+        ):
+            submodule_path = submodule_path[1:-1]
+        if submodule_path:
+            paths.append(submodule_path)
+
+    return paths
+
+
 def _ensure_submodule(
     project_root: PathLike,
     submodule_path: str,
@@ -65,8 +99,7 @@ def _ensure_submodule(
         logger.debug(f"Submodule already initialized: {target_dir}")
         return
 
-    gitmodules = project_root / ".gitmodules"
-    if not gitmodules.exists() or submodule_path not in gitmodules.read_text():
+    if submodule_path not in _registered_submodule_paths(project_root):
         logger.info(skip_message)
         return
 
@@ -76,20 +109,41 @@ def _ensure_submodule(
 
 
 def ensure_app_submodule(project_root: PathLike, app_name: str) -> None:
-    """Ensure a single app's codebase submodule is initialized.
+    """Ensure all submodules registered under ``apps/<app_name>/`` are initialized.
 
-    Runs ``git submodule update --init`` for just ``apps/<app_name>/codebase``.
-    Does NOT recurse into the codebase's own submodules.
+    Most apps only register ``apps/<app_name>/codebase``, but some apps also
+    register sibling infrastructure submodules (for example,
+    ``apps/jitsi-meet/jitsi-docker``). Runner startup needs those app-level
+    submodules before metadata reads and ``start_runtime.sh``.
+
+    This initializes only submodules registered in the top-level
+    ``.gitmodules``. It does NOT recurse into the app codebase's own nested
+    submodules.
     Skips gracefully for closed-source apps that have no submodule registered.
     """
-    _ensure_submodule(
-        project_root,
-        f"apps/{app_name}/codebase",
-        label=app_name,
-        skip_message=(
-            f"No submodule registered for {app_name} — skipping (closed-source app)"
-        ),
-    )
+    app_prefix = f"apps/{app_name}/"
+    submodule_paths = [
+        path
+        for path in _registered_submodule_paths(project_root)
+        if path.startswith(app_prefix)
+    ]
+
+    if not submodule_paths:
+        logger.info(
+            f"No submodules registered for {app_name} — skipping (closed-source app)"
+        )
+        return
+
+    for submodule_path in submodule_paths:
+        _ensure_submodule(
+            project_root,
+            submodule_path,
+            label=f"{app_name} ({submodule_path})",
+            skip_message=(
+                f"No submodule registered at {submodule_path} for {app_name} — "
+                "skipping"
+            ),
+        )
 
 
 def ensure_zerodays_submodule(project_root: PathLike) -> None:
