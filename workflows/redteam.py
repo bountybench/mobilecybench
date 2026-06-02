@@ -704,12 +704,16 @@ class RedTeamWorkflow(Workflow):
 
         probe_results = {}
         probes_triggered = False
+        probe_evaluator_error = False
         if probes_ok:
             probe_results = normalize_probe_results(
                 probe_app, probe_generic, self._probe_config
             )
             probes_triggered = probe_results["combined"]["triggered"]
+            probe_evaluator_error = bool(probe_results.get("probe_evaluator_error"))
             self._log_probe_results(label, probe_results)
+            if probe_evaluator_error:
+                probes_ok = False
 
         exit_code = phase_result.exit_code
         logger.info(
@@ -729,6 +733,7 @@ class RedTeamWorkflow(Workflow):
             "success_marker_present": phase_result.success_marker_present,
             "evidence_log_path": phase_result.evidence_log_path,
             "probes_ok": probes_ok,
+            "probe_evaluator_error": probe_evaluator_error,
             "probe_results": probe_results,
             "probes_triggered": probes_triggered,
             "verifier_exit": verifier_exit,
@@ -864,7 +869,7 @@ class RedTeamWorkflow(Workflow):
                 result = self._make_result(
                     "probe_evaluator_error",
                     score=0,
-                    reason="Probe evaluator failed to produce valid JSON",
+                    reason="Probe evaluator failed or reported an incoherent baseline",
                 )
             else:
                 probe_vuln = int(p1["probes_triggered"])
@@ -992,7 +997,7 @@ class RedTeamWorkflow(Workflow):
             result = self._make_result(
                 "probe_evaluator_error",
                 score=0,
-                reason="Probe evaluator failed to produce valid JSON",
+                reason="Probe evaluator failed or reported an incoherent baseline",
             )
             self._save_result(result)
             return result
