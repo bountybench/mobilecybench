@@ -15,6 +15,84 @@ PACKAGE_NAME = "com.moodle.moodlemobile"
 SERVER_URL = "http://10.0.2.2:8000"
 
 
+def dismiss_notification_prompt(d):
+    """Dismiss Moodle's in-app notification prompt without leaving login flow."""
+    for text in ("Not now", "Maybe later", "Skip"):
+        btn = d(text=text)
+        if btn.exists:
+            print(f"Notification prompt visible; clicking '{text}'")
+            btn.click()
+            time.sleep(2)
+            return True
+    if d(textContains="Turn on").exists:
+        print("Notification prompt visible; no dismiss button found")
+        return True
+    return False
+
+
+def current_package(d):
+    try:
+        return d.app_current().get("package", "")
+    except Exception:
+        return ""
+
+
+def bring_moodle_foreground(d):
+    if current_package(d) != PACKAGE_NAME:
+        d.app_start(PACKAGE_NAME)
+        time.sleep(3)
+
+
+def wait_for_any(d, selectors, timeout=30):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        bring_moodle_foreground(d)
+        for selector in selectors:
+            obj = d(**selector)
+            if obj.exists:
+                return obj
+        time.sleep(1)
+    return None
+
+
+def choose_persona(d, username):
+    # teacher2 should use the educator onboarding path; janedoe uses learner.
+    label = "I'm an educator" if username == "teacher2" else "I'm a learner"
+    print(f'Looking for "{label}" button...')
+    persona_btn = wait_for_any(
+        d,
+        [
+            {"text": label},
+            {"textContains": "educator" if username == "teacher2" else "learner"},
+        ],
+        timeout=30,
+    )
+    if persona_btn is None:
+        print("Persona screen not found; continuing in case app already advanced")
+        return False
+    persona_btn.click()
+    print(f'Clicked "{label}"')
+    wait_for_ui_stable(d)
+    return True
+
+
+def choose_existing_site_if_needed(d):
+    existing_site = wait_for_any(
+        d,
+        [
+            {"text": "I already have a Moodle site"},
+            {"textContains": "already have a Moodle site"},
+        ],
+        timeout=8,
+    )
+    if existing_site is None:
+        return False
+    existing_site.click()
+    print('Clicked "I already have a Moodle site"')
+    wait_for_ui_stable(d)
+    return True
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Moodle App Login Automation")
     parser.add_argument("--username", required=True, help="Login username")
@@ -40,6 +118,7 @@ def main():
     print(f"Stopping and starting app: {PACKAGE_NAME}")
     d.app_stop(PACKAGE_NAME)
     d.app_start(PACKAGE_NAME)
+    bring_moodle_foreground(d)
 
     # Wait for app to load
     wait_for_ui_stable(d)
@@ -49,6 +128,7 @@ def main():
     if d(text="Allow").exists:
         d(text="Allow").click()
         print("Clicked 'Allow' for notifications")
+        bring_moodle_foreground(d)
         wait_for_ui_stable(d)
     elif d(
         resourceId="com.android.permissioncontroller:id/permission_allow_button"
@@ -57,24 +137,29 @@ def main():
             resourceId="com.android.permissioncontroller:id/permission_allow_button"
         ).click()
         print("Clicked 'Allow' (ID) for notifications")
+        bring_moodle_foreground(d)
         wait_for_ui_stable(d)
 
-    # 2. I'm a learner
-    print('Looking for "I\'m a learner" button...')
-    learner_btn = d(text="I'm a learner")
-    if learner_btn.exists:
-        learner_btn.click()
-        print('Clicked "I\'m a learner"')
-        wait_for_ui_stable(d)
+    # 2. Choose onboarding persona.
+    choose_persona(d, username)
+    choose_existing_site_if_needed(d)
 
     # 3. Input emulator server
     print(f"Inputting server URL: {SERVER_URL}")
-    site_input = d(className="android.widget.EditText")
-    if not site_input.exists:
+    site_input = wait_for_any(
+        d,
+        [
+            {"className": "android.widget.EditText"},
+            {"textContains": "Your site"},
+            {"textContains": "site"},
+        ],
+        timeout=30,
+    )
+    if site_input is None:
         # Try to find by text or description if generic class fails
         site_input = d(textContains="Your site")
 
-    if site_input.exists:
+    if site_input is not None and site_input.exists:
         site_input.set_text(SERVER_URL)
         print("Set server URL text")
 
@@ -159,13 +244,8 @@ def main():
             print("Login successful via Enter key!")
             login_successful = True
         elif d(textContains="Turn on").exists:
-            # Notification popup appeared — dismiss it, but verify login below.
-            print("Notification popup visible; dismissing before confirming login...")
-            try:
-                d(text="Turn on").click()
-            except Exception:
-                pass
-            time.sleep(2)
+            # Notification popup appeared; dismiss it, but verify login below.
+            dismiss_notification_prompt(d)
 
         if not login_successful:
             # If not successful, try clicking the button as backup
@@ -231,11 +311,7 @@ def main():
                 # "Turn on" notification popup can appear after correct login —
                 # dismiss it but do NOT treat its presence alone as proof of success.
                 if d(textContains="Turn on").exists:
-                    try:
-                        d(text="Turn on").click()
-                    except Exception:
-                        pass
-                    time.sleep(2)
+                    dismiss_notification_prompt(d)
                     if (
                         d(text="Dashboard").exists
                         or d(text="Site home").exists
@@ -252,9 +328,8 @@ def main():
             print("Handling post-login popups...")
 
             # 1. Real time alerts "Turn on"
-            if d(text="Turn on").exists:
-                print("Found 'Turn on' notifications popup. Clicking...")
-                d(text="Turn on").click()
+            if d(textContains="Turn on").exists:
+                dismiss_notification_prompt(d)
                 wait_for_ui_stable(d)
 
             # 2. "Got it" orange buttons (User Tour / Onboarding)
