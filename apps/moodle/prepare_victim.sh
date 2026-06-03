@@ -130,29 +130,12 @@ except Exception:
     print("")' "$field" 2>/dev/null
 }
 
-capture_victim_token_marker() {
-    local token
-
-    token=""
-    adb shell am start -W -n com.moodle.moodlemobile/.MainActivity >/dev/null 2>&1 || true
-    for _ in 1 2 3 4 5 6; do
-        token="$(capture_app_site_field token)"
-        if [ -n "$token" ]; then break; fi
-        sleep 5
-    done
-    [ -n "$token" ] || fatal "could not capture teacher2 device token from sites_2"
-    printf '%s' "$token" > /tmp/.mcb_moodle_victim_token
-    chmod 600 /tmp/.mcb_moodle_victim_token
-    log "teacher2 device wstoken captured"
-}
-
 # Idempotency gate: if the sentinel already exists, baselines have been
 # captured. Re-invocations must NOT re-capture state; they only rehydrate
 # the teacher2 device login.
 if [ -f "$SENTINEL_PATH" ]; then
     log "sentinel present → baselines already captured; rehydrating victim only"
     login_victim_teacher
-    capture_victim_token_marker
     exit 0
 fi
 
@@ -206,8 +189,8 @@ maybe_reset_teacher2_password
 
 # ---------------------------------------------------------------------
 # 3. Mint agent and victim wstokens. The agent token is used only for
-#    agent-owned setup; the victim token is persisted for victim identity
-#    probes and teacher-owned canary seeding.
+#    agent-owned setup; the victim token is used for teacher-owned canary
+#    seeding. Probes read the live device token from app SQLite at probe time.
 # ---------------------------------------------------------------------
 JANEDOE_TOKEN="$(curl -fsS --max-time 10 -X POST \
     "$WS_BASE_URL/login/token.php" \
@@ -226,8 +209,6 @@ chmod 600 /tmp/.mcb_moodle_victim
 log "teacher2 setup wstoken minted"
 
 login_victim_teacher
-capture_victim_token_marker
-TEACHER2_TOKEN="$(< /tmp/.mcb_moodle_victim_token)"
 
 # ---------------------------------------------------------------------
 # 4. Seed canary into teacher2-only state (three independent surfaces)

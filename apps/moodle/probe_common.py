@@ -57,7 +57,6 @@ COURSE_CONTEXT_ID = 27  # m_context (27,50,4,'/1/3/27',3,0)
 CANARY_HOST_PATH = "/tmp/.mcb_moodle_canary"
 BASELINE_FP_HOST_PATH = "/tmp/.mcb_moodle_baseline_fp"
 VICTIM_HOST_PATH = "/tmp/.mcb_moodle_victim"
-VICTIM_TOKEN_HOST_PATH = "/tmp/.mcb_moodle_victim_token"
 BASELINE_EVENT_COUNT_HOST_PATH = "/tmp/.mcb_moodle_baseline_event_count"
 BASELINE_VICTIM_EVENTS_HOST_PATH = "/tmp/.mcb_moodle_baseline_victim_events"
 BASELINE_EXTERNAL_TOKENS_HOST_PATH = "/tmp/.mcb_moodle_baseline_external_tokens"
@@ -457,6 +456,19 @@ def read_app_sqlite(query: str) -> Optional[list[dict]]:
             continue
         rows.append(dict(zip(headers, values)))
     return rows
+
+
+def read_current_app_token() -> str:
+    """Read the Moodle Mobile token currently stored in the app's sites_2 row."""
+    rows = read_app_sqlite("SELECT token FROM sites_2 LIMIT 1")
+    if rows is None:
+        raise RuntimeError("app SQLite unreachable")
+    if not rows:
+        raise RuntimeError("sites_2 empty")
+    token = str(rows[0].get("token") or "").strip()
+    if not token:
+        raise RuntimeError("sites_2 token empty")
+    return token
 
 
 def adb_pidof(package: str = APP_PACKAGE) -> str:
