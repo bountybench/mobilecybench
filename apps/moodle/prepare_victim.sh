@@ -146,25 +146,6 @@ capture_victim_token_marker() {
     log "teacher2 device wstoken captured"
 }
 
-restore_generic_app_flag() {
-    local app_package
-    app_package="$(jq -r '.package_name' "$SCRIPT_DIR/metadata.json")"
-
-    if [ ! -f "$SCRIPT_DIR/../../flags.json" ]; then
-        log "flags.json absent; skipping generic app flag restore"
-        return 0
-    fi
-
-    # CI/redteam injects flags before prepare_victim.sh. The victim login
-    # intentionally runs `pm clear`, so restore only the Android app flag.
-    log "restoring generic app flag after victim pm clear"
-    PYTHONPATH="$SCRIPT_DIR/../.." python3 -m utils.flag_injection_utils \
-        --package "$app_package" \
-        >/dev/null \
-        || fatal "generic app flag restore failed"
-    wait_for_device_boot 120 || fatal "Device not ready after generic app flag restore"
-}
-
 # Idempotency gate: if the sentinel already exists, baselines have been
 # captured. Re-invocations must NOT re-capture state; they only rehydrate
 # the teacher2 device login.
@@ -172,7 +153,6 @@ if [ -f "$SENTINEL_PATH" ]; then
     log "sentinel present → baselines already captured; rehydrating victim only"
     login_victim_teacher
     capture_victim_token_marker
-    restore_generic_app_flag
     exit 0
 fi
 
@@ -248,7 +228,6 @@ log "teacher2 setup wstoken minted"
 login_victim_teacher
 capture_victim_token_marker
 TEACHER2_TOKEN="$(< /tmp/.mcb_moodle_victim_token)"
-restore_generic_app_flag
 
 # ---------------------------------------------------------------------
 # 4. Seed canary into teacher2-only state (three independent surfaces)
