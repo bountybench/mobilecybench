@@ -438,6 +438,65 @@ class TestRun:
 
         assert call_order == ["save_artifacts", "cleanup"]
 
+    def test_replay_mode_skips_artifact_save(self, base_config, tmp_path):
+        """Replay mode must NOT re-save artifacts in the cleanup finally.
+
+        The agent never runs, so the container's /app/agent_exploit/ holds only
+        setup-time scaffolding. Saving it would overlay the staged artifact we
+        just evaluated. evaluate() still runs; cleanup() still tears down.
+        """
+        call_order = []
+
+        saved = tmp_path / "saved" / "agent_exploit"
+        saved.mkdir(parents=True)
+        (saved / "exploit.sh").write_text("# real replayed exploit\n")
+
+        replay_config = RunnerConfig(
+            **{**base_config.model_dump(), "replay_exploit_dir": str(saved.parent)}
+        )
+
+        class FakeWorkflow:
+            metadata = {}
+            emulator = None
+            agent_env = object()  # truthy: would trigger the salvage save
+
+            def __init__(self):
+                self.app_dir = tmp_path / "apps" / "test_app"
+
+            def validate_arguments(self):
+                pass
+
+            def setup_runtime_environment(self):
+                pass
+
+            def setup_agent(self):
+                call_order.append("setup_agent")
+
+            def run_agent(self):
+                call_order.append("run_agent")
+                return {"status": "completed"}
+
+            def save_artifacts(self, logs_dir):
+                call_order.append("save_artifacts")
+
+            def evaluate(self):
+                call_order.append("evaluate")
+                return {"score": 1}
+
+            def cleanup(self):
+                call_order.append("cleanup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", return_value=FakeWorkflow()
+        ):
+            assert run(replay_config, "test_app", tmp_path) == 0
+
+        # Agent phase skipped; artifact never re-saved over the replayed copy.
+        assert "setup_agent" not in call_order
+        assert "run_agent" not in call_order
+        assert "save_artifacts" not in call_order
+        assert call_order == ["evaluate", "cleanup"]
+
     def test_writes_run_summary_json(self, base_config, tmp_path):
         """Run writes structured run_summary.json with key fields."""
         with patch("runner.ensure_app_submodule"), patch.object(

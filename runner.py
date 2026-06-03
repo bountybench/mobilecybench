@@ -426,7 +426,16 @@ def run(
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
 
-        if workflow and workflow.agent_env:
+        # Skip this salvage save when the exploit was prestaged (gold/replay)
+        # rather than produced by an agent run. The agent never ran, so the
+        # container's /app/agent_exploit/ holds only setup-time scaffolding
+        # (empty for RA; the malicious_app template for MA). save_artifacts
+        # would extract that over logs_dir/agent_exploit/ — overwriting the
+        # artifact we just staged and evaluated. The agent path saves its own
+        # artifacts in its inner finally and nulls agent_env, so it never
+        # reaches here.
+        prestaged = bool(gold_source_dir or replay_source_dir)
+        if workflow and workflow.agent_env and not prestaged:
             try:
                 workflow.save_artifacts(logger_manager.get_logs_dir())
             except Exception as e:
