@@ -10,13 +10,7 @@ services:
       - "5007:5007"   # LSP for rules (optional)
     volumes:
       - ./openhab_conf/services/runtime.cfg:/openhab/conf/services/runtime.cfg
-      # Mount the sitemaps DIRECTORY, not the single file: openHAB's file model
-      # provider doesn't reliably load/reload a single-file bind mount, and the
-      # hydration rewrites home.sitemap via atomic rename (tmp.replace), which on
-      # a single-file bind mount leaves the container pinned to the stale inode ->
-      # /rest/sitemaps stays empty (404 on /rest/sitemaps/home). A directory mount
-      # tracks the dir, so renames-in-place are visible and the watcher reloads.
-      - ./openhab_conf/sitemaps:/openhab/conf/sitemaps
+      - ./openhab_conf/sitemaps/home.sitemap:/openhab/conf/sitemaps/home.sitemap
       - ./openhab_userdata/jsondb:/openhab/userdata/jsondb
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
