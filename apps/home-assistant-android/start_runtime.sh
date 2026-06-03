@@ -21,6 +21,15 @@ seed_home_assistant_config() {
     log_info "Seeding Home Assistant config (if needed)..."
     mkdir -p ./config/.storage
 
+    # ./config is a bind mount, so a companion (mobile_app) registration created
+    # in a prior phase survives `docker compose down -v`. A stale registration
+    # makes HA re-expose notify.mobile_app_* in the probe phase, so the
+    # availability probe attempts a notification round-trip against the wipe-data
+    # emulator (no paired client) and times out -> false signal. Drop it so each
+    # phase starts from a clean, unpaired companion state (nothing in
+    # seeded-files/ provides core.config_entries, so this restores the baseline).
+    rm -f ./config/.storage/core.config_entries
+
     if [ ! -s ./config/configuration.yaml ]; then
         cp ./seeded-files/demo-configuration.yaml ./config/configuration.yaml
     fi
