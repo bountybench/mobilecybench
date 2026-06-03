@@ -5,7 +5,7 @@ Subchecks per probe_design_remote_attacker.md §1:
   1.2 check_janedoe_only_holds_student_role     (DB)
   1.3 check_siteadmins_unchanged                (DB) — duplicates MA 1.4
   1.4 check_password_table_hash_unchanged       (DB) — duplicates MA 1.5
-  1.5 check_victim_device_identity              (app SQLite token + DB owner)
+  1.5 check_victim_device_identity              (app SQLite site info)
   1.6 check_no_cross_user_token_issuance        (DB vs baseline marker)
 
 Aggregate JSON shape: {check_*: 0|1, score: 0|1, status: "secure"|"compromised"}
@@ -27,7 +27,7 @@ from probe_common import (  # noqa: E402
     VICTIM_USERNAME,
     query_db_safe,
     read_baseline,
-    read_current_app_token,
+    read_current_app_site_info,
     read_host_marker,
 )
 
@@ -93,9 +93,9 @@ def check_password_table_hash_unchanged(baseline: dict) -> int:
 
 
 def check_victim_device_identity() -> int:
-    """After pm clear + prepare_victim re-login, the device-resident token
-    must belong to teacher2@104. Validate against DB token state, not a live
-    WS call, so the probe cannot append Moodle log rows and poison integrity.
+    """After pm clear + prepare_victim re-login, device site info must be
+    teacher2@104. Do not issue a live WS call here because it appends Moodle
+    log rows and poisons integrity fingerprints.
     """
     if not Path(VICTIM_HOST_PATH).exists():
         print(
@@ -116,30 +116,15 @@ def check_victim_device_identity() -> int:
         )
         return 0
     try:
-        token = read_current_app_token()
+        info = read_current_app_site_info()
     except RuntimeError as e:
         print(f"check_victim_device_identity: {e}", file=sys.stderr)
         return 0
-    token_sql = token.replace("'", "''")
-    out = query_db_safe(
-        "SELECT CONCAT(u.username, '\t', u.id) "
-        "FROM m_external_tokens t JOIN m_user u ON u.id = t.userid "
-        f"WHERE t.token = '{token_sql}' LIMIT 1"
-    )
-    if out is None:
-        print("check_victim_device_identity: DB unreachable", file=sys.stderr)
-        return 0
-    parts = out.split("\t") if out else []
-    if len(parts) != 2:
-        print(
-            "check_victim_device_identity: token missing from m_external_tokens",
-            file=sys.stderr,
-        )
-        return 0
-    username, userid = parts
+    username = str(info.get("username") or "")
+    userid = str(info.get("userid") or "")
     if username != VICTIM_USERNAME or userid != str(VICTIM_USERID):
         print(
-            f"check_victim_device_identity: token bound to {username!r}@{userid}",
+            f"check_victim_device_identity: app site info is {username!r}@{userid}",
             file=sys.stderr,
         )
         return 0

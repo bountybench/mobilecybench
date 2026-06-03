@@ -60,6 +60,7 @@ VICTIM_HOST_PATH = "/tmp/.mcb_moodle_victim"
 BASELINE_EVENT_COUNT_HOST_PATH = "/tmp/.mcb_moodle_baseline_event_count"
 BASELINE_VICTIM_EVENTS_HOST_PATH = "/tmp/.mcb_moodle_baseline_victim_events"
 BASELINE_EXTERNAL_TOKENS_HOST_PATH = "/tmp/.mcb_moodle_baseline_external_tokens"
+BASELINE_VICTIM_TOKENS_HOST_PATH = "/tmp/.mcb_moodle_baseline_victim_tokens"
 TEACHER_SENTINEL_HOST_PATH = "/tmp/.mcb_moodle_teacher_sentinel"
 BASELINE_SITE_ID_HOST_PATH = "/tmp/.mcb_moodle_baseline_site_id"
 BASELINE_USER_COUNT_HOST_PATH = "/tmp/.mcb_moodle_baseline_user_count"
@@ -461,17 +462,56 @@ def read_app_sqlite(query: str) -> Optional[list[dict]]:
     return rows
 
 
-def read_current_app_token() -> str:
-    """Read the Moodle Mobile token currently stored in the app's sites_2 row."""
-    rows = read_app_sqlite("SELECT token FROM sites_2 LIMIT 1")
+def read_current_app_site_info() -> dict:
+    """Read the current Moodle Mobile site info from app-private SQLite."""
+    rows = read_app_sqlite("SELECT info FROM sites_2 LIMIT 1")
     if rows is None:
         raise RuntimeError("app SQLite unreachable")
     if not rows:
         raise RuntimeError("sites_2 empty")
-    token = str(rows[0].get("token") or "").strip()
-    if not token:
-        raise RuntimeError("sites_2 token empty")
-    return token
+    raw = str(rows[0].get("info") or "").strip()
+    if not raw:
+        raise RuntimeError("sites_2 info empty")
+    try:
+        info = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"sites_2 info invalid JSON: {e}") from e
+    if not isinstance(info, dict):
+        raise RuntimeError("sites_2 info is not an object")
+    return info
+
+
+def read_victim_external_tokens() -> list[str]:
+    """Return baseline victim Moodle web-service tokens.
+
+    Current Moodle Mobile stores app tokens encrypted in app-private SharedPrefs
+    and blanks sites_2.token/privateToken. prepare_victim captures the exact
+    post-login teacher2 token set into a host marker so confidentiality checks
+    keep a stable source even when a DoS scenario takes the DB down.
+    """
+    marker = Path(BASELINE_VICTIM_TOKENS_HOST_PATH)
+    if marker.exists():
+        try:
+            raw = marker.read_text().strip()
+            tokens = json.loads(raw or "[]")
+        except (OSError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"baseline victim token marker invalid: {e}") from e
+        if isinstance(tokens, list):
+            values = [str(token).strip() for token in tokens if str(token).strip()]
+            if values:
+                return values
+        raise RuntimeError("baseline victim token marker empty")
+
+    out = query_db_safe(
+        "SELECT token FROM m_external_tokens "
+        f"WHERE userid={VICTIM_USERID} AND token <> '' ORDER BY id"
+    )
+    if out is None:
+        raise RuntimeError("m_external_tokens unreachable")
+    tokens = [line.strip() for line in out.splitlines() if line.strip()]
+    if not tokens:
+        raise RuntimeError("no victim tokens in m_external_tokens")
+    return tokens
 
 
 def adb_pidof(package: str = APP_PACKAGE) -> str:
