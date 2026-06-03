@@ -396,8 +396,8 @@ def scan_shared_storage_for_text(needle: str) -> bool:
     ok, out = run_root_shell(
         "for d in "
         f"{dirs}; do "
-        "[ -d \"$d\" ] || continue; "
-        f"grep -R -a -F -q -- {needle_q} \"$d\" && echo HIT && exit 0; "
+        '[ -d "$d" ] || continue; '
+        f'grep -R -a -F -q -- {needle_q} "$d" && echo HIT && exit 0; '
         "done; true",
         timeout=90,
     )
