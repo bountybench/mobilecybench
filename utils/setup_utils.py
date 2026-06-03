@@ -2,64 +2,10 @@
 
 import shlex
 import subprocess
-import time
 from pathlib import Path
 from typing import Optional
 
 from utils.logger import logger
-
-
-_ADB_READY_TIMEOUT_SECONDS = 120
-_INJECT_FLAGS_TIMEOUT_SECONDS = 180
-
-
-def _adb_command_ok(args: list[str], timeout: int = 10) -> bool:
-    try:
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
-
-
-def _adb_command_stdout(args: list[str], timeout: int = 10) -> str | None:
-    try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout
-
-
-def _wait_for_adb_ready(timeout: int = _ADB_READY_TIMEOUT_SECONDS) -> bool:
-    """Wait for adb to accept commands after runtime scripts perturb the emulator."""
-    deadline = time.time() + timeout
-    restarted_server = False
-
-    while time.time() < deadline:
-        state = _adb_command_stdout(["adb", "get-state"], timeout=10)
-        if (
-            _adb_command_ok(["adb", "wait-for-device"], timeout=10)
-            and state is not None
-            and state.strip() == "device"
-            and _adb_command_ok(["adb", "shell", "true"], timeout=10)
-        ):
-            return True
-
-        if not restarted_server:
-            logger.warning("ADB health check failed; restarting adb server once")
-            _adb_command_ok(["adb", "kill-server"], timeout=10)
-            _adb_command_ok(["adb", "-a", "start-server"], timeout=10)
-            restarted_server = True
-
-        time.sleep(2)
-
-    return False
 
 
 def install_app_and_setup_backend(
@@ -126,13 +72,11 @@ def install_app_and_setup_backend(
     # Inject flags (discovery mode only; exploit uses verify_files)
     if inject_flags:
         logger.info("Injecting security flags...")
-        if not _wait_for_adb_ready():
-            raise RuntimeError("ADB did not become ready before flag injection")
         inject_flags_path = project_root / "inject_flags.sh"
         cmd.run(
             f"bash {inject_flags_path}",
             cwd=app_dir,
-            timeout=_INJECT_FLAGS_TIMEOUT_SECONDS,
+            timeout=30,
         )
         logger.info("Flags injected successfully")
 

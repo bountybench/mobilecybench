@@ -9,31 +9,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/wait.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/docker.sh"
 
-wait_adb_ready() {
-    local timeout_seconds=${1:-120}
-    local end_time=$(( $(date +%s) + timeout_seconds ))
-    local restarted=false
-
-    while [ "$(date +%s)" -lt "$end_time" ]; do
-        if timeout 10s adb wait-for-device >/dev/null 2>&1 \
-            && [ "$(adb get-state 2>/dev/null | tr -d '\r\n')" = "device" ] \
-            && adb shell true >/dev/null 2>&1; then
-            return 0
-        fi
-
-        if ! $restarted; then
-            log_warn "ADB not ready; restarting adb server once"
-            adb kill-server >/dev/null 2>&1 || true
-            adb -a start-server >/dev/null 2>&1 || true
-            restarted=true
-        fi
-
-        sleep 2
-    done
-
-    return 1
-}
-
 # Installs an APK on the connected Android emulator.
 adb_install_apk() {
     local apk_path=$1
