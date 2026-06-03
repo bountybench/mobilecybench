@@ -18,9 +18,14 @@ place probes at the boundary — so any action that crosses it trips a signal.
 ## Prerequisites
 
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
-- Docker Desktop running
+- Docker 24+ — Docker Desktop on macOS/Windows, Docker Engine on Linux
+- Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step below)
 - Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
 - [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by `build_type: "download-apk"` to fetch APK bundles. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
+
+Hardware: the Android emulator needs hardware virtualization (KVM on Linux,
+Hypervisor.framework on macOS) — nested-virt cloud VMs must have it enabled.
+Budget ≥ 16 GB RAM and ~50 GB free disk for the emulator + Docker images.
 
 Windows: use WSL or Git Bash; the shell scripts assume a POSIX environment.
 
@@ -38,6 +43,7 @@ bash setup.sh --init-submodules
 Authenticate the agent (Claude Code is the default — see [GETTING_STARTED.md § 3](documentation/GETTING_STARTED.md#3-authenticate-the-agent) for codex/opencode alternatives):
 
 ```bash
+cp agent/.env.example agent/.env                    # first time only
 npm install -g @anthropic-ai/claude-code
 claude setup-token
 echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste>' >> agent/.env

@@ -21,7 +21,7 @@
 
   "build_type": "download-apk",
   "emulator_backend": "native",
-  "emulator_display": "headed",
+  "emulator_display": "headless",
   "network_mode": "permissive",
 
   "dry_run": false,
