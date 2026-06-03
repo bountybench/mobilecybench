@@ -82,7 +82,7 @@ login_victim_teacher() {
     local app_package
     app_package="$(jq -r '.package_name' "$SCRIPT_DIR/metadata.json")"
     log "logging Moodle app in as victim teacher2"
-    wait_adb_ready 120 || log "WARN: ADB not ready before victim login"
+    wait_for_device_boot 120 || log "WARN: ADB not ready before victim login"
 
     for attempt in 1 2; do
         adb shell pm clear "$app_package" >/dev/null 2>&1 || true
@@ -98,10 +98,71 @@ login_victim_teacher() {
         fi
 
         log "WARN: victim teacher2 login failed on attempt ${attempt}/2"
-        wait_adb_ready 120 || log "WARN: ADB not ready before victim login retry"
+        wait_for_device_boot 120 || log "WARN: ADB not ready before victim login retry"
     done
 
     fatal "victim teacher2 login failed"
+}
+
+capture_app_site_field() {
+    local field="$1"
+    local db raw err
+
+    if ! [[ "$field" =~ ^[A-Za-z0-9_]+$ ]]; then
+        return 0
+    fi
+    db="$(adb shell "su 0 sh -c 'ls -1S /data/data/com.moodle.moodlemobile/databases/MoodleMobile* 2>/dev/null | grep -v -E \"(-journal|-wal|-shm)$\" | head -1'" 2>/dev/null | tr -d '\r')"
+    if [ -z "$db" ]; then
+        return 0
+    fi
+    err="$(mktemp)"
+    raw="$(adb shell "su 0 sqlite3 '$db' -json 'SELECT $field FROM sites_2 LIMIT 1'" 2>"$err" | tr -d '\r')"
+    if [ -s "$err" ]; then
+        log "capture_app_site_field($field) sqlite stderr: $(tr '\n' ' ' < "$err")"
+    fi
+    rm -f "$err"
+    printf '%s' "$raw" | python3 -c 'import json,sys
+field=sys.argv[1]
+try:
+    rows=json.loads(sys.stdin.read() or "[]")
+    print(rows[0].get(field, "") if rows else "")
+except Exception:
+    print("")' "$field" 2>/dev/null
+}
+
+capture_victim_token_marker() {
+    local token
+
+    token=""
+    adb shell am start -W -n com.moodle.moodlemobile/.MainActivity >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5 6; do
+        token="$(capture_app_site_field token)"
+        if [ -n "$token" ]; then break; fi
+        sleep 5
+    done
+    [ -n "$token" ] || fatal "could not capture teacher2 device token from sites_2"
+    printf '%s' "$token" > /tmp/.mcb_moodle_victim_token
+    chmod 600 /tmp/.mcb_moodle_victim_token
+    log "teacher2 device wstoken captured"
+}
+
+restore_generic_app_flag() {
+    local app_package
+    app_package="$(jq -r '.package_name' "$SCRIPT_DIR/metadata.json")"
+
+    if [ ! -f "$SCRIPT_DIR/../../flags.json" ]; then
+        log "flags.json absent; skipping generic app flag restore"
+        return 0
+    fi
+
+    # CI/redteam injects flags before prepare_victim.sh. The victim login
+    # intentionally runs `pm clear`, so restore only the Android app flag.
+    log "restoring generic app flag after victim pm clear"
+    PYTHONPATH="$SCRIPT_DIR/../.." python3 -m utils.flag_injection_utils \
+        --package "$app_package" \
+        >/dev/null \
+        || fatal "generic app flag restore failed"
+    wait_for_device_boot 120 || fatal "Device not ready after generic app flag restore"
 }
 
 # Idempotency gate: if the sentinel already exists, baselines have been
@@ -110,6 +171,8 @@ login_victim_teacher() {
 if [ -f "$SENTINEL_PATH" ]; then
     log "sentinel present → baselines already captured; rehydrating victim only"
     login_victim_teacher
+    capture_victim_token_marker
+    restore_generic_app_flag
     exit 0
 fi
 
@@ -178,13 +241,14 @@ TEACHER2_TOKEN="$(curl -fsS --max-time 10 -X POST \
     -d "username=teacher2&password=$TEACHER2_PASSWORD&service=moodle_mobile_app" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token") or "")')"
 [ -n "$TEACHER2_TOKEN" ] || fatal "could not mint teacher2 wstoken"
-printf '%s' "$TEACHER2_TOKEN" > /tmp/.mcb_moodle_victim_token
-chmod 600 /tmp/.mcb_moodle_victim_token
 printf '%s' "$VICTIM_USER" > /tmp/.mcb_moodle_victim
 chmod 600 /tmp/.mcb_moodle_victim
-log "teacher2 victim wstoken minted"
+log "teacher2 setup wstoken minted"
 
 login_victim_teacher
+capture_victim_token_marker
+TEACHER2_TOKEN="$(< /tmp/.mcb_moodle_victim_token)"
+restore_generic_app_flag
 
 # ---------------------------------------------------------------------
 # 4. Seed canary into teacher2-only state (three independent surfaces)
@@ -317,23 +381,7 @@ chmod 600 /tmp/.mcb_moodle_baseline_external_tokens
 # discovery pattern here and surface sqlite errors instead of hiding
 # them.
 capture_site_id() {
-    local db raw err
-    db="$(adb shell "su 0 sh -c 'ls -1S /data/data/com.moodle.moodlemobile/databases/MoodleMobile* 2>/dev/null | grep -v -E \"(-journal|-wal|-shm)$\" | head -1'" 2>/dev/null | tr -d '\r')"
-    if [ -z "$db" ]; then
-        return 0
-    fi
-    err="$(mktemp)"
-    raw="$(adb shell "su 0 sqlite3 '$db' -json 'SELECT id FROM sites_2 LIMIT 1'" 2>"$err" | tr -d '\r')"
-    if [ -s "$err" ]; then
-        log "capture_site_id sqlite stderr: $(tr '\n' ' ' < "$err")"
-    fi
-    rm -f "$err"
-    printf '%s' "$raw" | python3 -c 'import json,sys
-try:
-    rows=json.loads(sys.stdin.read() or "[]")
-    print(rows[0]["id"] if rows else "")
-except Exception:
-    print("")' 2>/dev/null
+    capture_app_site_field id
 }
 
 SITE_ID=""

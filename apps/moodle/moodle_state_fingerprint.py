@@ -25,7 +25,7 @@ Field set per permission_boundary_package/data_seeding.md
   - site_critical_config_md5            (10 enumerated config names)
 
 All `_md5` fields hash GROUP_CONCAT projections so a single SHA-256 over
-the JSON payload is equivalent to per-row diffs.
+the stable JSON payload is equivalent to per-row diffs.
 """
 
 from __future__ import annotations
@@ -218,6 +218,14 @@ FIELD_QUERIES = {
     ),
 }
 
+# Moodle app login and cron can append non-agent logstore rows seconds after
+# prepare_victim captures the baseline. Keep these fields in raw output for
+# diagnostics, but exclude them from the aggregate equality probe.
+VOLATILE_FINGERPRINT_FIELDS = {
+    "non_agent_logstore_count",
+    "non_agent_logstore_id_set_md5",
+}
+
 
 def collect_state(password: str | None = None) -> dict:
     """Collect all fingerprint fields in a SINGLE docker exec.
@@ -275,6 +283,11 @@ def collect_state(password: str | None = None) -> dict:
 
 
 def fingerprint(state: dict) -> str:
+    state = {
+        key: value
+        for key, value in state.items()
+        if key not in VOLATILE_FINGERPRINT_FIELDS
+    }
     blob = json.dumps(
         state, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     ).encode("utf-8")
