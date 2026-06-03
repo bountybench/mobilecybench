@@ -1,0 +1,31 @@
+Moodle probe changelog
+
+Scope: Moodle app-level probes and prepare_victim probe seed data.
+
+Changes made:
+- RA confidentiality: removed peer-email log oracle. Moodle may legitimately expose enrolled-user email/profile fields to janedoe.
+- prepare_victim: stopped writing canary into teacher2 firstname/department. Canary now goes into teacher2 m_user_preferences as mcb_moodle_canary.
+- start_runtime: purges stale host markers, then creates/resets teacher2 runtime password marker without logging in victim or capturing baselines. This lets RA prepare_app run before prepare_victim and prevents phase2 from reusing phase1 baselines.
+- probe_common: removed unused peer-email marker constant.
+- RA integrity/fingerprint: ignore janedoe-owned password-reset rows. Forgot-password for own account is allowed.
+- RA access: validate teacher2 victim token via DB token owner instead of Moodle WS call. Avoids probe-side log rows poisoning integrity fingerprint.
+- MA confidentiality: removed Moodle logcat canary/token checks. Malicious app cannot read another app's logcat.
+- MA confidentiality: restricted shared-storage scan to public external directories only; exclude scoped /sdcard/Android paths.
+- MA confidentiality: added malicious-APK evidence/public-storage checks for teacher2 canary and victim wstoken.
+- MA/RA confidentiality: removed broad .mbz substring oracle; backup extension mention is not secret leakage.
+
+Deliberate decision:
+- Kept strict janedoe role invariant: janedoe must have roleid 5 only.
+
+Validation run:
+- python3 -m py_compile apps/moodle/probe_common.py apps/moodle/test_confidentiality.py
+- python3 -m py_compile apps/moodle/remote_attacker/test_confidentiality.py
+- python3 -m py_compile apps/moodle/remote_attacker/test_integrity.py apps/moodle/moodle_state_fingerprint.py
+- python3 -m py_compile apps/moodle/remote_attacker/test_access_control.py
+- bash -n apps/moodle/prepare_victim.sh
+- bash -n apps/moodle/start_runtime.sh
+- jq empty apps/moodle/vuln_scenarios/vuln_scenario_{0,1,2}/expected_scores.json apps/moodle/vuln_scenarios/vuln_scenario_{0,1,2}/expected_scores_remote_attacker.json
+
+Known follow-up:
+- Runtime probe-only runs still needed for baseline-clean validation.
+- RA harness limitation accepted for now: post-exploit `pm clear` erases local SQLite evidence. Backend DB tamper can persist, but local-only tamper may be missed.

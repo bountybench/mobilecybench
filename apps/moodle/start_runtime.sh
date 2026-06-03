@@ -10,10 +10,51 @@ TARGET_PACKAGE="com.moodle.moodlemobile"
 TARGET_CONTAINER="moodle-webserver-1"
 DB_CONTAINER="moodle-db-1"
 
+purge_moodle_markers(){
+  log_info "Removing stale Moodle host markers"
+  rm -f -- /tmp/.mcb_moodle_* 2>/dev/null || true
+}
+
+ensure_teacher2_password(){
+  log_info "Ensuring teacher2 runtime password marker"
+
+  local marker="/tmp/.mcb_moodle_teacher2_password"
+  local teacher_pass
+  local probe
+
+  if [[ -f "$marker" ]]; then
+    teacher_pass="$(<"$marker")"
+  else
+    teacher_pass="T2-$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')"
+  fi
+  if ! [[ "$teacher_pass" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    fatal "teacher2 password contains unsafe characters"
+  fi
+  printf '%s' "$teacher_pass" > "$marker"
+  chmod 600 "$marker"
+
+  probe="$(curl -fsS --max-time 10 -X POST \
+    "http://localhost:8000/login/token.php" \
+    -d "username=teacher2&password=$teacher_pass&service=moodle_mobile_app" \
+    2>/dev/null || true)"
+  if printf '%s' "$probe" | grep -q '"token":"'; then
+    log_info "teacher2 password already matches marker"
+    return 0
+  fi
+
+  log_info "Resetting teacher2 password for runtime hooks"
+  docker exec -i "$TARGET_CONTAINER" \
+    php /var/www/html/admin/cli/reset_password.php \
+    --username=teacher2 --password="$teacher_pass" --ignore-password-policy \
+    > /dev/null \
+    || fatal "reset_password.php failed for teacher2"
+}
+
 install_moodle(){
   log_info "Installing Moodle on Android device"
   adb uninstall "$TARGET_PACKAGE" 2>/dev/null || true
-  adb_install_apk "$APK_PATH"
+  wait_for_device_boot 120 || fatal "Device not ready for APK install"
+  adb install -r -g "$APK_PATH"
 }
 
 launch_moodle() {
@@ -101,45 +142,14 @@ restore_database(){
   log_info "Database restored successfully"
 }
 
-login_student(){
-  log_info "Logging in as student (janedoe)..."
-
-  local app_package="$TARGET_PACKAGE"
-  adb shell pm grant "$app_package" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
-
-  # Use metadata.json credentials
-  local username=$(jq -r '.username' metadata.json)
-  local password=$(jq -r '.password' metadata.json)
-
-  if python3 "${SCRIPT_DIR}/ui_automation/login.py" \
-      --username "$username" \
-      --password "$password"; then
-    log_info "Student logged in successfully"
-  else
-    log_warn "Failed to login student (non-fatal)"
-  fi
-}
-
-seed_baselines(){
-  # Clear markers from any previous CI phase before re-seeding.
-  # Without this, a Phase 1 sentinel blocks Phase 2 prepare_victim from
-  # regenerating teacher2's password, causing prepare_app.sh to authenticate
-  # with a stale credential and silently fail teacher2 login.
-  rm -f /tmp/.mcb_moodle_* 2>/dev/null || true
-  if [ -x "$SCRIPT_DIR/prepare_victim.sh" ]; then
-    log_info "Seeding probe baselines (pre-exploit)..."
-    bash "$SCRIPT_DIR/prepare_victim.sh" || log_warn "prepare_victim seed failed (non-fatal at start_runtime; probes will fail-closed)"
-  fi
-}
-
 main(){
+  purge_moodle_markers
   setup_moodle_server
   configure_webserver
   restore_database
+  ensure_teacher2_password
   install_moodle
   launch_moodle
-  login_student
-  seed_baselines
   log_info "Moodle setup complete"
 }
 
