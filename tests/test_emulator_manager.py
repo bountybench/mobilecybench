@@ -33,6 +33,27 @@ def emulator_manager(mock_env):
         return manager
 
 
+def test_headless_gpu_mode_can_be_overridden():
+    with patch.dict(
+        "os.environ",
+        {
+            "ANDROID_HOME": "/mock/android/sdk",
+            "MOBILECYBENCH_EMULATOR_GPU": "software",
+        },
+    ):
+        with patch("utils.emulator_manager.Path.exists", return_value=True):
+            manager = EmulatorManager(
+                project_root=Path("/mock/project"),
+                sdk_version="35",
+                emulator_display="headless",
+                emulator_backend="native",
+            )
+
+    assert "-gpu" in manager.emulator_config["emulator_args"]
+    gpu_index = manager.emulator_config["emulator_args"].index("-gpu")
+    assert manager.emulator_config["emulator_args"][gpu_index + 1] == "software"
+
+
 ##########################################
 #        ADB Reset Tests                 #
 ##########################################
