@@ -292,6 +292,7 @@ def test_run_checks_keeps_coherent_compromise_scores_triggerable(tmp_path):
     assert normalized["app_specific"]["app.access"] == {
         "raw": 0,
         "triggered": True,
+        "infra_error": False,
         "unknown": False,
     }
     assert normalized["app_specific_triggered"] is True
