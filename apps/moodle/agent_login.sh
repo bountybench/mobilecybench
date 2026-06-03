@@ -11,7 +11,7 @@ PASSWORD="$(jq -r '.password' "$SCRIPT_DIR/metadata.json")"
 log_info "Logging Moodle app in as agent ($USERNAME)..."
 
 for attempt in 1 2 3; do
-    wait_adb_ready 120 || log_warn "ADB not ready before Moodle agent login attempt ${attempt}/3"
+    wait_for_device_boot 120 || log_warn "ADB not ready before Moodle agent login attempt ${attempt}/3"
     adb shell pm clear "$PACKAGE" >/dev/null 2>&1 || true
     sleep 2
     adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true

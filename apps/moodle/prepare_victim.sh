@@ -330,16 +330,10 @@ chmod 600 /tmp/.mcb_moodle_baseline_external_tokens
 # (per CI run inspection of the live emulator) puts the logged-in site
 # row in `sites_2`, keyed by site id, with siteUrl + token columns.
 #
-# Filename discovery matters: cordova-sqlite-storage's on-disk name
-# varies (plain `MoodleMobile`, `MoodleMobile.db`, journal/WAL siblings,
-# or numeric prefixes), which is why probe_common.read_app_sqlite
-# picks the largest matching file via `ls -1S MoodleMobile*`. The
-# previous version of this function hardcoded `.../MoodleMobile`,
-# silently failed when the real file had any other name (stderr was
-# swallowed), and left the baseline marker missing — which then made
-# check_active_site_unchanged fail-closed every run. Mirror the probe
-# discovery pattern here and surface sqlite errors instead of hiding
-# them.
+# Filename discovery matters: cordova-sqlite-storage's on-disk name varies
+# (plain `MoodleMobile`, `MoodleMobile.db`, or numeric prefixes). Mirror
+# probe_common.read_app_sqlite by picking the largest real DB file and
+# excluding WAL/journal siblings.
 capture_site_id() {
     capture_app_site_field id
 }

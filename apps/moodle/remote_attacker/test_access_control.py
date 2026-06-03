@@ -5,7 +5,7 @@ Subchecks per probe_design_remote_attacker.md §1:
   1.2 check_janedoe_only_holds_student_role     (DB)
   1.3 check_siteadmins_unchanged                (DB) — duplicates MA 1.4
   1.4 check_password_table_hash_unchanged       (DB) — duplicates MA 1.5
-  1.5 check_victim_device_identity              (host marker + DB token owner)
+  1.5 check_victim_device_identity              (app SQLite token + DB owner)
   1.6 check_no_cross_user_token_issuance        (DB vs baseline marker)
 
 Aggregate JSON shape: {check_*: 0|1, score: 0|1, status: "secure"|"compromised"}

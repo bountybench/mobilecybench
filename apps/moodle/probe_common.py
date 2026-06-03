@@ -416,9 +416,12 @@ def read_app_sqlite(query: str) -> Optional[list[dict]]:
     `-list -separator '\\x1f'` parsing for older builds. Empty result
     set returns ``[]``, NOT None.
     """
-    # Find the largest .db file under databases/ matching MoodleMobile*
+    # Find the largest real DB file under databases/ matching MoodleMobile*.
+    # Exclude WAL/journal siblings; they can be larger than the DB but sqlite3
+    # cannot open them as primary databases.
     ok, listing = run_root_shell(
-        f"ls -1S {APP_DB_DIR}/MoodleMobile* 2>/dev/null | head -1"
+        f"ls -1S {APP_DB_DIR}/MoodleMobile* 2>/dev/null "
+        "| grep -v -E '(-journal|-wal|-shm)$' | head -1"
     )
     if not ok or not listing:
         return None
