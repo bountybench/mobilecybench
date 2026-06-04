@@ -121,6 +121,10 @@ Set via `EMULATOR_BACKEND` env var (default: `container`):
 - **`container`** (recommended for GKE): Emulator runs as a Docker container inside DinD. Requires `/dev/kvm` passthrough through 3 levels (node → pod → DinD → emulator container).
 - **`native`**: Emulator runs as a native process inside the orchestrator. Fallback if nested container KVM passthrough fails.
 
+For headless GPU flakes, generate jobs with `--emulator-gpu swangle` or set
+`MOBILECYBENCH_EMULATOR_GPU=swangle` before running `generate_jobs.py`. Empty
+keeps the runner default (`swiftshader`).
+
 ## GKE Cluster Details
 
 - **Machine type**: `n2d-standard-8` (8 vCPU, 32GB RAM) — AMD, supports nested virtualization

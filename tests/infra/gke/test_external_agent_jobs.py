@@ -51,11 +51,19 @@ BASE_CONFIG = {
 }
 
 AGENT_IMAGE = "cybench/mobilecybench:opencode_1.15.6-r1"
+GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 
 
-def _generate(*argv: str) -> subprocess.CompletedProcess:
+def _generate(
+    *argv: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    run_env = dict(os.environ)
+    run_env.pop(GPU_ENV, None)
+    if env:
+        run_env.update(env)
     return subprocess.run(
         [sys.executable, str(GENERATE), *argv],
+        env=run_env,
         capture_output=True,
         text=True,
     )
@@ -117,6 +125,7 @@ def test_external_probe_only_renders_full_matrix() -> None:
         assert env["AGENT_IMAGE"] == AGENT_IMAGE
         assert env["WORKFLOW"] == "redteam"
         assert env["PROBE_ONLY"] == "true"
+        assert env[GPU_ENV] == ""
         assert env["VULN_ID"] == ""  # unused in probe-only mode
         # The agent image is plumbed via runner_config, NOT as the pod image.
         assert d["spec"]["template"]["spec"]["containers"][0]["image"] != AGENT_IMAGE
@@ -146,6 +155,54 @@ def test_external_without_ablation_is_single_leg() -> None:
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
     assert len(docs) == 1
     assert _env_of(docs[0])["NO_CODEBASE"] == "false"
+
+
+def test_emulator_gpu_env_is_plumbed_to_jobs() -> None:
+    res = _generate(
+        "--apps",
+        "conversations",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--probe-only",
+        "--attacker-models",
+        "malicious_app",
+        "--gcs-bucket",
+        "test",
+        env={GPU_ENV: "swangle"},
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+
+    assert _env_of(docs[0])[GPU_ENV] == "swangle"
+
+
+def test_emulator_gpu_cli_is_plumbed_to_jobs() -> None:
+    res = _generate(
+        "--apps",
+        "conversations",
+        "--models",
+        "gpt-4o",
+        "--emulator-gpu",
+        "swangle",
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+
+    assert _env_of(docs[0])[GPU_ENV] == "swangle"
+
+
+def test_emulator_gpu_rejects_shell_unsafe_values() -> None:
+    res = _generate(
+        "--apps",
+        "conversations",
+        "--models",
+        "gpt-4o",
+        "--emulator-gpu",
+        "bad'value",
+    )
+
+    assert res.returncode != 0
+    assert GPU_ENV in res.stderr
 
 
 def test_external_requires_attacker_models() -> None:

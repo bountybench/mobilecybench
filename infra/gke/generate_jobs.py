@@ -113,6 +113,15 @@ def _env_bool(value: bool | None) -> str:
     return "" if value is None else str(value).lower()
 
 
+def _normalize_emulator_gpu(value: str) -> str:
+    value = value.strip()
+    if value and not re.fullmatch(r"[A-Za-z0-9_.-]+", value):
+        raise ValueError(
+            "MOBILECYBENCH_EMULATOR_GPU must contain only letters, numbers, '.', '_' or '-'"
+        )
+    return value
+
+
 def render_job(
     template: str,
     *,
@@ -121,6 +130,7 @@ def render_job(
     image_uri: str,
     gcs_bucket: str,
     emulator_backend: str,
+    emulator_gpu: str,
     dry_run: bool,
     gold_run: bool,
     model: str = "",
@@ -152,6 +162,7 @@ def render_job(
         '"MODEL"': f'"{model}"',
         '"VULN_ID"': f'"{vuln_id}"',
         '"EMULATOR_BACKEND"': f'"{emulator_backend}"',
+        '"MOBILECYBENCH_EMULATOR_GPU"': f'"{emulator_gpu}"',
         '"DRY_RUN"': f'"{str(dry_run).lower()}"',
         '"GOLD_RUN"': f'"{str(gold_run).lower()}"',
         '"GCS_BUCKET"': f'"{gcs_bucket}"',
@@ -223,6 +234,7 @@ def build_external_jobs(template: str, apps: list[str], args) -> list[tuple[str,
                         image_uri=args.image,
                         gcs_bucket=args.gcs_bucket,
                         emulator_backend=args.emulator_backend,
+                        emulator_gpu=args.emulator_gpu,
                         dry_run=args.dry_run,
                         gold_run=args.gold_run,
                         agent_image=args.agent_image,
@@ -256,6 +268,7 @@ def build_legacy_jobs(
                 image_uri=args.image,
                 gcs_bucket=args.gcs_bucket,
                 emulator_backend=args.emulator_backend,
+                emulator_gpu=args.emulator_gpu,
                 dry_run=args.dry_run,
                 gold_run=args.gold_run,
                 # A synthetic vuln always carries a bundle, so it can never be
@@ -302,6 +315,14 @@ def main():
         default="container",
         choices=["native", "container"],
         help="Emulator backend (default: container)",
+    )
+    parser.add_argument(
+        "--emulator-gpu",
+        default=os.environ.get("MOBILECYBENCH_EMULATOR_GPU", ""),
+        help=(
+            "Headless emulator -gpu mode for generated jobs. Empty keeps the "
+            "runner default (swiftshader). Defaults from MOBILECYBENCH_EMULATOR_GPU."
+        ),
     )
 
     # External-agent path. Supplying --agent-image switches to the
@@ -359,6 +380,10 @@ def main():
     )
 
     args = parser.parse_args()
+    try:
+        args.emulator_gpu = _normalize_emulator_gpu(args.emulator_gpu)
+    except ValueError as e:
+        parser.error(str(e))
 
     external = bool(args.agent_image)
 
