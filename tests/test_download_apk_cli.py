@@ -37,7 +37,4 @@ def test_check_obfuscated_fails_on_missing_obfuscated_link(monkeypatch, capsys):
 
 
 def test_check_fails_on_missing_release_asset(monkeypatch):
-    assert (
-        _run_main(monkeypatch, ["--check", "myapp"], {"myapp": "missing_asset"})
-        == 1
-    )
+    assert _run_main(monkeypatch, ["--check", "myapp"], {"myapp": "missing_asset"}) == 1
