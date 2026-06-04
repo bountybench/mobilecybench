@@ -6,9 +6,14 @@ Zero-to-first-pass@1 quick start. Targets the probe-only redteam flow described 
 ## 1) System prerequisites
 
 - Python 3.11 or 3.12 (3.13 not yet validated)
-- Docker Desktop (for the agent stack and most app backends)
+- Docker 24+ — Docker Desktop on macOS/Windows, Docker Engine on Linux (for the agent stack and most app backends)
+- Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step in §3)
 - Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
 - [GitHub CLI](https://cli.github.com/) (`gh`), authenticated via `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
+
+Hardware: the Android emulator needs hardware virtualization (KVM on Linux,
+Hypervisor.framework on macOS) — nested-virt cloud VMs must have it enabled.
+Budget ≥ 16 GB RAM and ~50 GB free disk for the emulator + Docker images.
 
 Windows: use WSL or Git Bash; the shell scripts assume a POSIX environment.
 
@@ -34,7 +39,12 @@ app-to-SDK list.
 ## 3) Authenticate the agent
 
 The benchmark uses **`agent_mode: "external"`** — a BYO Docker image carrying a coding-agent CLI
-(claude-code, codex, opencode). Pick one and authenticate it via `agent/.env`:
+(claude-code, codex, opencode). First create your env file from the template, then
+pick one agent and authenticate it via `agent/.env`:
+
+```bash
+cp agent/.env.example agent/.env                    # first time only
+```
 
 ### Claude Code (recommended)
 
