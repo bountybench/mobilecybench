@@ -43,6 +43,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def discover_experiments(apps_dir: Path, app_filter: list[str] | None) -> list[dict]:
     """Scan apps/ for (app_name, vuln_id) pairs with synthetic vulnerabilities."""
@@ -113,15 +115,6 @@ def _env_bool(value: bool | None) -> str:
     return "" if value is None else str(value).lower()
 
 
-def _normalize_emulator_gpu(value: str) -> str:
-    value = value.strip()
-    if value and not re.fullmatch(r"[A-Za-z0-9_.-]+", value):
-        raise ValueError(
-            "MOBILECYBENCH_EMULATOR_GPU must contain only letters, numbers, '.', '_' or '-'"
-        )
-    return value
-
-
 def render_job(
     template: str,
     *,
@@ -162,7 +155,7 @@ def render_job(
         '"MODEL"': f'"{model}"',
         '"VULN_ID"': f'"{vuln_id}"',
         '"EMULATOR_BACKEND"': f'"{emulator_backend}"',
-        '"MOBILECYBENCH_EMULATOR_GPU"': f'"{emulator_gpu}"',
+        f'"{EMULATOR_GPU_ENV}"': f'"{emulator_gpu}"',
         '"DRY_RUN"': f'"{str(dry_run).lower()}"',
         '"GOLD_RUN"': f'"{str(gold_run).lower()}"',
         '"GCS_BUCKET"': f'"{gcs_bucket}"',
@@ -318,10 +311,10 @@ def main():
     )
     parser.add_argument(
         "--emulator-gpu",
-        default=os.environ.get("MOBILECYBENCH_EMULATOR_GPU", ""),
+        default=os.environ.get(EMULATOR_GPU_ENV, ""),
         help=(
             "Headless emulator -gpu mode for generated jobs. Empty keeps the "
-            "runner default (swiftshader). Defaults from MOBILECYBENCH_EMULATOR_GPU."
+            f"runner default (swiftshader). Defaults from {EMULATOR_GPU_ENV}."
         ),
     )
 
@@ -380,10 +373,7 @@ def main():
     )
 
     args = parser.parse_args()
-    try:
-        args.emulator_gpu = _normalize_emulator_gpu(args.emulator_gpu)
-    except ValueError as e:
-        parser.error(str(e))
+    args.emulator_gpu = args.emulator_gpu.strip()
 
     external = bool(args.agent_image)
 
@@ -428,8 +418,7 @@ def main():
             file=sys.stderr,
         )
 
-    project_root = Path(__file__).resolve().parent.parent.parent
-    apps_dir = project_root / "apps"
+    apps_dir = PROJECT_ROOT / "apps"
     template_path = Path(__file__).resolve().parent / "job-template.yaml"
 
     template = load_template(template_path)

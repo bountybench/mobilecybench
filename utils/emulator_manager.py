@@ -296,12 +296,12 @@ class EmulatorManager:
                 "-gpu",
                 "host",
             ]
-        logger.info("Emulator GPU mode: %s", gpu_mode)
 
         return {
             "emulator_display": self.emulator_display,
             "emulator_name": emulator_name,
             "emulator_args": emulator_args,
+            "gpu_mode": gpu_mode,
             "android_home": android_home,
             "system_image": system_image_suffix,
         }
@@ -354,6 +354,10 @@ class EmulatorManager:
                 f"Cannot start emulator in state {self.state.value}. Must be NOT_STARTED."
             )
 
+        if self.emulator_config["emulator_display"] == "headless":
+            logger.info(
+                "Headless emulator GPU mode: %s", self.emulator_config["gpu_mode"]
+            )
         if self.emulator_backend == "container":
             self._start_container_emulator()
         else:

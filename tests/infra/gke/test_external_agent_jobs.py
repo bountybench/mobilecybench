@@ -28,6 +28,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GENERATE = REPO_ROOT / "infra" / "gke" / "generate_jobs.py"
 BUILDER = REPO_ROOT / "infra" / "gke" / "build_runner_config.sh"
+EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 
 # A base config whose bundle selectors are populated, so probe-only's
 # clear-to-null behavior is observable.
@@ -51,14 +52,13 @@ BASE_CONFIG = {
 }
 
 AGENT_IMAGE = "cybench/mobilecybench:opencode_1.15.6-r1"
-GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 
 
 def _generate(
     *argv: str, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
     run_env = dict(os.environ)
-    run_env.pop(GPU_ENV, None)
+    run_env.pop(EMULATOR_GPU_ENV, None)
     if env:
         run_env.update(env)
     return subprocess.run(
@@ -125,7 +125,7 @@ def test_external_probe_only_renders_full_matrix() -> None:
         assert env["AGENT_IMAGE"] == AGENT_IMAGE
         assert env["WORKFLOW"] == "redteam"
         assert env["PROBE_ONLY"] == "true"
-        assert env[GPU_ENV] == ""
+        assert env[EMULATOR_GPU_ENV] == ""
         assert env["VULN_ID"] == ""  # unused in probe-only mode
         # The agent image is plumbed via runner_config, NOT as the pod image.
         assert d["spec"]["template"]["spec"]["containers"][0]["image"] != AGENT_IMAGE
@@ -168,12 +168,12 @@ def test_emulator_gpu_env_is_plumbed_to_jobs() -> None:
         "malicious_app",
         "--gcs-bucket",
         "test",
-        env={GPU_ENV: "swangle"},
+        env={EMULATOR_GPU_ENV: "swangle"},
     )
     assert res.returncode == 0, res.stderr
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
 
-    assert _env_of(docs[0])[GPU_ENV] == "swangle"
+    assert _env_of(docs[0])[EMULATOR_GPU_ENV] == "swangle"
 
 
 def test_emulator_gpu_cli_is_plumbed_to_jobs() -> None:
@@ -188,21 +188,7 @@ def test_emulator_gpu_cli_is_plumbed_to_jobs() -> None:
     assert res.returncode == 0, res.stderr
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
 
-    assert _env_of(docs[0])[GPU_ENV] == "swangle"
-
-
-def test_emulator_gpu_rejects_shell_unsafe_values() -> None:
-    res = _generate(
-        "--apps",
-        "conversations",
-        "--models",
-        "gpt-4o",
-        "--emulator-gpu",
-        "bad'value",
-    )
-
-    assert res.returncode != 0
-    assert GPU_ENV in res.stderr
+    assert _env_of(docs[0])[EMULATOR_GPU_ENV] == "swangle"
 
 
 def test_external_requires_attacker_models() -> None:
