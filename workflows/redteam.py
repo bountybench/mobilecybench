@@ -139,6 +139,14 @@ class MaliciousAppOps:
             phase_dir.mkdir(parents=True, exist_ok=True)
             return PhaseResult(exit_code=2, failure_kind="prepare_victim_crash")
 
+        # probe_baseline_diff: capture the clean pre-exploit secure state now —
+        # the victim is fully set up (restart + prepare_app + prepare_victim) and
+        # the malicious APK has not run yet. No-op unless probe_baseline_diff is
+        # on (baseline_probe_fn is None).
+        baseline_probe_fn = kwargs.get("baseline_probe_fn")
+        if baseline_probe_fn is not None:
+            baseline_probe_fn()
+
         logger.info("[phase] Replaying malicious APK...")
         try:
             result = replay_malicious_apk(
@@ -285,6 +293,16 @@ class RemoteAttackerOps:
             logger.error(f"prepare_app failed: {e}")
             phase_dir.mkdir(parents=True, exist_ok=True)
             return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
+
+        # probe_baseline_diff: capture the clean pre-exploit secure state now —
+        # the per-phase restart re-seeded the backend and the exploit has not run
+        # yet. remote_attacker's prepare_victim runs AFTER the exploit (it only
+        # relaunches the app after pm clear; it does not establish victim state),
+        # so the pre-exploit secure baseline is captured here, before the exploit.
+        # No-op unless probe_baseline_diff is on (baseline_probe_fn is None).
+        baseline_probe_fn = kwargs.get("baseline_probe_fn")
+        if baseline_probe_fn is not None:
+            baseline_probe_fn()
 
         logger.info("[phase] Running exploit.sh in container...")
         # Replay mirrors the agent container's resource model: under
@@ -793,14 +811,20 @@ class RedTeamWorkflow(Workflow):
     def _run_baseline_probes(self, replays_dir: Path) -> dict | None:
         """Run the probe set ONCE with no exploit log to capture pre-exploit state.
 
-        probe_baseline_diff opt-in: the environment is already set up (emulator +
-        backend live), and the exploit has not run yet. Running the probes with
-        NO exploit log means run_checks.sh exercises the state-based probes
-        (availability, integrity) against live state and returns the confidential
-        no_log shape — which differential scoring ignores for after-only
-        categories. Returns the normalized baseline dict, or None if the probe
-        evaluator failed (the after pass / existing probe_evaluator_error gate
-        then handles the failure path).
+        probe_baseline_diff opt-in. Invoked by run_phase AFTER the per-phase
+        restart re-seeds the backend and victim state, and BEFORE the exploit
+        runs — so this baseline and the post-exploit after pass score against the
+        SAME backend state and baseline manifest, making the after-vs-baseline
+        delta exploit-attributable. (Running it before run_phase would score the
+        baseline against the setup_runtime_environment backend, which the
+        per-phase restart then tears down and re-seeds, so baseline and after
+        would read different instances.) Running the probes with NO exploit log
+        means run_checks.sh exercises the state-based probes (availability,
+        integrity) against live state and returns the confidential no_log shape —
+        which differential scoring ignores for after-only categories. Returns the
+        normalized baseline dict, or None if the probe evaluator failed (the
+        after pass / existing probe_evaluator_error gate then handles the failure
+        path).
         """
         from evaluation.unified_metrics import normalize_probe_results
 
@@ -916,14 +940,21 @@ class RedTeamWorkflow(Workflow):
         codebase_dir = self.app_dir / "codebase"
         self._prepare_runtime_codebase(codebase_dir)
 
-        # probe_baseline_diff (probe_only opt-in): capture the pre-exploit state
-        # with one no-exploit-log probe pass BEFORE run_phase replays the
-        # exploit. The after pass + delta scoring happen below. The environment
-        # was already set up by setup_runtime_environment, so this also composes
-        # with replay_exploit_dir (both passes run after setup).
-        baseline_probe_results: dict | None = None
+        # probe_baseline_diff (probe_only opt-in): capture the pre-exploit secure
+        # state with one no-exploit-log probe pass. It must run INSIDE run_phase
+        # — AFTER the per-phase restart re-seeds the backend + victim state (so
+        # the baseline and the after pass score against the SAME backend state
+        # and baseline manifest) and BEFORE the exploit executes. run_phase
+        # invokes baseline_probe_fn at that point (after victim prep, before the
+        # exploit/replay); each attacker model knows where its clean pre-exploit
+        # state is. Composes with replay_exploit_dir (the per-phase restart still
+        # runs). The after pass + delta scoring happen below.
+        baseline_probe_holder: dict = {}
+        baseline_probe_fn = None
         if self.config.probe_only and self.config.probe_baseline_diff:
-            baseline_probe_results = self._run_baseline_probes(replays_dir)
+
+            def baseline_probe_fn() -> None:
+                baseline_probe_holder["result"] = self._run_baseline_probes(replays_dir)
 
         phase1_result = self._ops.run_phase(
             self,
@@ -936,8 +967,10 @@ class RedTeamWorkflow(Workflow):
                 apk_path=ma_artifact.apk_path if ma_artifact else None,
                 gate=ma_artifact.gate if ma_artifact else None,
                 perm_log_path=ma_perm_log_path,
+                baseline_probe_fn=baseline_probe_fn,
             ),
         )
+        baseline_probe_results: dict | None = baseline_probe_holder.get("result")
         p1 = self._evaluate_phase(phase_label, phase1_result, replays_dir, phase_tag)
 
         # No patched APK to compare against, so score on Phase 1 alone.

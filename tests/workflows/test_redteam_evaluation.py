@@ -503,9 +503,11 @@ def test_phase2_restore_runs_even_on_exception(redteam_config, tmp_path):
 
 def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path):
     """RemoteAttackerOps.run_phase must call hooks in the order:
-    prepare_app (per-task, pre-exploit) → exploit → pm_clear → prepare_victim
-    (per-app, post-pm-clear). This mirrors CI's three-slot architecture in
-    scripts/task_validation_common.sh."""
+    prepare_app (per-task, pre-exploit) → [baseline probe] → exploit → pm_clear
+    → prepare_victim (per-app, post-pm-clear). This mirrors CI's three-slot
+    architecture in scripts/task_validation_common.sh. The probe_baseline_diff
+    hook must fire AFTER prepare_app (backend re-seeded) and BEFORE the exploit,
+    so the baseline captures the clean pre-exploit secure state."""
     wf = _make_workflow(remote_attacker_config, tmp_path)
     order = []
 
@@ -548,10 +550,17 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
             tmp_path / "phase",
             exploit_dir=tmp_path,
             target_apk=Path("apk/test.apk"),
+            baseline_probe_fn=lambda: order.append("baseline"),
         )
 
     assert result.exit_code == 1
-    assert order == ["prepare_app", "exploit", "pm_clear", "prepare_victim"]
+    assert order == [
+        "prepare_app",
+        "baseline",
+        "exploit",
+        "pm_clear",
+        "prepare_victim",
+    ]
 
 
 def test_remote_attacker_pm_clear_failure_is_infrastructure_error(
@@ -1244,10 +1253,13 @@ def test_malicious_app_run_phase_orders_both_hooks_pre_exploit(
     redteam_config, tmp_path
 ):
     """MaliciousAppOps.run_phase order: restart → prepare_app → prepare_victim
-    → replay APK. Both hooks fire pre-exploit; prepare_victim must run AFTER
-    prepare_app so per-task state can be present before the app-wide victim
-    seed runs (and so the victim is logged in before the malicious APK runs
-    co-resident with the target app)."""
+    → [baseline probe] → replay APK. Both hooks fire pre-exploit; prepare_victim
+    must run AFTER prepare_app so per-task state can be present before the
+    app-wide victim seed runs (and so the victim is logged in before the
+    malicious APK runs co-resident with the target app). The probe_baseline_diff
+    hook must fire AFTER prepare_victim (clean victim state established) and
+    BEFORE the replay (exploit), so the baseline captures the pre-exploit
+    secure state."""
     wf = _make_workflow(redteam_config, tmp_path)
     order = []
 
@@ -1279,9 +1291,10 @@ def test_malicious_app_run_phase_orders_both_hooks_pre_exploit(
             / "dist"
             / "com.mobilecybench.exploit.apk",
             target_apk=Path("apk/test.apk"),
+            baseline_probe_fn=lambda: order.append("baseline"),
         )
 
-    assert order == ["prepare_app", "prepare_victim", "replay"]
+    assert order == ["prepare_app", "prepare_victim", "baseline", "replay"]
 
 
 def test_malicious_app_prepare_victim_crash_short_circuits_replay(
@@ -1831,6 +1844,18 @@ def _cat(triggered=False, infra_error=False):
     }
 
 
+def _fake_run_phase_with_baseline(*_a, **_k):
+    """Mock run_phase that honors the baseline_probe_fn contract: invoke the
+    pre-exploit baseline hook (as the real run_phase does after the per-phase
+    restart + victim prep and before the exploit) then return a clean result.
+    Needed because the baseline pass now runs INSIDE run_phase, so a mock that
+    skipped the hook would leave baseline_probe_results unset."""
+    fn = _k.get("baseline_probe_fn")
+    if fn is not None:
+        fn()
+    return _phase_result(0, _a[1])
+
+
 def _run_evaluate_diff(wf, baseline_norm, after_norm):
     """Drive probe_only evaluate() with probe_baseline_diff on. normalize is
     called once for the baseline pass, once for the after pass."""
@@ -1843,7 +1868,7 @@ def _run_evaluate_diff(wf, baseline_norm, after_norm):
         patch.object(
             MaliciousAppOps,
             "run_phase",
-            side_effect=lambda *_a, **_k: _phase_result(0, _a[1]),
+            side_effect=_fake_run_phase_with_baseline,
         ),
         patch.object(RedTeamWorkflow, "_run_checks", return_value=True),
         patch(
@@ -1940,7 +1965,8 @@ def test_baseline_diff_missing_baseline_routes_to_evaluator_error(tmp_path):
     wf = _make_bundleless_malicious_app_workflow(_baseline_diff_config(), tmp_path)
     _write_agent_artifact("malicious_app")
 
-    # First _run_checks call (baseline) fails; second (after pass) succeeds.
+    # First _run_checks call (baseline, invoked inside run_phase) fails; second
+    # (after pass) succeeds.
     after = _norm(app_specific={"app.integrity": _cat(triggered=True)}, triggered=True)
     with (
         patch.object(
@@ -1951,7 +1977,7 @@ def test_baseline_diff_missing_baseline_routes_to_evaluator_error(tmp_path):
         patch.object(
             MaliciousAppOps,
             "run_phase",
-            side_effect=lambda *_a, **_k: _phase_result(0, _a[1]),
+            side_effect=_fake_run_phase_with_baseline,
         ),
         patch.object(RedTeamWorkflow, "_run_checks", side_effect=[False, True]),
         patch(
