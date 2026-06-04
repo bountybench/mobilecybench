@@ -46,6 +46,7 @@ from pathlib import Path
 EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
+
 def discover_experiments(apps_dir: Path, app_filter: list[str] | None) -> list[dict]:
     """Scan apps/ for (app_name, vuln_id) pairs with synthetic vulnerabilities."""
     experiments = []
