@@ -223,6 +223,27 @@ class TestRunExploitContainerScript:
         assert proc.returncode == 1
         assert "exactly one of --codebase-dir or --apk-dir" in proc.stderr
 
+    def test_help_documents_unique_adb_proxy_name(self, tmp_path):
+        proc = subprocess.run(
+            self._base_args(tmp_path) + ["--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 0
+        assert "--adb-proxy-name <n>" in proc.stdout
+        assert "adb-proxy-exploit-$$" in proc.stdout
+
+    def test_rejects_empty_adb_proxy_name(self, tmp_path):
+        proc = subprocess.run(
+            self._base_args(tmp_path) + ["--adb-proxy-name", ""],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 1
+        assert "--adb-proxy-name must not be empty" in proc.stderr
+
     def test_rejects_multiple_replay_resources(self, tmp_path):
         codebase_dir = tmp_path / "codebase"
         apk_dir = tmp_path / "apk"
