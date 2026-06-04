@@ -18,6 +18,20 @@ from urllib.parse import urlparse
 logger = logging.getLogger("MobileCyBench.emulator_manager")
 
 EMULATOR_CONTAINER_NAME = "emulator-container"
+EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
+_EMULATOR_GPU_MODE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _headless_gpu_mode() -> str:
+    gpu_mode = os.getenv(EMULATOR_GPU_ENV, "swiftshader").strip()
+    if not gpu_mode:
+        return "swiftshader"
+    if not _EMULATOR_GPU_MODE_RE.fullmatch(gpu_mode):
+        raise ValueError(
+            f"{EMULATOR_GPU_ENV} must contain only letters, numbers, '.', '_' or '-'; "
+            f"got {gpu_mode!r}"
+        )
+    return gpu_mode
 
 
 def _emulator_pidfile(project_root: Path) -> Path:
@@ -238,7 +252,7 @@ class EmulatorManager:
         emulator_type = "rootable" if rootable else "non-rootable"
         logger.info(
             f"EmulatorManager initialized: backend={emulator_backend}, "
-            f"display={emulator_display} ({emulator_type})"
+            f"display={self.emulator_display} ({emulator_type})"
         )
 
     def _build_emulator_config(self) -> dict:
@@ -270,12 +284,14 @@ class EmulatorManager:
         ]
 
         if self.emulator_display == "headless":
+            gpu_mode = _headless_gpu_mode()
             emulator_args += [
                 "-no-window",
                 "-gpu",
-                "swiftshader",
+                gpu_mode,
             ]
         else:
+            gpu_mode = "host"
             emulator_args += [
                 "-gpu",
                 "host",
@@ -285,6 +301,7 @@ class EmulatorManager:
             "emulator_display": self.emulator_display,
             "emulator_name": emulator_name,
             "emulator_args": emulator_args,
+            "gpu_mode": gpu_mode,
             "android_home": android_home,
             "system_image": system_image_suffix,
         }
@@ -337,6 +354,10 @@ class EmulatorManager:
                 f"Cannot start emulator in state {self.state.value}. Must be NOT_STARTED."
             )
 
+        if self.emulator_config["emulator_display"] == "headless":
+            logger.info(
+                "Headless emulator GPU mode: %s", self.emulator_config["gpu_mode"]
+            )
         if self.emulator_backend == "container":
             self._start_container_emulator()
         else:

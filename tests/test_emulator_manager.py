@@ -7,16 +7,18 @@ import pytest
 
 from utils.emulator_manager import (
     EMULATOR_CONTAINER_NAME,
+    EMULATOR_GPU_ENV,
     EmulatorManager,
     EmulatorState,
 )
 
 
 @pytest.fixture
-def mock_env():
+def mock_env(monkeypatch):
     """Mock environment with ANDROID_HOME set"""
-    with patch.dict("os.environ", {"ANDROID_HOME": "/mock/android/sdk"}):
-        yield
+    monkeypatch.setenv("ANDROID_HOME", "/mock/android/sdk")
+    monkeypatch.delenv(EMULATOR_GPU_ENV, raising=False)
+    yield
 
 
 @pytest.fixture
@@ -31,6 +33,55 @@ def emulator_manager(mock_env):
             emulator_backend="native",
         )
         return manager
+
+
+def _gpu_mode(manager: EmulatorManager) -> str:
+    args = manager.emulator_config["emulator_args"]
+    return args[args.index("-gpu") + 1]
+
+
+def _headless_manager() -> EmulatorManager:
+    return EmulatorManager(
+        project_root=Path("/mock/project"),
+        sdk_version="35",
+        emulator_display="headless",
+        emulator_backend="native",
+    )
+
+
+def test_headless_gpu_mode_defaults_to_swiftshader_when_unset(monkeypatch):
+    monkeypatch.setenv("ANDROID_HOME", "/mock/android/sdk")
+    monkeypatch.delenv(EMULATOR_GPU_ENV, raising=False)
+
+    manager = _headless_manager()
+
+    assert _gpu_mode(manager) == "swiftshader"
+
+
+def test_headless_gpu_mode_defaults_to_swiftshader_when_empty(monkeypatch):
+    monkeypatch.setenv("ANDROID_HOME", "/mock/android/sdk")
+    monkeypatch.setenv(EMULATOR_GPU_ENV, "")
+
+    manager = _headless_manager()
+
+    assert _gpu_mode(manager) == "swiftshader"
+
+
+def test_headless_gpu_mode_can_be_overridden(monkeypatch):
+    monkeypatch.setenv("ANDROID_HOME", "/mock/android/sdk")
+    monkeypatch.setenv(EMULATOR_GPU_ENV, "swangle")
+
+    manager = _headless_manager()
+
+    assert _gpu_mode(manager) == "swangle"
+
+
+def test_headless_gpu_mode_rejects_shell_unsafe_values(monkeypatch):
+    monkeypatch.setenv("ANDROID_HOME", "/mock/android/sdk")
+    monkeypatch.setenv(EMULATOR_GPU_ENV, "bad'value")
+
+    with pytest.raises(ValueError, match=EMULATOR_GPU_ENV):
+        _headless_manager()
 
 
 ##########################################
