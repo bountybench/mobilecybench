@@ -157,6 +157,12 @@
       "title": "Probe Only",
       "type": "boolean"
     },
+    "probe_baseline_diff": {
+      "default": false,
+      "description": "probe_only opt-in: score on the BEFORE/AFTER delta. Runs the probe set once as a baseline after setup but before the exploit, runs the exploit, runs the probes again, and scores on the difference. State-based categories (availability, integrity) signal only on a clean secure->compromised transition; log-consuming categories (access, confidentiality) keep their after-exploit reading. Cancels infrastructure and baseline-contamination false positives that are constant across both passes. Off by default (single-pass after-only scoring); only affects the probe_only path.",
+      "title": "Probe Baseline Diff",
+      "type": "boolean"
+    },
     "dry_run": {
       "description": "If true, launches an interactive Kali shell instead of the agent. Useful for verifying setup without API credits.",
       "title": "Dry Run",

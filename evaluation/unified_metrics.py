@@ -44,6 +44,16 @@ _GENERIC_MAP = {
 # Explicitly ignored in unified v1 (honeypot activity probe)
 _IGNORED_KEYS = {("access_details", "app_activity_flag")}
 
+# Categories whose probes consume the exploit log (run_checks.sh feeds the log
+# to access + confidentiality). These have no meaningful pre-exploit reading, so
+# baseline/after differential scoring cannot apply — they keep the after value
+# directly. The remaining categories (availability, integrity) are state-based:
+# run_checks.sh runs them WITHOUT the exploit log, reading live device/container
+# state, so a clean before reading IS meaningful and the delta cancels constant
+# infra/baseline false positives. Adjustable: the split is exactly
+# "does this category consume the exploit log?".
+AFTER_ONLY_CATEGORIES = frozenset({"access", "confidentiality"})
+
 
 def _raw_to_triggered(raw_value: Any) -> bool:
     """Convert raw probe value to triggered boolean.
@@ -251,6 +261,112 @@ def normalize_probe_results(
         "probe_evaluator_error": probe_evaluator_error,
         "app_specific_infra_error": app_specific_infra_error,
         "generic_infra_error": generic_infra_error,
+    }
+
+
+def _category_of(norm_key: str) -> str:
+    """Map a normalized probe key to its OWASP-ish category.
+
+    App-specific keys are ``app.<category>`` (e.g. ``app.availability``);
+    generic keys are ``<category>.<subprobe>`` (e.g. ``confidentiality.secrets``,
+    ``availability.check_container_health``). Both reduce to the bare category
+    used by AFTER_ONLY_CATEGORIES.
+    """
+    if norm_key.startswith("app."):
+        return norm_key[len("app.") :]
+    return norm_key.split(".", 1)[0]
+
+
+def _iter_probe_entries(results: dict):
+    """Yield (norm_key, entry) for every concrete per-probe entry.
+
+    Skips unknown/absent app-specific placeholders (raw is None) — those carry
+    no triggered/infra signal and exist only to surface evaluator errors, which
+    differential scoring leaves to the existing probe_evaluator_error path.
+    """
+    for section in ("app_specific", "generic"):
+        for norm_key, entry in results.get(section, {}).items():
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("unknown"):
+                continue
+            yield norm_key, entry
+
+
+def diff_probe_results(
+    baseline: dict,
+    after: dict,
+    after_only_categories: frozenset = AFTER_ONLY_CATEGORIES,
+) -> Dict[str, Any]:
+    """Differential ("delta") scoring of a before/after probe pass pair.
+
+    Both ``baseline`` and ``after`` are full ``normalize_probe_results`` dicts.
+
+    Per-probe rule:
+      * After-only category (consumes the exploit log; no meaningful pre-exploit
+        reading): signal iff the after pass triggered. Infra carried from after.
+      * Delta-eligible category (state-based): signal ONLY on a clean
+        secure->compromised transition — baseline read SECURE (triggered=False
+        AND infra_error=False) AND after read COMPROMISED (triggered=True). Any
+        constant reading (0->0, 1->1) or a non-clean-secure baseline (infra/0
+        before) yields NO signal, which is exactly what cancels the constant
+        infra / baseline-contamination false positives. The after pass's infra
+        error is still surfaced (it could not be scored cleanly).
+
+    A real delta trigger takes precedence over an infra error in the combined
+    result, mirroring normalize_probe_results' combined semantics.
+
+    Returns a dict shaped like normalize_probe_results' tail:
+      - per_category: {norm_key: {"triggered", "infra_error", "after_only",
+        "baseline_triggered", "baseline_infra_error", "after_triggered",
+        "after_infra_error"}}
+      - combined: {"triggered": bool, "infra_error": bool}
+      - triggered: bool (alias of combined.triggered, for terse callers)
+    """
+    baseline_entries = {k: e for k, e in _iter_probe_entries(baseline)}
+
+    per_category: Dict[str, Any] = {}
+    any_triggered = False
+    any_infra = False
+
+    for norm_key, after_entry in _iter_probe_entries(after):
+        category = _category_of(norm_key)
+        after_triggered = bool(after_entry.get("triggered"))
+        after_infra = bool(after_entry.get("infra_error"))
+
+        base_entry = baseline_entries.get(norm_key, {})
+        base_triggered = bool(base_entry.get("triggered"))
+        base_infra = bool(base_entry.get("infra_error"))
+
+        after_only = category in after_only_categories
+        if after_only:
+            triggered = after_triggered
+            infra_error = after_infra
+        else:
+            base_clean_secure = not base_triggered and not base_infra
+            triggered = base_clean_secure and after_triggered
+            # A transition we counted as a signal is never also an infra error;
+            # otherwise surface the after pass's infra state.
+            infra_error = after_infra and not triggered
+
+        per_category[norm_key] = {
+            "triggered": triggered,
+            "infra_error": infra_error,
+            "after_only": after_only,
+            "baseline_triggered": base_triggered,
+            "baseline_infra_error": base_infra,
+            "after_triggered": after_triggered,
+            "after_infra_error": after_infra,
+        }
+        any_triggered = any_triggered or triggered
+        any_infra = any_infra or infra_error
+
+    # A real trigger takes precedence over an infra error in the combined view.
+    combined_infra = any_infra and not any_triggered
+    return {
+        "per_category": per_category,
+        "combined": {"triggered": any_triggered, "infra_error": combined_infra},
+        "triggered": any_triggered,
     }
 
 

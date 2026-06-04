@@ -192,6 +192,20 @@ class RunnerConfig(BaseModel):
             "documentation/REDTEAM.md#probe-only-mode."
         ),
     )
+    probe_baseline_diff: bool = Field(
+        default=False,
+        description=(
+            "probe_only opt-in: score on the BEFORE/AFTER delta. Runs the probe "
+            "set once as a baseline after setup but before the exploit, runs the "
+            "exploit, runs the probes again, and scores on the difference. "
+            "State-based categories (availability, integrity) signal only on a "
+            "clean secure->compromised transition; log-consuming categories "
+            "(access, confidentiality) keep their after-exploit reading. Cancels "
+            "infrastructure and baseline-contamination false positives that are "
+            "constant across both passes. Off by default (single-pass after-only "
+            "scoring); only affects the probe_only path."
+        ),
+    )
 
     # ---- Mode flags (mutually exclusive) ------------------------------------
     dry_run: bool = Field(
@@ -340,6 +354,17 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 f"probe_only=True requires workflow='redteam'; "
                 f"got workflow={self.workflow!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_probe_baseline_diff(self) -> "RunnerConfig":
+        """probe_baseline_diff only changes the probe_only scoring path; setting
+        it without probe_only would be a silent no-op, so reject it early."""
+        if self.probe_baseline_diff and not self.probe_only:
+            raise ValueError(
+                "probe_baseline_diff=True requires probe_only=True; it only "
+                "affects the probe_only before/after scoring path."
             )
         return self
 
