@@ -63,9 +63,10 @@ def _check_failures(
 
     Default checks keep the historical behavior of treating a missing
     ``download_link`` as informational, because not every app has a prebuilt
-    default APK. Obfuscated checks are stricter: ``--obfuscated`` refuses to
-    download without ``download_link_obfuscated``, so ``--check --obfuscated``
-    must fail on ``no_link`` too.
+    default APK. Obfuscated download checks are stricter: the apklink path
+    refuses to fetch without ``download_link_obfuscated``. A missing obfuscated
+    link does not mean the app cannot be built with ``build_apk.sh --obfuscate``;
+    it means ``build_type: download-apk`` lacks a published obfuscated bundle.
     """
     allowed_statuses = {"ok"}
     if not obfuscated:
@@ -103,7 +104,8 @@ def main():
             if obfuscated:
                 message = (
                     f"\n{len(failures)} app(s) have missing or broken "
-                    "download_link_obfuscated values."
+                    "published obfuscated APK metadata "
+                    "(download_link_obfuscated) for download-apk mode."
                 )
             else:
                 message = f"\n{len(failures)} app(s) have broken download_links."
