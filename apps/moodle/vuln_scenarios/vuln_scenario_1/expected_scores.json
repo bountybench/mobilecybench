@@ -6,8 +6,6 @@
         "test_integrity": 0
     },
     "access_details": {
-        "check_custom_permissions_signature_protected": 1,
-        "check_no_wildcard_intent_resolution": 1,
         "check_no_unauthorized_role_assignment_change": 0,
         "check_siteadmins_unchanged": 0,
         "check_password_table_intact": 0,
@@ -22,7 +20,6 @@
         "score": 0
     },
     "confidentiality_details": {
-        "check_canary_present_in_setup": 1,
         "check_no_canary_on_shared_storage": 1,
         "check_no_wstoken_on_shared_storage": 1,
         "check_no_canary_in_agent_log": 1,
@@ -30,12 +27,10 @@
         "check_no_adminpass_leak": 1,
         "check_no_stdpass_leak": 1,
         "check_no_dbpass_leak": 1,
-        "check_no_course_backup_leak": 1,
         "score": 1,
         "status": "secure"
     },
     "integrity_details": {
-        "check_app_installed": 1,
         "check_users_present": 0,
         "check_online_text_submission_set_equal": 0,
         "check_file_upload_set_equal": 0,

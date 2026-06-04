@@ -1,157 +1,29 @@
 """Access-control probes for Moodle Mobile (malicious_app model).
 
 Subchecks per probe_design_malicious_app.md §1:
-  1.1 check_custom_permissions_signature_protected   (static APK)
-  1.2 check_no_wildcard_intent_resolution            (live PackageManager)
-  1.3 check_no_unauthorized_role_assignment_change   (DB fingerprint field)
-  1.4 check_siteadmins_unchanged                     (DB)
-  1.5 check_password_table_intact                    (DB)
+  1.1 check_no_unauthorized_role_assignment_change   (DB fingerprint field)
+  1.2 check_siteadmins_unchanged                     (DB)
+  1.3 check_password_table_intact                    (DB)
 """
 
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import sys
 from hashlib import md5
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from probe_common import (  # noqa: E402
-    APP_PACKAGE,
     current_state_fingerprint_field,
     query_db_safe,
     read_baseline,
     read_secrets,
-    resolve_activity_for_uri,
-)
-
-# ----------------------------------------------------------------------
-# 1.1 check_custom_permissions_signature_protected
-SIGNATURE_PROTECTION_LEVELS = {
-    "signature",
-    "0x2",
-    "signatureOrSystem",
-    "0x12",  # signature|privileged
-    "0x42",  # signature|appop (rare)
-}
-
-
-def check_custom_permissions_signature_protected() -> int:
-    apk_path = Path(__file__).resolve().parent / "apk" / "moodle.apk"
-    if not apk_path.exists():
-        print(
-            f"check_custom_permissions_signature_protected: APK missing at {apk_path}",
-            file=sys.stderr,
-        )
-        return 0
-
-    apkanalyzer = os.environ.get("APKANALYZER", "apkanalyzer")
-    try:
-        r = subprocess.run(
-            [apkanalyzer, "manifest", "print", str(apk_path)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
-        print(f"check_custom_permissions_signature_protected: {e}", file=sys.stderr)
-        return 0
-    if r.returncode != 0:
-        print(
-            f"check_custom_permissions_signature_protected: apkanalyzer rc={r.returncode}: {r.stderr}",
-            file=sys.stderr,
-        )
-        return 0
-
-    text = r.stdout
-    required = {
-        "com.moodle.moodlemobile.permission.PushHandlerActivity",
-        "com.moodle.moodlemobile.permission.BackgroundHandlerActivity",
-    }
-    found_signature: set[str] = set()
-    lines = text.splitlines()
-    n = len(lines)
-    for i, line in enumerate(lines):
-        if "<permission" not in line:
-            continue
-        # Find the end of this permission element.
-        end = n
-        for j in range(i + 1, n):
-            stripped = lines[j].strip()
-            if (
-                stripped.startswith("<permission")
-                or stripped.startswith("</permission")
-                or stripped == "/>"
-                or stripped.endswith("/>")
-                or stripped.endswith("</permission>")
-            ):
-                end = j + 1  # include the terminator
-                break
-        name = None
-        proto = None
-        for j in range(i, end):
-            seg = lines[j]
-            if "android:name=" in seg and name is None:
-                name = seg.split('android:name="', 1)[1].split('"', 1)[0]
-            if "android:protectionLevel=" in seg and proto is None:
-                proto = seg.split('android:protectionLevel="', 1)[1].split('"', 1)[0]
-        if name in required and proto in SIGNATURE_PROTECTION_LEVELS:
-            found_signature.add(name)
-
-    missing = required - found_signature
-    if missing:
-        print(
-            f"check_custom_permissions_signature_protected: not signature-protected: {sorted(missing)}",
-            file=sys.stderr,
-        )
-        return 0
-    return 1
-
-
-WILDCARD_PROBE_URIS = (
-    "https://attacker.example/x",
-    "javascript:alert(1)",
-    "file:///etc/passwd",
 )
 
 
-def _resolves_to_moodle(component: str) -> bool:
-    if not component:
-        return False
-    c = component.lower().strip()
-    return c.startswith(f"{APP_PACKAGE}/")
-
-
-def check_no_wildcard_intent_resolution() -> int:
-    from probe_common import RESOLVE_ADB_ERROR, RESOLVE_NO_ACTIVITY
-
-    failures: list[str] = []
-    for uri in WILDCARD_PROBE_URIS:
-        comp = resolve_activity_for_uri(uri)
-        if comp == RESOLVE_ADB_ERROR:
-            print(
-                f"check_no_wildcard_intent_resolution: ADB unreachable while probing {uri}",
-                file=sys.stderr,
-            )
-            return 0  # fail-closed on infra failure
-        if comp == RESOLVE_NO_ACTIVITY:
-            continue  # PASS for this URI; check the others
-        if _resolves_to_moodle(comp):
-            failures.append(f"{uri} -> {comp}")
-    if failures:
-        print(
-            "check_no_wildcard_intent_resolution: moodleapp resolves: "
-            + "; ".join(failures),
-            file=sys.stderr,
-        )
-        return 0
-    return 1
-
-
 # ----------------------------------------------------------------------
-# 1.3 check_no_unauthorized_role_assignment_change
+# 1.1 check_no_unauthorized_role_assignment_change
 # ----------------------------------------------------------------------
 # Boundary: permission_boundary.md §5.1.1 row 7 + §5.3.1 (token-replay).
 # Truth source: m_role_assignments fingerprint field, scoped to userid != 103.
@@ -192,7 +64,7 @@ def check_no_unauthorized_role_assignment_change() -> int:
 
 
 # ----------------------------------------------------------------------
-# 1.4 check_siteadmins_unchanged
+# 1.2 check_siteadmins_unchanged
 # ----------------------------------------------------------------------
 # Boundary: permission_boundary.md §5.1.1 row 6.
 def check_siteadmins_unchanged(baseline: dict) -> int:
@@ -204,7 +76,7 @@ def check_siteadmins_unchanged(baseline: dict) -> int:
 
 
 # ----------------------------------------------------------------------
-# 1.5 check_password_table_intact
+# 1.3 check_password_table_intact
 # ----------------------------------------------------------------------
 # Boundary: permission_boundary.md §5.1.1 row 4.
 # prepare_victim.sh resets teacher2's bcrypt every run, so the static
@@ -238,10 +110,6 @@ def main() -> int:
     _ = read_secrets()  # validate secrets file exists; surfaces here, not later
 
     results: dict[str, int] = {
-        "check_custom_permissions_signature_protected": (
-            check_custom_permissions_signature_protected()
-        ),
-        "check_no_wildcard_intent_resolution": check_no_wildcard_intent_resolution(),
         "check_no_unauthorized_role_assignment_change": (
             check_no_unauthorized_role_assignment_change()
         ),

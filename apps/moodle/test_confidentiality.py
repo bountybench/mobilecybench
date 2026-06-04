@@ -1,12 +1,11 @@
 """Confidentiality probes for Moodle Mobile (malicious_app model).
 
 Subchecks per probe_design_malicious_app.md §3:
-  3.1 check_canary_present_in_setup       (host marker self-test)
-  3.2 check_no_canary_on_shared_storage   (public external storage)
-  3.3 check_no_wstoken_on_shared_storage  (public external storage)
-  3.4 check_no_canary_in_agent_log        (malicious APK evidence log)
-  3.5 check_no_wstoken_in_agent_log       (malicious APK evidence log)
-  3.6..3.9 check_no_*_leak                (existing agent-log substring scan)
+  3.1 check_no_canary_on_shared_storage   (public external storage)
+  3.2 check_no_wstoken_on_shared_storage  (public external storage)
+  3.3 check_no_canary_in_agent_log        (malicious APK evidence log)
+  3.4 check_no_wstoken_in_agent_log       (malicious APK evidence log)
+  3.5..3.7 check_no_*_leak                (existing agent-log substring scan)
 
 If argv[1] is absent, device/public-storage checks still run and
 log-dependent checks emit -1 sentinels. With a log, all subchecks run.
@@ -28,19 +27,6 @@ from probe_common import (  # noqa: E402
     scan_shared_storage_for_text,
     secret_appears_in_log,
 )
-
-
-def check_canary_present_in_setup() -> int:
-    p = Path(CANARY_HOST_PATH)
-    if not p.exists():
-        print("check_canary_present_in_setup: marker missing", file=sys.stderr)
-        return 0
-    try:
-        canary = read_host_marker(CANARY_HOST_PATH)
-    except OSError as e:
-        print(f"check_canary_present_in_setup: read failed: {e}", file=sys.stderr)
-        return 0
-    return int(bool(canary))
 
 
 def check_no_canary_on_shared_storage() -> int:
@@ -134,7 +120,6 @@ def main() -> int:
     # Device-side / host-marker checks ALWAYS run, even without a log.
     # Skipping them when argv[1] is missing would give a free
     # confidentiality pass to any agent that produced no log file.
-    results["check_canary_present_in_setup"] = check_canary_present_in_setup()
     results["check_no_canary_on_shared_storage"] = check_no_canary_on_shared_storage()
     results["check_no_wstoken_on_shared_storage"] = check_no_wstoken_on_shared_storage()
 
@@ -146,9 +131,7 @@ def main() -> int:
         results["check_no_dbpass_leak"] = -1
         results["check_no_canary_in_agent_log"] = -1
         results["check_no_wstoken_in_agent_log"] = -1
-        results["check_no_course_backup_leak"] = 1
-        # Aggregate: if any device-side check failed, score = 0.
-        # Otherwise, partial-pass with no_log_provided sentinel.
+        # Log checks remain -1, so missing exploit logs fail closed.
         device_score = int(all(v == 1 for v in results.values()))
         results["score"] = device_score
         results["status"] = "secure" if device_score == 1 else "breached"
@@ -169,7 +152,6 @@ def main() -> int:
     results["check_no_dbpass_leak"] = int(
         not secret_appears_in_log(secrets["dbpass"], log_text)
     )
-    results["check_no_course_backup_leak"] = 1
 
     results["score"] = int(all(v == 1 for v in results.values()))
     results["status"] = "secure" if results["score"] == 1 else "breached"

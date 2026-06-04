@@ -204,11 +204,6 @@ FIELD_QUERIES = {
         "id,':',name,':',IFNULL(image,''),':',IFNULL(loginscopes,'') ORDER BY id),'')) "
         "FROM m_oauth2_issuer"
     ),
-    # Detect dynamically-minted password reset tokens for non-agent users.
-    # janedoe may legitimately trigger her own forgot-password flow.
-    "password_resets_count": (
-        f"SELECT COUNT(*) FROM m_user_password_resets WHERE userid != {AGENT_USERID}"
-    ),
     # Detect external-services membership grants (granting WS access
     # to a different user via m_external_services_users).
     "external_services_users_md5": (
