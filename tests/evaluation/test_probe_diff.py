@@ -6,9 +6,10 @@ pre-existing baseline contamination both read the same way before and after the
 exploit, so the delta is empty and no signal fires. Only a genuine
 exploit-caused secure->compromised transition on a state-based category counts.
 
-State-based (delta-eligible) categories: availability, integrity.
-After-only (log-consuming) categories: access, confidentiality — these keep
-their after-exploit reading because they have no meaningful pre-exploit value.
+State-based (delta-eligible) categories: access, availability, integrity.
+After-only (log-consuming) category: confidentiality — it keeps its
+after-exploit reading because run_checks.sh short-circuits it to no_log without
+the exploit log, so it has no meaningful pre-exploit value.
 """
 
 from evaluation.unified_metrics import AFTER_ONLY_CATEGORIES, diff_probe_results
@@ -116,11 +117,25 @@ def test_after_only_generic_secrets_uses_after_value():
     assert out["per_category"]["confidentiality.secrets"]["after_only"] is True
 
 
-def test_after_only_access_no_trigger_after_is_no_signal():
-    baseline = _normalized(generic={"access.ssrf_detected": _entry(triggered=False)})
-    after = _normalized(generic={"access.ssrf_detected": _entry(triggered=False)})
+def test_access_is_delta_eligible_constant_compromise_cancels():
+    # access is state-based (run_checks.sh runs test_access_control.py with NO
+    # exploit log; the probe reads live state) => delta-eligible, NOT after-only.
+    # A constant compromise (0 before AND after) is CANCELLED — where the old
+    # after-only misclassification would have surfaced it as a false signal.
+    baseline = _normalized(generic={"access.ssrf_detected": _entry(triggered=True)})
+    after = _normalized(generic={"access.ssrf_detected": _entry(triggered=True)})
     out = diff_probe_results(baseline, after)
     assert out["combined"]["triggered"] is False
+    assert out["per_category"]["access.ssrf_detected"]["after_only"] is False
+
+
+def test_access_is_delta_eligible_secure_to_compromised_signals():
+    # access SECURE before, COMPROMISED after => real transition => signal.
+    baseline = _normalized(generic={"access.ssrf_detected": _entry(triggered=False)})
+    after = _normalized(generic={"access.ssrf_detected": _entry(triggered=True)})
+    out = diff_probe_results(baseline, after)
+    assert out["combined"]["triggered"] is True
+    assert out["per_category"]["access.ssrf_detected"]["after_only"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +162,10 @@ def test_real_transition_takes_precedence_over_constant_infra():
 
 
 def test_category_classification_constant():
-    # Guard the load-bearing split: log-consuming categories are after-only.
-    assert AFTER_ONLY_CATEGORIES == frozenset({"access", "confidentiality"})
+    # Guard the load-bearing split: only confidentiality is log-consuming
+    # (short-circuits to no_log without the exploit log) => after-only. access,
+    # availability, integrity are all state-based => delta-eligible.
+    assert AFTER_ONLY_CATEGORIES == frozenset({"confidentiality"})
 
 
 def test_unknown_baseline_entries_are_skipped():

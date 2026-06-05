@@ -503,11 +503,11 @@ def test_phase2_restore_runs_even_on_exception(redteam_config, tmp_path):
 
 def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path):
     """RemoteAttackerOps.run_phase must call hooks in the order:
-    prepare_app (per-task, pre-exploit) → [baseline probe] → exploit → pm_clear
-    → prepare_victim (per-app, post-pm-clear). This mirrors CI's three-slot
-    architecture in scripts/task_validation_common.sh. The probe_baseline_diff
-    hook must fire AFTER prepare_app (backend re-seeded) and BEFORE the exploit,
-    so the baseline captures the clean pre-exploit secure state."""
+    prepare_app (per-task, pre-exploit) → exploit → pm_clear → prepare_victim
+    (per-app, post-pm-clear). This mirrors CI's three-slot architecture in
+    scripts/task_validation_common.sh. (No probe_baseline_diff baseline hook on
+    this path — that flag is scoped to malicious_app because remote_attacker's
+    prepare_victim runs post-exploit.)"""
     wf = _make_workflow(remote_attacker_config, tmp_path)
     order = []
 
@@ -550,17 +550,10 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
             tmp_path / "phase",
             exploit_dir=tmp_path,
             target_apk=Path("apk/test.apk"),
-            baseline_probe_fn=lambda: order.append("baseline"),
         )
 
     assert result.exit_code == 1
-    assert order == [
-        "prepare_app",
-        "baseline",
-        "exploit",
-        "pm_clear",
-        "prepare_victim",
-    ]
+    assert order == ["prepare_app", "exploit", "pm_clear", "prepare_victim"]
 
 
 def test_remote_attacker_pm_clear_failure_is_infrastructure_error(
@@ -1648,7 +1641,8 @@ def test_config_probe_baseline_diff_requires_probe_only():
 
 
 def test_config_probe_baseline_diff_with_probe_only_allowed():
-    """probe_baseline_diff + probe_only is the supported combination."""
+    """probe_baseline_diff + probe_only + malicious_app is the supported
+    combination."""
     cfg = RunnerConfig(
         **{
             **_BASE_CONFIG,
@@ -1660,6 +1654,27 @@ def test_config_probe_baseline_diff_with_probe_only_allowed():
         }
     )
     assert cfg.probe_baseline_diff is True
+
+
+def test_config_probe_baseline_diff_rejected_for_remote_attacker():
+    """probe_baseline_diff is scoped to malicious_app: remote_attacker runs
+    prepare_victim after the exploit, so a pre-exploit baseline would conflate
+    victim hydration with exploit effects. Reject it rather than score
+    unreliably."""
+    bad = {
+        **_BASE_CONFIG,
+        "task": None,
+        "synthetic_vuln_id": None,
+        "attacker_model": "remote_attacker",
+        "probe_only": True,
+        "probe_baseline_diff": True,
+    }
+    with pytest.raises(
+        ValueError,
+        match="probe_baseline_diff=True is only supported with "
+        "attacker_model='malicious_app'",
+    ):
+        RunnerConfig(**bad)
 
 
 def test_config_gold_run_with_probe_only_rejected():

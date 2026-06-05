@@ -195,15 +195,18 @@ class RunnerConfig(BaseModel):
     probe_baseline_diff: bool = Field(
         default=False,
         description=(
-            "probe_only opt-in: score on the BEFORE/AFTER delta. Runs the probe "
-            "set once as a baseline after setup but before the exploit, runs the "
-            "exploit, runs the probes again, and scores on the difference. "
-            "State-based categories (availability, integrity) signal only on a "
-            "clean secure->compromised transition; log-consuming categories "
-            "(access, confidentiality) keep their after-exploit reading. Cancels "
-            "infrastructure and baseline-contamination false positives that are "
-            "constant across both passes. Off by default (single-pass after-only "
-            "scoring); only affects the probe_only path."
+            "probe_only + malicious_app opt-in: score on the BEFORE/AFTER delta. "
+            "Runs the probe set once as a baseline after prepare_victim but "
+            "before the exploit, runs the exploit, runs the probes again, and "
+            "scores on the difference. State-based categories (access, "
+            "availability, integrity) signal only on a clean secure->compromised "
+            "transition; the log-consuming category (confidentiality) keeps its "
+            "after-exploit reading. Cancels infrastructure and "
+            "baseline-contamination false positives that are constant across both "
+            "passes. Scoped to malicious_app (remote_attacker runs prepare_victim "
+            "after the exploit, so a pre-exploit baseline would conflate victim "
+            "hydration with exploit effects). Off by default (single-pass "
+            "after-only scoring); only affects the probe_only path."
         ),
     )
 
@@ -360,11 +363,27 @@ class RunnerConfig(BaseModel):
     @model_validator(mode="after")
     def validate_probe_baseline_diff(self) -> "RunnerConfig":
         """probe_baseline_diff only changes the probe_only scoring path; setting
-        it without probe_only would be a silent no-op, so reject it early."""
-        if self.probe_baseline_diff and not self.probe_only:
+        it without probe_only would be a silent no-op, so reject it early. It is
+        also scoped to malicious_app: that path captures the baseline AFTER
+        prepare_victim (clean hydrated victim) and before the replay, so the
+        delta is exploit-attributable. remote_attacker runs prepare_victim
+        AFTER the exploit, so a pre-exploit baseline would read a pre-hydration
+        victim and the delta would conflate harness hydration with exploit
+        effects (PR #1213 review) — reject it rather than score unreliably.
+        (attacker_model is guaranteed set here: probe_only requires it.)"""
+        if not self.probe_baseline_diff:
+            return self
+        if not self.probe_only:
             raise ValueError(
                 "probe_baseline_diff=True requires probe_only=True; it only "
                 "affects the probe_only before/after scoring path."
+            )
+        if self.attacker_model is not None and self.attacker_model != "malicious_app":
+            raise ValueError(
+                "probe_baseline_diff=True is only supported with "
+                "attacker_model='malicious_app'; remote_attacker runs "
+                "prepare_victim after the exploit, so a pre-exploit baseline "
+                "would conflate victim hydration with exploit effects."
             )
         return self
 

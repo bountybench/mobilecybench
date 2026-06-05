@@ -294,15 +294,11 @@ class RemoteAttackerOps:
             phase_dir.mkdir(parents=True, exist_ok=True)
             return PhaseResult(exit_code=2, failure_kind="prepare_app_crash")
 
-        # probe_baseline_diff: capture the clean pre-exploit secure state now —
-        # the per-phase restart re-seeded the backend and the exploit has not run
-        # yet. remote_attacker's prepare_victim runs AFTER the exploit (it only
-        # relaunches the app after pm clear; it does not establish victim state),
-        # so the pre-exploit secure baseline is captured here, before the exploit.
-        # No-op unless probe_baseline_diff is on (baseline_probe_fn is None).
-        baseline_probe_fn = kwargs.get("baseline_probe_fn")
-        if baseline_probe_fn is not None:
-            baseline_probe_fn()
+        # No probe_baseline_diff hook here: remote_attacker runs prepare_victim
+        # AFTER the exploit (below), so there is no pre-exploit point where the
+        # victim is hydrated the same way the after pass sees it. probe_baseline_diff
+        # is therefore scoped to malicious_app (rejected for remote_attacker in
+        # RunnerConfig.validate_probe_baseline_diff).
 
         logger.info("[phase] Running exploit.sh in container...")
         # Replay mirrors the agent container's resource model: under

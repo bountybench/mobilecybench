@@ -159,7 +159,7 @@
     },
     "probe_baseline_diff": {
       "default": false,
-      "description": "probe_only opt-in: score on the BEFORE/AFTER delta. Runs the probe set once as a baseline after setup but before the exploit, runs the exploit, runs the probes again, and scores on the difference. State-based categories (availability, integrity) signal only on a clean secure->compromised transition; log-consuming categories (access, confidentiality) keep their after-exploit reading. Cancels infrastructure and baseline-contamination false positives that are constant across both passes. Off by default (single-pass after-only scoring); only affects the probe_only path.",
+      "description": "probe_only + malicious_app opt-in: score on the BEFORE/AFTER delta. Runs the probe set once as a baseline after prepare_victim but before the exploit, runs the exploit, runs the probes again, and scores on the difference. State-based categories (access, availability, integrity) signal only on a clean secure->compromised transition; the log-consuming category (confidentiality) keeps its after-exploit reading. Cancels infrastructure and baseline-contamination false positives that are constant across both passes. Scoped to malicious_app (remote_attacker runs prepare_victim after the exploit, so a pre-exploit baseline would conflate victim hydration with exploit effects). Off by default (single-pass after-only scoring); only affects the probe_only path.",
       "title": "Probe Baseline Diff",
       "type": "boolean"
     },

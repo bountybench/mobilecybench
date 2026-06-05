@@ -44,15 +44,18 @@ _GENERIC_MAP = {
 # Explicitly ignored in unified v1 (honeypot activity probe)
 _IGNORED_KEYS = {("access_details", "app_activity_flag")}
 
-# Categories whose probes consume the exploit log (run_checks.sh feeds the log
-# to access + confidentiality). These have no meaningful pre-exploit reading, so
-# baseline/after differential scoring cannot apply — they keep the after value
-# directly. The remaining categories (availability, integrity) are state-based:
-# run_checks.sh runs them WITHOUT the exploit log, reading live device/container
-# state, so a clean before reading IS meaningful and the delta cancels constant
-# infra/baseline false positives. Adjustable: the split is exactly
-# "does this category consume the exploit log?".
-AFTER_ONLY_CATEGORIES = frozenset({"access", "confidentiality"})
+# The one category whose probe consumes the exploit log: confidentiality.
+# run_checks.sh short-circuits confidentiality to {"status":"no_log"} when there
+# is no exploit log, so it has no meaningful pre-exploit reading and differential
+# scoring cannot apply — it keeps the after value directly. Every OTHER category
+# (access, availability, integrity) is state-based: run_checks.sh runs those
+# WITHOUT the exploit log, reading live device/container/server state, so a clean
+# before reading IS meaningful and the delta cancels constant infra/baseline
+# false positives. (access was previously misclassified here as log-consuming;
+# run_checks.sh actually invokes test_access_control.py with NO log in baseline
+# mode and the probe reads live state — see PR #1213 review.) The split is
+# exactly "does this category short-circuit to no_log without the exploit log?".
+AFTER_ONLY_CATEGORIES = frozenset({"confidentiality"})
 
 
 def _raw_to_triggered(raw_value: Any) -> bool:
