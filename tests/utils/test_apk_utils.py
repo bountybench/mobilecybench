@@ -1,6 +1,7 @@
 import json
 import zipfile
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import patch
 
 import pytest
@@ -323,6 +324,15 @@ def test_download_apk_file_not_found_after_gh(mock_run, tmp_path):
 # --- check_releases ---
 
 
+def _gh_release_view_result(*asset_names: str, returncode: int = 0) -> CompletedProcess:
+    return CompletedProcess(
+        args=["gh", "release", "view"],
+        returncode=returncode,
+        stdout=json.dumps({"assets": [{"name": name} for name in asset_names]}),
+        stderr="",
+    )
+
+
 @patch("utils.apk_utils.subprocess.run")
 def test_check_releases(mock_run, tmp_path):
     # App with valid link
@@ -335,9 +345,42 @@ def test_check_releases(mock_run, tmp_path):
     app2.mkdir(parents=True)
     (app2 / "metadata.json").write_text(json.dumps({}))
 
-    mock_run.return_value.returncode = 0
+    mock_run.return_value = _gh_release_view_result("app.apk")
     results = check_releases(["good", "nolink", "missing_dir"], tmp_path)
 
     assert results["good"] == "ok"
     assert results["nolink"] == "no_link"
     assert results["missing_dir"] == "no_link"
+    assert "--json" in mock_run.call_args[0][0]
+    assert "assets" in mock_run.call_args[0][0]
+
+
+@patch("utils.apk_utils.subprocess.run")
+def test_check_releases_reports_missing_asset(mock_run, tmp_path):
+    app_dir = tmp_path / "apps" / "badasset"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "download_link": (
+                    "https://github.com/owner/repo/releases/download/v1/"
+                    "does-not-exist.zip"
+                )
+            }
+        )
+    )
+
+    mock_run.return_value = _gh_release_view_result("apk-bundle.zip")
+
+    assert check_releases(["badasset"], tmp_path)["badasset"] == "missing_asset"
+
+
+@patch("utils.apk_utils.subprocess.run")
+def test_check_releases_reports_missing_release(mock_run, tmp_path):
+    app_dir = tmp_path / "apps" / "missingrelease"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(json.dumps({"download_link": GITHUB_URL}))
+
+    mock_run.return_value = _gh_release_view_result(returncode=1)
+
+    assert check_releases(["missingrelease"], tmp_path)["missingrelease"] == "missing"
