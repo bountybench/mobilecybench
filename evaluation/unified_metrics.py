@@ -311,25 +311,34 @@ def diff_probe_results(
       * Delta-eligible category (state-based): signal ONLY on a clean
         secure->compromised transition — baseline read SECURE (triggered=False
         AND infra_error=False) AND after read COMPROMISED (triggered=True). Any
-        constant reading (0->0, 1->1) or a non-clean-secure baseline (infra/0
-        before) yields NO signal, which is exactly what cancels the constant
-        infra / baseline-contamination false positives. The after pass's infra
-        error is still surfaced (it could not be scored cleanly).
+        constant reading (0->0, 1->1) or a concrete non-clean-secure baseline
+        (infra/0 before) yields NO signal, which is exactly what cancels the
+        constant infra / baseline-contamination false positives.
+      * Delta-eligible category with NO usable baseline reading (the category is
+        ABSENT from the baseline pass — a generic probe whose baseline score was
+        null/dropped, or an app-specific probe the baseline flagged unknown, so
+        _iter_probe_entries skipped it): the before/after delta is UNDEFINED. We
+        must NOT treat a missing baseline as "secure" (that would score an after
+        trigger as a false secure->compromised transition), nor as a clean
+        no_signal (we never actually compared). It is marked ``unknown`` so the
+        caller routes it to probe_evaluator_error rather than a signal.
 
-    A real delta trigger takes precedence over an infra error in the combined
-    result, mirroring normalize_probe_results' combined semantics.
+    Combined precedence: a real trigger wins over both unknown and infra; an
+    unknown (un-scoreable baseline) wins over infra. (Caller routes unknown ->
+    probe_evaluator_error, infra -> infrastructure_error.)
 
     Returns a dict shaped like normalize_probe_results' tail:
-      - per_category: {norm_key: {"triggered", "infra_error", "after_only",
-        "baseline_triggered", "baseline_infra_error", "after_triggered",
-        "after_infra_error"}}
-      - combined: {"triggered": bool, "infra_error": bool}
+      - per_category: {norm_key: {"triggered", "infra_error", "unknown",
+        "after_only", "baseline_present", "baseline_triggered",
+        "baseline_infra_error", "after_triggered", "after_infra_error"}}
+      - combined: {"triggered": bool, "unknown": bool, "infra_error": bool}
       - triggered: bool (alias of combined.triggered, for terse callers)
     """
     baseline_entries = {k: e for k, e in _iter_probe_entries(baseline)}
 
     per_category: Dict[str, Any] = {}
     any_triggered = False
+    any_unknown = False
     any_infra = False
 
     for norm_key, after_entry in _iter_probe_entries(after):
@@ -337,38 +346,57 @@ def diff_probe_results(
         after_triggered = bool(after_entry.get("triggered"))
         after_infra = bool(after_entry.get("infra_error"))
 
-        base_entry = baseline_entries.get(norm_key, {})
-        base_triggered = bool(base_entry.get("triggered"))
-        base_infra = bool(base_entry.get("infra_error"))
+        base_entry = baseline_entries.get(norm_key)
+        base_present = base_entry is not None
+        base_triggered = bool(base_entry.get("triggered")) if base_present else False
+        base_infra = bool(base_entry.get("infra_error")) if base_present else False
 
+        unknown = False
         after_only = category in after_only_categories
         if after_only:
             triggered = after_triggered
             infra_error = after_infra
+        elif not base_present:
+            # No usable pre-exploit baseline => the delta is undefined. Never a
+            # signal, never a (falsely) clean no_signal — surface as unknown.
+            triggered = False
+            infra_error = False
+            unknown = True
         else:
             base_clean_secure = not base_triggered and not base_infra
             triggered = base_clean_secure and after_triggered
             # A transition we counted as a signal is never also an infra error;
-            # otherwise surface the after pass's infra state.
-            infra_error = after_infra and not triggered
+            # otherwise surface either side's infra state.
+            infra_error = (base_infra or after_infra) and not triggered
 
         per_category[norm_key] = {
             "triggered": triggered,
             "infra_error": infra_error,
+            "unknown": unknown,
             "after_only": after_only,
+            "baseline_present": base_present,
             "baseline_triggered": base_triggered,
             "baseline_infra_error": base_infra,
             "after_triggered": after_triggered,
             "after_infra_error": after_infra,
         }
         any_triggered = any_triggered or triggered
+        any_unknown = any_unknown or unknown
         any_infra = any_infra or infra_error
 
-    # A real trigger takes precedence over an infra error in the combined view.
-    combined_infra = any_infra and not any_triggered
+    # Precedence: a real trigger wins over unknown and infra; unknown wins over
+    # infra. The caller routes unknown -> probe_evaluator_error before checking
+    # infra, so the two need not be mutually exclusive here, but we keep the
+    # combined view clean for terse consumers.
+    combined_unknown = any_unknown and not any_triggered
+    combined_infra = any_infra and not any_triggered and not combined_unknown
     return {
         "per_category": per_category,
-        "combined": {"triggered": any_triggered, "infra_error": combined_infra},
+        "combined": {
+            "triggered": any_triggered,
+            "unknown": combined_unknown,
+            "infra_error": combined_infra,
+        },
         "triggered": any_triggered,
     }
 

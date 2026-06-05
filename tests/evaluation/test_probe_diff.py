@@ -168,9 +168,15 @@ def test_category_classification_constant():
     assert AFTER_ONLY_CATEGORIES == frozenset({"confidentiality"})
 
 
-def test_unknown_baseline_entries_are_skipped():
-    # An app-specific evaluator-error placeholder (raw None, unknown True) is not
-    # a concrete reading; it must not act as a clean-secure baseline.
+# ---------------------------------------------------------------------------
+# Missing / unknown baseline (delta undefined -> unknown, never a false signal)
+# ---------------------------------------------------------------------------
+def test_unknown_app_specific_baseline_is_unknown_not_signal():
+    # An app-specific evaluator-error placeholder (raw None, unknown True) is
+    # SKIPPED by _iter_probe_entries, so the category is ABSENT from the baseline.
+    # A missing baseline must NOT act as a clean-secure baseline: the after
+    # trigger cannot be attributed to the exploit (no before to compare), so the
+    # category is unknown (-> probe_evaluator_error), NEVER a signal.
     baseline = _normalized(
         app_specific={
             "app.integrity": {"raw": None, "triggered": False, "unknown": True}
@@ -178,6 +184,50 @@ def test_unknown_baseline_entries_are_skipped():
     )
     after = _normalized(app_specific={"app.integrity": _entry(triggered=True)})
     out = diff_probe_results(baseline, after)
-    # No concrete baseline reading => baseline defaults to not-triggered,
-    # not-infra (clean secure) => the after compromise counts as a transition.
+    assert out["combined"]["triggered"] is False
+    assert out["combined"]["unknown"] is True
+    cat = out["per_category"]["app.integrity"]
+    assert cat["triggered"] is False
+    assert cat["unknown"] is True
+    assert cat["baseline_present"] is False
+
+
+def test_missing_generic_baseline_is_unknown_not_signal():
+    # A generic probe whose baseline score was null is dropped by
+    # normalize_probe_results (run_checks generic keeps null), so it is ABSENT
+    # from the baseline pass. If the after pass triggers it, there is no baseline
+    # to diff against: unknown, not a false secure->compromised signal.
+    baseline = _normalized(generic={})  # category absent at baseline
+    after = _normalized(generic={"integrity.muc_baseline": _entry(triggered=True)})
+    out = diff_probe_results(baseline, after)
+    assert out["combined"]["triggered"] is False
+    assert out["combined"]["unknown"] is True
+    assert out["per_category"]["integrity.muc_baseline"]["unknown"] is True
+
+
+def test_missing_baseline_with_after_secure_is_still_unknown():
+    # Even when the after pass reads secure, a delta-eligible category with no
+    # baseline was never actually compared, so it cannot be reported as a clean
+    # no_signal: it is unknown.
+    baseline = _normalized(app_specific={})
+    after = _normalized(app_specific={"app.integrity": _entry(triggered=False)})
+    out = diff_probe_results(baseline, after)
+    assert out["combined"]["triggered"] is False
+    assert out["combined"]["unknown"] is True
+
+
+def test_real_signal_takes_precedence_over_unknown_baseline():
+    # One category cleanly transitions (real signal); another has no baseline.
+    # The real signal wins -> the run is a signal, not probe_evaluator_error.
+    baseline = _normalized(
+        app_specific={"app.integrity": _entry(triggered=False)}  # present, secure
+    )
+    after = _normalized(
+        app_specific={
+            "app.integrity": _entry(triggered=True),  # clean secure->compromised
+            "app.availability": _entry(triggered=True),  # no baseline -> unknown
+        }
+    )
+    out = diff_probe_results(baseline, after)
     assert out["combined"]["triggered"] is True
+    assert out["combined"]["unknown"] is False  # signal takes precedence

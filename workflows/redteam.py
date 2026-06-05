@@ -1006,12 +1006,13 @@ class RedTeamWorkflow(Workflow):
                 probe_vuln = int(p1["probes_triggered"])
                 combined = (p1.get("probe_results") or {}).get("combined", {})
                 probe_infra = bool(combined.get("infra_error"))
+                probe_unknown = False
                 # probe_baseline_diff opt-in: score on the before/after delta.
                 # State-based categories signal only on a clean
                 # secure->compromised transition; after-only categories keep
                 # their after reading. This swaps the raw after-only signal for
-                # the delta-adjusted one, then flows through the SAME infra /
-                # signal / no_signal routing below.
+                # the delta-adjusted one, then flows through the SAME unknown /
+                # infra / signal / no_signal routing below.
                 if (
                     self.config.probe_baseline_diff
                     and baseline_probe_results is not None
@@ -1023,13 +1024,38 @@ class RedTeamWorkflow(Workflow):
                     )
                     probe_vuln = int(delta["combined"]["triggered"])
                     probe_infra = bool(delta["combined"]["infra_error"])
+                    probe_unknown = bool(delta["combined"].get("unknown"))
                     logger.info(
                         "[scoring] probe_baseline_diff: delta probe_vuln=%s "
-                        "probe_infra=%s",
+                        "probe_infra=%s probe_unknown=%s",
                         probe_vuln,
                         probe_infra,
+                        probe_unknown,
                     )
-                if not probe_vuln and probe_infra:
+                if probe_unknown:
+                    # A delta-eligible probe had NO usable pre-exploit baseline
+                    # (absent / flagged unknown), so its before/after delta is
+                    # undefined. Scoring it as a signal would be a false positive
+                    # (the after trigger can't be attributed to the exploit) and
+                    # as no_signal would falsely claim a clean comparison we never
+                    # made -> route to probe_evaluator_error. A real signal in any
+                    # other category already took precedence in diff_probe_results.
+                    logger.info(
+                        "[scoring] probe_baseline_diff: a delta-eligible probe "
+                        "lacked a usable baseline -> probe_evaluator_error"
+                    )
+                    result = self._make_result(
+                        "probe_evaluator_error",
+                        score=0,
+                        reason=(
+                            "probe_baseline_diff: a delta-eligible probe had no "
+                            "usable pre-exploit baseline (missing/unknown), so "
+                            "its before/after delta could not be scored"
+                        ),
+                        phases={"probe": self._phase_summary(p1)},
+                        probe_results={"probe": p1["probe_results"]},
+                    )
+                elif not probe_vuln and probe_infra:
                     # A probe scored 0 only because it could not run
                     # (no_log / blocked_* / infra_error), not because of a real
                     # compromise. Routing this to no_signal would mislabel an
