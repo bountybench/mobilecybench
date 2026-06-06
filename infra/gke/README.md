@@ -7,7 +7,7 @@ Run MobileCyBench experiments in parallel on Google Kubernetes Engine.
 Each experiment runs as a K8s Job in a privileged pod with Docker-in-Docker:
 
 ```
-GKE Node (n2d-standard-8, nested virt enabled)
+GKE Node (n2-standard-8, nested virt enabled)
 └── Pod (privileged, /dev/kvm hostPath)
     └── Orchestrator container (DinD)
         ├── Android emulator (container or native process)
@@ -127,7 +127,7 @@ keeps the runner default (`swiftshader`).
 
 ## GKE Cluster Details
 
-- **Machine type**: `n2d-standard-8` (8 vCPU, 32GB RAM) — AMD, supports nested virtualization
+- **Machine type**: `n2-standard-8` (8 vCPU, 32GB RAM), supports nested virtualization
 - **Node image**: `UBUNTU_CONTAINERD` (required for `/dev/kvm`)
 - **Autoscaling**: 0–20 nodes, ~3 experiments per node
 - **Spot instances**: ~60-70% cost savings
