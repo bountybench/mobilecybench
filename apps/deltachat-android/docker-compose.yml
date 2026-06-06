@@ -25,6 +25,7 @@ services:
       - SMTP_ONLY=0
     networks:
       - shared_net
+      - agent_net
     healthcheck:
       test: ["CMD-SHELL", "ss -tlnp | grep ':25' || exit 1"]
       interval: 10s
@@ -38,4 +39,6 @@ volumes:
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true

@@ -168,7 +168,7 @@ class Workflow(ABC):
 
         if agent_mode == "external":
             # External agents run inside their container image (see
-            # documentation/BRING_YOUR_OWN_AGENT.md). setup_agent does not
+            # documentation/archive/BRING_YOUR_OWN_AGENT.md). setup_agent does not
             # construct an in-process agent object; run_agent assembles the
             # BYO task_dict and hands off to harness.byo_agent.run_agent.
             self.agent = None
@@ -188,7 +188,9 @@ class Workflow(ABC):
             workflow=workflow,
             attacker_model=self.config.attacker_model,
             no_codebase=self.config.no_codebase,
-            allow_unregistered_models=self.config.allow_unregistered_models,
+            allow_unregistered_model_routing=(
+                self.config.allow_unregistered_models_in_custom_mode
+            ),
         )
         logger.info(f"Agent configured for {workflow} mode (mode={agent_mode})")
 

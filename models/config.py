@@ -22,34 +22,6 @@ from typing import Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agent.custom.model_providers.factory import MODEL_REGISTRY
-from agent.custom.model_providers.litellm_provider import lookup_rule
-
-# Image-tag prefix (the part before "_<version>" in the Docker tag) →
-# set of ProviderRule.provider tags ("anthropic", "openai", "gemini",
-# ...) that the CLI in that image can call. Reference images follow
-# the `<prefix>_<version>-r<rev>` tag convention documented in
-# BRING_YOUR_OWN_AGENT.md. Unknown prefixes skip the compat check;
-# lab/BYO images are unconstrained.
-_CLI_IMAGE_COMPAT: dict[str, set[str]] = {
-    "claudecode": {"anthropic"},
-    "codex": {"openai"},
-}
-
-
-def _cli_family(agent_image: str) -> Optional[str]:
-    """Return the CLI prefix for a known reference image, else None.
-
-    Strips the registry/repo portion of ``agent_image`` and matches the
-    tag's ``<prefix>_`` head against ``_CLI_IMAGE_COMPAT`` keys.
-    Example: ``cybench/mobilecybench:claudecode_2.1.140-r2`` -> ``"claudecode"``.
-    """
-    tag = agent_image.rsplit(":", 1)[-1] if ":" in agent_image else agent_image
-    for prefix in _CLI_IMAGE_COMPAT:
-        if tag.startswith(prefix + "_"):
-            return prefix
-    return None
-
 
 class RunnerConfig(BaseModel):
     """Configuration for a single ``runner.py`` invocation.
@@ -106,7 +78,7 @@ class RunnerConfig(BaseModel):
         ...,
         min_length=1,
         description=(
-            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro). "
+            "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). "
             "Custom path: routed via agent/custom/model_providers/factory.py. "
             "External path: forwarded to the in-container CLI."
         ),
@@ -126,7 +98,7 @@ class RunnerConfig(BaseModel):
         description=(
             "Dispatch path. 'custom' (default): in-process Python loop. "
             "'external': BYO Docker image satisfying the contract in "
-            "documentation/BRING_YOUR_OWN_AGENT.md (covers codex, "
+            "documentation/archive/BRING_YOUR_OWN_AGENT.md (covers codex, "
             "claude-code, and lab-supplied agents)."
         ),
     )
@@ -148,23 +120,28 @@ class RunnerConfig(BaseModel):
             "to all agent modes."
         ),
     )
-    reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
+    reasoning_effort: Optional[str] = Field(
         default=None,
+        min_length=1,
         description=(
-            "Reasoning effort hint forwarded to providers that accept it. "
-            "Models without a reasoning-effort knob ignore this field."
+            "Opaque reasoning effort / variant string forwarded verbatim to "
+            "the selected provider or external agent image. Provider/CLI owns "
+            "value validation."
         ),
     )
-    allow_unregistered_models: bool = Field(
+    allow_unregistered_models_in_custom_mode: bool = Field(
         default=False,
+        title="Allow Unregistered Models in Custom Mode",
         description=(
             "Permit models that are not declared in "
-            "agent/custom/model_providers/factory.py:SupportedModel. Custom "
-            "mode falls through to LiteLLM with auto-detected routing and a "
-            "runtime WARNING; external mode skips the config-load model "
-            "registration check (image/CLI compatibility is still enforced). "
-            "cost_usd reports $0 for any model that lacks a row in "
-            "utils/token_pricing.json regardless of this flag."
+            "agent/custom/model_providers/factory.py:SupportedModel when "
+            "agent_mode='custom'. Custom mode then falls through to LiteLLM "
+            "with auto-detected routing and a runtime WARNING. External "
+            "mode is BYO-owned and does not use this custom-mode registry; "
+            "the external image owns model validation. Models without a row "
+            "in utils/token_pricing.json "
+            "report cost_source='derived_unpriced' unless the agent reports "
+            "cost."
         ),
     )
 
@@ -185,7 +162,7 @@ class RunnerConfig(BaseModel):
             "authoritative value from the task bundle's metadata.json and "
             "logs any override. probe_only: required and authoritative — "
             "there is no task metadata.json to read from. See "
-            "documentation/REDTEAM.md."
+            "documentation/EXPERIMENTS.md."
         ),
     )
     synthetic_vuln_id: Optional[str] = Field(
@@ -212,7 +189,24 @@ class RunnerConfig(BaseModel):
             "comparison. Score is signal/no_signal based on app probes. "
             "Forbids task and synthetic_vuln_id; requires attacker_model. "
             "Incompatible with gold_run. See "
-            "documentation/REDTEAM.md#probe-only-mode."
+            "documentation/EXPERIMENTS.md."
+        ),
+    )
+    probe_baseline_diff: bool = Field(
+        default=False,
+        description=(
+            "probe_only + malicious_app opt-in: score on the BEFORE/AFTER delta. "
+            "Runs the probe set once as a baseline after prepare_victim but "
+            "before the exploit, runs the exploit, runs the probes again, and "
+            "scores on the difference. State-based categories (access, "
+            "availability, integrity) signal only on a clean secure->compromised "
+            "transition; the log-consuming category (confidentiality) keeps its "
+            "after-exploit reading. Cancels infrastructure and "
+            "baseline-contamination false positives that are constant across both "
+            "passes. Scoped to malicious_app (remote_attacker runs prepare_victim "
+            "after the exploit, so a pre-exploit baseline would conflate victim "
+            "hydration with exploit effects). Off by default (single-pass "
+            "after-only scoring); only affects the probe_only path."
         ),
     )
 
@@ -229,6 +223,20 @@ class RunnerConfig(BaseModel):
         description=(
             "Replay the task's reference exploit through the full pipeline "
             "instead of invoking the agent. Mutually exclusive with dry_run."
+        ),
+    )
+    replay_exploit_dir: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stage-2-only ('replay') mode: path to a previously-saved "
+            "agent_exploit/ directory (e.g. a prior run's "
+            "logs/<app>_redteam_*/agent_exploit). The runner copies it into "
+            "the fresh run's logs dir and evaluates it (replay + probes + "
+            "scoring) WITHOUT running the agent — useful for iterating on "
+            "probe/scoring fixes without paying for the agent phase. "
+            "setup_runtime_environment still runs (emulator + backend must be "
+            "live). Mutually exclusive with dry_run and gold_run; compatible "
+            "with probe_only. attacker_model must match the saved exploit."
         ),
     )
     # ---- Emulator -----------------------------------------------------------
@@ -334,60 +342,9 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 f"agent_mode={mode!r} is no longer supported. "
                 f'Migrate to: agent_mode="external" with the {mode} reference image. '
-                f"See documentation/BRING_YOUR_OWN_AGENT.md for the current tag."
+                f"See documentation/archive/BRING_YOUR_OWN_AGENT.md for the current tag."
             )
         return data
-
-    @model_validator(mode="after")
-    def validate_model_registered_external(self) -> "RunnerConfig":
-        """For external mode, reject model ids not in ``SupportedModel``.
-
-        Custom mode is gated when the provider is constructed in
-        ``agent/custom/model_providers/factory.py:get_model_provider``;
-        external mode otherwise forwards the model id verbatim to the
-        container CLI, so a typo (``opus-4-7`` vs ``claude-opus-4-7``)
-        only fails after image pull + emulator boot + API call.
-        ``allow_unregistered_models=True`` bypasses this check for
-        exploration runs.
-        """
-        if self.agent_mode != "external" or self.allow_unregistered_models:
-            return self
-        if self.model not in MODEL_REGISTRY:
-            raise ValueError(
-                f"Unknown model {self.model!r}. Supported: {sorted(MODEL_REGISTRY)}. "
-                f"Add to SupportedModel + utils/token_pricing.json, or set "
-                f"allow_unregistered_models=true. See documentation/ADDING_MODELS.md."
-            )
-        return self
-
-    @model_validator(mode="after")
-    def validate_image_model_compat(self) -> "RunnerConfig":
-        """Reject obvious image/model mismatches for external-mode reference CLIs.
-
-        The reference ``claudecode_*`` image only talks to Anthropic and
-        ``codex_*`` only to OpenAI; pairing one with a model from another
-        provider fails inside the container after setup. Unknown image
-        tags (lab / BYO) skip — they declare their own contract per
-        ``documentation/BRING_YOUR_OWN_AGENT.md``. Unlike
-        :meth:`validate_model_registered_external`, this check is not
-        bypassed by ``allow_unregistered_models``: the constraint is a
-        property of the CLI in the image, not of the model registry.
-        """
-        if self.agent_mode != "external":
-            return self
-        cli = _cli_family(self.agent_image)
-        if cli is None:
-            return self
-        allowed = _CLI_IMAGE_COMPAT[cli]
-        rule = lookup_rule(self.model)
-        if rule.provider not in allowed:
-            raise ValueError(
-                f"agent_image '{self.agent_image}' uses the {cli} CLI which "
-                f"only supports {sorted(allowed)} models; got model={self.model!r} "
-                f"(provider={rule.provider}). Use a model from the supported "
-                f"provider(s), or switch agent_image."
-            )
-        return self
 
     @model_validator(mode="after")
     def validate_probe_only_workflow(self) -> "RunnerConfig":
@@ -400,6 +357,33 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 f"probe_only=True requires workflow='redteam'; "
                 f"got workflow={self.workflow!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_probe_baseline_diff(self) -> "RunnerConfig":
+        """probe_baseline_diff only changes the probe_only scoring path; setting
+        it without probe_only would be a silent no-op, so reject it early. It is
+        also scoped to malicious_app: that path captures the baseline AFTER
+        prepare_victim (clean hydrated victim) and before the replay, so the
+        delta is exploit-attributable. remote_attacker runs prepare_victim
+        AFTER the exploit, so a pre-exploit baseline would read a pre-hydration
+        victim and the delta would conflate harness hydration with exploit
+        effects (PR #1213 review) — reject it rather than score unreliably.
+        (attacker_model is guaranteed set here: probe_only requires it.)"""
+        if not self.probe_baseline_diff:
+            return self
+        if not self.probe_only:
+            raise ValueError(
+                "probe_baseline_diff=True requires probe_only=True; it only "
+                "affects the probe_only before/after scoring path."
+            )
+        if self.attacker_model is not None and self.attacker_model != "malicious_app":
+            raise ValueError(
+                "probe_baseline_diff=True is only supported with "
+                "attacker_model='malicious_app'; remote_attacker runs "
+                "prepare_victim after the exploit, so a pre-exploit baseline "
+                "would conflate victim hydration with exploit effects."
             )
         return self
 
@@ -472,16 +456,25 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_mode_flags(self) -> "RunnerConfig":
-        """dry_run and gold_run are mutually exclusive runner branches.
+        """dry_run, gold_run, and replay_exploit_dir are mutually exclusive
+        runner branches.
 
-        probe_only + dry_run is allowed: dry_run runs the full setup
-        (Docker, APK, emulator, Kali) then short-circuits before agent
-        invocation and scoring, which is the API-key-free smoke test
-        for the probe_only path. (probe_only + gold_run is handled by
-        validate_gold_run_probe_only.)
+        probe_only + dry_run is also rejected: dry_run short-circuits to the
+        interactive shell before scoring. (probe_only + gold_run is handled
+        by validate_gold_run_probe_only.) replay_exploit_dir replays a saved
+        agent_exploit/ and is compatible with probe_only.
         """
         if self.dry_run and self.gold_run:
             raise ValueError("dry_run and gold_run are mutually exclusive")
+        if self.probe_only and self.dry_run:
+            raise ValueError(
+                "probe_only is incompatible with dry_run: dry_run drops into "
+                "an interactive shell and skips scoring entirely."
+            )
+        if self.replay_exploit_dir and (self.dry_run or self.gold_run):
+            raise ValueError(
+                "replay_exploit_dir is mutually exclusive with dry_run and " "gold_run."
+            )
         return self
 
     @model_validator(mode="after")

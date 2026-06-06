@@ -375,7 +375,7 @@ def assert_zerodays_initialized(project_root: Path) -> None:
         "    git submodule update --init zerodays\n"
         "If you do not have access to the submodule remote, contact a "
         "repo maintainer. Not required for probe_only or synthetic-vuln "
-        "runs — see documentation/REDTEAM.md."
+        "runs — see documentation/EXPERIMENTS.md."
     )
 
 

@@ -55,6 +55,33 @@
       "type": "array",
       "description": "An array of Docker container names that the generic probe `test_availability` can check for container health."
     },
+    "extra_forwards": {
+      "type": "array",
+      "description": "Optional additional socat forwards used in container-emulator mode. Each forward exposes 10.0.2.2:<listen_port> inside Android and routes it to a Docker service reachable on shared_net.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^[0-9]+:[^:]+:[0-9]+$"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "listen_port": {
+                "type": "integer"
+              },
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "listen_port",
+              "target"
+            ]
+          }
+        ]
+      }
+    },
     "download_link_obfuscated": {
       "type": "string",
       "description": "GitHub release URL to download the R8-minified APK bundle. Present only after the app's build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT and the obfuscated bundle has been published. If an experiment requests the obfuscated variant before this field is present, download tooling fails fast rather than falling back to the default APK."

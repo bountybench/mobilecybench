@@ -1,85 +1,76 @@
-# MobileCybench
+# MobileCyBench
 
-MobileCybench is a framework to capture agentic offensive cyber-capabilities in open source android applications. Each app lives under `apps/<app_name>/` with standardized setup scripts, metadata, probes, and vulnerability scenarios. The runner orchestrates:
+MobileCyBench measures AI agent cybersecurity capabilities. Each experiment
+puts a coding agent in a realistic environment — a working Android app and its
+backend running in an emulator — and asks it to find and exploit a
+vulnerability. Detection is automatic: each app ships CIA
+(confidentiality / integrity / availability) probes that fire when the agent
+takes an action it shouldn't be able to.
 
-## Table of Contents
+Probes are derived from each app's golden flow. We model what the agent's
+account is *legitimately* allowed to do under the app's permissions, then
+place probes at the boundary — so any action that crosses it trips a signal.
 
-1. [Quick Start](#quick-start)
-2. [Prerequisites](#prerequisites)
-3. [Documentation](#documentation)
+> Start at [**`documentation/README.md`**](documentation/README.md) for the
+> curated app list, the source-vs-`apk_only` ablation, and links to the rest
+> of the docs.
 
 ## Prerequisites
 
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
-- Docker Desktop running
-- Java (required for Android builds; setup.sh enforces OpenJDK 17+)
-- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
+- Docker 24+ — Docker Desktop on macOS/Windows, Docker Engine on Linux
+- Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step below)
+- Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by `build_type: "download-apk"` to fetch APK bundles. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
 
-## Quick Start
+Hardware: the Android emulator needs hardware virtualization (KVM on Linux,
+Hypervisor.framework on macOS) — nested-virt cloud VMs must have it enabled.
+Budget ≥ 16 GB RAM and ~50 GB free disk for the emulator + Docker images.
 
-Docker should be running before you start (most apps use containers). This repository is private — ensure your account has access and you've run `gh auth login` before cloning.
+Windows: use WSL or Git Bash; the shell scripts assume a POSIX environment.
+
+## Quick start
 
 ```bash
 git clone https://github.com/bountybench/mobilecybench
 cd mobilecybench
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .\.venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 bash setup.sh --init-submodules
 ```
 
-`--init-submodules` initializes all app codebases. The `zerodays/` task bundle is intentionally skipped — it is only needed for redteam zero-day tasks. To init it separately (requires access): `git submodule update --init zerodays`. Drop `--init-submodules` if you only need the runtime and will init submodules on demand (`runner.py` auto-inits the codebase for the app you run).
-
-To verify your environment without spending tokens, run against the bundled dry-run config — it sets up the full runtime then drops into an interactive shell. **Agent, probes, and scoring are all skipped** (setup smoke test only; see [EXPERIMENTS.md](documentation/EXPERIMENTS.md#dry-run-no-api-calls)):
+Authenticate the agent (Claude Code is the default — see [GETTING_STARTED.md § 3](documentation/GETTING_STARTED.md#3-authenticate-the-agent) for codex/opencode alternatives):
 
 ```bash
-python runner.py owncloud-android --config runner_config_dryrun.json
+cp agent/.env.example agent/.env                    # first time only
+npm install -g @anthropic-ai/claude-code
+claude setup-token
+echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste>' >> agent/.env
 ```
 
-To run the agent for real, set the API key for the model in `runner_config.json`. The default is `gpt-5.5` (OpenAI), so the simplest path is:
+Then run a probe-only experiment against any curated app:
 
 ```bash
-echo OPENAI_API_KEY=sk-... > agent/.env
-python runner.py owncloud-android
+./stop_emulator.sh                                  # ensure none is running
+python runner.py audiobookshelf --config runner_config.json
 ```
 
-The committed `runner_config.json` defaults to probe-only + `malicious_app` (with `network_mode: permissive`), which requires per-app probes (`apps/<app>/test_*.py`) and `generic_probe_config.json`. Switch to `network_mode: restricted` for the exact-FQDN egress firewall.
-
-**To use a different provider**, change `runner_config.json:model` to a supported id *and* put the matching env var in `agent/.env` — they have to match, or the run will fail when the wrong key is loaded:
-
-| Provider | Env var | Example models |
-|---|---|---|
-| OpenAI (Responses API) | `OPENAI_API_KEY` | `gpt-5.5`, `gpt-5.4`, `gpt-5.2` (+ `-pro`, `-codex` variants) |
-| Anthropic (via LiteLLM) | `ANTHROPIC_API_KEY` | `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-opus-4-6` |
-| Google (via LiteLLM) | `GEMINI_API_KEY` | `gemini-3.1-pro`, `gemini-3-pro-preview` |
-
-See `agent/custom/model_providers/factory.py:SupportedModel` for the current list and [Adding a New Model](documentation/ADDING_MODELS.md) to register your own.
-
-A run is defined by three independent axes:
-
-- **Workflow** (`workflow`) — `exploit` (default) tells the agent what to exploit and scores a single verifier run; `redteam` withholds the bug and scores via two-phase patch-differential replay (or, with `probe_only=true`, via a single-baseline app-probe pass — see [Red Team Workflow](documentation/REDTEAM.md)).
-- **Task type** — *synthetic* (a bug we introduce in an app) or *zero-day* (a bug that existed in the wild). Selected by `synthetic_vuln_id` or `task` respectively. `exploit` accepts only synthetic; `redteam` two-phase accepts either; `redteam` probe-only is bundle-less and forbids both.
-- **Attacker model** — `malicious_app` (agent builds an exploit APK) or `remote_attacker` (agent writes `exploit.sh`). Two-phase redteam reads it from the task bundle's `metadata.json`; probe-only takes it from `attacker_model` on the runner config (no task metadata to read).
-
-The committed `runner_config.json` is a probe-only example (`workflow: "redteam"`, `probe_only: true`, `attacker_model: "malicious_app"`, no task / vuln). It runs against any app that ships per-app probes and `generic_probe_config.json` and has a published APK bundle (`build_type: "download-apk"` fetches it on first run). For the exploit and two-phase redteam walkthroughs, see [Experiments](documentation/EXPERIMENTS.md) and [Red Team Workflow](documentation/REDTEAM.md). Run `python runner.py --explain-config` to print the full JSON Schema for `runner_config.json`.
-
-**Important:** Do not start the emulator manually before running `runner.py` — it manages its own emulator lifecycle and will fail if one is already running. If you see `Running emulator(s) detected`, stop all emulators first with `./stop_emulator.sh`.
-
-The emulator helper scripts (`start_emulator.sh`, `check_device.sh`) are for manual debugging and dry-run mode only.
-
-Windows note: `setup.sh` and emulator scripts require WSL or Git Bash.
+Results land in `logs/<run-id>/run_summary.json`.
 
 ## Documentation
 
-- [Getting Started](documentation/GETTING_STARTED.md) — full setup and first run
-- [Adding a New Model](documentation/ADDING_MODELS.md) — register your own model (e.g. when integrating a non-default provider)
-- [Experiments](documentation/EXPERIMENTS.md) — running experiments, configs, build modes
-- [Red Team Workflow](documentation/REDTEAM.md) — redteam scoring and zero-day / synthetic task bundles
-- [Adding Apps](documentation/ADDING_APPS.md) — adding apps (includes full working example)
-- [CI Validation](documentation/CI_VALIDATION.md) — CI modes and local CI
-- [Synthetic Vulnerabilities](documentation/SYNTHETIC_VULNERABILITIES.md) — synthetic vuln workflow
-- [HTTPS Upgrade Guide](documentation/HTTPS_UPGRADE_GUIDE.md) — upgrading apps from HTTP to HTTPS
+Four docs cover the bench-run path end-to-end. The full index is at
+[`documentation/README.md`](documentation/README.md).
+
+- [Documentation index + curated app list + ablation overview](documentation/README.md)
+- [Getting Started](documentation/GETTING_STARTED.md) — setup + first run
+- [Experiments](documentation/EXPERIMENTS.md) — `runner_config.json` reference, pipeline stages, result schema, status codes, MA permission gate
 - [Troubleshooting](documentation/TROUBLESHOOTING.md) — common issues
-- [Architecture](documentation/ARCHITECTURE.md) — system architecture and agent environment
-- [Commands](documentation/COMMANDS.md) — command reference grouped by workflow
-- [GKE Infrastructure](infra/gke/README.md) — running experiments at scale on Google Kubernetes Engine (GKE)
+
+Maintainer-facing material (adding apps / models, BYO agent contracts, GKE
+deployment, CI mechanics, command cheatsheets, deep architecture notes) lives
+in [`documentation/archive/`](documentation/archive/) — kept for reference but
+not needed to run an experiment.
+
+GKE-specific setup (running at scale): [`infra/gke/README.md`](infra/gke/README.md).

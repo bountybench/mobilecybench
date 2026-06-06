@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from jsonschema import validate
+from jsonschema import ValidationError, validate
 
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
@@ -111,102 +111,97 @@ class TestCreateWorkflow:
             RunnerConfig(**{**base_config.model_dump(), "agent_mode": legacy_mode})
 
 
-class TestImageModelCompat:
-    """agent_image (CLI family) ↔ model (provider family) compatibility."""
+class TestExternalModelOwnership:
+    """External images own model validation; RunnerConfig forwards model ids."""
 
-    @pytest.mark.parametrize(
-        "image, model",
-        [
-            ("cybench/mobilecybench:claudecode_2.1.140-r2", "claude-opus-4-7"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "gpt-5.5"),
-        ],
-    )
-    def test_matching_cli_and_provider_ok(self, base_config, image, model):
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": image,
-                "model": model,
-            }
-        )
-        assert cfg.agent_image == image and cfg.model == model
-
-    @pytest.mark.parametrize(
-        "image, model, cli",
-        [
-            ("cybench/mobilecybench:claudecode_2.1.140-r2", "gpt-5.5", "claudecode"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "claude-opus-4-7", "codex"),
-            ("cybench/mobilecybench:codex_0.130.0-r2", "gemini-3.1-pro", "codex"),
-        ],
-    )
-    def test_mismatch_rejected(self, base_config, image, model, cli):
-        with pytest.raises(ValueError, match=cli):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "agent_mode": "external",
-                    "agent_image": image,
-                    "model": model,
-                }
-            )
-
-    def test_unknown_image_tag_is_permissive(self, base_config):
-        """Lab/BYO images that don't match a known CLI prefix bypass the check."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "external",
-                "agent_image": "lab/mycli:0.1",
-                "model": "gemini-3.1-pro",
-            }
-        )
-        assert cfg.agent_image == "lab/mycli:0.1"
-
-    def test_custom_mode_skips_check(self, base_config):
-        """Custom mode is gated by SupportedModel; image-compat is irrelevant."""
-        cfg = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "agent_mode": "custom",
-                "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-                "model": "gpt-5.5",
-            }
-        )
-        assert cfg.agent_mode == "custom"
-
-    @pytest.mark.parametrize(
-        "model",
-        [
-            "opus-4-7",  # missing claude- prefix (real-world typo)
-            "claude-opus-4-typoz",  # substring matches anthropic but model nonexistent
-            "gpt-5.5-typo",
-        ],
-    )
-    def test_external_unknown_model_rejected(self, base_config, model):
-        """External-mode model ids must be in SupportedModel (catches typos)."""
-        with pytest.raises(ValueError, match="Unknown model"):
-            RunnerConfig(
-                **{
-                    **base_config.model_dump(),
-                    "agent_mode": "external",
-                    "agent_image": "cybench/mobilecybench:claudecode_2.1.140-r2",
-                    "model": model,
-                }
-            )
-
-    def test_external_unknown_model_allowed_with_opt_in(self, base_config):
-        """allow_unregistered_models=true bypasses the registered-model check."""
+    def test_external_unknown_model_allowed_for_byo_image(self, base_config):
+        """SupportedModel is not a universal gate for external mode."""
         cfg = RunnerConfig(
             **{
                 **base_config.model_dump(),
                 "agent_mode": "external",
                 "agent_image": "lab/mycli:0.1",
                 "model": "future-model-not-yet-registered",
-                "allow_unregistered_models": True,
             }
         )
         assert cfg.model == "future-model-not-yet-registered"
+
+    def test_external_reference_image_model_pair_left_to_image(self, base_config):
+        """Even reference images own their runtime model contract."""
+        cfg = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "agent_mode": "external",
+                "agent_image": "cybench/mobilecybench:codex_0.130.0-r2",
+                "model": "claude-opus-4-7",
+            }
+        )
+        assert cfg.model == "claude-opus-4-7"
+
+
+class TestReasoningEffortOwnership:
+    """Providers and external images own reasoning_effort validation."""
+
+    @pytest.mark.parametrize("agent_mode", ["custom", "external"])
+    def test_reasoning_effort_accepts_arbitrary_nonempty_string(
+        self, base_config, agent_mode
+    ):
+        cfg = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "agent_mode": agent_mode,
+                "agent_image": "lab/mycli:0.1",
+                "reasoning_effort": "max",
+            }
+        )
+        assert cfg.reasoning_effort == "max"
+
+    def test_reasoning_effort_rejects_empty_string(self, base_config):
+        with pytest.raises(ValueError, match="at least 1 character"):
+            RunnerConfig(**{**base_config.model_dump(), "reasoning_effort": ""})
+
+    def test_task_schema_accepts_arbitrary_reasoning_effort(self):
+        schema_path = Path(__file__).parent.parent / "schemas" / "task.schema.json"
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+        task = {
+            "run_id": "run-1",
+            "app_name": "app",
+            "workflow": "exploit",
+            "package_name": "pkg",
+            "app_server": "",
+            "emulator_server": "",
+            "apk_relpath": "app.apk",
+            "no_codebase": True,
+            "model": "openai/gpt-5.5",
+            "prompt": "go",
+            "agent_wallclock_seconds": 60,
+            "reasoning_effort": "max",
+        }
+
+        validate(instance=task, schema=schema)
+
+    def test_task_schema_rejects_empty_reasoning_effort(self):
+        schema_path = Path(__file__).parent.parent / "schemas" / "task.schema.json"
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+        task = {
+            "run_id": "run-1",
+            "app_name": "app",
+            "workflow": "exploit",
+            "package_name": "pkg",
+            "app_server": "",
+            "emulator_server": "",
+            "apk_relpath": "app.apk",
+            "no_codebase": True,
+            "model": "openai/gpt-5.5",
+            "prompt": "go",
+            "agent_wallclock_seconds": 60,
+            "reasoning_effort": "",
+        }
+
+        with pytest.raises(ValidationError):
+            validate(instance=task, schema=schema)
 
 
 class TestProbeOnlyValidators:
@@ -230,25 +225,25 @@ class TestProbeOnlyValidators:
                 }
             )
 
-    def test_probe_only_with_dry_run_accepted(self, base_config):
-        """probe_only + dry_run must validate: dry_run runs the full
-        setup (Docker, APK, emulator, Kali) then short-circuits before
-        agent invocation and scoring, giving an API-key-free smoke test
-        for the probe_only path. Contract pinned by
-        `runner_config_dryrun.json`."""
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "task": None,
-                "synthetic_vuln_id": None,
-                "attacker_model": "malicious_app",
-                "probe_only": True,
-                "dry_run": True,
-            }
-        )
-        assert config.probe_only is True
-        assert config.dry_run is True
+    def test_probe_only_with_dry_run_rejected(self, base_config):
+        """dry_run short-circuits into the interactive shell with no
+        scoring. probe_only=True + dry_run=True previously passed
+        validation and silently dropped the operator into Kali with no
+        probe verdict."""
+        with pytest.raises(
+            ValueError, match=r"probe_only is incompatible with dry_run"
+        ):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "redteam",
+                    "task": None,
+                    "synthetic_vuln_id": None,
+                    "attacker_model": "malicious_app",
+                    "probe_only": True,
+                    "dry_run": True,
+                }
+            )
 
 
 class TestRun:
@@ -442,6 +437,65 @@ class TestRun:
             assert run(dry_run_config, "test_app", tmp_path) == 0
 
         assert call_order == ["save_artifacts", "cleanup"]
+
+    def test_replay_mode_skips_artifact_save(self, base_config, tmp_path):
+        """Replay mode must NOT re-save artifacts in the cleanup finally.
+
+        The agent never runs, so the container's /app/agent_exploit/ holds only
+        setup-time scaffolding. Saving it would overlay the staged artifact we
+        just evaluated. evaluate() still runs; cleanup() still tears down.
+        """
+        call_order = []
+
+        saved = tmp_path / "saved" / "agent_exploit"
+        saved.mkdir(parents=True)
+        (saved / "exploit.sh").write_text("# real replayed exploit\n")
+
+        replay_config = RunnerConfig(
+            **{**base_config.model_dump(), "replay_exploit_dir": str(saved.parent)}
+        )
+
+        class FakeWorkflow:
+            metadata = {}
+            emulator = None
+            agent_env = object()  # truthy: would trigger the salvage save
+
+            def __init__(self):
+                self.app_dir = tmp_path / "apps" / "test_app"
+
+            def validate_arguments(self):
+                pass
+
+            def setup_runtime_environment(self):
+                pass
+
+            def setup_agent(self):
+                call_order.append("setup_agent")
+
+            def run_agent(self):
+                call_order.append("run_agent")
+                return {"status": "completed"}
+
+            def save_artifacts(self, logs_dir):
+                call_order.append("save_artifacts")
+
+            def evaluate(self):
+                call_order.append("evaluate")
+                return {"score": 1}
+
+            def cleanup(self):
+                call_order.append("cleanup")
+
+        with patch("runner.ensure_app_submodule"), patch(
+            "runner.create_workflow", return_value=FakeWorkflow()
+        ):
+            assert run(replay_config, "test_app", tmp_path) == 0
+
+        # Agent phase skipped; artifact never re-saved over the replayed copy.
+        assert "setup_agent" not in call_order
+        assert "run_agent" not in call_order
+        assert "save_artifacts" not in call_order
+        assert call_order == ["evaluate", "cleanup"]
 
     def test_writes_run_summary_json(self, base_config, tmp_path):
         """Run writes structured run_summary.json with key fields."""

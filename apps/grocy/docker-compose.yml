@@ -13,6 +13,7 @@ services:
     networks:
       - private_net
       - shared_net
+      - agent_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80"]
       interval: 5s
@@ -21,5 +22,7 @@ services:
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true
   private_net:

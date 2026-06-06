@@ -54,6 +54,29 @@ Examples:
 """
 
 
+def _check_failures(
+    results: dict[str, str],
+    *,
+    obfuscated: bool = False,
+) -> dict[str, str]:
+    """Return check results that should make ``--check`` exit non-zero.
+
+    Default checks keep the historical behavior of treating a missing
+    ``download_link`` as informational, because not every app has a prebuilt
+    default APK. Obfuscated checks are stricter: direct ``--obfuscated``
+    downloads refuse to fetch without ``download_link_obfuscated``, so
+    ``--check --obfuscated`` must fail on ``no_link`` too.
+    """
+    allowed_statuses = {"ok"}
+    if not obfuscated:
+        allowed_statuses.add("no_link")
+    return {
+        name: status
+        for name, status in results.items()
+        if status not in allowed_statuses
+    }
+
+
 def main():
     project_root = Path(__file__).resolve().parent
     apps_dir = project_root / "apps"
@@ -75,11 +98,16 @@ def main():
         results = check_releases(app_names, project_root, obfuscated=obfuscated)
         for name, status in sorted(results.items()):
             print(f"  {status:<10} {name}")
-        failures = {n: s for n, s in results.items() if s not in ("ok", "no_link")}
+        failures = _check_failures(results, obfuscated=obfuscated)
         if failures:
-            print(
-                f"\n{len(failures)} app(s) have broken download_links.", file=sys.stderr
-            )
+            if obfuscated:
+                message = (
+                    f"\n{len(failures)} app(s) have missing or broken "
+                    "download_link_obfuscated values."
+                )
+            else:
+                message = f"\n{len(failures)} app(s) have broken download_links."
+            print(message, file=sys.stderr)
         sys.exit(1 if failures else 0)
 
     if not positional:

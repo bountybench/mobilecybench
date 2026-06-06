@@ -1,29 +1,22 @@
 {
   "$schema": "./schemas/runner_config.schema.json",
-
-  "workflow": "redteam",
-  "probe_only": true,
-  "attacker_model": "malicious_app",
-  "task": null,
-  "synthetic_vuln_id": null,
-  "no_codebase": false,
-
-  "agent_mode": "custom",
-  "model": "gpt-5.5",
-  "reasoning_effort": "high",
+  "build_type": "download-apk",
   "max_iterations": 30,
   "max_model_response_tokens": 8192,
-  "additional_system_prompt": null,
-  "allow_unregistered_models": false,
-
-  "agent_image": "cybench/mobilecybench:latest",
-  "build_type": "download-apk",
-  "emulator_backend": "native",
-  "emulator_display": "headed",
-  "network_mode": "permissive",
-
+  "reasoning_effort": "high",
+  "model": "gpt-5.5",
+  "allow_unregistered_models_in_custom_mode": false,
+  "agent_mode": "custom",
   "dry_run": true,
   "gold_run": false,
-
+  "workflow": "exploit",
+  "task": null,
+  "no_codebase": false,
+  "synthetic_vuln_id": "vuln_0",
+  "additional_system_prompt": null,
+  "agent_image": "cybench/mobilecybench:latest",
+  "emulator_display": "headed",
+  "emulator_backend": "native",
+  "network_mode": "permissive",
   "llm_request_timeout_ms": 600000
 }

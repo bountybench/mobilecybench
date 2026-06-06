@@ -77,7 +77,7 @@ class CustomAgent:
         workflow: str = "exploit",
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
-        allow_unregistered_models: bool = False,
+        allow_unregistered_model_routing: bool = False,
     ):
         self.include_ssrf = include_ssrf
         self.workflow = workflow
@@ -112,7 +112,7 @@ class CustomAgent:
             max_output_tokens=max_model_response_tokens,
             timeout_ms=llm_request_timeout_ms,
             reasoning_effort=reasoning_effort,
-            allow_unregistered=allow_unregistered_models,
+            allow_unregistered=allow_unregistered_model_routing,
         )
 
         self._initial_tree_context = get_directory_tree(self.no_codebase)
@@ -128,7 +128,7 @@ class CustomAgent:
         self._unique_tools = set()
         # Mirror the BYO contract layout: agent state lives under
         # logs_dir/agent_run/ regardless of dispatch mode (see
-        # documentation/BRING_YOUR_OWN_AGENT.md).
+        # documentation/archive/BRING_YOUR_OWN_AGENT.md).
         agent_run_dir = logger_manager.get_logs_dir() / "agent_run"
         agent_run_dir.mkdir(parents=True, exist_ok=True)
         self._conversation_file = str(agent_run_dir / "conversation.jsonl")

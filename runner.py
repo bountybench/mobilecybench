@@ -9,6 +9,7 @@ This runner uses the Workflow abstraction to handle different evaluation modes:
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -240,6 +241,7 @@ def run(
     exit_code = 1
 
     gold_source_dir: Optional[Path] = None
+    replay_source_dir: Optional[Path] = None
     try:
         # Initialize submodules before any task/app metadata reads. Redteam
         # attacker-model reconciliation and gold-source resolution both touch
@@ -278,6 +280,18 @@ def run(
                 project_root=project_root,
                 is_apk_exploit=is_apk_exploit,
             )
+        elif config.replay_exploit_dir:
+            # Stage-2-only ("replay") mode: reuse a previously-saved
+            # agent_exploit/ instead of running the agent. Accept either the
+            # agent_exploit dir itself or a run-log dir that contains one.
+            replay_source_dir = Path(config.replay_exploit_dir)
+            if (replay_source_dir / "agent_exploit").is_dir():
+                replay_source_dir = replay_source_dir / "agent_exploit"
+            if not replay_source_dir.is_dir():
+                raise ValueError(
+                    "replay_exploit_dir does not exist or is not a directory: "
+                    f"{config.replay_exploit_dir}"
+                )
 
         workflow = create_workflow(config, app_name, project_root)
         workflow_type = type(workflow).__name__
@@ -303,6 +317,18 @@ def run(
                 is_apk_exploit=is_apk_exploit,
             )
             logger.info("Staged gold exploit into %s", staged)
+        elif replay_source_dir:
+            # Copy the saved artifact straight into the fresh run's logs dir;
+            # evaluate() reads logs_dir/agent_exploit/. No kali staging needed.
+            replay_dest = logger_manager.get_logs_dir() / "agent_exploit"
+            if replay_dest.exists():
+                shutil.rmtree(replay_dest)
+            shutil.copytree(replay_source_dir, replay_dest)
+            logger.info(
+                "Staged saved exploit for replay: %s -> %s",
+                replay_source_dir,
+                replay_dest,
+            )
 
         if config.dry_run:
             logger.info("Dry run mode - launching interactive shell...")
@@ -312,11 +338,14 @@ def run(
             outcome = "success"
             exit_reason = "dry_run_completed"
             exit_code = 0
-        elif gold_source_dir:
-            logger.info("gold-run mode — evaluating prestaged exploit artifact...")
+        elif gold_source_dir or replay_source_dir:
+            mode = "gold-run" if gold_source_dir else "replay"
+            logger.info("%s mode — evaluating prestaged exploit artifact...", mode)
             evaluation = workflow.evaluate() or {}
             _log_evaluation_result(evaluation)
-            exit_reason = "gold_run_completed"
+            exit_reason = (
+                "gold_run_completed" if gold_source_dir else "replay_completed"
+            )
             run_result = normalize_agent_result({"status": "completed"})
             run_result["status"] = exit_reason
             score = evaluation.get("score")
@@ -397,7 +426,16 @@ def run(
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
 
-        if workflow and workflow.agent_env:
+        # Skip this salvage save when the exploit was prestaged (gold/replay)
+        # rather than produced by an agent run. The agent never ran, so the
+        # container's /app/agent_exploit/ holds only setup-time scaffolding
+        # (empty for RA; the malicious_app template for MA). save_artifacts
+        # would extract that over logs_dir/agent_exploit/ — overwriting the
+        # artifact we just staged and evaluated. The agent path saves its own
+        # artifacts in its inner finally and nulls agent_env, so it never
+        # reaches here.
+        prestaged = bool(gold_source_dir or replay_source_dir)
+        if workflow and workflow.agent_env and not prestaged:
             try:
                 workflow.save_artifacts(logger_manager.get_logs_dir())
             except Exception as e:
@@ -485,7 +523,7 @@ def main():
     # Initialize LoggerManager with config before any logging occurs
     from utils.logger import get_logger_manager
 
-    get_logger_manager(config=config.model_dump())
+    get_logger_manager(config=config.model_dump(), app_name=args.app_name)
 
     exit_code = run(
         config,

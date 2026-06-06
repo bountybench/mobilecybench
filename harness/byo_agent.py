@@ -264,13 +264,22 @@ def run_agent(
         _pull_artifacts(env, host_artifact_dir)
 
     raw, decoder_error = _read_result_json(host_artifact_dir)
-    if raw is None:
+    synthesized = raw is None
+    if synthesized:
         raw = _synthesize_result(
             timed_out=timed_out,
             exit_code=exit_code,
             decoder_error=decoder_error,
             daemon_error=daemon_error,
         )
+
+    # SIGKILL can fire before the in-container runner's SIGTERM handler
+    # writes a final status, leaving the in-flight "unknown" snapshot on
+    # disk. Override only that stale case; preserve real completed/error
+    # statuses the runner finalized in time, and preserve daemon_error /
+    # decoder_error precedence from _synthesize_result.
+    if timed_out and not synthesized and raw.get("status") == "unknown":
+        raw["status"] = "timeout"
 
     # Stamp the image-identity fields so write_run_summary picks them up.
     # Returns the raw dict; runner-side normalize_agent_result is the single

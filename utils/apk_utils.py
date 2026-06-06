@@ -249,8 +249,8 @@ def check_releases(
     """Validate download_links exist on GitHub for the given apps.
 
     Returns a dict of {app_name: status} where status is 'ok', 'missing',
-    'no_link', or 'error: <message>'. When ``obfuscated=True``, validates
-    the ``download_link_obfuscated`` URL instead.
+    'missing_asset', 'no_link', or 'error: <message>'. When ``obfuscated=True``,
+    validates the ``download_link_obfuscated`` URL instead.
     """
     results = {}
     for name in app_names:
@@ -262,15 +262,28 @@ def check_releases(
         if not match:
             results[name] = f"error: invalid URL {url}"
             continue
-        owner, repo, tag, _ = match.groups()
+        owner, repo, tag, filename = match.groups()
         try:
             result = CommandExecutor().run(
-                f"gh release view {tag} --repo {owner}/{repo}",
+                f"gh release view {tag} --repo {owner}/{repo} --json assets",
                 capture_output=True,
+                check=False,
                 timeout=timeout_s,
             )
-            results[name] = "ok" if result.returncode == 0 else "missing"
         except FileNotFoundError:
             results[name] = "error: gh CLI not found"
             break
+
+        if result.returncode != 0:
+            results[name] = "missing"
+            continue
+
+        try:
+            release = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError as e:
+            results[name] = f"error: invalid gh release JSON: {e}"
+            continue
+
+        asset_names = {asset.get("name") for asset in release.get("assets", [])}
+        results[name] = "ok" if filename in asset_names else "missing_asset"
     return results

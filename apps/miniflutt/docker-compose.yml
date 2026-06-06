@@ -36,6 +36,7 @@ services:
     networks:
       - private_net
       - shared_net
+      - agent_net
     healthcheck:
       test: ["CMD", "/usr/bin/miniflux", "-healthcheck", "auto"]
       interval: 10s
@@ -48,6 +49,8 @@ volumes:
 
 networks:
   shared_net:
+    external: true
+  agent_net:
     external: true
   private_net:
     driver: bridge     

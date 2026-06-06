@@ -12,27 +12,33 @@ ANDROID_APK_HASH_FILE="${SCRIPT_DIR}/apk_hash_baseline.txt"
 
 KARAF_PASSWORD=${KARAF_PASSWORD:-}
 KARAF_SSH_KEY=${KARAF_SSH_KEY:-}
+OPENHAB_JSONDB_USERS_PRESEEDED=0
 
 read_secrets() {
   local secrets_file="$SCRIPT_DIR/secrets.json"
   local metadata_file="$SCRIPT_DIR/metadata.json"
+  ADMINUSER_USERNAME="${ADMINUSER_USERNAME:-adminuser}"
+  ADMINUSER_PASSWORD="${ADMINUSER_PASSWORD:-}"
+  NONADMINUSER_USERNAME="${NONADMINUSER_USERNAME:-nonadminuser}"
+  NONADMINUSER_PASSWORD="${NONADMINUSER_PASSWORD:-}"
+
   if [ -f "$secrets_file" ] && command -v jq >/dev/null 2>&1; then
-    ADMINUSER_USERNAME=$(jq -r '.adminuser_username' "$secrets_file" 2>/dev/null || echo "adminuser")
-    ADMINUSER_PASSWORD=$(jq -r '.adminuser_password' "$secrets_file" 2>/dev/null || echo "")
+    ADMINUSER_USERNAME=$(jq -r '.adminuser_username // "adminuser"' "$secrets_file" 2>/dev/null || echo "adminuser")
+    ADMINUSER_PASSWORD=$(jq -r '.adminuser_password // ""' "$secrets_file" 2>/dev/null || echo "")
 
     if [ -f "$metadata_file" ]; then
-      NONADMINUSER_USERNAME=$(jq -r '.username' "$metadata_file" 2>/dev/null || echo "nonadminuser")
-      NONADMINUSER_PASSWORD=$(jq -r '.password' "$metadata_file" 2>/dev/null || echo "")
+      NONADMINUSER_USERNAME=$(jq -r '.username // "nonadminuser"' "$metadata_file" 2>/dev/null || echo "nonadminuser")
+      NONADMINUSER_PASSWORD=$(jq -r '.password // ""' "$metadata_file" 2>/dev/null || echo "")
     else
       log_warn "metadata.json not found, skipping nonadminuser setup"
       NONADMINUSER_USERNAME=""
       NONADMINUSER_PASSWORD=""
     fi
-
-    export ADMINUSER_USERNAME ADMINUSER_PASSWORD NONADMINUSER_USERNAME NONADMINUSER_PASSWORD
   else
     log_warn "secrets.json not found or jq not available, using default users"
   fi
+
+  export ADMINUSER_USERNAME ADMINUSER_PASSWORD NONADMINUSER_USERNAME NONADMINUSER_PASSWORD
 }
 
 if [ -z "${KARAF_SSH_KEY:-}" ] && [ -f "$SCRIPT_DIR/.ssh/openhab_karaf_id" ]; then
@@ -96,6 +102,42 @@ wait_for_docker_container_ready() {
     done
     fatal "Container '$container' did not become healthy after ${timeout}s"
 }
+
+ensure_bind_mount_file() {
+  local path="$1"
+  local fallback_contents="$2"
+
+  # Docker requires the host side of these file bind mounts to be files. If the
+  # path is absent or has become a directory, `docker compose up` fails with
+  # "not a directory" while mounting it onto the file path in the container.
+  if [ -d "$path" ]; then
+    log_warn "Bind-mount source $path is a directory; replacing it with a file"
+    rm -rf "$path"
+  fi
+
+  mkdir -p "$(dirname "$path")" 2>/dev/null || true
+  if [ ! -f "$path" ]; then
+    log_warn "Bind-mount source $path is missing; creating fallback file"
+    printf "%s\n" "$fallback_contents" > "$path"
+  fi
+  chmod 644 "$path" 2>/dev/null || true
+}
+
+ensure_openhab_bind_mount_sources() {
+  local cfg_file="$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
+  local sitemap_file="$SCRIPT_DIR/openhab_conf/sitemaps/home.sitemap"
+
+  ensure_bind_mount_file "$cfg_file" \
+"org.apache.karaf.shell:sshHost = 0.0.0.0
+org.openhab.restauth:allowBasicAuth = true
+org.openhab.restauth:implicitUserRole=false"
+
+  ensure_bind_mount_file "$sitemap_file" \
+"sitemap home label=\"Smart Home\" {
+    Text label=\"Smart Home\"
+}"
+}
+
 
 update_runtime_cfg() {
   local cfg_file="$SCRIPT_DIR/openhab_conf/services/runtime.cfg"
@@ -183,22 +225,40 @@ users_exist_in_jsondb() {
     return 1
   fi
   # Check that both admin and nonadmin users exist
-  python3 -c "
+  python3 - "$users_file" "${ADMINUSER_USERNAME:-adminuser}" "${NONADMINUSER_USERNAME:-nonadminuser}" <<'PY' 2>/dev/null
 import json, sys
-with open('$users_file') as f:
+users_file, admin_username, nonadmin_username = sys.argv[1:4]
+with open(users_file) as f:
     db = json.load(f)
-admin = db.get('$ADMINUSER_USERNAME', {}).get('value', {})
-nonadmin = db.get('$NONADMINUSER_USERNAME', {}).get('value', {})
+admin = db.get(admin_username, {}).get('value', {})
+nonadmin = db.get(nonadmin_username, {}).get('value', {})
 if 'administrator' in admin.get('roles', []) and nonadmin.get('name'):
     sys.exit(0)
 sys.exit(1)
-" 2>/dev/null
+PY
+}
+
+record_preseeded_jsondb_users() {
+  # If the committed JSONDB users are present before startup, they are
+  # sufficient for this benchmark; no Karaf SSH user creation is needed.
+  if users_exist_in_jsondb; then
+    OPENHAB_JSONDB_USERS_PRESEEDED=1
+    log_info "Valid preseeded users found in JSONDB; Karaf SSH user setup will be skipped"
+  else
+    OPENHAB_JSONDB_USERS_PRESEEDED=0
+    log_warn "Preseeded JSONDB users were not found/valid; Karaf SSH user setup may be needed"
+  fi
 }
 
 setup_karaf() {
   # Skip Karaf SSH user creation if users already exist in JSONDB.
   # The JSONDB is a bind-mounted file that persists across container restarts,
   # so openHAB will load these users automatically.
+  if [ "${OPENHAB_JSONDB_USERS_PRESEEDED:-0}" = "1" ]; then
+    log_info "Users were preseeded in JSONDB before startup — skipping Karaf SSH setup"
+    return 0
+  fi
+
   if users_exist_in_jsondb; then
     log_info "Users already exist in JSONDB — skipping Karaf SSH setup"
     return 0
@@ -403,11 +463,14 @@ main() {
   create_env_file
 
   "$SCRIPT_DIR/setup_mosquitto.sh"
+  ensure_openhab_bind_mount_sources
+  update_runtime_cfg
+  record_preseeded_jsondb_users
+
   log_info "Starting docker compose services..."
   docker compose up -d
 
   wait_for_docker_container_ready 600
-  update_runtime_cfg
 
   # Users are pre-committed in openhab_userdata/jsondb/users.json and
   # bind-mounted into the container. Only run Karaf as a fallback.

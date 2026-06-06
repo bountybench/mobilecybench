@@ -18,8 +18,8 @@ explain what is different.
 ```
 
 Task-type-specific files are documented in:
-- `documentation/SYNTHETIC_VULNERABILITIES.md`
-- `documentation/ZERODAY_TASKS.md`
+- `SYNTHETIC_VULNERABILITIES.md`
+- `ZERODAY_TASKS.md`
 
 ## Shared files
 
@@ -33,15 +33,15 @@ belongs in `apps/<app>/metadata.json`.
 
 Publication or disclosure scheduling metadata is out of band. Zero-day task
 validation only consumes the execution contract described in
-`documentation/ZERODAY_TASKS.md`; fields such as `public_on` belong in report
+`ZERODAY_TASKS.md`; fields such as `public_on` belong in report
 or publication tooling, not in the task bundle itself.
 
 ### Exploit artifact under `exploit_files/`
 
 The authoritative exploit lives under `exploit_files/`. The exact format
 depends on the task type. Task-type-specific contents are documented in:
-- `documentation/SYNTHETIC_VULNERABILITIES.md`
-- `documentation/ZERODAY_TASKS.md`
+- `SYNTHETIC_VULNERABILITIES.md`
+- `ZERODAY_TASKS.md`
 
 #### Zero-day attack models
 

@@ -64,9 +64,9 @@
       "exclusiveMinimum": 0
     },
     "reasoning_effort": {
-      "description": "Reasoning effort hint forwarded to providers that accept it. Models without a reasoning-effort knob ignore this field.",
+      "description": "Opaque reasoning effort / variant string forwarded verbatim to the external agent image. Provider/CLI owns value validation.",
       "type": ["string", "null"],
-      "enum": ["low", "medium", "high", null]
+      "minLength": 1
     }
   },
   "required": [

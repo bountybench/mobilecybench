@@ -155,7 +155,10 @@ class ClaudeCodeEventParser(BaseEventParser):
                 f"[ClaudeCode] Completed: {self.agent_reported_turns} turns, cost={cost_str}"
             )
         elif data.get("subtype") == "error":
-            logger.error(f"[ClaudeCode] Error: {data.get('error')}")
+            # Terminal — `result` is end-of-run by definition.
+            err = data.get("error")
+            self.terminal_error = f"claude-code: {err}"
+            logger.error(f"[ClaudeCode] Error: {err}")
 
     def _record_usage(self, usage: dict[str, Any]) -> None:
         """Project claude's ``usage`` blob onto canonical token_totals names.

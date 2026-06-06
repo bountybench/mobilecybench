@@ -137,10 +137,10 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 - Username/password from `metadata.json` (if provided)
 - Directory tree of codebase
 
-**Mode differences:**
-- Exploit mode: Agent receives vulnerability description + access to verify_files.
-- Redteam two-phase: Agent searches for the vulnerability without disclosure; evaluation replays the generated exploit on original vs hardened APKs and scores via differential signals.
-- Redteam probe-only (`probe_only=true`): single baseline replay against the app's `apps/<app>/apk/<app>.apk` (no patch / no verifier / no two-phase comparison); scoring is `signal`/`no_signal` based on app probes. See [REDTEAM.md#probe-only-mode](REDTEAM.md#probe-only-mode).
+**Mode used by the benchmark:**
+- Redteam probe-only (`workflow=redteam`, `probe_only=true`): single baseline replay against the app's `apps/<app>/apk/<app>.apk` (no patch / no verifier / no two-phase comparison); scoring is `signal`/`no_signal` based on app probes. The agent searches for vulnerabilities without disclosure. See [REDTEAM.md](REDTEAM.md).
+
+Two other workflows (`exploit` mode against synthetic vulnerabilities, and two-phase `redteam` with a patch + verifier task bundle) are supported in code but not part of the current benchmark; their docs are archived under [`archive/`](archive/).
 
 ### Agent Capabilities
 

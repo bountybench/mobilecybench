@@ -53,33 +53,12 @@ fi
 adb -a start-server
 
 # ─── Build runner config with GKE overrides ─────────────────────────────────
+# Override logic lives in build_runner_config.sh so it can be unit-tested
+# without a full DinD/emulator boot.
 CONFIG_SRC="/mobilecybench/runner_config.json"
 CONFIG_DST="/tmp/runner_config.json"
 
-EMULATOR_BACKEND="${EMULATOR_BACKEND:-container}"
-
-# Normalize boolean env vars to JSON-safe "true"/"false" for jq --argjson
-normalize_bool() { [[ "${1,,}" == "true" || "$1" == "1" ]] && echo true || echo false; }
-DRY_RUN="$(normalize_bool "${DRY_RUN:-false}")"
-GOLD_RUN="$(normalize_bool "${GOLD_RUN:-false}")"
-
-if [ -f "$CONFIG_SRC" ]; then
-    jq --arg model "$MODEL" \
-       --arg vuln "$VULN_ID" \
-       --arg em "$EMULATOR_BACKEND" \
-       --argjson dryrun "$DRY_RUN" \
-       --argjson goldrun "$GOLD_RUN" \
-       '.emulator_display = "headless"
-        | .emulator_backend = $em
-        | .dry_run = $dryrun
-        | .gold_run = $goldrun
-        | if $model != "" then .model = $model else . end
-        | if $vuln != "" then .synthetic_vuln_id = $vuln else . end' \
-       "$CONFIG_SRC" > "$CONFIG_DST"
-else
-    echo "ERROR: $CONFIG_SRC not found"
-    exit 1
-fi
+bash /mobilecybench/infra/gke/build_runner_config.sh "$CONFIG_SRC" "$CONFIG_DST"
 
 echo "Runner config:"
 cat "$CONFIG_DST"
@@ -97,12 +76,23 @@ set -e
 # ─── Upload results to GCS ──────────────────────────────────────────────────
 if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
     RUN_ID="${RUN_ID:-$(date +%s)}"
-    GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"
+    # Build the object prefix from non-empty segments only — VULN_ID (and
+    # sometimes MODEL) are empty in probe-only mode and would otherwise
+    # produce empty "//" path components.
+    path_segs=("$APP_NAME")
+    [ -n "${VULN_ID:-}" ] && path_segs+=("$VULN_ID")
+    [ -n "${MODEL:-}" ] && path_segs+=("$MODEL")
+    path_segs+=("$RUN_ID")
+    GCS_PATH="gs://$GCS_BUCKET/$(IFS=/; echo "${path_segs[*]}")/"
     echo "Uploading results to $GCS_PATH"
-    # Real runs land at logs/experiment_*; gold runs at logs/gold/experiment_*_gold (see utils/logger.py).
-    shopt -s nullglob
-    dirs=("$MOBILECYBENCH_LOGS_DIR"/experiment_* "$MOBILECYBENCH_LOGS_DIR"/gold/experiment_*)
-    shopt -u nullglob
+    # Identify run dirs by the presence of run_summary.json (content-based,
+    # decoupled from the runner's directory-naming convention so the name
+    # can change without touching the GKE pipeline). Covers both real runs
+    # (logs/<run>/) and gold runs (logs/gold/<run>_gold/).
+    dirs=()
+    while IFS= read -r summary; do
+        dirs+=("$(dirname "$summary")")
+    done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)
     if [ ${#dirs[@]} -gt 0 ]; then
         gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
     else

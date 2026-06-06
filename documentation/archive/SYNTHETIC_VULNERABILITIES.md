@@ -85,7 +85,7 @@ If you're struggling to find a matching CVE or design a synthetic vulnerability,
 
 ## Task layout
 
-Synthetic tasks use the shared task-file contract from `documentation/TASK.md`.
+Synthetic tasks use the shared task-file contract from `TASK.md`.
 What synthetic tasks add on top of that shared layout is:
 - `vulnerability.patch`, which creates the vulnerable comparator
 - metadata linking the task to a real CVE and CVSS/CWE information
@@ -202,7 +202,7 @@ The exploit file layout is enforced at validation time (both by
 The two shapes are mutually exclusive — a synth vuln cannot ship both.
 
 For the shared task files (`exploit.sh`, `prepare_app.sh`, `verify_exploit.sh`)
-and verifier design rules, see `documentation/TASK.md`.
+and verifier design rules, see `TASK.md`.
 
 ### scenario.json
 
@@ -254,8 +254,8 @@ Use `publish_apk_bundle.sh` to publish prebuilt APKs to GitHub releases:
 
 ## Running and Testing
 
-- **Agent evaluation:** See `documentation/EXPERIMENTS.md` (exploit mode)
-- **Local CI testing:** See `documentation/CI_VALIDATION.md` (`--test-synthetic-vuln` flag)
+- **Agent evaluation:** See `../EXPERIMENTS.md` (exploit mode)
+- **Local CI testing:** See `CI_VALIDATION.md` (`--test-synthetic-vuln` flag)
 
 ## Detailed Example: XMPP Carbon Copy Impersonation
 

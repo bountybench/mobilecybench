@@ -1024,9 +1024,12 @@ def make_result(
         "baseline_coherent": 1 if status != "error" else 0,
         **checks,
     }
-    result["score"] = (
-        1 if status == "secure" and all(v == 1 for v in checks.values()) else 0
-    )
+    if status == "error":
+        result["score"] = None
+    elif status == "secure" and all(v == 1 for v in checks.values()):
+        result["score"] = 1
+    else:
+        result["score"] = 0
     if evidence is not None:
         result["evidence"] = evidence
     if error:

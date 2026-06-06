@@ -419,13 +419,29 @@ def add_account_login(d, username, password):
 
 
 def submit_login(d):
-    """Click the Save/Next button to submit login."""
+    """Click the Save/Next button to submit login.
+
+    Robustness vs. the bare `.exists` check: the previous implementation
+    treated a first-miss as fatal, which surfaced as `prepare_victim_crash`
+    in production runs where the soft keyboard hadn't fully retracted by
+    the time we reached this step (race after `fill_login_form`'s 0.3s
+    post-back sleep). Wait briefly first, then try scrolling the form to
+    bring the button above the fold. Same idiom as `apps/openhab`'s
+    scroll-to-row fix (PR #1172) and `apps/gotify/ui_automation/login.py`.
+    """
     log("Submitting login...", SCRIPT_NAME)
 
     save_button = d(resourceId="eu.siacs.conversations:id/save_button")
-    if not save_button.exists:
-        log("[ERROR] Save button not found", SCRIPT_NAME)
-        return False
+    if not save_button.wait(timeout=TIMEOUT_FAST):
+        try:
+            scrollable = d(scrollable=True)
+            if scrollable.exists:
+                scrollable.scroll.to(resourceId="eu.siacs.conversations:id/save_button")
+        except Exception as e:
+            log(f"[WARN] scroll-to save_button raised {e!r}", SCRIPT_NAME)
+        if not save_button.exists:
+            log("[ERROR] Save button not found", SCRIPT_NAME)
+            return False
 
     pre_click_hierarchy = d.dump_hierarchy(compressed=True)
     save_button.click()

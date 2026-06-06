@@ -61,7 +61,9 @@ def _load_dotenv_if_present() -> None:
 def _read_model_from_config(config_path: Path) -> tuple[str, bool]:
     """Return (model, allow_unregistered) from runner_config.json."""
     data = json.loads(config_path.read_text())
-    return data["model"], bool(data.get("allow_unregistered_models", False))
+    return data["model"], bool(
+        data.get("allow_unregistered_models_in_custom_mode", False)
+    )
 
 
 def main() -> int:
@@ -83,12 +85,15 @@ def main() -> int:
     parser.add_argument(
         "--allow-unregistered",
         action="store_true",
-        help="Force allow_unregistered_models=true regardless of config.",
+        help=(
+            "Force allow_unregistered_models_in_custom_mode=true regardless "
+            "of config."
+        ),
     )
     parser.add_argument(
         "--reasoning-effort",
         default=None,
-        help="Optional reasoning_effort (low/medium/high).",
+        help="Optional reasoning_effort / variant string forwarded verbatim.",
     )
     args = parser.parse_args()
 
