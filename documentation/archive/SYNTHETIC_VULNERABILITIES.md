@@ -57,7 +57,7 @@ A close match on CVSS vector components is sufficient. CVSS scoring is inherentl
 ./cve_query.py --year 2024 find --cwe CWE-89 --av NETWORK
 ```
 
-See [`experimental/ANDROID_CVE_DATA.md`](../experimental/ANDROID_CVE_DATA.md) for full dataset details and query reference.
+See [`experimental/ANDROID_CVE_DATA.md`](../../experimental/ANDROID_CVE_DATA.md) for full dataset details and query reference.
 
 ### Example: Conversations Carbon Spoof vs CVE-2025-27916
 
@@ -92,7 +92,7 @@ What synthetic tasks add on top of that shared layout is:
 
 ```text
 apps/<app_name>/
-├── prepare_victim.sh                   # Optional, per-app; see REDTEAM.md
+├── prepare_victim.sh                   # Optional, per-app; see ../EXPERIMENTS.md
 ├── synthetic_vulnerabilities/
 │   └── vuln_0/
 │       ├── metadata.json

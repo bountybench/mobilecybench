@@ -14,7 +14,7 @@ This page documents the **`external`** contract. The reference codex, claude-cod
 Your image ships an executable `/run-agent.sh`. Before invoking your agent, `agent/runtime/container.py:setup_agent_environment` creates the container (with `command="sleep infinity"`), installs the test CA, and mounts `/app/codebase` (or `/app/apk` when `no_codebase=true`). The harness (`harness/byo_agent.py`) then delivers `/app/task.json` and `docker exec`s `/run-agent.sh`. Your script reads the task, runs whatever agent loop you want, and writes:
 
 - `/app/agent_run/result.json` — required; the harness reads this for `status`, `turns_taken`, etc.
-- `/app/agent_run/conversation.jsonl` — one JSON object per turn. Rows should conform to the keys + types in [`schemas/conversation_turn.schema.json`](../schemas/conversation_turn.schema.json); reference `BaseEventParser` subclasses emit conformant rows automatically.
+- `/app/agent_run/conversation.jsonl` — one JSON object per turn. Rows should conform to the keys + types in [`schemas/conversation_turn.schema.json`](../../schemas/conversation_turn.schema.json); reference `BaseEventParser` subclasses emit conformant rows automatically.
 - `/app/agent_run/agent.log` — captured via `exec >>$RUN_DIR/agent.log 2>&1` in the script.
 - `/app/agent_exploit/exploit.sh` (RA workflow) **or** `/app/agent_exploit/exploit_apk/dist/com.mobilecybench.exploit.apk` (MA workflow) — the work-product probes score.
 
@@ -88,7 +88,7 @@ No `trap` / no `setsid` / no graceful-shutdown logic in this example. The harnes
 
 ## `task.json` (input)
 
-Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `vuln_id`, `attacker_model`, `reasoning_effort` (in practice the harness always emits these too).
+Schema: [`schemas/task.schema.json`](../../schemas/task.schema.json) — authoritative; this table is a tour. Required keys per schema: `run_id`, `app_name`, `workflow`, `package_name`, `app_server`, `emulator_server`, `apk_relpath`, `no_codebase`, `model`, `prompt`, `agent_wallclock_seconds`. Optional: `vuln_id`, `attacker_model`, `reasoning_effort` (in practice the harness always emits these too).
 
 | Field | Notes |
 | --- | --- |
@@ -107,7 +107,7 @@ Schema: [`schemas/task.schema.json`](../schemas/task.schema.json) — authoritat
 
 ## `result.json` (output)
 
-Schema: [`schemas/result.schema.json`](../schemas/result.schema.json). Status enum: `completed | timeout | error | dry_run | unknown`.
+Schema: [`schemas/result.schema.json`](../../schemas/result.schema.json). Status enum: `completed | timeout | error | dry_run | unknown`.
 
 **Required:** `status`. That's it. Every other field is optional. The harness coerces missing typed fields to safe defaults in `utils/run_artifacts.py:normalize_agent_result` (`turns_taken=0`, `model=""`, `final_message=""`, `tool_call_count=0`, `unique_tools=[]`, `token_totals={}`, `exit_code=0`, `error_traceback=""`); unknown fields pass through.
 
@@ -117,7 +117,7 @@ Schema: [`schemas/result.schema.json`](../schemas/result.schema.json). Status en
 
 If your CLI knows the cost in USD, emit it at the top level as `cost_usd` (NOT nested in `token_totals`). The harness will trust whatever you write — including a legitimate `0` for a $0 run.
 
-**If you do not have a cost number, OMIT the key entirely.** Do not write `0` as a placeholder. The harness derives cost from `token_totals` × [`utils/token_pricing.json`](../utils/token_pricing.json) when `cost_usd` is absent, and stamps `cost_source` ∈ `{"agent", "derived", "derived_unpriced"}` so drift is auditable. **Agents MUST NOT write `cost_source` themselves** — it is runner-only provenance; any agent-supplied value paired without a `cost_usd` is discarded.
+**If you do not have a cost number, OMIT the key entirely.** Do not write `0` as a placeholder. The harness derives cost from `token_totals` × [`utils/token_pricing.json`](../../utils/token_pricing.json) when `cost_usd` is absent, and stamps `cost_source` ∈ `{"agent", "derived", "derived_unpriced"}` so drift is auditable. **Agents MUST NOT write `cost_source` themselves** — it is runner-only provenance; any agent-supplied value paired without a `cost_usd` is discarded.
 
 **No `token_totals` ⇒ no cost.** Derived cost is `tokens × pricing`; if the agent omits both `cost_usd` and `token_totals`, the run reports `cost_usd: 0` with `cost_source: "derived"` (or `"derived_unpriced"` when the model has no row in `token_pricing.json`). Emit at least `input_tokens` / `output_tokens` if you want any cost signal.
 
