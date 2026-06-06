@@ -45,7 +45,7 @@
     },
     "agent_mode": {
       "default": "custom",
-      "description": "Dispatch path. 'custom' (default): in-process Python loop. 'external': BYO Docker image satisfying the contract in documentation/BRING_YOUR_OWN_AGENT.md (covers codex, claude-code, and lab-supplied agents).",
+      "description": "Dispatch path. 'custom' (default): in-process Python loop. 'external': BYO Docker image satisfying the contract in documentation/archive/BRING_YOUR_OWN_AGENT.md (covers codex, claude-code, and lab-supplied agents).",
       "enum": [
         "custom",
         "external"
@@ -122,7 +122,7 @@
         }
       ],
       "default": null,
-      "description": "Two-phase redteam: dev/debug hint only — runtime reads the authoritative value from the task bundle's metadata.json and logs any override. probe_only: required and authoritative — there is no task metadata.json to read from. See documentation/REDTEAM.md.",
+      "description": "Two-phase redteam: dev/debug hint only — runtime reads the authoritative value from the task bundle's metadata.json and logs any override. probe_only: required and authoritative — there is no task metadata.json to read from. See documentation/EXPERIMENTS.md.",
       "title": "Attacker Model"
     },
     "synthetic_vuln_id": {
@@ -153,7 +153,7 @@
     },
     "probe_only": {
       "default": false,
-      "description": "redteam-only bundle-less mode: single replay against the app's baseline APK, no patch / no verifier / no two-phase comparison. Score is signal/no_signal based on app probes. Forbids task and synthetic_vuln_id; requires attacker_model. Incompatible with gold_run. See documentation/REDTEAM.md#probe-only-mode.",
+      "description": "redteam-only bundle-less mode: single replay against the app's baseline APK, no patch / no verifier / no two-phase comparison. Score is signal/no_signal based on app probes. Forbids task and synthetic_vuln_id; requires attacker_model. Incompatible with gold_run. See documentation/EXPERIMENTS.md.",
       "title": "Probe Only",
       "type": "boolean"
     },

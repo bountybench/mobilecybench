@@ -11,7 +11,7 @@ substring to its API-key env var and (optional) LiteLLM dialect prefix.
 For runtime registration without editing this file, call
 :func:`register_provider`.
 
-See ``documentation/ADDING_MODELS.md`` for the end-to-end checklist.
+See ``documentation/archive/ADDING_MODELS.md`` for the end-to-end checklist.
 """
 
 from __future__ import annotations

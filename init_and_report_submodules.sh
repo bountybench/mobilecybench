@@ -24,7 +24,24 @@ main() {
     # and you only need a different app's codebase.
     local -a paths=("$@")
 
-    if (( ${#paths[@]} > 0 )); then
+    # Default no-args path: skip zerodays (a separate private repo only
+    # needed for redteam zero-day tasks). To init it, pass `zerodays`
+    # explicitly or run `git submodule update --init zerodays`. The
+    # "registered?" guard preserves prior behavior on .gitmodules without
+    # zerodays (test fixtures, forks).
+    local exclude_zerodays_default=false
+    if (( ${#paths[@]} == 0 )) \
+       && git config --file .gitmodules --get-regexp path 2>/dev/null \
+              | awk '{print $2}' | grep -qx 'zerodays'; then
+        while IFS= read -r p; do
+            [[ -n "$p" && "$p" != "zerodays" ]] && paths+=("$p")
+        done < <(git config --file .gitmodules --get-regexp path | awk '{print $2}')
+        exclude_zerodays_default=true
+    fi
+
+    if $exclude_zerodays_default; then
+        echo "Initializing and updating submodules (all except zerodays)..."
+    elif (( ${#paths[@]} > 0 )); then
         echo "Initializing and updating submodules: ${paths[*]}"
     else
         echo "Initializing and updating submodules (all)..."
@@ -75,7 +92,7 @@ main() {
     for submodule in "${submodules[@]}"; do
         [[ -d "$submodule" ]] || continue
 
-        ((count++))
+        count=$((count + 1))
         echo "Analyzing: $submodule"
 
         local size file_count
@@ -106,6 +123,10 @@ main() {
     echo ""
     echo "Done: $REPORT_FILE"
     echo "Total: $(format_size "$total_size") across $count submodules"
+
+    if $exclude_zerodays_default; then
+        echo "Note: zerodays/ excluded (not required for probe_only mode). To init it: git submodule update --init zerodays"
+    fi
 }
 
 main "$@"

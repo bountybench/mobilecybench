@@ -98,7 +98,7 @@ class RunnerConfig(BaseModel):
         description=(
             "Dispatch path. 'custom' (default): in-process Python loop. "
             "'external': BYO Docker image satisfying the contract in "
-            "documentation/BRING_YOUR_OWN_AGENT.md (covers codex, "
+            "documentation/archive/BRING_YOUR_OWN_AGENT.md (covers codex, "
             "claude-code, and lab-supplied agents)."
         ),
     )
@@ -162,7 +162,7 @@ class RunnerConfig(BaseModel):
             "authoritative value from the task bundle's metadata.json and "
             "logs any override. probe_only: required and authoritative — "
             "there is no task metadata.json to read from. See "
-            "documentation/REDTEAM.md."
+            "documentation/EXPERIMENTS.md."
         ),
     )
     synthetic_vuln_id: Optional[str] = Field(
@@ -189,7 +189,7 @@ class RunnerConfig(BaseModel):
             "comparison. Score is signal/no_signal based on app probes. "
             "Forbids task and synthetic_vuln_id; requires attacker_model. "
             "Incompatible with gold_run. See "
-            "documentation/REDTEAM.md#probe-only-mode."
+            "documentation/EXPERIMENTS.md."
         ),
     )
     probe_baseline_diff: bool = Field(
@@ -342,7 +342,7 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 f"agent_mode={mode!r} is no longer supported. "
                 f'Migrate to: agent_mode="external" with the {mode} reference image. '
-                f"See documentation/BRING_YOUR_OWN_AGENT.md for the current tag."
+                f"See documentation/archive/BRING_YOUR_OWN_AGENT.md for the current tag."
             )
         return data
 

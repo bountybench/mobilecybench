@@ -3,7 +3,7 @@
 Zero-day tasks are the real-vulnerability counterpart to
 `synthetic_vulnerabilities/`.
 
-The shared task-file contract lives in `documentation/TASK.md`. This document
+The shared task-file contract lives in `TASK.md`. This document
 covers only what is different for zero-day tasks.
 
 Zero-day tasks are benchmark assets. The publication layout is

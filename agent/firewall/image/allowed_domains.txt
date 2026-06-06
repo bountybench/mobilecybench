@@ -2,7 +2,7 @@
 # Add a new entry only when a real workflow needs it; review carefully.
 
 # LLM provider APIs.
-# Update agent/model_providers/factory.py:SupportedModel in lockstep.
+# Update agent/custom/model_providers/factory.py:SupportedModel in lockstep.
 api.anthropic.com
 api.openai.com
 generativelanguage.googleapis.com

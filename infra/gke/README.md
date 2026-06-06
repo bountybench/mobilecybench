@@ -7,7 +7,7 @@ Run MobileCyBench experiments in parallel on Google Kubernetes Engine.
 Each experiment runs as a K8s Job in a privileged pod with Docker-in-Docker:
 
 ```
-GKE Node (n2d-standard-8, nested virt enabled)
+GKE Node (n2-standard-8, nested virt enabled)
 └── Pod (privileged, /dev/kvm hostPath)
     └── Orchestrator container (DinD)
         ├── Android emulator (container or native process)
@@ -54,7 +54,7 @@ kubectl create secret generic llm-api-keys \
 # Single experiment
 python infra/gke/generate_jobs.py \
   --apps moememos \
-  --models gpt-4o \
+  --models gpt-5.5 \
   --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
   --gcs-bucket $PROJECT_ID-mobilecybench-results \
   --apply
@@ -62,7 +62,7 @@ python infra/gke/generate_jobs.py \
 # Full matrix
 python infra/gke/generate_jobs.py \
   --all \
-  --models gpt-4o claude-sonnet-4-5-20250929 \
+  --models gpt-5.5 claude-sonnet-4-5-20250929 \
   --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
   --gcs-bucket $PROJECT_ID-mobilecybench-results \
   --apply
@@ -100,7 +100,7 @@ separate value forwarded into `runner_config.agent_image`.
 kubectl get jobs -n mobilecybench --watch
 
 # Check specific job logs
-kubectl logs -n mobilecybench job/mcb-moememos-vuln-0-gpt-4o -f
+kubectl logs -n mobilecybench job/mcb-moememos-vuln-0-gpt-5-5 -f
 
 # See pod status
 kubectl get pods -n mobilecybench
@@ -127,7 +127,7 @@ keeps the runner default (`swiftshader`).
 
 ## GKE Cluster Details
 
-- **Machine type**: `n2d-standard-8` (8 vCPU, 32GB RAM) — AMD, supports nested virtualization
+- **Machine type**: `n2-standard-8` (8 vCPU, 32GB RAM), supports nested virtualization
 - **Node image**: `UBUNTU_CONTAINERD` (required for `/dev/kvm`)
 - **Autoscaling**: 0–20 nodes, ~3 experiments per node
 - **Spot instances**: ~60-70% cost savings

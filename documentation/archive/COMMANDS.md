@@ -34,7 +34,7 @@ Flags:
 - `--config <path>` — use an alternate runner config file (default: `runner_config.json`).
 - `--explain-config` — print the JSON Schema for `runner_config.json` (field names, types, defaults, descriptions) and exit. Same content as `schemas/runner_config.schema.json`.
 
-Agent implementation (`custom` in-process Python loop, or `external` BYO Docker image) is selected via the `agent_mode` field in `runner_config.json`. See `documentation/EXPERIMENTS.md#agent-mode` and `documentation/BRING_YOUR_OWN_AGENT.md`.
+Agent implementation (`custom` in-process Python loop, or `external` BYO Docker image) is selected via the `agent_mode` field in `runner_config.json`. See `../EXPERIMENTS.md#agent-mode` and `BRING_YOUR_OWN_AGENT.md`.
 
 ## Download pre-built APKs
 
@@ -44,7 +44,7 @@ python download_apk.py --force conversations
 python download_apk.py --check
 ```
 
-Details: `documentation/ADDING_APPS.md`
+Details: `ADDING_APPS.md`
 
 Flags:
 
@@ -62,14 +62,14 @@ Flags:
 ./publish_apk_bundle.sh apps/conversations
 ```
 
-Details: `documentation/ADDING_APPS.md`. (Synthetic-vuln and zero-day flows are no longer the central benchmark path; their docs are archived at `documentation/archive/SYNTHETIC_VULNERABILITIES.md` and `documentation/archive/ZERODAY_TASKS.md`.)
+Details: `ADDING_APPS.md`. (Synthetic-vuln and zero-day flows are no longer the central benchmark path; their docs are archived at `SYNTHETIC_VULNERABILITIES.md` and `ZERODAY_TASKS.md`.)
 
 Flags:
 
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
 - `./build_apk.sh <app_name> --hardened` (uses `security.patch` from `zerodays` submodule)
 - `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file; for zero-day tasks, point it at `apps/<app>/zero_day_vulnerabilities/<task_id>/fix.patch` or `reports/<app>/<report>/task/fix.patch`)
-- `./build_apk.sh <app_name> --obfuscate` — build with R8 minify + resource shrinking enabled via the repo-level `gradle/obfuscate.init.gradle` init script. Output goes to `apps/<app>/apk/obfuscated/<app>.apk`. Fails unless the per-app `build.sh` forwards `--init-script "$MCB_OBFUSCATE_INIT_SCRIPT"` to gradlew (see `documentation/ADDING_APPS.md`).
+- `./build_apk.sh <app_name> --obfuscate` — build with R8 minify + resource shrinking enabled via the repo-level `gradle/obfuscate.init.gradle` init script. Output goes to `apps/<app>/apk/obfuscated/<app>.apk`. Fails unless the per-app `build.sh` forwards `--init-script "$MCB_OBFUSCATE_INIT_SCRIPT"` to gradlew (see `ADDING_APPS.md`).
 - `./publish_apk_bundle.sh apps/<app_name>` — when `apk/obfuscated/` exists, automatically publishes both bundles at lockstep `vN` and updates both `download_link` and `download_link_obfuscated`. Use `--default-only` / `--obfuscated-only` to override.
 
 Note: `--vuln`, `--hardened`, and `--hardened-patch` are mutually exclusive. `--obfuscate` is incompatible with `--hardened-patch`.
@@ -80,7 +80,7 @@ Note: `--vuln`, `--hardened`, and `--hardened-patch` are mutually exclusive. `--
 ./run_ci_local.sh apps/conversations
 ```
 
-Details: `documentation/CI_VALIDATION.md`
+Details: `CI_VALIDATION.md`
 
 Flags:
 
@@ -100,7 +100,7 @@ Flags:
   --task-dir /path/to/task
 ```
 
-Details: `documentation/CI_VALIDATION.md` and `documentation/archive/ZERODAY_TASKS.md` (zero-day flow archived).
+Details: `CI_VALIDATION.md` and `ZERODAY_TASKS.md` (zero-day flow archived).
 
 ## External zero-day report wrapper
 
@@ -110,7 +110,7 @@ Details: `documentation/CI_VALIDATION.md` and `documentation/archive/ZERODAY_TAS
   --report-dir /path/to/reports/app-name/report-n
 ```
 
-Details: `documentation/CI_VALIDATION.md` and `documentation/archive/ZERODAY_TASKS.md` (zero-day flow archived).
+Details: `CI_VALIDATION.md` and `ZERODAY_TASKS.md` (zero-day flow archived).
 
 ## Flag injection utilities
 
@@ -119,7 +119,7 @@ Details: `documentation/CI_VALIDATION.md` and `documentation/archive/ZERODAY_TAS
 ./inject_flags.sh --remove apps/gotify
 ```
 
-Details: `documentation/CI_VALIDATION.md`
+Details: `CI_VALIDATION.md`
 
 Flags:
 
