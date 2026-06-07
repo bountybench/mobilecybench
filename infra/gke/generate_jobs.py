@@ -127,6 +127,11 @@ def render_job(
     emulator_gpu: str,
     dry_run: bool,
     gold_run: bool,
+    backoff_limit: int,
+    ttl_seconds_after_finished: int,
+    upload_failure_hold_seconds: int,
+    build_type: str = "",
+    network_mode: str = "",
     model: str = "",
     vuln_id: str = "",
     agent_image: str = "",
@@ -135,7 +140,10 @@ def render_job(
     probe_only: bool | None = None,
     attacker_model: str = "",
     no_codebase: bool | None = None,
+    multi_exploit: bool | None = None,
     agent_wallclock_seconds: int | None = None,
+    max_iterations: int | None = None,
+    replay_exploit_dir: str = "",
 ) -> str:
     """Render a K8s Job YAML by substituting placeholders in the template.
 
@@ -147,15 +155,25 @@ def render_job(
     # unique strings that won't collide with env var name: fields.
     rendered = template.replace("mcb-APP_NAME-VULN_ID-MODEL", job_name)
     rendered = rendered.replace("IMAGE_URI", image_uri)
+    rendered = rendered.replace("BACKOFF_LIMIT", str(backoff_limit))
+    rendered = rendered.replace(
+        "TTL_SECONDS_AFTER_FINISHED", str(ttl_seconds_after_finished)
+    )
 
     # Phase 2: replace quoted env value placeholders only — avoids clobbering
     # env var *name* fields which share the same identifier strings.
     wallclock = "" if agent_wallclock_seconds is None else str(agent_wallclock_seconds)
+    max_iter = "" if max_iterations is None else str(max_iterations)
+    build_type = build_type or ""
+    network_mode = network_mode or ""
+    replay_exploit_dir = replay_exploit_dir or ""
     env_replacements = {
         '"APP_NAME"': f'"{app_name}"',
         '"MODEL"': f'"{model}"',
         '"VULN_ID"': f'"{vuln_id}"',
         '"EMULATOR_BACKEND"': f'"{emulator_backend}"',
+        '"BUILD_TYPE"': f'"{build_type}"',
+        '"NETWORK_MODE"': f'"{network_mode}"',
         f'"{EMULATOR_GPU_ENV}"': f'"{emulator_gpu}"',
         '"DRY_RUN"': f'"{str(dry_run).lower()}"',
         '"GOLD_RUN"': f'"{str(gold_run).lower()}"',
@@ -166,7 +184,11 @@ def render_job(
         '"PROBE_ONLY"': f'"{_env_bool(probe_only)}"',
         '"ATTACKER_MODEL"': f'"{attacker_model}"',
         '"NO_CODEBASE"': f'"{_env_bool(no_codebase)}"',
+        '"MULTI_EXPLOIT"': f'"{_env_bool(multi_exploit)}"',
         '"AGENT_WALLCLOCK_SECONDS"': f'"{wallclock}"',
+        '"MAX_ITERATIONS"': f'"{max_iter}"',
+        '"REPLAY_EXPLOIT_DIR"': f'"{replay_exploit_dir}"',
+        '"UPLOAD_FAILURE_HOLD_SECONDS"': f'"{upload_failure_hold_seconds}"',
     }
     for placeholder, value in env_replacements.items():
         rendered = rendered.replace(placeholder, value)
@@ -179,6 +201,7 @@ def render_job(
         "experiment-workflow: WORKFLOW": f'experiment-workflow: "{sanitize_k8s_name(workflow)}"',
         "experiment-attacker: ATTACKER_MODEL": f'experiment-attacker: "{sanitize_k8s_name(attacker_model)}"',
         "experiment-no-codebase: NO_CODEBASE": f'experiment-no-codebase: "{_env_bool(no_codebase)}"',
+        "experiment-multi-exploit: MULTI_EXPLOIT": f'experiment-multi-exploit: "{_env_bool(multi_exploit)}"',
     }
     for placeholder, value in label_replacements.items():
         rendered = rendered.replace(placeholder, value)
@@ -219,6 +242,8 @@ def build_external_jobs(template: str, apps: list[str], args) -> list[tuple[str,
                     name_parts = ["mcb", app, attacker, leg_tag]
                     if model:
                         name_parts.append(model)
+                    if args.name_suffix:
+                        name_parts.append(args.name_suffix)
                     job_name = sanitize_k8s_name("-".join(name_parts))
                     yaml_str = render_job(
                         template=template,
@@ -229,15 +254,23 @@ def build_external_jobs(template: str, apps: list[str], args) -> list[tuple[str,
                         gcs_bucket=args.gcs_bucket,
                         emulator_backend=args.emulator_backend,
                         emulator_gpu=args.emulator_gpu,
+                        build_type=args.build_type,
+                        network_mode=args.network_mode,
                         dry_run=args.dry_run,
                         gold_run=args.gold_run,
+                        backoff_limit=args.backoff_limit,
+                        ttl_seconds_after_finished=args.ttl_seconds_after_finished,
+                        upload_failure_hold_seconds=args.upload_failure_hold_seconds,
                         agent_image=args.agent_image,
                         agent_mode="external",
                         workflow=args.workflow,
                         probe_only=args.probe_only,
                         attacker_model=attacker,
                         no_codebase=no_codebase,
+                        multi_exploit=args.multi_exploit,
                         agent_wallclock_seconds=args.agent_wallclock_seconds,
+                        max_iterations=args.max_iterations,
+                        replay_exploit_dir=args.replay_exploit_dir,
                     )
                     jobs.append((job_name, yaml_str))
     return jobs
@@ -251,7 +284,17 @@ def build_legacy_jobs(
     for exp in experiments:
         for model in args.models:
             job_name = sanitize_k8s_name(
-                f"mcb-{exp['app_name']}-{exp['vuln_id']}-{model}"
+                "-".join(
+                    part
+                    for part in (
+                        "mcb",
+                        exp["app_name"],
+                        exp["vuln_id"],
+                        model,
+                        args.name_suffix,
+                    )
+                    if part
+                )
             )
             yaml_str = render_job(
                 template=template,
@@ -263,8 +306,14 @@ def build_legacy_jobs(
                 gcs_bucket=args.gcs_bucket,
                 emulator_backend=args.emulator_backend,
                 emulator_gpu=args.emulator_gpu,
+                build_type=args.build_type,
+                network_mode=args.network_mode,
                 dry_run=args.dry_run,
                 gold_run=args.gold_run,
+                backoff_limit=args.backoff_limit,
+                ttl_seconds_after_finished=args.ttl_seconds_after_finished,
+                upload_failure_hold_seconds=args.upload_failure_hold_seconds,
+                replay_exploit_dir=args.replay_exploit_dir,
                 # A synthetic vuln always carries a bundle, so it can never be
                 # probe-only. Force probe_only=false rather than inheriting it
                 # from the base config (whose committed default is probe-only),
@@ -305,10 +354,49 @@ def main():
         help="GCS bucket for result uploads",
     )
     parser.add_argument(
+        "--name-suffix",
+        default="",
+        help=(
+            "Optional suffix appended to generated Job names. Useful for "
+            "reruns without colliding with existing Kubernetes Jobs."
+        ),
+    )
+    parser.add_argument(
+        "--backoff-limit",
+        type=int,
+        default=1,
+        help="Kubernetes Job backoffLimit (default: 1)",
+    )
+    parser.add_argument(
+        "--ttl-seconds-after-finished",
+        type=int,
+        default=86400,
+        help="Kubernetes Job ttlSecondsAfterFinished (default: 86400)",
+    )
+    parser.add_argument(
+        "--upload-failure-hold-seconds",
+        type=int,
+        default=0,
+        help=(
+            "Seconds for the runner container to sleep after pod-side GCS "
+            "upload failure so artifacts can be copied manually"
+        ),
+    )
+    parser.add_argument(
         "--emulator-backend",
         default="container",
         choices=["native", "container"],
         help="Emulator backend (default: container)",
+    )
+    parser.add_argument(
+        "--build-type",
+        choices=["source", "download-apk", "skip-apk"],
+        help="Override runner_config.build_type for generated jobs",
+    )
+    parser.add_argument(
+        "--network-mode",
+        choices=["restricted", "permissive"],
+        help="Override runner_config.network_mode for generated jobs",
     )
     parser.add_argument(
         "--emulator-gpu",
@@ -350,9 +438,29 @@ def main():
         help="Render both no_codebase legs (source-vs-APK ablation)",
     )
     ext.add_argument(
+        "--multi-exploit",
+        action="store_true",
+        help=(
+            "Enable RunnerConfig.multi_exploit so redteam probe-only prompts "
+            "ask the agent to find and orchestrate multiple distinct candidates"
+        ),
+    )
+    ext.add_argument(
         "--agent-wallclock-seconds",
         type=int,
         help="Wall-clock kill budget for the external agent (seconds)",
+    )
+    ext.add_argument(
+        "--max-iterations",
+        type=int,
+        help="Override RunnerConfig.max_iterations (custom turns / shared metadata)",
+    )
+    ext.add_argument(
+        "--replay-exploit-dir",
+        help=(
+            "Override RunnerConfig.replay_exploit_dir so evaluation replays a "
+            "saved agent_exploit directory instead of running the agent"
+        ),
     )
 
     run_mode = parser.add_mutually_exclusive_group()
@@ -386,8 +494,14 @@ def main():
         external_only.append("--attacker-models")
     if args.no_codebase_ablation:
         external_only.append("--no-codebase-ablation")
+    if args.multi_exploit:
+        external_only.append("--multi-exploit")
     if args.agent_wallclock_seconds is not None:
         external_only.append("--agent-wallclock-seconds")
+    if args.max_iterations is not None:
+        external_only.append("--max-iterations")
+    if args.replay_exploit_dir:
+        external_only.append("--replay-exploit-dir")
     if not external and external_only:
         parser.error(
             f"{', '.join(external_only)} only valid with --agent-image (external path)"

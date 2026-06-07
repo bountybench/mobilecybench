@@ -3,7 +3,7 @@
   "$id": "https://mobilecybench.dev/schemas/runner_config.schema.json",
   "title": "Runner Config",
   "additionalProperties": false,
-  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)\n  or ``synthetic_vuln_id`` (synthetic).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``\n  and ``synthetic_vuln_id``, requires ``attacker_model``, and is\n  incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n* ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and\n  cannot be used with ``build_type == 'source'``.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
+  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.\n* ``exploit`` requires ``synthetic_vuln_id``.\n* ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)\n  or ``synthetic_vuln_id`` (synthetic).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``\n  and ``synthetic_vuln_id``, requires ``attacker_model``, and is\n  incompatible with ``gold_run``.\n* ``multi_exploit`` requires ``workflow == 'redteam'`` and\n  ``probe_only == true``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n* ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and\n  cannot be used with ``build_type == 'source'``.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
   "properties": {
     "build_type": {
       "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
@@ -161,6 +161,12 @@
       "default": false,
       "description": "probe_only + malicious_app opt-in: score on the BEFORE/AFTER delta. Runs the probe set once as a baseline after prepare_victim but before the exploit, runs the exploit, runs the probes again, and scores on the difference. State-based categories (access, availability, integrity) signal only on a clean secure->compromised transition; the log-consuming category (confidentiality) keeps its after-exploit reading. Cancels infrastructure and baseline-contamination false positives that are constant across both passes. Scoped to malicious_app (remote_attacker runs prepare_victim after the exploit, so a pre-exploit baseline would conflate victim hydration with exploit effects). Off by default (single-pass after-only scoring); only affects the probe_only path.",
       "title": "Probe Baseline Diff",
+      "type": "boolean"
+    },
+    "multi_exploit": {
+      "default": false,
+      "description": "probe_only redteam opt-in: automatically appends guidance that the agent should keep searching after the first candidate, build multiple distinct exploit attempts, and submit one replay entrypoint that orchestrates them. For remote_attacker this means one /app/agent_exploit/exploit.sh that calls helper scripts; for malicious_app this means one exploit APK whose entrypoint runs multiple candidate triggers. Evaluation still performs one fresh probe replay and scores the combined post-exploit outcome.",
+      "title": "Multi Exploit",
       "type": "boolean"
     },
     "dry_run": {

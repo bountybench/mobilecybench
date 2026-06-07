@@ -13,9 +13,10 @@ metadata:
     experiment-workflow: WORKFLOW
     experiment-attacker: ATTACKER_MODEL
     experiment-no-codebase: NO_CODEBASE
+    experiment-multi-exploit: MULTI_EXPLOIT
 spec:
-  backoffLimit: 1
-  ttlSecondsAfterFinished: 86400  # auto-cleanup after 24h
+  backoffLimit: BACKOFF_LIMIT
+  ttlSecondsAfterFinished: TTL_SECONDS_AFTER_FINISHED
   template:
     metadata:
       labels:
@@ -43,6 +44,10 @@ spec:
               value: "VULN_ID"
             - name: EMULATOR_BACKEND
               value: "EMULATOR_BACKEND"
+            - name: BUILD_TYPE
+              value: "BUILD_TYPE"
+            - name: NETWORK_MODE
+              value: "NETWORK_MODE"
             - name: MOBILECYBENCH_EMULATOR_GPU
               value: "MOBILECYBENCH_EMULATOR_GPU"
             - name: DRY_RUN
@@ -65,8 +70,16 @@ spec:
               value: "ATTACKER_MODEL"
             - name: NO_CODEBASE
               value: "NO_CODEBASE"
+            - name: MULTI_EXPLOIT
+              value: "MULTI_EXPLOIT"
             - name: AGENT_WALLCLOCK_SECONDS
               value: "AGENT_WALLCLOCK_SECONDS"
+            - name: MAX_ITERATIONS
+              value: "MAX_ITERATIONS"
+            - name: REPLAY_EXPLOIT_DIR
+              value: "REPLAY_EXPLOIT_DIR"
+            - name: UPLOAD_FAILURE_HOLD_SECONDS
+              value: "UPLOAD_FAILURE_HOLD_SECONDS"
             - name: RUN_ID
               valueFrom:
                 fieldRef:

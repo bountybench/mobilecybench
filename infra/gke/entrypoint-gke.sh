@@ -33,6 +33,18 @@ if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ "${DOCKERHUB_USERNAME}" != "placeholder
         echo "WARNING: Docker Hub login failed (continuing without auth)"
 fi
 
+# Optional preloaded inner-Docker images. This lets specialized runner images
+# carry private BYO agent images without requiring DinD registry auth at runtime.
+PRELOADED_AGENT_IMAGE_DIR="${PRELOADED_AGENT_IMAGE_DIR:-/mobilecybench/preloaded-agent-images}"
+if [ -d "$PRELOADED_AGENT_IMAGE_DIR" ]; then
+    shopt -s nullglob
+    for image_tar in "$PRELOADED_AGENT_IMAGE_DIR"/*.tar "$PRELOADED_AGENT_IMAGE_DIR"/*.tar.gz; do
+        echo "Loading preloaded Docker image: $image_tar"
+        docker load -i "$image_tar"
+    done
+    shopt -u nullglob
+fi
+
 # ─── Pre-pull emulator image ─────────────────────────────────────────────
 # The Python Docker SDK has a 60s default timeout on containers.run(), which
 # is not enough for pulling the ~10 GB emulator image. Pre-pulling here
@@ -74,6 +86,7 @@ EXIT_CODE=$?
 set -e
 
 # ─── Upload results to GCS ──────────────────────────────────────────────────
+upload_failed=0
 if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
     RUN_ID="${RUN_ID:-$(date +%s)}"
     # Build the object prefix from non-empty segments only — VULN_ID (and
@@ -94,9 +107,36 @@ if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
         dirs+=("$(dirname "$summary")")
     done < <(find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 3 -name run_summary.json -type f 2>/dev/null)
     if [ ${#dirs[@]} -gt 0 ]; then
-        gsutil -m cp -r "${dirs[@]}" "$GCS_PATH" || echo "WARNING: GCS upload failed"
+        if ! gsutil -m cp -r "${dirs[@]}" "$GCS_PATH"; then
+            echo "WARNING: GCS upload failed"
+            upload_failed=1
+        fi
     else
         echo "WARNING: no experiment logs found to upload"
+        upload_failed=1
+    fi
+fi
+
+if [ "$upload_failed" -ne 0 ]; then
+    RUN_ID="${RUN_ID:-$(date +%s)}"
+    failure_dir="$MOBILECYBENCH_LOGS_DIR/gke_failure/$RUN_ID"
+    mkdir -p "$failure_dir"
+    cp "$CONFIG_DST" "$failure_dir/runner_config.json" 2>/dev/null || true
+    env | sort > "$failure_dir/gke_env.txt" 2>/dev/null || true
+    find "$MOBILECYBENCH_LOGS_DIR" -maxdepth 4 -type f > "$failure_dir/log_files.txt" 2>/dev/null || true
+
+    bundle="$failure_dir/upload_failure_bundle.tar.gz"
+    tar -C "$MOBILECYBENCH_LOGS_DIR" \
+        --exclude="./gke_failure/$RUN_ID/upload_failure_bundle.tar.gz" \
+        -czf "$bundle" . || true
+    echo "Preserved manual-retrieval bundle at $bundle"
+    echo "Retrieve with:"
+    echo "  kubectl cp mobilecybench/$RUN_ID:$bundle ./upload_failure_bundle.tar.gz"
+
+    hold_seconds="${UPLOAD_FAILURE_HOLD_SECONDS:-0}"
+    if [ "$hold_seconds" -gt 0 ] 2>/dev/null; then
+        echo "Holding container for ${hold_seconds}s so artifacts can be copied manually."
+        sleep "$hold_seconds"
     fi
 fi
 

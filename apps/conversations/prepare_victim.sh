@@ -50,10 +50,36 @@ esac
 VICTIM_JID="${VICTIM_USER}@10.0.2.2"
 log_info "Victim user: $VICTIM_JID (attacker_model=${MCB_ATTACKER_MODEL:-malicious_app})"
 
+wait_for_emulator_backend_route() {
+    local host="10.0.2.2"
+    local port="5222"
+    local attempts="${MCB_CONVERSATIONS_ROUTE_ATTEMPTS:-20}"
+    local delay="${MCB_CONVERSATIONS_ROUTE_DELAY_SECONDS:-3}"
+
+    log_info "Waiting for emulator route to ${host}:${port}"
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
+        if adb shell "toybox nc -z -w 2 '$host' '$port' >/dev/null 2>&1" 2>/dev/null; then
+            log_info "Emulator can reach ${host}:${port}"
+            return 0
+        fi
+        # Some Android images do not ship toybox nc; ping still catches the
+        # ENETUNREACH route state that makes Conversations login fail.
+        if adb shell "ping -c 1 -W 1 '$host' >/dev/null 2>&1" 2>/dev/null; then
+            log_info "Emulator route to ${host} is available"
+            return 0
+        fi
+        log_warn "Emulator route to ${host}:${port} not ready (attempt ${attempt}/${attempts})"
+        sleep "$delay"
+    done
+
+    fatal "Emulator route to ${host}:${port} did not become ready"
+}
+
 # --- Login ---
 adb shell pm grant "$TARGET_PACKAGE" android.permission.READ_CONTACTS 2>/dev/null || true
 adb shell pm grant "$TARGET_PACKAGE" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
 adb shell dumpsys deviceidle whitelist +"$TARGET_PACKAGE" 2>/dev/null || true
+wait_for_emulator_backend_route
 
 if python3 "$SCRIPT_DIR/ui_automation/login.py" \
     --username "$VICTIM_JID" \

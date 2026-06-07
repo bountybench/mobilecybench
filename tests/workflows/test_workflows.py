@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from models.config import RunnerConfig
+from workflows import RedTeamWorkflow
 from workflows.exploit import ExploitWorkflow
 
 
@@ -558,6 +559,68 @@ class TestResolveAdditionalContext:
         wf = self._workflow(tmp_path, additional_system_prompt="")
         wf.metadata = {"additional_info": "App ships with seeded user"}
         assert wf._resolve_additional_context() == "App ships with seeded user"
+
+
+class TestMultiExploitPrompt:
+    def _workflow(self, tmp_path, attacker_model="remote_attacker"):
+        app_dir = tmp_path / "apps" / "test_app"
+        app_dir.mkdir(parents=True)
+        (app_dir / "metadata.json").write_text(
+            '{"package_name":"com.example","additional_info":"App-specific context"}',
+            encoding="utf-8",
+        )
+        config = _config(
+            workflow="redteam",
+            build_type="skip-apk",
+            synthetic_vuln_id=None,
+            attacker_model=attacker_model,
+            probe_only=True,
+            multi_exploit=True,
+            additional_system_prompt="Operator hint",
+        )
+        wf = RedTeamWorkflow(config, "test_app", tmp_path)
+        wf.metadata = {
+            "package_name": "com.example",
+            "additional_info": "App-specific context",
+        }
+        return wf
+
+    def test_multi_exploit_context_appends_after_existing_context(self, tmp_path):
+        wf = self._workflow(tmp_path)
+
+        context = wf._resolve_prompt_context()
+
+        assert context is not None
+        assert context.startswith("App-specific context\n\nOperator hint\n\n")
+        assert "## Multi-exploit mode" in context
+        assert "Keep iterating after you find the first candidate" in context
+        assert "`/app/agent_exploit/exploit.sh` is the orchestrator" in context
+
+    def test_multi_exploit_prompt_reaches_remote_attacker_system_prompt(self, tmp_path):
+        wf = self._workflow(tmp_path, attacker_model="remote_attacker")
+
+        prompt = wf._build_agent_prompt()
+
+        assert "## Multi-exploit mode" in prompt
+        assert "`/app/agent_exploit/exploit.sh` is the orchestrator" in prompt
+        assert "one replay entrypoint" in prompt
+
+    def test_multi_exploit_prompt_reaches_external_agent_task_json(self, tmp_path):
+        wf = self._workflow(tmp_path, attacker_model="remote_attacker")
+
+        task = wf._build_task_dict()
+
+        assert "## Multi-exploit mode" in task["prompt"]
+        assert "`/app/agent_exploit/exploit.sh` is the orchestrator" in task["prompt"]
+
+    def test_multi_exploit_prompt_reaches_malicious_app_system_prompt(self, tmp_path):
+        wf = self._workflow(tmp_path, attacker_model="malicious_app")
+
+        prompt = wf._build_agent_prompt()
+
+        assert "## Multi-exploit mode" in prompt
+        assert "`Exploit.run(...)` is the orchestrator" in prompt
+        assert "build one APK" in prompt
 
 
 class _StubEmulator:
