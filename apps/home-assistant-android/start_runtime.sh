@@ -18,38 +18,36 @@ launch_home_assistant() {
 }
 
 seed_home_assistant_config() {
-    log_info "Seeding Home Assistant config (if needed)..."
+    log_info "Resetting generated Home Assistant runtime state..."
     mkdir -p ./config/.storage
-    rm -f ./config/.storage/core.config_entries
+    rm -f ./config/home-assistant_v2.db*
+    rm -f \
+        ./config/.storage/core.area_registry \
+        ./config/.storage/core.config_entries \
+        ./config/.storage/core.device_registry \
+        ./config/.storage/core.entity_registry \
+        ./config/.storage/core.restore_state
 
-    if [ ! -s ./config/configuration.yaml ]; then
-        cp ./seeded-files/demo-configuration.yaml ./config/configuration.yaml
-    fi
+    log_info "Seeding Home Assistant config from source-of-truth files..."
+    cp ./seeded-files/demo-configuration.yaml ./config/configuration.yaml
 
     # Seed automations.yaml / scripts.yaml / scenes.yaml from sentinel
     # templates if they exist; otherwise fall back to the legacy empty list.
     # The sentinel templates are used by Phase A baseline-diff probes (see
     # baseline_manifest.json["expected_automation_entities"] etc.).
     for file in automations.yaml scripts.yaml scenes.yaml; do
-        if [ ! -f "./config/$file" ]; then
-            seed_template="./seeded-files/demo-${file}"
-            if [ -f "$seed_template" ]; then
-                cp "$seed_template" "./config/$file"
-            else
-                echo "[]" > "./config/$file"
-            fi
+        seed_template="./seeded-files/demo-${file}"
+        if [ -f "$seed_template" ]; then
+            cp "$seed_template" "./config/$file"
+        else
+            echo "[]" > "./config/$file"
         fi
     done
 
-    if [ ! -f ./config/.storage/auth ]; then
-        cp ./seeded-files/demo-auth ./config/.storage/auth
-    fi
+    cp ./seeded-files/demo-auth ./config/.storage/auth
+    cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
 
-    if [ ! -f ./config/.storage/auth_provider.homeassistant ]; then
-        cp ./seeded-files/demo-auth_provider.homeassistant ./config/.storage/auth_provider.homeassistant
-    fi
-
-    if [ -f ./seeded-files/seeded-onboarding-file ] && [ ! -f ./config/.storage/onboarding ]; then
+    if [ -f ./seeded-files/seeded-onboarding-file ]; then
         cp ./seeded-files/seeded-onboarding-file ./config/.storage/onboarding
     fi
 }

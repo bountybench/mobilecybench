@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
-# Function to remove config files with proper permissions in CI environments
-remove_config_files_for_ci() {
+# Function to remove config files with proper permissions in CI environments.
+remove_config_files() {
+    [ -e config ] || return 0
+
     # Only use sudo in CI/GitHub Actions environments where we need elevated permissions
     if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
         echo "CI environment detected, removing config files with sudo..."
@@ -10,18 +12,23 @@ remove_config_files_for_ci() {
     else
         echo "Non-CI environment, removing config files without sudo..."
         chmod -R u+w config 2>/dev/null || true
-        rm -rf config
+        rm -rf config 2>/dev/null && return 0
+
+        echo "Standard config removal failed; retrying via temporary root container..."
+        docker run --rm -v "$PWD/config:/config" alpine:3.20 \
+            sh -c 'find /config -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
+        rmdir config
     fi
 }
 
 echo "Cleaning up Home Assistant environment"
 echo "==================="
 
-echo "Removing config files from the HA app"
-remove_config_files_for_ci
-
 echo "Stopping all services (including ha-ssrf-listener)..."
 docker compose down -v
+
+echo "Removing config files from the HA app"
+remove_config_files
 
 echo "Removing any dangling containers..."
 docker container prune -f
