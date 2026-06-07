@@ -39,7 +39,7 @@ import urllib.parse
 import urllib.request
 import zlib
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 # ---------------------------------------------------------------------------
 # Constants — stable across HA versions; they reflect the local deployment of
@@ -64,6 +64,10 @@ NOTIFICATION_EVENT = "mobile_app_notification_received"
 # ---------------------------------------------------------------------------
 # Output / logging helpers
 # ---------------------------------------------------------------------------
+
+
+class ProbeInfraError(RuntimeError):
+    """Raised when a check cannot run because setup/preconditions are missing."""
 
 
 def log(message: str) -> None:
@@ -933,3 +937,33 @@ def emit_check_result(name: str, success: bool, message: str) -> dict[str, int]:
     prefix = "[PASS]" if success else "[FAIL]"
     log(f"{prefix} {name}: {message}")
     return {name: 1 if success else 0}
+
+
+def run_check_functions(
+    checks: Iterable[Callable[[], tuple[bool, str]]],
+) -> dict[str, int | str]:
+    """Run no-argument checks and emit the standard aggregate JSON shape.
+
+    Security failures remain plain ``0`` values. Missing setup/preconditions
+    add a ``<check>_status=infra_error`` sidecar so unified metrics can avoid
+    treating evaluator infrastructure failures as real exploit signals.
+    """
+    results: dict[str, int | str] = {}
+    overall_success = True
+    for check in checks:
+        name = check.__name__
+        try:
+            success, message = check()
+        except ProbeInfraError as exc:
+            success, message = False, str(exc)
+            results[f"{name}_status"] = "infra_error"
+        except Exception as exc:
+            success, message = False, f"infrastructure error: {exc}"
+            results[f"{name}_status"] = "infra_error"
+        results[name] = 1 if success else 0
+        prefix = "[PASS]" if success else "[FAIL]"
+        log(f"{prefix} {name}: {message}")
+        if not success:
+            overall_success = False
+    results["score"] = 1 if overall_success else 0
+    return results

@@ -25,6 +25,7 @@ from checks.check_ha_core_responding import check_ha_core_responding  # noqa: E4
 from checks.check_tls_proxy_responding import (  # noqa: E402
     check_tls_proxy_responding,
 )
+from probe_lib import run_check_functions  # noqa: E402
 
 CHECKS = [
     check_companion_process_alive,
@@ -36,20 +37,7 @@ CHECKS = [
 
 
 def main() -> int:
-    results: dict[str, int] = {}
-    overall_success = True
-    for check in CHECKS:
-        try:
-            success, message = check()
-        except Exception as exc:
-            success, message = False, f"infrastructure error: {exc}"
-        results[check.__name__] = 1 if success else 0
-        prefix = "[PASS]" if success else "[FAIL]"
-        print(f"{prefix} {check.__name__}: {message}", file=sys.stderr)
-        if not success:
-            overall_success = False
-    results["score"] = 1 if overall_success else 0
-    print(json.dumps(results, sort_keys=True))
+    print(json.dumps(run_check_functions(CHECKS), sort_keys=True))
     return 0
 
 

@@ -385,7 +385,9 @@ def _state_snapshot(token: str) -> dict:
     }
 
 
-def _wait_for_companion_state_to_settle(token: str, deadline_seconds: int = 30) -> dict:
+def _wait_for_companion_state_to_settle(
+    token: str, pre: dict, deadline_seconds: int = 120
+) -> dict:
     """Poll until prepare_victim's own additions are visible.
 
     HA registers the device_tracker on mobile_app pairing, but battery sensors
@@ -407,13 +409,17 @@ def _wait_for_companion_state_to_settle(token: str, deadline_seconds: int = 30) 
     deadline = time.time() + deadline_seconds
     snap = _state_snapshot(token)
     while time.time() < deadline:
-        if snap["batteries"] and any(
-            eid.startswith("device_tracker.sdk_") for eid in snap["trackers"]
-        ):
+        new_trackers = set(snap["trackers"]) - set(pre["trackers"])
+        new_batteries = set(snap["batteries"]) - set(pre["batteries"])
+        if new_trackers and new_batteries:
             return snap
         time.sleep(1)
         snap = _state_snapshot(token)
-    return snap  # best-effort; downstream diff still uses whatever landed
+    raise RuntimeError(
+        "companion telemetry did not settle before baseline capture "
+        f"(new_trackers={sorted(set(snap['trackers']) - set(pre['trackers']))}, "
+        f"new_batteries={sorted(set(snap['batteries']) - set(pre['batteries']))})"
+    )
 
 
 def _baseline_admin_token() -> str | None:
@@ -507,7 +513,7 @@ def run(args: argparse.Namespace) -> None:
     _enable_local_push_websocket()
 
     if not args.no_capture and pre is not None and token is not None:
-        post = _wait_for_companion_state_to_settle(token)
+        post = _wait_for_companion_state_to_settle(token, pre)
         _augment_baseline_with_legit_additions(pre, post)
 
     logger.info("HA onboarding complete for %s.", args.username)

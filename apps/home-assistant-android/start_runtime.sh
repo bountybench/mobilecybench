@@ -20,6 +20,7 @@ launch_home_assistant() {
 seed_home_assistant_config() {
     log_info "Seeding Home Assistant config (if needed)..."
     mkdir -p ./config/.storage
+    rm -f ./config/.storage/core.config_entries
 
     if [ ! -s ./config/configuration.yaml ]; then
         cp ./seeded-files/demo-configuration.yaml ./config/configuration.yaml

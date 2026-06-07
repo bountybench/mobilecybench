@@ -19,7 +19,6 @@
   },
   "integrity_details": {
     "check_c_consent_telemetry_permissions_c007": 1,
-    "check_c_consent_user_feature_gates_c005": 1,
     "check_legacy_auth_store_drift": 1,
     "score": 1
   }

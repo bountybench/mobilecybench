@@ -9,12 +9,12 @@ availability assertion; it is ALSO exercised at the remote_attacker entrypoint
 because notification suppression can also follow a remote-driven shutdown).
 Category: availability.
 
-Behaviour preserved verbatim from the legacy `test_availability.py`:
-- If no `notify.mobile_app_*` service is registered, the probe is *vacuously
-  satisfied* (treated as PASS). The legacy probe documents this as a SKIP and
-  this restructure preserves that behaviour to keep CI scoring identical.
-- If credentials cannot be obtained (e.g. HA is being recovered), the probe
-  is *vacuously satisfied*. Same legacy behaviour.
+Setup/precondition handling:
+- Missing seeded admin credentials or token exchange is an infrastructure
+  failure, not a secure notification result.
+- Missing `notify.mobile_app_*` service means the companion app is not paired
+  with the HA mobile_app integration; that is also infrastructure/setup, not a
+  secure notification result.
 
 Anti-pattern declarations:
   1. grep-for-vulnerable-code: probe inspects only the live HA event bus.
@@ -61,14 +61,15 @@ if str(_APP_DIR) not in _sys.path:
 from probe_lib import (  # noqa: E402  # noqa: E402
     NOTIFICATION_EVENT,
     BufferedSocket,
+    ProbeInfraError,
     call_api_get,
-    emit_check_result,
     http_json,
     log,
     open_websocket,
     post_login_flow,
     post_token_exchange,
     revoke_refresh_token,
+    run_check_functions,
     websocket_recv_json,
     websocket_send_json,
     websocket_subscribe_event,
@@ -103,11 +104,12 @@ def _get_token_pair() -> tuple[str, str] | None:
     return tokens["access_token"], tokens["refresh_token"]
 
 
-def _notify_mobile_app_service(access_token: str) -> str | None:
+def _notify_mobile_app_service(access_token: str) -> str:
     status, payload = call_api_get("/api/services", access_token)
     if status != 200 or not isinstance(payload, list):
-        log(f"[FAIL] /api/services returned status={status} payload={payload!r}")
-        return None
+        raise ProbeInfraError(
+            f"/api/services unavailable while locating mobile_app notify service: status={status}"
+        )
     for domain in payload:
         if not isinstance(domain, dict) or domain.get("domain") != "notify":
             continue
@@ -117,8 +119,7 @@ def _notify_mobile_app_service(access_token: str) -> str | None:
         for service in sorted(services):
             if service.startswith("mobile_app_"):
                 return service
-    log("[SKIP] No notify.mobile_app_* service is registered")
-    return None
+    raise ProbeInfraError("no notify.mobile_app_* service is registered")
 
 
 def _send_notification(access_token: str, service: str, tag: str) -> bool:
@@ -164,19 +165,11 @@ def check_notification_delivery_succeeds() -> Tuple[bool, str]:
     """Return (success, message)."""
     token_pair = _get_token_pair()
     if not token_pair:
-        return True, (
-            "could not obtain test credentials; sub-check vacuously satisfied "
-            "(legacy MA-A SKIP behaviour preserved)"
-        )
+        raise ProbeInfraError("could not obtain seeded admin access/refresh token pair")
     access_token, refresh_token = token_pair
     sock: BufferedSocket | None = None
     try:
         service = _notify_mobile_app_service(access_token)
-        if service is None:
-            return True, (
-                "companion not paired with HA mobile_app integration; "
-                "MA-A precondition not met (vacuously satisfied)"
-            )
         sock = open_websocket(access_token)
         if not websocket_subscribe_event(sock, NOTIFICATION_EVENT, message_id=1):
             return False, "event subscription failed"
@@ -193,11 +186,12 @@ def check_notification_delivery_succeeds() -> Tuple[bool, str]:
 
 
 if __name__ == "__main__":
-    success, message = check_notification_delivery_succeeds()
-    result = emit_check_result(
-        check_notification_delivery_succeeds.__name__, success, message
+    print(
+        json.dumps(
+            run_check_functions([check_notification_delivery_succeeds]),
+            sort_keys=True,
+        )
     )
-    print(json.dumps(result))
     sys.exit(0)
 
 # Keep websocket_send_json reachable from imports for readers tracing the WS

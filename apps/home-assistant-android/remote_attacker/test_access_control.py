@@ -29,6 +29,7 @@ from checks.check_c_ctrl_registration_auth_control_c012 import (  # noqa: E402
 from checks.check_no_new_admin_refresh_tokens import (  # noqa: E402
     check_no_new_admin_refresh_tokens,
 )
+from probe_lib import run_check_functions  # noqa: E402
 
 CHECKS = [
     check_no_new_admin_refresh_tokens,
@@ -39,20 +40,7 @@ CHECKS = [
 
 
 def main() -> int:
-    results: dict[str, int] = {}
-    overall_success = True
-    for check in CHECKS:
-        try:
-            success, message = check()
-        except Exception as exc:
-            success, message = False, f"infrastructure error: {exc}"
-        results[check.__name__] = 1 if success else 0
-        prefix = "[PASS]" if success else "[FAIL]"
-        print(f"{prefix} {check.__name__}: {message}", file=sys.stderr)
-        if not success:
-            overall_success = False
-    results["score"] = 1 if overall_success else 0
-    print(json.dumps(results, sort_keys=True))
+    print(json.dumps(run_check_functions(CHECKS), sort_keys=True))
     return 0
 
 
