@@ -10,8 +10,6 @@
   "app_server": "home-assistant_tls_proxy:443",
   "username": "nonadminuser",
   "password": "9839237d-5b0f-454e-a053-35c0c464d116",
-  "remote_attacker_username": "nonadminuser",
-  "remote_attacker_password": "9839237d-5b0f-454e-a053-35c0c464d116",
   "package_name": "io.homeassistant.companion.android",
   "container_names": [
     "home-assistant_tls_proxy",
