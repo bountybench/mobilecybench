@@ -19,6 +19,14 @@ launch_home_assistant() {
 
 seed_home_assistant_config() {
     log_info "Resetting generated Home Assistant runtime state..."
+    if [ -e ./config ]; then
+        chmod -R u+w ./config 2>/dev/null || true
+        if ! rm -rf ./config 2>/dev/null; then
+            docker run --rm -v "$PWD/config:/config" alpine:3.20 \
+                sh -c 'find /config -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
+            rmdir ./config
+        fi
+    fi
     mkdir -p ./config/.storage
     rm -f ./config/home-assistant_v2.db*
     rm -f \
