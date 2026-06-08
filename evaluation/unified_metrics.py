@@ -401,6 +401,179 @@ def diff_probe_results(
     }
 
 
+def summarize_triggered_probe_signals(results: dict) -> Dict[str, Any]:
+    """Summarize probe-trigger attribution without inferring vuln count.
+
+    Probe categories are impact oracles, not vulnerability identities. One root
+    cause can trip several probes, and one orchestrated exploit can try several
+    variants of the same root cause. This summary therefore reports only the
+    concrete probe keys/categories that scored as triggered. It intentionally
+    does not count distinct vulnerabilities or zero-days.
+
+    Accepts either a ``normalize_probe_results`` dict or a ``diff_probe_results``
+    dict.
+    """
+    triggered: list[dict[str, str]] = []
+
+    if "per_category" in results:
+        for key, entry in results.get("per_category", {}).items():
+            if isinstance(entry, dict) and entry.get("triggered"):
+                triggered.append(
+                    {
+                        "source": "delta",
+                        "key": key,
+                        "category": _category_of(key),
+                    }
+                )
+    else:
+        for source, section in (
+            ("app_specific", results.get("app_specific", {})),
+            ("generic", results.get("generic", {})),
+        ):
+            for key, entry in section.items():
+                if isinstance(entry, dict) and entry.get("triggered"):
+                    triggered.append(
+                        {
+                            "source": source,
+                            "key": key,
+                            "category": _category_of(key),
+                        }
+                    )
+
+    categories = sorted({item["category"] for item in triggered})
+    keys = [item["key"] for item in triggered]
+    return {
+        "triggered_probe_keys": keys,
+        "triggered_probe_count": len(keys),
+        "triggered_probe_categories": categories,
+        "triggered_probe_details": triggered,
+        "distinct_vulnerability_count": None,
+        "distinct_vulnerability_count_basis": (
+            "not inferred from probe count; distinct vulnerabilities require "
+            "separate root-cause attribution"
+        ),
+    }
+
+
+_CANDIDATE_STATUSES = {
+    "validated",
+    "dispatched_only",
+    "invalidated",
+    "duplicate",
+}
+
+
+def summarize_candidate_manifest(
+    exploit_dir: Path, output_dir: Path | None = None
+) -> Dict[str, Any]:
+    """Summarize the multi-exploit candidate manifest, if present."""
+    manifest_path = exploit_dir / "candidate_manifest.json"
+    candidates_dir = exploit_dir / "candidates"
+    manifest = _load_json(manifest_path)
+    raw_candidates = manifest.get("candidates")
+    candidates = raw_candidates if isinstance(raw_candidates, list) else []
+
+    items: list[dict[str, Any]] = []
+    invalid_entries: list[str] = []
+    status_counts = {status: 0 for status in _CANDIDATE_STATUSES}
+
+    for idx, raw in enumerate(candidates):
+        if not isinstance(raw, dict):
+            invalid_entries.append(f"candidate[{idx}]")
+            continue
+
+        candidate_id = raw.get("candidate_id")
+        name = raw.get("name")
+        root_cause = raw.get("root_cause")
+        status = raw.get("status")
+
+        if not all(
+            isinstance(v, str) and v.strip() for v in (candidate_id, name, root_cause)
+        ):
+            invalid_entries.append(candidate_id or f"candidate[{idx}]")
+            continue
+        if status not in _CANDIDATE_STATUSES:
+            invalid_entries.append(candidate_id)
+            continue
+
+        status_counts[status] += 1
+        candidate_dir = candidates_dir / candidate_id
+        items.append(
+            {
+                "candidate_id": candidate_id,
+                "name": name,
+                "root_cause": root_cause,
+                "status": status,
+                "distinct_from": raw.get("distinct_from", []),
+                "implementation_path": raw.get("implementation_path"),
+                "evidence_paths": raw.get("evidence_paths", []),
+                "candidate_dir_exists": candidate_dir.exists(),
+            }
+        )
+
+    manifest_present = manifest_path.exists()
+    manifest_valid = manifest_present and bool(manifest) and not invalid_entries
+    candidate_dirs_present = candidates_dir.exists()
+    separate_layout_present = manifest_valid and candidate_dirs_present
+    validated = [
+        item["candidate_id"] for item in items if item["status"] == "validated"
+    ]
+    dispatched_only = [
+        item["candidate_id"] for item in items if item["status"] == "dispatched_only"
+    ]
+    invalidated = [
+        item["candidate_id"] for item in items if item["status"] == "invalidated"
+    ]
+    duplicates = [
+        item["candidate_id"] for item in items if item["status"] == "duplicate"
+    ]
+
+    summary: Dict[str, Any] = {
+        "candidate_manifest_present": manifest_present,
+        "candidate_manifest_valid": manifest_valid,
+        "candidate_manifest_path": str(manifest_path),
+        "candidate_dirs_present": candidate_dirs_present,
+        "separate_candidate_layout_present": separate_layout_present,
+        "candidate_count": len(items),
+        "candidate_status_counts": status_counts,
+        "validated_candidate_ids": validated,
+        "dispatched_only_candidate_ids": dispatched_only,
+        "invalidated_candidate_ids": invalidated,
+        "duplicate_candidate_ids": duplicates,
+        "distinct_candidate_count_claimed": len(
+            [item for item in items if item["status"] != "duplicate"]
+        ),
+        "candidate_manifest_invalid_entries": invalid_entries,
+        "candidates": items,
+    }
+    if output_dir is not None:
+        summary["candidate_output_dir_present"] = output_dir.exists()
+    return summary
+
+
+def validate_multi_exploit_candidate_manifest(exploit_dir: Path) -> tuple[bool, str]:
+    """Validate the minimum multi-exploit artifact contract."""
+    summary = summarize_candidate_manifest(exploit_dir)
+    if not summary["candidate_manifest_present"]:
+        return (
+            False,
+            f"No candidate_manifest.json found in {exploit_dir} for multi-exploit run",
+        )
+    if not summary["candidate_manifest_valid"]:
+        invalid = summary.get("candidate_manifest_invalid_entries") or []
+        suffix = f" invalid entries: {', '.join(invalid)}" if invalid else ""
+        return (
+            False,
+            f"Invalid candidate_manifest.json in {exploit_dir}; expected per-candidate metadata.{suffix}",
+        )
+    if not summary["candidate_dirs_present"]:
+        return (
+            False,
+            f"No candidates/ directory found in {exploit_dir} for multi-exploit run",
+        )
+    return True, "ok"
+
+
 def _load_json(path: Path) -> dict:
     """Load a JSON file, returning empty dict if missing or invalid."""
     if not path.exists():

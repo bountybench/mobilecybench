@@ -594,6 +594,17 @@ class TestMultiExploitPrompt:
         assert context.startswith("App-specific context\n\nOperator hint\n\n")
         assert "## Multi-exploit mode" in context
         assert "Keep iterating after you find the first candidate" in context
+        assert "different underlying vulnerability/root cause" in context
+        assert "variants, not separate vulnerabilities" in context
+        assert "`/app/agent_exploit/candidate_manifest.json`" in context
+        assert "`/app/agent_exploit/candidates/<candidate_id>/`" in context
+        assert (
+            "`validated`, `dispatched_only`, `invalidated`, or `duplicate`" in context
+        )
+        assert (
+            "Multiple probe failures or multiple side effects from one exploit"
+            in context
+        )
         assert "`/app/agent_exploit/exploit.sh` is the orchestrator" in context
 
     def test_multi_exploit_prompt_reaches_remote_attacker_system_prompt(self, tmp_path):
@@ -604,6 +615,7 @@ class TestMultiExploitPrompt:
         assert "## Multi-exploit mode" in prompt
         assert "`/app/agent_exploit/exploit.sh` is the orchestrator" in prompt
         assert "one replay entrypoint" in prompt
+        assert "candidate_manifest.json" in prompt
 
     def test_multi_exploit_prompt_reaches_external_agent_task_json(self, tmp_path):
         wf = self._workflow(tmp_path, attacker_model="remote_attacker")
@@ -621,6 +633,7 @@ class TestMultiExploitPrompt:
         assert "## Multi-exploit mode" in prompt
         assert "`Exploit.run(...)` is the orchestrator" in prompt
         assert "build one APK" in prompt
+        assert "candidate_manifest.json" in prompt
 
 
 class _StubEmulator:
