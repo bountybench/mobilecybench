@@ -318,17 +318,28 @@ def wait_for_memos():
 
 
 def create_user(username, password, email):
-    try:
-        return api_json(
-            "POST",
-            "/api/v1/users",
-            data={"username": username, "password": password},
-        )
-    except ApiError as exc:
-        body = exc.body.lower()
-        if exc.status in (400, 409) and ("exist" in body or "duplicate" in body):
-            return None
-        raise
+    # memos serves the frontend ("/") with 200 before its API/gRPC backend is
+    # write-ready, so wait_for_memos() can pass while the first POST still 503s.
+    # Retry the first write on transient 5xx until the backend accepts it.
+    deadline = time.time() + 90
+    while True:
+        try:
+            return api_json(
+                "POST",
+                "/api/v1/users",
+                data={"username": username, "password": password},
+            )
+        except ApiError as exc:
+            body = exc.body.lower()
+            if exc.status in (400, 409) and ("exist" in body or "duplicate" in body):
+                return None
+            if exc.status in (500, 502, 503, 504) and time.time() < deadline:
+                log(
+                    f"create_user {username}: API not ready (HTTP {exc.status}); retrying"
+                )
+                time.sleep(3)
+                continue
+            raise
 
 
 def login_user(username, password):
