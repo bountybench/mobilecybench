@@ -13,6 +13,59 @@ sed_inplace() {
     fi
 }
 
+GRADLE_ARGS=()
+if [[ "${MCB_OBFUSCATE:-0}" = "1" && -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]]; then
+    GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
+fi
+
+configure_obfuscation() {
+    [[ "${MCB_OBFUSCATE:-0}" = "1" ]] || return 0
+
+    for rules_file in app/proguard-rules.pro termux-shared/proguard-rules.pro; do
+        [[ -f "$rules_file" ]] && sed_inplace '/^-dontobfuscate$/d' "$rules_file"
+    done
+
+    grep -q "MobileCyBench Termux obfuscation keeps" app/proguard-rules.pro && return 0
+    cat >> app/proguard-rules.pro <<'EOF'
+
+# MobileCyBench Termux obfuscation keeps: preserve Android/plugin/JNI entry
+# points while allowing internal implementation classes to be renamed by R8.
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+
+-keep class com.termux.app.TermuxApplication { *; }
+-keep class com.termux.app.TermuxActivity { *; }
+-keep class com.termux.app.activities.HelpActivity { *; }
+-keep class com.termux.app.activities.SettingsActivity { *; }
+-keep class com.termux.shared.activities.ReportActivity { *; }
+-keep class com.termux.shared.activities.ReportActivity$ReportActivityBroadcastReceiver { *; }
+-keep class com.termux.filepicker.TermuxFileReceiverActivity { *; }
+-keep class com.termux.filepicker.TermuxDocumentsProvider { *; }
+-keep class com.termux.app.TermuxOpenReceiver { *; }
+-keep class com.termux.app.TermuxOpenReceiver$ContentProvider { *; }
+-keep class com.termux.app.TermuxService { *; }
+-keep class com.termux.app.RunCommandService { *; }
+
+-keep class com.termux.shared.termux.TermuxConstants { *; }
+-keep class com.termux.shared.termux.TermuxConstants$* { *; }
+-keep class com.termux.shared.models.ExecutionCommand { *; }
+-keep class com.termux.shared.models.ExecutionCommand$* { *; }
+-keep class com.termux.shared.models.ResultConfig { *; }
+-keep class com.termux.shared.models.ResultData { *; }
+-keep class com.termux.shared.models.ReportInfo { *; }
+-keep class com.termux.shared.models.TextIOInfo { *; }
+-keep class com.termux.shared.models.errors.** { *; }
+-keep class com.termux.shared.shell.ResultSender { *; }
+
+-keep class com.termux.terminal.JNI { *; }
+-keep class com.termux.app.TermuxInstaller {
+    public static native byte[] getZip();
+}
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+EOF
+}
+
 # Install NDK if available
 if command -v sdkmanager >/dev/null 2>&1; then
     sdkmanager "ndk;24.0.8215888" --no_https 2>/dev/null || true
@@ -81,7 +134,8 @@ sed_inplace '/settings\.setAppCacheEnabled(false);/d' app/src/main/java/com/term
 git checkout HEAD -- termux-shared/src/main/java/com/termux/shared/interact/MessageDialogUtils.java
 sed_inplace 's/R\.style\.Theme_AppCompat_Light_Dialog/0/' termux-shared/src/main/java/com/termux/shared/interact/MessageDialogUtils.java
 
-# PendingIntent flags for Android 12+
+# PendingIntent flags for Android 12+. These are general targetSdkVersion=34
+# compatibility patches, not obfuscation-specific changes.
 sed_inplace 's/PendingIntent\.getActivity(this, 0, notificationIntent, 0)/PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
 sed_inplace 's/PendingIntent\.getService(this, 0, exitIntent, 0)/PendingIntent.getService(this, 0, exitIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
 sed_inplace 's/PendingIntent\.getService(this, 0, toggleWakeLockIntent, 0)/PendingIntent.getService(this, 0, toggleWakeLockIntent, PendingIntent.FLAG_IMMUTABLE)/' app/src/main/java/com/termux/app/TermuxService.java
@@ -91,6 +145,7 @@ sed_inplace 's/PendingIntent\.FLAG_UPDATE_CURRENT)/PendingIntent.FLAG_UPDATE_CUR
 sed_inplace 's/R\.drawable\.ic_error_notification/com.termux.shared.R.drawable.ic_error_notification/' app/src/main/java/com/termux/app/utils/CrashUtils.java
 
 git checkout HEAD -- app/src/main/java/com/termux/app/utils/PluginUtils.java
+sed_inplace 's/PendingIntent\.FLAG_UPDATE_CURRENT)/PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)/g' app/src/main/java/com/termux/app/utils/PluginUtils.java
 sed_inplace 's/R\.drawable\.ic_error_notification/com.termux.shared.R.drawable.ic_error_notification/' app/src/main/java/com/termux/app/utils/PluginUtils.java
 
 sed_inplace 's/registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter)/registerReceiver(mTermuxActivityBroadcastReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)/' app/src/main/java/com/termux/app/TermuxActivity.java
@@ -127,11 +182,13 @@ done
 # Remove ndk.dir from local.properties
 [[ -f "local.properties" ]] && sed_inplace '/^ndk\.dir=/d' local.properties
 
+configure_obfuscation
+
 # Build
 ./gradlew --stop
-./gradlew clean
-./gradlew downloadBootstraps --no-daemon
-./gradlew assembleRelease --no-daemon
+./gradlew "${GRADLE_ARGS[@]}" clean
+./gradlew "${GRADLE_ARGS[@]}" downloadBootstraps --no-daemon
+./gradlew "${GRADLE_ARGS[@]}" assembleRelease --no-daemon
 
 # Find and copy APK
 APK=$(find . -path "*/build/outputs/apk/release/*universal*release*.apk" -type f | head -1)

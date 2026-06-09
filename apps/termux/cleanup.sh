@@ -38,6 +38,6 @@ rm -rf "$SCRIPT_DIR/local_repo/repo"
 rm -f "$SCRIPT_DIR/scores.json" "$SCRIPT_DIR/exploit_evidence.txt"
 find "$SCRIPT_DIR" -name "*.stolen" -delete
 find "$SCRIPT_DIR" -type f -name "*.log" -delete
-find "$SCRIPT_DIR" -type f -name "*.txt" -not -name "secrets.json" -delete
+find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*.txt" -not -name "secrets.json" -delete
 
 echo "Cleanup completed successfully!"
