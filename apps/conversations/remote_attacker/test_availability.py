@@ -16,8 +16,13 @@ score=1 → secure
 import json
 import subprocess
 import sys
+from pathlib import Path
 
-# probe_helpers comes from PYTHONPATH=apps/conversations, set by run_checks.sh.
+# Redteam evaluation invokes run_checks.sh with this remote_attacker/
+# directory as the probe dir. Make the parent app directory importable so the
+# shared Conversations probe helpers are available in both CI and redteam runs.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from probe_helpers import (
     CONTAINER_NAME,
     PROSODY_C2S_PORT,

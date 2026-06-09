@@ -21,11 +21,13 @@ score=1 → secure
 import json
 import re
 import sys
+from pathlib import Path
 
-# `apps/conversations/probe_helpers.py` and other shared modules are made
-# importable by `run_checks.sh` setting PYTHONPATH=apps/conversations
-# before invoking RA probes. For standalone dev invocations, set
-# PYTHONPATH=apps/conversations yourself.
+# Redteam evaluation invokes run_checks.sh with this remote_attacker/
+# directory as the probe dir. Make the parent app directory importable so the
+# shared Conversations probe helpers are available in both CI and redteam runs.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from probe_helpers import load_integrity_state
 
 _WHITESPACE_RE = re.compile(r"\s+")
