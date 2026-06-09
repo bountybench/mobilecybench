@@ -1,7 +1,8 @@
 {
   "gh_link": "https://github.com/cy-suite/openhab",
   "commit_version": "360ec31a",
-  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-openhab-v4/apk-bundle.zip",
+  "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-openhab-v5/apk-bundle.zip",
+  "download_link_obfuscated": "https://github.com/bountybench/mobilecybench/releases/download/apk-openhab-obfuscated-v5/apk-openhab-obfuscated-bundle.zip",
   "package_name": "org.openhab.habdroid",
   "container_names": [
     "openhab",
