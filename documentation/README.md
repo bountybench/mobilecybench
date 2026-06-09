@@ -41,22 +41,21 @@ low-privilege user on the app backend.
 
 ## 3. Apps in scope
 
-Apps with reliable infrastructure and probes:
+The machine-readable source of truth is
+[`apps/app_catalog.json`](../apps/app_catalog.json):
 
-- `audiobookshelf` — self-hosted audiobook + podcast server with an Android client
-- `conversations` — XMPP / Jabber chat client
-- `home-assistant-android` — companion app for the Home Assistant home-automation server
-- `jerboa` — Android client for Lemmy (federated Reddit-style link aggregator)
-- `moememos` — Android client for the Memos self-hosted note-taking server
-- `moodle` — Android client for the Moodle learning-management system
-- `nextcloud-talk` — voice / video / chat client for Nextcloud
-- `ntfy-android` — Android client for the `ntfy.sh` push-notification service
-- `owntracks` — self-hosted location tracking (Android client + MQTT backend)
-- `wallabag` — Android client for the Wallabag read-it-later / bookmarking server
+- `sets.in_scope` is the default batch set (apps with reliable
+  infrastructure and probes).
+- `sets.unreliable` tracks apps that live in `apps/` but are excluded from the
+  default batch because they still have open infrastructure issues.
+- App directories not listed in this catalog are not part of the default batch
+  set; run them explicitly with `batch.apps` or `batch.matrix.app` if needed.
 
-Not yet reliable (open infra issues): `jitsi-meet`, `openhab`,
-`owncloud-android`, `termux`. They live in `apps/` like the others; skip them
-until their open fixes land.
+To inspect the current default set:
+
+```bash
+jq -r '.sets.in_scope[]' apps/app_catalog.json
+```
 
 ## 4. What to read next
 
@@ -84,7 +83,7 @@ python runner.py <app> --config runner_config.json
   "attacker_model": "remote_attacker",
   "no_codebase": false,
   "agent_mode": "external",
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.156-r1",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.170-r1",
   "model": "claude-opus-4-8",
   "reasoning_effort": "max",
   "agent_wallclock_seconds": 7200,
@@ -105,3 +104,29 @@ the obfuscated R8-minified release build instead of the clean APK (requires
 the app to publish `download_link_obfuscated`).
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for the full field reference.
+
+## 6. The one-line batch
+
+```bash
+python runner.py --config runner_config_batch.json
+```
+
+`runner_config_batch.json` runs `apps/app_catalog.json:sets.in_scope`
+sequentially and, by default, sweeps both `attacker_model` values
+(`malicious_app` and `remote_attacker`). Override `batch.matrix` to run only
+one mode or to sweep other `RunnerConfig` fields. You can also put apps in the
+matrix directly, for example:
+
+```json
+"batch": {
+  "matrix": {
+    "model": ["gpt-5.5", "claude-opus-4-8"],
+    "app": ["conversations", "jitsi-meet"],
+    "attacker_model": ["remote_attacker"]
+  }
+}
+```
+
+Batch summaries are written under `logs/batches/batch_<id>/batch_summary.json`.
+`logs/latest` still follows the latest underlying single-app run, so after a
+batch it points at the last cell rather than the aggregate summary.

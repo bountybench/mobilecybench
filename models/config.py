@@ -325,6 +325,11 @@ class RunnerConfig(BaseModel):
         # Strip tooling-only keys before validation; the model is strict
         # (``extra='forbid'``) and would reject them otherwise.
         c_dict.pop("$schema", None)
+        # A batch config is a runner config plus a ``batch`` planning block.
+        # Single-run invocations intentionally ignore that block so operators
+        # can reuse a batch file for an ad-hoc rerun when the remaining
+        # top-level fields define a complete single-run config.
+        c_dict.pop("batch", None)
 
         if overrides:
             c_dict.update({k: v for k, v in overrides.items() if v is not None})
@@ -535,4 +540,205 @@ class RunnerConfig(BaseModel):
     @classmethod
     def render_json_schema(cls) -> str:
         """Serialize :meth:`build_json_schema` with stable, diffable formatting."""
+        return json.dumps(cls.build_json_schema(), indent=2, ensure_ascii=False) + "\n"
+
+
+class BatchSpec(BaseModel):
+    """Batch-only planning controls layered on top of ``RunnerConfig``.
+
+    A batch config keeps the normal runner fields at the top level and adds a
+    ``batch`` object. The runner expands ``batch.apps`` × ``batch.matrix`` into
+    independent, sequential ``RunnerConfig`` invocations and validates every
+    expanded config before the first app starts.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    apps: Literal["in_scope"] | list[str] = Field(
+        default="in_scope",
+        description=(
+            "Apps to run. The string 'in_scope' resolves to the machine-readable "
+            "apps/app_catalog.json set of reliable benchmark apps; a list runs "
+            "exactly those app names in order."
+        ),
+    )
+    app_catalog: str = Field(
+        default="apps/app_catalog.json",
+        description=(
+            "Path to the app catalog JSON, relative to the project root unless "
+            "absolute. Used when apps='in_scope'."
+        ),
+    )
+    matrix: Optional[dict[str, list[Any]]] = Field(
+        default=None,
+        description=(
+            "Fields to sweep. Keys may be RunnerConfig fields or the batch-only "
+            "'app' axis, and each value must be a non-empty list. The runner "
+            "executes a deterministic Cartesian product. If omitted for "
+            "redteam probe-only configs, or if attacker_model is omitted from "
+            "both the top-level config and matrix, defaults to "
+            "attacker_model=[malicious_app, remote_attacker]. Use "
+            "{'attacker_model': ['remote_attacker']} to run only RA, for example."
+        ),
+    )
+    exclude: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Optional exact-match filters to skip expanded jobs. Keys may be "
+            "'app' plus RunnerConfig field names; a job is skipped when every "
+            "key in an exclude entry matches the expanded app/config value."
+        ),
+    )
+    continue_on_failure: bool = Field(
+        default=True,
+        description=(
+            "When true, keep running later jobs after a job returns non-zero. "
+            "The overall batch exit code is still non-zero if any job failed."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_batch_fields(self) -> "BatchSpec":
+        if isinstance(self.apps, list):
+            if not self.apps:
+                raise ValueError("batch.apps must not be empty")
+            duplicates = sorted({app for app in self.apps if self.apps.count(app) > 1})
+            if duplicates:
+                raise ValueError(
+                    f"batch.apps contains duplicate app names: {duplicates}"
+                )
+            for app in self.apps:
+                if not app or not isinstance(app, str):
+                    raise ValueError("batch.apps entries must be non-empty strings")
+
+        valid_runner_fields = set(RunnerConfig.model_fields)
+        valid_matrix_fields = valid_runner_fields | {"app"}
+        if self.matrix is not None:
+            if not self.matrix:
+                raise ValueError("batch.matrix must not be empty when provided")
+            for field_name, values in self.matrix.items():
+                if field_name not in valid_matrix_fields:
+                    raise ValueError(
+                        f"batch.matrix field {field_name!r} is not a RunnerConfig "
+                        "field or 'app'"
+                    )
+                if not isinstance(values, list) or not values:
+                    raise ValueError(
+                        f"batch.matrix.{field_name} must be a non-empty list"
+                    )
+                if field_name == "app" and not all(
+                    isinstance(app, str) and app for app in values
+                ):
+                    raise ValueError(
+                        "batch.matrix.app values must be non-empty strings"
+                    )
+
+        for idx, entry in enumerate(self.exclude, start=1):
+            if not entry:
+                raise ValueError(f"batch.exclude[{idx}] must not be empty")
+            for field_name in entry:
+                if field_name != "app" and field_name not in valid_runner_fields:
+                    raise ValueError(
+                        f"batch.exclude[{idx}] field {field_name!r} is not "
+                        "a RunnerConfig field or 'app'"
+                    )
+
+        return self
+
+
+class BatchRunnerConfig:
+    """Schema renderer for a top-level runner config with a ``batch`` block."""
+
+    JSON_SCHEMA_DRAFT: ClassVar[str] = RunnerConfig.JSON_SCHEMA_DRAFT
+    JSON_SCHEMA_ID: ClassVar[str] = (
+        "https://mobilecybench.dev/schemas/batch_runner_config.schema.json"
+    )
+    JSON_SCHEMA_TITLE: ClassVar[str] = "Batch Runner Config"
+
+    @classmethod
+    def _tighten_batch_schema(cls, batch_schema: dict) -> dict:
+        """Align generated ``BatchSpec`` JSON Schema with runtime validators.
+
+        Pydantic's schema for ``dict[str, list[Any]]`` correctly describes the
+        Python type, but it cannot infer the extra field-name and non-empty
+        constraints enforced by ``BatchSpec.validate_batch_fields``. Add those
+        constraints here so editor validation catches the same common mistakes
+        before the runner does.
+        """
+        batch_schema = dict(batch_schema)
+        properties = dict(batch_schema.get("properties", {}))
+        valid_runner_fields = sorted(RunnerConfig.model_fields)
+        valid_batch_fields = [*valid_runner_fields, "app"]
+
+        apps_schema = dict(properties["apps"])
+        apps_schema["anyOf"] = [
+            dict(apps_schema["anyOf"][0]),
+            {
+                **dict(apps_schema["anyOf"][1]),
+                "minItems": 1,
+                "uniqueItems": True,
+                "items": {"type": "string", "minLength": 1},
+            },
+        ]
+        properties["apps"] = apps_schema
+
+        matrix_schema = dict(properties["matrix"])
+        matrix_object_schema = dict(matrix_schema["anyOf"][0])
+        matrix_object_schema.update(
+            {
+                "minProperties": 1,
+                "propertyNames": {"enum": valid_batch_fields},
+                "properties": {
+                    "app": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    }
+                },
+                "additionalProperties": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {},
+                },
+            }
+        )
+        matrix_schema["anyOf"] = [
+            matrix_object_schema,
+            dict(matrix_schema["anyOf"][1]),
+        ]
+        properties["matrix"] = matrix_schema
+
+        exclude_schema = dict(properties["exclude"])
+        exclude_item_schema = dict(exclude_schema["items"])
+        exclude_item_schema.update(
+            {
+                "minProperties": 1,
+                "propertyNames": {"enum": valid_batch_fields},
+            }
+        )
+        exclude_schema["items"] = exclude_item_schema
+        properties["exclude"] = exclude_schema
+
+        batch_schema["properties"] = properties
+        return batch_schema
+
+    @classmethod
+    def build_json_schema(cls) -> dict:
+        schema = RunnerConfig.build_json_schema()
+        schema["$id"] = cls.JSON_SCHEMA_ID
+        schema["title"] = cls.JSON_SCHEMA_TITLE
+        schema["description"] = (
+            "Configuration for sequential batch invocations of runner.py. "
+            "All normal RunnerConfig fields provide per-job defaults; the "
+            "required batch block selects apps and matrix overrides."
+        )
+        schema["properties"] = dict(schema["properties"])
+        schema["properties"]["batch"] = cls._tighten_batch_schema(
+            BatchSpec.model_json_schema()
+        )
+        schema["required"] = [*schema.get("required", []), "batch"]
+        return schema
+
+    @classmethod
+    def render_json_schema(cls) -> str:
         return json.dumps(cls.build_json_schema(), indent=2, ensure_ascii=False) + "\n"

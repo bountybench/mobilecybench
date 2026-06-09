@@ -147,3 +147,70 @@ def test_runner_logger_init_announces_correct_path(tmp_path: Path) -> None:
     assert (
         announced == created[0]
     ), f"announced path {announced} != on-disk dir {created[0]}"
+
+
+def test_runner_cli_invokes_batch_and_preserves_job_log_dirs(tmp_path: Path) -> None:
+    """App-less ``runner.py --config <batch>`` uses the batch path and separate logs."""
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    cfg = tmp_path / "batch_config.json"
+    cfg.write_text(
+        json.dumps(
+            {
+                "workflow": "redteam",
+                "probe_only": True,
+                "model": "cli-batch-model",
+                "agent_image": "cybench/mobilecybench:latest",
+                "build_type": "download-apk",
+                "emulator_display": "headless",
+                "network_mode": "permissive",
+                "max_iterations": 1,
+                "max_model_response_tokens": 1,
+                "dry_run": False,
+                "gold_run": False,
+                "batch": {
+                    "apps": ["fake-batch-a", "fake-batch-b"],
+                    "matrix": {"attacker_model": ["remote_attacker"]},
+                    "continue_on_failure": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "HOME": os.environ.get("HOME", ""),
+        "PYTHONPATH": str(REPO_ROOT),
+        "MOBILECYBENCH_LOGS_DIR": str(logs_dir),
+    }
+    proc = subprocess.run(
+        [sys.executable, "runner.py", "--config", str(cfg)],
+        cwd=str(REPO_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    # Both fake apps fail after logger setup, so the aggregate exits non-zero
+    # while still exercising runner.py's CLI dispatch and batch continuation.
+    assert proc.returncode == 1, f"stdout={proc.stdout!r}; stderr={proc.stderr!r}"
+
+    summaries = list((logs_dir / "batches").glob("batch_*/batch_summary.json"))
+    assert len(summaries) == 1, f"stdout={proc.stdout!r}; stderr={proc.stderr!r}"
+    summary = json.loads(summaries[0].read_text(encoding="utf-8"))
+    assert summary["status"] == "failed"
+    assert summary["total_jobs"] == 2
+    assert summary["completed_jobs"] == 2
+    assert [job["app"] for job in summary["jobs"]] == [
+        "fake-batch-a",
+        "fake-batch-b",
+    ]
+
+    job_log_dirs = [Path(job["logs_dir"]) for job in summary["jobs"]]
+    assert len(set(job_log_dirs)) == 2
+    assert all(path.is_dir() for path in job_log_dirs)
+    assert all((path / "run_summary.json").is_file() for path in job_log_dirs)
+    assert (logs_dir / "latest").resolve() == job_log_dirs[-1].resolve()

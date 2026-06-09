@@ -66,7 +66,7 @@ In `runner_config.json`:
 ```jsonc
 {
   "agent_mode": "external",
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.156-r1",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.170-r1",
   "model": "claude-opus-4-8",
   "reasoning_effort": "max"
 }

@@ -39,6 +39,70 @@ source raise the success rate vs. forcing it to reverse-engineer the shipped APK
 python runner.py <app_name> --config runner_config.json
 ```
 
+## Run a sequential batch
+
+```bash
+python runner.py --config runner_config_batch.json
+```
+
+Batch configs use the same top-level `RunnerConfig` fields as a single run and
+add a required `batch` block:
+
+```jsonc
+{
+  "$schema": "schemas/batch_runner_config.schema.json",
+  "workflow": "redteam",
+  "probe_only": true,
+  "no_codebase": false,
+  "build_type": "download-apk",
+  "agent_mode": "external",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.170-r1",
+  "model": "claude-opus-4-8",
+  "max_iterations": 999,
+  "max_model_response_tokens": 8192,
+  "dry_run": false,
+
+  "batch": {
+    "apps": "in_scope",
+    "matrix": {
+      "attacker_model": ["malicious_app", "remote_attacker"]
+    },
+    "continue_on_failure": true
+  }
+}
+```
+
+Notes:
+
+- `apps: "in_scope"` resolves from
+  [`apps/app_catalog.json`](../apps/app_catalog.json). Set `apps` to an explicit
+  list such as `["audiobookshelf", "wallabag"]` to run a subset.
+- If `attacker_model` is omitted from both the top-level config and
+  `batch.matrix` on a `redteam` + `probe_only=true` batch, the runner defaults
+  to both attacker modes, so the default plan is `len(sets.in_scope) × 2`.
+- `matrix` keys can be any `RunnerConfig` field, plus the batch-only `app`
+  axis if you prefer to keep apps inside the matrix block. Values are swept as
+  a Cartesian product, e.g. add `"no_codebase": [false, true]` to run source
+  and APK-only legs, or:
+  ```json
+  "batch": {
+    "matrix": {
+      "model": ["gpt-5.5", "claude-opus-4-8"],
+      "app": ["conversations", "jitsi-meet"],
+      "attacker_model": ["remote_attacker"]
+    }
+  }
+  ```
+- Use `"attacker_model": ["remote_attacker"]` (or `["malicious_app"]`) to run
+  only one threat model.
+- Jobs run sequentially. Each job gets its own `logs/<app>_<workflow>_.../`
+  directory and `run_summary.json`; the batch writes an aggregate summary under
+  `logs/batches/batch_<id>/batch_summary.json`.
+- During a batch, `logs/latest` is updated by each underlying single run and
+  therefore points at the last-started/last-finished cell, not at the aggregate
+  batch directory. Use the printed `logs/batches/batch_<id>/batch_summary.json`
+  path for batch-level status.
+
 ### Pipeline stages
 
 What the runner actually does, step by step:
@@ -89,6 +153,14 @@ python scripts/generate_runner_config_schema.py
 
 A CI parity test fails the build on drift.
 
+Batch config autocomplete lives in
+[`schemas/batch_runner_config.schema.json`](../schemas/batch_runner_config.schema.json).
+Regenerate it with:
+
+```bash
+python scripts/generate_batch_runner_config_schema.py
+```
+
 ### Minimum config
 
 ```jsonc
@@ -104,7 +176,7 @@ A CI parity test fails the build on drift.
 
   // agent
   "agent_mode": "external",               // BYO image (claude-code/codex/opencode)
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.156-r1",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.170-r1",
   "model": "claude-opus-4-8",
   "reasoning_effort": "max",
   "agent_wallclock_seconds": 7200,
