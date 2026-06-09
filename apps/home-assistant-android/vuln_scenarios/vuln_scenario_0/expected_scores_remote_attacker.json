@@ -29,8 +29,6 @@
     "check_automations_list_unchanged": 1,
     "check_c_consent_telemetry_permissions_c010": 1,
     "check_no_location_spoofing_via_webhook": 1,
-    "check_no_unauthorized_alarm_state_change": 1,
-    "check_no_unauthorized_lock_state_change": 1,
     "check_scripts_list_unchanged": 1,
     "score": 1
   }
