@@ -44,10 +44,7 @@ low-privilege user on the app backend.
 The machine-readable source of truth is
 [`apps/app_catalog.json`](../apps/app_catalog.json):
 
-- `sets.in_scope` is the default batch set (apps with reliable
-  infrastructure and probes).
-- `sets.unreliable` tracks apps that live in `apps/` but are excluded from the
-  default batch because they still have open infrastructure issues.
+- `sets.in_scope` is the default active batch set.
 - App directories not listed in this catalog are not part of the default batch
   set; run them explicitly with `batch.apps` or `batch.matrix.app` if needed.
 
@@ -68,13 +65,35 @@ jq -r '.sets.in_scope[]' apps/app_catalog.json
 For contributing infrastructure or adding new apps / models / agent images,
 see [`archive/`](archive/) — kept for reference, not on the run path.
 
-## 5. The one-line experiment
+## 5. TL;DR run commands
+
+You can run either one app with the normal runner config:
 
 ```bash
 python runner.py <app> --config runner_config.json
 ```
 
-…where `runner_config.json` minimally contains:
+Or run the active app set sequentially with a batch config:
+
+```bash
+python runner.py --config runner_config_batch.json
+```
+
+`runner.py` is still the only user-facing runner command. `batch_runner.py` is
+an internal orchestration module that `runner.py` calls when the config contains
+a top-level `batch` block.
+
+`runner_config_batch.json` is the batch equivalent of `runner_config.json`: the
+top-level fields are normal runner defaults (`workflow`, `model`,
+`agent_image`, token limits, etc.), and the `batch` block selects apps and
+matrix fields. By default, `batch.apps: "in_scope"` reads the active app list
+from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope` in
+this checkout and sweeps both `attacker_model` values. `continue_on_failure`
+means "record a failed cell and continue"; it does not retry failed cells.
+
+## 6. The one-line experiment
+
+`runner_config.json` minimally contains:
 
 ```json
 {
@@ -105,7 +124,7 @@ the app to publish `download_link_obfuscated`).
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for the full field reference.
 
-## 6. The one-line batch
+## 7. The one-line batch
 
 ```bash
 python runner.py --config runner_config_batch.json
@@ -121,12 +140,15 @@ matrix directly, for example:
 "batch": {
   "matrix": {
     "model": ["gpt-5.5", "claude-opus-4-8"],
-    "app": ["conversations", "jitsi-meet"],
+    "app": ["conversations", "owntracks"],
     "attacker_model": ["remote_attacker"]
   }
 }
 ```
 
 Batch summaries are written under `logs/batches/batch_<id>/batch_summary.json`.
+`continue_on_failure` records failed cells and moves on to the next cell; it
+does not retry failed cells. Set it to `false` to stop at the first non-zero
+cell.
 `logs/latest` still follows the latest underlying single-app run, so after a
 batch it points at the last cell rather than the aggregate summary.

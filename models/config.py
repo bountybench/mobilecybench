@@ -558,7 +558,7 @@ class BatchSpec(BaseModel):
         default="in_scope",
         description=(
             "Apps to run. The string 'in_scope' resolves to the machine-readable "
-            "apps/app_catalog.json set of reliable benchmark apps; a list runs "
+            "apps/app_catalog.json active benchmark app set; a list runs "
             "exactly those app names in order."
         ),
     )
@@ -593,7 +593,8 @@ class BatchSpec(BaseModel):
         default=True,
         description=(
             "When true, keep running later jobs after a job returns non-zero. "
-            "The overall batch exit code is still non-zero if any job failed."
+            "This does not retry failed jobs; the overall batch exit code is "
+            "still non-zero if any job failed."
         ),
     )
 
@@ -654,6 +655,33 @@ class BatchRunnerConfig:
         "https://mobilecybench.dev/schemas/batch_runner_config.schema.json"
     )
     JSON_SCHEMA_TITLE: ClassVar[str] = "Batch Runner Config"
+
+    @classmethod
+    def _matrix_supplies_required_field(cls, field_name: str) -> dict:
+        """Return a schema branch that accepts a required field from matrix.
+
+        Batch configs are per-job templates: normal ``RunnerConfig`` fields may
+        be present once at the top level, or supplied as a swept
+        ``batch.matrix`` axis. Runtime validates every expanded cell as a full
+        ``RunnerConfig`` before side effects; this schema mirrors that contract
+        so editor / external-agent validation accepts documented configs such as
+        ``batch.matrix.model`` without requiring a redundant top-level
+        ``model`` default.
+        """
+        return {
+            "required": ["batch"],
+            "properties": {
+                "batch": {
+                    "required": ["matrix"],
+                    "properties": {
+                        "matrix": {
+                            "type": "object",
+                            "required": [field_name],
+                        }
+                    },
+                }
+            },
+        }
 
     @classmethod
     def _tighten_batch_schema(cls, batch_schema: dict) -> dict:
@@ -730,13 +758,32 @@ class BatchRunnerConfig:
         schema["description"] = (
             "Configuration for sequential batch invocations of runner.py. "
             "All normal RunnerConfig fields provide per-job defaults; the "
-            "required batch block selects apps and matrix overrides."
+            "required batch block selects apps and matrix overrides. Required "
+            "RunnerConfig fields may be supplied either as top-level defaults "
+            "or as batch.matrix axes."
         )
+        runner_required_fields = list(schema.get("required", []))
         schema["properties"] = dict(schema["properties"])
+        schema["properties"]["$schema"] = {
+            "type": "string",
+            "description": "Optional JSON Schema URI for editor validation.",
+        }
         schema["properties"]["batch"] = cls._tighten_batch_schema(
             BatchSpec.model_json_schema()
         )
-        schema["required"] = [*schema.get("required", []), "batch"]
+        schema["required"] = ["batch"]
+        schema["allOf"] = [
+            *schema.get("allOf", []),
+            *[
+                {
+                    "anyOf": [
+                        {"required": [field_name]},
+                        cls._matrix_supplies_required_field(field_name),
+                    ]
+                }
+                for field_name in runner_required_fields
+            ],
+        ]
         return schema
 
     @classmethod

@@ -128,6 +128,15 @@ class TimeTracker:
             return self.experiment_end_time - self.experiment_start_time
         return None
 
+    def _llm_calls_from(self, start_idx: int = 0) -> List[LLMCallTiming]:
+        """Return LLM calls from ``start_idx`` onward.
+
+        Batch runs execute multiple jobs in one Python process, so the global
+        tracker can contain calls from earlier jobs. Callers that need per-run
+        reporting pass the index captured at ``start_experiment`` time.
+        """
+        return self.llm_calls[start_idx:]
+
     def get_total_llm_time(self) -> float:
         """Get total time spent on LLM calls in seconds."""
         return sum(call.duration for call in self.llm_calls)
@@ -136,12 +145,15 @@ class TimeTracker:
         """Get total number of LLM calls made."""
         return len(self.llm_calls)
 
-    def _compute_stats(self) -> Dict[str, Any]:
+    def _compute_stats(
+        self, llm_calls: Optional[List[LLMCallTiming]] = None
+    ) -> Dict[str, Any]:
         """Compute timing statistics."""
-        if not self.llm_calls:
+        llm_calls = self.llm_calls if llm_calls is None else llm_calls
+        if not llm_calls:
             return {}
 
-        durations = [call.duration for call in self.llm_calls]
+        durations = [call.duration for call in llm_calls]
         durations.sort()
 
         n = len(durations)
@@ -160,7 +172,7 @@ class TimeTracker:
 
         # Per-model stats
         model_stats = {}
-        for call in self.llm_calls:
+        for call in llm_calls:
             if call.model not in model_stats:
                 model_stats[call.model] = []
             model_stats[call.model].append(call.duration)
@@ -224,14 +236,15 @@ class TimeTracker:
         with open(filepath, "w") as f:
             json.dump(self.to_json(), f, indent=2)
 
-    def log_summary(self, logger) -> None:
+    def log_summary(self, logger, start_idx: int = 0) -> None:
         """Log timing summary to the provided logger."""
         logger.info("Timing summary")
 
         experiment_duration = self.get_experiment_duration() or 0.0
-        total_llm_time = self.get_total_llm_time()
-        call_count = self.get_llm_call_count()
-        stats = self._compute_stats()
+        llm_calls = self._llm_calls_from(start_idx)
+        total_llm_time = sum(call.duration for call in llm_calls)
+        call_count = len(llm_calls)
+        stats = self._compute_stats(llm_calls)
 
         logger.info(f"total_experiment_clock_time: {experiment_duration:.3f} seconds")
         logger.info(f"total_llm_time: {total_llm_time:.3f} seconds")
@@ -245,7 +258,7 @@ class TimeTracker:
             logger.info(f"llm_stats_overall_max: {overall['max']:.3f} seconds")
 
         # Log individual LLM call times
-        for i, call in enumerate(self.llm_calls, 1):
+        for i, call in enumerate(llm_calls, 1):
             status = "✓" if call.success else "✗"
             logger.info(
                 f"model_provider_call_{i}: {call.duration:.3f} seconds {status}"

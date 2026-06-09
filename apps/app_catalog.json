@@ -15,14 +15,6 @@
       "owntracks",
       "termux",
       "wallabag"
-    ],
-    "unreliable": [
-      "jitsi-meet"
     ]
-  },
-  "notes": {
-    "jitsi-meet": {
-      "description": "Excluded from the default batch set due to open infrastructure issues."
-    }
   }
 }

@@ -3,7 +3,7 @@
   "$id": "https://mobilecybench.dev/schemas/batch_runner_config.schema.json",
   "title": "Batch Runner Config",
   "additionalProperties": false,
-  "description": "Configuration for sequential batch invocations of runner.py. All normal RunnerConfig fields provide per-job defaults; the required batch block selects apps and matrix overrides.",
+  "description": "Configuration for sequential batch invocations of runner.py. All normal RunnerConfig fields provide per-job defaults; the required batch block selects apps and matrix overrides. Required RunnerConfig fields may be supplied either as top-level defaults or as batch.matrix axes.",
   "properties": {
     "build_type": {
       "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
@@ -259,6 +259,10 @@
       "title": "Agent Wallclock Seconds",
       "type": "integer"
     },
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema URI for editor validation."
+    },
     "batch": {
       "additionalProperties": false,
       "description": "Batch-only planning controls layered on top of ``RunnerConfig``.\n\nA batch config keeps the normal runner fields at the top level and adds a\n``batch`` object. The runner expands ``batch.apps`` × ``batch.matrix`` into\nindependent, sequential ``RunnerConfig`` invocations and validates every\nexpanded config before the first app starts.",
@@ -280,7 +284,7 @@
             }
           ],
           "default": "in_scope",
-          "description": "Apps to run. The string 'in_scope' resolves to the machine-readable apps/app_catalog.json set of reliable benchmark apps; a list runs exactly those app names in order.",
+          "description": "Apps to run. The string 'in_scope' resolves to the machine-readable apps/app_catalog.json active benchmark app set; a list runs exactly those app names in order.",
           "title": "Apps"
         },
         "app_catalog": {
@@ -398,7 +402,7 @@
         },
         "continue_on_failure": {
           "default": true,
-          "description": "When true, keep running later jobs after a job returns non-zero. The overall batch exit code is still non-zero if any job failed.",
+          "description": "When true, keep running later jobs after a job returns non-zero. This does not retry failed jobs; the overall batch exit code is still non-zero if any job failed.",
           "title": "Continue On Failure",
           "type": "boolean"
         }
@@ -408,13 +412,183 @@
     }
   },
   "required": [
-    "build_type",
-    "model",
-    "agent_image",
-    "max_iterations",
-    "max_model_response_tokens",
-    "dry_run",
     "batch"
   ],
-  "type": "object"
+  "type": "object",
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "required": [
+            "build_type"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "build_type"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "model"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "model"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "agent_image"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "agent_image"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "max_iterations"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "max_iterations"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "max_model_response_tokens"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "max_model_response_tokens"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "dry_run"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "dry_run"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
 }

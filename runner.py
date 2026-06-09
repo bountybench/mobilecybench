@@ -423,7 +423,7 @@ def run(
     finally:
         # Finalize experiment timing
         time_tracker.end_experiment()
-        time_tracker.log_summary(logger)
+        time_tracker.log_summary(logger, start_idx=timing_start_idx)
 
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")

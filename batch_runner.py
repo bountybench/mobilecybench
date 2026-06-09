@@ -10,6 +10,7 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import sys
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -296,6 +297,23 @@ def _write_batch_summary(batch_dir: Path, summary: dict[str, Any]) -> None:
     )
 
 
+def _clear_per_job_process_caches() -> None:
+    """Clear known process-global caches before a new batch cell starts.
+
+    Batch mode intentionally runs sequential cells in one Python process. The
+    normal single-run CLI gets a fresh interpreter each time, so clear caches
+    that are keyed by per-job environment/config to preserve that behavior.
+    Keep this best-effort and side-effect-light: only clear modules already
+    imported by a previous cell rather than importing custom-agent modules just
+    to clear them.
+    """
+    docker_ops = sys.modules.get("agent.custom.backend.docker_ops")
+    get_token_truncator = getattr(docker_ops, "get_token_truncator", None)
+    cache_clear = getattr(get_token_truncator, "cache_clear", None)
+    if callable(cache_clear):
+        cache_clear()
+
+
 def run_batch(
     base_config_payload: dict[str, Any],
     batch: BatchSpec,
@@ -328,6 +346,7 @@ def run_batch(
 
     try:
         for job in jobs:
+            _clear_per_job_process_caches()
             os.environ["MOBILECYBENCH_SESSION_ID"] = str(uuid.uuid4())
 
             # Initialize LoggerManager with the per-job config before logging.

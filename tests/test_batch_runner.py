@@ -1,6 +1,8 @@
 import json
 import logging
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from jsonschema import ValidationError, validate
@@ -79,7 +81,7 @@ def test_batch_matrix_cycles_arbitrary_runner_config_fields(tmp_path):
 def test_batch_matrix_can_cycle_apps_as_an_axis(tmp_path):
     batch = BatchSpec(
         matrix={
-            "app": ["conversations", "jitsi-meet"],
+            "app": ["conversations", "owntracks"],
             "model": ["gpt-5.5", "claude-opus-4-8"],
             "attacker_model": ["remote_attacker"],
         }
@@ -90,8 +92,8 @@ def test_batch_matrix_can_cycle_apps_as_an_axis(tmp_path):
     assert {(job.app_name, job.config.model) for job in jobs} == {
         ("conversations", "gpt-5.5"),
         ("conversations", "claude-opus-4-8"),
-        ("jitsi-meet", "gpt-5.5"),
-        ("jitsi-meet", "claude-opus-4-8"),
+        ("owntracks", "gpt-5.5"),
+        ("owntracks", "claude-opus-4-8"),
     }
     assert all(job.config.attacker_model == "remote_attacker" for job in jobs)
     assert all("app" in job.overrides for job in jobs)
@@ -232,12 +234,23 @@ def test_run_batch_executes_jobs_sequentially_and_writes_summary(tmp_path, monke
     _write_catalog(tmp_path, ["app_a"])
     batch = BatchSpec(matrix={"attacker_model": ["malicious_app", "remote_attacker"]})
     calls = []
+    cache_clears = []
     observed_runs = []
     observed_agent_handlers = []
 
     logs_root = tmp_path / "logs"
     monkeypatch.setenv("MOBILECYBENCH_LOGS_DIR", str(logs_root))
     monkeypatch.delenv("MOBILECYBENCH_SESSION_ID", raising=False)
+
+    def fake_get_token_truncator():
+        return object()
+
+    fake_get_token_truncator.cache_clear = lambda: cache_clears.append("cleared")
+    monkeypatch.setitem(
+        sys.modules,
+        "agent.custom.backend.docker_ops",
+        SimpleNamespace(get_token_truncator=fake_get_token_truncator),
+    )
 
     def fake_run(config, app_name, project_root, config_path=None):
         run_id = logger_manager.get_run_id()
@@ -283,6 +296,7 @@ def test_run_batch_executes_jobs_sequentially_and_writes_summary(tmp_path, monke
     )
 
     assert calls == [("app_a", "malicious_app"), ("app_a", "remote_attacker")]
+    assert cache_clears == ["cleared", "cleared"]
     assert len({run_id for run_id, *_ in observed_runs}) == 2
     assert len({logs_dir for _, logs_dir, *_ in observed_runs}) == 2
     assert observed_agent_handlers[0] is not observed_agent_handlers[1]
@@ -366,8 +380,55 @@ def test_committed_batch_config_validates_against_schema():
     payload = json.loads(
         (REPO_ROOT / "runner_config_batch.json").read_text(encoding="utf-8")
     )
-    payload.pop("$schema", None)
     validate(instance=payload, schema=schema)
+
+
+def test_batch_runner_schema_accepts_required_runner_fields_from_matrix():
+    schema = json.loads(
+        (REPO_ROOT / "schemas" / "batch_runner_config.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    payload = {
+        **_base_payload(),
+        "$schema": "./schemas/batch_runner_config.schema.json",
+        "attacker_model": "remote_attacker",
+        "batch": {
+            "apps": ["conversations"],
+            "matrix": {
+                "model": ["gpt-5.5"],
+            },
+        },
+    }
+    payload.pop("model")
+
+    validate(instance=payload, schema=schema)
+
+    jobs = batch_runner.expand_batch_jobs(
+        {key: value for key, value in payload.items() if key != "batch"},
+        BatchSpec(**payload["batch"]),
+        REPO_ROOT,
+    )
+    assert [(job.app_name, job.config.model) for job in jobs] == [
+        ("conversations", "gpt-5.5")
+    ]
+
+
+def test_batch_runner_schema_rejects_missing_required_runner_field_without_matrix():
+    schema = json.loads(
+        (REPO_ROOT / "schemas" / "batch_runner_config.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    payload = {
+        **_base_payload(),
+        "attacker_model": "remote_attacker",
+        "batch": {"apps": ["conversations"]},
+    }
+    payload.pop("model")
+
+    with pytest.raises(ValidationError):
+        validate(instance=payload, schema=schema)
 
 
 @pytest.mark.parametrize(
@@ -409,15 +470,12 @@ def test_app_catalog_validates_and_sets_are_consistent():
 
     validate(instance=catalog, schema=schema)
     in_scope = set(catalog["sets"]["in_scope"])
-    unreliable = set(catalog["sets"].get("unreliable", []))
     metadata_apps = {
         path.parent.name for path in (REPO_ROOT / "apps").glob("*/metadata.json")
     }
-    assert in_scope.isdisjoint(unreliable)
+    assert set(catalog["sets"]) == {"in_scope"}
     assert in_scope <= metadata_apps
-    assert unreliable <= metadata_apps
     assert {"openhab", "owncloud-android", "termux"} <= in_scope
-    assert unreliable == {"jitsi-meet"}
-    assert "out_of_scope" not in catalog["sets"]
+    assert "jitsi-meet" not in in_scope
     assert "apps" not in catalog
-    assert set(catalog.get("notes", {})) <= (in_scope | unreliable)
+    assert "notes" not in catalog

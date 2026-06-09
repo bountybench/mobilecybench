@@ -45,6 +45,10 @@ python runner.py <app_name> --config runner_config.json
 python runner.py --config runner_config_batch.json
 ```
 
+There is no separate batch CLI to invoke: `runner.py` remains the user-facing
+entrypoint, and it dispatches to the internal `batch_runner.py` module when the
+config contains a top-level `batch` block.
+
 Batch configs use the same top-level `RunnerConfig` fields as a single run and
 add a required `batch` block:
 
@@ -75,8 +79,9 @@ add a required `batch` block:
 Notes:
 
 - `apps: "in_scope"` resolves from
-  [`apps/app_catalog.json`](../apps/app_catalog.json). Set `apps` to an explicit
-  list such as `["audiobookshelf", "wallabag"]` to run a subset.
+  [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope` in the
+  current checkout. Set `apps` to an explicit list such as
+  `["audiobookshelf", "wallabag"]` to run a subset.
 - If `attacker_model` is omitted from both the top-level config and
   `batch.matrix` on a `redteam` + `probe_only=true` batch, the runner defaults
   to both attacker modes, so the default plan is `len(sets.in_scope) × 2`.
@@ -88,13 +93,16 @@ Notes:
   "batch": {
     "matrix": {
       "model": ["gpt-5.5", "claude-opus-4-8"],
-      "app": ["conversations", "jitsi-meet"],
+      "app": ["conversations", "owntracks"],
       "attacker_model": ["remote_attacker"]
     }
   }
   ```
 - Use `"attacker_model": ["remote_attacker"]` (or `["malicious_app"]`) to run
   only one threat model.
+- `continue_on_failure: true` records a failed cell and moves on to the next
+  expanded job. It does not retry failed cells. Set it to `false` to stop the
+  batch at the first non-zero cell.
 - Jobs run sequentially. Each job gets its own `logs/<app>_<workflow>_.../`
   directory and `run_summary.json`; the batch writes an aggregate summary under
   `logs/batches/batch_<id>/batch_summary.json`.

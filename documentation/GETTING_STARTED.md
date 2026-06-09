@@ -106,6 +106,23 @@ The committed `runner_config.json` ships a probe-only example. Pick an app from 
 python runner.py audiobookshelf --config runner_config.json
 ```
 
+To run the active app set sequentially instead, use the batch config:
+
+```bash
+python runner.py --config runner_config_batch.json
+```
+
+`runner.py` is still the user-facing command; `batch_runner.py` is only the
+internal module that expands and runs batch cells.
+
+`runner_config_batch.json` uses the same top-level fields as
+`runner_config.json`, plus a `batch` block that selects apps and matrix fields.
+The committed batch config has `batch.apps: "in_scope"`, so it reads the active
+app list from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope`
+in this checkout and sweeps both attacker models by default.
+`continue_on_failure` records a failed cell and moves on; it does not retry
+failed cells.
+
 What happens next:
 
 1. APK is downloaded (`build_type: download-apk`).
