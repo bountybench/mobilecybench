@@ -104,15 +104,5 @@ Optionally set `apk_obfuscation: "on"` with `no_codebase: true` to run against
 the obfuscated R8-minified release build instead of the clean APK (requires
 the app to publish `download_link_obfuscated`).
 
-For Claude Fable 5, use the Fable-capable Claude Code image and model id:
-
-```jsonc
-"agent_image": "cybench/mobilecybench:claudecode_2.1.170-r1",
-"model": "claude-fable-5",
-"reasoning_effort": "max"
-```
-
-Claude Code versions before 2.1.170 may reject Fable with a
-`thinking.type.disabled` API error.
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for the full field reference.

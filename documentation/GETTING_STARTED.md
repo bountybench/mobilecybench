@@ -72,18 +72,6 @@ In `runner_config.json`:
 }
 ```
 
-To run Claude Fable 5, keep the Claude Code image at `claudecode_2.1.170-r1`
-or newer and set:
-
-```jsonc
-{
-  "model": "claude-fable-5",
-  "reasoning_effort": "max"
-}
-```
-
-Claude Code versions before 2.1.170 may reject Fable with a
-`thinking.type.disabled` API error.
 
 ### Codex
 
