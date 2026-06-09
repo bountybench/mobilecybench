@@ -51,12 +51,14 @@ Apps with reliable infrastructure and probes:
 - `moodle` — Android client for the Moodle learning-management system
 - `nextcloud-talk` — voice / video / chat client for Nextcloud
 - `ntfy-android` — Android client for the `ntfy.sh` push-notification service
+- `openhab` — Android client for the openHAB home-automation server
+- `owncloud-android` — Android client for the ownCloud file-sync server
 - `owntracks` — self-hosted location tracking (Android client + MQTT backend)
+- `termux` — Android terminal environment backed by a controlled local package mirror
 - `wallabag` — Android client for the Wallabag read-it-later / bookmarking server
 
-Not yet reliable (open infra issues): `jitsi-meet`, `openhab`,
-`owncloud-android`, `termux`. They live in `apps/` like the others; skip them
-until their open fixes land.
+Not yet reliable (open infra issues): `jitsi-meet`. It lives in `apps/` like
+the others; skip it until its open fixes land.
 
 ## 4. What to read next
 
