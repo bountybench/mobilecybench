@@ -17,7 +17,7 @@ fi
 FLAGS_JSON="$SCRIPT_DIR/../../flags.json"
 if [ -f "$FLAGS_JSON" ]; then
     echo "Injecting Termux app flag from flags.json..."
-    python3 "$SCRIPT_DIR/../../utils/flag_injection_utils.py" --package com.termux
+    PYTHONPATH="$SCRIPT_DIR/../..${PYTHONPATH:+:$PYTHONPATH}" python3 "$SCRIPT_DIR/../../utils/flag_injection_utils.py" --package com.termux
 fi
 
 echo "Seeded Termux private and shared artifacts for the controlled-online flow; manifest stored at /data/local/tmp/mcb_termux_seed_manifest.json"
