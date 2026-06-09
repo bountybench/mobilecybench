@@ -6,6 +6,11 @@ ANDROID_DIR="$CODEBASE_DIR/android"
 ANDROID_HOME="${HOME}/.android-sdk"
 source "$ROOT_DIR/utils/android.sh"
 
+GRADLE_ARGS=()
+if [ "${MCB_OBFUSCATE:-0}" = "1" ] && [ -n "${MCB_OBFUSCATE_INIT_SCRIPT:-}" ]; then
+    GRADLE_ARGS+=(--init-script "$MCB_OBFUSCATE_INIT_SCRIPT")
+fi
+
 # Patch gradle.properties
 patch() {
     cd $ANDROID_DIR
@@ -48,13 +53,13 @@ clean_build() {
     
     cd $ANDROID_DIR
     # Clean gradle caches
-    ./gradlew clean || true
+    ./gradlew "${GRADLE_ARGS[@]}" clean || true
     rm -rf .gradle 2>/dev/null || true
     rm -rf build 2>/dev/null || true
     rm -rf app/build 2>/dev/null || true
     
     # Stop any running gradle daemons
-    ./gradlew --stop
+    ./gradlew "${GRADLE_ARGS[@]}" --stop
     
     echo "Clean completed."
 }
@@ -131,12 +136,12 @@ build_jitsi() {
     cd $ANDROID_DIR
 
     echo ">>> Cleaning Gradle Build Caches..."
-    ./gradlew clean
+    ./gradlew "${GRADLE_ARGS[@]}" clean
 
     # Cap Kotlin daemon memory at the environment level
     export GRADLE_OPTS="-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx1g -XX:MaxMetaspaceSize=512m"
  
-    ./gradlew assembleRelease \
+    ./gradlew "${GRADLE_ARGS[@]}" assembleRelease \
         --no-daemon \
         --max-workers=2 \
         --console=plain \
@@ -203,7 +208,7 @@ clear() {
     if command -v yarn >/dev/null 2>&1; then
         yarn cache clean || true
     fi
-    ./gradlew --stop
+    ./gradlew "${GRADLE_ARGS[@]}" --stop
     
     echo "Clearing completed."
 }
