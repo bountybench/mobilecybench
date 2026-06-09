@@ -66,11 +66,24 @@ In `runner_config.json`:
 ```jsonc
 {
   "agent_mode": "external",
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.156-r1",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.170-r1",
   "model": "claude-opus-4-8",
   "reasoning_effort": "max"
 }
 ```
+
+To run Claude Fable 5, keep the Claude Code image at `claudecode_2.1.170-r1`
+or newer and set:
+
+```jsonc
+{
+  "model": "claude-fable-5",
+  "reasoning_effort": "max"
+}
+```
+
+Claude Code versions before 2.1.170 may reject Fable with a
+`thinking.type.disabled` API error.
 
 ### Codex
 

@@ -250,6 +250,30 @@ def test_supported_models_have_nonzero_pricing():
 
 
 @pytest.mark.pricing
+def test_claude_fable_5_pricing_matches_official_docs():
+    pricing = get_pricing_for_model(
+        "claude-fable-5", pricing_map=load_pricing(), warn=False
+    )
+    assert pricing.input == pytest.approx(10.0, rel=1e-9)
+    assert pricing.cache_input == pytest.approx(1.0, rel=1e-9)
+    assert pricing.cache_creation_5m == pytest.approx(12.5, rel=1e-9)
+    assert pricing.cache_creation_1h == pytest.approx(20.0, rel=1e-9)
+    assert pricing.output == pytest.approx(50.0, rel=1e-9)
+
+
+@pytest.mark.pricing
+def test_claude_opus_4_8_pricing_matches_official_docs():
+    pricing = get_pricing_for_model(
+        "claude-opus-4-8", pricing_map=load_pricing(), warn=False
+    )
+    assert pricing.input == pytest.approx(5.0, rel=1e-9)
+    assert pricing.cache_input == pytest.approx(0.5, rel=1e-9)
+    assert pricing.cache_creation_5m == pytest.approx(6.25, rel=1e-9)
+    assert pricing.cache_creation_1h == pytest.approx(10.0, rel=1e-9)
+    assert pricing.output == pytest.approx(25.0, rel=1e-9)
+
+
+@pytest.mark.pricing
 def test_o4_mini_cached_input_pricing_matches_official_docs():
     pricing = get_pricing_for_model("o4-mini", pricing_map=load_pricing(), warn=False)
     assert pricing.input == pytest.approx(1.1, rel=1e-9)

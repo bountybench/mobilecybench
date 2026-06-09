@@ -104,7 +104,7 @@ A CI parity test fails the build on drift.
 
   // agent
   "agent_mode": "external",               // BYO image (claude-code/codex/opencode)
-  "agent_image": "cybench/mobilecybench:claudecode_2.1.156-r1",
+  "agent_image": "cybench/mobilecybench:claudecode_2.1.170-r1",
   "model": "claude-opus-4-8",
   "reasoning_effort": "max",
   "agent_wallclock_seconds": 7200,

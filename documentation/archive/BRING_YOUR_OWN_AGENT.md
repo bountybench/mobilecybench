@@ -7,7 +7,7 @@ mobilecybench evaluates agents through one of two paths:
 | `custom`     | Built-in in-process Python loop. Stays as-is; no contract surface.        |
 | `external`   | Your Docker image. The harness delivers a `task.json`, runs `/run-agent.sh`, and reads filesystem artifacts back. |
 
-This page documents the **`external`** contract. The reference codex, claude-code, and opencode images ship as `cybench/mobilecybench:codex_0.130.0-r2`, `cybench/mobilecybench:claudecode_2.1.140-r2`, and `cybench/mobilecybench:opencode_1.15.6-r1` (the `<cli-version>-r<revision>` tag pattern lets the harness bump independently of the CLI); a lab BYO image satisfies the same contract.
+This page documents the **`external`** contract. The reference codex, claude-code, and opencode images ship as `cybench/mobilecybench:codex_0.130.0-r2`, `cybench/mobilecybench:claudecode_2.1.170-r1`, and `cybench/mobilecybench:opencode_1.15.6-r1` (the `<cli-version>-r<revision>` tag pattern lets the harness bump independently of the CLI); a lab BYO image satisfies the same contract.
 
 ## The contract in one paragraph
 
