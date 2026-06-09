@@ -45,5 +45,8 @@ fi
 echo "Removing log files recursively..."
 find . -type f -name "*.log" -delete
 
-echo "Cleanup complete!" 
+echo "Removing synthetic vuln_0 runtime state..."
+rm -rf synthetic_vulnerabilities/vuln_0/runtime_state 2>/dev/null || true
+
+echo "Cleanup complete!"
 echo "==================="
