@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import litellm
 import pytest
 from jsonschema import validate
 
@@ -296,11 +297,18 @@ class TestModelProviderRouting:
 
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
     def test_anthropic_models_use_litellm_provider(self):
-        for model in [SupportedModel.CLAUDE_OPUS_4_6, SupportedModel.CLAUDE_SONNET_4_5]:
+        for model in [
+            SupportedModel.CLAUDE_FABLE_5,
+            SupportedModel.CLAUDE_OPUS_4_8,
+            SupportedModel.CLAUDE_OPUS_4_6,
+            SupportedModel.CLAUDE_SONNET_4_5,
+        ]:
             provider = get_model_provider(model.value.api_id, instructions="test")
             assert isinstance(
                 provider, LiteLLMProvider
             ), f"{model.value.api_id} should use LiteLLMProvider"
+            assert provider._litellm_model == f"anthropic/{model.value.api_id}"
+            assert litellm.get_llm_provider(provider._litellm_model)[1] == "anthropic"
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"})
     def test_gemini_models_use_litellm_provider(self):

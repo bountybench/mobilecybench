@@ -46,6 +46,8 @@ class SupportedModel(Enum):
     GPT_5_2_CODEX = ModelConfig("gpt-5.2-codex", "openai")
 
     # Anthropic — LiteLLM provider
+    CLAUDE_FABLE_5 = ModelConfig("claude-fable-5", "litellm")
+    CLAUDE_OPUS_4_8 = ModelConfig("claude-opus-4-8", "litellm")
     CLAUDE_OPUS_4_7 = ModelConfig("claude-opus-4-7", "litellm")
     CLAUDE_OPUS_4_6 = ModelConfig("claude-opus-4-6", "litellm")
     CLAUDE_OPUS_4_5 = ModelConfig("claude-opus-4-5", "litellm")

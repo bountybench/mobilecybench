@@ -90,7 +90,7 @@ class RunnerConfig(BaseModel):
             "Docker image the agent runs from. Custom path: kali base "
             "(e.g. cybench/mobilecybench:latest). External path: BYO "
             "reference image (e.g. cybench/mobilecybench:codex_0.130.0-r2, "
-            ":claudecode_2.1.140-r2, or a lab's own tag)."
+            ":claudecode_2.1.170-r1, or a lab's own tag)."
         ),
     )
     agent_mode: Literal["custom", "external"] = Field(

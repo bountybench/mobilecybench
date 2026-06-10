@@ -1,9 +1,9 @@
 # BYO image for claude-code CLI. Context = repo root.
-#   docker build -f agent/claude_code/Dockerfile -t cybench/mobilecybench:claudecode_2.1.140-r2 .
+#   docker build -f agent/claude_code/Dockerfile -t cybench/mobilecybench:claudecode_2.1.170-r1 .
 
 FROM cybench/mobilecybench-kali:v0.1.0
 
-RUN npm install -g @anthropic-ai/claude-code@2.1.140 \
+RUN npm install -g @anthropic-ai/claude-code@2.1.170 \
     && npm cache clean --force \
     && rm -rf /root/.npm
 

@@ -66,6 +66,7 @@ _PROVIDER_REGISTRY: List[ProviderRule] = [
         provider="anthropic",
         env_var="ANTHROPIC_API_KEY",
         display_name="Anthropic",
+        litellm_prefix="anthropic/",
     ),
 ]
 

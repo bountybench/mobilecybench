@@ -122,6 +122,7 @@ Optionally set `apk_obfuscation: "on"` with `no_codebase: true` to run against
 the obfuscated R8-minified release build instead of the clean APK (requires
 the app to publish `download_link_obfuscated`).
 
+
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for the full field reference.
 
 ## 7. The one-line batch
