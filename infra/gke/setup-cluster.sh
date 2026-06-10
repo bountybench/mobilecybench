@@ -41,6 +41,12 @@ gsutil mb -p "$PROJECT_ID" -l "$REGION" "gs://$GCS_BUCKET" 2>/dev/null || \
   echo "Bucket already exists"
 
 # ─── 3. GKE cluster ────────────────────────────────────────────────────────
+# Nested virtualization (needed for /dev/kvm -> the Android emulator) must be
+# enabled via the first-class --enable-nested-virtualization flag. The metadata
+# key `enable-nested-virtualization=TRUE` is NOT honored by GKE: it does not set
+# the node VM's advancedMachineFeatures, so /dev/kvm never appears. Machine
+# series must support nested virt (n2-standard-8 does; N2D does not). See
+# https://cloud.google.com/kubernetes-engine/docs/how-to/nested-virtualization
 echo "--- Creating GKE cluster ---"
 gcloud container clusters create "$CLUSTER_NAME" \
   --project="$PROJECT_ID" \
@@ -51,7 +57,8 @@ gcloud container clusters create "$CLUSTER_NAME" \
   --enable-autoscaling --min-nodes=0 --max-nodes=20 \
   --spot \
   --disk-size=200 --disk-type=pd-ssd \
-  --metadata=enable-nested-virtualization=TRUE \
+  --enable-nested-virtualization \
+  --node-labels=nested-virtualization=enabled \
   --workload-pool="${PROJECT_ID}.svc.id.goog"
 
 echo "--- Getting cluster credentials ---"
