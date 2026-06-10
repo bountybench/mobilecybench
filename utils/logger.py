@@ -225,6 +225,7 @@ class LoggerManager:
         *,
         app_name: Optional[str] = None,
         announce: bool = True,
+        rename_existing_logs_dir: bool = True,
     ) -> None:
         """(Re)configure the logger manager with new settings."""
         self._config = config
@@ -285,9 +286,18 @@ class LoggerManager:
         logs_base.mkdir(exist_ok=True, parents=True)
         self._logs_dir = logs_base / f"{self._compute_dirname()}{suffix}"
 
-        # Move (not recreate) on reconfigure so logs written during import-time
-        # auto-init migrate to the final path instead of being orphaned.
-        if prev_logs_dir and prev_logs_dir != self._logs_dir and prev_logs_dir.exists():
+        # Move (not recreate) on bootstrap promotion so logs written during
+        # import-time auto-init migrate to the final path instead of being
+        # orphaned. Batch runs intentionally disable this: each job is a
+        # separate run, so reconfiguration must create a fresh log directory
+        # without moving the previous job's artifacts out from under
+        # batch_summary.json.
+        if (
+            rename_existing_logs_dir
+            and prev_logs_dir
+            and prev_logs_dir != self._logs_dir
+            and prev_logs_dir.exists()
+        ):
             prev_logs_dir.rename(self._logs_dir)
         else:
             self._logs_dir.mkdir(exist_ok=True, parents=True)
@@ -399,6 +409,7 @@ class LoggerManager:
 
         for h in self._agent_logger.handlers[:]:
             self._agent_logger.removeHandler(h)
+            h.close()
 
         # Mirror the BYO container's /app/agent_run/agent.log layout so custom
         # and external paths leave artifacts in the same place.
@@ -534,7 +545,10 @@ _instance: Optional[LoggerManager] = None
 
 
 def get_logger_manager(
-    config: dict = None, app_name: Optional[str] = None
+    config: dict = None,
+    app_name: Optional[str] = None,
+    *,
+    rename_existing_logs_dir: bool = True,
 ) -> LoggerManager:
     """Lazy singleton factory for LoggerManager.
 
@@ -548,7 +562,12 @@ def get_logger_manager(
             config=config, app_name=app_name, announce=config is not None
         )
     elif config is not None:
-        _instance.configure(config, app_name=app_name, announce=True)
+        _instance.configure(
+            config,
+            app_name=app_name,
+            announce=True,
+            rename_existing_logs_dir=rename_existing_logs_dir,
+        )
     return _instance
 
 

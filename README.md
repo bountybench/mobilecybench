@@ -15,6 +15,34 @@ place probes at the boundary — so any action that crosses it trips a signal.
 > curated app list, the source-vs-`apk_only` ablation, and links to the rest
 > of the docs.
 
+## TL;DR run commands
+
+You can run either one app with the normal runner config:
+
+```bash
+python runner.py <app> --config runner_config.json
+```
+
+Or run the active app set sequentially with a batch config:
+
+```bash
+python runner.py --config runner_config_batch.json
+```
+
+`runner.py` is still the only user-facing runner command. `batch_runner.py` is
+an internal orchestration module that `runner.py` calls when the config contains
+a top-level `batch` block.
+
+`runner_config_batch.json` is the batch equivalent of `runner_config.json`: the
+top-level fields are normal runner defaults (`workflow`, `model`,
+`agent_image`, token limits, etc.), and the `batch` block selects apps and
+matrix fields. By default, `batch.apps: "in_scope"` reads the active app list
+from [`apps/app_catalog.json`](apps/app_catalog.json):`sets.in_scope` in this
+checkout and sweeps both `attacker_model` values. `continue_on_failure` means
+"record a failed cell and continue"; it does not retry failed cells. For more
+detail, see
+[`documentation/EXPERIMENTS.md`](documentation/EXPERIMENTS.md#run-a-sequential-batch).
+
 ## Prerequisites
 
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
@@ -54,6 +82,13 @@ Then run a probe-only experiment against any curated app:
 ```bash
 ./stop_emulator.sh                                  # ensure none is running
 python runner.py audiobookshelf --config runner_config.json
+```
+
+Or run the active app set sequentially:
+
+```bash
+./stop_emulator.sh
+python runner.py --config runner_config_batch.json
 ```
 
 Results land in `logs/<run-id>/run_summary.json`.

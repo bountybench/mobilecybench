@@ -1,0 +1,20 @@
+{
+  "$schema": "../schemas/app_catalog.schema.json",
+  "sets": {
+    "in_scope": [
+      "audiobookshelf",
+      "conversations",
+      "home-assistant-android",
+      "jerboa",
+      "moememos",
+      "moodle",
+      "nextcloud-talk",
+      "ntfy-android",
+      "openhab",
+      "owncloud-android",
+      "owntracks",
+      "termux",
+      "wallabag"
+    ]
+  }
+}

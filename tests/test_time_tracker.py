@@ -352,6 +352,21 @@ def test_logging_integration(tracker_with_calls):
     assert len(error_calls) == 1  # 1 failed call
 
 
+@pytest.mark.time_tracker
+def test_logging_summary_can_slice_calls_for_batch_jobs(tracker_with_calls):
+    """Batch jobs should not log earlier jobs' process-global LLM calls."""
+    tracker = tracker_with_calls
+
+    mock_logger = Mock()
+    tracker.log_summary(mock_logger, start_idx=2)
+
+    log_messages = [call[0][0] for call in mock_logger.info.call_args_list]
+    assert "llm_call_count: 1" in log_messages
+    provider_calls = [msg for msg in log_messages if "model_provider_call_" in msg]
+    assert len(provider_calls) == 1
+    assert provider_calls[0].startswith("model_provider_call_1:")
+
+
 ##########################################
 #         Data Structure Validation      #
 ##########################################

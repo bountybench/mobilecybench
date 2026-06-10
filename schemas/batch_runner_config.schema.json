@@ -1,0 +1,594 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilecybench.dev/schemas/batch_runner_config.schema.json",
+  "title": "Batch Runner Config",
+  "additionalProperties": false,
+  "description": "Configuration for sequential batch invocations of runner.py. All normal RunnerConfig fields provide per-job defaults; the required batch block selects apps and matrix overrides. Required RunnerConfig fields may be supplied either as top-level defaults or as batch.matrix axes.",
+  "properties": {
+    "build_type": {
+      "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
+      "enum": [
+        "source",
+        "download-apk",
+        "skip-apk"
+      ],
+      "title": "Build Type",
+      "type": "string"
+    },
+    "no_codebase": {
+      "default": false,
+      "description": "When true, the agent receives only the APK at /app/apk/. When false (default), full source is mounted at /app/codebase.",
+      "title": "No Codebase",
+      "type": "boolean"
+    },
+    "apk_obfuscation": {
+      "default": "off",
+      "description": "Research-instrument toggle selecting which pre-published APK variant to acquire: 'off' (default, un-minified release build, matches historical baselines) or 'on' (R8-minified release build, approximating production obfuscation). 'on' is only valid when no_codebase is true and build_type is download-apk or skip-apk. For download-apk, the selected app must publish download_link_obfuscated; for skip-apk, the obfuscated APK must already exist under apps/<app>/apk/obfuscated/.",
+      "enum": [
+        "off",
+        "on"
+      ],
+      "title": "Apk Obfuscation",
+      "type": "string"
+    },
+    "model": {
+      "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "agent_image": {
+      "description": "Docker image the agent runs from. Custom path: kali base (e.g. cybench/mobilecybench:latest). External path: BYO reference image (e.g. cybench/mobilecybench:codex_0.130.0-r2, :claudecode_2.1.140-r2, or a lab's own tag).",
+      "minLength": 1,
+      "title": "Agent Image",
+      "type": "string"
+    },
+    "agent_mode": {
+      "default": "custom",
+      "description": "Dispatch path. 'custom' (default): in-process Python loop. 'external': BYO Docker image satisfying the contract in documentation/archive/BRING_YOUR_OWN_AGENT.md (covers codex, claude-code, and lab-supplied agents).",
+      "enum": [
+        "custom",
+        "external"
+      ],
+      "title": "Agent Mode",
+      "type": "string"
+    },
+    "max_iterations": {
+      "description": "Maximum agent turns before stopping. Custom path only.",
+      "exclusiveMinimum": 0,
+      "title": "Max Iterations",
+      "type": "integer"
+    },
+    "max_model_response_tokens": {
+      "description": "Per-call output token cap forwarded to the provider.",
+      "exclusiveMinimum": 0,
+      "title": "Max Model Response Tokens",
+      "type": "integer"
+    },
+    "additional_system_prompt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Free-form text appended to the workflow-built system prompt (after any per-app additional_info from metadata.json). Applies to all agent modes.",
+      "title": "Additional System Prompt"
+    },
+    "reasoning_effort": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Opaque reasoning effort / variant string forwarded verbatim to the selected provider or external agent image. Provider/CLI owns value validation.",
+      "title": "Reasoning Effort"
+    },
+    "allow_unregistered_models_in_custom_mode": {
+      "default": false,
+      "description": "Permit models that are not declared in agent/custom/model_providers/factory.py:SupportedModel when agent_mode='custom'. Custom mode then falls through to LiteLLM with auto-detected routing and a runtime WARNING. External mode is BYO-owned and does not use this custom-mode registry; the external image owns model validation. Models without a row in utils/token_pricing.json report cost_source='derived_unpriced' unless the agent reports cost.",
+      "title": "Allow Unregistered Models in Custom Mode",
+      "type": "boolean"
+    },
+    "workflow": {
+      "default": "exploit",
+      "description": "Pipeline to run. 'exploit' requires synthetic_vuln_id; two-phase 'redteam' requires exactly one of task (zero-day) or synthetic_vuln_id (synthetic); 'redteam' with probe_only=true forbids both.",
+      "enum": [
+        "exploit",
+        "redteam"
+      ],
+      "title": "Workflow",
+      "type": "string"
+    },
+    "attacker_model": {
+      "anyOf": [
+        {
+          "enum": [
+            "malicious_app",
+            "remote_attacker"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Two-phase redteam: dev/debug hint only — runtime reads the authoritative value from the task bundle's metadata.json and logs any override. probe_only: required and authoritative — there is no task metadata.json to read from. See documentation/EXPERIMENTS.md.",
+      "title": "Attacker Model"
+    },
+    "synthetic_vuln_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Names a directory under apps/<app>/synthetic_vulnerabilities/. Required for workflow='exploit'; one of {this, task} required for two-phase redteam; forbidden when probe_only=true.",
+      "title": "Synthetic Vuln Id"
+    },
+    "task": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Zero-day task selector for two-phase redteam. Names a directory under zerodays/reports/<app>/. Forbidden when probe_only=true.",
+      "title": "Task"
+    },
+    "probe_only": {
+      "default": false,
+      "description": "redteam-only bundle-less mode: single replay against the app's baseline APK, no patch / no verifier / no two-phase comparison. Score is signal/no_signal based on app probes. Forbids task and synthetic_vuln_id; requires attacker_model. Incompatible with gold_run. See documentation/EXPERIMENTS.md.",
+      "title": "Probe Only",
+      "type": "boolean"
+    },
+    "probe_baseline_diff": {
+      "default": false,
+      "description": "probe_only + malicious_app opt-in: score on the BEFORE/AFTER delta. Runs the probe set once as a baseline after prepare_victim but before the exploit, runs the exploit, runs the probes again, and scores on the difference. State-based categories (access, availability, integrity) signal only on a clean secure->compromised transition; the log-consuming category (confidentiality) keeps its after-exploit reading. Cancels infrastructure and baseline-contamination false positives that are constant across both passes. Scoped to malicious_app (remote_attacker runs prepare_victim after the exploit, so a pre-exploit baseline would conflate victim hydration with exploit effects). Off by default (single-pass after-only scoring); only affects the probe_only path.",
+      "title": "Probe Baseline Diff",
+      "type": "boolean"
+    },
+    "dry_run": {
+      "description": "If true, launches an interactive Kali shell instead of the agent. Useful for verifying setup without API credits.",
+      "title": "Dry Run",
+      "type": "boolean"
+    },
+    "gold_run": {
+      "default": false,
+      "description": "Replay the task's reference exploit through the full pipeline instead of invoking the agent. Mutually exclusive with dry_run.",
+      "title": "Gold Run",
+      "type": "boolean"
+    },
+    "replay_exploit_dir": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Stage-2-only ('replay') mode: path to a previously-saved agent_exploit/ directory (e.g. a prior run's logs/<app>_redteam_*/agent_exploit). The runner copies it into the fresh run's logs dir and evaluates it (replay + probes + scoring) WITHOUT running the agent — useful for iterating on probe/scoring fixes without paying for the agent phase. setup_runtime_environment still runs (emulator + backend must be live). Mutually exclusive with dry_run and gold_run; compatible with probe_only. attacker_model must match the saved exploit.",
+      "title": "Replay Exploit Dir"
+    },
+    "emulator_backend": {
+      "default": "native",
+      "description": "Run the emulator as a host process ('native') or as a separate Docker container ('container', used by GKE).",
+      "enum": [
+        "native",
+        "container"
+      ],
+      "title": "Emulator Backend",
+      "type": "string"
+    },
+    "emulator_display": {
+      "default": "headed",
+      "description": "Whether the emulator opens a window.",
+      "enum": [
+        "headed",
+        "headless"
+      ],
+      "title": "Emulator Display",
+      "type": "string"
+    },
+    "emulator_boot_timeout_seconds": {
+      "default": 300,
+      "description": "How long to wait for the emulator to be ready (seconds).",
+      "exclusiveMinimum": 0,
+      "title": "Emulator Boot Timeout Seconds",
+      "type": "integer"
+    },
+    "network_mode": {
+      "default": "permissive",
+      "description": "Squid egress policy. 'permissive' (default): any public host. 'restricted': exact-FQDN allowlist (LLM APIs + apt/pip mirrors). Kernel routing (agent_net internal:true) applies in both.",
+      "enum": [
+        "restricted",
+        "permissive"
+      ],
+      "title": "Network Mode",
+      "type": "string"
+    },
+    "script_timeout": {
+      "default": 600,
+      "description": "Seconds for long-running scripts (exploit, verify, setup, prepare_app).",
+      "exclusiveMinimum": 0,
+      "title": "Script Timeout",
+      "type": "integer"
+    },
+    "build_command_timeout": {
+      "default": 1200,
+      "description": "Seconds for the APK build command.",
+      "exclusiveMinimum": 0,
+      "title": "Build Command Timeout",
+      "type": "integer"
+    },
+    "apk_timeout": {
+      "default": 60,
+      "description": "HARD wall-clock deadline (seconds) for the malicious-APK replay to write done.marker; agent cannot extend by withholding it.",
+      "exclusiveMinimum": 0,
+      "title": "Apk Timeout",
+      "type": "integer"
+    },
+    "llm_request_timeout_ms": {
+      "default": 600000,
+      "description": "Per-LLM-API-call timeout (milliseconds). Used by the custom agent for provider calls and for docker exec calls into the kali container.",
+      "exclusiveMinimum": 0,
+      "title": "Llm Request Timeout Ms",
+      "type": "integer"
+    },
+    "agent_wallclock_seconds": {
+      "default": 1800,
+      "description": "Harness-side wall-clock kill budget for external agents (SIGKILL on expiry). Custom agent ignores this and is bounded by max_iterations + llm_request_timeout_ms.",
+      "exclusiveMinimum": 0,
+      "title": "Agent Wallclock Seconds",
+      "type": "integer"
+    },
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema URI for editor validation."
+    },
+    "batch": {
+      "additionalProperties": false,
+      "description": "Batch-only planning controls layered on top of ``RunnerConfig``.\n\nA batch config keeps the normal runner fields at the top level and adds a\n``batch`` object. The runner expands ``batch.apps`` × ``batch.matrix`` into\nindependent, sequential ``RunnerConfig`` invocations and validates every\nexpanded config before the first app starts.",
+      "properties": {
+        "apps": {
+          "anyOf": [
+            {
+              "const": "in_scope",
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ],
+          "default": "in_scope",
+          "description": "Apps to run. The string 'in_scope' resolves to the machine-readable apps/app_catalog.json active benchmark app set; a list runs exactly those app names in order.",
+          "title": "Apps"
+        },
+        "app_catalog": {
+          "default": "apps/app_catalog.json",
+          "description": "Path to the app catalog JSON, relative to the project root unless absolute. Used when apps='in_scope'.",
+          "title": "App Catalog",
+          "type": "string"
+        },
+        "matrix": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "array",
+                "minItems": 1,
+                "items": {}
+              },
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {
+                "enum": [
+                  "additional_system_prompt",
+                  "agent_image",
+                  "agent_mode",
+                  "agent_wallclock_seconds",
+                  "allow_unregistered_models_in_custom_mode",
+                  "apk_obfuscation",
+                  "apk_timeout",
+                  "attacker_model",
+                  "build_command_timeout",
+                  "build_type",
+                  "dry_run",
+                  "emulator_backend",
+                  "emulator_boot_timeout_seconds",
+                  "emulator_display",
+                  "gold_run",
+                  "llm_request_timeout_ms",
+                  "max_iterations",
+                  "max_model_response_tokens",
+                  "model",
+                  "network_mode",
+                  "no_codebase",
+                  "probe_baseline_diff",
+                  "probe_only",
+                  "reasoning_effort",
+                  "replay_exploit_dir",
+                  "script_timeout",
+                  "synthetic_vuln_id",
+                  "task",
+                  "workflow",
+                  "app"
+                ]
+              },
+              "properties": {
+                "app": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fields to sweep. Keys may be RunnerConfig fields or the batch-only 'app' axis, and each value must be a non-empty list. The runner executes a deterministic Cartesian product. If omitted for redteam probe-only configs, or if attacker_model is omitted from both the top-level config and matrix, defaults to attacker_model=[malicious_app, remote_attacker]. Use {'attacker_model': ['remote_attacker']} to run only RA, for example.",
+          "title": "Matrix"
+        },
+        "exclude": {
+          "description": "Optional exact-match filters to skip expanded jobs. Keys may be 'app' plus RunnerConfig field names; a job is skipped when every key in an exclude entry matches the expanded app/config value.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": {
+              "enum": [
+                "additional_system_prompt",
+                "agent_image",
+                "agent_mode",
+                "agent_wallclock_seconds",
+                "allow_unregistered_models_in_custom_mode",
+                "apk_obfuscation",
+                "apk_timeout",
+                "attacker_model",
+                "build_command_timeout",
+                "build_type",
+                "dry_run",
+                "emulator_backend",
+                "emulator_boot_timeout_seconds",
+                "emulator_display",
+                "gold_run",
+                "llm_request_timeout_ms",
+                "max_iterations",
+                "max_model_response_tokens",
+                "model",
+                "network_mode",
+                "no_codebase",
+                "probe_baseline_diff",
+                "probe_only",
+                "reasoning_effort",
+                "replay_exploit_dir",
+                "script_timeout",
+                "synthetic_vuln_id",
+                "task",
+                "workflow",
+                "app"
+              ]
+            }
+          },
+          "title": "Exclude",
+          "type": "array"
+        },
+        "continue_on_failure": {
+          "default": true,
+          "description": "When true, keep running later jobs after a job returns non-zero. This does not retry failed jobs; the overall batch exit code is still non-zero if any job failed.",
+          "title": "Continue On Failure",
+          "type": "boolean"
+        }
+      },
+      "title": "BatchSpec",
+      "type": "object"
+    }
+  },
+  "required": [
+    "batch"
+  ],
+  "type": "object",
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "required": [
+            "build_type"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "build_type"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "model"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "model"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "agent_image"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "agent_image"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "max_iterations"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "max_iterations"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "max_model_response_tokens"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "max_model_response_tokens"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "dry_run"
+          ]
+        },
+        {
+          "required": [
+            "batch"
+          ],
+          "properties": {
+            "batch": {
+              "required": [
+                "matrix"
+              ],
+              "properties": {
+                "matrix": {
+                  "type": "object",
+                  "required": [
+                    "dry_run"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

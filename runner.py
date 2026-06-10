@@ -15,7 +15,9 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from models.config import RunnerConfig
+from batch_runner import config_file_has_batch, load_batch_config_parts
+from batch_runner import run_batch as _run_batch
+from models.config import BatchRunnerConfig, RunnerConfig
 from utils.exploit_source import (
     ExploitSourceError,
     resolve_gold_source,
@@ -421,7 +423,7 @@ def run(
     finally:
         # Finalize experiment timing
         time_tracker.end_experiment()
-        time_tracker.log_summary(logger)
+        time_tracker.log_summary(logger, start_idx=timing_start_idx)
 
         # Always cleanup resources (emulator, containers, restore APKs)
         logger.info("Cleaning up resources...")
@@ -502,16 +504,65 @@ def main():
             "or when you do not want to leave the terminal."
         ),
     )
+    parser.add_argument(
+        "--explain-batch-config",
+        action="store_true",
+        help=(
+            "Print the JSON Schema for a top-level runner config with a "
+            "batch block and exit."
+        ),
+    )
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help=(
+            "Run the top-level batch block from the config sequentially. "
+            "If app_name is omitted and the config contains batch, this is "
+            "implied."
+        ),
+    )
     args = parser.parse_args()
 
     if args.explain_config:
         print(RunnerConfig.render_json_schema(), end="")
         return 0
-
-    if not args.app_name:
-        parser.error("app_name is required")
+    if args.explain_batch_config:
+        print(BatchRunnerConfig.render_json_schema(), end="")
+        return 0
 
     config_path = Path(args.config)
+    try:
+        has_batch = config_file_has_batch(config_path)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(str(e))
+        return 1
+
+    wants_batch = args.batch or (not args.app_name and has_batch)
+    if wants_batch:
+        if args.app_name:
+            parser.error("app_name cannot be combined with --batch; set batch.apps")
+        try:
+            base_config_payload, batch = load_batch_config_parts(config_path)
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(str(e))
+            return 1
+
+        project_root = Path(__file__).parent
+        try:
+            return _run_batch(
+                base_config_payload,
+                batch,
+                project_root,
+                run_func=run,
+                config_path=config_path,
+            )
+        except ValueError as e:
+            logger.error(str(e))
+            return 1
+
+    if not args.app_name:
+        parser.error("app_name is required unless the config contains a batch block")
+
     try:
         config = RunnerConfig.from_file(config_path)
     except (FileNotFoundError, ValueError) as e:
