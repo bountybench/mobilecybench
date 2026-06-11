@@ -22,14 +22,24 @@ EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 _EMULATOR_GPU_MODE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
-def _headless_gpu_mode() -> str:
-    gpu_mode = os.getenv(EMULATOR_GPU_ENV, "swiftshader").strip()
+def _headless_gpu_mode(app_default: Optional[str] = None) -> str:
+    # Resolve the headless emulator -gpu mode. Precedence:
+    #   1. MOBILECYBENCH_EMULATOR_GPU env override (operator escape hatch)
+    #   2. per-app default (apps/<app>/metadata.json "emulator_gpu_mode")
+    #   3. built-in default "swiftshader"
+    # The per-app hook lets a heavy app (e.g. moodle, whose login UI burst
+    # SIGSEGVs swiftshader's RenderThread) opt into "swangle" without changing
+    # the renderer for apps that run fine on the default.
+    gpu_mode = os.getenv(EMULATOR_GPU_ENV, "").strip()
+    if not gpu_mode:
+        gpu_mode = (app_default or "").strip()
     if not gpu_mode:
         return "swiftshader"
     if not _EMULATOR_GPU_MODE_RE.fullmatch(gpu_mode):
         raise ValueError(
-            f"{EMULATOR_GPU_ENV} must contain only letters, numbers, '.', '_' or '-'; "
-            f"got {gpu_mode!r}"
+            f"emulator GPU mode (from {EMULATOR_GPU_ENV} or app metadata "
+            f"emulator_gpu_mode) must contain only letters, numbers, '.', '_' "
+            f"or '-'; got {gpu_mode!r}"
         )
     return gpu_mode
 
@@ -255,6 +265,21 @@ class EmulatorManager:
             f"display={self.emulator_display} ({emulator_type})"
         )
 
+    def _app_gpu_mode(self) -> Optional[str]:
+        # Per-app headless GPU override from apps/<app>/metadata.json.
+        # Defensive: any missing app/file/key/parse-error yields None (the
+        # built-in default applies) — never block emulator launch on metadata.
+        if not self.app_name:
+            return None
+        metadata_path = self.project_root / "apps" / self.app_name / "metadata.json"
+        if not metadata_path.exists():
+            return None
+        try:
+            mode = json.loads(metadata_path.read_text()).get("emulator_gpu_mode")
+        except (ValueError, OSError):
+            return None
+        return mode if isinstance(mode, str) and mode.strip() else None
+
     def _build_emulator_config(self) -> dict:
         android_home = os.getenv("ANDROID_HOME")
         if android_home is None:
@@ -284,7 +309,7 @@ class EmulatorManager:
         ]
 
         if self.emulator_display == "headless":
-            gpu_mode = _headless_gpu_mode()
+            gpu_mode = _headless_gpu_mode(self._app_gpu_mode())
             emulator_args += [
                 "-no-window",
                 "-gpu",
