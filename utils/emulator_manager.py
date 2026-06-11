@@ -275,9 +275,10 @@ class EmulatorManager:
         if not metadata_path.exists():
             return None
         try:
-            mode = json.loads(metadata_path.read_text()).get("emulator_gpu_mode")
+            parsed = json.loads(metadata_path.read_text())
         except (ValueError, OSError):
             return None
+        mode = parsed.get("emulator_gpu_mode") if isinstance(parsed, dict) else None
         return mode if isinstance(mode, str) and mode.strip() else None
 
     def _build_emulator_config(self) -> dict:
