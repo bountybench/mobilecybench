@@ -38,7 +38,7 @@ if [[ -f "$TEACHER_PASS_MARKER" ]]; then
     TEACHER_PASS=$(cat "$TEACHER_PASS_MARKER")
     log_info "Using teacher2 password from host marker"
 else
-    fatal "teacher2 password marker not found at $TEACHER_PASS_MARKER; prepare_victim.sh must run before prepare_app.sh"
+    fatal "teacher2 password marker not found at $TEACHER_PASS_MARKER; start_runtime.sh should create it before prepare_app.sh"
 fi
 [[ -n "$TEACHER_PASS" ]] || fatal "teacher2 password marker is empty"
 

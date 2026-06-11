@@ -136,10 +136,8 @@ def check_active_site_unchanged() -> int:
     except OSError as e:
         print(f"check_active_site_unchanged: read marker failed: {e}", file=sys.stderr)
         return 0
-    # Moodle Mobile stores the logged-in site in `sites_2`
-    # (id TEXT PK, siteUrl, token, info, privateToken, config,
-    # loggedOut, oauthId). The `id` column is the deterministic
-    # identifier we baseline against.
+    # Moodle Mobile stores the logged-in site in `sites_2`. Token columns may
+    # be blank after secure-storage migration; `id` remains stable.
     rows = read_app_sqlite("SELECT id FROM sites_2 LIMIT 1")
     if rows is None:
         print("check_active_site_unchanged: app SQLite unreachable", file=sys.stderr)
