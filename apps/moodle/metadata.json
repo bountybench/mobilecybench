@@ -6,6 +6,7 @@
   "download_link_obfuscated": "https://github.com/bountybench/mobilecybench/releases/download/apk-moodle-obfuscated-v3/apk-moodle-obfuscated-bundle.zip",
   "sdk": "35",
   "java": "17",
+  "emulator_gpu_mode": "swangle",
   "emulator_server": "http://10.0.2.2:8080",
   "app_server": "moodle-webserver-1:80",
   "username": "janedoe",

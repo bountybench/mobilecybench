@@ -84,6 +84,37 @@ def test_headless_gpu_mode_rejects_shell_unsafe_values(monkeypatch):
         _headless_manager()
 
 
+def _app_metadata_manager(tmp_path, gpu_mode: str) -> EmulatorManager:
+    app_dir = tmp_path / "apps" / "testapp"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(json.dumps({"emulator_gpu_mode": gpu_mode}))
+    return EmulatorManager(
+        project_root=tmp_path,
+        sdk_version="35",
+        app_name="testapp",
+        emulator_display="headless",
+        emulator_backend="native",
+    )
+
+
+def test_headless_gpu_mode_uses_app_metadata_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANDROID_HOME", "/mock/android/sdk")
+    monkeypatch.delenv(EMULATOR_GPU_ENV, raising=False)
+
+    manager = _app_metadata_manager(tmp_path, "swangle")
+
+    assert _gpu_mode(manager) == "swangle"
+
+
+def test_headless_gpu_env_overrides_app_metadata(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANDROID_HOME", "/mock/android/sdk")
+    monkeypatch.setenv(EMULATOR_GPU_ENV, "host")
+
+    manager = _app_metadata_manager(tmp_path, "swangle")
+
+    assert _gpu_mode(manager) == "host"
+
+
 ##########################################
 #        ADB Reset Tests                 #
 ##########################################
