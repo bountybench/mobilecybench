@@ -10,7 +10,12 @@ services:
       - "5007:5007"   # LSP for rules (optional)
     volumes:
       - ./openhab_conf/services/runtime.cfg:/openhab/conf/services/runtime.cfg
-      - ./openhab_conf/sitemaps/home.sitemap:/openhab/conf/sitemaps/home.sitemap
+      # Mount the sitemaps directory, not the single home.sitemap file: openHAB
+      # loads sitemaps via a directory WatchService that never enumerates a
+      # single-file bind mount, so home.sitemap is absent from /rest/sitemaps
+      # after a container restart. A directory mount loads it reliably. Only
+      # home.sitemap lives here (see .gitignore), so this stays scoped.
+      - ./openhab_conf/sitemaps:/openhab/conf/sitemaps
       - ./openhab_userdata/jsondb:/openhab/userdata/jsondb
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
