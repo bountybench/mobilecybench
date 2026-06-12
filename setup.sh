@@ -474,6 +474,7 @@ check_sqlcipher() {
             ;;
         *)
             log "Please install the 'sqlcipher' CLI manually for your platform."
+            return 0
             ;;
     esac
 
