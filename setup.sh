@@ -438,6 +438,53 @@ Install apktool (see options above) and re-run setup.sh."
     fi
 }
 
+# Check and install the sqlcipher CLI. Required: several apps decrypt their
+# SQLCipher-encrypted app DB via the `sqlcipher` binary during probing (e.g.
+# apps/nextcloud-talk/probe_lib.py). The container/CI images already ship it;
+# this keeps native host setups at parity so probes don't fail at runtime.
+check_sqlcipher() {
+    log "Checking sqlcipher installation..."
+
+    if command_exists sqlcipher; then
+        log "sqlcipher is already installed: $(sqlcipher --version 2>&1 | head -n1 || echo unknown)"
+        return 0
+    fi
+
+    log "sqlcipher not found. Installing..."
+
+    local os=$(detect_os)
+
+    case "$os" in
+        linux)
+            if command_exists apt-get; then
+                sudo apt-get update && sudo apt-get install -y sqlcipher
+            elif command_exists apt; then
+                sudo apt update && sudo apt install -y sqlcipher
+            else
+                error_exit "Could not install sqlcipher. Please install manually:
+                sudo apt-get install -y sqlcipher"
+            fi
+            ;;
+        macos)
+            if command_exists brew; then
+                brew install sqlcipher
+            else
+                error_exit "Homebrew not found. Please install Homebrew first, then run setup again."
+            fi
+            ;;
+        *)
+            log "Please install the 'sqlcipher' CLI manually for your platform."
+            return 0
+            ;;
+    esac
+
+    if command_exists sqlcipher; then
+        log "sqlcipher installed successfully: $(sqlcipher --version 2>&1 | head -n1 || echo unknown)"
+    else
+        error_exit "Failed to install sqlcipher"
+    fi
+}
+
 check_gh_auth() {
     if [[ -n "${MOBILECYBENCH_SKIP_GH_CHECK:-}" ]]; then
         log "Skipping gh auth check (MOBILECYBENCH_SKIP_GH_CHECK set)"
@@ -745,6 +792,9 @@ main() {
 
     # Check and install apktool
     check_apktool
+
+    # Check and install sqlcipher (probe-time app-DB decryption dependency)
+    check_sqlcipher
 
     check_gh_auth
 
