@@ -348,10 +348,50 @@ def retry_openhab_rest(action_name, action, *, attempts=None, delay=None):
     raise last_exc
 
 
+def wait_for_sitemap_provider(username, password, timeout=300):
+    """Wait until openHAB's BasicUI sitemap REST resource is registered.
+
+    openHAB serves /rest/items (core) well before the BasicUI bundle that
+    provides /rest/sitemaps/ becomes active. Restarting the container while
+    BasicUI is still loading leaves the post-restart instance starting cold, so
+    /rest/sitemaps/<name> can keep 404-ing past wait_live_sitemap_refs's window
+    (worse on the item-laden second hydration where OSGi init is slower). Gate
+    the restart on the sitemap list endpoint returning 200 so we only restart
+    from a warm state.
+    """
+    deadline = time.time() + timeout
+    last_error = ""
+    while time.time() < deadline:
+        try:
+            request(
+                "GET",
+                f"{SERVER_URL}/rest/sitemaps",
+                username=username,
+                password=password,
+                headers={"Accept": "application/json"},
+                ok=(200,),
+            )
+            return
+        except HydrationError as exc:
+            last_error = str(exc)
+            time.sleep(3)
+    raise HydrationError(
+        f"openHAB sitemap provider (BasicUI) did not become ready: {last_error}"
+    )
+
+
 def restart_openhab_container(reason):
     warn(f"{reason}; restarting OpenHAB container to reload file-mounted sitemap")
-    run(["docker", "restart", "openhab"], timeout=180)
     user, pw = admin_auth()
+    # Gate on the BasicUI sitemap provider being registered BEFORE restarting:
+    # restarting mid-load leaves the new instance cold and /rest/sitemaps/<name>
+    # can 404 past the post-restart readiness wait. Non-fatal: if BasicUI never
+    # warms here, fall through and let wait_live_sitemap_refs be the backstop.
+    try:
+        wait_for_sitemap_provider(user, pw, timeout=300)
+    except HydrationError as exc:
+        warn(f"sitemap provider not ready before restart ({exc}); restarting anyway")
+    run(["docker", "restart", "openhab"], timeout=180)
     wait_for_rest(user, pw, timeout=240)
 
 
