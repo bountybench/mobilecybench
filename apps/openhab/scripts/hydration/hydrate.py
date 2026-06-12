@@ -1106,7 +1106,18 @@ def ensure_items(check=False):
     assert_fixed_integration_ports_available_or_hydrated()
     seed_live_items(specs)
     patch_sitemap(specs)
-    restart_openhab_container("hydration sitemap changed")
+    # With the sitemaps directory bind-mounted, openHAB's FolderObserver hot-reloads
+    # the rewritten home.sitemap without a container restart. A cold restart here --
+    # especially on the item-laden repair pass -- leaves BasicUI re-registering
+    # /rest/sitemaps too slowly, so /rest/sitemaps/<name> 404s past
+    # wait_live_sitemap_refs and 02_seed fails. Prefer the live hot-reload; only fall
+    # back to a restart if the live sitemap does not pick up the change.
+    _sm = read_text(SITEMAP_PATH)
+    _sm_name, _sm_label, _sm_items = sitemap_definition(_sm)
+    try:
+        wait_live_sitemap_refs(_sm_name, _sm_items, timeout=60)
+    except HydrationError:
+        restart_openhab_container("hydration sitemap changed")
     seed_live_items(specs)
     write_json(
         items_json, {"run_id": run_id(), "items": specs, "updated_at": now_iso()}
