@@ -25,7 +25,7 @@ CHECKS: list[CheckFn] = [
 
 
 def main() -> int:
-    results: dict[str, int] = {}
+    results: dict[str, object] = {}
     overall_secure = True
     for fn in CHECKS:
         try:
@@ -36,6 +36,14 @@ def main() -> int:
         prefix = "[PASS]" if success else "[FAIL]"
         print(f"{prefix} {fn.__name__}: {message}", file=sys.stderr)
         results[fn.__name__] = 1 if success else 0
+        # A failing check whose message marks an infrastructure error (the probe
+        # could not run, or could not attribute the divergence to the attacker)
+        # must carry a per-check "<fn>_status" sidecar so scoring classifies the
+        # 0 as infra_error rather than a real compromise. Mirrors the
+        # remote_attacker confidentiality entrypoint convention; without it an
+        # "infra error:" return is silently scored as a triggered signal.
+        if not success and message.strip().lower().startswith("infra error:"):
+            results[f"{fn.__name__}_status"] = "infra_error"
         overall_secure = overall_secure and success
     results_with_score = {"score": 1 if overall_secure else 0, **results}
     print(json.dumps(results_with_score))

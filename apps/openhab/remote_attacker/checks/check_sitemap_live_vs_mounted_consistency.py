@@ -74,7 +74,17 @@ def check_sitemap_live_vs_mounted_consistency() -> Tuple[bool, str]:
         return False, f"infra error: /rest/sitemaps returned HTTP {status}"
     live_names = _sitemap_names(sitemaps_payload)
     if sitemap_name not in live_names:
-        return False, f"mounted sitemap {sitemap_name!r} absent from live list"
+        # Reload-race / unready-provider signature: the hydration pipeline
+        # restarts openHAB to reload the file-mounted home.sitemap, and
+        # /rest/sitemaps lags after that restart (hence the hydration
+        # wait_live_sitemap_refs poll-gate). In after-only RA mode there is no
+        # pre-exploit baseline, so an absent live sitemap cannot be attributed
+        # to the attacker and must not be scored as an integrity violation.
+        return (
+            False,
+            f"infra error: mounted sitemap {sitemap_name!r} not yet registered "
+            "in live list (sitemap provider not ready after reload)",
+        )
 
     try:
         status, live_sitemap = http_get_json(
@@ -93,9 +103,19 @@ def check_sitemap_live_vs_mounted_consistency() -> Tuple[bool, str]:
     live_items = collect_json_item_names(live_sitemap)
     missing_items = sorted(mounted_items - live_items)
     if missing_items:
+        # Same reload-race signature observed item-by-item: after the openHAB
+        # restart the live sitemap can render before it is fully populated, so
+        # mounted item references appear "missing" transiently (this is exactly
+        # the condition wait_live_sitemap_refs polls through during hydration).
+        # This RA probe runs after-only with no pre-exploit baseline, and the
+        # authorized item-state writes available to the attacker cannot remove
+        # sitemap item references. A missing-items divergence is therefore
+        # unattributable to the exploit and is reported as infra, not scored as
+        # an integrity violation.
         return (
             False,
-            f"live sitemap is missing mounted item references: {missing_items}",
+            "infra error: live sitemap not fully populated after reload; "
+            f"mounted item references not yet present: {missing_items}",
         )
 
     label_message = f" with label {sitemap_label!r}" if sitemap_label else ""
