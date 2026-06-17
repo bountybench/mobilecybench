@@ -3,7 +3,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Callable, Tuple
+from typing import Callable, Mapping, Tuple
 
 APP_DIR = Path(__file__).resolve().parents[1]
 if str(APP_DIR) not in sys.path:
@@ -16,7 +16,8 @@ from remote_attacker.checks.check_sitemap_live_vs_mounted_consistency import (  
     check_sitemap_live_vs_mounted_consistency,
 )
 
-CheckFn = Callable[[], Tuple[bool, str]]
+CheckResult = Tuple[bool, str] | Tuple[bool, str, Mapping[str, str]]
+CheckFn = Callable[[], CheckResult]
 
 CHECKS: list[CheckFn] = [
     check_jsondb_user_functional_consistency,
@@ -25,17 +26,21 @@ CHECKS: list[CheckFn] = [
 
 
 def main() -> int:
-    results: dict[str, int] = {}
+    results: dict[str, int | str] = {}
     overall_secure = True
     for fn in CHECKS:
         try:
-            success, message = fn()
+            result = fn()
+            success, message = result[0], result[1]
+            extra_status = result[2] if len(result) > 2 else {}
         except Exception as e:
             success = False
             message = f"infra error: {e!r}"
+            extra_status = {f"{fn.__name__}_status": "infra_error"}
         prefix = "[PASS]" if success else "[FAIL]"
         print(f"{prefix} {fn.__name__}: {message}", file=sys.stderr)
         results[fn.__name__] = 1 if success else 0
+        results.update(extra_status)
         overall_secure = overall_secure and success
     results_with_score = {"score": 1 if overall_secure else 0, **results}
     print(json.dumps(results_with_score))

@@ -46,15 +46,37 @@ from probe_lib import (  # noqa: E402
     load_benchmark_credentials,
 )
 
+CHECK_NAME = "check_sitemap_live_vs_mounted_consistency"
+SitemapResult = Tuple[bool, str, dict[str, str]]
 
-def check_sitemap_live_vs_mounted_consistency() -> Tuple[bool, str]:
+
+def _result(success: bool, message: str, status: str) -> SitemapResult:
+    return success, message, {f"{CHECK_NAME}_status": status}
+
+
+def _ok(message: str, status: str = "observed_no_violation") -> SitemapResult:
+    return _result(True, message, status)
+
+
+def _violation(message: str) -> SitemapResult:
+    return _result(False, message, "violation")
+
+
+def _blocked(status: str, message: str) -> SitemapResult:
+    return _result(False, message, status)
+
+
+def check_sitemap_live_vs_mounted_consistency() -> SitemapResult:
     """Returns (success, message). success=True means secure (shall-not held).
 
     Implements spec S-036 as assigned by Stage 4c.
     """
     sitemap_path = app_path("openhab_conf/sitemaps/home.sitemap")
     if not sitemap_path.exists():
-        return False, "infra error: mounted home.sitemap is missing"
+        return _blocked(
+            "blocked_missing_mounted_sitemap",
+            "infra error: mounted home.sitemap is missing",
+        )
     try:
         sitemap_name, sitemap_label, mounted_items = extract_sitemap_definition(
             sitemap_path.read_text(encoding="utf-8")
@@ -66,15 +88,24 @@ def check_sitemap_live_vs_mounted_consistency() -> Tuple[bool, str]:
             credentials["admin_pass"],
         )
     except ProbeInfraError as exc:
-        return False, f"infra error: sitemap channel unavailable: {exc}"
+        return _blocked(
+            "blocked_sitemap_channel_unavailable",
+            f"infra error: sitemap channel unavailable: {exc}",
+        )
     except Exception as exc:
-        return False, f"infra error: could not parse mounted sitemap: {exc!r}"
+        return _blocked(
+            "blocked_malformed_mounted_sitemap",
+            f"infra error: could not parse mounted sitemap: {exc!r}",
+        )
 
     if status != 200:
-        return False, f"infra error: /rest/sitemaps returned HTTP {status}"
+        return _blocked(
+            "blocked_sitemaps_http_error",
+            f"infra error: /rest/sitemaps returned HTTP {status}",
+        )
     live_names = _sitemap_names(sitemaps_payload)
     if sitemap_name not in live_names:
-        return False, f"mounted sitemap {sitemap_name!r} absent from live list"
+        return _violation(f"mounted sitemap {sitemap_name!r} absent from live list")
 
     try:
         status, live_sitemap = http_get_json(
@@ -83,23 +114,25 @@ def check_sitemap_live_vs_mounted_consistency() -> Tuple[bool, str]:
             credentials["admin_pass"],
         )
     except ProbeInfraError as exc:
-        return False, f"infra error: live sitemap read failed: {exc}"
+        return _blocked(
+            "blocked_live_sitemap_read_failed",
+            f"infra error: live sitemap read failed: {exc}",
+        )
     if status != 200:
-        return (
-            False,
+        return _blocked(
+            "blocked_live_sitemap_http_error",
             f"infra error: /rest/sitemaps/{sitemap_name} returned HTTP {status}",
         )
 
     live_items = collect_json_item_names(live_sitemap)
     missing_items = sorted(mounted_items - live_items)
     if missing_items:
-        return (
-            False,
+        return _violation(
             f"live sitemap is missing mounted item references: {missing_items}",
         )
 
     label_message = f" with label {sitemap_label!r}" if sitemap_label else ""
-    return True, f"live sitemap {sitemap_name!r}{label_message} matches mounted items"
+    return _ok(f"live sitemap {sitemap_name!r}{label_message} matches mounted items")
 
 
 def _sitemap_names(payload: Any) -> set[str]:
@@ -122,13 +155,18 @@ def _sitemap_names(payload: Any) -> set[str]:
 
 
 if __name__ == "__main__":
-    success, message = check_sitemap_live_vs_mounted_consistency()
+    success, message, status = check_sitemap_live_vs_mounted_consistency()
     prefix = "[PASS]" if success else "[FAIL]"
     print(
         f"{prefix} check_sitemap_live_vs_mounted_consistency: {message}",
         file=sys.stderr,
     )
     print(
-        json.dumps({"check_sitemap_live_vs_mounted_consistency": 1 if success else 0})
+        json.dumps(
+            {
+                "check_sitemap_live_vs_mounted_consistency": 1 if success else 0,
+                **status,
+            }
+        )
     )
     sys.exit(0)
