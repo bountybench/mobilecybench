@@ -180,6 +180,121 @@ def test_write_text_preserve_inode_if_changed(tmp_path, hydrate_module):
     assert hydrate_module.write_text_preserve_inode_if_changed(target, "new\n") is False
 
 
+def _configure_sitemap_patch_test(tmp_path, monkeypatch, hydrate_module):
+    rid = "hydration_20260618040744_76345099"
+    sitemap = tmp_path / "apps" / "openhab" / "openhab_conf" / "sitemaps" / "home.sitemap"
+    sitemap.parent.mkdir(parents=True)
+    sitemap.write_text(
+        """sitemap home label="Smart Home" {
+    Frame label="Security" {
+        Switch item=AlarmSystem_Armed label="Alarm System"
+    }
+}
+"""
+    )
+    state_dir = tmp_path / "apps" / "openhab" / "pipeline" / "stage3"
+    state_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(hydrate_module, "SITEMAP_PATH", sitemap)
+    monkeypatch.setattr(hydrate_module, "STATE_DIR", state_dir)
+    monkeypatch.setattr(hydrate_module, "STATUS_PATH", state_dir / "hydration_status.json")
+    monkeypatch.setattr(hydrate_module, "run_id", lambda: rid)
+    monkeypatch.setattr(
+        hydrate_module,
+        "sentinels",
+        lambda _rid: {"sentinel_media_fetch_path": f"/media/hydration/{rid}/image.png"},
+    )
+    monkeypatch.setattr(
+        hydrate_module,
+        "fixed_integration_ports",
+        lambda: {
+            "media": 18080,
+            "cloud": 18081,
+            "webview": 18082,
+            "webhook": 18083,
+            "webview_https": 18443,
+        },
+    )
+    monkeypatch.setattr(
+        hydrate_module,
+        "receiver_url",
+        lambda _role, path, _ports=None: f"http://10.0.2.2:18080{path}",
+    )
+    monkeypatch.setattr(hydrate_module, "item_name", lambda base: f"{base}_{rid}")
+    specs = [
+        {
+            "name": f"Hydration_Public_{rid}",
+            "type": "String",
+            "label": "Hydration Public",
+            "baseline_state": "public-sentinel",
+        },
+        {
+            "name": f"Hydration_MapLocation_{rid}",
+            "type": "Location",
+            "label": "Hydration Map",
+            "baseline_state": "37.7749,-122.4194",
+        },
+    ]
+    return rid, sitemap, state_dir, specs
+
+
+def test_patch_sitemap_is_idempotent_with_marker_suffix(
+    tmp_path, monkeypatch, hydrate_module
+):
+    rid, sitemap, _state_dir, specs = _configure_sitemap_patch_test(
+        tmp_path, monkeypatch, hydrate_module
+    )
+
+    hydrate_module.patch_sitemap(specs)
+    first = sitemap.read_text()
+    hydrate_module.patch_sitemap(specs)
+    second = sitemap.read_text()
+
+    assert second == first
+    assert second.count(hydrate_module.MARKER_START) == 1
+    assert second.count(hydrate_module.MARKER_END) == 1
+    assert f"\n {rid}\n" not in second
+
+
+def test_patch_sitemap_repairs_orphaned_marker_suffix(
+    tmp_path, monkeypatch, hydrate_module
+):
+    rid, sitemap, _state_dir, specs = _configure_sitemap_patch_test(
+        tmp_path, monkeypatch, hydrate_module
+    )
+    hydrate_module.patch_sitemap(specs)
+    contaminated = sitemap.read_text().replace(
+        f"    {hydrate_module.MARKER_START}",
+        f" {rid}\n    {hydrate_module.MARKER_START}",
+    )
+    sitemap.write_text(contaminated)
+
+    hydrate_module.patch_sitemap(specs)
+    repaired = sitemap.read_text()
+
+    assert f"\n {rid}\n" not in repaired
+    assert repaired.count(hydrate_module.MARKER_START) == 1
+    assert repaired.count(hydrate_module.MARKER_END) == 1
+
+
+def test_remove_sitemap_block_consumes_marker_suffix(
+    tmp_path, monkeypatch, hydrate_module
+):
+    rid, sitemap, state_dir, specs = _configure_sitemap_patch_test(
+        tmp_path, monkeypatch, hydrate_module
+    )
+    (state_dir / "hydration_status.json").write_text(json.dumps({"run_id": rid}))
+    hydrate_module.patch_sitemap(specs)
+
+    assert hydrate_module.remove_sitemap_block() is True
+    text = sitemap.read_text()
+
+    assert hydrate_module.MARKER_START not in text
+    assert hydrate_module.MARKER_END not in text
+    assert f"\n {rid}\n" not in text
+    assert "Switch item=AlarmSystem_Armed" in text
+
+
 def test_create_item_retries_transient_openhab_rest_warmup(monkeypatch, hydrate_module):
     calls = []
 

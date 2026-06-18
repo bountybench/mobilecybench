@@ -961,6 +961,36 @@ def sitemap_block(specs):
     return "\n".join(lines) + "\n"
 
 
+def hydration_sitemap_block_pattern():
+    return re.compile(
+        rf"(?ms)^[ \t]*{re.escape(MARKER_START)}[^\n]*\n"
+        rf".*?^[ \t]*{re.escape(MARKER_END)}[^\n]*(?:\n|$)"
+    )
+
+
+def strip_hydration_sitemap_block(text, rid=None):
+    stripped = hydration_sitemap_block_pattern().sub("", text)
+
+    # Older hydration code used a lazy regexp that could remove the marker text
+    # but leave the marker-line run id behind as a standalone line, for example:
+    #
+    #     hydration_20260618040744_76345099
+    #
+    # A bare identifier is invalid sitemap syntax and causes openHAB to drop the
+    # whole `home` sitemap, which then surfaces as `/rest/sitemaps/home` 404s on
+    # replay.  Remove those orphan suffix lines while preserving legitimate
+    # sitemap entries such as `Text item=...`.
+    run_id_patterns = []
+    if rid:
+        run_id_patterns.append(re.escape(rid))
+    run_id_patterns.append(r"hydration_[A-Za-z0-9_:-]+")
+    return re.sub(
+        rf"(?m)^[ \t]*(?:{'|'.join(run_id_patterns)})[ \t]*(?:\n|$)",
+        "",
+        stripped,
+    )
+
+
 def patch_sitemap(specs):
     original = read_text(SITEMAP_PATH)
     if not original.strip().endswith("}"):
@@ -969,10 +999,7 @@ def patch_sitemap(specs):
     if MARKER_START not in original and not original_hash.exists():
         original_hash.write_text(hashlib.sha256(original.encode()).hexdigest() + "\n")
     block = sitemap_block(specs)
-    pattern = re.compile(
-        rf"(?ms)^[ \t]*{re.escape(MARKER_START)}.*?^[ \t]*{re.escape(MARKER_END)}.*?\n?"
-    )
-    stripped = pattern.sub("", original).rstrip()
+    stripped = strip_hydration_sitemap_block(original, run_id()).rstrip()
     idx = stripped.rfind("}")
     updated = stripped[:idx].rstrip() + "\n" + block + stripped[idx:] + "\n"
     changed = write_text_preserve_inode_if_changed(SITEMAP_PATH, updated)
@@ -2058,10 +2085,8 @@ def remove_sitemap_block():
     if not SITEMAP_PATH.exists():
         return False
     original = SITEMAP_PATH.read_text()
-    pattern = re.compile(
-        rf"(?ms)^[ \t]*{re.escape(MARKER_START)}.*?^[ \t]*{re.escape(MARKER_END)}.*?\n?"
-    )
-    updated = pattern.sub("", original)
+    status = load_json(STATUS_PATH, {})
+    updated = strip_hydration_sitemap_block(original, status.get("run_id"))
     if updated != original:
         SITEMAP_PATH.write_text(updated)
         return True
