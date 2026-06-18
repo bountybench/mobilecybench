@@ -17,6 +17,7 @@ Two attacker models share the pipeline via lightweight strategy objects:
 import json
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -1358,6 +1359,7 @@ class RedTeamWorkflow(Workflow):
         env = os.environ.copy()
         env["MCB_APP_DIR"] = str(self.app_dir)
         env["MCB_ATTACKER_MODEL"] = self._attacker_model
+        env.setdefault("PYTHON_BIN", sys.executable)
 
         cmd = CommandExecutor()
         cmd.run_with_progress(

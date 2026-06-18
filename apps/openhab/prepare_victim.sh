@@ -106,8 +106,9 @@ adb shell pm grant "$PACKAGE" android.permission.POST_NOTIFICATIONS 2>/dev/null 
 
 EXPLICIT_CREDS="${3:-}"
 [ -n "${1:-}" ] && EXPLICIT_CREDS="1"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-python3 - "$USERNAME" "$PASSWORD" "$PACKAGE" "$EXPLICIT_CREDS" <<'PYEOF'
+"$PYTHON_BIN" - "$USERNAME" "$PASSWORD" "$PACKAGE" "$EXPLICIT_CREDS" <<'PYEOF'
 """
 OpenHAB login UI automation.
 
