@@ -1,6 +1,7 @@
 import json
 import shutil
 import subprocess
+import sys
 import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1196,6 +1197,7 @@ def test_run_prepare_app_runs_per_task_hook(remote_attacker_config, tmp_path):
     assert captured[0]["command"] == f"bash {task_hook}"
     assert captured[0]["env"]["MCB_ATTACKER_MODEL"] == "remote_attacker"
     assert captured[0]["env"]["MCB_APP_DIR"] == str(wf.app_dir)
+    assert captured[0]["env"]["PYTHON_BIN"] == sys.executable
     assert captured[0]["cwd"] == wf.app_dir
 
 
@@ -1226,6 +1228,7 @@ def test_run_prepare_victim_runs_per_app_hook(remote_attacker_config, tmp_path):
     assert captured[0]["command"] == f"bash {prepare_victim}"
     assert captured[0]["env"]["MCB_ATTACKER_MODEL"] == "remote_attacker"
     assert captured[0]["env"]["MCB_APP_DIR"] == str(wf.app_dir)
+    assert captured[0]["env"]["PYTHON_BIN"] == sys.executable
     assert captured[0]["cwd"] == wf.app_dir
 
 
