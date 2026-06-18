@@ -17,7 +17,7 @@
           "reasoning": true,
           "temperature": true,
           "tool_call": true,
-          "interleaved": {"field": "reasoning"},
+          "interleaved": {"field": "reasoning_content"},
           "limit": {"context": 1000000, "output": 131072},
           "cost": {"input": 1.40, "output": 4.40, "cache_read": 0.26},
           "variants": {

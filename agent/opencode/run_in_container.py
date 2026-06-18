@@ -38,6 +38,14 @@ def _build_cmd(task: dict[str, Any]) -> list[str]:
         "json",
         # The container IS the sandbox; bypass per-tool permission prompts.
         "--dangerously-skip-permissions",
+        # `opencode run` defaults `thinking` to false in non-interactive mode
+        # (cli/cmd/run.ts: thinking = args.interactive ? ... : (args.thinking ?? false)).
+        # With thinking=false the CLI silently DROPS `{"type":"reasoning",...}`
+        # events from `--format json` stdout — even though the AI SDK extracted
+        # the reasoning, opencode's session DB stored it, and our event_parser
+        # is wired to capture it. Pass --thinking so reasoning reaches stdout
+        # and OpencodeEventParser populates `reasoning_summary`.
+        "--thinking",
         "--dir",
         working_dir,
         "--model",
