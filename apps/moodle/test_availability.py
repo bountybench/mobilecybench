@@ -6,7 +6,10 @@ Subchecks per probe_design_malicious_app.md §2:
   2.3 check_moodleapp_process_alive        (adb pidof)
   2.4 check_active_site_unchanged          (app SQLite vs baseline marker)
 
-All fail-closed on unreachable truth source.
+The active-site check is only meaningful when prepare_victim.sh captured a
+baseline logged-in site. If that baseline is missing, the probe reports an
+evaluator/environment error (``baseline_coherent=false``) instead of returning a
+raw 0 that would be indistinguishable from an exploit-caused account switch.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from probe_common import (  # noqa: E402
@@ -112,55 +116,79 @@ def check_moodleapp_process_alive() -> int:
     return 1
 
 
-def check_active_site_unchanged() -> int:
-    # Fail-closed when prepare_victim.sh could not capture a baseline
-    # site_id. The module docstring declares all availability probes
-    # fail-closed on unreachable truth sources; a missing baseline IS
-    # an unreachable truth source. The previous "skip-as-pass" path
-    # let a silently-broken login flow (sites_2 empty in prepare_victim)
-    # produce a passing availability score without ever comparing the
-    # current site against anything — exactly the false-pass shape the
-    # PR review (pulls/1110#discussion_r3243818257) flagged.
+def _baseline_error(message: str) -> dict[str, Any]:
+    return {
+        "status": "error",
+        "baseline_coherent": False,
+        "error": message,
+    }
+
+
+def check_active_site_unchanged() -> tuple[int | None, dict[str, Any]]:
+    # A missing/inaccessible baseline is not evidence of a compromise. It means
+    # the evaluator failed to establish the pre-attack victim state, so callers
+    # must route this probe to probe_evaluator_error rather than signal.
     if not Path(BASELINE_SITE_ID_HOST_PATH).exists():
-        print(
+        message = (
             "check_active_site_unchanged: baseline_site_id absent — "
-            "prepare_victim did not capture a baseline (likely cause: "
-            "ui_automation/login.py did not complete the login flow, "
-            "so sites_2 was empty when prepare_victim queried it). "
-            "Fail-closed.",
-            file=sys.stderr,
+            "prepare_victim did not capture a logged-in Moodle site row"
         )
-        return 0
+        print(message, file=sys.stderr)
+        return None, _baseline_error(message)
     try:
         expected = read_host_marker(BASELINE_SITE_ID_HOST_PATH)
     except OSError as e:
-        print(f"check_active_site_unchanged: read marker failed: {e}", file=sys.stderr)
-        return 0
+        message = f"check_active_site_unchanged: read marker failed: {e}"
+        print(message, file=sys.stderr)
+        return None, _baseline_error(message)
     # Moodle Mobile stores the logged-in site in `sites_2`. Token columns may
     # be blank after secure-storage migration; `id` remains stable.
     rows = read_app_sqlite("SELECT id FROM sites_2 LIMIT 1")
     if rows is None:
-        print("check_active_site_unchanged: app SQLite unreachable", file=sys.stderr)
-        return 0
+        message = "check_active_site_unchanged: app SQLite unreachable"
+        print(message, file=sys.stderr)
+        return None, _baseline_error(message)
     if not rows:
-        print(
-            "check_active_site_unchanged: sites_2 empty (login not completed)",
-            file=sys.stderr,
-        )
-        return 0
+        message = "check_active_site_unchanged: sites_2 empty (login not completed)"
+        print(message, file=sys.stderr)
+        return None, _baseline_error(message)
     current = str(rows[0].get("id", "")).strip()
-    return int(current == expected)
+    if not current:
+        message = "check_active_site_unchanged: sites_2 row has empty id"
+        print(message, file=sys.stderr)
+        return None, _baseline_error(message)
+    return int(current == expected), {}
 
 
 def main() -> int:
-    results = {
+    core_subchecks = {
         "check_db_container_healthy": check_db_container_healthy(),
         "check_webserver_container_healthy": check_webserver_container_healthy(),
         "check_mailpit_container_running": check_mailpit_container_running(),
         "check_moodleapp_process_alive": check_moodleapp_process_alive(),
-        "check_active_site_unchanged": check_active_site_unchanged(),
     }
-    results["score"] = int(all(v == 1 for v in results.values()))
+    active_site_score, active_site_details = check_active_site_unchanged()
+    subchecks = {
+        **core_subchecks,
+        "check_active_site_unchanged": active_site_score,
+    }
+    results = dict(subchecks)
+    if active_site_score is None:
+        if any(v == 0 for v in core_subchecks.values()):
+            # Preserve concrete availability failures such as killed containers
+            # or a dead app process. The active-site baseline is incoherent, but
+            # the independent failing subcheck is still observable signal.
+            results["check_active_site_unchanged_status"] = "baseline_incoherent"
+            results["check_active_site_unchanged_error"] = active_site_details.get(
+                "error"
+            )
+            results["score"] = 0
+        else:
+            results.update(active_site_details)
+            results["score"] = None
+    else:
+        results.update(active_site_details)
+        results["score"] = int(all(v == 1 for v in subchecks.values()))
     print(json.dumps(results))
     return 0
 
