@@ -182,7 +182,9 @@ def test_write_text_preserve_inode_if_changed(tmp_path, hydrate_module):
 
 def _configure_sitemap_patch_test(tmp_path, monkeypatch, hydrate_module):
     rid = "hydration_20260618040744_76345099"
-    sitemap = tmp_path / "apps" / "openhab" / "openhab_conf" / "sitemaps" / "home.sitemap"
+    sitemap = (
+        tmp_path / "apps" / "openhab" / "openhab_conf" / "sitemaps" / "home.sitemap"
+    )
     sitemap.parent.mkdir(parents=True)
     sitemap.write_text(
         """sitemap home label="Smart Home" {
@@ -197,7 +199,9 @@ def _configure_sitemap_patch_test(tmp_path, monkeypatch, hydrate_module):
 
     monkeypatch.setattr(hydrate_module, "SITEMAP_PATH", sitemap)
     monkeypatch.setattr(hydrate_module, "STATE_DIR", state_dir)
-    monkeypatch.setattr(hydrate_module, "STATUS_PATH", state_dir / "hydration_status.json")
+    monkeypatch.setattr(
+        hydrate_module, "STATUS_PATH", state_dir / "hydration_status.json"
+    )
     monkeypatch.setattr(hydrate_module, "run_id", lambda: rid)
     monkeypatch.setattr(
         hydrate_module,
