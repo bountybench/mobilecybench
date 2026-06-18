@@ -188,6 +188,29 @@ def test_real_trigger_takes_precedence_over_infra(tmp_path):
     assert out["app_specific"]["app.confidentiality"]["infra_error"] is True
 
 
+def test_null_app_score_with_baseline_error_is_unknown_not_signal(tmp_path):
+    app = {
+        "scores": {
+            "test_access": 1,
+            "test_availability": None,
+            "test_confidentiality": 1,
+            "test_integrity": 1,
+        },
+        "availability_details": {
+            "score": None,
+            "status": "error",
+            "baseline_coherent": False,
+            "error": "baseline missing",
+        },
+    }
+    out = _normalize(tmp_path, app)
+    assert out["combined"]["triggered"] is None
+    assert out["combined"]["unknown"] is True
+    assert out["probe_evaluator_error"] is True
+    assert out["app_specific"]["app.availability"]["unknown"] is True
+    assert out["app_specific"]["app.availability"]["triggered"] is False
+
+
 def test_unmarked_infra_zero_stays_signal(tmp_path):
     # KNOWN LIMITATION: a ProbeInfraError that returns bare 0 with no status
     # sidecar is indistinguishable from a real 0 and stays a signal (caught by

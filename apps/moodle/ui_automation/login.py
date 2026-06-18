@@ -12,7 +12,7 @@ from utils.ui_utils import (
 )
 
 PACKAGE_NAME = "com.moodle.moodlemobile"
-SERVER_URL = "http://10.0.2.2:8000"
+DEFAULT_SERVER_URL = "http://10.0.2.2:8000"
 
 
 def dismiss_notification_prompt(d):
@@ -99,6 +99,11 @@ def parse_args():
     parser.add_argument("--password", required=True, help="Login password")
     # Optional arguments to match common interface
     parser.add_argument(
+        "--server-url",
+        default=os.environ.get("MOODLE_EMULATOR_SERVER", DEFAULT_SERVER_URL),
+        help="Moodle server URL as reachable from the Android emulator",
+    )
+    parser.add_argument(
         "--user-key", help="Key in secrets.json (ignored if password provided)"
     )
     parser.add_argument(
@@ -111,6 +116,7 @@ def main():
     args = parse_args()
     username = args.username
     password = args.password
+    server_url = args.server_url
 
     print("Connecting to device...")
     d = initialize_ui_automation()
@@ -145,7 +151,7 @@ def main():
     choose_existing_site_if_needed(d)
 
     # 3. Input emulator server
-    print(f"Inputting server URL: {SERVER_URL}")
+    print(f"Inputting server URL: {server_url}")
     site_input = wait_for_any(
         d,
         [
@@ -160,7 +166,7 @@ def main():
         site_input = d(textContains="Your site")
 
     if site_input is not None and site_input.exists:
-        site_input.set_text(SERVER_URL)
+        site_input.set_text(server_url)
         print("Set server URL text")
 
         # Click "Connect to your site" or similar button.

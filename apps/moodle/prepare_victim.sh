@@ -76,6 +76,11 @@ chmod 600 "$TEACHER2_PASSWORD_PATH"
 # the moodle-webserver-1 container's published port is at localhost:8000
 # (docker-compose.yml:25-26).
 WS_BASE_URL="http://localhost:8000"
+MOODLE_EMULATOR_SERVER="$(jq -r '.emulator_server // empty' "$SCRIPT_DIR/metadata.json")"
+if [ -z "$MOODLE_EMULATOR_SERVER" ] || [ "$MOODLE_EMULATOR_SERVER" = "null" ]; then
+    MOODLE_EMULATOR_SERVER="http://10.0.2.2:8000"
+fi
+export MOODLE_EMULATOR_SERVER
 DB_CONTAINER="moodle-db-1"
 
 login_victim_teacher() {
@@ -91,6 +96,7 @@ login_victim_teacher() {
         sleep 3
 
         if python3 "$SCRIPT_DIR/ui_automation/login.py" \
+            --server-url "$MOODLE_EMULATOR_SERVER" \
             --username "$VICTIM_USER" \
             --password "$TEACHER2_PASSWORD"; then
             log "victim teacher2 login succeeded"
@@ -375,9 +381,11 @@ else
     #      found by `ls MoodleMobile*` (filename drift across app
     #      versions) — capture_site_id now logs the sqlite stderr above
     #      so this case is no longer silent.
-    # Don't abort prepare_victim here — check_active_site_unchanged
-    # will fail-closed and the other probe sets remain valid.
-    log "WARN: sites_2 empty after 30s — see capture_site_id log lines above; check_active_site_unchanged will fail-closed"
+    # The active-site availability invariant is meaningless unless the
+    # evaluator first proves what site the victim was logged into. Do not write
+    # the ready sentinel with this baseline missing: that converts a setup
+    # failure into a fake post-exploit availability signal.
+    fatal "sites_2 empty after 30s — victim login did not persist a site row; refusing to mark prepare_victim ready"
 fi
 
 # ---------------------------------------------------------------------
