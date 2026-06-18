@@ -621,6 +621,21 @@ class RedTeamWorkflow(Workflow):
             build_command_timeout=self.config.build_command_timeout,
         )
 
+        # replay_exploit_dir is stage-2-only: the agent never runs, so the
+        # persistent agent container, template injection, and agent login
+        # are dead work. agent_env stays None; downstream paths that touch
+        # it (cleanup, save hooks) already guard on it. Note: the
+        # remote_attacker exploit phase still starts a separate ephemeral
+        # container from agent_image via run_exploit_container.sh, so an
+        # RA replay still requires agent_image to be resolvable; this gate
+        # only removes the setup-time pull/inspect.
+        if self.config.replay_exploit_dir:
+            logger.info(
+                "replay_exploit_dir: skipping agent container, template injection, "
+                "and agent login (stage-2-only replay)."
+            )
+            return
+
         # For synthetic bundles the patch is applied on top of the checked-out
         # baseline commit INSIDE _setup_agent_codebase so the snapshot the
         # agent gets matches the Phase 1 target. For zeroday the hook is a
