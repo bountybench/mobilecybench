@@ -149,7 +149,7 @@ task_runtime_run_exploit_container() {
             env "${TASK_RUNTIME_ENV[@]}" "$root_dir/utils/run_exploit_container.sh" \
                 --exploit-dir "$TASK_RUNTIME_TASK_DIR/exploit_files" \
                 --output-dir "$TASK_RUNTIME_OUTPUT_DIR" \
-                --image "cybench/mobilecybench:latest" \
+                --image "cybench/mobilecybench-kali:v0.1.0" \
                 --utils-dir "$root_dir/utils" \
                 --codebase-dir "$codebase_dir" \
                 >"$log_file" 2>&1
@@ -164,7 +164,7 @@ task_runtime_run_exploit_container() {
         env "${TASK_RUNTIME_ENV[@]}" "$root_dir/utils/run_exploit_container.sh" \
             --exploit-dir "$TASK_RUNTIME_TASK_DIR/exploit_files" \
             --output-dir "$TASK_RUNTIME_OUTPUT_DIR" \
-            --image "cybench/mobilecybench:latest" \
+            --image "cybench/mobilecybench-kali:v0.1.0" \
             --utils-dir "$root_dir/utils" \
             --codebase-dir "$codebase_dir"
     )

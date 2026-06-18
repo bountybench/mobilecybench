@@ -316,7 +316,14 @@ class RemoteAttackerOps:
             kwargs["exploit_dir"],
             phase_dir,
             exploit_runner=workflow.project_root / "utils" / "run_exploit_container.sh",
-            exploit_image=workflow.config.agent_image,
+            # Pinned kali base — same image the agent Dockerfiles build
+            # FROM, so it has bash/curl/python3/adb without bolting on the
+            # agent CLI. Two reasons to pin here: (1) the agent loop has
+            # already finished by this phase, so exploit.sh shouldn't have
+            # the coding-agent CLI on PATH (methodology: no fresh agent
+            # inference at eval time); (2) pinning a version tag keeps saved
+            # exploits replayable when agent_image rotates.
+            exploit_image="cybench/mobilecybench-kali:v0.1.0",
             app_server=workflow.metadata.get("app_server"),
             codebase_dir=codebase_dir,
             replay_apk=replay_apk,
