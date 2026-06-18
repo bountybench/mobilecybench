@@ -52,6 +52,7 @@ class CommandExecutor:
             result = subprocess.run(
                 args,
                 cwd=cwd,
+                stdin=subprocess.DEVNULL,
                 capture_output=capture_output,
                 text=True,
                 check=False,
@@ -100,6 +101,7 @@ class CommandExecutor:
             process = subprocess.Popen(
                 args,
                 cwd=cwd,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -171,9 +173,15 @@ class CommandExecutor:
         update_spinner = spinner()
 
         try:
+            # stdin=DEVNULL so child processes that internally invoke
+            # `docker exec -i ...` against a backend container do not
+            # inherit the controlling terminal and get SIGTTIN-stopped
+            # when this runner is launched under a detached tmux session
+            # (no client) or any other background process group.
             process = subprocess.Popen(
                 args,
                 cwd=cwd,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
