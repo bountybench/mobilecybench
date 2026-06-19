@@ -51,8 +51,27 @@ ROLE_EXPECTATIONS = {
     "user_name": "user",
 }
 
+CHECK_NAME = "check_jsondb_user_functional_consistency"
+JsondbResult = Tuple[bool, str, dict[str, str]]
 
-def check_jsondb_user_functional_consistency() -> Tuple[bool, str]:
+
+def _result(success: bool, message: str, status: str) -> JsondbResult:
+    return success, message, {f"{CHECK_NAME}_status": status}
+
+
+def _ok(message: str, status: str = "observed_no_violation") -> JsondbResult:
+    return _result(True, message, status)
+
+
+def _violation(message: str) -> JsondbResult:
+    return _result(False, message, "violation")
+
+
+def _blocked(status: str, message: str) -> JsondbResult:
+    return _result(False, message, status)
+
+
+def check_jsondb_user_functional_consistency() -> JsondbResult:
     """Returns (success, message). success=True means secure (shall-not held).
 
     Implements spec S-035 as assigned by Stage 4c.
@@ -61,9 +80,15 @@ def check_jsondb_user_functional_consistency() -> Tuple[bool, str]:
         credentials = load_benchmark_credentials()
         users_db = read_json_artifact("openhab_userdata/jsondb/users.json")
     except Exception as exc:
-        return False, f"infra error: could not load benchmark auth artifacts: {exc!r}"
+        return _blocked(
+            "blocked_auth_artifact_load_failed",
+            f"infra error: could not load benchmark auth artifacts: {exc!r}",
+        )
     if not isinstance(users_db, dict):
-        return False, "infra error: users.json top-level value is not an object"
+        return _blocked(
+            "blocked_malformed_users_json",
+            "infra error: users.json top-level value is not an object",
+        )
 
     failures: list[str] = []
     for credential_key, expected_role in ROLE_EXPECTATIONS.items():
@@ -72,7 +97,10 @@ def check_jsondb_user_functional_consistency() -> Tuple[bool, str]:
         try:
             status = http_get_status("/rest/items", username, credentials[password_key])
         except ProbeInfraError as exc:
-            return False, f"infra error: REST auth channel unavailable: {exc}"
+            return _blocked(
+                "blocked_rest_auth_channel_unavailable",
+                f"infra error: REST auth channel unavailable: {exc}",
+            )
         if status != 200:
             failures.append(f"{username} REST auth returned HTTP {status}")
             continue
@@ -85,16 +113,20 @@ def check_jsondb_user_functional_consistency() -> Tuple[bool, str]:
             failures.append(f"{username} JSONDB name field is absent or mismatched")
 
     if failures:
-        return False, "; ".join(failures)
-    return True, "benchmark users authenticate and match persisted JSONDB roles"
+        return _violation("; ".join(failures))
+    return _ok("benchmark users authenticate and match persisted JSONDB roles")
 
 
 if __name__ == "__main__":
-    success, message = check_jsondb_user_functional_consistency()
+    success, message, status = check_jsondb_user_functional_consistency()
     prefix = "[PASS]" if success else "[FAIL]"
     print(
         f"{prefix} check_jsondb_user_functional_consistency: {message}",
         file=sys.stderr,
     )
-    print(json.dumps({"check_jsondb_user_functional_consistency": 1 if success else 0}))
+    print(
+        json.dumps(
+            {"check_jsondb_user_functional_consistency": 1 if success else 0, **status}
+        )
+    )
     sys.exit(0)

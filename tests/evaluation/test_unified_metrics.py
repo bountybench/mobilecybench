@@ -228,6 +228,35 @@ def test_unmarked_infra_zero_stays_signal(tmp_path):
     assert out["combined"]["triggered"] is True
 
 
+def test_openhab_sitemap_infra_status_is_infra_not_signal(tmp_path):
+    # Regression for OpenHAB RA source runs where live sitemap hydration/reload
+    # failed and the integrity probe used to emit a bare 0. With the status
+    # sidecar, this is an infrastructure error, not a probe signal.
+    app = {
+        "scores": {
+            "test_access": 1,
+            "test_availability": 1,
+            "test_confidentiality": 1,
+            "test_integrity": 0,
+        },
+        "integrity_details": {
+            "score": 0,
+            "check_jsondb_user_functional_consistency": 1,
+            "check_jsondb_user_functional_consistency_status": "observed_no_violation",
+            "check_sitemap_live_vs_mounted_consistency": 0,
+            "check_sitemap_live_vs_mounted_consistency_status": (
+                "blocked_live_sitemap_read_failed"
+            ),
+        },
+    }
+    out = _normalize(tmp_path, app)
+    assert out["combined"]["triggered"] is False
+    assert out["combined"]["infra_error"] is True
+    entry = out["app_specific"]["app.integrity"]
+    assert entry["triggered"] is False
+    assert entry["infra_error"] is True
+
+
 # --------------------------------------------------------------------------
 # Generic normalization
 # --------------------------------------------------------------------------
