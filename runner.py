@@ -443,6 +443,34 @@ def run(
             except Exception as e:
                 logger.warning(f"Failed to save artifacts before cleanup: {e}")
 
+        # Write run_summary.json before logcat capture and workflow.cleanup so
+        # the run dir always has a summary on disk if a downstream cleanup
+        # step is interrupted. The canonical final write at the end of this
+        # block overwrites it once cleanup completes — fields known only
+        # post-cleanup (e.g. android_system.log artifact pointer) land then.
+        # exit_reason is "in_progress_cleanup" only when the main try block
+        # didn't set one (caller was killed before reaching the assignment).
+        # Best-effort: never raises.
+        try:
+            write_run_summary(
+                project_root=project_root,
+                run_id=run_id,
+                app_name=app_name,
+                config=config,
+                config_path=config_path,
+                workflow=workflow,
+                run_result=run_result,
+                evaluation=evaluation,
+                outcome=outcome,
+                exit_reason=exit_reason or "in_progress_cleanup",
+                started_at=started_at,
+                ended_at=utc_now_iso(),
+                start_error_count=start_error_count,
+                timing_start_idx=timing_start_idx,
+            )
+        except Exception as e:
+            logger.warning(f"Failed early-write run_summary.json: {e}")
+
         # Capture Logcat before stopping emulator
         if workflow and workflow.emulator:
             try:
@@ -461,6 +489,8 @@ def run(
             except Exception as cleanup_error:
                 logger.warning(f"Cleanup error: {cleanup_error}")
 
+        # Final canonical write: overwrites the early defensive write above
+        # with the post-cleanup state.
         write_run_summary(
             project_root=project_root,
             run_id=run_id,
