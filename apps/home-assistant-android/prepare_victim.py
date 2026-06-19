@@ -187,7 +187,54 @@ def _enable_local_push_websocket() -> None:
 
 
 def _drive_onboarding(server_url: str, username: str, password: str) -> None:
+    import subprocess
+
     d = _device
+
+    # Two compounding hazards on fast-bootstrap setups before the first
+    # text="Continue" poll:
+    #
+    #   (a) HA Compose race — the runner can reach this hook within ~6s of HA
+    #       launch, faster than HA Companion paints OnboardingActivity's
+    #       Welcome screen.
+    #   (b) SystemUI SIM-removed AlertDialog — an API 35 emulator booted
+    #       without a SIM image surfaces a system dialog from
+    #       com.android.systemui that sits on top of OnboardingActivity and
+    #       steals foreground, so the first text= selector reads the dialog's
+    #       window and misses Continue underneath.
+    #
+    # Poll for Continue to appear (bounded by SCREEN_TIMEOUT); if the SIM
+    # dialog shows up during the wait, dismiss it with HOME (BACK from
+    # Welcome would exit onboarding entirely) and re-launch HA so
+    # OnboardingActivity is foreground again. Returns as soon as Continue
+    # is visible; on setups where neither hazard is present, this collapses
+    # to an immediate-pass poll.
+    deadline = time.time() + SCREEN_TIMEOUT
+    while time.time() < deadline:
+        if d(text="Continue").exists:
+            break
+        if d(text="SIM removed").exists or d(text="Restart").exists:
+            subprocess.run(
+                ["adb", "shell", "input", "keyevent", "3"],  # KEYCODE_HOME
+                check=False,
+            )
+            time.sleep(1)
+            subprocess.run(
+                [
+                    "adb",
+                    "shell",
+                    "monkey",
+                    "-p",
+                    PACKAGE,
+                    "-c",
+                    "android.intent.category.LAUNCHER",
+                    "1",
+                ],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        time.sleep(1)
 
     # Screen 1: Welcome → Continue. Expected next: server-picker shows
     # "Select your Home Assistant server" or "Enter address manually".
