@@ -281,6 +281,16 @@ def test_o4_mini_cached_input_pricing_matches_official_docs():
     assert pricing.output == pytest.approx(4.4, rel=1e-9)
 
 
+@pytest.mark.pricing
+def test_together_glm52_pricing_matches_together_docs():
+    pricing = get_pricing_for_model(
+        "togetherai/zai-org/GLM-5.2", pricing_map=load_pricing(), warn=False
+    )
+    assert pricing.input == pytest.approx(1.4, rel=1e-9)
+    assert pricing.cache_input == pytest.approx(0.26, rel=1e-9)
+    assert pricing.output == pytest.approx(4.4, rel=1e-9)
+
+
 ##########################################
 #          Token Tracker Tests           #
 ##########################################

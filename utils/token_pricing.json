@@ -262,5 +262,11 @@
     "cache_input": 0.1,
     "cache_creation_per_million_5m": 1.25,
     "cache_creation_per_million_1h": 2.0
+  },
+  "zai-org/GLM-5.2": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_input": 0.26,
+    "reasoning": 4.4
   }
 }

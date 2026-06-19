@@ -148,7 +148,7 @@ Open object. Sub-fields the harness understands for cache-aware cost derivation:
 
 Forwarded by the harness:
 
-- **Auth tokens** (operator's `.env`, forwarded as-is — your CLI picks what it needs): provider API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`) plus OAuth blobs (`CLAUDE_CODE_OAUTH_TOKEN`, `OPENCODE_AUTH_CONTENT`). Source of truth: `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`.
+- **Auth/config tokens** (operator's `.env`, forwarded as-is — your CLI picks what it needs): provider API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `TOGETHER_API_KEY`), OAuth blobs (`CLAUDE_CODE_OAUTH_TOKEN`, `OPENCODE_AUTH_CONTENT`), and opencode inline config (`OPENCODE_CONFIG_CONTENT`). Source of truth: `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`.
 - **Runtime wiring** (harness sets the values): `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` (Squid sidecar), `ADB_SERVER_SOCKET=tcp:adb-proxy:5037`.
 
 ## Model ownership

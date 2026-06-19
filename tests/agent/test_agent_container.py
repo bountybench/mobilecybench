@@ -506,6 +506,8 @@ class TestAuthEnvPassthrough:
 
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-test")
+        monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"provider":{}}')
+        monkeypatch.setenv("TOGETHER_API_KEY", "together-test")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
         mock_client = MagicMock()
@@ -542,4 +544,6 @@ class TestAuthEnvPassthrough:
         env_vars = mock_client.containers.run.call_args.kwargs["environment"]
         assert env_vars.get("OPENAI_API_KEY") == "sk-test"
         assert env_vars.get("CLAUDE_CODE_OAUTH_TOKEN") == "oat-test"
+        assert env_vars.get("OPENCODE_CONFIG_CONTENT") == '{"provider":{}}'
+        assert env_vars.get("TOGETHER_API_KEY") == "together-test"
         assert "ANTHROPIC_API_KEY" not in env_vars

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "togetherai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Together AI",
+      "options": {
+        "baseURL": "https://api.together.xyz/v1",
+        "apiKey": "{env:TOGETHER_API_KEY}"
+      },
+      "models": {
+        "zai-org/GLM-5.2": {
+          "id": "zai-org/GLM-5.2",
+          "name": "GLM-5.2",
+          "family": "glm",
+          "attachment": false,
+          "reasoning": true,
+          "temperature": true,
+          "tool_call": true,
+          "interleaved": {"field": "reasoning_content"},
+          "limit": {"context": 1000000, "output": 131072},
+          "cost": {"input": 1.40, "output": 4.40, "cache_read": 0.26},
+          "variants": {
+            "high": {"reasoningEffort": "high"},
+            "max": {"reasoningEffort": "max"},
+            "xhigh": {"reasoningEffort": "xhigh"}
+          }
+        }
+      }
+    }
+  }
+}

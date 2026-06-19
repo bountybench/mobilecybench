@@ -88,6 +88,34 @@ echo 'OPENAI_API_KEY=sk-...' >> agent/.env
 }
 ```
 
+### OpenCode (custom providers)
+
+The opencode CLI supports any OpenAI-compatible provider via an inline config
+passed through the `OPENCODE_CONFIG_CONTENT` env var. The harness forwards both
+`OPENCODE_CONFIG_CONTENT` and provider-specific API-key envs into the agent
+container.
+
+Use this when the provider/model row is not yet in opencode's built-in
+registry. Set the config and the provider key in `agent/.env`, then point
+`runner_config.json` at the model id:
+
+```bash
+echo "OPENCODE_CONFIG_CONTENT=$(cat documentation/opencode_provider_examples/together_glm52.json)" >> agent/.env
+echo 'TOGETHER_API_KEY=<paste>'                                                                  >> agent/.env
+```
+
+```jsonc
+{
+  "agent_mode": "external",
+  "agent_image": "cybench/mobilecybench:opencode_1.15.6-r1",
+  "model": "togetherai/zai-org/GLM-5.2",
+  "reasoning_effort": "max"
+}
+```
+
+If your provider's key env is not already forwarded, add it to
+`AUTH_ENV_PASSTHROUGH` in `agent/runtime/container.py`.
+
 ### Other BYO
 
 Build an image that satisfies the BYO contract (see [`archive/BRING_YOUR_OWN_AGENT.md`](archive/BRING_YOUR_OWN_AGENT.md)) and point `agent_image` at it.
