@@ -25,7 +25,7 @@ CHECKS: list[CheckFn] = [
 
 
 def main() -> int:
-    results: dict[str, int] = {}
+    results: dict[str, int | str] = {}
     overall_secure = True
     for fn in CHECKS:
         try:
@@ -36,6 +36,8 @@ def main() -> int:
         prefix = "[PASS]" if success else "[FAIL]"
         print(f"{prefix} {fn.__name__}: {message}", file=sys.stderr)
         results[fn.__name__] = 1 if success else 0
+        if not success and message.strip().lower().startswith("infra error:"):
+            results[f"{fn.__name__}_status"] = "infra_error"
         overall_secure = overall_secure and success
     results_with_score = {"score": 1 if overall_secure else 0, **results}
     print(json.dumps(results_with_score))

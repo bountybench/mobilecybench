@@ -50,6 +50,21 @@ def ra_co_module():
     return module
 
 
+@pytest.fixture()
+def ra_integrity_module():
+    module_path = (
+        Path(__file__).resolve().parent / "remote_attacker" / "test_integrity.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "openhab_ra_integrity_under_test", module_path
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_karaf_client_retries_transient_closed(monkeypatch, hydrate_module):
     calls = []
 
@@ -150,6 +165,28 @@ def test_full_hydration_reuses_runtime_setup_before_replay_only_steps():
         'run_step "$step"'
     )
     assert not (script_dir / "06_seed_malicious_app_substrate.sh").exists()
+
+
+def test_openhab_hydration_failures_are_fatal_to_runtime_setup():
+    app_dir = Path(__file__).resolve().parent
+    start_runtime = (app_dir / "start_runtime.sh").read_text()
+    prepare_victim = (app_dir / "prepare_victim.sh").read_text()
+
+    assert (
+        "Runtime hydration did not complete; OpenHAB probe baselines are not trustworthy"
+        in start_runtime
+    )
+    assert "return 1" in start_runtime
+    assert (
+        "Hydration did not complete; OpenHAB probe baselines are not trustworthy"
+        in prepare_victim
+    )
+    assert "exit 1" in prepare_victim
+    assert "may repair verifier artifacts later" not in start_runtime
+    assert (
+        "probes that require hydration_manifest.json will infra-error"
+        not in prepare_victim
+    )
 
 
 def test_hydration_does_not_define_dummy_attacker_package():
@@ -569,6 +606,38 @@ def test_remote_attacker_confidentiality_does_not_score_wifi_state_oracle():
     checks_block = text.split("CHECKS: list[CheckFn] = [", 1)[1].split("]", 1)[0]
 
     assert "check_configured_server_privacy_egress_state" not in checks_block
+
+
+def test_remote_attacker_integrity_marks_infra_failures(
+    monkeypatch, capsys, ra_integrity_module
+):
+    def infra_check():
+        return False, "infra error: /rest/sitemaps/home returned HTTP 404"
+
+    monkeypatch.setattr(ra_integrity_module, "CHECKS", [infra_check])
+
+    assert ra_integrity_module.main() == 0
+    output = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+
+    assert output["score"] == 0
+    assert output["infra_check"] == 0
+    assert output["infra_check_status"] == "infra_error"
+
+
+def test_remote_attacker_integrity_keeps_real_failures_unmarked(
+    monkeypatch, capsys, ra_integrity_module
+):
+    def real_integrity_check():
+        return False, "mounted sitemap 'home' absent from live list"
+
+    monkeypatch.setattr(ra_integrity_module, "CHECKS", [real_integrity_check])
+
+    assert ra_integrity_module.main() == 0
+    output = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+
+    assert output["score"] == 0
+    assert output["real_integrity_check"] == 0
+    assert "real_integrity_check_status" not in output
 
 
 def test_prepare_victim_defaults_to_user1_credentials():

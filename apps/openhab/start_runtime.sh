@@ -410,7 +410,8 @@ run_stage3_runtime_hydration() {
   elif [ -x "$hydration_runtime" ]; then
     log_info "Running stage 3 runtime hydration..."
     if ! "$hydration_runtime"; then
-      log_warn "Runtime hydration did not complete; replay-only hydration may repair verifier artifacts later"
+      log_error "Runtime hydration did not complete; OpenHAB probe baselines are not trustworthy"
+      return 1
     fi
   else
     log_info "No runtime hydration script at $hydration_runtime; skipping"

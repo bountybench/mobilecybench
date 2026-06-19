@@ -426,7 +426,8 @@ if [ "${OPENHAB_SKIP_STAGE3_HYDRATION:-0}" = "1" ]; then
 elif [ -x "$HYDRATION_RUN_ALL" ]; then
   log_info "Running stage 3 hydration..."
   if ! "$HYDRATION_RUN_ALL"; then
-    log_warn "Hydration did not complete; probes that require hydration_manifest.json will infra-error"
+    log_error "Hydration did not complete; OpenHAB probe baselines are not trustworthy"
+    exit 1
   fi
 else
   log_info "No hydration script at $HYDRATION_RUN_ALL; skipping"
