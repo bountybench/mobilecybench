@@ -438,6 +438,56 @@ Install apktool (see options above) and re-run setup.sh."
     fi
 }
 
+# Check and install the `zip` CLI. Required: templates/malicious_app/build_exploit_apk.sh
+# shells out to `zip` to insert classes.dex into the unaligned APK envelope. `zip` is
+# NOT part of the Android SDK (Ubuntu cloud images ship `unzip` but not `zip`), and
+# without it the build aborts via the #1193 preflight guard — every malicious_app
+# cell fails with MA artifact rejected: build_failed → results.status=exploit_invalid.
+# The container/CI images already ship it; this keeps native host setups at parity.
+check_zip() {
+    log "Checking zip installation..."
+
+    if command_exists zip; then
+        log "zip is already installed: $(zip --version 2>&1 | head -n2 | tail -n1 || echo unknown)"
+        return 0
+    fi
+
+    log "zip not found. Installing..."
+
+    local os=$(detect_os)
+
+    case "$os" in
+        linux)
+            if command_exists apt-get; then
+                sudo apt-get update && sudo apt-get install -y zip
+            elif command_exists apt; then
+                sudo apt update && sudo apt install -y zip
+            else
+                error_exit "Could not install zip. Please install manually:
+                sudo apt-get install -y zip"
+            fi
+            ;;
+        macos)
+            # macOS ships `zip` in /usr/bin by default; this branch is a safety net.
+            if command_exists brew; then
+                brew install zip
+            else
+                error_exit "Homebrew not found. Please install Homebrew first, then run setup again."
+            fi
+            ;;
+        *)
+            log "Please install the 'zip' CLI manually for your platform."
+            return 0
+            ;;
+    esac
+
+    if command_exists zip; then
+        log "zip installed successfully: $(zip --version 2>&1 | head -n2 | tail -n1 || echo unknown)"
+    else
+        error_exit "Failed to install zip"
+    fi
+}
+
 # Check and install the sqlcipher CLI. Required: several apps decrypt their
 # SQLCipher-encrypted app DB via the `sqlcipher` binary during probing (e.g.
 # apps/nextcloud-talk/probe_lib.py). The container/CI images already ship it;
@@ -792,6 +842,9 @@ main() {
 
     # Check and install apktool
     check_apktool
+
+    # Check and install zip (MA artifact-packaging dependency, see #1193)
+    check_zip
 
     # Check and install sqlcipher (probe-time app-DB decryption dependency)
     check_sqlcipher
