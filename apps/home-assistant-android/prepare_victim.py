@@ -187,8 +187,6 @@ def _enable_local_push_websocket() -> None:
 
 
 def _drive_onboarding(server_url: str, username: str, password: str) -> None:
-    import subprocess
-
     d = _device
 
     # Two compounding hazards on fast-bootstrap setups before the first
@@ -214,26 +212,10 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
         if d(text="Continue").exists:
             break
         if d(text="SIM removed").exists or d(text="Restart").exists:
-            subprocess.run(
-                ["adb", "shell", "input", "keyevent", "3"],  # KEYCODE_HOME
-                check=False,
-            )
+            logger.info("SystemUI SIM-removed dialog detected; HOME + relaunch HA")
+            _adb_shell("input keyevent 3")  # KEYCODE_HOME
             time.sleep(1)
-            subprocess.run(
-                [
-                    "adb",
-                    "shell",
-                    "monkey",
-                    "-p",
-                    PACKAGE,
-                    "-c",
-                    "android.intent.category.LAUNCHER",
-                    "1",
-                ],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            _adb_shell(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
         time.sleep(1)
 
     # Screen 1: Welcome → Continue. Expected next: server-picker shows
