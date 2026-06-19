@@ -25,9 +25,11 @@ from utils.logger import agent_logger, logger
 # Matches utils.docker_utils.run_command_in_container's polling cadence.
 _POLL_INTERVAL_SECONDS = 1.0
 
-# Window the in-container runner.py has to handle SIGTERM and flush
-# conversation.jsonl + result.json before we escalate to SIGKILL.
-_GRACEFUL_STOP_SECONDS = 10.0
+# SIGTERM-to-SIGKILL grace for the in-container runner. Must be long enough
+# for its `_on_sigterm` handler to flush conversation.jsonl (which can run
+# to multiple MB on long agentic runs) and write result.json with
+# status="timeout" before we force-kill the container.
+_GRACEFUL_STOP_SECONDS = 30.0
 
 # Live mirror of /app/agent_run/agent.log to host operator. Best-effort
 # observability layer; canonical artifact is still the post-run pull.
