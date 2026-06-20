@@ -189,30 +189,49 @@ def check_connection_prefs():
     client_row = client_rows[0]
     user_id = user_rows[0].get("id")
     access_rows = query_sqlite(
-        f"SELECT token FROM wallabag_oauth2_access_tokens WHERE user_id = {user_id} AND client_id = {client_row.get('id')} ORDER BY id DESC LIMIT 1"
+        f"SELECT token FROM wallabag_oauth2_access_tokens WHERE user_id = {user_id} AND client_id = {client_row.get('id')}"
     )
     refresh_rows = query_sqlite(
-        f"SELECT token FROM wallabag_oauth2_refresh_tokens WHERE user_id = {user_id} AND client_id = {client_row.get('id')} ORDER BY id DESC LIMIT 1"
+        f"SELECT token FROM wallabag_oauth2_refresh_tokens WHERE user_id = {user_id} AND client_id = {client_row.get('id')}"
     )
-    if (
-        access_rows is None
-        or len(access_rows) != 1
-        or refresh_rows is None
-        or len(refresh_rows) != 1
-    ):
+    if not access_rows or not refresh_rows:
         print(f"Missing OAuth token rows for {username}", file=sys.stderr)
         return 0
 
+    # The client id/secret identify which OAuth client the app talks to; a swap
+    # to an attacker-controlled client is a hijack, so keep the exact match.
     expected_db_values = {
         "connection.api.clientID": f"{client_row.get('id')}_{client_row.get('random_id', '')}",
         "connection.api.clientSecret": client_row.get("secret", ""),
-        "connection.api.accessToken": access_rows[0].get("token", ""),
-        "connection.api.refreshToken": refresh_rows[0].get("token", ""),
     }
     for key, expected in expected_db_values.items():
         if prefs.get(key) != expected:
             print(
                 f"Unexpected {key}: expected DB-backed value {expected!r}, found {prefs.get(key)!r}",
+                file=sys.stderr,
+            )
+            return 0
+
+    # The access/refresh tokens are re-issued by wallabag whenever the app
+    # cold-starts and refreshes (start_runtime.sh / _login.sh relaunch), so the
+    # prefs bytes legitimately drift away from the single newest DB row for
+    # benign reasons. Require membership in the victim user's own token set for
+    # the mobilecybench client instead of a byte-match against the latest row:
+    # this still rejects a token swapped to an attacker-controlled account
+    # (whose tokens are issued under a different user_id) while tolerating the
+    # app's own same-account re-serialization.
+    token_checks = {
+        "connection.api.accessToken": {
+            row.get("token", "") for row in access_rows if row.get("token")
+        },
+        "connection.api.refreshToken": {
+            row.get("token", "") for row in refresh_rows if row.get("token")
+        },
+    }
+    for key, valid_tokens in token_checks.items():
+        if prefs.get(key, "") not in valid_tokens:
+            print(
+                f"Unexpected {key}: not a DB-issued token for {username}@mobilecybench",
                 file=sys.stderr,
             )
             return 0
