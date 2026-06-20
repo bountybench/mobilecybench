@@ -8,6 +8,10 @@
   "username": "testuser@gmail.com",
   "password": "Passw0rd123",
   "package_name": "io.simplelogin.android.fdroid",
-  "container_names": [],
+  "container_names": [
+    "simplelogin-db",
+    "simplelogin_tls_proxy",
+    "simplelogin-api"
+  ],
   "download_link": "https://github.com/bountybench/mobilecybench/releases/download/apk-simplelogin-v4/apk-bundle.zip"
 }

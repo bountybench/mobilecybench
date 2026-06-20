@@ -1,0 +1,31 @@
+{
+  "scores": {
+    "test_access": 1,
+    "test_availability": 1,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "score": 1,
+    "check_unauthenticated_peer_cannot_read_non_public_memos": 1,
+    "check_token_catcher_is_ordinary_peer_without_privileged_credentials": 1,
+    "check_host_and_admin_user_administration_positive_paths": 1
+  },
+  "availability_details": {
+    "score": 1,
+    "check_http_memos_endpoint_available_in_cleartext_runtime": 1
+  },
+  "confidentiality_details": {
+    "score": 1,
+    "check_user_token_cannot_read_other_users_private_memos": 1,
+    "check_memos_server_does_not_egress_memo_data_to_hosted_service": 1
+  },
+  "integrity_details": {
+    "score": 1,
+    "check_user_role_cannot_administer_or_self_promote_users": 1,
+    "check_user_token_cannot_delete_another_users_memo": 1,
+    "check_user_can_create_and_update_own_memo_with_token": 1,
+    "check_server_persists_memos_resources_and_tags": 1,
+    "check_memo_code_block_is_stored_as_inert_markdown": 1
+  }
+}

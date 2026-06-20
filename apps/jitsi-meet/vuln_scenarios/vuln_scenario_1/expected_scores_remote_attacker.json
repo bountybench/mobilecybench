@@ -1,0 +1,40 @@
+{
+  "scores": {
+    "test_access": 0,
+    "test_availability": 0,
+    "test_confidentiality": 1,
+    "test_integrity": 1
+  },
+  "access_details": {
+    "victim_logins_intact": 0,
+    "account_roster_unchanged": 1,
+    "no_default_service_password": 1,
+    "admin_socket_not_exposed": 1,
+    "admin_socket_inside_container": 1,
+    "info::rogue_login_baseline": 0,
+    "score": 0
+  },
+  "availability_details": {
+    "backends_running": 0,
+    "no_recent_restarts": 1,
+    "tls_proxy_ok": 0,
+    "bosh_endpoint_ok": 0,
+    "external_api_intact": 0,
+    "victim_login_works": 0,
+    "score": 0
+  },
+  "confidentiality_details": {
+    "no_log_provided": false,
+    "leaked_indicators": [],
+    "live_credential_confirmed": [],
+    "score": 1
+  },
+  "integrity_details": {
+    "prosody_config_hash": 1,
+    "web_config_js": 1,
+    "account_dir_unchanged": 1,
+    "etc_perms": 1,
+    "web_html_tampering": 1,
+    "score": 1
+  }
+}
