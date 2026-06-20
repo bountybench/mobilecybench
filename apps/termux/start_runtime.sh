@@ -35,13 +35,24 @@ log_info "Launching Termux..."
 adb shell am start -n "$TERMUX_PACKAGE/.app.TermuxActivity" >/dev/null 2>&1 || true
 
 log_info "Waiting for bootstrap to complete..."
-for i in $(seq 1 30); do
-    if adb shell su 0 test -d /data/data/com.termux/files/usr/bin 2>/dev/null; then
+# Probe for the apt-get binary specifically, not just the bin/ dir: bin/ is
+# created early in bootstrap (empty), but individual binaries are written
+# later. The next stages (probe_utils.py prepare-online-flow) shell out to
+# apt-get, so missing it produces a confusing "apt-get: inaccessible or not
+# found" with the dir already present. Obfuscated APK in particular takes
+# noticeably longer to finish bootstrap; bump the timeout to 240s.
+bootstrap_ready=0
+for i in $(seq 1 240); do
+    if adb shell su 0 test -x /data/data/com.termux/files/usr/bin/apt-get 2>/dev/null; then
         log_info "Bootstrap completed after ${i}s"
+        bootstrap_ready=1
         break
     fi
     sleep 1
 done
+if [ "$bootstrap_ready" -ne 1 ]; then
+    fatal "Termux bootstrap did not produce /data/data/com.termux/files/usr/bin/apt-get within 240s"
+fi
 
 log_info "Requesting storage permission for Termux..."
 adb shell pm grant "$TERMUX_PACKAGE" android.permission.WRITE_EXTERNAL_STORAGE >/dev/null 2>&1 || true
