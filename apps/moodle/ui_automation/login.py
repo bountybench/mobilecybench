@@ -93,6 +93,141 @@ def choose_existing_site_if_needed(d):
     return True
 
 
+def _sh_quote(s):
+    """Quote a value for `adb shell input text`.
+
+    `adb shell input text` does not handle spaces or shell metacharacters
+    reliably across emulator images, so we reject them outright. Moodle
+    usernames and the per-run teacher2 password (token_urlsafe → [A-Za-z0-9_-])
+    never contain these, so this is a hard guard, not a limitation in
+    practice.
+    """
+    if any(c in s for c in " '\"\\`$&|;<>()"):
+        raise ValueError(f"unsupported character in adb input value: {s!r}")
+    return s
+
+
+def logged_in(d):
+    """Authoritative logged-in oracle (rendered Ionic dashboard / speed dial).
+
+    Moodle Mobile is a Cordova/Ionic app, so even the dashboard lives inside a
+    WebView; but its rendered text labels ("Dashboard", "Site home", "Home")
+    and the speed_dial FAB resourceId DO surface to uiautomator2. Only the
+    login form's HTML <input> fields are opaque — which is exactly what
+    login_via_webview works around. "Turn on" notification prompts are NOT
+    counted here: Android can show them before the server response arrives, so
+    counting one would false-positive a wrong password.
+    """
+    return (
+        d(text="Dashboard").exists
+        or d(text="Site home").exists
+        or d(text="Home").exists
+        or d(resourceId="com.moodle.moodlemobile:id/speed_dial").exists
+    )
+
+
+def login_via_webview(d, username, password):
+    """Enter credentials into Moodle's WebView login form via ADB input.
+
+    Moodle Mobile is a Cordova/Ionic app: after `pm clear` + a cold launch,
+    the credentials page (core-login-credentials) renders as HTML inside an
+    `android.webkit.WebView`. Its <input> DOM is opaque to uiautomator2, so
+    `d(text="Username")`, `d(className="android.widget.EditText")` and the
+    native "Log in" button never resolve — every native selector times out and
+    the login fails, which makes prepare_victim.sh fatal with
+    infrastructure_error.
+
+    Mirroring apps/home-assistant-android/prepare_victim.py:_login_via_webview,
+    we drive the form positionally instead of by widget visibility:
+      - tap the upper input region to focus the (first) username field,
+      - `adb input text <username>`,
+      - KEYCODE_TAB → password field,
+      - `adb input text <password>`,
+      - KEYCODE_ENTER → submit.
+
+    The HTML form's tab order is username → password → submit, so TAB+ENTER
+    submits without needing to locate the button. The success oracle is the
+    rendered dashboard (logged_in), polled with growing slack to absorb both
+    slow JS focus-handler attach and slow post-submit navigation. (The whole
+    app is a WebView, so "WebView disappeared" is not a usable signal — the
+    rendered dashboard text is.)
+    """
+    w = d.info["displayWidth"]
+    h = d.info["displayHeight"]
+    for attempt in range(1, 4):
+        # JS in the WebView may not have attached focus handlers yet on a
+        # slow emulator; wait longer each attempt before typing (4s, 8s, 12s).
+        time.sleep(4 * attempt)
+        # Tap the upper-middle of the form to focus the first input. The
+        # Moodle credentials form places username above password, both in the
+        # top half of the viewport below the site banner.
+        d.click(w // 2, int(h * 0.42))
+        time.sleep(0.5)
+        d.shell(f"input text {_sh_quote(username)}")
+        time.sleep(0.3)
+        d.shell("input keyevent 61")  # KEYCODE_TAB → password field
+        time.sleep(0.3)
+        d.shell(f"input text {_sh_quote(password)}")
+        time.sleep(0.3)
+        d.shell("input keyevent 66")  # KEYCODE_ENTER → submit
+        # Poll for the dashboard to paint after the server round-trip. A
+        # "Turn on" notification prompt can appear first; dismiss it and keep
+        # polling rather than treating it as success or failure.
+        deadline = time.time() + 25
+        while time.time() < deadline:
+            if logged_in(d):
+                print(f"WebView login succeeded on attempt {attempt}/3")
+                return True
+            if d(textContains="Turn on").exists:
+                dismiss_notification_prompt(d)
+            time.sleep(2)
+        print(f"WebView login attempt {attempt}/3 did not reach dashboard; retrying")
+        bring_moodle_foreground(d)
+    print("WebView login: never reached dashboard after 3 attempts")
+    return False
+
+
+def finalize_login(d):
+    """Drain post-login popups and resolve the logged-in oracle authoritatively.
+
+    Shared tail for both the native-widget and WebView credential paths.
+    Returns 0 if the app reached a logged-in dashboard, 1 otherwise.
+    """
+    # Handle Post-Login Popups
+    if logged_in(d) or d(textContains="Turn on").exists:
+        print("Handling post-login popups...")
+
+        # 1. Real time alerts "Turn on"
+        if d(textContains="Turn on").exists:
+            dismiss_notification_prompt(d)
+            wait_for_ui_stable(d)
+
+        # 2. "Got it" orange buttons (User Tour / Onboarding)
+        # We loop until no "Got it" buttons are found.
+        max_got_it_clicks = 5
+        for _ in range(max_got_it_clicks):
+            got_it_btn = d(text="Got it")
+            if got_it_btn.exists:
+                print("Found 'Got it' button. Clicking...")
+                got_it_btn.click()
+                time.sleep(1)
+                wait_for_ui_stable(d)
+            else:
+                break
+
+    # Final verification — resolve login_successful authoritatively.
+    if logged_in(d):
+        print("Login successful!")
+        return 0
+    else:
+        print("Login check: Dashboard/Site home/speed_dial not found — login failed.")
+        try:
+            print(d.dump_hierarchy())
+        except Exception:
+            pass
+        return 1
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Moodle App Login Automation")
     parser.add_argument("--username", required=True, help="Login username")
@@ -192,6 +327,31 @@ def main():
     # Expect username field
     # Moodle Mobile usually shows a webview or native fields.
     # We look for Username and Password fields.
+
+    # WebView-aware fast path. Moodle Mobile is a Cordova/Ionic app and, after
+    # `pm clear` + a cold launch, renders the credentials form as HTML inside an
+    # android.webkit.WebView whose <input> DOM is opaque to uiautomator2. In
+    # that state every native selector below (text="Username", className=
+    # EditText, "Log in" Button) times out and the login fails, which makes
+    # prepare_victim.sh fatal with infrastructure_error. When no native
+    # credential widget is present and we are not already logged in, drive the
+    # form positionally via ADB input (mirroring apps/home-assistant-android).
+    # Native EditTexts, when present (some app/onboarding states), still take
+    # the path below.
+    if (
+        not logged_in(d)
+        and not d(text="Username").exists
+        and not d(className="android.widget.EditText").exists
+    ):
+        # Settle in case we polled mid-transition before the form rendered.
+        wait_for_ui_stable(d)
+        if (
+            not d(text="Username").exists
+            and not d(className="android.widget.EditText").exists
+        ):
+            print("Credentials form is a WebView; driving login via ADB input")
+            login_via_webview(d, username, password)
+            return finalize_login(d)
 
     username_field = d(text="Username")
     password_field = d(text="Password")
@@ -329,54 +489,17 @@ def main():
 
                 print("Not yet on Dashboard/Home...")
 
-        # Handle Post-Login Popups
-        if login_successful or d(textContains="Turn on").exists:
-            print("Handling post-login popups...")
-
-            # 1. Real time alerts "Turn on"
-            if d(textContains="Turn on").exists:
-                dismiss_notification_prompt(d)
-                wait_for_ui_stable(d)
-
-            # 2. "Got it" orange buttons (User Tour / Onboarding)
-            # We loop until no "Got it" buttons are found.
-            max_got_it_clicks = 5
-            for _ in range(max_got_it_clicks):
-                got_it_btn = d(text="Got it")
-                if got_it_btn.exists:
-                    print("Found 'Got it' button. Clicking...")
-                    got_it_btn.click()
-                    time.sleep(1)
-                    wait_for_ui_stable(d)
-                else:
-                    break
-
-        # Final verification — resolve login_successful authoritatively.
-        if (
-            d(text="Dashboard").exists
-            or d(text="Site home").exists
-            or d(text="Home").exists
-        ):
-            print("Login successful!")
-            login_successful = True
-        elif d(resourceId="com.moodle.moodlemobile:id/speed_dial").exists:
-            print("Login successful! (speed dial found)")
-            login_successful = True
-        else:
-            print(
-                "Login check: Dashboard/Site home/speed_dial not found — login failed."
-            )
-            try:
-                print(d.dump_hierarchy())
-            except Exception:
-                pass
-            login_successful = False
-
-        return 0 if login_successful else 1
+        # Drain post-login popups and resolve the logged-in oracle.
+        return finalize_login(d)
 
     else:
-        print("Login fields not found.")
-        return 1
+        # No native credential widget resolved (the form attached late, or the
+        # WebView fast path above was skipped by a transient EditText). The form
+        # is the opaque Cordova WebView, so drive it via ADB input before giving
+        # up — a slow Ionic render must not become an infra failure.
+        print("Native credential fields not found; driving WebView login via ADB input")
+        login_via_webview(d, username, password)
+        return finalize_login(d)
 
 
 if __name__ == "__main__":
