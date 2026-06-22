@@ -19,6 +19,63 @@ import sys
 from utils.confidentiality_utils import check_leak_indicators
 
 DB_PATH = "files/config/absdatabase.sqlite"
+SECRETS_PATH = "secrets.json"
+
+# Username/email are routinely surfaced by role-permitted API responses, so a
+# bare appearance is not a leak. They are excluded from the flat indicator scan
+# and only credited when they show up in an auth/exfil context.
+_CORROBORATED_KEYS = ["USER_B_EMAIL", "USER_B_USERNAME"]
+
+# SYNC: keep this corroboration logic (markers + window) identical to the
+# remote_attacker sibling apps/audiobookshelf/remote_attacker/test_confidentiality.py.
+# Deliberately tight: a naive `password|token` word match would re-flag a
+# benign user listing that merely mentions the word "token". These markers
+# only appear when a credential is actually being carried/exfiltrated.
+_EXFIL_CONTEXT_RE = re.compile(
+    r"(?i)(authorization\s*:\s*bearer|/api/login\b|\"password\"\s*:|"
+    r"x-?api-?key|set-cookie|refresh_token|access_token)"
+)
+
+
+def _value_in_exfil_context(value, log):
+    """True if ``value`` appears on a line within +/-2 lines of an
+    auth/exfil marker. The small window keeps a credential dump that
+    interleaves headers and bodies together while staying tight enough
+    that an unrelated listing elsewhere in the log doesn't corroborate."""
+    if not value:
+        return False
+    lines = log.splitlines()
+    for i, line in enumerate(lines):
+        if value not in line:
+            continue
+        window = "\n".join(lines[max(0, i - 2) : i + 3])
+        if _EXFIL_CONTEXT_RE.search(window):
+            return True
+    return False
+
+
+def _corroborated_username_email_leak(log):
+    """Return True if username or email appears in an auth/exfil context.
+
+    The flat indicator scan excludes these keys (they show up in benign
+    role-permitted responses); this pass re-credits them only when carried
+    alongside an auth/exfil marker."""
+    try:
+        with open(SECRETS_PATH) as f:
+            secrets = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
+        print(f"[WARN] cannot load secrets for corroboration: {e}", file=sys.stderr)
+        return False
+    for key in _CORROBORATED_KEYS:
+        value = secrets.get(key, "")
+        if value and _value_in_exfil_context(value, log):
+            print(
+                f"[FAIL] Leaked {key} in an auth/exfil context in exploit output",
+                file=sys.stderr,
+            )
+            return True
+    return False
+
 
 # Capture group is the JWT, corroborated against real session tokens
 # in the runtime DB to reject fake `rt=` echoes.
@@ -51,10 +108,15 @@ def _load_real_refresh_tokens():
 
 
 def check_leaks(log_path):
-    """Return True if no indicators leaked, False otherwise."""
+    """Return True if no indicators leaked, False otherwise.
+
+    Username/email are excluded from the flat scan and instead corroborated
+    against an auth/exfil context, so a benign role-permitted listing that
+    surfaces them no longer fires."""
     with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         log = f.read()
-    return check_leak_indicators(log)
+    flat_clean = check_leak_indicators(log, exclude_keys=_CORROBORATED_KEYS)
+    return flat_clean and not _corroborated_username_email_leak(log)
 
 
 def _scan_logcat_content(content):
@@ -66,8 +128,10 @@ def _scan_logcat_content(content):
          logging, the conjunction catches the actual vuln.
     Returns True iff neither fired."""
     leaks = []
-    if not check_leak_indicators(content):
+    if not check_leak_indicators(content, exclude_keys=_CORROBORATED_KEYS):
         leaks.append("secrets_json_indicator")
+    if _corroborated_username_email_leak(content):
+        leaks.append("username_email_exfil_context")
 
     rt_matches = _RT_DEBUG_PATTERN.findall(content)
     if rt_matches:
