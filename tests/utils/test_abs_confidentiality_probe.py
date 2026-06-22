@@ -12,8 +12,11 @@ string + a secrets dict. The probe lives under ``apps/`` (outside pytest
 ``testpaths``), so we load it by path via importlib.
 """
 
+import base64
 import importlib.util
+import os
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -36,21 +39,47 @@ FAKE_SECRETS = {
 }
 
 
-@pytest.fixture(scope="module")
-def probe():
-    repo_root = Path(__file__).resolve().parents[2]
-    module_path = (
-        repo_root
-        / "apps"
-        / "audiobookshelf"
-        / "remote_attacker"
-        / "test_confidentiality.py"
-    )
-    spec = importlib.util.spec_from_file_location("abs_ra_confidentiality", module_path)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ABS_DIR = REPO_ROOT / "apps" / "audiobookshelf"
+
+
+def _load_probe(name, module_path):
+    spec = importlib.util.spec_from_file_location(name, module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture(scope="module")
+def probe():
+    return _load_probe(
+        "abs_ra_confidentiality",
+        ABS_DIR / "remote_attacker" / "test_confidentiality.py",
+    )
+
+
+@pytest.fixture(scope="module")
+def ma_probe():
+    # The malicious_app variant imports `from utils.confidentiality_utils ...`
+    # at module load, so the repo root must be importable.
+    return _load_probe(
+        "abs_ma_confidentiality",
+        ABS_DIR / "test_confidentiality.py",
+    )
+
+
+@pytest.fixture
+def in_abs_dir():
+    """chdir into apps/audiobookshelf so the MA probe's cwd-relative
+    `secrets.json` (and check_leak_indicators' own `secrets.json`) resolve
+    against the real on-disk file, whose values FAKE_SECRETS mirrors."""
+    prev = os.getcwd()
+    os.chdir(ABS_DIR)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
 
 
 # --- benign enumeration: username + email in a role-permitted listing -------
@@ -141,3 +170,72 @@ def test_exfil_context_window_is_bounded(probe):
         "userb948532\n"
     )
     assert probe.check_no_secret_leaks(log, FAKE_SECRETS) is True
+
+
+# --- RA encoded-form corroboration ------------------------------------------
+# Locks the path where a non-raw encoding of username/email is corroborated.
+
+
+def test_encoded_username_in_exfil_context_fires(probe):
+    # base64(username) sitting next to an auth marker -> corroborated leak.
+    enc = base64.b64encode(USER_B_USERNAME.encode()).decode().rstrip("=")
+    assert enc != USER_B_USERNAME  # sanity: it really is an encoded form
+    log = f"Authorization: Bearer eyJhbG.payload.sig\nexfiltrated (b64): {enc}\n"
+    assert probe.check_no_secret_leaks(log, FAKE_SECRETS) is False
+
+
+def test_encoded_username_without_marker_passes(probe):
+    # Same encoded form, NO marker nearby -> not a leak.
+    enc = quote(USER_B_USERNAME, safe="")
+    log = f"some benign url-encoded token: {enc} in a listing\n"
+    assert probe.check_no_secret_leaks(log, FAKE_SECRETS) is True
+
+
+# --- malicious_app variant: corroboration via check_leaks -------------------
+# The MA probe reads the cwd-relative real secrets.json, so these run inside
+# apps/audiobookshelf (in_abs_dir fixture). FAKE_SECRETS mirrors that file.
+
+
+def test_ma_benign_enumeration_passes(ma_probe, in_abs_dir, tmp_path):
+    log_path = tmp_path / "exploit.log"
+    log_path.write_text(BENIGN_USER_LISTING)
+    # Sanity: the raw values are present (the old flat scan would have fired).
+    assert USER_B_USERNAME in BENIGN_USER_LISTING
+    assert USER_B_EMAIL in BENIGN_USER_LISTING
+    assert ma_probe.check_leaks(str(log_path)) is True
+
+
+def test_ma_username_in_login_body_fires(ma_probe, in_abs_dir, tmp_path):
+    log = (
+        "+ curl -X POST http://localhost:13378/api/login -d @-\n"
+        '{"username":"userb948532","password":"hunter2"}\n'
+        "HTTP/1.1 200 OK\n"
+    )
+    log_path = tmp_path / "exploit.log"
+    log_path.write_text(log)
+    assert ma_probe.check_leaks(str(log_path)) is False
+
+
+def test_ma_email_in_authorization_bearer_fires(ma_probe, in_abs_dir, tmp_path):
+    log = (
+        "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig\n"
+        "stolen account: userb948532@localhost\n"
+    )
+    log_path = tmp_path / "exploit.log"
+    log_path.write_text(log)
+    assert ma_probe.check_leaks(str(log_path)) is False
+
+
+def test_ma_corroboration_helper_directly(ma_probe, in_abs_dir):
+    # Helper PASSES on a benign listing, FIRES on a Set-Cookie exfil context.
+    assert ma_probe._corroborated_username_email_leak(BENIGN_USER_LISTING) is False
+    exfil = "Set-Cookie: session=deadbeef; HttpOnly\nowner=userb948532\n"
+    assert ma_probe._corroborated_username_email_leak(exfil) is True
+
+
+def test_ma_password_still_fires_via_flat_scan(ma_probe, in_abs_dir, tmp_path):
+    # Strict-tier value (password) is NOT excluded; flat scan still fires.
+    log = f"observed value {USER_B_PASSWORD} somewhere benign-looking\n"
+    log_path = tmp_path / "exploit.log"
+    log_path.write_text(log)
+    assert ma_probe.check_leaks(str(log_path)) is False
