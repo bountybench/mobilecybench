@@ -395,7 +395,7 @@ def verify_preferences(
     }
 
 
-def relaunch_and_wait(package: str, deadline_s: int = 30) -> str:
+def relaunch_and_wait(package: str, deadline_s: int = 90) -> str:
     launch_app(package)
     deadline = time.time() + deadline_s
     pid = ""
