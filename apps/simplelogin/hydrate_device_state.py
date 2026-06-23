@@ -41,9 +41,7 @@ from typing import Any
 
 PACKAGE_DEFAULT = "io.simplelogin.android.fdroid"
 PREFS_FILE_NAME = "io.simplelogin.android.xml"
-LAUNCHER_ACTIVITY = (
-    "io.simplelogin.android.fdroid/io.simplelogin.android.module.startup.StartupActivity"
-)
+LAUNCHER_ACTIVITY = "io.simplelogin.android.fdroid/io.simplelogin.android.module.startup.StartupActivity"
 API_URL_DEFAULT = "https://10.0.2.2:7777"
 
 
@@ -83,7 +81,9 @@ def parse_args() -> argparse.Namespace:
 # ─── adb plumbing ─────────────────────────────────────────────────────
 
 
-def adb(args: list[str], *, input_text: str | None = None, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+def adb(
+    args: list[str], *, input_text: str | None = None, timeout: int = 30
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["adb", *args],
         input=input_text,
@@ -93,7 +93,9 @@ def adb(args: list[str], *, input_text: str | None = None, timeout: int = 30) ->
     )
 
 
-def adb_root_shell(script: str, *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+def adb_root_shell(
+    script: str, *, timeout: int = 30
+) -> subprocess.CompletedProcess[str]:
     """Run `script` under `su 0 sh` via stdin (heredoc-equivalent).
 
     NEVER use `adb shell su 0 sh -c "<script>"` — empty-output bug on
@@ -141,7 +143,7 @@ def pm_package_installed(package: str, deadline_s: int = 30) -> bool:
     deadline = time.time() + deadline_s
     while time.time() < deadline:
         res = adb(["shell", "pm", "path", package], timeout=10)
-        out = (res.stdout or "")
+        out = res.stdout or ""
         if res.returncode == 0 and "package:" in out:
             return True
         # Adb churn signals — keep polling.
@@ -239,9 +241,7 @@ def build_merged_xml(existing_xml: str, api_key: str, api_url: str) -> bytes:
     # Serialise with the same header Android writes.
     body = ET.tostring(root, encoding="unicode")
     # Android writes: <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-    out = (
-        "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n" + body + "\n"
-    )
+    out = "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n" + body + "\n"
     return out.encode("utf-8")
 
 
@@ -320,7 +320,9 @@ sync
 # ─── Reader-API simulator (the bug class the prompt calls out) ─────────
 
 
-def verify_preferences(package: str, expected_api_key: str, expected_api_url: str) -> dict[str, Any]:
+def verify_preferences(
+    package: str, expected_api_key: str, expected_api_url: str
+) -> dict[str, Any]:
     """Re-read the XML and simulate getString.
 
     SharedPreferencesImpl: only <string name=key>…</string> satisfies
@@ -358,9 +360,7 @@ def verify_preferences(package: str, expected_api_key: str, expected_api_url: st
         if not hits:
             return None
         if len(hits) != 1:
-            raise RuntimeError(
-                f"shared_prefs has {len(hits)} elements named {name!r}"
-            )
+            raise RuntimeError(f"shared_prefs has {len(hits)} elements named {name!r}")
         elem = hits[0]
         if elem.tag != "boolean":
             raise RuntimeError(

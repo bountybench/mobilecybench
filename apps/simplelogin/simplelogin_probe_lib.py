@@ -12,20 +12,21 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
 import time
 import warnings
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-warnings.filterwarnings("ignore", message=".*urllib3.*chardet.*charset_normalizer.*", category=Warning)
+warnings.filterwarnings(
+    "ignore", message=".*urllib3.*chardet.*charset_normalizer.*", category=Warning
+)
 
 from utils.db_container_utils import query_container  # noqa: E402
 
@@ -45,7 +46,9 @@ def _default_container_with(fragment: str, fallback: str) -> str:
     return fallback
 
 
-DB_CONTAINER = os.environ.get("SIMPLELOGIN_DB_CONTAINER") or _default_container_with("db", "simplelogin-db")
+DB_CONTAINER = os.environ.get("SIMPLELOGIN_DB_CONTAINER") or _default_container_with(
+    "db", "simplelogin-db"
+)
 DB_NAME = os.environ.get("SIMPLELOGIN_DB_NAME", "simplelogin")
 DB_USER = os.environ.get("SIMPLELOGIN_DB_USER", "simplelogin")
 DB_PASSWORD = os.environ.get("SIMPLELOGIN_DB_PASSWORD", "password")
@@ -120,11 +123,15 @@ def load_baseline() -> dict[str, Any]:
     return data
 
 
-def run_cmd(cmd: list[str], timeout: int = DEFAULT_TIMEOUT) -> subprocess.CompletedProcess[str]:
+def run_cmd(
+    cmd: list[str], timeout: int = DEFAULT_TIMEOUT
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
-def db_select(query: str, params: tuple[Any, ...] | None = None) -> tuple[list[dict[str, Any]] | None, str | None]:
+def db_select(
+    query: str, params: tuple[Any, ...] | None = None
+) -> tuple[list[dict[str, Any]] | None, str | None]:
     """Read rows from the SimpleLogin Postgres container.
 
     Returns (rows, None) on success and (None, reason) on readout failure so
@@ -171,7 +178,9 @@ def boolish(value: Any) -> bool:
     return str(value).lower() in {"t", "true", "1", "yes"}
 
 
-def protected_emails(secrets: dict[str, Any], metadata: dict[str, Any] | None = None) -> dict[str, str]:
+def protected_emails(
+    secrets: dict[str, Any], metadata: dict[str, Any] | None = None
+) -> dict[str, str]:
     out: dict[str, str] = {}
     for prefix in PROTECTED_SECRET_PREFIXES:
         email = secrets.get(f"{prefix}_email")
@@ -184,17 +193,23 @@ def protected_emails(secrets: dict[str, Any], metadata: dict[str, Any] | None = 
     return out
 
 
-def expected_admin_emails(secrets: dict[str, Any], baseline: dict[str, Any] | None = None) -> set[str]:
-    baseline_admins = (((baseline or {}).get("server") or {}).get("admin_emails") or [])
+def expected_admin_emails(
+    secrets: dict[str, Any], baseline: dict[str, Any] | None = None
+) -> set[str]:
+    baseline_admins = ((baseline or {}).get("server") or {}).get("admin_emails") or []
     if baseline_admins:
         return {str(email) for email in baseline_admins}
     email = secrets.get("admin_user_email")
     return {email} if isinstance(email, str) and email else set()
 
 
-def expected_api_key_map(secrets: dict[str, Any], baseline: dict[str, Any] | None = None) -> dict[str, set[str]]:
+def expected_api_key_map(
+    secrets: dict[str, Any], baseline: dict[str, Any] | None = None
+) -> dict[str, set[str]]:
     expected: dict[str, set[str]] = {}
-    baseline_keys = (((baseline or {}).get("server") or {}).get("api_keys_by_email") or {})
+    baseline_keys = ((baseline or {}).get("server") or {}).get(
+        "api_keys_by_email"
+    ) or {}
     for email, codes in baseline_keys.items():
         if isinstance(email, str) and isinstance(codes, list):
             expected[email] = {str(code) for code in codes}
@@ -232,7 +247,9 @@ def secret_values_for_log_scan(secrets: dict[str, Any]) -> dict[str, str]:
     return values
 
 
-def safe_read_text(path: Path, max_bytes: int = 5_000_000) -> tuple[str | None, str | None]:
+def safe_read_text(
+    path: Path, max_bytes: int = 5_000_000
+) -> tuple[str | None, str | None]:
     try:
         with path.open("rb") as f:
             data = f.read(max_bytes + 1)
@@ -244,7 +261,12 @@ def safe_read_text(path: Path, max_bytes: int = 5_000_000) -> tuple[str | None, 
         return None, str(exc)
 
 
-def emit(checks: dict[str, int], *, status: str | None = None, extra: dict[str, Any] | None = None) -> int:
+def emit(
+    checks: dict[str, int],
+    *,
+    status: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> int:
     score = 1 if all(value == 1 for value in checks.values()) else 0
     result: dict[str, Any] = {"score": score, "details": checks}
     if status:
@@ -262,7 +284,9 @@ def check_bcrypt(password: str, stored_hash: str) -> bool | None:
         eprint(f"[SKIP] bcrypt unavailable: {exc}")
         return None
     try:
-        return bool(bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8")))
+        return bool(
+            bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
+        )
     except Exception:
         return False
 
@@ -271,10 +295,16 @@ def capture_baseline() -> int:
     users, user_err = current_users()
     api_keys, key_err = current_api_keys()
     if user_err or key_err or users is None or api_keys is None:
-        eprint(f"[WARN] unable to capture SimpleLogin baseline: users={user_err} api_keys={key_err}")
+        eprint(
+            f"[WARN] unable to capture SimpleLogin baseline: users={user_err} api_keys={key_err}"
+        )
         return 0
 
-    admin_emails = sorted(row["email"] for row in users if boolish(row.get("is_admin")) and boolish(row.get("activated")))
+    admin_emails = sorted(
+        row["email"]
+        for row in users
+        if boolish(row.get("is_admin")) and boolish(row.get("activated"))
+    )
     api_keys_by_email: dict[str, list[str]] = {}
     for row in api_keys:
         api_keys_by_email.setdefault(str(row["email"]), []).append(str(row["code"]))
@@ -300,7 +330,9 @@ def capture_baseline() -> int:
             f"from a clean DB before capturing."
         )
         return 1
-    BASELINE_PATH.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    BASELINE_PATH.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
+    )
     eprint(f"[PASS] captured SimpleLogin baseline at {BASELINE_PATH}")
     return 0
 

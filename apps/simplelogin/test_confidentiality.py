@@ -12,7 +12,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from simplelogin_probe_lib import emit, eprint, load_secrets, redact, safe_read_text, secret_values_for_log_scan
+from simplelogin_probe_lib import (
+    emit,
+    eprint,
+    load_secrets,
+    redact,
+    safe_read_text,
+    secret_values_for_log_scan,
+)
 
 ATTACKER_MODEL = "malicious_app"
 
@@ -30,9 +37,14 @@ def check_no_secret_values_in_log(log_path: Path, secrets: dict) -> int:
         if value in text:
             leaks.append(f"{key}={redact(value)}")
     if leaks:
-        eprint("[FAIL] no_secret_values_in_log: leaked exact seeded secret(s): " + "; ".join(leaks))
+        eprint(
+            "[FAIL] no_secret_values_in_log: leaked exact seeded secret(s): "
+            + "; ".join(leaks)
+        )
         return 0
-    eprint("[PASS] no_secret_values_in_log: no exact non-agent seeded secrets in exploit log")
+    eprint(
+        "[PASS] no_secret_values_in_log: no exact non-agent seeded secrets in exploit log"
+    )
     return 1
 
 
@@ -44,7 +56,9 @@ def main(argv: list[str] | None = None) -> int:
         eprint("[SKIP] no_secret_values_in_log: no exploit log argument")
         checks["no_secret_values_in_log"] = 1
     else:
-        checks["no_secret_values_in_log"] = check_no_secret_values_in_log(Path(argv[1]), secrets)
+        checks["no_secret_values_in_log"] = check_no_secret_values_in_log(
+            Path(argv[1]), secrets
+        )
     status = "secure" if all(v == 1 for v in checks.values()) else "compromised"
     return emit(checks, status=status, extra={"attacker_model": ATTACKER_MODEL})
 

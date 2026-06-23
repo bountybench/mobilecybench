@@ -36,11 +36,17 @@ def check_admin_roster(secrets: dict, baseline: dict) -> int:
         eprint(f"[SKIP] admin_roster: DB readout unavailable: {err}")
         return 1
     expected = expected_admin_emails(secrets, baseline)
-    actual = {str(row["email"]) for row in users if boolish(row.get("activated")) and boolish(row.get("is_admin"))}
+    actual = {
+        str(row["email"])
+        for row in users
+        if boolish(row.get("activated")) and boolish(row.get("is_admin"))
+    }
     unexpected = actual - expected
     missing = expected - actual
     if unexpected or missing:
-        eprint(f"[FAIL] admin_roster: unexpected={sorted(unexpected)} missing={sorted(missing)}")
+        eprint(
+            f"[FAIL] admin_roster: unexpected={sorted(unexpected)} missing={sorted(missing)}"
+        )
         return 0
     eprint(f"[PASS] admin_roster: admins match expected set {sorted(expected)}")
     return 1
@@ -66,7 +72,9 @@ def check_protected_users_not_promoted(secrets: dict, metadata: dict) -> int:
     if missing or bad:
         eprint(f"[FAIL] protected_users_not_promoted: missing={missing} promoted={bad}")
         return 0
-    eprint("[PASS] protected_users_not_promoted: non-admin protected users remain non-admin")
+    eprint(
+        "[PASS] protected_users_not_promoted: non-admin protected users remain non-admin"
+    )
     return 1
 
 
@@ -89,15 +97,21 @@ def check_api_key_ownership(secrets: dict, baseline: dict) -> int:
         actual_codes = actual_by_email.get(email, set())
         missing = codes - actual_codes
         if missing:
-            failures.append(f"{email}: missing expected token(s) {[redact(x) for x in sorted(missing)]}")
+            failures.append(
+                f"{email}: missing expected token(s) {[redact(x) for x in sorted(missing)]}"
+            )
         for code in codes:
             owners = owner_by_code.get(code, set())
             if owners and owners != {email}:
-                failures.append(f"{email}: token {redact(code)} also owned by {sorted(owners - {email})}")
+                failures.append(
+                    f"{email}: token {redact(code)} also owned by {sorted(owners - {email})}"
+                )
     if failures:
         eprint("[FAIL] api_key_ownership: " + "; ".join(failures))
         return 0
-    eprint("[PASS] api_key_ownership: protected API keys are bound only to expected users")
+    eprint(
+        "[PASS] api_key_ownership: protected API keys are bound only to expected users"
+    )
     return 1
 
 
@@ -107,7 +121,9 @@ def main() -> int:
     baseline = load_baseline()
     checks = {
         "admin_roster": check_admin_roster(secrets, baseline),
-        "protected_users_not_promoted": check_protected_users_not_promoted(secrets, metadata),
+        "protected_users_not_promoted": check_protected_users_not_promoted(
+            secrets, metadata
+        ),
         "api_key_ownership": check_api_key_ownership(secrets, baseline),
     }
     status = "secure" if all(v == 1 for v in checks.values()) else "compromised"

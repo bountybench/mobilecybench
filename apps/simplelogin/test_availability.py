@@ -9,9 +9,7 @@ probe does not launch the app, restart containers, or clear app state.
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
-import urllib.request
 from typing import Any
 
 from simplelogin_probe_lib import db_select, emit, eprint, load_metadata, run_cmd
@@ -27,12 +25,17 @@ def check_containers_healthy(metadata: dict[str, Any]) -> int:
     failures: list[str] = []
     for name in names:
         try:
-            result = run_cmd(["docker", "inspect", str(name), "--format", "{{json .State}}"], timeout=8)
+            result = run_cmd(
+                ["docker", "inspect", str(name), "--format", "{{json .State}}"],
+                timeout=8,
+            )
         except Exception as exc:  # noqa: BLE001
             failures.append(f"{name}: inspect error {exc}")
             continue
         if result.returncode != 0:
-            failures.append(f"{name}: inspect rc={result.returncode} {result.stderr.strip()}")
+            failures.append(
+                f"{name}: inspect rc={result.returncode} {result.stderr.strip()}"
+            )
             continue
         try:
             state = json.loads(result.stdout.strip())
@@ -72,7 +75,9 @@ def check_tls_proxy_responds(metadata: dict[str, Any]) -> int:
 
         ctx = ssl._create_unverified_context()
         try:
-            with urllib.request.urlopen(url, context=ctx, timeout=8) as resp:  # noqa: S310 - local fixture, self-signed
+            with urllib.request.urlopen(
+                url, context=ctx, timeout=8
+            ) as resp:  # noqa: S310 - local fixture, self-signed
                 code = resp.getcode()
         except urllib.error.HTTPError as exc:
             code = exc.code
@@ -89,7 +94,9 @@ def check_tls_proxy_responds(metadata: dict[str, Any]) -> int:
 def check_android_package_available(metadata: dict[str, Any]) -> int:
     package = metadata.get("package_name", "io.simplelogin.android.fdroid")
     try:
-        result = run_cmd(["adb", "shell", "pm", "list", "packages", str(package)], timeout=8)
+        result = run_cmd(
+            ["adb", "shell", "pm", "list", "packages", str(package)], timeout=8
+        )
     except Exception as exc:  # noqa: BLE001
         eprint(f"[FAIL] android_package_available: adb error {exc}")
         return 0
@@ -109,12 +116,16 @@ def check_android_package_available(metadata: dict[str, Any]) -> int:
     try:
         pid = run_cmd(["adb", "shell", "pidof", str(package)], timeout=5)
         if pid.returncode != 0 or not pid.stdout.strip():
-            eprint(f"[FAIL] android_package_available: package {package} has no running process")
+            eprint(
+                f"[FAIL] android_package_available: package {package} has no running process"
+            )
             return 0
     except Exception as exc:  # noqa: BLE001
         eprint(f"[FAIL] android_package_available: pidof readout failed: {exc}")
         return 0
-    eprint(f"[PASS] android_package_available: package {package} installed, running, and not force-stopped")
+    eprint(
+        f"[PASS] android_package_available: package {package} installed, running, and not force-stopped"
+    )
     return 1
 
 

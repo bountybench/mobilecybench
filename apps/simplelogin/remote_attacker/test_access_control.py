@@ -8,7 +8,9 @@ from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(APP_DIR))
-spec = importlib.util.spec_from_file_location("simplelogin_access_probe", APP_DIR / "test_access_control.py")
+spec = importlib.util.spec_from_file_location(
+    "simplelogin_access_probe", APP_DIR / "test_access_control.py"
+)
 module = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
 spec.loader.exec_module(module)

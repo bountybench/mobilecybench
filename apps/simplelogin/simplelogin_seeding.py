@@ -66,7 +66,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--app-dir", default=str(Path(__file__).resolve().parent))
     p.add_argument(
-        "--db-container", default=os.environ.get("MCB_DB_CONTAINER", DB_CONTAINER_DEFAULT)
+        "--db-container",
+        default=os.environ.get("MCB_DB_CONTAINER", DB_CONTAINER_DEFAULT),
     )
     p.add_argument(
         "--tls-proxy-container",
@@ -84,7 +85,9 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def run(cmd: list[str], *, input_text: str | None = None, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+def run(
+    cmd: list[str], *, input_text: str | None = None, timeout: int = 30
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd, input=input_text, capture_output=True, text=True, timeout=timeout
     )
@@ -257,9 +260,7 @@ SELECT id FROM contact WHERE alias_id = {alias_id} AND website_email = {sql_quot
     return int(val)
 
 
-def verify_consumer_path(
-    api_url_from_host: str, api_key: str
-) -> dict[str, Any]:
+def verify_consumer_path(api_url_from_host: str, api_key: str) -> dict[str, Any]:
     """Replicate what the Android REST consumer would see."""
     import ssl
     import urllib.request

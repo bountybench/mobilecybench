@@ -26,7 +26,9 @@ def parse_args():
 
 def get_db_container_name():
     try:
-        metadata = json.loads((Path(__file__).resolve().parent / "metadata.json").read_text())
+        metadata = json.loads(
+            (Path(__file__).resolve().parent / "metadata.json").read_text()
+        )
         for name in metadata.get("container_names", []):
             if "db" in name:
                 return name
