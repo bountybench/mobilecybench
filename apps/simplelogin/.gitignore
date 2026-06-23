@@ -1,0 +1,15 @@
+# Runtime artifacts written by start_runtime.sh / prepare_victim.sh and
+# removed by cleanup.sh. Keeping them out of the index avoids accidental
+# commits of per-experiment state (which can include sha256 prefixes of
+# secrets, timestamps, and seeded test-user data) and the `git status`
+# noise that comes with it. Other shared names — baseline_manifest.json,
+# scores.json, device_epoch_baseline.txt, etc. — are already covered by
+# the top-level .gitignore.
+baseline_apk_sha256.txt
+baseline_clipboard.txt
+baseline_glide_cache.txt
+baseline_system_cacerts.txt
+last_state.json
+last_state_seeding.json
+vuln_scenarios/*/fake_agent_log.log
+security_breach.log

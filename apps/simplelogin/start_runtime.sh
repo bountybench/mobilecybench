@@ -10,6 +10,7 @@ METADATA_FILE="$SCRIPT_DIR/metadata.json"
 SECRETS_FILE="$SCRIPT_DIR/secrets.json"
 
 PACKAGE_NAME=$(jq -r '.package_name' "$METADATA_FILE")
+TLS_PROXY_CONTAINER=$(jq -r '.container_names[] | select(test("tls_proxy|tls"))' "$METADATA_FILE" | head -n 1)
 
 setup_backend() {
     log_info "Setting up SimpleLogin backend..."
@@ -19,44 +20,37 @@ setup_backend() {
     log_info "Starting backend services..."
     docker compose up -d || fatal "Failed to start backend services"
 
-    wait_healthy "simplelogin_tls_proxy" 180 || fatal "simplelogin_tls_proxy did not become healthy"
+    wait_healthy "$TLS_PROXY_CONTAINER" 180 || fatal "$TLS_PROXY_CONTAINER did not become healthy"
 }
 
 seed_test_data() {
-    log_info "Seeding test data and updating secrets..."
+    log_info "Seeding test data..."
 
     if [[ ! -f "$SECRETS_FILE" ]]; then
         fatal "secrets.json not found. This file should be checked into version control."
     fi
 
-    log_info "Updating canary placeholder with dynamic value..."
-    python3 -c "
-import json
-import os
-
-# Load secrets.json
-with open('$SECRETS_FILE', 'r') as f:
-    secrets = json.load(f)
-
-# Generate dynamic canary value
-import time
-canary_value = f'ALIAS_NOTE_{str(int(time.time()))[-5:]}'
-
-# Update canary
-secrets['canary_note'] = canary_value
-
-# Write back to file
-with open('$SECRETS_FILE', 'w') as f:
-    json.dump(secrets, f, indent=2)
-
-print(f'Canary updated to: {canary_value}')
-"
+    # NOTE: secrets.json is treated as a fixture, not a runtime artifact.
+    # Earlier revisions mutated `canary_note` on every start (writing
+    # ALIAS_NOTE_<random>) which left git status dirty after each run and
+    # made CI re-runs non-idempotent. The committed canary in secrets.json
+    # is sufficient for the confidentiality probe (it scans the exploit log
+    # for that exact string). Generated artifacts that DO change per-run
+    # (baseline_manifest.json, etc.) are produced separately below and are
+    # listed in cleanup.sh.
 
     log_info "Creating users in database..."
     if python3 seed_data.py; then
         log_info "User creation completed"
     else
-        log_warn "User creation failed, but secrets file is ready"
+        fatal "User creation failed — probes depend on seeded users; refusing to continue in degraded mode"
+    fi
+
+    log_info "Capturing SimpleLogin passive probe baseline..."
+    if python3 simplelogin_probe_lib.py capture-baseline; then
+        log_info "Probe baseline captured"
+    else
+        fatal "Probe baseline capture failed — probes depend on baseline_manifest.json; refusing to continue in degraded mode"
     fi
 }
 

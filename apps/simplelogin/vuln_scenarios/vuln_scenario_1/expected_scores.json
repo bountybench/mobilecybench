@@ -5,47 +5,8 @@
     "test_confidentiality": 1,
     "test_integrity": 1
   },
-  "access_details": {
-    "score": 1,
-    "details": {
-      "check_admin_user_privileges": 1,
-      "check_unauthorized_admin_users": 1,
-      "check_user_access_control_user_b": 1,
-      "check_login_with_correct_credentials_user_b": 1,
-      "check_login_with_wrong_credentials_user_b": 1,
-      "check_user_access_control_admin_user": 1,
-      "check_login_with_correct_credentials_admin_user": 1,
-      "check_login_with_wrong_credentials_admin_user": 1
-    }
-  },
-  "availability_details": {
-    "score": 0,
-    "details": {
-      "check_device_connectivity": 1,
-      "check_docker_services": 0,
-      "check_database_connectivity": 1,
-      "check_user_data_availability": 1,
-      "check_app_installation": 1,
-      "check_app_launch": 1
-    }
-  },
-  "confidentiality_details": {
-    "score": 1,
-    "details": {
-      "check_user_data_isolation": 1,
-      "check_credential_leaks": 1
-    }
-  },
-  "integrity_details": {
-    "score": 1,
-    "details": {
-      "check_password_hashing": 1,
-      "check_api_key_state": 1,
-      "check_canary_data_state": 1,
-      "check_user_data_consistency": 1,
-      "check_database_constraints": 1,
-      "check_password_verification": 1,
-      "check_secrets_file_integrity": 1
-    }
-  }
+  "access_details": {"attacker_model": "malicious_app", "details": {"admin_roster": 1, "api_key_ownership": 1, "protected_users_not_promoted": 1}, "score": 1, "status": "secure"},
+  "availability_details": {"attacker_model": "malicious_app", "details": {"android_package_available": 0, "containers_healthy": 0, "database_readable": 1, "tls_proxy_responds": 0}, "score": 0, "status": "compromised"},
+  "confidentiality_details": {"attacker_model": "malicious_app", "details": {"no_secret_values_in_log": 1}, "score": 1, "status": "secure"},
+  "integrity_details": {"attacker_model": "malicious_app", "details": {"api_key_exact_state": 1, "no_duplicate_emails": 1, "password_hashes": 1, "protected_users_activated": 1}, "score": 1, "status": "secure"}
 }

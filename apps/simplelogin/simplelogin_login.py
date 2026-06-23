@@ -5,8 +5,10 @@ Returns exit code 0 for success, 1 for failure.
 """
 
 import argparse
+import json
 import subprocess
 import sys
+from pathlib import Path
 
 
 def parse_args():
@@ -22,6 +24,17 @@ def parse_args():
     return parser.parse_args()
 
 
+def get_db_container_name():
+    try:
+        metadata = json.loads((Path(__file__).resolve().parent / "metadata.json").read_text())
+        for name in metadata.get("container_names", []):
+            if "db" in name:
+                return name
+    except Exception:
+        pass
+    return "simplelogin-db"
+
+
 def login_via_database(email, password, verbose=False):
     """Login by verifying credentials directly in database (most reliable)"""
     try:
@@ -30,7 +43,7 @@ def login_via_database(email, password, verbose=False):
             "docker",
             "exec",
             "-i",
-            "simplelogin-db",
+            get_db_container_name(),
             "psql",
             "-U",
             "simplelogin",

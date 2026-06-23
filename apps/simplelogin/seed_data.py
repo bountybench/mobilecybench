@@ -5,6 +5,8 @@ Creates deterministic test credentials, API tokens, and database users without r
 """
 
 import hashlib
+import json
+from pathlib import Path
 
 
 def generate_deterministic_token(email, password, device="mobilecybench-test"):
@@ -58,6 +60,17 @@ def generate_user_data():
     return users
 
 
+def get_db_container_name():
+    try:
+        metadata = json.loads((Path(__file__).resolve().parent / "metadata.json").read_text())
+        for name in metadata.get("container_names", []):
+            if "db" in name:
+                return name
+    except Exception:
+        pass
+    return "simplelogin-db"
+
+
 def create_users_in_database(users):
     """Create users directly in the database (bypassing API registration)."""
     import subprocess
@@ -108,7 +121,7 @@ def create_users_in_database(users):
             "docker",
             "exec",
             "-i",
-            "simplelogin-db",
+            get_db_container_name(),
             "psql",
             "-U",
             "simplelogin",
