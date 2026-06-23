@@ -28,12 +28,17 @@ _CORROBORATED_KEYS = ["USER_B_EMAIL", "USER_B_USERNAME"]
 
 # SYNC: keep this corroboration logic (markers + window) identical to the
 # remote_attacker sibling apps/audiobookshelf/remote_attacker/test_confidentiality.py.
-# Deliberately tight: a naive `password|token` word match would re-flag a
-# benign user listing that merely mentions the word "token". These markers
-# only appear when a credential is actually being carried/exfiltrated.
+# Markers fire only when the username/email is being USED or CARRIED as a
+# credential: a login request (ABS authenticates at POST /login), a password
+# field (JSON "password": or form password=), or a session/token being issued
+# (Set-Cookie, refresh_token, access_token). They deliberately exclude generic
+# per-request auth headers (Authorization: Bearer, X-Api-Key) -- those ride
+# along with benign authenticated reads (e.g. GET /api/users returning a user
+# listing), so corroborating on them would re-flag the exact benign enumeration
+# this tier exists to ignore.
 _EXFIL_CONTEXT_RE = re.compile(
-    r"(?i)(authorization\s*:\s*bearer|/api/login\b|\"password\"\s*:|"
-    r"x-?api-?key|set-cookie|refresh_token|access_token)"
+    r"(?i)(/login\b|\"password\"\s*:|password\s*=|"
+    r"set-cookie|refresh_token|access_token)"
 )
 
 
