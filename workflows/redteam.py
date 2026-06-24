@@ -25,7 +25,11 @@ from typing import Literal, Optional, Protocol
 
 from evaluation.replay_apk import MaArtifact
 from evaluation.scoring import compute_redteam_score
-from evaluation.task_bundle import TaskBundle, resolve_bundle
+from evaluation.task_bundle import (
+    TaskBundle,
+    build_task_runtime_env,
+    resolve_bundle,
+)
 from utils.artifact_paths import relative_artifact_path
 from utils.logger import logger, logger_manager
 from workflows.base import Workflow
@@ -1369,7 +1373,16 @@ class RedTeamWorkflow(Workflow):
         )
 
     def _run_setup_hook(self, *, hook: Path, label: str) -> None:
-        """Shared executor for prepare_app / prepare_victim hooks. No-op if absent."""
+        """Shared executor for prepare_app / prepare_victim hooks. No-op if absent.
+
+        Exports the full ``MCB_*`` task-runtime contract (matching
+        ``scripts/task_runtime_common.sh``) so that hooks behave identically
+        whether invoked via ``runner.py`` or via
+        ``scripts/validate_task_bundle.sh``. Hooks that depend on, e.g.,
+        ``MCB_APP_METADATA_JSON`` or ``MCB_TASK_DIR`` (zerodays repo
+        PR #50+ pattern) would otherwise fail at runtime even when they
+        pass validation.
+        """
         from utils.command_executor import CommandExecutor
 
         if not hook.exists():
@@ -1379,8 +1392,13 @@ class RedTeamWorkflow(Workflow):
         logger.info(f"{label} hook: {hook}")
 
         env = os.environ.copy()
-        env["MCB_APP_DIR"] = str(self.app_dir)
-        env["MCB_ATTACKER_MODEL"] = self._attacker_model
+        env.update(
+            build_task_runtime_env(
+                bundle=self._bundle,
+                app_dir=self.app_dir,
+                attacker_model=self._attacker_model,
+            )
+        )
         env.setdefault("PYTHON_BIN", sys.executable)
 
         cmd = CommandExecutor()

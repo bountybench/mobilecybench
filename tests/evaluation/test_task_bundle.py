@@ -6,12 +6,15 @@ from types import SimpleNamespace
 
 import pytest
 
+import json
+
 from evaluation.task_bundle import (
     ProbeOnlyBundle,
     SyntheticBundle,
     TaskBundle,
     ZerodayBundle,
     assert_zerodays_initialized,
+    build_task_runtime_env,
     resolve_bundle,
 )
 
@@ -272,3 +275,107 @@ def test_resolve_bundle_probe_only_rejects_unknown_attacker_model(tmp_path):
     config = _config(probe_only=True, attacker_model="bogus")
     with pytest.raises(ValueError, match="attacker_model"):
         resolve_bundle(config, tmp_path, "myapp")
+
+
+# ---------------------------------------------------------------------------
+# build_task_runtime_env: parity with scripts/task_runtime_common.sh
+# ---------------------------------------------------------------------------
+
+
+def _seed_app(tmp_path: Path, *, package_name: str = "io.test", commit: str = "abc123"):
+    app_dir = tmp_path / "apps" / "myapp"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(
+        json.dumps({"package_name": package_name, "commit_version": commit})
+    )
+    return app_dir
+
+
+def test_build_task_runtime_env_zeroday_sets_full_contract(tmp_path):
+    """ZerodayBundle must export every MCB_* key that
+    scripts/task_runtime_common.sh sets, matching the validator contract that
+    zerodays repo PR #50+ prepare_app.sh scripts rely on.
+    """
+    app_dir = _seed_app(tmp_path)
+    task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metadata.json").write_text(json.dumps({"attacker_model": "malicious_app"}))
+    (task_dir / "fix.patch").write_text("--- a\n+++ b\n")
+    bundle = ZerodayBundle(project_root=tmp_path, app_name="myapp", task="report-0")
+
+    env = build_task_runtime_env(
+        bundle=bundle,
+        app_dir=app_dir,
+        attacker_model="malicious_app",
+        output_dir=tmp_path / "out",
+        phase="phase1",
+    )
+
+    assert env["MCB_APP_DIR"] == str(app_dir)
+    assert env["MCB_APP_METADATA_JSON"] == str(app_dir / "metadata.json")
+    assert env["MCB_TASK_DIR"] == str(task_dir)
+    assert env["MCB_TASK_METADATA_JSON"] == str(task_dir / "metadata.json")
+    assert env["MCB_TASK_ID"] == "report-0"
+    assert env["MCB_PACKAGE_NAME"] == "io.test"
+    assert env["MCB_BASELINE_COMMIT"] == "abc123"
+    assert env["MCB_ATTACKER_MODEL"] == "malicious_app"
+    assert env["MCB_FIX_PATCH"].endswith("fix.patch")
+    assert env["MCB_OUTPUT_DIR"] == str(tmp_path / "out")
+    assert env["MCB_PHASE"] == "phase1"
+
+
+def test_build_task_runtime_env_synthetic_uses_vuln_id_as_task_id(tmp_path):
+    """SyntheticBundle has no .task but exposes .vuln_id; the env should
+    populate MCB_TASK_ID from it so synthetic prepare_app hooks can resolve
+    their per-vuln directory."""
+    app_dir = _seed_app(tmp_path)
+    vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
+    vuln_dir.mkdir(parents=True)
+    (vuln_dir / "metadata.json").write_text(json.dumps({"attacker_model": "remote_attacker"}))
+    (vuln_dir / "vulnerability.patch").write_text("--- a\n+++ b\n")
+    bundle = SyntheticBundle(app_dir=app_dir, vuln_id="vuln_0")
+
+    env = build_task_runtime_env(
+        bundle=bundle, app_dir=app_dir, attacker_model="remote_attacker"
+    )
+
+    assert env["MCB_TASK_ID"] == "vuln_0"
+    assert env["MCB_TASK_DIR"] == str(vuln_dir)
+    assert env["MCB_TASK_METADATA_JSON"] == str(vuln_dir / "metadata.json")
+    assert env["MCB_FIX_PATCH"].endswith("vulnerability.patch")
+
+
+def test_build_task_runtime_env_probe_only_omits_per_task_keys(tmp_path):
+    """ProbeOnlyBundle has no task_dir/patch/task_id; per-task MCB_* keys
+    must be omitted (not set to empty) so hooks can distinguish bundle-less
+    invocation from a real task with missing fields."""
+    app_dir = _seed_app(tmp_path)
+    bundle = ProbeOnlyBundle(app_dir=app_dir, _attacker_model="malicious_app")
+
+    env = build_task_runtime_env(
+        bundle=bundle, app_dir=app_dir, attacker_model="malicious_app"
+    )
+
+    assert env["MCB_APP_DIR"] == str(app_dir)
+    assert env["MCB_APP_METADATA_JSON"] == str(app_dir / "metadata.json")
+    assert env["MCB_ATTACKER_MODEL"] == "malicious_app"
+    for key in ("MCB_TASK_DIR", "MCB_TASK_METADATA_JSON", "MCB_TASK_ID", "MCB_FIX_PATCH"):
+        assert key not in env, f"{key} should be absent for ProbeOnlyBundle"
+
+
+def test_build_task_runtime_env_missing_app_metadata_is_tolerated(tmp_path):
+    """If apps/<app>/metadata.json is absent (e.g., minimal test fixtures),
+    MCB_PACKAGE_NAME and MCB_BASELINE_COMMIT are simply omitted; the helper
+    must not raise."""
+    app_dir = tmp_path / "apps" / "minimal"
+    app_dir.mkdir(parents=True)
+    bundle = ProbeOnlyBundle(app_dir=app_dir, _attacker_model="malicious_app")
+
+    env = build_task_runtime_env(
+        bundle=bundle, app_dir=app_dir, attacker_model="malicious_app"
+    )
+
+    assert env["MCB_APP_DIR"] == str(app_dir)
+    assert "MCB_APP_METADATA_JSON" not in env
+    assert "MCB_PACKAGE_NAME" not in env
+    assert "MCB_BASELINE_COMMIT" not in env
