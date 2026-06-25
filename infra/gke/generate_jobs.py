@@ -4,39 +4,48 @@ Generate K8s Job YAMLs for the MobileCyBench experiment matrix.
 
 Two modes, selected by whether ``--agent-image`` is given:
 
-1. Legacy synthetic-vuln path (no ``--agent-image``): scans apps/ for synthetic
+1. External-agent path (``--agent-image``): runs a BYO coding-agent image
+   (agent_mode=external) over the redteam workflow. Renders one Job per
+   (active app, attacker_model, no_codebase leg) tuple; ``--models`` is optional
+   (the image carries the model, but a passed model is still plumbed through for
+   labeling / runner_config.model). ``--all`` uses apps/app_catalog.json
+   sets.in_scope. synthetic_vuln_id / VULN_ID are unused.
+
+2. Legacy synthetic-vuln path (no ``--agent-image``): scans apps/ for synthetic
    vulnerabilities and renders one Job per (app, vuln, model) tuple. Requires
    ``--models``.
 
-2. External-agent path (``--agent-image``): runs a BYO coding-agent image
-   (agent_mode=external) over the redteam workflow. Renders one Job per
-   (app, attacker_model, no_codebase leg) tuple; ``--models`` is optional (the
-   image carries the model, but a passed model is still plumbed through for
-   labeling / runner_config.model). synthetic_vuln_id / VULN_ID are unused.
-
 Usage:
-    # Legacy: single app + model — print YAML
-    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o
-
-    # Legacy: full matrix (all apps × all vulns × multiple models)
-    python infra/gke/generate_jobs.py --all --models gpt-4o claude-sonnet-4-5-20250929 --apply
-
     # External agent, probe-only redteam, both attacker models, source-vs-APK ablation
     python infra/gke/generate_jobs.py \\
         --apps conversations \\
         --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
+        --models openai/gpt-5.5 \\
+        --probe-only --attacker-models malicious_app remote_attacker \\
+        --no-codebase-ablation --gcs-bucket $BUCKET --apply
+
+    # External full active-app matrix from apps/app_catalog.json:sets.in_scope
+    python infra/gke/generate_jobs.py \\
+        --all \\
+        --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
+        --models openai/gpt-5.5 \\
         --probe-only --attacker-models malicious_app remote_attacker \\
         --no-codebase-ablation --gcs-bucket $BUCKET --apply
 
     # Write YAMLs to a directory instead of stdout/apply
-    python infra/gke/generate_jobs.py --all --models gpt-4o --outdir /tmp/jobs
+    python infra/gke/generate_jobs.py --all --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
+        --models openai/gpt-5.5 --probe-only --attacker-models malicious_app --outdir /tmp/jobs
 
-    # Dry run (no LLM calls) or gold run (reference exploits)
+    # Legacy: synthetic-vulnerability path (historical)
+    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o
+
+    # Legacy dry run (no LLM calls) or gold run (reference exploits)
     python infra/gke/generate_jobs.py --apps moememos --models gpt-4o --dry-run
     python infra/gke/generate_jobs.py --apps moememos --models gpt-4o --gold-run
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -45,6 +54,7 @@ from pathlib import Path
 
 EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+APP_CATALOG = PROJECT_ROOT / "apps" / "app_catalog.json"
 
 
 def discover_experiments(apps_dir: Path, app_filter: list[str] | None) -> list[dict]:
@@ -70,29 +80,66 @@ def discover_experiments(apps_dir: Path, app_filter: list[str] | None) -> list[d
     return experiments
 
 
+def load_in_scope_apps(catalog_path: Path | None = None) -> list[str]:
+    """Return active benchmark apps from apps/app_catalog.json."""
+    catalog_path = APP_CATALOG if catalog_path is None else catalog_path
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"ERROR: app catalog not found: {catalog_path}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as exc:
+        print(
+            f"ERROR: invalid app catalog JSON: {catalog_path}: {exc}", file=sys.stderr
+        )
+        sys.exit(1)
+
+    apps = catalog.get("sets", {}).get("in_scope")
+    if not isinstance(apps, list) or not all(isinstance(app, str) for app in apps):
+        print(
+            f"ERROR: app catalog {catalog_path} must define sets.in_scope "
+            "as a string list",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not apps:
+        print(
+            f"ERROR: app catalog {catalog_path} sets.in_scope is empty", file=sys.stderr
+        )
+        sys.exit(1)
+    return list(apps)
+
+
 def discover_apps(apps_dir: Path, app_filter: list[str] | None) -> list[str]:
     """Return app names for the external-agent path (no synthetic-vuln scan).
 
     The external path does not need a synthetic vulnerability — it runs the
-    redteam workflow against the app's baseline. ``--all`` lists every app
-    directory; ``--apps`` validates the requested names exist on disk.
+    redteam workflow against the app's baseline. ``--all`` uses the active
+    benchmark app set from ``apps/app_catalog.json``; ``--apps`` validates the
+    requested names are active apps and exist on disk.
     """
-    available = sorted(
-        d.name
-        for d in apps_dir.iterdir()
-        if d.is_dir() and not d.name.startswith(("_", "."))
-    )
+    active = load_in_scope_apps()
     if app_filter is None:
-        return available
-    missing = [a for a in app_filter if a not in available]
-    if missing:
+        selected = active
+    else:
+        missing = [a for a in app_filter if a not in active]
+        if missing:
+            print(
+                f"ERROR: app(s) not in active catalog: {', '.join(missing)}. "
+                f"Available: {', '.join(active)}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        selected = list(app_filter)
+
+    missing_dirs = [app for app in selected if not (apps_dir / app).is_dir()]
+    if missing_dirs:
         print(
-            f"ERROR: unknown app(s): {', '.join(missing)}. "
-            f"Available: {', '.join(available)}",
+            "ERROR: active app dir(s) missing: " f"{', '.join(missing_dirs)}",
             file=sys.stderr,
         )
         sys.exit(1)
-    return [a for a in app_filter if a in available]
+    return selected
 
 
 def sanitize_k8s_name(name: str) -> str:

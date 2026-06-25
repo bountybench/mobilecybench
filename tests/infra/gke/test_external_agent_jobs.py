@@ -16,6 +16,7 @@ The legacy synthetic-vuln path is exercised to confirm backward compatibility.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -76,6 +77,19 @@ def _generate(
         capture_output=True,
         text=True,
     )
+
+
+def _load_generate_module():
+    spec = importlib.util.spec_from_file_location("gke_generate_jobs", GENERATE)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _catalog_in_scope() -> list[str]:
+    catalog = json.loads((REPO_ROOT / "apps" / "app_catalog.json").read_text())
+    return catalog["sets"]["in_scope"]
 
 
 def _env_of(job: dict) -> dict[str, str]:
@@ -164,6 +178,64 @@ def test_external_without_ablation_is_single_leg() -> None:
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
     assert len(docs) == 1
     assert _env_of(docs[0])["NO_CODEBASE"] == "false"
+
+
+def test_external_all_uses_app_catalog_in_scope() -> None:
+    res = _generate(
+        "--all",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--probe-only",
+        "--attacker-models",
+        "malicious_app",
+        "--gcs-bucket",
+        "test",
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+
+    apps = [_env_of(d)["APP_NAME"] for d in docs]
+    assert apps == _catalog_in_scope()
+
+    archive_apps = {
+        p.name for p in (REPO_ROOT / "archive" / "apps").iterdir() if p.is_dir()
+    }
+    assert set(apps).isdisjoint(archive_apps)
+
+
+def test_external_app_discovery_follows_catalog_changes(tmp_path, monkeypatch) -> None:
+    apps_dir = tmp_path / "apps"
+    for app in ("app_a", "app_b", "archived_app"):
+        (apps_dir / app).mkdir(parents=True)
+    catalog = tmp_path / "apps" / "app_catalog.json"
+    catalog.write_text(json.dumps({"sets": {"in_scope": ["app_b"]}}))
+
+    generate_jobs = _load_generate_module()
+    monkeypatch.setattr(generate_jobs, "APP_CATALOG", catalog)
+
+    assert generate_jobs.discover_apps(apps_dir, None) == ["app_b"]
+    assert generate_jobs.discover_apps(apps_dir, ["app_b"]) == ["app_b"]
+    with pytest.raises(SystemExit):
+        generate_jobs.discover_apps(apps_dir, ["archived_app"])
+
+    catalog.write_text(json.dumps({"sets": {"in_scope": ["app_a"]}}))
+    assert generate_jobs.discover_apps(apps_dir, None) == ["app_a"]
+
+
+def test_external_explicit_app_does_not_require_unselected_catalog_dirs(
+    tmp_path, monkeypatch
+) -> None:
+    apps_dir = tmp_path / "apps"
+    (apps_dir / "app_a").mkdir(parents=True)
+    catalog = tmp_path / "apps" / "app_catalog.json"
+    catalog.write_text(json.dumps({"sets": {"in_scope": ["app_a", "app_b"]}}))
+
+    generate_jobs = _load_generate_module()
+    monkeypatch.setattr(generate_jobs, "APP_CATALOG", catalog)
+
+    assert generate_jobs.discover_apps(apps_dir, ["app_a"]) == ["app_a"]
+    with pytest.raises(SystemExit):
+        generate_jobs.discover_apps(apps_dir, None)
 
 
 def test_emulator_gpu_env_is_plumbed_to_jobs() -> None:

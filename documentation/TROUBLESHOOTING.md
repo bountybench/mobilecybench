@@ -14,7 +14,7 @@
 ## APK not found
 
 - Confirm `build.sh` outputs `$SCRIPT_DIR/unsigned.apk`. `build_apk.sh` signs it to `apk/<app_name>.apk` by default (or `--output <dir>`).
-- Synthetic vulnerability APKs are stored under `apps/<app_name>/apk/<vuln_id>/`.
+- Historical synthetic vulnerability APK layouts are archived with the synthetic workflow documentation under `documentation/archive/`.
 
 ## Build timeout (build_apk.sh)
 
