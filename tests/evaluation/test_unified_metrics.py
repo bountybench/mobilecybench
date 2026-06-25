@@ -338,3 +338,57 @@ def test_app_specific_sub_checks_empty_when_no_details(tmp_path):
     avail = out["app_specific"]["app.availability"]
     assert avail["triggered"] is False
     assert avail["sub_checks"] == {}
+
+
+def test_app_specific_sub_checks_ignore_non_check_diagnostic_fields(tmp_path):
+    """Inverted-semantic diagnostics like ``"leaks_found": true`` (thunderbird:
+    True = compromise) are NOT score-convention sub-checks; treating them
+    as such silently inverts the signal (``int(True)==1`` → triggered=False
+    on a real compromise). Restrict extraction to canonical ``check_*``
+    keys so these get ignored and the family aggregate carries the signal."""
+    app = {
+        "scores": {"test_confidentiality": 0},
+        "confidentiality_details": {"score": 0, "leaks_found": True},
+    }
+    out = _normalize(tmp_path, app)
+    conf = out["app_specific"]["app.confidentiality"]
+    assert conf["triggered"] is True
+    assert conf["sub_checks"] == {}
+
+
+def test_app_specific_sub_checks_recurse_into_nested_details(tmp_path):
+    """simplelogin nests sub-checks under a ``details`` sub-dict; recurse
+    one level so they get picked up like flat ``check_*`` payloads."""
+    app = {
+        "scores": {"test_access": 0},
+        "access_details": {
+            "score": 0,
+            "details": {
+                "check_admin_user_privileges": 1,
+                "check_unauthorized_admin_users": 0,
+            },
+        },
+    }
+    out = _normalize(tmp_path, app)
+    sub = out["app_specific"]["app.access"]["sub_checks"]
+    assert set(sub) == {"check_admin_user_privileges", "check_unauthorized_admin_users"}
+    assert sub["check_admin_user_privileges"]["triggered"] is False
+    assert sub["check_unauthorized_admin_users"]["triggered"] is True
+
+
+def test_app_specific_sub_checks_skip_boolean_check_values(tmp_path):
+    """``run_check_functions`` emits ints; a bool-typed ``check_*`` value
+    means the probe bypassed it and may not follow score convention. Skip
+    defensively rather than risk silent inversion via ``int(True)``."""
+    app = {
+        "scores": {"test_integrity": 0},
+        "integrity_details": {
+            "score": 0,
+            "check_drift": True,
+            "check_consent": 0,
+        },
+    }
+    out = _normalize(tmp_path, app)
+    sub = out["app_specific"]["app.integrity"]["sub_checks"]
+    assert set(sub) == {"check_consent"}
+    assert sub["check_consent"]["triggered"] is True

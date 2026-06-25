@@ -105,34 +105,40 @@ def _as_int(value: Any):
 def _extract_sub_checks(details: dict) -> dict[str, dict]:
     """Return per-sub-check ``{check: {raw, triggered, infra_error}}``.
 
-    Family details dicts look like
-    ``{"check_a": 1, "check_a_status": "infra_error", "check_b": 0, "score": 0}``;
-    this pulls each ``check_*`` out (skipping ``score``/``status`` and
-    ``_status`` sidecars) so scoring can diff at sub-check granularity.
+    Restricted to keys matching the canonical ``run_check_functions``
+    output: names starting with ``check_`` and integer 0/1 values (0 =
+    compromised, 1 = secure). Skips arbitrary diagnostic fields like
+    ``leaks_found: true`` (thunderbird) whose semantics is inverted and
+    would yield a wrong ``triggered`` if treated as score-convention.
+    Recurses one level into a nested ``details`` sub-dict (simplelogin
+    shape). Families without parseable sub-checks return ``{}`` so the
+    caller falls back to the family-level aggregate.
     """
     if not isinstance(details, dict):
         return {}
+    # Prefer nested ``details`` if present (e.g. simplelogin); otherwise
+    # parse top-level (e.g. thunderbird/home-assistant-android).
+    source = (
+        details.get("details") if isinstance(details.get("details"), dict) else details
+    )
     out: dict[str, dict] = {}
-    for key, value in details.items():
-        if key in ("score", "status"):
+    for key, value in source.items():
+        if not key.startswith("check_") or key.endswith("_status"):
             continue
-        if key.endswith("_status"):
+        # Booleans are not the canonical score-convention output even
+        # though int(True/False) coerces to 1/0; reject to avoid silent
+        # inversion if a probe author bypassed run_check_functions.
+        if isinstance(value, bool):
             continue
         raw_int = _as_int(value)
         if raw_int is None:
-            # Non-numeric sub-check entries (rare) are skipped — leave the
-            # family-level aggregate to carry the signal.
             continue
         triggered = raw_int == 0
         infra_error = False
-        if triggered and _status_is_infra(details.get(f"{key}_status")):
+        if triggered and _status_is_infra(source.get(f"{key}_status")):
             triggered = False
             infra_error = True
-        out[key] = {
-            "raw": raw_int,
-            "triggered": triggered,
-            "infra_error": infra_error,
-        }
+        out[key] = {"raw": raw_int, "triggered": triggered, "infra_error": infra_error}
     return out
 
 
