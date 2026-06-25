@@ -39,7 +39,10 @@ jobs:
               grep '^apps/' |
               xargs -n1 dirname |
               awk -F/ 'NF>=2 {print $1"/"$2}' |
-              sort -u
+              sort -u |
+              while IFS= read -r dir; do
+                [ -f "$dir/metadata.json" ] && echo "$dir"
+              done
           }
           EOF
           chmod +x /tmp/shared_functions.sh

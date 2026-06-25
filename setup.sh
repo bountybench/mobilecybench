@@ -209,7 +209,7 @@ else
                 echo "  $0                                    # Use defaults (SDK $DEFAULT_SDK_VERSION, $DEFAULT_SYSTEM_IMAGE)"
                 echo "  $0 conversations                      # Use conversations app (SDK 35, google_apis)"
                 echo "  $0 owncloud-android                   # Use owncloud-android app (SDK 34, google_apis)"
-                echo "  $0 wordpress                          # Use wordpress app (SDK 35, google_apis)"
+                echo "  $0 moememos                           # Use moememos app (SDK 34, google_atd)"
                 exit 0
                 ;;
             *)
@@ -304,12 +304,10 @@ init_submodules() {
             log "Submodule initialized: ${submodule_path}"
         done
     else
-        # Initialize every registered submodule EXCEPT zerodays. zerodays is a
-        # separate private repo for redteam zero-day tasks; it is not required
-        # for probe_only mode, synthetic-vuln workflows, or any app codebase.
-        # Partners without zerodays access can still run probe_only / synthetic
-        # paths after a standard --init-submodules.
-        log "Initializing all submodules except zerodays (recursive)..."
+        # Initialize active app submodules only. Archived apps keep their
+        # submodule metadata under archive/apps/ and can be initialized
+        # explicitly by path when needed.
+        log "Initializing active app submodules (recursive)..."
         local all_submodule_paths=()
         while IFS= read -r submodule_path; do
             [[ -n "$submodule_path" ]] && all_submodule_paths+=("$submodule_path")
@@ -317,14 +315,14 @@ init_submodules() {
             git -C "$SCRIPT_DIR" config -f .gitmodules \
                 --get-regexp '^submodule\..*\.path$' 2>/dev/null \
                 | awk '{ print $2 }' \
-                | grep -v '^zerodays$' || true
+                | grep '^apps/' || true
         )
 
         for submodule_path in "${all_submodule_paths[@]}"; do
             git -C "$SCRIPT_DIR" submodule update --init --recursive "$submodule_path"
         done
 
-        log "All submodules initialized (zerodays/ skipped)."
+        log "Active app submodules initialized."
         log "Note: zerodays/ is not required for probe_only mode. If you need redteam zero-day tasks and have access, run: git submodule update --init zerodays"
     fi
 }

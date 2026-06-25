@@ -18,29 +18,25 @@ format_size() {
 
 main() {
     # Optional: any positional args are treated as submodule paths to scope
-    # the init/update + report to. With no args, handle all
-    # submodules. With args (e.g. `apps/jitsi-meet/codebase`), only those
-    # paths are touched — useful when one app's clone is broken or slow
-    # and you only need a different app's codebase.
+    # the init/update + report to. With no args, handle active app submodules.
+    # With args (e.g. `archive/apps/jitsi-meet/codebase`), only those paths are
+    # touched -- useful when one app's clone is broken or slow and you only need
+    # a different app's codebase.
     local -a paths=("$@")
 
-    # Default no-args path: skip zerodays (a separate private repo only
-    # needed for redteam zero-day tasks). To init it, pass `zerodays`
-    # explicitly or run `git submodule update --init zerodays`. The
-    # "registered?" guard preserves prior behavior on .gitmodules without
-    # zerodays (test fixtures, forks).
-    local exclude_zerodays_default=false
-    if (( ${#paths[@]} == 0 )) \
-       && git config --file .gitmodules --get-regexp path 2>/dev/null \
-              | awk '{print $2}' | grep -qx 'zerodays'; then
+    # Default no-args path: initialize active app submodules only. Archived
+    # apps live under archive/apps/ and can still be initialized explicitly by
+    # path when someone needs to inspect them.
+    local active_apps_default=false
+    if (( ${#paths[@]} == 0 )); then
         while IFS= read -r p; do
-            [[ -n "$p" && "$p" != "zerodays" ]] && paths+=("$p")
-        done < <(git config --file .gitmodules --get-regexp path | awk '{print $2}')
-        exclude_zerodays_default=true
+            [[ "$p" == apps/* ]] && paths+=("$p")
+        done < <(git config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print $2}')
+        active_apps_default=true
     fi
 
-    if $exclude_zerodays_default; then
-        echo "Initializing and updating submodules (all except zerodays)..."
+    if $active_apps_default; then
+        echo "Initializing and updating active app submodules..."
     elif (( ${#paths[@]} > 0 )); then
         echo "Initializing and updating submodules: ${paths[*]}"
     else
@@ -124,8 +120,8 @@ main() {
     echo "Done: $REPORT_FILE"
     echo "Total: $(format_size "$total_size") across $count submodules"
 
-    if $exclude_zerodays_default; then
-        echo "Note: zerodays/ excluded (not required for probe_only mode). To init it: git submodule update --init zerodays"
+    if $active_apps_default; then
+        echo "Note: archived app submodules and zerodays/ are skipped by default. Pass explicit paths to initialize them."
     fi
 }
 
