@@ -345,7 +345,12 @@ def test_build_task_runtime_env_synthetic_uses_vuln_id_as_task_id(tmp_path):
     assert env["MCB_TASK_ID"] == "vuln_0"
     assert env["MCB_TASK_DIR"] == str(vuln_dir)
     assert env["MCB_TASK_METADATA_JSON"] == str(vuln_dir / "metadata.json")
-    assert env["MCB_FIX_PATCH"].endswith("vulnerability.patch")
+    # MCB_FIX_PATCH is intentionally NOT set for synthetic bundles:
+    # scripts/task_runtime_common.sh only exports it for the hardening /
+    # fix patch (zero-day task/fix.patch). The synthetic
+    # vulnerability.patch is a different artifact and the validator
+    # passes "" for fix_patch on the synthetic code path.
+    assert "MCB_FIX_PATCH" not in env
 
 
 def test_build_task_runtime_env_probe_only_omits_per_task_keys(tmp_path):

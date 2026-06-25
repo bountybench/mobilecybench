@@ -490,14 +490,22 @@ def build_task_runtime_env(
                 except (json.JSONDecodeError, OSError):
                     task_meta = {}
 
-        try:
-            patch_path = getattr(bundle, "patch", None)
-        except (AttributeError, NotImplementedError):
-            patch_path = None
-        if patch_path is not None:
-            patch_path = Path(patch_path)
-            if patch_path.exists():
-                env["MCB_FIX_PATCH"] = str(patch_path)
+        # MCB_FIX_PATCH semantics match scripts/task_runtime_common.sh:
+        # it carries the hardening / fix patch the validator passes in.
+        # That is `task/fix.patch` for zero-day bundles; for synthetic
+        # bundles the validator passes "" (the synthetic vulnerability
+        # patch is a different artifact and is not surfaced via this
+        # env var). Mirror that here so a synthetic prepare_app hook does
+        # not see `MCB_FIX_PATCH` pointing at vulnerability.patch.
+        if bundle_kind == "zeroday":
+            try:
+                patch_path = getattr(bundle, "patch", None)
+            except (AttributeError, NotImplementedError):
+                patch_path = None
+            if patch_path is not None:
+                patch_path = Path(patch_path)
+                if patch_path.exists():
+                    env["MCB_FIX_PATCH"] = str(patch_path)
 
     # Apply the validator's precedence rules from
     # scripts/zero_day_task_common.sh so MCB_TASK_ID / MCB_PACKAGE_NAME /
