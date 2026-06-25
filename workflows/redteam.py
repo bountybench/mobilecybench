@@ -1449,9 +1449,18 @@ class RedTeamWorkflow(Workflow):
         ``phase_dir`` is the per-phase replay directory. When supplied it
         sets ``MCB_OUTPUT_DIR`` to the per-phase scope (the validator's
         equivalent) and derives ``MCB_PHASE`` from the directory basename
-        (``phase1_original`` → ``phase1``, ``phase2_patched`` → ``phase2``).
-        When omitted (e.g., per-app hooks invoked outside a phase),
-        ``MCB_OUTPUT_DIR`` falls back to the run's logs dir.
+        (``phase1_original`` → ``vulnerable``,
+        ``phase2_patched`` → ``secure``). When omitted (e.g., per-app
+        hooks invoked outside a phase), ``MCB_OUTPUT_DIR`` falls back to
+        the run's logs dir.
+
+        The output dir is created before the hook runs, matching
+        ``scripts/task_validation_common.sh:task_validation_run_phase``
+        which ``mkdir -p "$phase_output"`` before
+        ``task_runtime_set_context``. Hooks that do
+        ``echo state > "$MCB_OUTPUT_DIR/foo"`` without their own
+        ``mkdir -p`` would otherwise fail on the first phase before
+        ``_run_exploit`` creates the dir.
         """
         from utils.command_executor import CommandExecutor
 
@@ -1464,6 +1473,7 @@ class RedTeamWorkflow(Workflow):
         output_dir = (
             phase_dir if phase_dir is not None else Path(logger_manager.get_logs_dir())
         )
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         env = os.environ.copy()
         env.update(

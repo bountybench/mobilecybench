@@ -443,8 +443,13 @@ def test_run_prepare_victim_exports_per_phase_context(tmp_path):
     )
     workflow._attacker_model = "malicious_app"
 
+    # phase_dir is intentionally NOT pre-mkdir'd; _run_setup_hook must
+    # create it before invoking the hook (validator parity:
+    # task_validation_run_phase does ``mkdir -p "$phase_output"``
+    # before task_runtime_set_context). Without this, the hook's
+    # ``echo seeded > "$MCB_OUTPUT_DIR/victim_seed"`` fails on the very
+    # first phase before _run_exploit creates the dir.
     phase_dir = tmp_path / "logs" / "exp" / "replays" / "phase1_original"
-    phase_dir.mkdir(parents=True)
     workflow._run_prepare_victim(phase_dir=phase_dir)
 
     assert (phase_dir / "victim_seed").read_text().strip() == "seeded"
