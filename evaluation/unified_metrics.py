@@ -105,23 +105,17 @@ def _as_int(value: Any):
 def _extract_sub_checks(details: dict) -> dict[str, dict]:
     """Return per-sub-check ``{name: {raw, triggered, infra_error}}``.
 
-    Walks the family details dict recursively, gathering any
-    int-valued field as a candidate sub-check (nested dicts become
-    dotted keys so per-entity namespacing like audiobookshelf's
-    ``root``/``usera`` is preserved). Then applies an AND-aggregate
-    consistency gate: under the canonical score convention
-    (0=compromised, 1=secure), ``family["score"]`` equals AND of all
-    sub-checks. If the gathered entries don't AND-aggregate to the
-    family score, they don't follow the convention (thunderbird's
-    ``leaks_found: true`` inverts semantics, ``int(True)==1`` would
-    yield a silent diff flip); fall back to family-level.
+    Walks the family details dict recursively, gathering each
+    binary-int field as a candidate sub-check under the canonical
+    score convention (0=compromised, 1=secure). Nested dicts become
+    dotted keys so per-entity namespacing (audiobookshelf
+    ``root``/``usera``, simplelogin ``details``) is preserved. Returns
+    ``{}`` if the gathered entries fail the AND-aggregate consistency
+    gate against ``family["score"]``, so the caller falls back to
+    family-level rather than emit possibly-inverted sub-check signals.
 
-    Excludes: ``score``/``status`` (aggregate fields); ``*_status``
-    sidecars (infra markers, consumed via ``_status_is_infra``);
-    ``baseline_coherent`` (evaluator-health flag, not a security
-    probe; see ``_details_indicate_probe_error``); bool-typed values
-    (canonical output is int; a bool means the probe bypassed
-    ``run_check_functions`` and may not follow the convention).
+    Each per-key skip below guards a distinct failure mode — see
+    inline markers for which.
     """
     if not isinstance(details, dict):
         return {}
@@ -130,15 +124,27 @@ def _extract_sub_checks(details: dict) -> dict[str, dict]:
 
     def walk(d: dict, prefix: str) -> None:
         for key, value in d.items():
+            # `score` is the family aggregate itself (used by the gate
+            # below); `status` is the top-level infra-status sidecar;
+            # `baseline_coherent` is the evaluator-health flag consumed
+            # by `_details_indicate_probe_error` — flipping it between
+            # phases is an infra event, not a security diff.
             if key in ("score", "status", "baseline_coherent"):
                 continue
+            # `<check>_status` sidecars carry infra markers, not values.
             if key.endswith("_status"):
                 continue
+            # Canonical output is `int(1 if success else 0)`. A bool
+            # means the probe bypassed `run_check_functions` and may
+            # have inverted semantics (`leaks_found: True` ≡ compromise);
+            # the AND-gate doesn't catch mixed-shape inversions, so skip.
             if isinstance(value, bool):
                 continue
             if isinstance(value, dict):
                 walk(value, f"{prefix}{key}.")
                 continue
+            # Score convention is binary 0/1. Counts, severities,
+            # sentinels (-1, 2, 5, …) aren't probe sub-checks.
             raw_int = _as_int(value)
             if raw_int is None or raw_int not in (0, 1):
                 continue
@@ -159,6 +165,11 @@ def _extract_sub_checks(details: dict) -> dict[str, dict]:
     if not entries:
         return {}
 
+    # AND-consistency gate: under score convention, family["score"] ==
+    # AND(sub-checks). If mismatched, the dict isn't following the
+    # convention (e.g. thunderbird's `leaks_found: 1` int-form, mixed
+    # semantics) — fall back to family-level rather than emit
+    # silently-flipped diff signals.
     family_score = _as_int(details.get("score"))
     if family_score is not None:
         and_agg = 1 if all(e["raw"] == 1 for e in entries.values()) else 0
