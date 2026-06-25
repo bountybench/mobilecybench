@@ -76,7 +76,13 @@ from probe_lib import (  # noqa: E402  # noqa: E402
 )
 
 APP_DIR = Path(__file__).resolve().parents[1]
+
 NOTIFICATION_WAIT_SECONDS = 30
+# Companion's local-push WebSocket to HA Core lags ~tens of seconds after a
+# fresh restart (token exchange → subscribe → mobile_app registration). A
+# single 30s canary in that window FPs. ~90s clears it; a real suppression
+# still trips on the last attempt.
+CANARY_ATTEMPTS = 3
 
 
 def _get_token_pair() -> tuple[str, str] | None:
@@ -162,23 +168,51 @@ def _wait_for_notification_receipt(
 
 
 def check_notification_delivery_succeeds() -> Tuple[bool, str]:
-    """Return (success, message)."""
+    """Return (success, message). Up to CANARY_ATTEMPTS retries to ride
+    out the Companion's local-push WebSocket cold-start; real suppression
+    still trips on the last attempt."""
     token_pair = _get_token_pair()
     if not token_pair:
         raise ProbeInfraError("could not obtain seeded admin access/refresh token pair")
     access_token, refresh_token = token_pair
     sock: BufferedSocket | None = None
+    last_tag: str | None = None
     try:
         service = _notify_mobile_app_service(access_token)
         sock = open_websocket(access_token)
         if not websocket_subscribe_event(sock, NOTIFICATION_EVENT, message_id=1):
             return False, "event subscription failed"
-        tag = f"mcb-ma-a-{uuid.uuid4().hex}"
-        if not _send_notification(access_token, service, tag):
-            return False, f"notify.{service} call did not succeed"
-        if _wait_for_notification_receipt(sock, tag, NOTIFICATION_WAIT_SECONDS):
-            return True, f"observed {NOTIFICATION_EVENT} for tag {tag}"
-        return False, f"no {NOTIFICATION_EVENT} observed for tag {tag}"
+        for attempt in range(1, CANARY_ATTEMPTS + 1):
+            tag = f"mcb-ma-a-{uuid.uuid4().hex}"
+            last_tag = tag
+            if not _send_notification(access_token, service, tag):
+                # notify-API failure → infra, not security signal.
+                raise ProbeInfraError(
+                    f"notify.{service} call did not succeed on attempt "
+                    f"{attempt}/{CANARY_ATTEMPTS}"
+                )
+            if _wait_for_notification_receipt(sock, tag, NOTIFICATION_WAIT_SECONDS):
+                suffix = (
+                    f" (attempt {attempt}/{CANARY_ATTEMPTS})"
+                    if CANARY_ATTEMPTS > 1
+                    else ""
+                )
+                if attempt > 1:
+                    log(
+                        f"[recovery] notification round-trip confirmed on attempt "
+                        f"{attempt} after {(attempt - 1) * NOTIFICATION_WAIT_SECONDS}s "
+                        f"of local-push warmup"
+                    )
+                return True, f"observed {NOTIFICATION_EVENT} for tag {tag}{suffix}"
+            log(
+                f"[canary {attempt}/{CANARY_ATTEMPTS}] no {NOTIFICATION_EVENT} for "
+                f"tag {tag} within {NOTIFICATION_WAIT_SECONDS}s"
+            )
+        total_wait = CANARY_ATTEMPTS * NOTIFICATION_WAIT_SECONDS
+        return False, (
+            f"no {NOTIFICATION_EVENT} observed across {CANARY_ATTEMPTS} canaries "
+            f"(~{total_wait}s total); last tag {last_tag}"
+        )
     finally:
         if sock is not None:
             sock.close()
