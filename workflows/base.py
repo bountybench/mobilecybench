@@ -487,6 +487,7 @@ class Workflow(ABC):
         *,
         inject_flags: bool = False,
         start_ssrf: bool = False,
+        prepare_app_env: dict | None = None,
     ) -> None:
         """Restart emulator and app servers with the given APK.
 
@@ -495,6 +496,10 @@ class Workflow(ABC):
             prepare_app_hook: Optional shell script to run after install.
             inject_flags: Whether to inject hidden flags for probe evaluation.
             start_ssrf: Whether to start the SSRF listener.
+            prepare_app_env: Optional environment overrides for the
+                ``prepare_app_hook`` subprocess. Merged into ``os.environ``
+                so callers can supply the ``MCB_*`` task-runtime contract
+                from ``evaluation.task_bundle.build_task_runtime_env``.
         """
         from utils.command_executor import CommandExecutor
         from utils.emulator_certs import inject_system_ca
@@ -524,11 +529,18 @@ class Workflow(ABC):
         if prepare_app_hook and prepare_app_hook.exists():
             logger.info(f"Running prepare_app hook: {prepare_app_hook}")
             cmd = CommandExecutor()
+            hook_env = None
+            if prepare_app_env:
+                import os as _os
+
+                hook_env = _os.environ.copy()
+                hook_env.update(prepare_app_env)
             cmd.run_with_progress(
                 f"bash {prepare_app_hook}",
                 timeout=self.config.script_timeout,
                 message="Running prepare_app hook",
                 cwd=self.app_dir,
+                env=hook_env,
             )
 
         logger.info("Runtime restarted successfully")

@@ -387,3 +387,24 @@ def test_build_task_runtime_env_missing_app_metadata_is_tolerated(tmp_path):
     assert "MCB_APP_METADATA_JSON" not in env
     assert "MCB_PACKAGE_NAME" not in env
     assert "MCB_BASELINE_COMMIT" not in env
+
+
+def test_build_task_runtime_env_sets_output_dir_and_phase(tmp_path):
+    """MCB_OUTPUT_DIR and MCB_PHASE must be exported when callers supply
+    them. Some prepare_app hooks (e.g., HA report-0) treat MCB_OUTPUT_DIR
+    as required via bash ``: ${VAR?…}`` and fail without it."""
+    app_dir = _seed_app(tmp_path)
+    bundle = ProbeOnlyBundle(app_dir=app_dir, _attacker_model="malicious_app")
+    output_dir = tmp_path / "logs" / "run-xyz"
+    output_dir.mkdir(parents=True)
+
+    env = build_task_runtime_env(
+        bundle=bundle,
+        app_dir=app_dir,
+        attacker_model="malicious_app",
+        output_dir=output_dir,
+        phase="phase1",
+    )
+
+    assert env["MCB_OUTPUT_DIR"] == str(output_dir)
+    assert env["MCB_PHASE"] == "phase1"

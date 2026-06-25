@@ -1397,6 +1397,7 @@ class RedTeamWorkflow(Workflow):
                 bundle=self._bundle,
                 app_dir=self.app_dir,
                 attacker_model=self._attacker_model,
+                output_dir=Path(logger_manager.get_logs_dir()),
             )
         )
         env.setdefault("PYTHON_BIN", sys.executable)
