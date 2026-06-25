@@ -35,6 +35,24 @@ from utils.logger import logger, logger_manager
 from workflows.base import Workflow
 
 
+def _phase_slug_for_output_dir(output_dir: Optional[Path]) -> Optional[str]:
+    """Derive ``MCB_PHASE`` from a per-phase replay dir's basename.
+
+    Mirrors the phase identifier ``scripts/task_runtime_common.sh`` exports
+    so prepare_app and the verifier see the same ``MCB_PHASE`` value when
+    pointed at the same per-phase dir. Returns ``None`` for unrecognized
+    names (e.g. probe-only dirs) or when ``output_dir`` is ``None``.
+    """
+    if output_dir is None:
+        return None
+    base = output_dir.name
+    if base.startswith("phase1"):
+        return "phase1"
+    if base.startswith("phase2"):
+        return "phase2"
+    return None
+
+
 @dataclass
 class PhaseResult:
     """Minimal result from a single phase replay. Both ops classes return this.
@@ -332,6 +350,9 @@ class RemoteAttackerOps:
             codebase_dir=codebase_dir,
             replay_apk=replay_apk,
             logs_dir=logger_manager.get_logs_dir(),
+            # prepare_app already seeded phase_dir as MCB_OUTPUT_DIR;
+            # wiping here would erase that state before the verifier reads it.
+            wipe_output_dir=False,
         )
 
         if package_name:
@@ -739,14 +760,27 @@ class RedTeamWorkflow(Workflow):
         Exit 0 = exploit succeeded (build IS vulnerable),
              1 = exploit did not succeed (build NOT vulnerable),
              2 = verifier error.
+
+        Exports the full ``MCB_*`` task-runtime contract via
+        ``build_task_runtime_env`` so the verifier sees the same env as
+        ``prepare_app`` (validator parity — both run under one
+        ``task_runtime_set_context``). ``MCB_OUTPUT_DIR`` / ``MCB_PHASE``
+        are omitted when ``replay_dir`` is ``None`` (failed replay or
+        probe_only).
         """
         verifier = self._bundle.task_dir / "verify_files" / "verify_exploit.sh"
         phase_dir.mkdir(parents=True, exist_ok=True)
 
         env = os.environ.copy()
-        env["MCB_APP_DIR"] = str(self.app_dir)
-        if replay_dir is not None:
-            env["MCB_OUTPUT_DIR"] = str(replay_dir)
+        env.update(
+            build_task_runtime_env(
+                bundle=self._bundle,
+                app_dir=self.app_dir,
+                attacker_model=self._attacker_model,
+                output_dir=replay_dir,
+                phase=_phase_slug_for_output_dir(replay_dir),
+            )
+        )
 
         log_path = phase_dir / "verify_exploit.log"
         logger.info(f"Running verifier: {verifier}")
@@ -1410,18 +1444,9 @@ class RedTeamWorkflow(Workflow):
 
         logger.info(f"{label} hook: {hook}")
 
-        if phase_dir is not None:
-            output_dir = phase_dir
-            base = phase_dir.name
-            if base.startswith("phase1"):
-                phase = "phase1"
-            elif base.startswith("phase2"):
-                phase = "phase2"
-            else:
-                phase = None
-        else:
-            output_dir = Path(logger_manager.get_logs_dir())
-            phase = None
+        output_dir = (
+            phase_dir if phase_dir is not None else Path(logger_manager.get_logs_dir())
+        )
 
         env = os.environ.copy()
         env.update(
@@ -1430,7 +1455,7 @@ class RedTeamWorkflow(Workflow):
                 app_dir=self.app_dir,
                 attacker_model=self._attacker_model,
                 output_dir=output_dir,
-                phase=phase,
+                phase=_phase_slug_for_output_dir(phase_dir),
             )
         )
         env.setdefault("PYTHON_BIN", sys.executable)

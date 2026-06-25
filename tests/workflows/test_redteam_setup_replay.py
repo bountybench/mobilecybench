@@ -8,7 +8,7 @@ tag absent from the registry, this aborted the replay before the emulator
 booted.
 """
 
-import os
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -140,7 +140,6 @@ def test_prepare_app_and_verifier_share_per_phase_output_dir(tmp_path):
     agree on a single per-phase directory.
     """
     import json
-    import subprocess
 
     from evaluation.task_bundle import ZerodayBundle
 
@@ -218,17 +217,158 @@ def test_prepare_app_and_verifier_share_per_phase_output_dir(tmp_path):
     )
     verifier.chmod(0o755)
 
-    proc = subprocess.run(
-        ["bash", str(verifier)],
-        env={
-            "PATH": os.environ.get("PATH", ""),
-            "MCB_APP_DIR": str(app_dir),
-            "MCB_OUTPUT_DIR": str(phase_dir),
-        },
-        capture_output=True,
-        text=True,
-        timeout=10,
+    # Drive the actual `_run_verifier` so the test catches regressions in
+    # its env construction (not just the contract). Verifier exit 0 iff
+    # the marker is at MCB_OUTPUT_DIR — i.e. `_run_verifier` resolved
+    # MCB_OUTPUT_DIR to the same per-phase dir as `_run_setup_hook`.
+    verify_phase_dir = tmp_path / "logs" / "experiment" / "replays" / "verify_phase1"
+    verify_phase_dir.mkdir(parents=True, exist_ok=True)
+    exit_code = workflow._run_verifier(verify_phase_dir, replay_dir=phase_dir)
+    assert exit_code == 0, (
+        f"_run_verifier did not find marker; "
+        f"log={(verify_phase_dir / 'verify_exploit.log').read_text()!r}"
     )
-    assert (
-        proc.returncode == 0
-    ), f"verifier did not find marker; stdout={proc.stdout!r} stderr={proc.stderr!r}"
+
+
+def test_run_verifier_exports_full_task_runtime_env(tmp_path):
+    """`_run_verifier` must export the same ``MCB_*`` contract as the
+    setup hooks (``build_task_runtime_env``). Regression for the original
+    partial-env version that set only ``MCB_APP_DIR`` and ``MCB_OUTPUT_DIR``
+    — hooks moved to the validator contract (e.g. ``MCB_PACKAGE_NAME``,
+    ``MCB_TASK_DIR``, ``MCB_TASK_METADATA_JSON``) would silently fail
+    inside the verifier even though prepare_app saw them."""
+    import json
+
+    from evaluation.task_bundle import ZerodayBundle, build_task_runtime_env
+
+    app_dir = tmp_path / "apps" / "demoapp"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(
+        json.dumps({"package_name": "io.demo", "commit_version": "abc123"})
+    )
+
+    task_dir = tmp_path / "zerodays" / "reports" / "demoapp" / "report-0" / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metadata.json").write_text(json.dumps({"task_id": "report-0"}))
+    (task_dir / "fix.patch").write_text("--- a\n+++ b\n")
+    verifier = task_dir / "verify_files" / "verify_exploit.sh"
+    verifier.parent.mkdir(parents=True, exist_ok=True)
+    verifier.write_text("#!/usr/bin/env bash\nexit 0\n")
+    verifier.chmod(0o755)
+
+    workflow = RedTeamWorkflow.__new__(RedTeamWorkflow)
+    workflow.config = RunnerConfig(
+        workflow="redteam",
+        probe_only=False,
+        attacker_model="remote_attacker",
+        task="report-0",
+        synthetic_vuln_id=None,
+        build_type="skip-apk",
+        model="test",
+        agent_image="cybench/mobilecybench:does-not-exist",
+        max_iterations=10,
+        max_model_response_tokens=1000,
+        dry_run=False,
+        emulator_backend="native",
+        emulator_display="headless",
+        network_mode="permissive",
+    )
+    workflow.app_dir = app_dir
+    workflow.project_root = tmp_path
+    workflow._bundle = ZerodayBundle(
+        project_root=tmp_path, app_name="demoapp", task="report-0"
+    )
+    workflow._attacker_model = "remote_attacker"
+
+    verify_phase_dir = tmp_path / "verify_phase1_original"
+    replay_dir = tmp_path / "replays" / "phase1_original"
+    replay_dir.mkdir(parents=True)
+
+    captured = {}
+    real_run = subprocess.run
+
+    def capture(cmd, *args, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return real_run(cmd, *args, **kwargs)
+
+    with patch("workflows.redteam.subprocess.run", side_effect=capture):
+        workflow._run_verifier(verify_phase_dir, replay_dir=replay_dir)
+
+    expected = build_task_runtime_env(
+        bundle=workflow._bundle,
+        app_dir=app_dir,
+        attacker_model="remote_attacker",
+        output_dir=replay_dir,
+        phase="phase1",
+    )
+    # The verifier env must be a superset of the contract — every key the
+    # validator would export under task_runtime_set_context is present, and
+    # carries the same value.
+    for key, value in expected.items():
+        assert captured["env"].get(key) == value, (
+            f"_run_verifier dropped {key}={value!r} "
+            f"(saw {captured['env'].get(key)!r})"
+        )
+
+
+def test_run_verifier_omits_phase_when_replay_dir_is_none(tmp_path):
+    """If the replay never produced an evidence path (e.g. crash before
+    replay), `_run_verifier` is called with ``replay_dir=None``. It must
+    skip ``MCB_OUTPUT_DIR`` and ``MCB_PHASE`` rather than exporting stale
+    values, and the verifier must still run (validator parity for hooks
+    with no per-phase scope)."""
+    import json
+
+    from evaluation.task_bundle import ZerodayBundle
+
+    app_dir = tmp_path / "apps" / "demoapp"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(json.dumps({"package_name": "io.demo"}))
+
+    task_dir = tmp_path / "zerodays" / "reports" / "demoapp" / "report-0" / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metadata.json").write_text(json.dumps({"task_id": "report-0"}))
+    verifier = task_dir / "verify_files" / "verify_exploit.sh"
+    verifier.parent.mkdir(parents=True, exist_ok=True)
+    verifier.write_text("#!/usr/bin/env bash\nexit 0\n")
+    verifier.chmod(0o755)
+
+    workflow = RedTeamWorkflow.__new__(RedTeamWorkflow)
+    workflow.config = RunnerConfig(
+        workflow="redteam",
+        probe_only=False,
+        attacker_model="remote_attacker",
+        task="report-0",
+        synthetic_vuln_id=None,
+        build_type="skip-apk",
+        model="test",
+        agent_image="cybench/mobilecybench:does-not-exist",
+        max_iterations=10,
+        max_model_response_tokens=1000,
+        dry_run=False,
+        emulator_backend="native",
+        emulator_display="headless",
+        network_mode="permissive",
+    )
+    workflow.app_dir = app_dir
+    workflow.project_root = tmp_path
+    workflow._bundle = ZerodayBundle(
+        project_root=tmp_path, app_name="demoapp", task="report-0"
+    )
+    workflow._attacker_model = "remote_attacker"
+
+    captured = {}
+    real_run = subprocess.run
+
+    def capture(cmd, *args, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return real_run(cmd, *args, **kwargs)
+
+    with patch("workflows.redteam.subprocess.run", side_effect=capture):
+        exit_code = workflow._run_verifier(tmp_path / "verify_dir", replay_dir=None)
+
+    assert exit_code == 0
+    assert "MCB_OUTPUT_DIR" not in captured["env"]
+    assert "MCB_PHASE" not in captured["env"]
+    # Bundle-derived fields still appear (no per-phase scope needed).
+    assert captured["env"].get("MCB_TASK_DIR") == str(task_dir)

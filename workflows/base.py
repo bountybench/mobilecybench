@@ -593,6 +593,7 @@ class Workflow(ABC):
         codebase_dir: Path | None,
         replay_apk: Path | None,
         logs_dir: Path | None = None,
+        wipe_output_dir: bool = True,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
@@ -605,12 +606,20 @@ class Workflow(ABC):
         agent never had. The APK mount is for path-symmetry with the agent
         phase.
 
+        ``wipe_output_dir`` (default True): rmtree ``output_dir`` before
+        replay. Callers whose ``output_dir`` is the validator-style
+        per-phase scope (already seeded by ``prepare_app`` under
+        ``MCB_OUTPUT_DIR``) must pass ``False`` so prepare_app state
+        survives until the verifier reads it. The sibling APK staging
+        dir is wiped unconditionally — it is a runner-owned scratch
+        path, not part of the validator's per-phase scope.
+
         Connectivity (ADB + app server) is checked by the script itself.
         """
         if (codebase_dir is None) == (replay_apk is None):
             raise ValueError("exactly one of codebase_dir or replay_apk must be set")
 
-        if output_dir.exists():
+        if wipe_output_dir and output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
