@@ -495,6 +495,21 @@ def _probe_diff_aligned(
     for family in set(p1_app) | set(p2_app):
         p1_info = p1_app.get(family) or {}
         p2_info = p2_app.get(family) or {}
+        # Parent-family infra/unknown guard: a family marked
+        # infra_error or unknown at the aggregate level has no
+        # trustworthy reading, even if individual sub-checks happen to
+        # not carry the per-check infra flag. Skip the whole family
+        # rather than let any sub-check from this phase reach the
+        # diff. Defense-in-depth against alternate ``probe_results``
+        # constructors that diverge from normalize_probe_results'
+        # convention of propagating family-infra → sub-check-infra.
+        if (
+            _is_infra(p1_info)
+            or _is_infra(p2_info)
+            or bool(p1_info.get("unknown", False))
+            or bool(p2_info.get("unknown", False))
+        ):
+            continue
         p1_subs = p1_info.get("sub_checks") or {}
         p2_subs = p2_info.get("sub_checks") or {}
         if p1_subs and p2_subs and set(p1_subs) == set(p2_subs):
@@ -508,10 +523,6 @@ def _probe_diff_aligned(
                 p1_flat[full] = bool(p1_sub.get("triggered", False))
                 p2_flat[full] = bool(p2_sub.get("triggered", False))
         else:
-            # Family-level fallback: skip if either phase's family
-            # aggregate is itself an infra_error (no usable signal).
-            if _is_infra(p1_info) or _is_infra(p2_info):
-                continue
             p1_flat[family] = bool(p1_info.get("triggered", False))
             p2_flat[family] = bool(p2_info.get("triggered", False))
 

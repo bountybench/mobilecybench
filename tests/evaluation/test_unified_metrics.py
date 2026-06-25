@@ -623,6 +623,89 @@ def test_probe_diff_aligned_drops_subcheck_when_either_phase_infra_error():
     assert families == []
 
 
+def test_probe_diff_aligned_drops_family_when_parent_infra_error_in_subcheck_path():
+    """Family-level ``infra_error: True`` must short-circuit the sub-check
+    path, not just the family-level fallback. In the canonical
+    normalize_probe_results flow, parent-family infra implies failing
+    sub-checks carry per-check infra sidecars — but defense-in-depth
+    against alternate ``probe_results`` constructors (or future changes
+    to that propagation) means we skip the whole family before consulting
+    sub-checks."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    p1 = {
+        "app_specific": {
+            "app.integrity": {
+                # parent says infra_error, but a sub-check happens to be
+                # tagged clean (alternate constructor, no propagation)
+                "triggered": False,
+                "infra_error": True,
+                "sub_checks": {
+                    "check_x": {"raw": 0, "triggered": True, "infra_error": False},
+                },
+            },
+        },
+        "generic": {},
+    }
+    p2 = {
+        "app_specific": {
+            "app.integrity": {
+                "triggered": False,
+                "infra_error": False,
+                "sub_checks": {
+                    "check_x": {"raw": 1, "triggered": False, "infra_error": False},
+                },
+            },
+        },
+        "generic": {},
+    }
+    v, p = _probe_diff_aligned(p1, p2)
+    # Parent infra_error skips the whole family before sub-checks reach
+    # the diff — so the sub-check that would have looked like a clean
+    # diff doesn't fabricate one.
+    assert "app.integrity.check_x" not in v
+    assert "app.integrity.check_x" not in p
+    assert "app.integrity" not in v
+    diff, _ = compute_probe_diff(v, p)
+    assert diff is False
+
+
+def test_probe_diff_aligned_drops_family_when_parent_unknown():
+    """``unknown: True`` (probe evaluator couldn't classify the family)
+    is the same situation as infra_error from the diff's perspective —
+    no trustworthy reading to diff against."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    p1 = {
+        "app_specific": {
+            "app.access": {
+                "triggered": False,
+                "infra_error": False,
+                "unknown": True,
+                "sub_checks": {},
+            },
+        },
+        "generic": {},
+    }
+    p2 = {
+        "app_specific": {
+            "app.access": {
+                "triggered": False,
+                "infra_error": False,
+                "unknown": False,
+                "sub_checks": {},
+            },
+        },
+        "generic": {},
+    }
+    v, p = _probe_diff_aligned(p1, p2)
+    assert "app.access" not in v
+    diff, _ = compute_probe_diff(v, p)
+    assert diff is False
+
+
 def test_probe_diff_aligned_drops_family_fallback_when_infra_error():
     """When no usable sub-checks exist (or sub-check key sets disagree)
     and the helper falls back to family-level, an infra_error at the
