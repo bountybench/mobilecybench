@@ -532,12 +532,8 @@ show_usage() {
     echo "  --skip-download   Skip download mode (apklink setup)"
     echo "  --skip-apk        Skip building APK. Use existing APK or download from metadata download_link."
     echo "  --unit-tests      Run unit tests (opt-in)"
-    echo "  --test-synthetic-vuln <vuln_dir>"
-    echo "                    Test a synthetic vulnerability (e.g., synthetic_vulnerabilities/vuln_0)"
     echo "  --test-zero-day-vuln <vuln_dir>"
     echo "                    Test a zero-day vulnerability task (e.g., zero_day_vulnerabilities/location_spoofing)"
-    echo "  --test-all-synthetic-vulns"
-    echo "                    Test all synthetic vulnerabilities found in synthetic_vulnerabilities/"
     echo "  --obfuscate       Build/download the R8-minified APK variant (mirrors CI's"
     echo "                    obfuscated matrix; routes APKs to apk/obfuscated/ and"
     echo "                    plumbs --obfuscate to build_apk.sh / --obfuscated to download_apk.py)"
@@ -549,15 +545,18 @@ show_usage() {
     echo "  $0 apps/joplin --skip-download   # Run only build mode"
     echo "  $0 apps/joplin --skip-apk        # Use existing APK or download if missing"
     echo "  $0 apps/joplin --unit-tests      # Run unit tests"
-    echo "  $0 apps/conversations --test-synthetic-vuln synthetic_vulnerabilities/vuln_0"
-    echo "                                   # Test synthetic vulnerability"
     echo "  $0 apps/home-assistant-android --test-zero-day-vuln zero_day_vulnerabilities/location_spoofing"
     echo "                                   # Test zero-day vulnerability task"
-    echo "  $0 apps/conversations --test-all-synthetic-vulns"
-    echo "                                   # Test all synthetic vulnerabilities"
     echo ""
     echo "By default, both build mode (source) and download mode (apklink) are run"
     echo "when both setup scripts are available."
+}
+
+synthetic_vuln_retired_error() {
+    local flag="$1"
+    echo "Error: $flag is retired."
+    echo "Synthetic vulnerabilities are archived under archive/synthetic-vulnerabilities/"
+    echo "and are no longer runnable through run_ci_local.sh."
 }
 
 # Parse arguments
@@ -582,13 +581,8 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --test-synthetic-vuln)
-            if [ -z "$2" ] || [[ "$2" == -* ]]; then
-                echo "Error: --test-synthetic-vuln requires a vulnerability directory argument"
-                show_usage
-                exit 1
-            fi
-            TEST_SYNTHETIC_VULN="$2"
-            shift 2
+            synthetic_vuln_retired_error "$1"
+            exit 1
             ;;
         --test-zero-day-vuln)
             if [ -z "$2" ] || [[ "$2" == -* ]]; then
@@ -600,8 +594,8 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --test-all-synthetic-vulns)
-            TEST_ALL_SYNTHETIC_VULNS=true
-            shift
+            synthetic_vuln_retired_error "$1"
+            exit 1
             ;;
         --obfuscate)
             OBFUSCATE=true
@@ -664,21 +658,6 @@ check_metadata_schema "$metadata"
 # forwards MCB_OBFUSCATE_INIT_SCRIPT. Fail-fast locally so a passing local run
 # can't diverge from what CI would actually exercise.
 if [ "$OBFUSCATE" = true ]; then
-    # CI parity: synthetic_vuln is not emitted in the obfuscated matrix
-    # because vulnerability.patch + R8 interactions produce false-negative
-    # exploit failures unrelated to agent capability. See
-    # documentation/SYNTHETIC_VULNERABILITIES.md for the rationale and the
-    # per-vuln keep-rules escape hatch.
-    if [ -n "$TEST_SYNTHETIC_VULN" ] || [ "$TEST_ALL_SYNTHETIC_VULNS" = true ]; then
-        echo -e "${ERROR} --obfuscate cannot be combined with --test-synthetic-vuln"
-        echo -e "${ERROR} or --test-all-synthetic-vulns. Synthetic-vuln tests are excluded"
-        echo -e "${ERROR} from the obfuscated CI matrix because R8 may inline lambdas,"
-        echo -e "${ERROR} strip debug logs, or rename reflection-discovered methods in ways"
-        echo -e "${ERROR} that break the vulnerability.patch's observable side effect."
-        echo -e "${ERROR} See documentation/SYNTHETIC_VULNERABILITIES.md for details."
-        exit 1
-    fi
-
     if grep -q "MCB_OBFUSCATE_INIT_SCRIPT" "$DIR/build.sh" 2>/dev/null; then
         echo -e "${INFO} --obfuscate: $DIR/build.sh forwards MCB_OBFUSCATE_INIT_SCRIPT"
     else
