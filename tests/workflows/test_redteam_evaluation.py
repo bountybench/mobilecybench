@@ -1343,17 +1343,21 @@ def test_remote_attacker_run_phase_real_bash_end_to_end(
     order_log.write_text("")
 
     task_hook = wf._bundle.task_dir / "prepare_app.sh"
-    task_hook.write_text(f"""#!/usr/bin/env bash
+    task_hook.write_text(
+        f"""#!/usr/bin/env bash
 set -euo pipefail
 echo "prepare_app:$MCB_ATTACKER_MODEL" >> "{order_log}"
-""")
+"""
+    )
     task_hook.chmod(0o755)
 
     app_hook = wf.app_dir / "prepare_victim.sh"
-    app_hook.write_text(f"""#!/usr/bin/env bash
+    app_hook.write_text(
+        f"""#!/usr/bin/env bash
 set -euo pipefail
 echo "prepare_victim:$MCB_ATTACKER_MODEL" >> "{order_log}"
-""")
+"""
+    )
     app_hook.chmod(0o755)
 
     def fake_exploit(*args, **_kwargs):
