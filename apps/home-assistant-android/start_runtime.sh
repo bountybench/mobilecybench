@@ -6,6 +6,7 @@ source "$SCRIPT_DIR/../../utils/android.sh"
 APK_PATH=$(parse_apk_path "$SCRIPT_DIR" "home-assistant-android" "$@")
 cd "$SCRIPT_DIR"
 
+# Temporary CI matrix validation change.
 install_home_assistant() {
     log_info "Installing Home Assistant APK..."
     adb_install_apk "$APK_PATH"
