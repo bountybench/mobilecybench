@@ -8,6 +8,7 @@ tag absent from the registry, this aborted the replay before the emulator
 booted.
 """
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -124,3 +125,110 @@ def test_non_replay_path_still_calls_agent_setup(tmp_path):
     finally:
         for p in patches:
             p.stop()
+
+
+def test_prepare_app_and_verifier_share_per_phase_output_dir(tmp_path):
+    """Regression: a real prepare_app.sh writes a marker to
+    ``$MCB_OUTPUT_DIR/foo`` and the subsequent verifier (which reads
+    ``MCB_OUTPUT_DIR`` from the same per-phase replay dir) must see it.
+
+    Guards against the failure mode where ``_run_setup_hook`` exports
+    ``MCB_OUTPUT_DIR=logger_manager.get_logs_dir()`` while
+    ``_run_verifier`` reads from the per-phase ``replay_dir`` — hook
+    would write a marker the verifier never finds. The fix routes the
+    per-phase ``phase_dir`` through ``_run_setup_hook`` so both paths
+    agree on a single per-phase directory.
+    """
+    import json
+    import subprocess
+
+    from evaluation.task_bundle import ZerodayBundle
+
+    # Layout: real apps/<app>/metadata.json + real task dir with
+    # prepare_app.sh and a verify-equivalent reader stub so we can
+    # exercise the end-to-end env contract without spinning up an
+    # emulator.
+    app_dir = tmp_path / "apps" / "demoapp"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(
+        json.dumps({"package_name": "io.demo", "commit_version": "abc123"})
+    )
+
+    task_dir = tmp_path / "zerodays" / "reports" / "demoapp" / "report-0" / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metadata.json").write_text(
+        json.dumps({"attacker_model": "malicious_app"})
+    )
+    (task_dir / "fix.patch").write_text("--- a\n+++ b\n")
+
+    # Real hook script that writes to $MCB_OUTPUT_DIR/foo (mirrors the
+    # OwnTracks phase_offset.txt handoff pattern).
+    prepare_app = task_dir / "prepare_app.sh"
+    prepare_app.write_text(
+        '#!/usr/bin/env bash\nset -euo pipefail\necho marker > "$MCB_OUTPUT_DIR/foo"\n'
+    )
+    prepare_app.chmod(0o755)
+
+    bundle = ZerodayBundle(project_root=tmp_path, app_name="demoapp", task="report-0")
+
+    workflow = RedTeamWorkflow.__new__(RedTeamWorkflow)
+    workflow.config = RunnerConfig(
+        workflow="redteam",
+        probe_only=False,
+        attacker_model="malicious_app",
+        task="report-0",
+        synthetic_vuln_id=None,
+        build_type="skip-apk",
+        model="test",
+        agent_image="cybench/mobilecybench:does-not-exist",
+        max_iterations=10,
+        max_model_response_tokens=1000,
+        dry_run=False,
+        emulator_backend="native",
+        emulator_display="headless",
+        network_mode="permissive",
+    )
+    workflow.app_dir = app_dir
+    workflow.project_root = tmp_path
+    workflow._bundle = bundle
+    workflow._attacker_model = "malicious_app"
+
+    phase_dir = tmp_path / "logs" / "experiment" / "replays" / "phase1_original"
+    phase_dir.mkdir(parents=True)
+
+    # Run the actual hook through _run_setup_hook (per-phase context).
+    workflow._run_setup_hook(hook=prepare_app, label="prepare_app", phase_dir=phase_dir)
+
+    # Hook wrote `foo` under MCB_OUTPUT_DIR. The verifier (modeled after
+    # RedTeamWorkflow._run_verifier) sets MCB_OUTPUT_DIR=phase_dir and
+    # looks for the same marker. Both paths must resolve to phase_dir.
+    marker = phase_dir / "foo"
+    assert marker.exists(), (
+        f"prepare_app marker missing at {marker}; "
+        f"MCB_OUTPUT_DIR drifted from phase_dir"
+    )
+
+    # Mirror _run_verifier's env: MCB_APP_DIR + MCB_OUTPUT_DIR=phase_dir,
+    # then run a dummy verifier that reads $MCB_OUTPUT_DIR/foo. If the
+    # plumbing is consistent the file is found; otherwise it isn't.
+    verifier = task_dir / "verify_files" / "verify_exploit.sh"
+    verifier.parent.mkdir(parents=True, exist_ok=True)
+    verifier.write_text(
+        '#!/usr/bin/env bash\nset -e\ntest -f "$MCB_OUTPUT_DIR/foo" && echo OK || (echo MISSING; exit 1)\n'
+    )
+    verifier.chmod(0o755)
+
+    proc = subprocess.run(
+        ["bash", str(verifier)],
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "MCB_APP_DIR": str(app_dir),
+            "MCB_OUTPUT_DIR": str(phase_dir),
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert (
+        proc.returncode == 0
+    ), f"verifier did not find marker; stdout={proc.stdout!r} stderr={proc.stderr!r}"
