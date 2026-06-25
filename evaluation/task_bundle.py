@@ -465,23 +465,19 @@ def build_task_runtime_env(
     env["MCB_ATTACKER_MODEL"] = attacker_model
 
     app_metadata_path = app_dir / "metadata.json"
+    app_meta: dict = {}
     if app_metadata_path.exists():
         env["MCB_APP_METADATA_JSON"] = str(app_metadata_path)
         try:
             app_meta = json.loads(app_metadata_path.read_text())
         except (json.JSONDecodeError, OSError):
             app_meta = {}
-        package_name = app_meta.get("package_name")
-        if isinstance(package_name, str) and package_name:
-            env["MCB_PACKAGE_NAME"] = package_name
-        baseline_commit = app_meta.get("commit_version")
-        if isinstance(baseline_commit, str) and baseline_commit:
-            env["MCB_BASELINE_COMMIT"] = baseline_commit
 
     # Per-task fields are bundle-aware. ProbeOnlyBundle exposes task_dir
     # for layout symmetry (returns app_dir) and raises on patch access, so
     # we gate on `kind` to set per-task MCB_* keys only for real tasks.
     bundle_kind = getattr(bundle, "kind", None)
+    task_meta: dict = {}
     if bundle_kind in ("zeroday", "synthetic"):
         task_dir = getattr(bundle, "task_dir", None)
         if task_dir is not None:
@@ -489,12 +485,10 @@ def build_task_runtime_env(
             task_metadata_path = Path(task_dir) / "metadata.json"
             if task_metadata_path.exists():
                 env["MCB_TASK_METADATA_JSON"] = str(task_metadata_path)
-
-        # Task identifier: ZerodayBundle.task ("report-0") or
-        # SyntheticBundle.vuln_id.
-        task_id = getattr(bundle, "task", None) or getattr(bundle, "vuln_id", None)
-        if isinstance(task_id, str) and task_id:
-            env["MCB_TASK_ID"] = task_id
+                try:
+                    task_meta = json.loads(task_metadata_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    task_meta = {}
 
         try:
             patch_path = getattr(bundle, "patch", None)
@@ -504,6 +498,48 @@ def build_task_runtime_env(
             patch_path = Path(patch_path)
             if patch_path.exists():
                 env["MCB_FIX_PATCH"] = str(patch_path)
+
+    # Apply the validator's precedence rules from
+    # scripts/zero_day_task_common.sh so MCB_TASK_ID / MCB_PACKAGE_NAME /
+    # MCB_BASELINE_COMMIT match what hooks would see under
+    # scripts/validate_task_bundle.sh.
+    #
+    # task_id: task metadata `.task_id` > `.task_slug` > bundle.task /
+    #          bundle.vuln_id (which maps to the task-dir basename in the
+    #          validator's fallback).
+    # package_name: task metadata `.runtime.package_name` >
+    #               `.app_metadata_overrides.package_name` >
+    #               app metadata `.package_name`.
+    # baseline commit: task metadata `.baseline.commit` >
+    #                  app metadata `.commit_version`.
+    task_id = task_meta.get("task_id") or task_meta.get("task_slug")
+    if not (isinstance(task_id, str) and task_id):
+        task_id = getattr(bundle, "task", None) or getattr(bundle, "vuln_id", None)
+    if isinstance(task_id, str) and task_id:
+        env["MCB_TASK_ID"] = task_id
+
+    runtime_section = (
+        task_meta.get("runtime") if isinstance(task_meta.get("runtime"), dict) else {}
+    )
+    overrides_section = (
+        task_meta.get("app_metadata_overrides")
+        if isinstance(task_meta.get("app_metadata_overrides"), dict)
+        else {}
+    )
+    package_name = (
+        runtime_section.get("package_name")
+        or overrides_section.get("package_name")
+        or app_meta.get("package_name")
+    )
+    if isinstance(package_name, str) and package_name:
+        env["MCB_PACKAGE_NAME"] = package_name
+
+    baseline_section = (
+        task_meta.get("baseline") if isinstance(task_meta.get("baseline"), dict) else {}
+    )
+    baseline_commit = baseline_section.get("commit") or app_meta.get("commit_version")
+    if isinstance(baseline_commit, str) and baseline_commit:
+        env["MCB_BASELINE_COMMIT"] = baseline_commit
 
     if output_dir is not None:
         env["MCB_OUTPUT_DIR"] = str(output_dir)

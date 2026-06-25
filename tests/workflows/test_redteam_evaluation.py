@@ -526,7 +526,7 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
         patch.object(
             RedTeamWorkflow,
             "_run_prepare_app",
-            side_effect=lambda: order.append("prepare_app"),
+            side_effect=lambda *a, **kw: order.append("prepare_app"),
         ),
         patch.object(
             RedTeamWorkflow,
@@ -1265,7 +1265,7 @@ def test_malicious_app_run_phase_orders_both_hooks_pre_exploit(
         patch.object(
             RedTeamWorkflow,
             "_run_prepare_app",
-            side_effect=lambda: order.append("prepare_app"),
+            side_effect=lambda *a, **kw: order.append("prepare_app"),
         ),
         patch.object(
             RedTeamWorkflow,

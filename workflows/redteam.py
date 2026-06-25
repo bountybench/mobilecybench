@@ -128,7 +128,7 @@ class MaliciousAppOps:
 
         logger.info("[phase] Running prepare_app.sh (per-task)...")
         try:
-            workflow._run_prepare_app()
+            workflow._run_prepare_app(phase_dir=phase_dir)
         except Exception as e:
             logger.error(f"prepare_app failed: {e}")
             phase_dir.mkdir(parents=True, exist_ok=True)
@@ -293,7 +293,7 @@ class RemoteAttackerOps:
         # Mirrors CI's task_runtime_run_prepare_hook (pre-exploit, both models).
         logger.info("[phase] Running prepare_app.sh (per-task)...")
         try:
-            workflow._run_prepare_app()
+            workflow._run_prepare_app(phase_dir=phase_dir)
         except Exception as e:
             logger.error(f"prepare_app failed: {e}")
             phase_dir.mkdir(parents=True, exist_ok=True)
@@ -1311,13 +1311,18 @@ class RedTeamWorkflow(Workflow):
     # Setup hooks: per-task prepare_app + per-app prepare_victim
     # ------------------------------------------------------------------
 
-    def _run_prepare_app(self) -> None:
+    def _run_prepare_app(self, *, phase_dir: Optional[Path] = None) -> None:
         """Run <task_dir>/prepare_app.sh — the per-task pre-exploit hook.
 
         Mirrors CI's task_runtime_run_prepare_hook. Always runs once before
         the exploit, for both attacker models. Use it for vuln-specific setup
         (seeding a row only this exploit reads, etc.). For app-wide victim
         identity setup, use _run_prepare_victim instead.
+
+        ``phase_dir`` is the per-phase replay directory
+        (``replays_dir / phase1_original`` etc.); when supplied it becomes
+        the hook's ``MCB_OUTPUT_DIR`` and the basename drives
+        ``MCB_PHASE``. Matches the per-phase context the validator exports.
 
         Skipped in probe_only mode: probe_only is bundle-less and not
         vuln-specific (no task_dir on ProbeOnlyBundle), so per-task setup
@@ -1328,6 +1333,7 @@ class RedTeamWorkflow(Workflow):
         self._run_setup_hook(
             hook=self._bundle.task_dir / "prepare_app.sh",
             label="prepare_app",
+            phase_dir=phase_dir,
         )
 
     def _run_checks(self, *args, **kwargs) -> bool:
@@ -1372,7 +1378,13 @@ class RedTeamWorkflow(Workflow):
             label="prepare_victim",
         )
 
-    def _run_setup_hook(self, *, hook: Path, label: str) -> None:
+    def _run_setup_hook(
+        self,
+        *,
+        hook: Path,
+        label: str,
+        phase_dir: Optional[Path] = None,
+    ) -> None:
         """Shared executor for prepare_app / prepare_victim hooks. No-op if absent.
 
         Exports the full ``MCB_*`` task-runtime contract (matching
@@ -1382,6 +1394,13 @@ class RedTeamWorkflow(Workflow):
         ``MCB_APP_METADATA_JSON`` or ``MCB_TASK_DIR`` (zerodays repo
         PR #50+ pattern) would otherwise fail at runtime even when they
         pass validation.
+
+        ``phase_dir`` is the per-phase replay directory. When supplied it
+        sets ``MCB_OUTPUT_DIR`` to the per-phase scope (the validator's
+        equivalent) and derives ``MCB_PHASE`` from the directory basename
+        (``phase1_original`` → ``phase1``, ``phase2_patched`` → ``phase2``).
+        When omitted (e.g., per-app hooks invoked outside a phase),
+        ``MCB_OUTPUT_DIR`` falls back to the run's logs dir.
         """
         from utils.command_executor import CommandExecutor
 
@@ -1391,13 +1410,27 @@ class RedTeamWorkflow(Workflow):
 
         logger.info(f"{label} hook: {hook}")
 
+        if phase_dir is not None:
+            output_dir = phase_dir
+            base = phase_dir.name
+            if base.startswith("phase1"):
+                phase = "phase1"
+            elif base.startswith("phase2"):
+                phase = "phase2"
+            else:
+                phase = None
+        else:
+            output_dir = Path(logger_manager.get_logs_dir())
+            phase = None
+
         env = os.environ.copy()
         env.update(
             build_task_runtime_env(
                 bundle=self._bundle,
                 app_dir=self.app_dir,
                 attacker_model=self._attacker_model,
-                output_dir=Path(logger_manager.get_logs_dir()),
+                output_dir=output_dir,
+                phase=phase,
             )
         )
         env.setdefault("PYTHON_BIN", sys.executable)

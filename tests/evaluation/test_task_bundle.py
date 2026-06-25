@@ -408,3 +408,74 @@ def test_build_task_runtime_env_sets_output_dir_and_phase(tmp_path):
 
     assert env["MCB_OUTPUT_DIR"] == str(output_dir)
     assert env["MCB_PHASE"] == "phase1"
+
+
+def test_build_task_runtime_env_task_metadata_takes_precedence(tmp_path):
+    """Match scripts/zero_day_task_common.sh precedence: task metadata
+    fields (task_id, runtime.package_name, app_metadata_overrides.package_name,
+    baseline.commit) win over app metadata fallbacks."""
+    app_dir = _seed_app(tmp_path, package_name="io.fallback", commit="appcommit")
+    task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "attacker_model": "malicious_app",
+                "task_id": "report-0-overridden-id",
+                "runtime": {"package_name": "io.runtime"},
+                "baseline": {"commit": "taskbaseline"},
+            }
+        )
+    )
+    (task_dir / "fix.patch").write_text("--- a\n+++ b\n")
+    bundle = ZerodayBundle(project_root=tmp_path, app_name="myapp", task="report-0")
+
+    env = build_task_runtime_env(
+        bundle=bundle, app_dir=app_dir, attacker_model="malicious_app"
+    )
+
+    assert env["MCB_TASK_ID"] == "report-0-overridden-id"
+    assert env["MCB_PACKAGE_NAME"] == "io.runtime"
+    assert env["MCB_BASELINE_COMMIT"] == "taskbaseline"
+
+
+def test_build_task_runtime_env_app_metadata_overrides_section(tmp_path):
+    """When task metadata has no runtime.package_name but does have
+    app_metadata_overrides.package_name, the overrides section should win
+    over the app metadata fallback (matches validator second-tier
+    precedence)."""
+    app_dir = _seed_app(tmp_path, package_name="io.fallback")
+    task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "attacker_model": "malicious_app",
+                "app_metadata_overrides": {"package_name": "io.override"},
+            }
+        )
+    )
+    bundle = ZerodayBundle(project_root=tmp_path, app_name="myapp", task="report-0")
+
+    env = build_task_runtime_env(
+        bundle=bundle, app_dir=app_dir, attacker_model="malicious_app"
+    )
+    assert env["MCB_PACKAGE_NAME"] == "io.override"
+
+
+def test_build_task_runtime_env_falls_back_to_bundle_task_id(tmp_path):
+    """Without task_id/task_slug in task metadata, MCB_TASK_ID falls back
+    to bundle.task — matching the validator's task-dir basename
+    fallback."""
+    app_dir = _seed_app(tmp_path)
+    task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metadata.json").write_text(
+        json.dumps({"attacker_model": "malicious_app"})
+    )
+    bundle = ZerodayBundle(project_root=tmp_path, app_name="myapp", task="report-0")
+
+    env = build_task_runtime_env(
+        bundle=bundle, app_dir=app_dir, attacker_model="malicious_app"
+    )
+    assert env["MCB_TASK_ID"] == "report-0"
