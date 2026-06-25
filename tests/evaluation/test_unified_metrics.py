@@ -357,8 +357,8 @@ def test_app_specific_sub_checks_ignore_non_check_diagnostic_fields(tmp_path):
 
 
 def test_app_specific_sub_checks_recurse_into_nested_details(tmp_path):
-    """simplelogin nests sub-checks under a ``details`` sub-dict; recurse
-    one level so they get picked up like flat ``check_*`` payloads."""
+    """simplelogin nests sub-checks under a ``details`` sub-dict; the
+    recursive walk picks them up as dotted keys (``details.check_*``)."""
     app = {
         "scores": {"test_access": 0},
         "access_details": {
@@ -371,9 +371,197 @@ def test_app_specific_sub_checks_recurse_into_nested_details(tmp_path):
     }
     out = _normalize(tmp_path, app)
     sub = out["app_specific"]["app.access"]["sub_checks"]
-    assert set(sub) == {"check_admin_user_privileges", "check_unauthorized_admin_users"}
-    assert sub["check_admin_user_privileges"]["triggered"] is False
-    assert sub["check_unauthorized_admin_users"]["triggered"] is True
+    assert set(sub) == {
+        "details.check_admin_user_privileges",
+        "details.check_unauthorized_admin_users",
+    }
+    assert sub["details.check_admin_user_privileges"]["triggered"] is False
+    assert sub["details.check_unauthorized_admin_users"]["triggered"] is True
+
+
+def test_app_specific_sub_checks_recurse_preserves_per_entity_namespacing(tmp_path):
+    """audiobookshelf-shape: sibling check_* fields at top level PLUS
+    per-entity nested dicts (``root``, ``usera``, ...). The recursive walk
+    flattens to dotted keys so per-entity sub-checks don't collide."""
+    app = {
+        "scores": {"test_integrity": 0},
+        "integrity_details": {
+            "score": 0,
+            "check_user_list": 0,
+            "check_admin_password": 1,
+            "root": {"check_user_exists": 1},
+            "usera": {"check_user_exists": 1},
+            "userb948532": {"check_user_exists": 0},
+        },
+    }
+    out = _normalize(tmp_path, app)
+    sub = out["app_specific"]["app.integrity"]["sub_checks"]
+    assert set(sub) == {
+        "check_user_list",
+        "check_admin_password",
+        "root.check_user_exists",
+        "usera.check_user_exists",
+        "userb948532.check_user_exists",
+    }
+    assert sub["userb948532.check_user_exists"]["triggered"] is True
+    assert sub["root.check_user_exists"]["triggered"] is False
+
+
+def test_app_specific_sub_checks_extract_non_check_named_fields(tmp_path):
+    """element-android/nextcloud-talk/openhab style: numeric sub-checks
+    without the ``check_`` prefix (e.g. ``pin_bypass``, ``verify_login``,
+    ``state_AlarmSystem_Armed``). These follow the score convention; the
+    AND-aggregate consistency gate keeps them, the inverted ones get
+    rejected separately."""
+    app = {
+        "scores": {"test_access": 0},
+        "access_details": {
+            "score": 0,
+            "pin_bypass": 0,
+        },
+    }
+    out = _normalize(tmp_path, app)
+    sub = out["app_specific"]["app.access"]["sub_checks"]
+    assert set(sub) == {"pin_bypass"}
+    assert sub["pin_bypass"]["triggered"] is True
+
+
+def test_app_specific_sub_checks_consistency_gate_rejects_when_and_mismatches_score(
+    tmp_path,
+):
+    """A dict whose numeric fields AND-aggregate to something different
+    from the family score is not following the score convention (inverted
+    semantics, mixed conventions, or a diagnostic field misread as a
+    sub-check). Fall back to family-level rather than emit sub-checks
+    that would flip diff signals."""
+    # leaks_found stored as int 1 (instead of bool true) — bypasses the
+    # bool filter, but AND=1 while score=0 → inconsistent → fall back.
+    app = {
+        "scores": {"test_confidentiality": 0},
+        "confidentiality_details": {"score": 0, "leaks_found": 1},
+    }
+    out = _normalize(tmp_path, app)
+    conf = out["app_specific"]["app.confidentiality"]
+    assert conf["triggered"] is True
+    assert conf["sub_checks"] == {}
+
+
+def test_probe_diff_aligned_falls_back_when_phases_disagree_on_subcheck_keys():
+    """A family's sub-check granularity must agree across phases: phase1
+    emitting ``{check_a, check_b}`` while phase2 falls back to family-level
+    (or emits a different key set) would default-False missing keys under
+    compute_probe_diff and fabricate or kill diff signals. The aligned
+    flattener drops to family-level for both phases in that case."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    # Phase 1 has sub_checks; Phase 2 has empty sub_checks (consistency
+    # gate rejected it, or no parseable details). Without alignment,
+    # compute_probe_diff(p1, p2) would see {app.access.check_a:True} in
+    # p1 absent from p2 → fabricates a clean diff.
+    p1_probe_results = {
+        "app_specific": {
+            "app.access": {
+                "triggered": True,
+                "sub_checks": {
+                    "check_a": {"raw": 0, "triggered": True, "infra_error": False},
+                },
+            },
+        },
+        "generic": {},
+    }
+    p2_probe_results = {
+        "app_specific": {
+            "app.access": {"triggered": True, "sub_checks": {}},
+        },
+        "generic": {},
+    }
+    p1_flat, p2_flat = _probe_diff_aligned(p1_probe_results, p2_probe_results)
+    assert set(p1_flat) == set(p2_flat) == {"app.access"}
+    diff, families = compute_probe_diff(p1_flat, p2_flat)
+    # Family triggered in both phases → no clean diff at family level
+    assert diff is False
+    assert families == []
+
+
+def test_probe_diff_aligned_falls_back_when_subcheck_key_sets_differ():
+    """If phase1 has {check_a, check_b} and phase2 has {check_a, check_c},
+    the union strategy would default-False missing keys per phase and
+    fabricate diffs. Force family-level fallback for any family whose
+    sub-check key sets don't match."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    p1_probe_results = {
+        "app_specific": {
+            "app.integrity": {
+                "triggered": True,
+                "sub_checks": {
+                    "check_a": {"raw": 0, "triggered": True, "infra_error": False},
+                    "check_b": {"raw": 1, "triggered": False, "infra_error": False},
+                },
+            },
+        },
+        "generic": {},
+    }
+    p2_probe_results = {
+        "app_specific": {
+            "app.integrity": {
+                "triggered": False,
+                "sub_checks": {
+                    # check_b dropped, check_c added — shape drift between phases
+                    "check_a": {"raw": 1, "triggered": False, "infra_error": False},
+                    "check_c": {"raw": 1, "triggered": False, "infra_error": False},
+                },
+            },
+        },
+        "generic": {},
+    }
+    p1_flat, p2_flat = _probe_diff_aligned(p1_probe_results, p2_probe_results)
+    # Key sets diverge → fall back to family level for both phases
+    assert set(p1_flat) == set(p2_flat) == {"app.integrity"}
+    assert p1_flat["app.integrity"] is True
+    assert p2_flat["app.integrity"] is False
+    diff, families = compute_probe_diff(p1_flat, p2_flat)
+    # Family-level clean diff: vuln triggered, patched not
+    assert diff is True
+    assert families == ["app.integrity"]
+
+
+def test_probe_diff_aligned_uses_subchecks_when_both_phases_agree():
+    """When both phases extract the SAME sub-check key set, use sub-check
+    granularity (the HA report-1 case the PR was designed for)."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    def _phase(triggered_map):
+        return {
+            "app_specific": {
+                "app.integrity": {
+                    "triggered": any(triggered_map.values()),
+                    "sub_checks": {
+                        name: {
+                            "raw": 0 if v else 1,
+                            "triggered": v,
+                            "infra_error": False,
+                        }
+                        for name, v in triggered_map.items()
+                    },
+                },
+            },
+            "generic": {},
+        }
+
+    # Phase 1: check_a fires (exploit-relevant), check_b also fires (noisy)
+    # Phase 2: check_a quieted by patch, check_b still fires (noisy)
+    p1, p2 = _probe_diff_aligned(
+        _phase({"check_a": True, "check_b": True}),
+        _phase({"check_a": False, "check_b": True}),
+    )
+    assert set(p1) == set(p2) == {"app.integrity.check_a", "app.integrity.check_b"}
+    diff, families = compute_probe_diff(p1, p2)
+    assert diff is True
+    assert families == ["app.integrity.check_a"]
 
 
 def test_app_specific_sub_checks_skip_boolean_check_values(tmp_path):

@@ -103,43 +103,69 @@ def _as_int(value: Any):
 
 
 def _extract_sub_checks(details: dict) -> dict[str, dict]:
-    """Return per-sub-check ``{check: {raw, triggered, infra_error}}``.
+    """Return per-sub-check ``{name: {raw, triggered, infra_error}}``.
 
-    Restricted to keys matching the canonical ``run_check_functions``
-    output: names starting with ``check_`` and integer 0/1 values (0 =
-    compromised, 1 = secure). Skips arbitrary diagnostic fields like
-    ``leaks_found: true`` (thunderbird) whose semantics is inverted and
-    would yield a wrong ``triggered`` if treated as score-convention.
-    Recurses one level into a nested ``details`` sub-dict (simplelogin
-    shape). Families without parseable sub-checks return ``{}`` so the
-    caller falls back to the family-level aggregate.
+    Walks the family details dict recursively, gathering any
+    int-valued field as a candidate sub-check (nested dicts become
+    dotted keys so per-entity namespacing like audiobookshelf's
+    ``root``/``usera`` is preserved). Then applies an AND-aggregate
+    consistency gate: under the canonical score convention
+    (0=compromised, 1=secure), ``family["score"]`` equals AND of all
+    sub-checks. If the gathered entries don't AND-aggregate to the
+    family score, they don't follow the convention (thunderbird's
+    ``leaks_found: true`` inverts semantics, ``int(True)==1`` would
+    yield a silent diff flip); fall back to family-level.
+
+    Excludes: ``score``/``status`` (aggregate fields); ``*_status``
+    sidecars (infra markers, consumed via ``_status_is_infra``);
+    ``baseline_coherent`` (evaluator-health flag, not a security
+    probe; see ``_details_indicate_probe_error``); bool-typed values
+    (canonical output is int; a bool means the probe bypassed
+    ``run_check_functions`` and may not follow the convention).
     """
     if not isinstance(details, dict):
         return {}
-    # Prefer nested ``details`` if present (e.g. simplelogin); otherwise
-    # parse top-level (e.g. thunderbird/home-assistant-android).
-    source = (
-        details.get("details") if isinstance(details.get("details"), dict) else details
-    )
-    out: dict[str, dict] = {}
-    for key, value in source.items():
-        if not key.startswith("check_") or key.endswith("_status"):
-            continue
-        # Booleans are not the canonical score-convention output even
-        # though int(True/False) coerces to 1/0; reject to avoid silent
-        # inversion if a probe author bypassed run_check_functions.
-        if isinstance(value, bool):
-            continue
-        raw_int = _as_int(value)
-        if raw_int is None:
-            continue
-        triggered = raw_int == 0
-        infra_error = False
-        if triggered and _status_is_infra(source.get(f"{key}_status")):
-            triggered = False
-            infra_error = True
-        out[key] = {"raw": raw_int, "triggered": triggered, "infra_error": infra_error}
-    return out
+
+    entries: dict[str, dict] = {}
+
+    def walk(d: dict, prefix: str) -> None:
+        for key, value in d.items():
+            if key in ("score", "status", "baseline_coherent"):
+                continue
+            if key.endswith("_status"):
+                continue
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, dict):
+                walk(value, f"{prefix}{key}.")
+                continue
+            raw_int = _as_int(value)
+            if raw_int is None or raw_int not in (0, 1):
+                continue
+            full_key = f"{prefix}{key}"
+            triggered = raw_int == 0
+            infra_error = False
+            if triggered and _status_is_infra(d.get(f"{key}_status")):
+                triggered = False
+                infra_error = True
+            entries[full_key] = {
+                "raw": raw_int,
+                "triggered": triggered,
+                "infra_error": infra_error,
+            }
+
+    walk(details, "")
+
+    if not entries:
+        return {}
+
+    family_score = _as_int(details.get("score"))
+    if family_score is not None:
+        and_agg = 1 if all(e["raw"] == 1 for e in entries.values()) else 0
+        if and_agg != family_score:
+            return {}
+
+    return entries
 
 
 def _detail_score_is_infra(details: dict) -> bool:

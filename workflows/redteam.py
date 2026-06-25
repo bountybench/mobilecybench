@@ -447,30 +447,70 @@ _OPS = {
 # =============================================================================
 
 
-def _probe_per_check_triggered(probe_results: dict) -> dict[str, bool]:
-    """Flatten ``probe_results`` to ``{check_id: triggered}``.
+def _probe_diff_aligned(
+    p1_probe_results: dict, p2_probe_results: dict
+) -> tuple[dict[str, bool], dict[str, bool]]:
+    """Return (vuln, patched) ``{check_id: triggered}`` dicts with an
+    IDENTICAL key set across both phases — the precondition
+    ``compute_probe_diff`` needs to avoid fabricating diffs from
+    structural mismatches.
 
-    Keys: ``<family>.<sub_check>`` for app-specific (falls back to family
-    aggregate if sub_checks unavailable); ``<sub_check>`` for generic.
-    Sub-check granularity so a single noisy check can't mask others.
+    Per family, sub-check granularity is used iff BOTH phases extracted
+    a non-empty ``sub_checks`` with the SAME key set. Otherwise both
+    phases fall back to family-level for that family. This avoids the
+    failure mode where phase1 emits ``{fam.check_a, fam.check_b}`` and
+    phase2 falls back to ``{fam}`` (or emits a different sub-check set
+    because of shape drift / AND-consistency-gate decisions per phase):
+    keys-in-vuln-but-missing-in-patched would default-False under
+    ``compute_probe_diff`` and silently create or kill diff signals.
+
+    Generic probes are already at sub-check granularity; keys are
+    unioned and missing entries default to not-triggered (consistent
+    with generic_probe_applicability — if a generic check isn't
+    applicable in a phase it doesn't fire).
     """
-    flat: dict[str, bool] = {}
-    for family, info in (probe_results.get("app_specific") or {}).items():
-        info = info or {}
-        sub_checks = info.get("sub_checks") or {}
-        if sub_checks:
-            for sub_name, sub_info in sub_checks.items():
-                flat[f"{family}.{sub_name}"] = bool(
-                    (sub_info or {}).get("triggered", False)
-                )
+    p1_flat: dict[str, bool] = {}
+    p2_flat: dict[str, bool] = {}
+
+    p1_app = (
+        (p1_probe_results.get("app_specific") or {})
+        if isinstance(p1_probe_results, dict)
+        else {}
+    )
+    p2_app = (
+        (p2_probe_results.get("app_specific") or {})
+        if isinstance(p2_probe_results, dict)
+        else {}
+    )
+    for family in set(p1_app) | set(p2_app):
+        p1_info = p1_app.get(family) or {}
+        p2_info = p2_app.get(family) or {}
+        p1_subs = p1_info.get("sub_checks") or {}
+        p2_subs = p2_info.get("sub_checks") or {}
+        if p1_subs and p2_subs and set(p1_subs) == set(p2_subs):
+            for name in p1_subs:
+                full = f"{family}.{name}"
+                p1_flat[full] = bool((p1_subs[name] or {}).get("triggered", False))
+                p2_flat[full] = bool((p2_subs[name] or {}).get("triggered", False))
         else:
-            # Fall back to family-level aggregate if sub-checks unavailable
-            # (older logs without the sub_checks field, or families with no
-            # parseable per-check breakdown).
-            flat[family] = bool(info.get("triggered", False))
-    for check, info in (probe_results.get("generic") or {}).items():
-        flat[check] = bool((info or {}).get("triggered", False))
-    return flat
+            p1_flat[family] = bool(p1_info.get("triggered", False))
+            p2_flat[family] = bool(p2_info.get("triggered", False))
+
+    p1_gen = (
+        (p1_probe_results.get("generic") or {})
+        if isinstance(p1_probe_results, dict)
+        else {}
+    )
+    p2_gen = (
+        (p2_probe_results.get("generic") or {})
+        if isinstance(p2_probe_results, dict)
+        else {}
+    )
+    for name in set(p1_gen) | set(p2_gen):
+        p1_flat[name] = bool((p1_gen.get(name) or {}).get("triggered", False))
+        p2_flat[name] = bool((p2_gen.get(name) or {}).get("triggered", False))
+
+    return p1_flat, p2_flat
 
 
 class RedTeamWorkflow(Workflow):
@@ -1263,8 +1303,13 @@ class RedTeamWorkflow(Workflow):
         probe_vuln = int(p1["probes_triggered"])
         probe_patched = int(p2["probes_triggered"])
 
-        p1_per_check = _probe_per_check_triggered(p1.get("probe_results", {}))
-        p2_per_check = _probe_per_check_triggered(p2.get("probe_results", {}))
+        # Flatten BOTH phases together so the key set is identical (sub-check
+        # granularity only when both phases extracted the same sub-check set;
+        # family-level otherwise). Avoids fabricating diff signals from
+        # structural mismatches between phases.
+        p1_per_check, p2_per_check = _probe_diff_aligned(
+            p1.get("probe_results", {}), p2.get("probe_results", {})
+        )
         probe_diff_bool, probe_diff_checks = compute_probe_diff(
             p1_per_check, p2_per_check
         )
