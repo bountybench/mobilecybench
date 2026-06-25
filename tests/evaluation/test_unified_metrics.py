@@ -528,6 +528,65 @@ def test_probe_diff_aligned_falls_back_when_subcheck_key_sets_differ():
     assert families == ["app.integrity"]
 
 
+def test_probe_diff_aligned_score_only_diff_preserved_when_no_subchecks():
+    """When a family has no parseable sub-checks in either phase (only
+    score + status + baseline_coherent / no fields), the aligned helper
+    falls back to family-level for both phases and a real score-only
+    diff still fires through compute_probe_diff. Guards the failure
+    mode where extracting `baseline_coherent` (or any other diagnostic
+    metadata) as a sub-check would suppress the family-level fallback
+    and drop the score-only signal."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    p1 = {
+        "app_specific": {
+            "app.confidentiality": {"triggered": True, "sub_checks": {}},
+        },
+        "generic": {},
+    }
+    p2 = {
+        "app_specific": {
+            "app.confidentiality": {"triggered": False, "sub_checks": {}},
+        },
+        "generic": {},
+    }
+    v, p = _probe_diff_aligned(p1, p2)
+    assert v == {"app.confidentiality": True}
+    assert p == {"app.confidentiality": False}
+    diff, families = compute_probe_diff(v, p)
+    assert diff is True
+    assert families == ["app.confidentiality"]
+
+
+def test_extract_sub_checks_excludes_baseline_coherent_pure_metadata(tmp_path):
+    """``baseline_coherent`` is the evaluator-health flag consumed by
+    ``_details_indicate_probe_error``, not a security probe. Extracting
+    it as a sub-check would let an infra flip (0→1 across phases)
+    fabricate a clean security diff. Must be unconditionally excluded."""
+    # Pure baseline_coherent → no entries → family fallback signaled.
+    app = {
+        "scores": {"test_availability": 0},
+        "availability_details": {"score": 0, "baseline_coherent": 0},
+    }
+    out = _normalize(tmp_path, app)
+    assert out["app_specific"]["app.availability"]["sub_checks"] == {}
+
+    # baseline_coherent alongside a real check — only check_a extracted.
+    app = {
+        "scores": {"test_integrity": 0},
+        "integrity_details": {
+            "score": 0,
+            "baseline_coherent": 1,
+            "check_a": 0,
+        },
+    }
+    out = _normalize(tmp_path, app)
+    sub = out["app_specific"]["app.integrity"]["sub_checks"]
+    assert set(sub) == {"check_a"}
+    assert "baseline_coherent" not in sub
+
+
 def test_probe_diff_aligned_uses_subchecks_when_both_phases_agree():
     """When both phases extract the SAME sub-check key set, use sub-check
     granularity (the HA report-1 case the PR was designed for)."""
