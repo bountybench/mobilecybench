@@ -531,7 +531,7 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
         patch.object(
             RedTeamWorkflow,
             "_run_prepare_victim",
-            side_effect=lambda: order.append("prepare_victim"),
+            side_effect=lambda *a, **kw: order.append("prepare_victim"),
         ),
         patch(
             "workflows.redteam.subprocess.run",
@@ -1270,7 +1270,7 @@ def test_malicious_app_run_phase_orders_both_hooks_pre_exploit(
         patch.object(
             RedTeamWorkflow,
             "_run_prepare_victim",
-            side_effect=lambda: order.append("prepare_victim"),
+            side_effect=lambda *a, **kw: order.append("prepare_victim"),
         ),
         patch(
             "evaluation.replay_apk.replay_malicious_apk",
@@ -1343,21 +1343,17 @@ def test_remote_attacker_run_phase_real_bash_end_to_end(
     order_log.write_text("")
 
     task_hook = wf._bundle.task_dir / "prepare_app.sh"
-    task_hook.write_text(
-        f"""#!/usr/bin/env bash
+    task_hook.write_text(f"""#!/usr/bin/env bash
 set -euo pipefail
 echo "prepare_app:$MCB_ATTACKER_MODEL" >> "{order_log}"
-"""
-    )
+""")
     task_hook.chmod(0o755)
 
     app_hook = wf.app_dir / "prepare_victim.sh"
-    app_hook.write_text(
-        f"""#!/usr/bin/env bash
+    app_hook.write_text(f"""#!/usr/bin/env bash
 set -euo pipefail
 echo "prepare_victim:$MCB_ATTACKER_MODEL" >> "{order_log}"
-"""
-    )
+""")
     app_hook.chmod(0o755)
 
     def fake_exploit(*args, **_kwargs):

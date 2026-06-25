@@ -13,7 +13,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from models.config import RunnerConfig
-from workflows.redteam import MaliciousAppOps, RedTeamWorkflow
+from workflows.redteam import (
+    MaliciousAppOps,
+    RedTeamWorkflow,
+    _phase_slug_for_output_dir,
+)
 
 _BASE_CONFIG = {
     "workflow": "redteam",
@@ -299,7 +303,7 @@ def test_run_verifier_exports_full_task_runtime_env(tmp_path):
         app_dir=app_dir,
         attacker_model="remote_attacker",
         output_dir=replay_dir,
-        phase="phase1",
+        phase="vulnerable",
     )
     # The verifier env must be a superset of the contract — every key the
     # validator would export under task_runtime_set_context is present, and
@@ -372,3 +376,75 @@ def test_run_verifier_omits_phase_when_replay_dir_is_none(tmp_path):
     assert "MCB_PHASE" not in captured["env"]
     # Bundle-derived fields still appear (no per-phase scope needed).
     assert captured["env"].get("MCB_TASK_DIR") == str(task_dir)
+
+
+def test_phase_slug_for_output_dir_maps_runner_dirs_to_validator_slugs(tmp_path):
+    """Lock the runner→validator slug mapping. Audiobookshelf prepare_app
+    hooks branch on ``MCB_PHASE=vulnerable``; if the helper returns
+    "phase1" the hook silently skips on every phase. Mirrors
+    ``scripts/zero_day_task_common.sh`` (``task_validation_run_phase
+    "vulnerable" / "secure"``)."""
+    assert _phase_slug_for_output_dir(tmp_path / "phase1_original") == "vulnerable"
+    assert _phase_slug_for_output_dir(tmp_path / "phase2_patched") == "secure"
+    # Probe-only and unrecognized names degrade to None (no MCB_PHASE).
+    assert _phase_slug_for_output_dir(tmp_path / "probe") is None
+    assert _phase_slug_for_output_dir(None) is None
+
+
+def test_run_prepare_victim_exports_per_phase_context(tmp_path):
+    """Validator parity: prepare_victim runs under the same
+    ``task_runtime_set_context`` as prepare_app and the verifier — so
+    victim hooks see the per-phase ``MCB_OUTPUT_DIR`` / ``MCB_PHASE``.
+    Without this routing, victim hooks that write under
+    ``$MCB_OUTPUT_DIR`` write to ``logs/`` and the verifier never sees
+    the state."""
+    import json
+
+    from evaluation.task_bundle import ZerodayBundle
+
+    app_dir = tmp_path / "apps" / "demoapp"
+    app_dir.mkdir(parents=True)
+    (app_dir / "metadata.json").write_text(json.dumps({"package_name": "io.demo"}))
+
+    task_dir = tmp_path / "zerodays" / "reports" / "demoapp" / "report-0" / "task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "metadata.json").write_text(json.dumps({"task_id": "report-0"}))
+
+    # Real prepare_victim.sh that asserts validator-equivalent env.
+    prepare_victim = app_dir / "prepare_victim.sh"
+    prepare_victim.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        '[ "$MCB_PHASE" = vulnerable ] || { echo wrong-phase:$MCB_PHASE; exit 1; }\n'
+        'echo seeded > "$MCB_OUTPUT_DIR/victim_seed"\n'
+    )
+    prepare_victim.chmod(0o755)
+
+    workflow = RedTeamWorkflow.__new__(RedTeamWorkflow)
+    workflow.config = RunnerConfig(
+        workflow="redteam",
+        probe_only=False,
+        attacker_model="malicious_app",
+        task="report-0",
+        synthetic_vuln_id=None,
+        build_type="skip-apk",
+        model="test",
+        agent_image="cybench/mobilecybench:does-not-exist",
+        max_iterations=10,
+        max_model_response_tokens=1000,
+        dry_run=False,
+        emulator_backend="native",
+        emulator_display="headless",
+        network_mode="permissive",
+    )
+    workflow.app_dir = app_dir
+    workflow.project_root = tmp_path
+    workflow._bundle = ZerodayBundle(
+        project_root=tmp_path, app_name="demoapp", task="report-0"
+    )
+    workflow._attacker_model = "malicious_app"
+
+    phase_dir = tmp_path / "logs" / "exp" / "replays" / "phase1_original"
+    phase_dir.mkdir(parents=True)
+    workflow._run_prepare_victim(phase_dir=phase_dir)
+
+    assert (phase_dir / "victim_seed").read_text().strip() == "seeded"

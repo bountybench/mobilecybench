@@ -38,18 +38,25 @@ from workflows.base import Workflow
 def _phase_slug_for_output_dir(output_dir: Optional[Path]) -> Optional[str]:
     """Derive ``MCB_PHASE`` from a per-phase replay dir's basename.
 
-    Mirrors the phase identifier ``scripts/task_runtime_common.sh`` exports
-    so prepare_app and the verifier see the same ``MCB_PHASE`` value when
-    pointed at the same per-phase dir. Returns ``None`` for unrecognized
-    names (e.g. probe-only dirs) or when ``output_dir`` is ``None``.
+    Mirrors the semantic ``phase_slug`` ``scripts/zero_day_task_common.sh``
+    passes to ``task_validation_run_phase``: ``vulnerable`` for the
+    original/unpatched build, ``secure`` for the patched build. Runner
+    convention maps ``phase1_original`` → ``vulnerable`` and
+    ``phase2_patched`` → ``secure``. Hooks that branch on
+    ``MCB_PHASE=vulnerable`` (e.g. audiobookshelf marquee/search XSS
+    seeds) require the same values runner-side or they no-op on every
+    phase.
+
+    Returns ``None`` for probe-only / unrecognized names or when
+    ``output_dir`` is ``None``.
     """
     if output_dir is None:
         return None
     base = output_dir.name
     if base.startswith("phase1"):
-        return "phase1"
+        return "vulnerable"
     if base.startswith("phase2"):
-        return "phase2"
+        return "secure"
     return None
 
 
@@ -156,7 +163,7 @@ class MaliciousAppOps:
         # in before the malicious APK runs co-resident with it.
         logger.info("[phase] Running prepare_victim.sh (per-app)...")
         try:
-            workflow._run_prepare_victim()
+            workflow._run_prepare_victim(phase_dir=phase_dir)
         except Exception as e:
             logger.error(f"prepare_victim failed: {e}")
             phase_dir.mkdir(parents=True, exist_ok=True)
@@ -405,7 +412,7 @@ class RemoteAttackerOps:
         logger.info("[phase] Running prepare_victim.sh (per-app)...")
         prepare_victim_failed = False
         try:
-            workflow._run_prepare_victim()
+            workflow._run_prepare_victim(phase_dir=phase_dir)
         except Exception as e:
             logger.error(f"prepare_victim failed: {e}")
             prepare_victim_failed = True
@@ -1397,7 +1404,7 @@ class RedTeamWorkflow(Workflow):
             label="agent_login",
         )
 
-    def _run_prepare_victim(self) -> None:
+    def _run_prepare_victim(self, *, phase_dir: Optional[Path] = None) -> None:
         """Run <app_dir>/prepare_victim.sh — the per-app victim-state hook.
 
         Mirrors CI's task_validation_run_prepare_victim_hook. Position depends
@@ -1406,10 +1413,20 @@ class RedTeamWorkflow(Workflow):
           - remote_attacker: post-pm-clear, before the verifier
         Use it for app-wide victim identity setup (logging in, restoring
         prefs, seeding the local DB) shared across vulns for the same app.
+
+        ``phase_dir`` is the per-phase replay dir. The validator runs
+        prepare_victim under the same ``task_runtime_set_context`` as
+        prepare_app and the verifier, so victim hooks see the same
+        ``MCB_OUTPUT_DIR`` / ``MCB_PHASE``. Match that here so a victim
+        hook that branches on ``MCB_PHASE`` or writes seed state under
+        ``MCB_OUTPUT_DIR`` behaves the same way runner-side. When omitted
+        (callers outside a phase), the hook falls back to the run's
+        logs dir with no ``MCB_PHASE``.
         """
         self._run_setup_hook(
             hook=self.app_dir / "prepare_victim.sh",
             label="prepare_victim",
+            phase_dir=phase_dir,
         )
 
     def _run_setup_hook(
