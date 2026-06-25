@@ -103,24 +103,12 @@ def _as_int(value: Any):
 
 
 def _extract_sub_checks(details: dict) -> dict[str, dict]:
-    """Return per-sub-check normalized entries from a family details dict.
+    """Return per-sub-check ``{check: {raw, triggered, infra_error}}``.
 
-    A family entry-point script (e.g. ``test_integrity.py``) emits a JSON
-    dict like::
-
-        {"check_a": 1, "check_a_status": "infra_error",
-         "check_b": 0, "score": 0}
-
-    keyed by individual ``check_*`` function names plus the aggregate
-    ``score`` and optional ``status``. This helper pulls each sub-check out
-    so callers can reason at sub-check granularity — the level at which a
-    patch actually quiets (or fails to quiet) a check. Without this, a
-    single noisy sub-check in an otherwise-cleanly-diffed family masks the
-    real signal at scoring time.
-
-    Skips the aggregate ``score``/``status`` keys and the ``<check>_status``
-    sidecars (consumed via :func:`_status_is_infra` like the family-level
-    infra disambiguation).
+    Family details dicts look like
+    ``{"check_a": 1, "check_a_status": "infra_error", "check_b": 0, "score": 0}``;
+    this pulls each ``check_*`` out (skipping ``score``/``status`` and
+    ``_status`` sidecars) so scoring can diff at sub-check granularity.
     """
     if not isinstance(details, dict):
         return {}
@@ -235,11 +223,6 @@ def normalize_probe_results(
             if triggered and _detail_score_is_infra(details):
                 triggered = False
                 infra_error = True
-            # Per-sub-check breakdown so downstream scoring can diff at the
-            # check that actually exercises the vuln rather than the loose
-            # CIAA family bucket (a path-traversal probe might live under
-            # confidentiality or integrity depending on author taste; the
-            # check itself is what fires, not the bucket).
             sub_checks = _extract_sub_checks(details)
             app_specific[norm_key] = {
                 "raw": raw_val,

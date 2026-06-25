@@ -287,17 +287,10 @@ def test_generic_real_secret_triggers(tmp_path):
     assert out["combined"]["triggered"] is True
 
 
-# ---------------------------------------------------------------------------
-# sub_checks: per-sub-check breakdown alongside the family aggregate so
-# downstream scoring can diff at sub-check granularity (the level a patch
-# actually quiets), not just at the loose CIAA family bucket.
-# ---------------------------------------------------------------------------
+# --- sub_checks: per-check breakdown alongside the family aggregate ---
 
 
 def test_app_specific_emits_sub_checks_breakdown(tmp_path):
-    """Each app-specific family carries a ``sub_checks`` dict with per-check
-    ``raw``/``triggered``/``infra_error`` parsed from the family details.
-    Family aggregate continues to live alongside for backward compat."""
     app = {
         "scores": {"test_integrity": 0},
         "integrity_details": {
@@ -308,7 +301,7 @@ def test_app_specific_emits_sub_checks_breakdown(tmp_path):
     }
     out = _normalize(tmp_path, app)
     integrity = out["app_specific"]["app.integrity"]
-    assert integrity["triggered"] is True  # family aggregate intact
+    assert integrity["triggered"] is True
     sub = integrity["sub_checks"]
     assert set(sub) == {
         "check_legacy_auth_store_drift",
@@ -321,9 +314,7 @@ def test_app_specific_emits_sub_checks_breakdown(tmp_path):
 
 
 def test_app_specific_sub_check_infra_status_demotes_triggered(tmp_path):
-    """A sub-check returning 0 with an ``_status`` sidecar (infra marker)
-    is demoted to infra_error inside its sub_checks entry — same convention
-    as the family-level disambiguation."""
+    """_status sidecar demotes a sub-check's triggered to infra_error."""
     app = {
         "scores": {"test_access": 0},
         "access_details": {
@@ -342,8 +333,6 @@ def test_app_specific_sub_check_infra_status_demotes_triggered(tmp_path):
 
 
 def test_app_specific_sub_checks_empty_when_no_details(tmp_path):
-    """No details dict (or only ``score``/``status``) → empty sub_checks.
-    Family aggregate remains the single source of triggered."""
     app = {"scores": {"test_availability": 1}}
     out = _normalize(tmp_path, app)
     avail = out["app_specific"]["app.availability"]

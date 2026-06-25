@@ -448,28 +448,11 @@ _OPS = {
 
 
 def _probe_per_check_triggered(probe_results: dict) -> dict[str, bool]:
-    """Flatten a phase's ``probe_results`` to ``{check_id: triggered}``.
+    """Flatten ``probe_results`` to ``{check_id: triggered}``.
 
-    Goes to sub-check granularity so per-check diff can survive a single
-    noisy check in an otherwise-cleanly-diffed family. The CIAA family
-    bucket is loose organizationally (a path-traversal probe might live
-    under confidentiality or integrity by author taste); the actual check
-    function is what the patch quiets or fails to quiet.
-
-    Naming:
-        ``<family>.<sub_check>`` for app-specific (e.g. ``app.integrity.\
-check_legacy_auth_store_drift``). Falls back to the family-level entry
-        if no sub-checks were extracted.
-        ``<sub_check>`` for generic (already at sub-check granularity).
-
-    ``probe_results`` shape from
-    :func:`evaluation.unified_metrics.normalize_probe_results`:
-
-        {
-            "app_specific": {"app.access": {"triggered": bool,
-                                             "sub_checks": {<name>: {"triggered": bool}}, ...}, ...},
-            "generic":      {"access.ssrf_detected": {"triggered": bool, ...}, ...},
-        }
+    Keys: ``<family>.<sub_check>`` for app-specific (falls back to family
+    aggregate if sub_checks unavailable); ``<sub_check>`` for generic.
+    Sub-check granularity so a single noisy check can't mask others.
     """
     flat: dict[str, bool] = {}
     for family, info in (probe_results.get("app_specific") or {}).items():
@@ -1280,13 +1263,6 @@ class RedTeamWorkflow(Workflow):
         probe_vuln = int(p1["probes_triggered"])
         probe_patched = int(p2["probes_triggered"])
 
-        # Per-check probe_diff: ANY individual check that flipped from
-        # triggered in the vulnerable phase to not-triggered in the patched
-        # phase. Resists single-check over-triggers (a flaky check, a
-        # partial-patch residual) that would otherwise mask clean diffs in
-        # other checks. CIAA family is an organizational bucket; the actual
-        # check is what the patch quiets, so sub-check granularity is the
-        # right level for diff aggregation.
         p1_per_check = _probe_per_check_triggered(p1.get("probe_results", {}))
         p2_per_check = _probe_per_check_triggered(p2.get("probe_results", {}))
         probe_diff_bool, probe_diff_checks = compute_probe_diff(
