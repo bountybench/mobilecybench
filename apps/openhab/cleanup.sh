@@ -247,11 +247,6 @@ files_cleanup() {
     rm -rf "$ROOT_DIR/tmp"
   fi
 
-  runtime_state_dir="$ROOT_DIR/synthetic_vulnerabilities/vuln_0/runtime_state"
-  if [ -d "$runtime_state_dir" ]; then
-    LOG "Removing runtime state directory: $runtime_state_dir"
-    rm -rf "$runtime_state_dir"
-  fi
 }
 
 adb_cleanup() {

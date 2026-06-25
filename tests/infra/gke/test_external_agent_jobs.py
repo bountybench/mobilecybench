@@ -54,6 +54,15 @@ BASE_CONFIG = {
 AGENT_IMAGE = "cybench/mobilecybench:opencode_1.15.6-r1"
 
 
+def _has_active_synthetic_vulns() -> bool:
+    return any((REPO_ROOT / "apps").glob("*/synthetic_vulnerabilities/vuln_*"))
+
+
+def _skip_without_active_synthetic_vulns() -> None:
+    if not _has_active_synthetic_vulns():
+        pytest.skip("synthetic vulnerability payloads are archived")
+
+
 def _generate(
     *argv: str, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
@@ -180,8 +189,13 @@ def test_emulator_gpu_cli_is_plumbed_to_jobs() -> None:
     res = _generate(
         "--apps",
         "conversations",
-        "--models",
-        "gpt-4o",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--probe-only",
+        "--attacker-models",
+        "malicious_app",
+        "--gcs-bucket",
+        "test",
         "--emulator-gpu",
         "swangle",
     )
@@ -207,6 +221,7 @@ def test_external_only_flags_rejected_on_legacy_path() -> None:
 
 
 def test_legacy_path_still_renders_and_omits_external_labels() -> None:
+    _skip_without_active_synthetic_vulns()
     res = _generate(
         "--apps", "conversations", "--models", "gpt-4o", "--gcs-bucket", "t"
     )
@@ -344,6 +359,7 @@ def test_committed_base_legacy_synthetic_is_valid(tmp_path: Path) -> None:
     against the committed base, and assert the result loads. Would fail if
     build_legacy_jobs ever stopped forcing probe_only=false.
     """
+    _skip_without_active_synthetic_vulns()
     RunnerConfig = _runner_config_or_skip()
     res = _generate("--apps", "conversations", "--models", "gpt-5.5")
     assert res.returncode == 0, res.stderr

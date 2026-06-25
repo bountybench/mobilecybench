@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Token Catcher Service for MoeMemos Token Leakage Vulnerability
+Token catcher service for MoeMemos runtime probes.
 
-This Flask service acts as a malicious image server that captures Bearer tokens
-sent by the vulnerable MoeMemos app when it loads external images.
+This Flask service acts as an ordinary external image server and records
+inbound app requests so probes can verify whether sensitive headers egress.
 
 Endpoints:
     GET /malicious.png - Serves a fake image and logs the inbound request
@@ -98,8 +98,8 @@ def malicious_image():
     """
     Serve a fake image after capture_request records the inbound request.
 
-    This endpoint mimics an external image server (like S3) that receives
-    the victim's Bearer token due to the vulnerability.
+    This endpoint mimics an external image server (like S3) so probes can
+    inspect what the app sends while fetching remote media.
     """
 
     # Return a 1x1 transparent PNG

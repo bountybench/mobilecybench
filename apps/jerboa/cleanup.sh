@@ -56,9 +56,6 @@ if [[ -f "$BASELINE_FILE" ]]; then
   rm -f -- "$BASELINE_FILE"
 fi
 
-# Remove synthetic verifier oracle files
-rm -f -- "${SCRIPT_DIR}/synthetic_vulnerabilities/vuln_0/.expected_marker" 2>/dev/null || true
-
 # Remove Android internal dir snapshot files
 for f in "${SCRIPT_DIR}/baseline_android_dir.txt" "${SCRIPT_DIR}/after_android_dir.txt"; do
   if [[ -f "$f" ]]; then
