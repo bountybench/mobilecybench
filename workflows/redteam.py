@@ -792,11 +792,17 @@ class RedTeamWorkflow(Workflow):
         log_path = phase_dir / "verify_exploit.log"
         logger.info(f"Running verifier: {verifier}")
         with log_path.open("w") as log:
+            # Validator parity (scripts/task_runtime_common.sh:255): the
+            # verifier runs from TASK_RUNTIME_TASK_DIR, NOT from
+            # verify_files/. Hooks resolving relative paths
+            # (e.g., ``exploit_files/foo``) only match the validator if
+            # cwd matches.
             proc = subprocess.run(
                 ["bash", str(verifier)],
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 env=env,
+                cwd=self._bundle.task_dir,
                 timeout=self.config.script_timeout,
             )
         logger.info(f"[verifier] exit={proc.returncode} log={log_path}")
@@ -1487,11 +1493,16 @@ class RedTeamWorkflow(Workflow):
         )
         env.setdefault("PYTHON_BIN", sys.executable)
 
+        # Validator parity (scripts/task_runtime_common.sh:119): hooks run
+        # from TASK_RUNTIME_TASK_DIR. `hook.parent` resolves to the
+        # task_dir for per-task hooks (prepare_app) and to the app_dir for
+        # per-app hooks (prepare_victim / agent_login) — both match how
+        # the validator's task_validation_run_phase invokes them.
         cmd = CommandExecutor()
         cmd.run_with_progress(
             f"bash {hook}",
             timeout=self.config.script_timeout,
             message=f"Running {label} hook",
-            cwd=self.app_dir,
+            cwd=hook.parent,
             env=env,
         )

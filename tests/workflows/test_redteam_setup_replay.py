@@ -293,6 +293,7 @@ def test_run_verifier_exports_full_task_runtime_env(tmp_path):
 
     def capture(cmd, *args, **kwargs):
         captured["env"] = kwargs.get("env")
+        captured["cwd"] = kwargs.get("cwd")
         return real_run(cmd, *args, **kwargs)
 
     with patch("workflows.redteam.subprocess.run", side_effect=capture):
@@ -313,6 +314,9 @@ def test_run_verifier_exports_full_task_runtime_env(tmp_path):
             f"_run_verifier dropped {key}={value!r} "
             f"(saw {captured['env'].get(key)!r})"
         )
+    # Validator parity: task_runtime_run_verifier cds to the task_dir
+    # before invoking verify_exploit.sh (scripts/task_runtime_common.sh:255).
+    assert captured["cwd"] == workflow._bundle.task_dir
 
 
 def test_run_verifier_omits_phase_when_replay_dir_is_none(tmp_path):

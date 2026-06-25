@@ -535,11 +535,15 @@ class Workflow(ABC):
 
                 hook_env = _os.environ.copy()
                 hook_env.update(prepare_app_env)
+            # Validator parity (scripts/task_runtime_common.sh:119):
+            # prepare_app runs from TASK_RUNTIME_TASK_DIR. ``hook.parent``
+            # resolves to that dir for both zero-day (task_dir) and
+            # synthetic (app_dir/synthetic_vulnerabilities/<vuln>).
             cmd.run_with_progress(
                 f"bash {prepare_app_hook}",
                 timeout=self.config.script_timeout,
                 message="Running prepare_app hook",
-                cwd=self.app_dir,
+                cwd=prepare_app_hook.parent,
                 env=hook_env,
             )
 
