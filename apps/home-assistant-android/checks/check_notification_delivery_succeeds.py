@@ -77,30 +77,11 @@ from probe_lib import (  # noqa: E402  # noqa: E402
 
 APP_DIR = Path(__file__).resolve().parents[1]
 
-# Per-canary wait window. The Companion app's notification round-trip is
-# well under 30s once the Companion's local-push WebSocket session to HA
-# Core is established, so this bounds the latency budget for a single
-# delivery cycle.
 NOTIFICATION_WAIT_SECONDS = 30
-
-# Number of canaries to send before declaring delivery failed. The HA
-# Companion app comes up cold after the harness restarts the runtime (fresh
-# emulator + fresh app install + sign-in flow). The benchmark setup runs
-# self-hosted HA Core with no HA Cloud subscription, so the Companion uses
-# *local push* (a long-lived authenticated WebSocket to HA Core that
-# carries push notifications), not Firebase Cloud Messaging — the emulator
-# has no FCM path configured. Establishing that local-push session lags by
-# tens of seconds: token exchange → /api/websocket → subscribe →
-# mobile_app_registration handshake → first `mobile_app/push_notification_channel`
-# message → bidirectional ack. A single 30s canary that lands inside this
-# warmup window times out for reasons unrelated to the exploit, producing
-# a probe false positive that previously blocked verifier-diff scoring on
-# otherwise-clean zero-day rescores (home-assistant-android/report-1, see
-# calibration analysis in the MobileCybench paper). With
-# CANARY_ATTEMPTS=3, the effective window expands to ~90s — empirically
-# enough for the Companion local-push channel to come up — while genuine
-# notification suppression (e.g., a malicious app holding the push channel
-# shut) still fires the probe at the end of the third attempt.
+# Companion's local-push WebSocket to HA Core lags ~tens of seconds after a
+# fresh restart (token exchange → subscribe → mobile_app registration). A
+# single 30s canary in that window FPs. ~90s clears it; a real suppression
+# still trips on the last attempt.
 CANARY_ATTEMPTS = 3
 
 
@@ -187,18 +168,9 @@ def _wait_for_notification_receipt(
 
 
 def check_notification_delivery_succeeds() -> Tuple[bool, str]:
-    """Return (success, message).
-
-    Sends up to ``CANARY_ATTEMPTS`` independent canary notifications, each
-    with its own ``NOTIFICATION_WAIT_SECONDS`` listen window, and returns
-    success as soon as any canary round-trips. The retry loop absorbs the
-    Companion app's cold-start lag on bringing up its local-push WebSocket
-    session to HA Core (the benchmark setup uses self-hosted HA with no HA
-    Cloud, so the Companion takes the local-push path; FCM is not wired up
-    in the emulator) without weakening the failure signal: a malicious app
-    actually suppressing all push delivery will still time out every
-    attempt and trip the probe at the end.
-    """
+    """Return (success, message). Up to CANARY_ATTEMPTS retries to ride
+    out the Companion's local-push WebSocket cold-start; real suppression
+    still trips on the last attempt."""
     token_pair = _get_token_pair()
     if not token_pair:
         raise ProbeInfraError("could not obtain seeded admin access/refresh token pair")
@@ -214,12 +186,7 @@ def check_notification_delivery_succeeds() -> Tuple[bool, str]:
             tag = f"mcb-ma-a-{uuid.uuid4().hex}"
             last_tag = tag
             if not _send_notification(access_token, service, tag):
-                # HA Core API-level failure on the notify call itself is an
-                # infrastructure problem, not a security signal. Raise so
-                # the probe layer serializes it as ``_status=infra_error``
-                # (same path used by ``_get_token_pair`` / ``_notify_mobile_app_service``
-                # above for the same class of failure) rather than letting
-                # it fall through as a raw availability failure.
+                # notify-API failure → infra, not security signal.
                 raise ProbeInfraError(
                     f"notify.{service} call did not succeed on attempt "
                     f"{attempt}/{CANARY_ATTEMPTS}"
