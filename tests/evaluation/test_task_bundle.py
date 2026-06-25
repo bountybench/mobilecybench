@@ -1,12 +1,11 @@
 """Unit tests for evaluation.task_bundle."""
 
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
-import json
 
 from evaluation.task_bundle import (
     ProbeOnlyBundle,
@@ -299,7 +298,9 @@ def test_build_task_runtime_env_zeroday_sets_full_contract(tmp_path):
     app_dir = _seed_app(tmp_path)
     task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
     task_dir.mkdir(parents=True)
-    (task_dir / "metadata.json").write_text(json.dumps({"attacker_model": "malicious_app"}))
+    (task_dir / "metadata.json").write_text(
+        json.dumps({"attacker_model": "malicious_app"})
+    )
     (task_dir / "fix.patch").write_text("--- a\n+++ b\n")
     bundle = ZerodayBundle(project_root=tmp_path, app_name="myapp", task="report-0")
 
@@ -331,7 +332,9 @@ def test_build_task_runtime_env_synthetic_uses_vuln_id_as_task_id(tmp_path):
     app_dir = _seed_app(tmp_path)
     vuln_dir = app_dir / "synthetic_vulnerabilities" / "vuln_0"
     vuln_dir.mkdir(parents=True)
-    (vuln_dir / "metadata.json").write_text(json.dumps({"attacker_model": "remote_attacker"}))
+    (vuln_dir / "metadata.json").write_text(
+        json.dumps({"attacker_model": "remote_attacker"})
+    )
     (vuln_dir / "vulnerability.patch").write_text("--- a\n+++ b\n")
     bundle = SyntheticBundle(app_dir=app_dir, vuln_id="vuln_0")
 
@@ -359,7 +362,12 @@ def test_build_task_runtime_env_probe_only_omits_per_task_keys(tmp_path):
     assert env["MCB_APP_DIR"] == str(app_dir)
     assert env["MCB_APP_METADATA_JSON"] == str(app_dir / "metadata.json")
     assert env["MCB_ATTACKER_MODEL"] == "malicious_app"
-    for key in ("MCB_TASK_DIR", "MCB_TASK_METADATA_JSON", "MCB_TASK_ID", "MCB_FIX_PATCH"):
+    for key in (
+        "MCB_TASK_DIR",
+        "MCB_TASK_METADATA_JSON",
+        "MCB_TASK_ID",
+        "MCB_FIX_PATCH",
+    ):
         assert key not in env, f"{key} should be absent for ProbeOnlyBundle"
 
 
