@@ -9,6 +9,7 @@ cd "$SCRIPT_DIR"
 TARGET_PACKAGE="eu.siacs.conversations"
 TARGET_CONTAINER="conversations-prosody"
 
+# Temporary CI matrix validation change.
 install_conversations(){
   log_info "Installing Conversations on Android device"
   adb uninstall "$TARGET_PACKAGE" 2>/dev/null || true
