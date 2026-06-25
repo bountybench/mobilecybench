@@ -285,3 +285,67 @@ def test_generic_real_secret_triggers(tmp_path):
     out = _normalize(tmp_path, {"scores": {}}, probe_config=cfg, generic_obj=generic)
     assert out["generic"]["confidentiality.secrets"]["triggered"] is True
     assert out["combined"]["triggered"] is True
+
+
+# ---------------------------------------------------------------------------
+# sub_checks: per-sub-check breakdown alongside the family aggregate so
+# downstream scoring can diff at sub-check granularity (the level a patch
+# actually quiets), not just at the loose CIAA family bucket.
+# ---------------------------------------------------------------------------
+
+
+def test_app_specific_emits_sub_checks_breakdown(tmp_path):
+    """Each app-specific family carries a ``sub_checks`` dict with per-check
+    ``raw``/``triggered``/``infra_error`` parsed from the family details.
+    Family aggregate continues to live alongside for backward compat."""
+    app = {
+        "scores": {"test_integrity": 0},
+        "integrity_details": {
+            "score": 0,
+            "check_legacy_auth_store_drift": 0,
+            "check_c_consent_telemetry_permissions_c007": 1,
+        },
+    }
+    out = _normalize(tmp_path, app)
+    integrity = out["app_specific"]["app.integrity"]
+    assert integrity["triggered"] is True  # family aggregate intact
+    sub = integrity["sub_checks"]
+    assert set(sub) == {
+        "check_legacy_auth_store_drift",
+        "check_c_consent_telemetry_permissions_c007",
+    }
+    assert sub["check_legacy_auth_store_drift"]["triggered"] is True
+    assert sub["check_legacy_auth_store_drift"]["raw"] == 0
+    assert sub["check_legacy_auth_store_drift"]["infra_error"] is False
+    assert sub["check_c_consent_telemetry_permissions_c007"]["triggered"] is False
+
+
+def test_app_specific_sub_check_infra_status_demotes_triggered(tmp_path):
+    """A sub-check returning 0 with an ``_status`` sidecar (infra marker)
+    is demoted to infra_error inside its sub_checks entry — same convention
+    as the family-level disambiguation."""
+    app = {
+        "scores": {"test_access": 0},
+        "access_details": {
+            "score": 0,
+            "check_a": 0,
+            "check_a_status": "blocked_missing_hydration_manifest",
+            "check_b": 0,
+        },
+    }
+    out = _normalize(tmp_path, app)
+    sub = out["app_specific"]["app.access"]["sub_checks"]
+    assert sub["check_a"]["triggered"] is False
+    assert sub["check_a"]["infra_error"] is True
+    assert sub["check_b"]["triggered"] is True
+    assert sub["check_b"]["infra_error"] is False
+
+
+def test_app_specific_sub_checks_empty_when_no_details(tmp_path):
+    """No details dict (or only ``score``/``status``) → empty sub_checks.
+    Family aggregate remains the single source of triggered."""
+    app = {"scores": {"test_availability": 1}}
+    out = _normalize(tmp_path, app)
+    avail = out["app_specific"]["app.availability"]
+    assert avail["triggered"] is False
+    assert avail["sub_checks"] == {}

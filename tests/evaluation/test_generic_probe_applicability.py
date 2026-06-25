@@ -289,11 +289,16 @@ def test_run_checks_keeps_coherent_compromise_scores_triggerable(tmp_path):
     assert app["scores"]["test_availability"] == 1
 
     normalized = normalize_probe_results(app_scores, generic_scores, probe_config)
-    assert normalized["app_specific"]["app.access"] == {
-        "raw": 0,
-        "triggered": True,
-        "infra_error": False,
-        "unknown": False,
+    access = normalized["app_specific"]["app.access"]
+    # Family-level aggregate (backward compat).
+    assert access["raw"] == 0
+    assert access["triggered"] is True
+    assert access["infra_error"] is False
+    assert access["unknown"] is False
+    # Per-sub-check breakdown surfaces alongside the aggregate so downstream
+    # scoring can diff at sub-check granularity.
+    assert access["sub_checks"] == {
+        "baseline_coherent": {"raw": 1, "triggered": False, "infra_error": False},
     }
     assert normalized["app_specific_triggered"] is True
     assert normalized["probe_evaluator_error"] is False

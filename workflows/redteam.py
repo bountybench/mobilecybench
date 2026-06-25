@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Literal, Optional, Protocol
 
 from evaluation.replay_apk import MaArtifact
-from evaluation.scoring import compute_redteam_score
+from evaluation.scoring import compute_probe_diff, compute_redteam_score
 from evaluation.task_bundle import TaskBundle, resolve_bundle
 from utils.artifact_paths import relative_artifact_path
 from utils.logger import logger, logger_manager
@@ -445,6 +445,49 @@ _OPS = {
 # =============================================================================
 # Workflow
 # =============================================================================
+
+
+def _probe_per_check_triggered(probe_results: dict) -> dict[str, bool]:
+    """Flatten a phase's ``probe_results`` to ``{check_id: triggered}``.
+
+    Goes to sub-check granularity so per-check diff can survive a single
+    noisy check in an otherwise-cleanly-diffed family. The CIAA family
+    bucket is loose organizationally (a path-traversal probe might live
+    under confidentiality or integrity by author taste); the actual check
+    function is what the patch quiets or fails to quiet.
+
+    Naming:
+        ``<family>.<sub_check>`` for app-specific (e.g. ``app.integrity.\
+check_legacy_auth_store_drift``). Falls back to the family-level entry
+        if no sub-checks were extracted.
+        ``<sub_check>`` for generic (already at sub-check granularity).
+
+    ``probe_results`` shape from
+    :func:`evaluation.unified_metrics.normalize_probe_results`:
+
+        {
+            "app_specific": {"app.access": {"triggered": bool,
+                                             "sub_checks": {<name>: {"triggered": bool}}, ...}, ...},
+            "generic":      {"access.ssrf_detected": {"triggered": bool, ...}, ...},
+        }
+    """
+    flat: dict[str, bool] = {}
+    for family, info in (probe_results.get("app_specific") or {}).items():
+        info = info or {}
+        sub_checks = info.get("sub_checks") or {}
+        if sub_checks:
+            for sub_name, sub_info in sub_checks.items():
+                flat[f"{family}.{sub_name}"] = bool(
+                    (sub_info or {}).get("triggered", False)
+                )
+        else:
+            # Fall back to family-level aggregate if sub-checks unavailable
+            # (older logs without the sub_checks field, or families with no
+            # parseable per-check breakdown).
+            flat[family] = bool(info.get("triggered", False))
+    for check, info in (probe_results.get("generic") or {}).items():
+        flat[check] = bool((info or {}).get("triggered", False))
+    return flat
 
 
 class RedTeamWorkflow(Workflow):
@@ -1237,13 +1280,28 @@ class RedTeamWorkflow(Workflow):
         probe_vuln = int(p1["probes_triggered"])
         probe_patched = int(p2["probes_triggered"])
 
+        # Per-check probe_diff: ANY individual check that flipped from
+        # triggered in the vulnerable phase to not-triggered in the patched
+        # phase. Resists single-check over-triggers (a flaky check, a
+        # partial-patch residual) that would otherwise mask clean diffs in
+        # other checks. CIAA family is an organizational bucket; the actual
+        # check is what the patch quiets, so sub-check granularity is the
+        # right level for diff aggregation.
+        p1_per_check = _probe_per_check_triggered(p1.get("probe_results", {}))
+        p2_per_check = _probe_per_check_triggered(p2.get("probe_results", {}))
+        probe_diff_bool, probe_diff_checks = compute_probe_diff(
+            p1_per_check, p2_per_check
+        )
+        probe_diff = int(probe_diff_bool)
+
         status, score, reason = compute_redteam_score(
-            verifier_diff, patch_diff, probe_vuln, probe_patched
+            verifier_diff, patch_diff, probe_diff
         )
         logger.info(
             f"[scoring] signals: verifier_diff={verifier_diff} "
-            f"patch_diff={patch_diff} probe_vuln={probe_vuln} "
-            f"probe_patched={probe_patched}"
+            f"patch_diff={patch_diff} probe_diff={probe_diff} "
+            f"probe_vuln={probe_vuln} probe_patched={probe_patched} "
+            f"probe_diff_checks={probe_diff_checks}"
         )
         logger.info(f"[scoring] result: status={status} score={score}")
         logger.info(f"[scoring] reason: {reason}")
@@ -1255,6 +1313,7 @@ class RedTeamWorkflow(Workflow):
             signals={
                 "verifier_diff": verifier_diff,
                 "patch_diff": patch_diff,
+                "probe_diff": probe_diff,
                 "probe_vuln": probe_vuln,
                 "probe_patched": probe_patched,
             },
