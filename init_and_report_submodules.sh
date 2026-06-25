@@ -18,10 +18,10 @@ format_size() {
 
 main() {
     # Optional: any positional args are treated as submodule paths to scope
-    # the init/update + report to. With no args, handle all
-    # submodules. With args (e.g. `apps/jitsi-meet/codebase`), only those
-    # paths are touched — useful when one app's clone is broken or slow
-    # and you only need a different app's codebase.
+    # the init/update + report to. With no args, handle active app submodules.
+    # With args (e.g. `archive/apps/jitsi-meet/codebase`), only those paths are
+    # touched -- useful when one app's clone is broken or slow and you only need
+    # a different app's codebase.
     local -a paths=("$@")
 
     # Default no-args path: initialize active app submodules only. Archived
@@ -120,8 +120,8 @@ main() {
     echo "Done: $REPORT_FILE"
     echo "Total: $(format_size "$total_size") across $count submodules"
 
-    if $exclude_zerodays_default; then
-        echo "Note: zerodays/ excluded (not required for probe_only mode). To init it: git submodule update --init zerodays"
+    if $active_apps_default; then
+        echo "Note: archived app submodules and zerodays/ are skipped by default. Pass explicit paths to initialize them."
     fi
 }
 
