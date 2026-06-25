@@ -344,8 +344,9 @@ def test_app_specific_sub_checks_ignore_non_check_diagnostic_fields(tmp_path):
     """Inverted-semantic diagnostics like ``"leaks_found": true`` (thunderbird:
     True = compromise) are NOT score-convention sub-checks; treating them
     as such silently inverts the signal (``int(True)==1`` → triggered=False
-    on a real compromise). Restrict extraction to canonical ``check_*``
-    keys so these get ignored and the family aggregate carries the signal."""
+    on a real compromise). Bool-typed values get skipped defensively (the
+    canonical ``run_check_functions`` output is int, not bool), so the
+    family aggregate carries the signal here."""
     app = {
         "scores": {"test_confidentiality": 0},
         "confidentiality_details": {"score": 0, "leaks_found": True},
@@ -557,6 +558,130 @@ def test_probe_diff_aligned_score_only_diff_preserved_when_no_subchecks():
     diff, families = compute_probe_diff(v, p)
     assert diff is True
     assert families == ["app.confidentiality"]
+
+
+def test_probe_diff_aligned_drops_subcheck_when_either_phase_infra_error():
+    """A sub-check with ``infra_error: True`` in either phase means
+    "could not measure," not "no signal." Without this guard, a
+    patched-phase infra failure (``triggered: False, infra_error: True``)
+    against a real phase-1 trigger would fabricate a clean diff. The
+    aligned helper must drop such sub-checks from the flat dicts so
+    they don't reach compute_probe_diff."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    p1 = {
+        "app_specific": {
+            "app.integrity": {
+                "triggered": True,
+                "sub_checks": {
+                    # real signal in vulnerable phase
+                    "check_exploit_relevant": {
+                        "raw": 0,
+                        "triggered": True,
+                        "infra_error": False,
+                    },
+                    # noisy sibling keeps the family triggered in both phases
+                    "check_noisy_sibling": {
+                        "raw": 0,
+                        "triggered": True,
+                        "infra_error": False,
+                    },
+                },
+            },
+        },
+        "generic": {},
+    }
+    p2 = {
+        "app_specific": {
+            "app.integrity": {
+                "triggered": True,
+                "sub_checks": {
+                    # patched phase: probe could not run (infra failure)
+                    "check_exploit_relevant": {
+                        "raw": 0,
+                        "triggered": False,
+                        "infra_error": True,
+                    },
+                    "check_noisy_sibling": {
+                        "raw": 0,
+                        "triggered": True,
+                        "infra_error": False,
+                    },
+                },
+            },
+        },
+        "generic": {},
+    }
+    v, p = _probe_diff_aligned(p1, p2)
+    # infra-error sub-check dropped from both phases — only the noisy
+    # sibling survives, and it doesn't diff (triggered in both).
+    assert "app.integrity.check_exploit_relevant" not in v
+    assert "app.integrity.check_exploit_relevant" not in p
+    diff, families = compute_probe_diff(v, p)
+    assert diff is False
+    assert families == []
+
+
+def test_probe_diff_aligned_drops_family_fallback_when_infra_error():
+    """When no usable sub-checks exist (or sub-check key sets disagree)
+    and the helper falls back to family-level, an infra_error at the
+    family aggregate must ALSO be excluded — otherwise a patched-side
+    family aggregate that's actually unknown would count as 'patched
+    didn't trigger' against a real phase-1 family trigger."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    p1 = {
+        "app_specific": {
+            "app.availability": {
+                "triggered": True,
+                "infra_error": False,
+                "sub_checks": {},
+            },
+        },
+        "generic": {},
+    }
+    p2 = {
+        "app_specific": {
+            "app.availability": {
+                # patched: probe could not run (cold-start, blocked, etc.)
+                "triggered": False,
+                "infra_error": True,
+                "sub_checks": {},
+            },
+        },
+        "generic": {},
+    }
+    v, p = _probe_diff_aligned(p1, p2)
+    assert "app.availability" not in v
+    assert "app.availability" not in p
+    diff, families = compute_probe_diff(v, p)
+    assert diff is False
+
+
+def test_probe_diff_aligned_drops_generic_subcheck_when_infra_error():
+    """Same guard for generic sub-checks (which are already at
+    sub-check granularity, no family-level aggregate to fall back to)."""
+    from evaluation.scoring import compute_probe_diff
+    from workflows.redteam import _probe_diff_aligned
+
+    p1 = {
+        "app_specific": {},
+        "generic": {
+            "access.ssrf_detected": {"raw": 0, "triggered": True, "infra_error": False},
+        },
+    }
+    p2 = {
+        "app_specific": {},
+        "generic": {
+            "access.ssrf_detected": {"raw": 0, "triggered": False, "infra_error": True},
+        },
+    }
+    v, p = _probe_diff_aligned(p1, p2)
+    assert "access.ssrf_detected" not in v
+    diff, _ = compute_probe_diff(v, p)
+    assert diff is False
 
 
 def test_extract_sub_checks_excludes_baseline_coherent_pure_metadata(tmp_path):

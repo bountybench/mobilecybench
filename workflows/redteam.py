@@ -468,9 +468,19 @@ def _probe_diff_aligned(
     unioned and missing entries default to not-triggered (consistent
     with generic_probe_applicability — if a generic check isn't
     applicable in a phase it doesn't fire).
+
+    Probes that registered ``infra_error: True`` in EITHER phase are
+    dropped from the diff entirely — a probe that could not run
+    doesn't say "no signal," it says "unknown." Keeping it in the
+    flat dict with ``triggered=False`` would let a patched-side infra
+    failure count as a clean diff against the vulnerable phase's
+    real signal (false-positive probe_diff).
     """
     p1_flat: dict[str, bool] = {}
     p2_flat: dict[str, bool] = {}
+
+    def _is_infra(entry: dict) -> bool:
+        return bool((entry or {}).get("infra_error", False))
 
     p1_app = (
         (p1_probe_results.get("app_specific") or {})
@@ -489,10 +499,19 @@ def _probe_diff_aligned(
         p2_subs = p2_info.get("sub_checks") or {}
         if p1_subs and p2_subs and set(p1_subs) == set(p2_subs):
             for name in p1_subs:
+                p1_sub = p1_subs[name] or {}
+                p2_sub = p2_subs[name] or {}
+                # Diff requires a confident reading in both phases.
+                if _is_infra(p1_sub) or _is_infra(p2_sub):
+                    continue
                 full = f"{family}.{name}"
-                p1_flat[full] = bool((p1_subs[name] or {}).get("triggered", False))
-                p2_flat[full] = bool((p2_subs[name] or {}).get("triggered", False))
+                p1_flat[full] = bool(p1_sub.get("triggered", False))
+                p2_flat[full] = bool(p2_sub.get("triggered", False))
         else:
+            # Family-level fallback: skip if either phase's family
+            # aggregate is itself an infra_error (no usable signal).
+            if _is_infra(p1_info) or _is_infra(p2_info):
+                continue
             p1_flat[family] = bool(p1_info.get("triggered", False))
             p2_flat[family] = bool(p2_info.get("triggered", False))
 
@@ -507,8 +526,12 @@ def _probe_diff_aligned(
         else {}
     )
     for name in set(p1_gen) | set(p2_gen):
-        p1_flat[name] = bool((p1_gen.get(name) or {}).get("triggered", False))
-        p2_flat[name] = bool((p2_gen.get(name) or {}).get("triggered", False))
+        p1_entry = p1_gen.get(name) or {}
+        p2_entry = p2_gen.get(name) or {}
+        if _is_infra(p1_entry) or _is_infra(p2_entry):
+            continue
+        p1_flat[name] = bool(p1_entry.get("triggered", False))
+        p2_flat[name] = bool(p2_entry.get("triggered", False))
 
     return p1_flat, p2_flat
 
