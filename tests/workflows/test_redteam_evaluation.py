@@ -508,12 +508,12 @@ def test_remote_attacker_run_phase_orders_steps(remote_attacker_config, tmp_path
         patch.object(
             RedTeamWorkflow,
             "_run_prepare_app",
-            side_effect=lambda: order.append("prepare_app"),
+            side_effect=lambda *a, **kw: order.append("prepare_app"),
         ),
         patch.object(
             RedTeamWorkflow,
             "_run_prepare_victim",
-            side_effect=lambda: order.append("prepare_victim"),
+            side_effect=lambda *a, **kw: order.append("prepare_victim"),
         ),
         patch(
             "workflows.redteam.subprocess.run",
@@ -1157,7 +1157,9 @@ def _capture_setup_hook():
 
 def test_run_prepare_app_runs_per_task_hook(remote_attacker_config, tmp_path):
     """_run_prepare_app reads <task_dir>/prepare_app.sh, NOT
-    <app_dir>/prepare_victim.sh — even when the latter exists."""
+    <app_dir>/prepare_victim.sh — even when the latter exists. cwd is
+    the task_dir to match validator (task_runtime_common.sh:119 does
+    `cd "$TASK_RUNTIME_TASK_DIR"`)."""
     wf = _make_workflow(remote_attacker_config, tmp_path)
     task_hook = wf._bundle.task_dir / "prepare_app.sh"
     (wf.app_dir / "prepare_victim.sh").write_text("#!/bin/bash\nexit 0\n")
@@ -1171,7 +1173,7 @@ def test_run_prepare_app_runs_per_task_hook(remote_attacker_config, tmp_path):
     assert captured[0]["env"]["MCB_ATTACKER_MODEL"] == "remote_attacker"
     assert captured[0]["env"]["MCB_APP_DIR"] == str(wf.app_dir)
     assert captured[0]["env"]["PYTHON_BIN"] == sys.executable
-    assert captured[0]["cwd"] == wf.app_dir
+    assert captured[0]["cwd"] == wf._bundle.task_dir
 
 
 def test_run_prepare_app_no_op_when_absent(remote_attacker_config, tmp_path):
@@ -1238,12 +1240,12 @@ def test_malicious_app_run_phase_orders_both_hooks_pre_exploit(
         patch.object(
             RedTeamWorkflow,
             "_run_prepare_app",
-            side_effect=lambda: order.append("prepare_app"),
+            side_effect=lambda *a, **kw: order.append("prepare_app"),
         ),
         patch.object(
             RedTeamWorkflow,
             "_run_prepare_victim",
-            side_effect=lambda: order.append("prepare_victim"),
+            side_effect=lambda *a, **kw: order.append("prepare_victim"),
         ),
         patch(
             "evaluation.replay_apk.replay_malicious_apk",

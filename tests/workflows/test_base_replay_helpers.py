@@ -201,6 +201,63 @@ class TestRunExploit:
         )
         assert result["replay_exit_code"] == 42
 
+    def test_wipe_output_dir_true_clears_preexisting_files(self, workflow, tmp_path):
+        """Default behavior: synthetic exploit reuses one output_dir across
+        vuln+clean phases and relies on the wipe for phase-isolation."""
+        exploit_dir = tmp_path / "agent_exploit"
+        exploit_dir.mkdir()
+        (exploit_dir / "exploit.sh").write_text("exit 0")
+
+        output_dir = tmp_path / "replay_output"
+        output_dir.mkdir()
+        stale = output_dir / "stale_from_previous_phase"
+        stale.write_text("phase1 artifact")
+
+        exploit_runner = tmp_path / "run_exploit.sh"
+        exploit_runner.write_text("#!/bin/bash\nexit 0")
+
+        workflow._run_exploit(
+            exploit_dir=exploit_dir,
+            output_dir=output_dir,
+            exploit_runner=exploit_runner,
+            exploit_image="test:latest",
+            codebase_dir=tmp_path,
+            replay_apk=None,
+        )
+        assert not stale.exists(), "default wipe should clear stale phase artifacts"
+
+    def test_wipe_output_dir_false_preserves_prepare_app_seed(self, workflow, tmp_path):
+        """RemoteAttacker path: prepare_app already seeded ``output_dir`` as
+        ``MCB_OUTPUT_DIR``; ``_run_exploit`` must not wipe it before the
+        verifier reads it. Matches the validator's per-phase contract
+        (scripts/task_runtime_common.sh) where prepare_app/exploit/verifier
+        share one ``$TASK_RUNTIME_OUTPUT_DIR``."""
+        exploit_dir = tmp_path / "agent_exploit"
+        exploit_dir.mkdir()
+        (exploit_dir / "exploit.sh").write_text("exit 0")
+
+        output_dir = tmp_path / "replay_output"
+        output_dir.mkdir()
+        seed = output_dir / "prepare_app_seed"
+        seed.write_text("seeded-by-prepare_app")
+
+        exploit_runner = tmp_path / "run_exploit.sh"
+        exploit_runner.write_text("#!/bin/bash\nexit 0")
+
+        workflow._run_exploit(
+            exploit_dir=exploit_dir,
+            output_dir=output_dir,
+            exploit_runner=exploit_runner,
+            exploit_image="test:latest",
+            codebase_dir=tmp_path,
+            replay_apk=None,
+            wipe_output_dir=False,
+        )
+        assert seed.read_text() == "seeded-by-prepare_app"
+        assert (
+            output_dir / "stdout.txt"
+        ).exists(), "exploit stdout should still land alongside the prepare_app seed"
+
 
 class TestRunExploitContainerScript:
     def _base_args(self, tmp_path):
