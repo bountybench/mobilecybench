@@ -92,15 +92,6 @@ for vuln_dir in "${SCRIPT_DIR}"/vuln_scenarios/*/; do
   fi
 done
 
-# Synthetic-vulnerability agent outputs are generated per run and can contain
-# verifier-visible artifacts such as instrument_stdout.txt. Remove them so stale
-# outputs cannot satisfy a later verifier invocation.
-for out_dir in "${SCRIPT_DIR}"/synthetic_vulnerabilities/vuln_*/agent_output; do
-  if [[ -d "$out_dir" ]]; then
-    rm -rf -- "$out_dir"
-  fi
-done
-
 info "Resetting secrets.json to empty placeholders"
 # secrets.json is committed (schema documentation); start_runtime.sh fills it
 # with random hex per experiment. Reset to placeholders here so next

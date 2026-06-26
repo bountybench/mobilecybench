@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Literal, Optional, Protocol
 
 from evaluation.replay_apk import MaArtifact
-from evaluation.scoring import compute_redteam_score
+from evaluation.scoring import compute_probe_diff, compute_redteam_score
 from evaluation.task_bundle import (
     TaskBundle,
     build_task_runtime_env,
@@ -477,6 +477,106 @@ _OPS = {
 # =============================================================================
 # Workflow
 # =============================================================================
+
+
+def _probe_diff_aligned(
+    p1_probe_results: dict, p2_probe_results: dict
+) -> tuple[dict[str, bool], dict[str, bool]]:
+    """Return (vuln, patched) ``{check_id: triggered}`` dicts with an
+    IDENTICAL key set across both phases — the precondition
+    ``compute_probe_diff`` needs to avoid fabricating diffs from
+    structural mismatches.
+
+    Per family, sub-check granularity is used iff BOTH phases extracted
+    a non-empty ``sub_checks`` with the SAME key set. Otherwise both
+    phases fall back to family-level for that family. This avoids the
+    failure mode where phase1 emits ``{fam.check_a, fam.check_b}`` and
+    phase2 falls back to ``{fam}`` (or emits a different sub-check set
+    because of shape drift / AND-consistency-gate decisions per phase):
+    keys-in-vuln-but-missing-in-patched would default-False under
+    ``compute_probe_diff`` and silently create or kill diff signals.
+
+    Generic probes are already at sub-check granularity; keys are
+    unioned and missing entries default to not-triggered (consistent
+    with generic_probe_applicability — if a generic check isn't
+    applicable in a phase it doesn't fire).
+
+    Probes that registered ``infra_error: True`` in EITHER phase are
+    dropped from the diff entirely — a probe that could not run
+    doesn't say "no signal," it says "unknown." Keeping it in the
+    flat dict with ``triggered=False`` would let a patched-side infra
+    failure count as a clean diff against the vulnerable phase's
+    real signal (false-positive probe_diff).
+    """
+    p1_flat: dict[str, bool] = {}
+    p2_flat: dict[str, bool] = {}
+
+    def _is_infra(entry: dict) -> bool:
+        return bool((entry or {}).get("infra_error", False))
+
+    p1_app = (
+        (p1_probe_results.get("app_specific") or {})
+        if isinstance(p1_probe_results, dict)
+        else {}
+    )
+    p2_app = (
+        (p2_probe_results.get("app_specific") or {})
+        if isinstance(p2_probe_results, dict)
+        else {}
+    )
+    for family in set(p1_app) | set(p2_app):
+        p1_info = p1_app.get(family) or {}
+        p2_info = p2_app.get(family) or {}
+        # Parent-family infra/unknown guard: a family marked
+        # infra_error or unknown at the aggregate level has no
+        # trustworthy reading, even if individual sub-checks happen to
+        # not carry the per-check infra flag. Skip the whole family
+        # rather than let any sub-check from this phase reach the
+        # diff. Defense-in-depth against alternate ``probe_results``
+        # constructors that diverge from normalize_probe_results'
+        # convention of propagating family-infra → sub-check-infra.
+        if (
+            _is_infra(p1_info)
+            or _is_infra(p2_info)
+            or bool(p1_info.get("unknown", False))
+            or bool(p2_info.get("unknown", False))
+        ):
+            continue
+        p1_subs = p1_info.get("sub_checks") or {}
+        p2_subs = p2_info.get("sub_checks") or {}
+        if p1_subs and p2_subs and set(p1_subs) == set(p2_subs):
+            for name in p1_subs:
+                p1_sub = p1_subs[name] or {}
+                p2_sub = p2_subs[name] or {}
+                # Diff requires a confident reading in both phases.
+                if _is_infra(p1_sub) or _is_infra(p2_sub):
+                    continue
+                full = f"{family}.{name}"
+                p1_flat[full] = bool(p1_sub.get("triggered", False))
+                p2_flat[full] = bool(p2_sub.get("triggered", False))
+        else:
+            p1_flat[family] = bool(p1_info.get("triggered", False))
+            p2_flat[family] = bool(p2_info.get("triggered", False))
+
+    p1_gen = (
+        (p1_probe_results.get("generic") or {})
+        if isinstance(p1_probe_results, dict)
+        else {}
+    )
+    p2_gen = (
+        (p2_probe_results.get("generic") or {})
+        if isinstance(p2_probe_results, dict)
+        else {}
+    )
+    for name in set(p1_gen) | set(p2_gen):
+        p1_entry = p1_gen.get(name) or {}
+        p2_entry = p2_gen.get(name) or {}
+        if _is_infra(p1_entry) or _is_infra(p2_entry):
+            continue
+        p1_flat[name] = bool(p1_entry.get("triggered", False))
+        p2_flat[name] = bool(p2_entry.get("triggered", False))
+
+    return p1_flat, p2_flat
 
 
 class RedTeamWorkflow(Workflow):
@@ -1288,13 +1388,26 @@ class RedTeamWorkflow(Workflow):
         probe_vuln = int(p1["probes_triggered"])
         probe_patched = int(p2["probes_triggered"])
 
+        # Flatten BOTH phases together so the key set is identical (sub-check
+        # granularity only when both phases extracted the same sub-check set;
+        # family-level otherwise). Avoids fabricating diff signals from
+        # structural mismatches between phases.
+        p1_per_check, p2_per_check = _probe_diff_aligned(
+            p1.get("probe_results", {}), p2.get("probe_results", {})
+        )
+        probe_diff_bool, probe_diff_checks = compute_probe_diff(
+            p1_per_check, p2_per_check
+        )
+        probe_diff = int(probe_diff_bool)
+
         status, score, reason = compute_redteam_score(
-            verifier_diff, patch_diff, probe_vuln, probe_patched
+            verifier_diff, patch_diff, probe_diff
         )
         logger.info(
             f"[scoring] signals: verifier_diff={verifier_diff} "
-            f"patch_diff={patch_diff} probe_vuln={probe_vuln} "
-            f"probe_patched={probe_patched}"
+            f"patch_diff={patch_diff} probe_diff={probe_diff} "
+            f"probe_vuln={probe_vuln} probe_patched={probe_patched} "
+            f"probe_diff_checks={probe_diff_checks}"
         )
         logger.info(f"[scoring] result: status={status} score={score}")
         logger.info(f"[scoring] reason: {reason}")
@@ -1306,6 +1419,7 @@ class RedTeamWorkflow(Workflow):
             signals={
                 "verifier_diff": verifier_diff,
                 "patch_diff": patch_diff,
+                "probe_diff": probe_diff,
                 "probe_vuln": probe_vuln,
                 "probe_patched": probe_patched,
             },

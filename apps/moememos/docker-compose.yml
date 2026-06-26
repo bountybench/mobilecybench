@@ -13,7 +13,7 @@ services:
 
   token_catcher:
     build:
-      context: ./synthetic_vulnerabilities
+      context: ./token_catcher
       dockerfile: Dockerfile.attacker_helper
     container_name: token_catcher
     restart: always

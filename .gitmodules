@@ -1,8 +1,8 @@
 [submodule "joplin/codebase"]
-	path = apps/joplin/codebase
+	path = archive/apps/joplin/codebase
 	url = ../../cy-suite/joplin.git
 [submodule "wordpress/codebase"]
-	path = apps/wordpress/codebase
+	path = archive/apps/wordpress/codebase
 	url = ../../cy-suite/wordpress.git
 [submodule "apps/owncloud-android/codebase"]
 	path = apps/owncloud-android/codebase
@@ -11,13 +11,13 @@
 	path = apps/nextcloud-talk/codebase
 	url = ../../cy-suite/nextcloud-talk-android.git
 [submodule "apps/tindroid/codebase"]
-	path = apps/tindroid/codebase
+	path = archive/apps/tindroid/codebase
 	url = ../../cy-suite/tindroid.git
 [submodule "apps/home-assistant-android/codebase"]
 	path = apps/home-assistant-android/codebase
 	url = ../../cy-suite/home-assistant-android.git
 [submodule "apps/openvpn/codebase"]
-	path = apps/openvpn/codebase
+	path = archive/apps/openvpn/codebase
 	url = ../../cy-suite/OpenVPN-Android.git
 [submodule "apps/conversations/codebase"]
 	path = apps/conversations/codebase
@@ -29,16 +29,16 @@
 	path = apps/termux/codebase
 	url = ../../cy-suite/termux.git
 [submodule "apps/ankidroid/codebase"]
-	path = apps/ankidroid/codebase
+	path = archive/apps/ankidroid/codebase
 	url = ../../cy-suite/AnkiDroid.git
 [submodule "apps/gotify/codebase"]
-	path = apps/gotify/codebase
+	path = archive/apps/gotify/codebase
 	url = ../../cy-suite/gotify.git
 [submodule "apps/jellyfin/codebase"]
-	path = apps/jellyfin/codebase
+	path = archive/apps/jellyfin/codebase
 	url = ../../cy-suite/jellyfin-android.git
 [submodule "apps/simplelogin/codebase"]
-	path = apps/simplelogin/codebase
+	path = archive/apps/simplelogin/codebase
 	url = ../../cy-suite/Simple-Login-Android.git
 [submodule "apps/openhab/codebase"]
 	path = apps/openhab/codebase
@@ -47,37 +47,37 @@
 	path = apps/jerboa/codebase
 	url = ../../cy-suite/jerboa.git
 [submodule "apps/element-android/codebase"]
-	path = apps/element-android/codebase
+	path = archive/apps/element-android/codebase
 	url = ../../cy-suite/Element-Android.git
 [submodule "apps/wallabag/codebase"]
 	path = apps/wallabag/codebase
 	url = ../../cy-suite/wallabag.git
 [submodule "apps/davx5/codebase"]
-	path = apps/davx5/codebase
+	path = archive/apps/davx5/codebase
 	url = ../../cy-suite/DAVx5.git
 [submodule "apps/linphone/codebase"]
-	path = apps/linphone/codebase
+	path = archive/apps/linphone/codebase
 	url = ../../cy-suite/linphone.git
 [submodule "apps/moodle/codebase"]
 	path = apps/moodle/codebase
 	url = ../../cy-suite/moodleapp.git
 [submodule "apps/funkwhale/codebase"]
-	path = apps/funkwhale/codebase
+	path = archive/apps/funkwhale/codebase
 	url = ../../cy-suite/funkwhale.git
 [submodule "apps/deltachat-android/codebase"]
-	path = apps/deltachat-android/codebase
+	path = archive/apps/deltachat-android/codebase
 	url = ../../cy-suite/deltachat-android.git
 [submodule "apps/grocy/codebase"]
-	path = apps/grocy/codebase
+	path = archive/apps/grocy/codebase
 	url = ../../cy-suite/grocy-android.git
 [submodule "apps/miniflutt/codebase"]
-	path = apps/miniflutt/codebase
+	path = archive/apps/miniflutt/codebase
 	url = ../../cy-suite/miniflutt.git
 [submodule "apps/owntracks/codebase"]
 	path = apps/owntracks/codebase
 	url = ../../cy-suite/owntracks-android.git
 [submodule "apps/thunderbird/codebase"]
-	path = apps/thunderbird/codebase
+	path = archive/apps/thunderbird/codebase
 	url = ../../cy-suite/thunderbird-android-app.git
 [submodule "apps/ntfy-android/codebase"]
 	path = apps/ntfy-android/codebase
@@ -86,10 +86,10 @@
 	path = apps/moememos/codebase
 	url = ../../cy-suite/MoeMemosAndroid.git
 [submodule "apps/jitsi-meet/codebase"]
-	path = apps/jitsi-meet/codebase
+	path = archive/apps/jitsi-meet/codebase
 	url = ../../cy-suite/jitsi-meet.git
 [submodule "apps/jitsi-meet/jitsi-docker"]
-	path = apps/jitsi-meet/jitsi-docker
+	path = archive/apps/jitsi-meet/jitsi-docker
 	url = ../../cy-suite/jitsi-meet-docker.git
 [submodule "zerodays"]
 	path = zerodays

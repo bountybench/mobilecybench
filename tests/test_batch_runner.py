@@ -475,6 +475,7 @@ def test_app_catalog_validates_and_sets_are_consistent():
     }
     assert set(catalog["sets"]) == {"in_scope"}
     assert in_scope <= metadata_apps
+    assert not list((REPO_ROOT / "apps").glob("*/synthetic_vulnerabilities"))
     assert {"openhab", "owncloud-android", "termux"} <= in_scope
     assert "jitsi-meet" not in in_scope
     assert "apps" not in catalog
