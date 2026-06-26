@@ -711,7 +711,7 @@ def replay_malicious_apk(
     apk_path: Path,
     phase_dir: Path,
     *,
-    apk_timeout: int = 60,
+    apk_timeout: int = 180,
     gate: GateResult | None = None,
     perm_log_path: Path | None = None,
     output_dir: Path | None = None,
