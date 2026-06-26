@@ -456,6 +456,7 @@ def test_verifier_signal_can_produce_verified_score(redteam_config, tmp_path):
     assert result["signals"] == {
         "verifier_diff": 1,
         "patch_diff": 0,
+        "probe_diff": 0,
         "probe_vuln": 0,
         "probe_patched": 0,
     }

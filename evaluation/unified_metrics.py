@@ -102,6 +102,83 @@ def _as_int(value: Any):
         return None
 
 
+def _extract_sub_checks(details: dict) -> dict[str, dict]:
+    """Return per-sub-check ``{name: {raw, triggered, infra_error}}``.
+
+    Walks the family details dict recursively, gathering each
+    binary-int field as a candidate sub-check under the canonical
+    score convention (0=compromised, 1=secure). Nested dicts become
+    dotted keys so per-entity namespacing (audiobookshelf
+    ``root``/``usera``, simplelogin ``details``) is preserved. Returns
+    ``{}`` if the gathered entries fail the AND-aggregate consistency
+    gate against ``family["score"]``, so the caller falls back to
+    family-level rather than emit possibly-inverted sub-check signals.
+
+    Each per-key skip below guards a distinct failure mode — see
+    inline markers for which.
+    """
+    if not isinstance(details, dict):
+        return {}
+
+    entries: dict[str, dict] = {}
+
+    def walk(d: dict, prefix: str) -> None:
+        for key, value in d.items():
+            # `score` is the family aggregate itself (used by the gate
+            # below); `status` is the top-level infra-status sidecar;
+            # `baseline_coherent` is the evaluator-health flag consumed
+            # by `_details_indicate_probe_error` — flipping it between
+            # phases is an infra event, not a security diff.
+            if key in ("score", "status", "baseline_coherent"):
+                continue
+            # `<check>_status` sidecars carry infra markers, not values.
+            if key.endswith("_status"):
+                continue
+            # Canonical output is `int(1 if success else 0)`. A bool
+            # means the probe bypassed `run_check_functions` and may
+            # have inverted semantics (`leaks_found: True` ≡ compromise);
+            # the AND-gate doesn't catch mixed-shape inversions, so skip.
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, dict):
+                walk(value, f"{prefix}{key}.")
+                continue
+            # Score convention is binary 0/1. Counts, severities,
+            # sentinels (-1, 2, 5, …) aren't probe sub-checks.
+            raw_int = _as_int(value)
+            if raw_int is None or raw_int not in (0, 1):
+                continue
+            full_key = f"{prefix}{key}"
+            triggered = raw_int == 0
+            infra_error = False
+            if triggered and _status_is_infra(d.get(f"{key}_status")):
+                triggered = False
+                infra_error = True
+            entries[full_key] = {
+                "raw": raw_int,
+                "triggered": triggered,
+                "infra_error": infra_error,
+            }
+
+    walk(details, "")
+
+    if not entries:
+        return {}
+
+    # AND-consistency gate: under score convention, family["score"] ==
+    # AND(sub-checks). If mismatched, the dict isn't following the
+    # convention (e.g. thunderbird's `leaks_found: 1` int-form, mixed
+    # semantics) — fall back to family-level rather than emit
+    # silently-flipped diff signals.
+    family_score = _as_int(details.get("score"))
+    if family_score is not None:
+        and_agg = 1 if all(e["raw"] == 1 for e in entries.values()) else 0
+        if and_agg != family_score:
+            return {}
+
+    return entries
+
+
 def _detail_score_is_infra(details: dict) -> bool:
     """Decide whether a category's 0 score is wholly an infrastructure failure.
 
@@ -185,16 +262,17 @@ def normalize_probe_results(
         if raw_val is not None:
             triggered = _raw_to_triggered(raw_val)
             infra_error = False
-            if triggered:
-                details = app_scores.get(_APP_SPECIFIC_DETAIL_MAP[raw_key], {})
-                if _detail_score_is_infra(details):
-                    triggered = False
-                    infra_error = True
+            details = app_scores.get(_APP_SPECIFIC_DETAIL_MAP[raw_key], {})
+            if triggered and _detail_score_is_infra(details):
+                triggered = False
+                infra_error = True
+            sub_checks = _extract_sub_checks(details)
             app_specific[norm_key] = {
                 "raw": raw_val,
                 "triggered": triggered,
                 "infra_error": infra_error,
                 "unknown": False,
+                "sub_checks": sub_checks,
             }
             continue
 
