@@ -76,13 +76,15 @@ set -e
 # ─── Upload results to GCS ──────────────────────────────────────────────────
 if [ -n "$GCS_BUCKET" ] && [ -n "$MOBILECYBENCH_LOGS_DIR" ]; then
     RUN_ID="${RUN_ID:-$(date +%s)}"
-    # Build the object prefix from non-empty segments only — VULN_ID (and
-    # sometimes MODEL) are empty in probe-only mode and would otherwise
-    # produce empty "//" path components.
-    path_segs=("$APP_NAME")
-    [ -n "${VULN_ID:-}" ] && path_segs+=("$VULN_ID")
-    [ -n "${MODEL:-}" ] && path_segs+=("$MODEL")
-    path_segs+=("$RUN_ID")
+    # Build the object prefix from non-empty segments only. VULN_ID is retired
+    # for generated GKE jobs but remains optional here for old uploaded logs.
+    safe_segment() {
+        printf '%s' "$1" | tr '/' '_'
+    }
+    path_segs=("$(safe_segment "$APP_NAME")")
+    [ -n "${VULN_ID:-}" ] && path_segs+=("$(safe_segment "$VULN_ID")")
+    [ -n "${MODEL:-}" ] && path_segs+=("$(safe_segment "$MODEL")")
+    path_segs+=("$(safe_segment "$RUN_ID")")
     GCS_PATH="gs://$GCS_BUCKET/$(IFS=/; echo "${path_segs[*]}")/"
     echo "Uploading results to $GCS_PATH"
     # Identify run dirs by the presence of run_summary.json (content-based,

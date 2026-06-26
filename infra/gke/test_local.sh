@@ -1,6 +1,6 @@
 #!/bin/bash
 # Local test for GKE infrastructure — validates emulator modes
-# inside the orchestrator, without GKE and without LLM calls.
+# inside the orchestrator, without GKE.
 #
 # What this tests:
 #   1. Orchestrator image builds/pulls
@@ -10,7 +10,7 @@
 #   5. Emulator boots and app installs
 #   6. Backend containers start (if app has them)
 #   7. Kali container starts
-#   8. dry_run interactive shell opens (no LLM)
+#   8. redteam probe-only runner config starts cleanly
 #
 # Prerequisites:
 #   - Docker running on a Linux host with /dev/kvm
@@ -21,29 +21,29 @@
 #   bash infra/gke/test_local.sh moememos
 #   bash infra/gke/test_local.sh moememos --container   # emulator in separate container
 #   bash infra/gke/test_local.sh moememos --skip-build   # never build, only use existing/pull
-#   bash infra/gke/test_local.sh moememos --gold-run     # run reference exploits
-#   bash infra/gke/test_local.sh moememos --gold-run --gke-mode  # replicate GKE conditions
-#   bash infra/gke/test_local.sh ntfy-android --gold-run --vuln vuln_1  # specific vuln
+#   bash infra/gke/test_local.sh moememos --gke-mode     # replicate GKE conditions
 
 set -euo pipefail
 
 APP_NAME="moememos"
 EMULATOR_BACKEND="native"
 SKIP_BUILD=false
-DRY_RUN=true
+DRY_RUN=false
 GOLD_RUN=false
-VULN_ID="vuln_0"
 GKE_MODE=false
+AGENT_IMAGE="${AGENT_IMAGE:-cybench/mobilecybench:opencode_1.15.6-r1}"
+MODEL="${MODEL:-openai/gpt-5.5}"
+ATTACKER_MODEL="${ATTACKER_MODEL:-remote_attacker}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --native) EMULATOR_BACKEND="native"; shift ;;
         --container) EMULATOR_BACKEND="container"; shift ;;
         --skip-build) SKIP_BUILD=true; shift ;;
-        --dry-run) DRY_RUN=true; GOLD_RUN=false; shift ;;
-        --gold-run) GOLD_RUN=true; DRY_RUN=false; shift ;;
+        --dry-run) echo "ERROR: --dry-run is incompatible with redteam probe-only smoke"; exit 1 ;;
+        --gold-run) echo "ERROR: --gold-run is incompatible with redteam probe-only smoke"; exit 1 ;;
         --no-dry-run) DRY_RUN=false; shift ;;
-        --vuln) VULN_ID="$2"; shift 2 ;;
+        --vuln) echo "ERROR: --vuln is retired for GKE smoke tests"; exit 1 ;;
         --gke-mode) GKE_MODE=true; EMULATOR_BACKEND="container"; shift ;;
         --*) echo "Unknown arg: $1"; exit 1 ;;
         *) APP_NAME="$1"; shift ;;
@@ -59,11 +59,13 @@ DOCKERHUB_EMULATOR="cybench/mobilecybench-emulator:latest"
 
 echo "=== MobileCyBench Local Infrastructure Test ==="
 echo "App:            $APP_NAME"
-echo "Vuln ID:        $VULN_ID"
 echo "Emulator backend: $EMULATOR_BACKEND"
 echo "Dry run:        $DRY_RUN"
 echo "Gold run:       $GOLD_RUN"
 echo "GKE mode:       $GKE_MODE"
+echo "Agent image:    $AGENT_IMAGE"
+echo "Model:          $MODEL"
+echo "Attacker model: $ATTACKER_MODEL"
 echo "Project root:   $PROJECT_ROOT"
 echo ""
 
@@ -154,22 +156,20 @@ fi
 
 # ─── Step 2: Determine build_type ─────────────────────────────────────────
 CLEAN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/$APP_NAME.apk"
-VULN_APK="$PROJECT_ROOT/apps/$APP_NAME/apk/$VULN_ID/$APP_NAME.apk"
 
-if [ -f "$CLEAN_APK" ] && [ -f "$VULN_APK" ]; then
+if [ -f "$CLEAN_APK" ]; then
     BUILD_TYPE="skip-apk"
-    echo "--- Step 2: Pre-built APKs found, using skip-apk mode ---"
+    echo "--- Step 2: Pre-built APK found, using skip-apk mode ---"
 else
     BUILD_TYPE="source"
     echo "--- Step 2: APKs not found, will build from source inside container ---"
-    echo "  (This adds ~5-10 min. To skip next time, copy APKs to:"
+    echo "  (This adds ~5-10 min. To skip next time, copy the clean APK to:"
     echo "    $CLEAN_APK"
-    echo "    $VULN_APK"
     echo "  )"
 fi
 echo ""
 
-# ─── Step 3: Create dry-run config ─────────────────────────────────────────
+# ─── Step 3: Create redteam probe-only config ──────────────────────────────
 # Default cleanup trap (may be overridden by --gke-mode)
 trap 'rm -f "$PROJECT_ROOT/runner_config_test.json"' EXIT
 
@@ -179,12 +179,16 @@ cat > "$PROJECT_ROOT/runner_config_test.json" <<EOF
   "build_type": "$BUILD_TYPE",
   "max_iterations": 1,
   "max_model_response_tokens": 100,
-  "model": "notarealmodel",
+  "model": "$MODEL",
+  "agent_mode": "external",
+  "agent_image": "$AGENT_IMAGE",
   "dry_run": $DRY_RUN,
   "gold_run": $GOLD_RUN,
-  "workflow": "exploit",
-  "synthetic_vuln_id": "$VULN_ID",
-  "agent_image": "cybench/mobilecybench:latest",
+  "workflow": "redteam",
+  "probe_only": true,
+  "attacker_model": "$ATTACKER_MODEL",
+  "task": null,
+  "no_codebase": false,
   "emulator_display": "headless",
   "emulator_backend": "$EMULATOR_BACKEND",
   "build_command_timeout": 2400
@@ -194,7 +198,7 @@ echo "Config written to runner_config_test.json"
 echo ""
 
 # ─── Step 4: Run orchestrator ──────────────────────────────────────────────
-echo "--- Step 4: Running orchestrator (dry_run=$DRY_RUN, gold_run=$GOLD_RUN) ---"
+echo "--- Step 4: Running orchestrator (probe_only=true) ---"
 echo "The orchestrator will:"
 echo "  - Start DinD"
 echo "  - Start emulator ($EMULATOR_BACKEND mode)"
@@ -337,7 +341,7 @@ docker run "${DOCKER_RUN_ARGS[@]}" \
 
         echo ""
         echo "=========================================="
-        echo "Infrastructure ready — running dry_run"
+        echo "Infrastructure ready — running redteam probe-only smoke"
         echo "=========================================="
         echo ""
 
