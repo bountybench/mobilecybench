@@ -289,12 +289,15 @@ def test_run_checks_keeps_coherent_compromise_scores_triggerable(tmp_path):
     assert app["scores"]["test_availability"] == 1
 
     normalized = normalize_probe_results(app_scores, generic_scores, probe_config)
-    assert normalized["app_specific"]["app.access"] == {
-        "raw": 0,
-        "triggered": True,
-        "infra_error": False,
-        "unknown": False,
-    }
+    access = normalized["app_specific"]["app.access"]
+    assert access["raw"] == 0
+    assert access["triggered"] is True
+    assert access["infra_error"] is False
+    assert access["unknown"] is False
+    # ``baseline_coherent`` is a diagnostic field, not a canonical
+    # ``check_*`` sub-check, so it's intentionally not extracted; the family
+    # aggregate above is the sole signal source for this payload.
+    assert access["sub_checks"] == {}
     assert normalized["app_specific_triggered"] is True
     assert normalized["probe_evaluator_error"] is False
     assert normalized["combined"]["triggered"] is True

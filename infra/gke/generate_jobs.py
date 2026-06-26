@@ -37,8 +37,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 APP_CATALOG = PROJECT_ROOT / "apps" / "app_catalog.json"
 
 
-def load_active_apps(catalog_path: Path = APP_CATALOG) -> list[str]:
+def load_active_apps(catalog_path: Path | None = None) -> list[str]:
     """Return the active app names from apps/app_catalog.json."""
+    catalog_path = APP_CATALOG if catalog_path is None else catalog_path
     try:
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
         apps = catalog["sets"]["in_scope"]
@@ -60,24 +61,27 @@ def load_active_apps(catalog_path: Path = APP_CATALOG) -> list[str]:
 def discover_apps(apps_dir: Path, app_filter: list[str] | None) -> list[str]:
     """Return active app names for the external-agent path."""
     available = load_active_apps()
-    missing_dirs = [app for app in available if not (apps_dir / app).is_dir()]
+    if app_filter is None:
+        selected = available
+    else:
+        missing = [a for a in app_filter if a not in available]
+        if missing:
+            print(
+                f"ERROR: unknown or archived app(s): {', '.join(missing)}. "
+                f"Active apps: {', '.join(available)}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        selected = list(app_filter)
+
+    missing_dirs = [app for app in selected if not (apps_dir / app).is_dir()]
     if missing_dirs:
         print(
             f"ERROR: active catalog app(s) missing under apps/: {', '.join(missing_dirs)}",
             file=sys.stderr,
         )
         sys.exit(1)
-    if app_filter is None:
-        return available
-    missing = [a for a in app_filter if a not in available]
-    if missing:
-        print(
-            f"ERROR: unknown or archived app(s): {', '.join(missing)}. "
-            f"Active apps: {', '.join(available)}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return app_filter
+    return selected
 
 
 def sanitize_k8s_name(name: str) -> str:

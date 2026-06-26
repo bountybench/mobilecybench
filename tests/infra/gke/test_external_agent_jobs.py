@@ -207,6 +207,20 @@ def test_discover_apps_uses_catalog_not_directory_scan(
     assert "unknown or archived app(s): directory-only-app" in capsys.readouterr().err
 
 
+def test_explicit_app_does_not_require_unselected_catalog_dirs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from infra.gke import generate_jobs
+
+    apps_dir = tmp_path / "apps"
+    (apps_dir / "app-a").mkdir(parents=True)
+    monkeypatch.setattr(generate_jobs, "load_active_apps", lambda: ["app-a", "app-b"])
+
+    assert generate_jobs.discover_apps(apps_dir, ["app-a"]) == ["app-a"]
+    with pytest.raises(SystemExit):
+        generate_jobs.discover_apps(apps_dir, None)
+
+
 def test_non_catalog_app_is_rejected() -> None:
     res = _generate(
         "--apps",
