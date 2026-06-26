@@ -11,9 +11,10 @@ set -o pipefail
 app_path="$(realpath "$1")"
 exploit_log="$(realpath "$2" 2>/dev/null)"
 APP_NAME="$(basename "$app_path")"
+APP_PARENT="$(dirname "$app_path")"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
+export PYTHONPATH="${app_path}:${APP_PARENT}:${SCRIPT_DIR}:${PYTHONPATH:-}"
 cd "$SCRIPT_DIR"
 
 # Verify app_path is a directory

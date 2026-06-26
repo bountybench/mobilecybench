@@ -183,7 +183,12 @@ def _make_workflow(
     return wf
 
 
-def _write_agent_artifact(attacker_model: str, *, present: bool = True) -> Path:
+def _write_agent_artifact(
+    attacker_model: str,
+    *,
+    present: bool = True,
+    with_candidate_manifest: bool = False,
+) -> Path:
     exploit_dir = logger_manager.get_logs_dir() / "agent_exploit"
     shutil.rmtree(exploit_dir, ignore_errors=True)
     exploit_dir.mkdir(parents=True, exist_ok=True)
@@ -196,8 +201,46 @@ def _write_agent_artifact(attacker_model: str, *, present: bool = True) -> Path:
         (
             apk_dir / "src" / "com" / "mobilecybench" / "exploit" / "Exploit.java"
         ).write_text("class Exploit {}")
+        if with_candidate_manifest:
+            (exploit_dir / "candidates" / "candidate_01").mkdir(parents=True)
+            _write_json(
+                exploit_dir / "candidate_manifest.json",
+                {
+                    "version": 1,
+                    "candidates": [
+                        {
+                            "candidate_id": "candidate_01",
+                            "name": "candidate one",
+                            "root_cause": "root cause one",
+                            "status": "validated",
+                            "distinct_from": [],
+                            "implementation_path": "candidates/candidate_01",
+                            "evidence_paths": [],
+                        }
+                    ],
+                },
+            )
     if attacker_model == "remote_attacker" and present:
         (exploit_dir / "exploit.sh").write_text("#!/bin/bash\nexit 0\n")
+        if with_candidate_manifest:
+            (exploit_dir / "candidates" / "candidate_01").mkdir(parents=True)
+            _write_json(
+                exploit_dir / "candidate_manifest.json",
+                {
+                    "version": 1,
+                    "candidates": [
+                        {
+                            "candidate_id": "candidate_01",
+                            "name": "candidate one",
+                            "root_cause": "root cause one",
+                            "status": "validated",
+                            "distinct_from": [],
+                            "implementation_path": "candidates/candidate_01/exploit.sh",
+                            "evidence_paths": [],
+                        }
+                    ],
+                },
+            )
     return exploit_dir
 
 
@@ -290,6 +333,24 @@ def test_exploit_missing_saves_zero_score(redteam_config, tmp_path):
         (tmp_path / "apps" / "testapp" / "redteam_scores.json").read_text()
     )
     assert saved["status"] == "exploit_missing"
+
+
+def test_multi_exploit_requires_candidate_manifest(redteam_config, tmp_path):
+    config = RunnerConfig(
+        **{
+            **redteam_config.model_dump(),
+            "probe_only": True,
+            "task": None,
+            "multi_exploit": True,
+        }
+    )
+    wf = _make_workflow(config, tmp_path)
+    _write_agent_artifact("malicious_app", present=True, with_candidate_manifest=False)
+
+    result = wf.evaluate()
+
+    assert result["status"] == "exploit_missing"
+    assert "candidate_manifest.json" in result["reason"]
 
 
 def test_synthetic_result_includes_vuln_id(tmp_path):
@@ -1822,6 +1883,28 @@ def test_probe_only_signal_result_schema_and_layout(tmp_path):
     evidence_log = result["phases"]["probe"]["evidence_log"]
     assert evidence_log == "replays/probe/replay_evidence.log"
     assert not Path(evidence_log).is_absolute()
+
+
+def test_probe_only_multi_exploit_result_includes_candidate_summary(tmp_path):
+    wf = _make_bundleless_malicious_app_workflow(
+        RunnerConfig(
+            **{
+                **_probe_only_malicious_app_config().model_dump(),
+                "multi_exploit": True,
+            }
+        ),
+        tmp_path,
+    )
+    _write_agent_artifact("malicious_app", with_candidate_manifest=True)
+
+    result = _run_evaluate(wf, MaliciousAppOps, [0], [True])
+
+    assert result["status"] == "signal"
+    summary = result["candidate_summary"]
+    assert summary["candidate_manifest_present"] is True
+    assert summary["candidate_manifest_valid"] is True
+    assert summary["candidate_dirs_present"] is True
+    assert summary["validated_candidate_ids"] == ["candidate_01"]
 
 
 def test_probe_only_status_no_signal_when_probes_silent(tmp_path):

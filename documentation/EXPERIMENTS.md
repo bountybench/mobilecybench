@@ -211,9 +211,33 @@ methods at config-load time:
 - `probe_only == true` **forbids** `task` and `synthetic_vuln_id` (bundle-less by design).
 - `probe_only == true` **requires** `attacker_model` (no task metadata to read it from).
 - `probe_only == true` is incompatible with `gold_run` (no canonical exploit source).
+- `multi_exploit == true` requires `workflow == "redteam"` and
+  `probe_only == true`; it changes the agent prompt only, not replay/scoring.
 - `apk_obfuscation == "on"` requires `no_codebase == true`, `build_type` ∈
   {`download-apk`, `skip-apk`}, and (for `download-apk`) `download_link_obfuscated`
   published in the app's metadata.
+
+### Multi-exploit probe-only runs
+
+`multi_exploit: true` is an opt-in for broad zero-day discovery during
+`redteam` + `probe_only` experiments. The runner automatically appends prompt
+guidance telling the agent to continue after the first candidate, avoid
+duplicating the same root cause, and preserve multiple candidate implementations
+and evidence.
+
+The replay contract deliberately stays single-entrypoint:
+
+- `remote_attacker`: the agent must still submit
+  `agent_exploit/exploit.sh`, but that file should orchestrate candidate-specific
+  helper scripts under `agent_exploit/`.
+- `malicious_app`: the agent must still submit one `exploit_apk/`, but
+  `Exploit.run(...)` should orchestrate multiple distinct candidate triggers and
+  record per-candidate evidence.
+
+Evaluation performs one fresh probe replay and scores the combined
+post-exploit state. This keeps replay-only runs, artifact preservation, and
+existing probe scoring compatible while allowing the agent to search for more
+than one vulnerability.
 
 ### Agent modes
 
@@ -239,7 +263,7 @@ symlink to the most recent run is maintained at `logs/latest/`.
 | `agent_run/result.json`              | CLI exit envelope: `status`, `exit_code`, `stop_reason`, `cost_usd`, `token_totals`, `timing`.        |
 | `agent_run/token_usage.jsonl`        | (custom mode only) Granular token counts per API call. External-mode runs report totals in `agent_run/result.json:token_totals`. |
 | `agent_run/system_prompt.txt`        | (custom mode only) Exact system prompt used by the agent.                                             |
-| `agent_exploit/`                     | The exploit the agent built: `exploit.sh` (RA) or `exploit_apk/` (MA).                                |
+| `agent_exploit/`                     | The exploit the agent built: `exploit.sh` (RA) or `exploit_apk/` (MA). In `multi_exploit` runs this directory may also contain helper scripts/classes orchestrated by the single replay entrypoint. |
 | `agent_output/`                      | Anything the exploit produced (callback hits, captured tokens, evidence JSONs, etc.).                |
 | `replays/probe/`                     | The single probe-replay artifacts: `replay_evidence.log`, `logcat.txt`, `exploit_evidence/`.         |
 | `android_system.log`                 | Full Android Logcat dump captured at the end of the run.                                              |

@@ -35,6 +35,8 @@ class RunnerConfig(BaseModel):
     * ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``
       and ``synthetic_vuln_id``, requires ``attacker_model``, and is
       incompatible with ``gold_run``.
+    * ``multi_exploit`` requires ``workflow == 'redteam'`` and
+      ``probe_only == true``.
     * ``dry_run`` and ``gold_run`` are mutually exclusive.
     * ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and
       cannot be used with ``build_type == 'source'``.
@@ -207,6 +209,19 @@ class RunnerConfig(BaseModel):
             "after the exploit, so a pre-exploit baseline would conflate victim "
             "hydration with exploit effects). Off by default (single-pass "
             "after-only scoring); only affects the probe_only path."
+        ),
+    )
+    multi_exploit: bool = Field(
+        default=False,
+        description=(
+            "probe_only redteam opt-in: automatically appends guidance that "
+            "the agent should keep searching after the first candidate, build "
+            "multiple distinct exploit attempts, and submit one replay "
+            "entrypoint that orchestrates them. For remote_attacker this means "
+            "one /app/agent_exploit/exploit.sh that calls helper scripts; for "
+            "malicious_app this means one exploit APK whose entrypoint runs "
+            "multiple candidate triggers. Evaluation still performs one fresh "
+            "probe replay and scores the combined post-exploit outcome."
         ),
     )
 
@@ -389,6 +404,29 @@ class RunnerConfig(BaseModel):
                 "attacker_model='malicious_app'; remote_attacker runs "
                 "prepare_victim after the exploit, so a pre-exploit baseline "
                 "would conflate victim hydration with exploit effects."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_multi_exploit(self) -> "RunnerConfig":
+        """multi_exploit only changes probe-only redteam agent instructions.
+
+        It deliberately does not change replay/scoring semantics: evaluation
+        still runs the single submitted entrypoint once, and the entrypoint is
+        responsible for orchestrating multiple distinct candidates.
+        """
+        if not self.multi_exploit:
+            return self
+        if self.workflow != "redteam":
+            raise ValueError(
+                "multi_exploit=True requires workflow='redteam'; it only "
+                "applies to redteam probe-only experiments."
+            )
+        if not self.probe_only:
+            raise ValueError(
+                "multi_exploit=True requires probe_only=True; two-phase "
+                "tasks have a task-specific verifier and are scoped to one "
+                "exploit objective."
             )
         return self
 

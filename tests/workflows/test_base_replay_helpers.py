@@ -197,6 +197,34 @@ class TestRunExploit:
         )
         assert result["replay_exit_code"] == 42
 
+    def test_passes_unique_replay_container_names(self, workflow, tmp_path):
+        exploit_dir = tmp_path / "agent_exploit"
+        exploit_dir.mkdir()
+        (exploit_dir / "exploit.sh").write_text("echo hello")
+
+        output_dir = tmp_path / "probe"
+        args_file = tmp_path / "runner_args.txt"
+        exploit_runner = tmp_path / "run_exploit.sh"
+        exploit_runner.write_text(
+            "#!/bin/bash\n" f'printf "%s\\n" "$@" > "{args_file}"\n' "exit 0\n"
+        )
+
+        workflow._run_exploit(
+            exploit_dir=exploit_dir,
+            output_dir=output_dir,
+            exploit_runner=exploit_runner,
+            exploit_image="test:latest",
+            codebase_dir=tmp_path,
+            replay_apk=None,
+        )
+
+        args = args_file.read_text(encoding="utf-8").splitlines()
+        container_name = args[args.index("--container-name") + 1]
+        proxy_name = args[args.index("--adb-proxy-name") + 1]
+        assert container_name.startswith("mobilecybench-exploit-testapp-")
+        assert proxy_name.startswith("adb-proxy-exploit-testapp-")
+        assert proxy_name != "adb-proxy"
+
 
 class TestRunExploitContainerScript:
     def _base_args(self, tmp_path):

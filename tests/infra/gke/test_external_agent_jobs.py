@@ -111,11 +111,30 @@ def test_external_probe_only_renders_full_matrix() -> None:
         "conversations",
         "--agent-image",
         AGENT_IMAGE,
+        "--build-type",
+        "source",
+        "--network-mode",
+        "permissive",
         "--probe-only",
+        "--multi-exploit",
         "--attacker-models",
         "malicious_app",
         "remote_attacker",
         "--no-codebase-ablation",
+        "--max-iterations",
+        "10000",
+        "--agent-wallclock-seconds",
+        "7200",
+        "--replay-exploit-dir",
+        "/mobilecybench/replay_exploit/conversations_ra",
+        "--upload-failure-hold-seconds",
+        "21600",
+        "--ttl-seconds-after-finished",
+        "604800",
+        "--backoff-limit",
+        "0",
+        "--name-suffix",
+        "mx1",
         "--gcs-bucket",
         "test",
         "--dry-run",
@@ -134,10 +153,24 @@ def test_external_probe_only_renders_full_matrix() -> None:
         assert env["AGENT_IMAGE"] == AGENT_IMAGE
         assert env["WORKFLOW"] == "redteam"
         assert env["PROBE_ONLY"] == "true"
+        assert env["MULTI_EXPLOIT"] == "true"
+        assert env["BUILD_TYPE"] == "source"
+        assert env["NETWORK_MODE"] == "permissive"
+        assert env["MAX_ITERATIONS"] == "10000"
+        assert env["AGENT_WALLCLOCK_SECONDS"] == "7200"
+        assert (
+            env["REPLAY_EXPLOIT_DIR"]
+            == "/mobilecybench/replay_exploit/conversations_ra"
+        )
+        assert env["UPLOAD_FAILURE_HOLD_SECONDS"] == "21600"
+        assert d["spec"]["backoffLimit"] == 0
+        assert d["spec"]["ttlSecondsAfterFinished"] == 604800
         assert env[EMULATOR_GPU_ENV] == ""
         assert env["VULN_ID"] == ""  # unused in probe-only mode
         # The agent image is plumbed via runner_config, NOT as the pod image.
         assert d["spec"]["template"]["spec"]["containers"][0]["image"] != AGENT_IMAGE
+        assert d["metadata"]["name"].endswith("mx1")
+        assert d["metadata"]["labels"]["experiment-multi-exploit"] == "true"
         combos.add((env["ATTACKER_MODEL"], env["NO_CODEBASE"]))
 
     assert combos == {
@@ -282,6 +315,7 @@ def test_builder_external_probe_only(tmp_path: Path, no_codebase: str) -> None:
     assert cfg["agent_image"] == AGENT_IMAGE
     assert cfg["emulator_backend"] == "container"
     assert cfg["agent_wallclock_seconds"] == 1800
+    assert cfg.get("multi_exploit", False) is False
     # probe-only is bundle-less: selectors must be cleared regardless of base.
     assert cfg["synthetic_vuln_id"] is None
     assert cfg["task"] is None
@@ -310,6 +344,25 @@ def test_builder_no_codebase_false_is_written_not_skipped(tmp_path: Path) -> Non
     """NO_CODEBASE='false' must override base (true) -> distinguishes unset from false."""
     cfg = _build_config({"NO_CODEBASE": "false"}, BASE_CONFIG, tmp_path)
     assert cfg["no_codebase"] is False
+
+
+def test_builder_writes_multi_exploit_and_runtime_overrides(tmp_path: Path) -> None:
+    cfg = _build_config(
+        {
+            "BUILD_TYPE": "source",
+            "NETWORK_MODE": "permissive",
+            "MAX_ITERATIONS": "10000",
+            "MULTI_EXPLOIT": "true",
+            "REPLAY_EXPLOIT_DIR": "/mobilecybench/replay_exploit/conversations_ra",
+        },
+        BASE_CONFIG,
+        tmp_path,
+    )
+    assert cfg["build_type"] == "source"
+    assert cfg["network_mode"] == "permissive"
+    assert cfg["max_iterations"] == 10000
+    assert cfg["multi_exploit"] is True
+    assert cfg["replay_exploit_dir"] == "/mobilecybench/replay_exploit/conversations_ra"
 
 
 # ── end-to-end: built config validates against the real RunnerConfig ──────────
@@ -341,6 +394,10 @@ def test_committed_base_external_probe_only_is_valid(
             "NO_CODEBASE": no_codebase,
             "EMULATOR_BACKEND": "container",
             "AGENT_WALLCLOCK_SECONDS": "1800",
+            "MAX_ITERATIONS": "10000",
+            "MULTI_EXPLOIT": "true",
+            "BUILD_TYPE": "source",
+            "NETWORK_MODE": "permissive",
             "MODEL": "",
             "VULN_ID": "",
             "DRY_RUN": "false",  # probe_only forbids dry_run
@@ -349,7 +406,11 @@ def test_committed_base_external_probe_only_is_valid(
         tmp_path,
     )
     cfg.pop("$schema", None)
-    RunnerConfig(**cfg)  # raises if invalid
+    loaded = RunnerConfig(**cfg)  # raises if invalid
+    assert loaded.multi_exploit is True
+    assert loaded.build_type == "source"
+    assert loaded.network_mode == "permissive"
+    assert loaded.max_iterations == 10000
 
 
 def test_committed_base_legacy_synthetic_is_valid(tmp_path: Path) -> None:

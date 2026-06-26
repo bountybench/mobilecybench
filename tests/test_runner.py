@@ -245,6 +245,43 @@ class TestProbeOnlyValidators:
                 }
             )
 
+    def test_multi_exploit_requires_redteam(self, base_config):
+        with pytest.raises(ValueError, match=r"multi_exploit=True requires workflow"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "exploit",
+                    "multi_exploit": True,
+                }
+            )
+
+    def test_multi_exploit_requires_probe_only(self, base_config):
+        with pytest.raises(ValueError, match=r"multi_exploit=True requires probe_only"):
+            RunnerConfig(
+                **{
+                    **base_config.model_dump(),
+                    "workflow": "redteam",
+                    "task": "report-0",
+                    "synthetic_vuln_id": None,
+                    "attacker_model": "remote_attacker",
+                    "multi_exploit": True,
+                }
+            )
+
+    def test_multi_exploit_allowed_for_redteam_probe_only(self, base_config):
+        config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "workflow": "redteam",
+                "task": None,
+                "synthetic_vuln_id": None,
+                "attacker_model": "remote_attacker",
+                "probe_only": True,
+                "multi_exploit": True,
+            }
+        )
+        assert config.multi_exploit is True
+
 
 class TestRun:
     """Tests for run() - focus on error handling and cleanup guarantees."""

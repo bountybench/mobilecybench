@@ -408,3 +408,60 @@ def test_run_checks_nulls_remote_attacker_probe_infra_error_scores(tmp_path):
     assert remote_attacker["access_details"]["status"] == "error"
     assert remote_attacker["access_details"]["baseline_coherent"] is False
     assert remote_attacker["access_details"]["score"] == 0
+
+
+def test_run_checks_direct_remote_attacker_dir_can_import_parent_helpers(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    app_dir = tmp_path / "app"
+    ra_dir = app_dir / "remote_attacker"
+    ra_dir.mkdir(parents=True)
+
+    (app_dir / "probe_helpers.py").write_text(
+        "HELPER_SCORE = 1\n",
+        encoding="utf-8",
+    )
+    _write_json(
+        ra_dir / "generic_probe_config.json",
+        {
+            "version": 1,
+            "generic_probe_applicability": ALL_GENERIC_CONFIG_KEYS,
+        },
+    )
+    for probe in (
+        "test_access_control.py",
+        "test_availability.py",
+        "test_confidentiality.py",
+        "test_integrity.py",
+    ):
+        (ra_dir / probe).write_text(
+            "import json\n"
+            "from probe_helpers import HELPER_SCORE\n"
+            "print(json.dumps({'score': HELPER_SCORE, 'status': 'secure'}))\n",
+            encoding="utf-8",
+        )
+
+    log_path = tmp_path / "evidence.log"
+    log_path.write_text("remote attacker evidence\n", encoding="utf-8")
+    app_scores = tmp_path / "scores.json"
+    generic_scores = tmp_path / "generic_scores.json"
+
+    env = os.environ.copy()
+    env["APP_SCORES_OUT"] = str(app_scores)
+    env["GENERIC_SCORES_OUT"] = str(generic_scores)
+
+    subprocess.run(
+        ["bash", str(repo_root / "run_checks.sh"), str(ra_dir), str(log_path)],
+        cwd=repo_root,
+        env=env,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    app = json.loads(app_scores.read_text(encoding="utf-8"))
+    assert app["scores"] == {
+        "test_access": 1,
+        "test_availability": 1,
+        "test_confidentiality": 1,
+        "test_integrity": 1,
+    }
