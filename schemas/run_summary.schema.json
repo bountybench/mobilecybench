@@ -33,8 +33,8 @@
       "required": ["app_name", "workflow", "agent_mode", "agent_image", "model"],
       "properties": {
         "app_name": { "type": "string", "minLength": 1 },
-        "workflow": { "type": "string", "enum": ["exploit", "redteam"] },
-        "vuln_id": { "type": ["string", "null"] },
+        "workflow": { "type": "string", "enum": ["redteam"] },
+        "vuln_id": { "type": "null" },
         "task": { "type": ["string", "null"] },
         "agent_mode": { "type": "string", "enum": ["custom", "external"] },
         "agent_image": { "type": "string", "minLength": 1 },
@@ -133,7 +133,6 @@
         "squid_access_log": { "type": ["string", "null"] },
         "squid_cache_log": { "type": ["string", "null"] },
         "scores_json": { "type": ["string", "null"] },
-        "synthetic_scores_json": { "type": ["string", "null"] },
         "redteam_scores_json": { "type": ["string", "null"] },
         "logs_dir": { "type": "string", "minLength": 1 }
       }

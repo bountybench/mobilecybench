@@ -28,13 +28,12 @@ class RunnerConfig(BaseModel):
 
     Cross-field invariants enforced by validators:
 
-    * ``attacker_model`` is meaningful only when ``workflow == 'redteam'``.
-    * ``exploit`` requires ``synthetic_vuln_id``.
-    * ``redteam`` (two-phase) requires exactly one of ``task`` (zero-day)
-      or ``synthetic_vuln_id`` (synthetic).
-    * ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``
-      and ``synthetic_vuln_id``, requires ``attacker_model``, and is
-      incompatible with ``gold_run``.
+    * ``workflow`` is ``redteam``; legacy ``exploit`` configs are retired.
+    * ``synthetic_vuln_id`` is retained as a nullable compatibility field but
+      non-null values are rejected.
+    * ``redteam`` (two-phase) requires ``task`` (zero-day).
+    * ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``,
+      requires ``attacker_model``, and is incompatible with ``gold_run``.
     * ``dry_run`` and ``gold_run`` are mutually exclusive.
     * ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and
       cannot be used with ``build_type == 'source'``.
@@ -146,13 +145,13 @@ class RunnerConfig(BaseModel):
     )
 
     # ---- Workflow & task selectors -----------------------------------------
-    workflow: Literal["exploit", "redteam"] = Field(
-        default="exploit",
+    workflow: Literal["redteam"] = Field(
+        default="redteam",
         description=(
-            "Pipeline to run. 'exploit' requires synthetic_vuln_id; "
-            "two-phase 'redteam' requires exactly one of task (zero-day) "
-            "or synthetic_vuln_id (synthetic); 'redteam' with "
-            "probe_only=true forbids both."
+            "Pipeline to run. Only 'redteam' is active; the legacy "
+            "'exploit' synthetic-vulnerability pipeline is archived. "
+            "Two-phase redteam requires task (zero-day); redteam with "
+            "probe_only=true forbids task."
         ),
     )
     attacker_model: Optional[Literal["malicious_app", "remote_attacker"]] = Field(
@@ -165,12 +164,12 @@ class RunnerConfig(BaseModel):
             "documentation/EXPERIMENTS.md."
         ),
     )
-    synthetic_vuln_id: Optional[str] = Field(
+    synthetic_vuln_id: None = Field(
         default=None,
         description=(
-            "Names a directory under apps/<app>/synthetic_vulnerabilities/. "
-            "Required for workflow='exploit'; one of {this, task} required "
-            "for two-phase redteam; forbidden when probe_only=true."
+            "Retired synthetic-vulnerability selector. Kept only as a "
+            "nullable compatibility field for existing configs/log schemas; "
+            "new runs must leave it null."
         ),
     )
     task: Optional[str] = Field(
@@ -184,10 +183,10 @@ class RunnerConfig(BaseModel):
     probe_only: bool = Field(
         default=False,
         description=(
-            "redteam-only bundle-less mode: single replay against the "
+            "redteam bundle-less mode: single replay against the "
             "app's baseline APK, no patch / no verifier / no two-phase "
             "comparison. Score is signal/no_signal based on app probes. "
-            "Forbids task and synthetic_vuln_id; requires attacker_model. "
+            "Forbids task; requires attacker_model. "
             "Incompatible with gold_run. See "
             "documentation/EXPERIMENTS.md."
         ),
@@ -351,13 +350,30 @@ class RunnerConfig(BaseModel):
             )
         return data
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_retired_synthetic_runtime(cls, data: Any) -> Any:
+        """Reject archived synthetic runtime selectors with migration hints."""
+        if not isinstance(data, dict):
+            return data
+        if data.get("workflow") == "exploit":
+            raise ValueError(
+                "workflow='exploit' is retired; synthetic vulnerabilities are "
+                "archived under archive/synthetic-vulnerabilities/. Use "
+                "workflow='redteam' with probe_only=true, or set task to a "
+                "zero-day report."
+            )
+        if data.get("synthetic_vuln_id") is not None:
+            raise ValueError(
+                "synthetic_vuln_id is retired; synthetic vulnerabilities are "
+                "archived under archive/synthetic-vulnerabilities/. Use a "
+                "zero-day task or redteam probe_only instead."
+            )
+        return data
+
     @model_validator(mode="after")
     def validate_probe_only_workflow(self) -> "RunnerConfig":
-        """probe_only is a redteam-only mode. Declared before
-        ``validate_attacker_model`` so on ``workflow=exploit + probe_only=True``
-        the operator sees the probe_only mismatch, not the secondary
-        attacker_model symptom (validators run in declaration order).
-        """
+        """probe_only is a redteam-only mode."""
         if self.probe_only and self.workflow != "redteam":
             raise ValueError(
                 f"probe_only=True requires workflow='redteam'; "
@@ -394,10 +410,6 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_attacker_model(self) -> "RunnerConfig":
-        if self.attacker_model is not None and self.workflow != "redteam":
-            raise ValueError(
-                f"attacker_model='{self.attacker_model}' requires workflow='redteam'"
-            )
         return self
 
     @model_validator(mode="after")
@@ -417,31 +429,21 @@ class RunnerConfig(BaseModel):
     def validate_task(self) -> "RunnerConfig":
         """Workflow-specific task selector validation.
 
-        - exploit: requires synthetic_vuln_id.
-        - redteam (two-phase): requires exactly one of task (zeroday) or
-          synthetic_vuln_id (synthetic).
+        - redteam (two-phase): requires task (zeroday).
         - redteam + probe_only: bundle-less mode is allowed when neither
-          task nor synthetic_vuln_id is set, but attacker_model must be
-          set on the config (no task metadata.json to read it from).
+          task is set, but attacker_model must be set on the config (no task
+          metadata.json to read it from).
         """
-        if self.workflow == "exploit":
-            if not self.synthetic_vuln_id:
-                raise ValueError("workflow='exploit' requires synthetic_vuln_id")
-            return self
         if self.workflow == "redteam":
             has_task = bool(self.task)
-            has_vuln = bool(self.synthetic_vuln_id)
             if self.probe_only:
                 # Probe-only is bundle-less by design: the bundle's
-                # patch/verifier are irrelevant, and accepting a task or
-                # vuln_id alongside probe_only invites operator confusion
-                # ("did vuln_0 get applied?" — no).
-                if has_task or has_vuln:
+                # patch/verifier are irrelevant, and accepting a task alongside
+                # probe_only invites operator confusion.
+                if has_task:
                     raise ValueError(
-                        "probe_only is bundle-less: do not set task or "
-                        "synthetic_vuln_id; got "
-                        f"task={self.task!r}, "
-                        f"synthetic_vuln_id={self.synthetic_vuln_id!r}"
+                        "probe_only is bundle-less: do not set task; "
+                        f"got task={self.task!r}"
                     )
                 if not self.attacker_model:
                     raise ValueError(
@@ -450,12 +452,11 @@ class RunnerConfig(BaseModel):
                     )
                 return self
             # Two-phase redteam: bundle is mandatory.
-            if has_task == has_vuln:
+            if not has_task:
                 raise ValueError(
-                    "workflow='redteam' requires exactly one of task "
-                    "(zeroday) or synthetic_vuln_id (synthetic); "
-                    f"got task={self.task!r}, "
-                    f"synthetic_vuln_id={self.synthetic_vuln_id!r}"
+                    "workflow='redteam' requires task for two-phase zero-day "
+                    "runs, or probe_only=true for bundle-less probe runs; "
+                    f"got task={self.task!r}"
                 )
         return self
 

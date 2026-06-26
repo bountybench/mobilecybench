@@ -10,7 +10,7 @@ from jsonschema import ValidationError, validate
 from models.config import RunnerConfig
 from runner import create_workflow, main, run
 from utils.logger import logger_manager
-from workflows import ExploitWorkflow
+from workflows import RedTeamWorkflow
 
 
 def _load_run_summary_schema() -> dict:
@@ -32,29 +32,38 @@ def base_config():
         emulator_display="headed",
         emulator_backend="native",
         network_mode="restricted",
-        workflow="exploit",
-        synthetic_vuln_id="vuln_0",
+        workflow="redteam",
+        probe_only=True,
+        attacker_model="remote_attacker",
+        task=None,
+        synthetic_vuln_id=None,
     )
 
 
 @pytest.fixture
-def exploit_config(base_config):
-    """Configuration for exploit workflow."""
-    return RunnerConfig(**{**base_config.model_dump(), "workflow": "exploit"})
+def redteam_task_config(base_config):
+    """Configuration for two-phase redteam zero-day workflow."""
+    return RunnerConfig(
+        **{
+            **base_config.model_dump(),
+            "probe_only": False,
+            "task": "report-0",
+            "attacker_model": "remote_attacker",
+        }
+    )
 
 
 class TestCreateWorkflow:
     """Tests for workflow selection logic."""
 
-    def test_creates_exploit_workflow_by_default(self, base_config, tmp_path):
-        """Default workflow type is ExploitWorkflow."""
+    def test_creates_redteam_workflow_by_default(self, base_config, tmp_path):
+        """Default workflow type is RedTeamWorkflow."""
         workflow = create_workflow(base_config, "test_app", tmp_path)
-        assert isinstance(workflow, ExploitWorkflow)
+        assert isinstance(workflow, RedTeamWorkflow)
 
-    def test_creates_exploit_workflow_when_configured(self, exploit_config, tmp_path):
-        """ExploitWorkflow is created when config.workflow == 'exploit'."""
-        workflow = create_workflow(exploit_config, "test_app", tmp_path)
-        assert isinstance(workflow, ExploitWorkflow)
+    def test_rejects_retired_exploit_workflow(self, base_config):
+        with pytest.raises(ValueError, match="workflow='exploit' is retired"):
+            RunnerConfig(**{**base_config.model_dump(), "workflow": "exploit"})
 
     def test_creates_redteam_workflow_when_configured(self, base_config, tmp_path):
         """RedTeamWorkflow is created when config.workflow == 'redteam'."""
@@ -72,6 +81,7 @@ class TestCreateWorkflow:
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
+                "probe_only": False,
                 "task": "report-0",
                 "synthetic_vuln_id": None,
                 "attacker_model": "malicious_app",
@@ -86,6 +96,7 @@ class TestCreateWorkflow:
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
+                "probe_only": False,
                 "task": "report-0",
                 "synthetic_vuln_id": None,
                 "gold_run": True,
@@ -93,14 +104,14 @@ class TestCreateWorkflow:
         )
         assert config.gold_run is True
 
-    def test_redteam_requires_task(self, base_config):
-        """workflow='redteam' without task or synthetic_vuln_id raises ValueError."""
-        with pytest.raises(ValueError, match="exactly one"):
+    def test_redteam_requires_task_without_probe_only(self, base_config):
+        """Two-phase redteam without a zero-day task raises ValueError."""
+        with pytest.raises(ValueError, match="requires task"):
             RunnerConfig(
                 **{
                     **base_config.model_dump(),
-                    "workflow": "redteam",
-                    "synthetic_vuln_id": None,
+                    "probe_only": False,
+                    "task": None,
                 }
             )
 
@@ -167,10 +178,11 @@ class TestReasoningEffortOwnership:
         task = {
             "run_id": "run-1",
             "app_name": "app",
-            "workflow": "exploit",
+            "workflow": "redteam",
             "package_name": "pkg",
             "app_server": "",
             "emulator_server": "",
+            "vuln_id": None,
             "apk_relpath": "app.apk",
             "no_codebase": True,
             "model": "openai/gpt-5.5",
@@ -188,10 +200,11 @@ class TestReasoningEffortOwnership:
         task = {
             "run_id": "run-1",
             "app_name": "app",
-            "workflow": "exploit",
+            "workflow": "redteam",
             "package_name": "pkg",
             "app_server": "",
             "emulator_server": "",
+            "vuln_id": None,
             "apk_relpath": "app.apk",
             "no_codebase": True,
             "model": "openai/gpt-5.5",
@@ -209,19 +222,13 @@ class TestProbeOnlyValidators:
     flags are guarded at validation so operators don't silently lose
     scoring or chase the wrong error."""
 
-    def test_probe_only_workflow_check_precedes_attacker_model(self, base_config):
-        """workflow=exploit + probe_only=True + attacker_model trips two
-        validators. probe_only is the real root cause; surface it rather
-        than the secondary attacker_model symptom. Locks declaration
-        order in models/config.py — pydantic runs ``mode='after'``
-        validators in source order."""
-        with pytest.raises(ValueError, match=r"probe_only=True requires workflow"):
+    def test_retired_exploit_workflow_reports_migration(self, base_config):
+        """workflow=exploit fails with the synthetic-retirement migration hint."""
+        with pytest.raises(ValueError, match="archive/synthetic-vulnerabilities"):
             RunnerConfig(
                 **{
                     **base_config.model_dump(),
                     "workflow": "exploit",
-                    "probe_only": True,
-                    "attacker_model": "malicious_app",
                 }
             )
 
@@ -252,15 +259,15 @@ class TestRun:
     def test_success_returns_zero(self, base_config, tmp_path):
         """Successful execution returns exit code 0."""
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
+            RedTeamWorkflow, "validate_arguments"
+        ), patch.object(RedTeamWorkflow, "setup_runtime_environment"), patch.object(
+            RedTeamWorkflow, "setup_agent"
         ), patch.object(
-            ExploitWorkflow, "run_agent", return_value={"status": "completed"}
+            RedTeamWorkflow, "run_agent", return_value={"status": "completed"}
         ), patch.object(
-            ExploitWorkflow, "evaluate", return_value={"score": 1}
+            RedTeamWorkflow, "evaluate", return_value={"score": 1}
         ), patch.object(
-            ExploitWorkflow, "cleanup"
+            RedTeamWorkflow, "cleanup"
         ):
 
             result = run(base_config, "test_app", tmp_path)
@@ -302,9 +309,7 @@ class TestRun:
         config = RunnerConfig(
             **{
                 **base_config.model_dump(),
-                "workflow": "redteam",
                 "task": None,
-                "synthetic_vuln_id": "vuln_0",
                 "attacker_model": "malicious_app",
             }
         )
@@ -336,10 +341,10 @@ class TestRun:
     ):
         """Validation error returns exit code 1 but cleanup still runs."""
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow,
+            RedTeamWorkflow,
             "validate_arguments",
             side_effect=ValueError("App directory not found"),
-        ), patch.object(ExploitWorkflow, "cleanup") as mock_cleanup:
+        ), patch.object(RedTeamWorkflow, "cleanup") as mock_cleanup:
 
             result = run(base_config, "test_app", tmp_path)
             assert result == 1
@@ -348,13 +353,13 @@ class TestRun:
     def test_cleanup_called_even_when_agent_crashes(self, base_config, tmp_path):
         """Cleanup is called even when agent fails mid-execution."""
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
+            RedTeamWorkflow, "validate_arguments"
+        ), patch.object(RedTeamWorkflow, "setup_runtime_environment"), patch.object(
+            RedTeamWorkflow, "setup_agent"
         ), patch.object(
-            ExploitWorkflow, "run_agent", side_effect=Exception("Agent crashed")
+            RedTeamWorkflow, "run_agent", side_effect=Exception("Agent crashed")
         ), patch.object(
-            ExploitWorkflow, "cleanup"
+            RedTeamWorkflow, "cleanup"
         ) as mock_cleanup:
 
             run(base_config, "test_app", tmp_path)
@@ -365,17 +370,17 @@ class TestRun:
         call_order = []
 
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
+            RedTeamWorkflow, "validate_arguments"
+        ), patch.object(RedTeamWorkflow, "setup_runtime_environment"), patch.object(
+            RedTeamWorkflow, "setup_agent"
         ), patch.object(
-            ExploitWorkflow, "run_agent", side_effect=Exception("Agent crashed")
+            RedTeamWorkflow, "run_agent", side_effect=Exception("Agent crashed")
         ), patch.object(
-            ExploitWorkflow,
+            RedTeamWorkflow,
             "save_artifacts",
             side_effect=lambda *a, **kw: call_order.append("save_artifacts"),
         ) as mock_save, patch.object(
-            ExploitWorkflow,
+            RedTeamWorkflow,
             "cleanup",
             side_effect=lambda *a, **kw: call_order.append("cleanup"),
         ):
@@ -387,29 +392,64 @@ class TestRun:
 
     def test_dry_run_skips_agent_execution(self, base_config, tmp_path):
         """Dry run mode runs interactive shell instead of agent."""
-        dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
+        dry_run_config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "probe_only": False,
+                "task": "report-0",
+                "dry_run": True,
+            }
+        )
+        call_order = []
 
-        with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
-        ) as mock_setup_agent, patch.object(
-            ExploitWorkflow, "run_agent"
-        ) as mock_run_agent, patch.object(
-            ExploitWorkflow, "cleanup"
+        class FakeWorkflow:
+            metadata = {}
+            emulator = None
+            agent_env = None
+
+            def __init__(self):
+                self.app_dir = tmp_path / "apps" / "test_app"
+
+            def validate_arguments(self):
+                pass
+
+            def setup_runtime_environment(self):
+                pass
+
+            def setup_agent(self):
+                call_order.append("setup_agent")
+
+            def run_agent(self):
+                call_order.append("run_agent")
+
+            def cleanup(self):
+                pass
+
+        with patch(
+            "runner._load_bundle_attacker_model", return_value="remote_attacker"
+        ), patch("runner.ensure_zerodays_submodule"), patch(
+            "runner.ensure_app_submodule"
+        ), patch(
+            "runner.create_workflow", return_value=FakeWorkflow()
         ), patch(
             "runner.run_interactive_shell", return_value={"status": "completed"}
         ):
-
             run(dry_run_config, "test_app", tmp_path)
 
-            mock_setup_agent.assert_not_called()
-            mock_run_agent.assert_not_called()
+        assert "setup_agent" not in call_order
+        assert "run_agent" not in call_order
 
     def test_dry_run_saves_artifacts_before_cleanup(self, base_config, tmp_path):
         """Dry-run sidecar logs are captured before final cleanup removes them."""
         call_order = []
-        dry_run_config = RunnerConfig(**{**base_config.model_dump(), "dry_run": True})
+        dry_run_config = RunnerConfig(
+            **{
+                **base_config.model_dump(),
+                "probe_only": False,
+                "task": "report-0",
+                "dry_run": True,
+            }
+        )
 
         class FakeWorkflow:
             metadata = {}
@@ -431,9 +471,15 @@ class TestRun:
             def cleanup(self):
                 call_order.append("cleanup")
 
-        with patch("runner.ensure_app_submodule"), patch(
+        with patch(
+            "runner._load_bundle_attacker_model", return_value="remote_attacker"
+        ), patch("runner.ensure_zerodays_submodule"), patch(
+            "runner.ensure_app_submodule"
+        ), patch(
             "runner.create_workflow", return_value=FakeWorkflow()
-        ), patch("runner.run_interactive_shell", return_value={"status": "completed"}):
+        ), patch(
+            "runner.run_interactive_shell", return_value={"status": "completed"}
+        ):
             assert run(dry_run_config, "test_app", tmp_path) == 0
 
         assert call_order == ["save_artifacts", "cleanup"]
@@ -500,11 +546,11 @@ class TestRun:
     def test_writes_run_summary_json(self, base_config, tmp_path):
         """Run writes structured run_summary.json with key fields."""
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
+            RedTeamWorkflow, "validate_arguments"
+        ), patch.object(RedTeamWorkflow, "setup_runtime_environment"), patch.object(
+            RedTeamWorkflow, "setup_agent"
         ), patch.object(
-            ExploitWorkflow,
+            RedTeamWorkflow,
             "run_agent",
             return_value={
                 "status": "completed",
@@ -519,9 +565,11 @@ class TestRun:
                 },
             },
         ), patch.object(
-            ExploitWorkflow, "evaluate", return_value={"scores": {"probe_a": 1}}
+            RedTeamWorkflow,
+            "evaluate",
+            return_value={"score": 1, "scores": {"probe_a": 1}},
         ), patch.object(
-            ExploitWorkflow, "cleanup"
+            RedTeamWorkflow, "cleanup"
         ):
             result = run(base_config, "test_app", tmp_path)
             assert result == 0
@@ -557,19 +605,21 @@ class TestRun:
             )
 
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
+            RedTeamWorkflow, "validate_arguments"
+        ), patch.object(RedTeamWorkflow, "setup_runtime_environment"), patch.object(
+            RedTeamWorkflow, "setup_agent"
         ), patch.object(
-            ExploitWorkflow,
+            RedTeamWorkflow,
             "run_agent",
             return_value={"status": "completed"},
         ), patch.object(
-            ExploitWorkflow, "save_artifacts", side_effect=save_squid_logs
+            RedTeamWorkflow, "save_artifacts", side_effect=save_squid_logs
         ), patch.object(
-            ExploitWorkflow, "evaluate", return_value={"scores": {"probe_a": 1}}
+            RedTeamWorkflow,
+            "evaluate",
+            return_value={"score": 1, "scores": {"probe_a": 1}},
         ), patch.object(
-            ExploitWorkflow, "cleanup"
+            RedTeamWorkflow, "cleanup"
         ):
             assert run(base_config, "test_app", tmp_path) == 0
 
@@ -589,11 +639,11 @@ class TestRun:
         """When run_result reports top-level cost_usd (claude-code path),
         run_summary surfaces that value instead of the nested one."""
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent"
+            RedTeamWorkflow, "validate_arguments"
+        ), patch.object(RedTeamWorkflow, "setup_runtime_environment"), patch.object(
+            RedTeamWorkflow, "setup_agent"
         ), patch.object(
-            ExploitWorkflow,
+            RedTeamWorkflow,
             "run_agent",
             return_value={
                 "status": "completed",
@@ -608,9 +658,9 @@ class TestRun:
                 },
             },
         ), patch.object(
-            ExploitWorkflow, "evaluate", return_value={"scores": {}}
+            RedTeamWorkflow, "evaluate", return_value={"score": 1, "scores": {}}
         ), patch.object(
-            ExploitWorkflow, "cleanup"
+            RedTeamWorkflow, "cleanup"
         ):
             assert run(base_config, "test_app", tmp_path) == 0
 
@@ -631,10 +681,10 @@ class TestRun:
     def test_writes_run_summary_on_validation_error(self, base_config, tmp_path):
         """Run writes run_summary.json even on validation failure."""
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow,
+            RedTeamWorkflow,
             "validate_arguments",
             side_effect=ValueError("bad app"),
-        ), patch.object(ExploitWorkflow, "cleanup"):
+        ), patch.object(RedTeamWorkflow, "cleanup"):
             result = run(base_config, "test_app", tmp_path)
             assert result == 1
 
@@ -666,11 +716,11 @@ class TestRun:
             write_canonical_conversation()
 
         with patch("runner.ensure_app_submodule"), patch.object(
-            ExploitWorkflow, "validate_arguments"
-        ), patch.object(ExploitWorkflow, "setup_runtime_environment"), patch.object(
-            ExploitWorkflow, "setup_agent", side_effect=setup_agent_writes_conversation
+            RedTeamWorkflow, "validate_arguments"
+        ), patch.object(RedTeamWorkflow, "setup_runtime_environment"), patch.object(
+            RedTeamWorkflow, "setup_agent", side_effect=setup_agent_writes_conversation
         ), patch.object(
-            ExploitWorkflow,
+            RedTeamWorkflow,
             "run_agent",
             return_value={
                 "status": "completed",
@@ -678,9 +728,11 @@ class TestRun:
                 "token_totals": {"input_tokens": 1, "output_tokens": 1},
             },
         ), patch.object(
-            ExploitWorkflow, "evaluate", return_value={"scores": {"probe_a": 1}}
+            RedTeamWorkflow,
+            "evaluate",
+            return_value={"score": 1, "scores": {"probe_a": 1}},
         ), patch.object(
-            ExploitWorkflow, "cleanup"
+            RedTeamWorkflow, "cleanup"
         ):
             assert run(base_config, "test_app", tmp_path) == 0
 
@@ -699,6 +751,7 @@ class TestAttackerModelConfig:
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
+                "probe_only": False,
                 "task": "report-0",
                 "synthetic_vuln_id": None,
                 "attacker_model": "remote_attacker",
@@ -706,8 +759,8 @@ class TestAttackerModelConfig:
         )
         assert config.attacker_model == "remote_attacker"
 
-    def test_remote_attacker_rejected_with_exploit(self, base_config):
-        with pytest.raises(ValueError, match="requires workflow='redteam'"):
+    def test_remote_attacker_rejected_with_retired_exploit(self, base_config):
+        with pytest.raises(ValueError, match="workflow='exploit' is retired"):
             RunnerConfig(
                 **{
                     **base_config.model_dump(),
@@ -716,8 +769,8 @@ class TestAttackerModelConfig:
                 }
             )
 
-    def test_malicious_app_rejected_with_exploit(self, base_config):
-        with pytest.raises(ValueError, match="requires workflow='redteam'"):
+    def test_malicious_app_rejected_with_retired_exploit(self, base_config):
+        with pytest.raises(ValueError, match="workflow='exploit' is retired"):
             RunnerConfig(
                 **{
                     **base_config.model_dump(),
@@ -732,8 +785,10 @@ class TestAttackerModelConfig:
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
+                "probe_only": False,
                 "task": "report-0",
                 "synthetic_vuln_id": None,
+                "attacker_model": None,
             }
         )
         assert config.attacker_model is None
@@ -744,6 +799,7 @@ class TestAttackerModelConfig:
                 **{
                     **base_config.model_dump(),
                     "workflow": "redteam",
+                    "probe_only": False,
                     "task": "report-0",
                     "synthetic_vuln_id": None,
                     "attacker_model": "bogus",
@@ -804,8 +860,10 @@ class TestTaskMetadataOverride:
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
+                "probe_only": False,
                 "task": "report-4",
                 "synthetic_vuln_id": None,
+                "attacker_model": None,
             }
         )
         assert config.attacker_model is None
@@ -835,8 +893,10 @@ class TestTaskMetadataOverride:
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
+                "probe_only": False,
                 "task": "report-0",
                 "synthetic_vuln_id": None,
+                "attacker_model": None,
             }
         )
         exit_code = run(config, "testapp", tmp_path)
@@ -855,6 +915,7 @@ class TestZerodaySubmoduleInit:
             **{
                 **base_config.model_dump(),
                 "workflow": "redteam",
+                "probe_only": False,
                 "task": "report-4",
                 "synthetic_vuln_id": None,
                 "attacker_model": "remote_attacker",

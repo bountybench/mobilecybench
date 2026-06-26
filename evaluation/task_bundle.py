@@ -1,10 +1,6 @@
 """Task-bundle abstraction for RedTeamWorkflow.
 
-One workflow, three bundle types:
-
-- SyntheticBundle → apps/<app>/synthetic_vulnerabilities/<vuln_id>/
-  Baseline is clean; vulnerability.patch turns it vulnerable. Phase 1 applies
-  the patch; Phase 2 reverts.
+One workflow, two bundle types:
 
 - ZerodayBundle → zerodays/reports/<app>/<task>/task/
   Baseline is vulnerable; fix.patch turns it patched. Phase 1 is no-op on
@@ -16,8 +12,8 @@ One workflow, three bundle types:
   at construction (from RunnerConfig) since there is no task metadata.
 
 The workflow never branches on bundle kind for path resolution; phase-prep
-and patch/build operations are guarded by `kind` checks where probe-only
-mode bypasses them entirely.
+and patch/build operations are guarded by `kind` checks where probe-only mode
+bypasses them entirely.
 """
 
 import json
@@ -29,7 +25,7 @@ from typing import Dict, Literal, Optional, Protocol, runtime_checkable
 from utils.apk_utils import resolve_apk_path
 from utils.git_utils import git_restore_clean
 
-BundleKind = Literal["synthetic", "zeroday", "probe_only"]
+BundleKind = Literal["zeroday", "probe_only"]
 
 
 @runtime_checkable
@@ -46,7 +42,6 @@ class TaskBundle(Protocol):
     def patch(self) -> Path:
         """Bundle-specific patch file.
 
-        Synthetic: vulnerability.patch (turns clean → vulnerable).
         Zeroday:   fix.patch (turns vulnerable → patched).
         ProbeOnly: not applicable — raises NotImplementedError.
         """
@@ -102,88 +97,6 @@ def _run_build(project_root: Path, args: list[str], timeout: int) -> None:
 
 
 @dataclass(frozen=True)
-class SyntheticBundle:
-    app_dir: Path
-    vuln_id: str
-    # APK obfuscation toggle context. Passed by resolve_bundle() from RunnerConfig.
-    runner_obfuscation: str = "off"
-    kind: BundleKind = "synthetic"
-
-    @property
-    def task_dir(self) -> Path:
-        return self.app_dir / "synthetic_vulnerabilities" / self.vuln_id
-
-    @property
-    def exploit_dir(self) -> Path:
-        return self.task_dir / "exploit_files"
-
-    @property
-    def patch(self) -> Path:
-        return self.task_dir / "vulnerability.patch"
-
-    def attacker_model(self) -> str:
-        return _read_attacker_model_from_metadata(self.task_dir / "metadata.json")
-
-    def phase1_apk(self) -> Path:
-        """Vulnerable APK: built via --vuln synthetic_vulnerabilities/<vuln>.
-
-        Path layout honors apk_obfuscation: see resolve_apk_path.
-        """
-        return self.app_dir / resolve_apk_path(
-            app_name=self.app_dir.name,
-            runner_obfuscation=self.runner_obfuscation,
-            vuln_id=self.vuln_id,
-        )
-
-    def phase2_apk(self) -> Path:
-        """Clean APK: the default build target.
-
-        Path layout honors apk_obfuscation: see resolve_apk_path.
-        """
-        return self.app_dir / resolve_apk_path(
-            app_name=self.app_dir.name,
-            runner_obfuscation=self.runner_obfuscation,
-            vuln_id=None,
-        )
-
-    def restore_codebase(self, codebase_dir: Path) -> None:
-        """Reset codebase to a clean state (HEAD + no untracked files)."""
-        git_restore_clean(codebase_dir)
-
-    def prepare_phase1_codebase(self, codebase_dir: Path) -> None:
-        """Clean → vulnerable: apply the synthetic patch."""
-        self.restore_codebase(codebase_dir)
-        _git_apply(codebase_dir, self.patch)
-
-    def prepare_phase2_codebase(self, codebase_dir: Path) -> None:
-        """Vulnerable → clean: revert to HEAD."""
-        self.restore_codebase(codebase_dir)
-
-    def build_apks(self, app_name: str, project_root: Path, *, timeout: int) -> None:
-        # When obfuscation is requested, pass --obfuscate to build_apk.sh so
-        # build_apk.sh's M2 mechanism (gradle init script) takes effect and
-        # the output lands at apps/<app>/apk/obfuscated/[vuln_id/]<app>.apk —
-        # the same path resolve_apk_path() points phase1_apk()/phase2_apk() at.
-        obf_flag = ["--obfuscate"] if self.runner_obfuscation == "on" else []
-        _run_build(project_root, [app_name, *obf_flag], timeout)
-        _run_build(
-            project_root,
-            [
-                app_name,
-                "--vuln",
-                f"synthetic_vulnerabilities/{self.vuln_id}",
-                *obf_flag,
-            ],
-            timeout,
-        )
-
-    def validate_build_artifacts(self, app_dir: Path) -> None:
-        for apk in (self.phase1_apk(), self.phase2_apk()):
-            if not apk.exists():
-                raise FileNotFoundError(f"APK not found: {apk}")
-
-
-@dataclass(frozen=True)
 class ZerodayBundle:
     project_root: Path
     app_name: str
@@ -197,8 +110,8 @@ class ZerodayBundle:
         # Phase 2 cannot (build_apk.sh rejects --obfuscate + --hardened-patch),
         # so the agent attacks an obfuscated APK and the verifier replays
         # against an un-obfuscated hardened APK — different runtime envs for
-        # the same task. The CI matrix already carves zeroday/synthetic out of
-        # the obfuscated combos; this enforces it for non-CI runners too.
+        # the same task. The CI matrix already carves zeroday out of the
+        # obfuscated combos; this enforces it for non-CI runners too.
         if self.runner_obfuscation == "on":
             raise ValueError(
                 "apk_obfuscation: 'on' is not supported with zeroday tasks: "
@@ -289,10 +202,9 @@ class ZerodayBundle:
 class ProbeOnlyBundle:
     """Bundle stub for probe-only runs against an app with no task bundle.
 
-    Used when no synthetic vuln or zeroday task exists: open-source apps
-    without a bundle, and APK-only / closed-source apps. The agent runs
-    against the clean app build, probes score the result, and there is
-    no patch / verifier / phase 2.
+    Used when no zeroday task exists: open-source apps without a bundle, and
+    APK-only / closed-source apps. The agent runs against the clean app build,
+    probes score the result, and there is no patch / verifier / phase 2.
 
     `attacker_model` is supplied at construction (from RunnerConfig) since
     there is no task metadata.json to read from.
@@ -374,20 +286,18 @@ def assert_zerodays_initialized(project_root: Path) -> None:
         "zero-day tasks. Run:\n"
         "    git submodule update --init zerodays\n"
         "If you do not have access to the submodule remote, contact a "
-        "repo maintainer. Not required for probe_only or synthetic-vuln "
-        "runs — see documentation/EXPERIMENTS.md."
+        "repo maintainer. Not required for probe_only runs — see "
+        "documentation/EXPERIMENTS.md."
     )
 
 
 def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
     """Return the TaskBundle for the current config.
 
-    - probe_only=True → ProbeOnlyBundle (config validator guarantees no
-      task / no synthetic_vuln_id and an explicit attacker_model)
+    - probe_only=True → ProbeOnlyBundle (config validator guarantees no task
+      and an explicit attacker_model)
     - task set → ZerodayBundle
-    - synthetic_vuln_id set → SyntheticBundle
-
-    Bundle-backed runs require strict XOR (task vs synthetic_vuln_id).
+    Synthetic-vulnerability selectors are retired and rejected by RunnerConfig.
 
     Pure path-resolution — does not check filesystem state. Callers that
     need an environment precondition should invoke
@@ -411,23 +321,20 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
             runner_obfuscation=runner_obfuscation,
         )
 
-    if bool(task) == bool(vuln_id):
+    if vuln_id is not None:
         raise ValueError(
-            "TaskBundle requires exactly one of config.task (zeroday) or "
-            f"config.synthetic_vuln_id (synthetic); got task={task!r}, "
-            f"synthetic_vuln_id={vuln_id!r}."
+            "synthetic_vuln_id is retired; synthetic vulnerabilities are "
+            "archived under archive/synthetic-vulnerabilities/."
         )
-    if task:
-        return ZerodayBundle(
-            project_root=project_root,
-            app_name=app_name,
-            task=task,
-            runner_obfuscation=runner_obfuscation,
+    if not task:
+        raise ValueError(
+            "TaskBundle requires config.task for zero-day runs, or "
+            "probe_only=True for bundle-less probe runs; got task=None."
         )
-    assert vuln_id is not None
-    return SyntheticBundle(
-        app_dir=project_root / "apps" / app_name,
-        vuln_id=vuln_id,
+    return ZerodayBundle(
+        project_root=project_root,
+        app_name=app_name,
+        task=task,
         runner_obfuscation=runner_obfuscation,
     )
 
@@ -478,7 +385,7 @@ def build_task_runtime_env(
     # we gate on `kind` to set per-task MCB_* keys only for real tasks.
     bundle_kind = getattr(bundle, "kind", None)
     task_meta: dict = {}
-    if bundle_kind in ("zeroday", "synthetic"):
+    if bundle_kind == "zeroday":
         task_dir = getattr(bundle, "task_dir", None)
         if task_dir is not None:
             env["MCB_TASK_DIR"] = str(task_dir)
@@ -491,30 +398,23 @@ def build_task_runtime_env(
                     task_meta = {}
 
         # MCB_FIX_PATCH semantics match scripts/task_runtime_common.sh:
-        # it carries the hardening / fix patch the validator passes in.
-        # That is `task/fix.patch` for zero-day bundles; for synthetic
-        # bundles the validator passes "" (the synthetic vulnerability
-        # patch is a different artifact and is not surfaced via this
-        # env var). Mirror that here so a synthetic prepare_app hook does
-        # not see `MCB_FIX_PATCH` pointing at vulnerability.patch.
-        if bundle_kind == "zeroday":
-            try:
-                patch_path = getattr(bundle, "patch", None)
-            except (AttributeError, NotImplementedError):
-                patch_path = None
-            if patch_path is not None:
-                patch_path = Path(patch_path)
-                if patch_path.exists():
-                    env["MCB_FIX_PATCH"] = str(patch_path)
+        # it carries the hardening / fix patch the validator passes in
+        # (`task/fix.patch` for zero-day bundles).
+        try:
+            patch_path = getattr(bundle, "patch", None)
+        except (AttributeError, NotImplementedError):
+            patch_path = None
+        if patch_path is not None:
+            patch_path = Path(patch_path)
+            if patch_path.exists():
+                env["MCB_FIX_PATCH"] = str(patch_path)
 
     # Apply the validator's precedence rules from
     # scripts/zero_day_task_common.sh so MCB_TASK_ID / MCB_PACKAGE_NAME /
     # MCB_BASELINE_COMMIT match what hooks would see under
     # scripts/validate_task_bundle.sh.
     #
-    # task_id: task metadata `.task_id` > `.task_slug` > bundle.task /
-    #          bundle.vuln_id (which maps to the task-dir basename in the
-    #          validator's fallback).
+    # task_id: task metadata `.task_id` > `.task_slug` > bundle.task.
     # package_name: task metadata `.runtime.package_name` >
     #               `.app_metadata_overrides.package_name` >
     #               app metadata `.package_name`.
@@ -522,7 +422,7 @@ def build_task_runtime_env(
     #                  app metadata `.commit_version`.
     task_id = task_meta.get("task_id") or task_meta.get("task_slug")
     if not (isinstance(task_id, str) and task_id):
-        task_id = getattr(bundle, "task", None) or getattr(bundle, "vuln_id", None)
+        task_id = getattr(bundle, "task", None)
     if isinstance(task_id, str) and task_id:
         env["MCB_TASK_ID"] = task_id
 

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import docker.errors
 
 from agent.runtime.container import AgentEnvironment
-from evaluation.task_bundle import SyntheticBundle, ZerodayBundle
+from evaluation.task_bundle import ZerodayBundle
 
 _GIT_ENV = {
     "GIT_AUTHOR_NAME": "Test",
@@ -17,145 +17,6 @@ _GIT_ENV = {
     "GIT_COMMITTER_NAME": "Test",
     "GIT_COMMITTER_EMAIL": "test@test.com",
 }
-
-
-class TestAgentEnvironmentVerifyFiles:
-    """Tests for AgentEnvironment._setup_verify_files()."""
-
-    def _create_agent_env(self, app_dir, vuln_id=None):
-        """Helper to create AgentEnvironment without starting Docker."""
-        return AgentEnvironment(
-            app_dir=app_dir,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id="HEAD",
-            workflow="exploit",
-            vuln_id=vuln_id,
-        )
-
-    def test_setup_verify_files_returns_none_when_no_vuln_id(self, tmp_path):
-        """_setup_verify_files should not be called when vuln_id is None."""
-        agent_env = self._create_agent_env(tmp_path, vuln_id=None)
-        # When vuln_id is None, the method shouldn't be called in normal flow,
-        # but if called directly it would fail. This tests the guard condition.
-        assert agent_env.vuln_id is None
-
-    def test_setup_verify_files_returns_none_when_dir_missing(self, tmp_path):
-        """_setup_verify_files returns None if verify_files directory doesn't exist."""
-        agent_env = self._create_agent_env(tmp_path, vuln_id="vuln_0")
-
-        result = agent_env._setup_verify_files()
-
-        assert result is None
-
-    def test_setup_verify_files_returns_volume_mapping(self, tmp_path):
-        """_setup_verify_files returns correct volume mapping when verify_files exists."""
-        # Create verify_files directory
-        verify_files = (
-            tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "verify_files"
-        )
-        verify_files.mkdir(parents=True)
-
-        agent_env = self._create_agent_env(tmp_path, vuln_id="vuln_0")
-        result = agent_env._setup_verify_files()
-
-        assert result is not None
-        assert str(verify_files) in result
-        assert result[str(verify_files)]["bind"] == "/app/verify_files/vuln_0"
-        assert result[str(verify_files)]["mode"] == "ro"
-
-    def test_setup_verify_files_uses_configurable_vuln_id(self, tmp_path):
-        """_setup_verify_files uses the configured vuln_id, not hardcoded 'vuln_0'."""
-        # Create verify_files for vuln_1 (not vuln_0)
-        verify_files = (
-            tmp_path / "synthetic_vulnerabilities" / "vuln_1" / "verify_files"
-        )
-        verify_files.mkdir(parents=True)
-
-        agent_env = self._create_agent_env(tmp_path, vuln_id="vuln_1")
-        result = agent_env._setup_verify_files()
-
-        # Should find vuln_1, not fail looking for vuln_0
-        assert result is not None
-        assert str(verify_files) in result
-        assert result[str(verify_files)]["bind"] == "/app/verify_files/vuln_1"
-
-    def test_setup_verify_files_fails_for_wrong_vuln_id(self, tmp_path):
-        """_setup_verify_files returns None when vuln_id doesn't match existing dirs."""
-        # Create verify_files for vuln_0
-        verify_files = (
-            tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "verify_files"
-        )
-        verify_files.mkdir(parents=True)
-
-        # But request vuln_1
-        agent_env = self._create_agent_env(tmp_path, vuln_id="vuln_1")
-        result = agent_env._setup_verify_files()
-
-        # Should return None since vuln_1 doesn't exist
-        assert result is None
-
-
-class TestSetupAgentOutput:
-    """Tests for AgentEnvironment._setup_agent_output()."""
-
-    def _create_agent_env(self, app_dir, vuln_id=None):
-        return AgentEnvironment(
-            app_dir=app_dir,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id="HEAD",
-            workflow="exploit",
-            vuln_id=vuln_id,
-        )
-
-    def test_cleans_stale_data(self, tmp_path):
-        """Removes stale files from previous runs before creating fresh dir."""
-        agent_output_dir = (
-            tmp_path / "synthetic_vulnerabilities" / "vuln_0" / "agent_output"
-        )
-        agent_output_dir.mkdir(parents=True)
-        stale_file = agent_output_dir / "captured_creds.txt"
-        stale_file.write_text("stale data")
-
-        agent_env = self._create_agent_env(tmp_path, vuln_id="vuln_0")
-        agent_env._setup_agent_output()
-
-        assert agent_output_dir.is_dir()
-        assert not stale_file.exists()
-
-
-class TestAgentEnvironmentVulnId:
-    """Tests for vuln_id parameter handling in AgentEnvironment."""
-
-    def test_vuln_id_stored_correctly(self, tmp_path):
-        """AgentEnvironment stores vuln_id parameter."""
-        agent_env = AgentEnvironment(
-            app_dir=tmp_path,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id="HEAD",
-            workflow="exploit",
-            vuln_id="vuln_2",
-        )
-
-        assert agent_env.vuln_id == "vuln_2"
-
-    def test_vuln_id_defaults_to_none(self, tmp_path):
-        """AgentEnvironment vuln_id defaults to None."""
-        agent_env = AgentEnvironment(
-            app_dir=tmp_path,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id="HEAD",
-            workflow="exploit",
-        )
-
-        assert agent_env.vuln_id is None
 
 
 class TestAgentEnvironmentPostCheckoutHook:
@@ -193,9 +54,7 @@ class TestAgentEnvironmentPostCheckoutHook:
         self._git(codebase_dir, "add", "-A")
         self._git(codebase_dir, "commit", "-m", "initial", "-q")
 
-        patch_path = (
-            app_dir / "synthetic_vulnerabilities" / "vuln_0" / "vulnerability.patch"
-        )
+        patch_path = app_dir / "patches" / "change.patch"
         patch_path.parent.mkdir(parents=True)
         patch_path.write_text(
             "diff --git a/server.py b/server.py\n"
@@ -234,68 +93,6 @@ class TestAgentEnvironmentPostCheckoutHook:
             workflow="redteam",
             include_git_history=True,
             post_checkout_hook=post_checkout_hook,
-        )
-
-        agent_env._setup_agent_codebase()
-
-        agent_server = app_dir / "agent_codebase" / "server.py"
-        assert "is_authenticated" not in agent_server.read_text()
-        assert "is_authenticated" in server_file.read_text()
-
-    @patch("agent.runtime.container.docker.from_env")
-    def test_synthetic_bundle_phase1_snapshot_is_vulnerable(
-        self, mock_from_env, tmp_path
-    ):
-        mock_from_env.return_value = MagicMock()
-
-        app_dir = tmp_path / "apps" / "app"
-        codebase_dir = app_dir / "codebase"
-        codebase_dir.mkdir(parents=True)
-
-        server_file = codebase_dir / "server.py"
-        server_file.write_text(
-            "def handle_request(user):\n"
-            "    if not user.is_authenticated:\n"
-            "        raise PermissionError('Not authenticated')\n"
-            "    return process(user)\n"
-        )
-        self._git(codebase_dir, "init", "-q")
-        self._git(codebase_dir, "add", "-A")
-        self._git(codebase_dir, "commit", "-m", "initial", "-q")
-
-        patch_path = (
-            app_dir / "synthetic_vulnerabilities" / "vuln_0" / "vulnerability.patch"
-        )
-        patch_path.parent.mkdir(parents=True)
-        patch_path.write_text(
-            "diff --git a/server.py b/server.py\n"
-            "--- a/server.py\n"
-            "+++ b/server.py\n"
-            "@@ -1,4 +1,2 @@\n"
-            " def handle_request(user):\n"
-            "-    if not user.is_authenticated:\n"
-            "-        raise PermissionError('Not authenticated')\n"
-            "     return process(user)\n"
-        )
-
-        commit_id = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=codebase_dir,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-
-        bundle = SyntheticBundle(app_dir=app_dir, vuln_id="vuln_0")
-        agent_env = AgentEnvironment(
-            app_dir=app_dir,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id=commit_id,
-            workflow="redteam",
-            include_git_history=True,
-            post_checkout_hook=bundle.prepare_phase1_codebase,
         )
 
         agent_env._setup_agent_codebase()
@@ -410,7 +207,7 @@ class TestAgentNetworkIsolation:
             image_name="test:latest",
             env={},
             commit_id="HEAD",
-            workflow="exploit",
+            workflow="redteam",
         )
 
         with patch.object(agent_env, "_setup_agent_codebase", return_value={}):
@@ -427,15 +224,15 @@ class TestSaveAgentExploit:
     """Tests for AgentEnvironment.save_agent_exploit()."""
 
     def _create_agent_env(self, tmp_path):
-        agent_env = AgentEnvironment(
-            app_dir=tmp_path,
-            docker_networks=["test_net"],
-            image_name="test:latest",
-            env={},
-            commit_id="HEAD",
-            workflow="exploit",
-        )
-        return agent_env
+        with patch("agent.runtime.container.docker.from_env", return_value=MagicMock()):
+            return AgentEnvironment(
+                app_dir=tmp_path,
+                docker_networks=["test_net"],
+                image_name="test:latest",
+                env={},
+                commit_id="HEAD",
+                workflow="redteam",
+            )
 
     def test_no_container_logs_warning(self, tmp_path):
         """Logs warning and returns when container is None."""
@@ -538,7 +335,7 @@ class TestAuthEnvPassthrough:
                 agent_image="test:latest",
                 metadata={"package_name": "com.example", "commit_version": "HEAD"},
                 network_mode="restricted",
-                workflow="exploit",
+                workflow="redteam",
             )
 
         env_vars = mock_client.containers.run.call_args.kwargs["environment"]

@@ -44,9 +44,8 @@ class AgentEnvironment:
         image_name: str,
         env: Dict[str, str],
         commit_id: Optional[str] = None,
-        workflow: str = "exploit",
+        workflow: str = "redteam",
         package_name: Optional[str] = None,
-        vuln_id: Optional[str] = None,
         include_git_history: bool = True,
         no_codebase: bool = False,
         post_checkout_hook: Optional[Callable[[Path], None]] = None,
@@ -60,18 +59,15 @@ class AgentEnvironment:
         self.commit_id = commit_id
         self.workflow = workflow
         self.package_name = package_name
-        self.vuln_id = vuln_id
         self.include_git_history = include_git_history
         self.no_codebase = no_codebase
         # APK to stage for the agent when no_codebase=True. Kept separate from
-        # vuln_id because vuln_id also gates verify_files mounting, which
-        # redteam must never do.
+        # the normal source mount path.
         self.apk_path = apk_path
         # Optional callback invoked inside _setup_agent_codebase against the
-        # staged copy before it is moved to agent_codebase/. Redteam+synthetic
-        # uses this to apply vulnerability.patch so the agent sees the Phase 1
-        # target source instead of the clean baseline without dirtying the
-        # host app's working tree.
+        # staged copy before it is moved to agent_codebase/. Zero-day redteam
+        # uses this to prepare the phase-specific source snapshot without
+        # dirtying the host app's working tree.
         self.post_checkout_hook = post_checkout_hook
 
         import traceback
@@ -167,26 +163,11 @@ class AgentEnvironment:
                 apk_volumes = self._setup_agent_apk()
                 if apk_volumes:
                     volumes.update(apk_volumes)
-                # Exploit replay still reads from agent_codebase on the host
-                # (run_exploit_container.sh --codebase-dir). Stage it but do
-                # not add its bind-mount — the agent only sees /app/apk/.
-                if self.workflow == "exploit":
-                    self._setup_agent_codebase()
             else:
                 volumes = self._setup_agent_codebase()
 
             if ca_volumes:
                 volumes.update(ca_volumes)
-
-            # Setup verify_files and agent_output for synthetic vulnerability mode
-            if self.vuln_id:
-                verify_volumes = self._setup_verify_files()
-                if verify_volumes:
-                    volumes.update(verify_volumes)
-
-                agent_output_volumes = self._setup_agent_output()
-                if agent_output_volumes:
-                    volumes.update(agent_output_volumes)
 
             self.container = self.client.containers.run(
                 image=self.image_name,
@@ -384,45 +365,6 @@ class AgentEnvironment:
         logger.info(f"Copied APK {apk_path.name} to agent_apk staging directory")
 
         return {str(agent_apk_dir): {"bind": "/app/apk", "mode": "ro"}}
-
-    def _setup_verify_files(self):
-        """Mount verify_files for the synthetic vulnerability."""
-        verify_files_src = (
-            self.app_dir / "synthetic_vulnerabilities" / self.vuln_id / "verify_files"
-        )
-        if not verify_files_src.is_dir():
-            logger.warning(f"No verify_files directory found at {verify_files_src}")
-            return None
-
-        logger.info(f"Mounting verify_files at /app/verify_files/{self.vuln_id}")
-        return {
-            str(verify_files_src): {
-                "bind": f"/app/verify_files/{self.vuln_id}",
-                "mode": "ro",
-            }
-        }
-
-    def _setup_agent_output(self):
-        """Create and mount agent_output/ for the synthetic vulnerability.
-
-        Volume-mounted so verify scripts on the host can read exploit results
-        after the agent writes them inside the container.
-        """
-        agent_output_dir = (
-            self.app_dir / "synthetic_vulnerabilities" / self.vuln_id / "agent_output"
-        )
-        # Clean stale data from previous runs, then create fresh
-        if agent_output_dir.exists():
-            shutil.rmtree(agent_output_dir)
-        agent_output_dir.mkdir(parents=True)
-
-        logger.info(f"Mounting agent_output at {OUTPUT_DIR}")
-        return {
-            str(agent_output_dir): {
-                "bind": OUTPUT_DIR,
-                "mode": "rw",
-            }
-        }
 
     def _setup_root_ca(self) -> Optional[dict]:
         """Mount the project's self-signed root CA into the container.
@@ -824,8 +766,7 @@ def setup_agent_environment(
     agent_image: str,
     metadata: dict,
     network_mode: str,
-    workflow: str = "exploit",
-    vuln_id: Optional[str] = None,
+    workflow: str = "redteam",
     no_codebase: bool = False,
     post_checkout_hook: Optional[Callable[[Path], None]] = None,
     apk_path: Optional[Path] = None,
@@ -838,8 +779,7 @@ def setup_agent_environment(
         agent_image: Docker image to use for agent (custom = kali base;
             external = BYO reference image)
         metadata: App metadata dict
-        workflow: Evaluation workflow type ("exploit" or "redteam")
-        vuln_id: Vulnerability ID for exploit workflow
+        workflow: Evaluation workflow type ("redteam")
         network_mode: Squid policy ("permissive" default, or "restricted")
         no_codebase: Whether to copy the built APK into the agent environment
         post_checkout_hook: Optional callback run on the staged codebase
@@ -905,8 +845,7 @@ def setup_agent_environment(
         commit_id=commit_id,
         workflow=workflow,
         package_name=metadata.get("package_name"),
-        vuln_id=vuln_id if workflow == "exploit" else None,
-        include_git_history=(workflow != "exploit"),
+        include_git_history=True,
         no_codebase=no_codebase,
         post_checkout_hook=post_checkout_hook,
         apk_path=apk_path,

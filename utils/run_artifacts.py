@@ -139,8 +139,6 @@ def _rel_if_exists(path: Path, logs_dir: Path) -> Optional[str]:
 
 # Maps artifact key → filename, and which workflows produce each file.
 _SCORE_FILES: dict[str, tuple[str, set[str]]] = {
-    "scores_json": ("scores.json", {"exploit"}),
-    "synthetic_scores_json": ("synthetic_scores.json", {"exploit"}),
     "redteam_scores_json": ("redteam_scores.json", {"redteam"}),
 }
 

@@ -13,7 +13,6 @@ import yaml
 from agent.prompts.prompts import (
     build_malicious_app_prompt,
     build_remote_attacker_prompt,
-    build_synthetic_prompt,
 )
 from harness.byo_agent import run_agent as _byo_run_agent
 from harness.task import build_task_dict
@@ -114,32 +113,20 @@ class Workflow(ABC):
         username, password = self._agent_credentials()
         agent_mode = self.config.agent_mode
 
-        if self.config.workflow == "redteam":
-            builder = (
-                build_remote_attacker_prompt
-                if self.config.attacker_model == "remote_attacker"
-                else build_malicious_app_prompt
-            )
-            prompt = builder(
-                package_name=self.metadata.get("package_name"),
-                app_server=self.metadata.get("app_server"),
-                emulator_server=self.metadata.get("emulator_server"),
-                username=username,
-                password=password,
-                no_codebase=self.config.no_codebase,
-                agent_mode=agent_mode,
-            )
-        else:
-            prompt = build_synthetic_prompt(
-                package_name=self.metadata.get("package_name"),
-                username=username,
-                password=password,
-                app_server=self.metadata.get("app_server"),
-                emulator_server=self.metadata.get("emulator_server"),
-                no_codebase=self.config.no_codebase,
-                agent_mode=agent_mode,
-                vuln_id=self.config.synthetic_vuln_id or "vuln_0",
-            )
+        builder = (
+            build_remote_attacker_prompt
+            if self.config.attacker_model == "remote_attacker"
+            else build_malicious_app_prompt
+        )
+        prompt = builder(
+            package_name=self.metadata.get("package_name"),
+            app_server=self.metadata.get("app_server"),
+            emulator_server=self.metadata.get("emulator_server"),
+            username=username,
+            password=password,
+            no_codebase=self.config.no_codebase,
+            agent_mode=agent_mode,
+        )
 
         if additional_context:
             prompt = prompt + "\n\n" + additional_context
@@ -537,8 +524,7 @@ class Workflow(ABC):
                 hook_env.update(prepare_app_env)
             # Validator parity (scripts/task_runtime_common.sh:119):
             # prepare_app runs from TASK_RUNTIME_TASK_DIR. ``hook.parent``
-            # resolves to that dir for both zero-day (task_dir) and
-            # synthetic (app_dir/synthetic_vulnerabilities/<vuln>).
+            # resolves to the zero-day task_dir.
             cmd.run_with_progress(
                 f"bash {prepare_app_hook}",
                 timeout=self.config.script_timeout,

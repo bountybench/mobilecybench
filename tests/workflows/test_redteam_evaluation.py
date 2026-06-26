@@ -125,17 +125,11 @@ def _write_probes(probe_dir: Path) -> None:
         (probe_dir / name).write_text("pass\n")
 
 
-def _task_dir(project_root: Path, *, synthetic: bool) -> Path:
-    if synthetic:
-        return (
-            project_root / "apps" / "testapp" / "synthetic_vulnerabilities" / "vuln_0"
-        )
+def _task_dir(project_root: Path) -> Path:
     return project_root / "zerodays" / "reports" / "testapp" / "report-0" / "task"
 
 
-def _make_workflow(
-    config: RunnerConfig, project_root: Path, *, synthetic: bool = False
-):
+def _make_workflow(config: RunnerConfig, project_root: Path):
     app_dir = project_root / "apps" / "testapp"
     app_dir.mkdir(parents=True, exist_ok=True)
     _write_json(
@@ -169,12 +163,12 @@ def _make_workflow(
     else:
         _write_probes(app_dir / "remote_attacker")
 
-    task_dir = _task_dir(project_root, synthetic=synthetic)
+    task_dir = _task_dir(project_root)
     verify_dir = task_dir / "verify_files"
     verify_dir.mkdir(parents=True, exist_ok=True)
     (verify_dir / "verify_exploit.sh").write_text("#!/bin/bash\nexit 0\n")
     (task_dir / "prepare_app.sh").write_text("#!/bin/bash\nexit 0\n")
-    (task_dir / ("vulnerability.patch" if synthetic else "fix.patch")).write_text("")
+    (task_dir / "fix.patch").write_text("")
     _write_json(task_dir / "metadata.json", {"attacker_model": config.attacker_model})
 
     wf = RedTeamWorkflow(config, "testapp", project_root)
@@ -290,19 +284,6 @@ def test_exploit_missing_saves_zero_score(redteam_config, tmp_path):
         (tmp_path / "apps" / "testapp" / "redteam_scores.json").read_text()
     )
     assert saved["status"] == "exploit_missing"
-
-
-def test_synthetic_result_includes_vuln_id(tmp_path):
-    config = RunnerConfig(
-        **{**_BASE_CONFIG, "task": None, "synthetic_vuln_id": "vuln_0"}
-    )
-    wf = _make_workflow(config, tmp_path, synthetic=True)
-    _write_agent_artifact("malicious_app", present=False)
-
-    result = wf.evaluate()
-
-    assert result["task"] is None
-    assert result["synthetic_vuln_id"] == "vuln_0"
 
 
 def test_malicious_app_early_stop(redteam_config, tmp_path):
@@ -892,22 +873,13 @@ def test_setup_runtime_environment_creates_shared_net_before_install(
 
 
 @pytest.mark.parametrize(
-    ("config", "synthetic", "missing_name"),
+    ("config", "missing_name"),
     [
-        (RunnerConfig(**_BASE_CONFIG), False, "fix.patch"),
-        (
-            RunnerConfig(
-                **{**_BASE_CONFIG, "task": None, "synthetic_vuln_id": "vuln_0"}
-            ),
-            True,
-            "vulnerability.patch",
-        ),
+        (RunnerConfig(**_BASE_CONFIG), "fix.patch"),
     ],
 )
-def test_validate_arguments_requires_bundle_patch(
-    config, synthetic, missing_name, tmp_path
-):
-    wf = _make_workflow(config, tmp_path, synthetic=synthetic)
+def test_validate_arguments_requires_bundle_patch(config, missing_name, tmp_path):
+    wf = _make_workflow(config, tmp_path)
     wf._bundle.patch.unlink()
     with pytest.raises(ValueError, match=missing_name):
         wf.validate_arguments()
@@ -1529,16 +1501,16 @@ def test_config_probe_only_bundleless_requires_attacker_model():
 
 
 def test_config_redteam_without_bundle_or_probe_only_rejected():
-    """Two-phase redteam must still require task XOR synthetic_vuln_id."""
+    """Two-phase redteam requires a zero-day task unless probe_only is set."""
     bad = {**_BASE_CONFIG, "task": None, "synthetic_vuln_id": None}
-    with pytest.raises(ValueError, match="exactly one"):
+    with pytest.raises(ValueError, match="requires task"):
         RunnerConfig(**bad)
 
 
-def test_config_redteam_rejects_both_bundle_selectors():
-    """task + synthetic_vuln_id together must still be rejected."""
+def test_config_rejects_retired_synthetic_vuln_id():
+    """synthetic_vuln_id is retained only as a nullable compatibility field."""
     bad = {**_BASE_CONFIG, "task": "report-0", "synthetic_vuln_id": "vuln_0"}
-    with pytest.raises(ValueError, match="exactly one"):
+    with pytest.raises(ValueError, match="synthetic_vuln_id is retired"):
         RunnerConfig(**bad)
 
 
@@ -1555,7 +1527,7 @@ def test_config_probe_only_rejects_task():
 
 
 def test_config_probe_only_rejects_synthetic_vuln_id():
-    """probe_only is bundle-less — synthetic_vuln_id forbidden too."""
+    """probe_only is bundle-less and synthetic_vuln_id is retired globally."""
     bad = {
         **_BASE_CONFIG,
         "task": None,
@@ -1563,7 +1535,7 @@ def test_config_probe_only_rejects_synthetic_vuln_id():
         "probe_only": True,
         "attacker_model": "malicious_app",
     }
-    with pytest.raises(ValueError, match="bundle-less"):
+    with pytest.raises(ValueError, match="synthetic_vuln_id is retired"):
         RunnerConfig(**bad)
 
 
@@ -1614,17 +1586,16 @@ def test_config_probe_only_mvp_matrix_allowed(attacker_model, no_codebase):
 
 
 def test_config_probe_only_rejected_on_exploit_workflow():
-    """probe_only is redteam-only. Setting it on workflow=exploit would
-    silently no-op and violate the truthful-config contract."""
+    """workflow=exploit is retired before probe-only validation runs."""
     bad = {
         **_BASE_CONFIG,
         "workflow": "exploit",
         "task": None,
-        "synthetic_vuln_id": "vuln_0",
+        "synthetic_vuln_id": None,
         "attacker_model": None,
         "probe_only": True,
     }
-    with pytest.raises(ValueError, match="probe_only=True requires workflow='redteam'"):
+    with pytest.raises(ValueError, match="workflow='exploit' is retired"):
         RunnerConfig(**bad)
 
 
