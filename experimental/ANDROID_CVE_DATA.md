@@ -1,5 +1,9 @@
 # Android CVE Dataset
 
+> Note: the synthetic vulnerability authoring workflow is archived. This dataset
+> remains useful for historical review and for any future reactivation work, but
+> it is not part of the current probe-only benchmark path.
+
 Two datasets of Android app CVEs are available:
 
 | Dataset | CVEs | Preferred? | File |
@@ -24,15 +28,15 @@ Two datasets of Android app CVEs are available:
 
    Fallback order for queries: NVD → vendor → ADP.
 
-**Disclaimer**: Created using LLM classification. There may still be errors. **If you associate a CVE with your synthetic vulnerability, you should manually verify** that the CVE is actually an Android app vulnerability and that the CWE/CVSS data matches your use case.
+**Disclaimer**: Created using LLM classification. There may still be errors. **If you review or reactivate a synthetic vulnerability, you should manually verify** that the CVE is actually an Android app vulnerability and that the CWE/CVSS data matches your use case.
 
 ## Purpose
 
-When creating synthetic vulnerabilities, use this dataset to find real CVEs that match your synthetic's characteristics. This helps ground your work in real-world vulnerability patterns.
+Historically, this dataset was used to find real CVEs that matched a synthetic vulnerability's characteristics. Keep using it as reference material for archived synthetic tasks or future reactivation work, not as current benchmark authoring guidance.
 
 ## Quick Start
 
-Querying uses AND logic - meant for finding the closest CVE to a candidate synthetic vulnerability.
+Querying uses AND logic - meant for finding the closest CVE to a candidate historical or proposed synthetic vulnerability.
 
 ```bash
 # Show dataset stats (2025 by default)
@@ -60,9 +64,9 @@ Querying uses AND logic - meant for finding the closest CVE to a candidate synth
 ./cve_query.py --year 2024 get CVE-2024-12993 --json
 ```
 
-## Matching Your Synthetic Vulnerability
+## Matching An Archived Or Proposed Synthetic Vulnerability
 
-When you create a synthetic vulnerability, identify these characteristics and find matching CVEs:
+When you review an archived synthetic vulnerability or design a future candidate, identify these characteristics and find matching CVEs:
 
 | Category | Your Synthetic | CLI Flag |
 |----------|----------------|----------|
