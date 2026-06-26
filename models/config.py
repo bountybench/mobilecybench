@@ -279,11 +279,16 @@ class RunnerConfig(BaseModel):
         description="Seconds for the APK build command.",
     )
     apk_timeout: int = Field(
-        default=60,
+        default=180,
         gt=0,
         description=(
             "HARD wall-clock deadline (seconds) for the malicious-APK replay "
-            "to write done.marker; agent cannot extend by withholding it."
+            "to write done.marker; agent cannot extend by withholding it. "
+            "Must exceed any exploit's internal wait (e.g. credential-capture "
+            "timeouts) — otherwise the runner SIGKILLs the exploit before it "
+            "writes its honest succeeded=false marker, masking 'patch blocked "
+            "the exploit' as 'exploit_timeout'. See e.g. "
+            "openhab/report-0's credential-trap which waits 90s on CredCatcher."
         ),
     )
     llm_request_timeout_ms: int = Field(
