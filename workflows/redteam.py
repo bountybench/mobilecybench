@@ -1,7 +1,6 @@
 """RedTeamWorkflow — redteam evaluation pipeline.
 
-Three bundle types share the pipeline (see evaluation.task_bundle):
-- SyntheticBundle: apps/<app>/synthetic_vulnerabilities/<vuln>/ (vulnerability.patch direction).
+Two bundle types share the pipeline (see evaluation.task_bundle):
 - ZerodayBundle:   zerodays/reports/<app>/<task>/task/ (fix.patch direction).
 - ProbeOnlyBundle: bundle-less probe-only runs (no patch, no verifier).
 
@@ -640,8 +639,7 @@ class RedTeamWorkflow(Workflow):
     def _runtime_apk(self) -> Path:
         """APK to install on the emulator and surface to the agent.
 
-        - synthetic / zeroday: bundle's phase-1 APK (vulnerable for
-          synthetic, baseline for zeroday).
+        - zeroday: bundle's phase-1 APK (the baseline vulnerable APK).
         - probe_only: the app's APK at apps/<app>/apk/<app>.apk
           (ProbeOnlyBundle.phase1_apk == phase2_apk == that path).
         """
@@ -650,8 +648,7 @@ class RedTeamWorkflow(Workflow):
     def _prepare_runtime_codebase(self, codebase_dir: Path) -> None:
         """Codebase prep for phase-1 / single-pass runs.
 
-        - synthetic / zeroday: bundle's phase-1 prep (vulnerability.patch
-          for synthetic; no-op restore for zeroday).
+        - zeroday: bundle's phase-1 prep (restore baseline).
         - probe_only with codebase on disk: git_restore_clean to the
           baseline so no patch is ever applied.
         - probe_only without codebase (APK-only / closed-source): no-op.
@@ -689,7 +686,7 @@ class RedTeamWorkflow(Workflow):
         # probe_only is bundle-less and only installs the app's baseline
         # APK (apps/<app>/apk/<app>.apk via ProbeOnlyBundle) — never a
         # patched / hardened APK. Validate that single artifact instead of
-        # the two-APK set required by synthetic / zeroday two-phase runs.
+        # the two-APK set required by zeroday two-phase runs.
         try:
             if self.config.probe_only:
                 runtime_apk = self._runtime_apk()
@@ -717,7 +714,7 @@ class RedTeamWorkflow(Workflow):
         # Install the runtime APK so the agent's observations match the
         # source tree it analyzes. _runtime_apk() returns ProbeOnlyBundle's
         # app baseline APK in probe_only mode, otherwise the bundle's phase-1
-        # APK (vulnerable for synthetic, original for zeroday).
+        # APK (the baseline vulnerable APK for zeroday).
         self._mark_app_backend_active()
         install_app_and_setup_backend(
             self.app_dir,
@@ -743,17 +740,14 @@ class RedTeamWorkflow(Workflow):
             )
             return
 
-        # For synthetic bundles the patch is applied on top of the checked-out
-        # baseline commit INSIDE _setup_agent_codebase so the snapshot the
-        # agent gets matches the Phase 1 target. For zeroday the hook is a
-        # no-op (baseline is already vulnerable). For probe_only the hook is
-        # git_restore_clean (or no-op when no_codebase=True and no source is
-        # present). evaluate() will re-apply this later against
-        # apps/<app>/codebase for the replay codebase-dir.
+        # For zeroday, the hook restores the baseline vulnerable snapshot.
+        # For probe_only the hook is git_restore_clean (or no-op when
+        # no_codebase=True and no source is present). evaluate() will re-apply
+        # this later against apps/<app>/codebase for the replay codebase-dir.
         # When no_codebase=True the agent container only sees the APK. Pass
         # the runtime APK explicitly so redteam runs don't fall back to the
-        # agent_container derivation, which assumes a synthetic bundle's
-        # clean APK and would mis-route for zeroday / probe_only.
+        # agent_container derivation, which cannot infer zeroday / probe_only
+        # APK layouts.
         runtime_apk = self._runtime_apk() if self.config.no_codebase else None
         self.agent_env = setup_agent_environment(
             app_dir=self.app_dir,
@@ -1390,7 +1384,6 @@ class RedTeamWorkflow(Workflow):
             "workflow": "redteam",
             "attacker_model": self._attacker_model,
             "task": self.config.task,
-            "synthetic_vuln_id": self.config.synthetic_vuln_id,
             "status": status,
             "score": score,
             "scores": {},

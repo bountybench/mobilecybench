@@ -17,7 +17,7 @@
     },
     "workflow": {
       "description": "Workflow class.",
-      "enum": ["exploit", "redteam"]
+      "enum": ["redteam"]
     },
     "package_name": {
       "description": "Android package name of the target app.",
@@ -33,8 +33,8 @@
       "type": "string"
     },
     "vuln_id": {
-      "description": "Synthetic vuln id. Mirrors RunnerConfig.synthetic_vuln_id — set for workflow='exploit' and for workflow='redteam' in synthetic mode; null for zero-day redteam.",
-      "type": ["string", "null"]
+      "description": "Retired synthetic-vulnerability compatibility field. New runs set this to null.",
+      "type": "null"
     },
     "apk_relpath": {
       "description": "Path to the built target APK, relative to /app/codebase (or /app/apk when no_codebase=true).",
@@ -45,7 +45,7 @@
       "type": "boolean"
     },
     "attacker_model": {
-      "description": "Attacker model id (redteam mode). Empty string for exploit mode.",
+      "description": "Attacker model id for redteam runs.",
       "type": "string"
     },
     "model": {

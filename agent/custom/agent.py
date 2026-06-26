@@ -74,7 +74,7 @@ class CustomAgent:
         llm_request_timeout_ms: int = DEFAULT_TIMEOUT_MS,
         reasoning_effort: Optional[str] = None,
         include_ssrf: bool = True,
-        workflow: str = "exploit",
+        workflow: str = "redteam",
         attacker_model: str = "malicious_app",
         no_codebase: bool = False,
         allow_unregistered_model_routing: bool = False,

@@ -3,7 +3,6 @@
 MobileCybench Runner - Workflow-based architecture.
 
 This runner uses the Workflow abstraction to handle different evaluation modes:
-- ExploitWorkflow: For exploiting known/synthetic vulnerabilities
 - RedTeamWorkflow: For red-team evaluation of app security
 """
 
@@ -32,7 +31,6 @@ from utils.run_artifacts import (
 )
 from utils.time_tracker import time_tracker
 from workflows import (
-    ExploitWorkflow,
     RedTeamWorkflow,
     Workflow,
 )
@@ -115,11 +113,9 @@ def create_workflow(
         project_root: Root directory of the project
 
     Returns:
-        Workflow instance (ExploitWorkflow or RedTeamWorkflow)
+        Workflow instance.
     """
-    if config.workflow == "redteam":
-        return RedTeamWorkflow(config, app_name, project_root)
-    return ExploitWorkflow(config, app_name, project_root)
+    return RedTeamWorkflow(config, app_name, project_root)
 
 
 def _log_experiment_config(
@@ -139,12 +135,6 @@ def _log_experiment_config(
         },
         "runner": config.model_dump(),
     }
-
-    # Add exploit-specific fields
-    if config.workflow == "exploit":
-        experiment_config["exploit"] = {
-            "vuln_id": config.synthetic_vuln_id,
-        }
 
     logger.info(
         "Run config: app=%s workflow=%s attacker_model=%s",
@@ -278,7 +268,7 @@ def run(
                 workflow=config.workflow,
                 app_name=app_name,
                 task=config.task,
-                vuln_id=config.synthetic_vuln_id,
+                vuln_id=None,
                 project_root=project_root,
                 is_apk_exploit=is_apk_exploit,
             )

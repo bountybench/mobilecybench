@@ -39,7 +39,11 @@ def workflow(tmp_path):
         emulator_backend="native",
         emulator_display="headed",
         network_mode="restricted",
-        synthetic_vuln_id="vuln_0",
+        workflow="redteam",
+        probe_only=True,
+        attacker_model="remote_attacker",
+        task=None,
+        synthetic_vuln_id=None,
     )
     wf = _ConcreteWorkflow(config, "testapp", tmp_path)
     wf.emulator = MagicMock()

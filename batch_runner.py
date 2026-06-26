@@ -104,7 +104,7 @@ def _effective_batch_matrix(
 ) -> dict[str, list[Any]]:
     matrix = dict(batch.matrix or {})
     if (
-        base_config_payload.get("workflow", "exploit") == "redteam"
+        base_config_payload.get("workflow", "redteam") == "redteam"
         and base_config_payload.get("probe_only") is True
         and "attacker_model" not in matrix
         and not base_config_payload.get("attacker_model")

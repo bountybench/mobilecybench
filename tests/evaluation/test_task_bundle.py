@@ -8,7 +8,6 @@ import pytest
 
 from evaluation.task_bundle import (
     ProbeOnlyBundle,
-    SyntheticBundle,
     TaskBundle,
     ZerodayBundle,
     assert_zerodays_initialized,
@@ -53,12 +52,6 @@ def git_repo(tmp_path):
     ("bundle", "task_dir", "phase1_apk", "phase2_apk"),
     [
         (
-            SyntheticBundle(app_dir=Path("/root/apps/myapp"), vuln_id="vuln_0"),
-            Path("/root/apps/myapp/synthetic_vulnerabilities/vuln_0"),
-            Path("/root/apps/myapp/apk/vuln_0/myapp.apk"),
-            Path("/root/apps/myapp/apk/myapp.apk"),
-        ),
-        (
             ZerodayBundle(
                 project_root=Path("/root"), app_name="myapp", task="report-1"
             ),
@@ -88,19 +81,13 @@ def _initialized_zerodays_root(tmp_path: Path) -> Path:
 @pytest.mark.parametrize(
     ("cfg", "expected_type"),
     [
-        (_config(synthetic_vuln_id="vuln_0"), SyntheticBundle),
         (_config(task="report-1"), ZerodayBundle),
+        (_config(probe_only=True, attacker_model="malicious_app"), ProbeOnlyBundle),
     ],
 )
 def test_resolve_bundle_selects_expected_kind(cfg, expected_type):
     bundle = resolve_bundle(cfg, Path("/p"), "app")
     assert isinstance(bundle, expected_type)
-
-
-def test_resolve_bundle_preserves_synthetic_vuln_id():
-    bundle = resolve_bundle(_config(synthetic_vuln_id="vuln_0"), Path("/p"), "app")
-    assert isinstance(bundle, SyntheticBundle)
-    assert bundle.vuln_id == "vuln_0"
 
 
 def test_assert_zerodays_initialized_raises_when_submodule_missing(tmp_path):
@@ -126,31 +113,22 @@ def test_resolve_bundle_does_not_check_filesystem(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "cfg",
+    ("cfg", "message"),
     [
-        _config(),
-        _config(task="r1", synthetic_vuln_id="v0"),
-        _config(task="", synthetic_vuln_id=""),
+        (_config(), "requires config.task"),
+        (_config(task="r1", synthetic_vuln_id="v0"), "synthetic_vuln_id is retired"),
+        (_config(synthetic_vuln_id="v0"), "synthetic_vuln_id is retired"),
+        (_config(task="", synthetic_vuln_id=""), "synthetic_vuln_id is retired"),
     ],
 )
-def test_resolve_bundle_rejects_invalid_selector(cfg):
-    with pytest.raises(ValueError, match="exactly one"):
+def test_resolve_bundle_rejects_invalid_selector(cfg, message):
+    with pytest.raises(ValueError, match=message):
         resolve_bundle(cfg, Path("/p"), "app")
 
 
 @pytest.mark.parametrize(
     ("bundle_factory", "prepare", "expected"),
     [
-        (
-            lambda repo: SyntheticBundle(app_dir=repo, vuln_id="v"),
-            "prepare_phase1_codebase",
-            "vulnerable\n",
-        ),
-        (
-            lambda repo: SyntheticBundle(app_dir=repo, vuln_id="v"),
-            "prepare_phase2_codebase",
-            "clean\n",
-        ),
         (
             lambda repo: ZerodayBundle(project_root=repo, app_name="x", task="t"),
             "prepare_phase1_codebase",
@@ -174,17 +152,6 @@ def test_phase_prep_transitions(
     getattr(bundle, prepare)(repo)
     assert (repo / "hello.txt").read_text() == expected
     assert not (repo / "untracked.txt").exists()
-
-
-def test_synthetic_validate_build_artifacts_requires_both_apks(tmp_path):
-    bundle = SyntheticBundle(app_dir=tmp_path, vuln_id="vuln_0")
-    with pytest.raises(FileNotFoundError):
-        bundle.validate_build_artifacts(tmp_path)
-
-    (tmp_path / "apk" / "vuln_0").mkdir(parents=True)
-    (tmp_path / "apk" / "vuln_0" / f"{tmp_path.name}.apk").touch()
-    (tmp_path / "apk" / f"{tmp_path.name}.apk").touch()
-    bundle.validate_build_artifacts(tmp_path)
 
 
 def test_zeroday_validate_build_artifacts_requires_hardened_apk(tmp_path):

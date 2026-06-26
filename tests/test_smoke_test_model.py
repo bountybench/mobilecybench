@@ -78,8 +78,11 @@ def test_main_returns_0_on_successful_call(smoke_test_module, tmp_path):
         "max_iterations": 1,
         "max_model_response_tokens": 64,
         "dry_run": False,
-        "workflow": "exploit",
-        "synthetic_vuln_id": "vuln_0",
+        "workflow": "redteam",
+        "probe_only": True,
+        "attacker_model": "remote_attacker",
+        "task": None,
+        "synthetic_vuln_id": None,
     }
     config_path = tmp_path / "runner_config.json"
     config_path.write_text(json.dumps(config))
@@ -137,7 +140,7 @@ def test_main_returns_1_on_malformed_config(smoke_test_module, tmp_path):
 def test_main_returns_1_on_missing_model_key(smoke_test_module, tmp_path):
     """Config file exists, valid JSON, but no `model` key → exit 1."""
     cfg = tmp_path / "no-model.json"
-    cfg.write_text(json.dumps({"workflow": "exploit"}))
+    cfg.write_text(json.dumps({"workflow": "redteam"}))
     rc = _run_main(smoke_test_module, ["--config", str(cfg)])
     assert rc == 1
 
