@@ -1,42 +1,31 @@
 #!/usr/bin/env python3
 """
-Generate K8s Job YAMLs for the MobileCyBench experiment matrix.
+Generate K8s Job YAMLs for the MobileCyBench external-agent matrix.
 
-Two modes, selected by whether ``--agent-image`` is given:
-
-1. Legacy synthetic-vuln path (no ``--agent-image``): scans apps/ for synthetic
-   vulnerabilities and renders one Job per (app, vuln, model) tuple. Requires
-   ``--models``.
-
-2. External-agent path (``--agent-image``): runs a BYO coding-agent image
-   (agent_mode=external) over the redteam workflow. Renders one Job per
-   (app, attacker_model, no_codebase leg) tuple; ``--models`` is optional (the
-   image carries the model, but a passed model is still plumbed through for
-   labeling / runner_config.model). synthetic_vuln_id / VULN_ID are unused.
+The GKE path runs a BYO coding-agent image (agent_mode=external) over the
+redteam probe-only workflow. It renders one Job per
+(app, attacker_model, no_codebase leg) tuple. ``--models`` is optional: the
+agent image carries the model, but a passed model is still plumbed through for
+labeling / runner_config.model. synthetic_vuln_id / VULN_ID are not emitted.
 
 Usage:
-    # Legacy: single app + model — print YAML
-    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o
-
-    # Legacy: full matrix (all apps × all vulns × multiple models)
-    python infra/gke/generate_jobs.py --all --models gpt-4o claude-sonnet-4-5-20250929 --apply
-
     # External agent, probe-only redteam, both attacker models, source-vs-APK ablation
     python infra/gke/generate_jobs.py \\
         --apps conversations \\
         --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
+        --models openai/gpt-5.5 \\
         --probe-only --attacker-models malicious_app remote_attacker \\
         --no-codebase-ablation --gcs-bucket $BUCKET --apply
 
     # Write YAMLs to a directory instead of stdout/apply
-    python infra/gke/generate_jobs.py --all --models gpt-4o --outdir /tmp/jobs
-
-    # Dry run (no LLM calls) or gold run (reference exploits)
-    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o --dry-run
-    python infra/gke/generate_jobs.py --apps moememos --models gpt-4o --gold-run
+    python infra/gke/generate_jobs.py \\
+        --all --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
+        --models openai/gpt-5.5 --probe-only \\
+        --attacker-models malicious_app --outdir /tmp/jobs
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -45,54 +34,47 @@ from pathlib import Path
 
 EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+APP_CATALOG = PROJECT_ROOT / "apps" / "app_catalog.json"
 
 
-def discover_experiments(apps_dir: Path, app_filter: list[str] | None) -> list[dict]:
-    """Scan apps/ for (app_name, vuln_id) pairs with synthetic vulnerabilities."""
-    experiments = []
-    for app_dir in sorted(apps_dir.iterdir()):
-        if not app_dir.is_dir() or app_dir.name.startswith(("_", ".")):
-            continue
-        if app_filter and app_dir.name not in app_filter:
-            continue
-
-        synth_dir = app_dir / "synthetic_vulnerabilities"
-        if not synth_dir.exists():
-            continue
-
-        for vuln_dir in sorted(synth_dir.iterdir()):
-            if not vuln_dir.is_dir() or vuln_dir.name.startswith("."):
-                continue
-            # Verify it has required files
-            if (vuln_dir / "verify_files").exists():
-                experiments.append({"app_name": app_dir.name, "vuln_id": vuln_dir.name})
-
-    return experiments
+def load_active_apps(catalog_path: Path = APP_CATALOG) -> list[str]:
+    """Return the active app names from apps/app_catalog.json."""
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        apps = catalog["sets"]["in_scope"]
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        print(
+            f"ERROR: failed to read active app catalog {catalog_path}: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not isinstance(apps, list) or not all(isinstance(app, str) for app in apps):
+        print(f"ERROR: expected string list at {catalog_path}: sets.in_scope", file=sys.stderr)
+        sys.exit(1)
+    return apps
 
 
 def discover_apps(apps_dir: Path, app_filter: list[str] | None) -> list[str]:
-    """Return app names for the external-agent path (no synthetic-vuln scan).
-
-    The external path does not need a synthetic vulnerability — it runs the
-    redteam workflow against the app's baseline. ``--all`` lists every app
-    directory; ``--apps`` validates the requested names exist on disk.
-    """
-    available = sorted(
-        d.name
-        for d in apps_dir.iterdir()
-        if d.is_dir() and not d.name.startswith(("_", "."))
-    )
+    """Return active app names for the external-agent path."""
+    available = load_active_apps()
+    missing_dirs = [app for app in available if not (apps_dir / app).is_dir()]
+    if missing_dirs:
+        print(
+            f"ERROR: active catalog app(s) missing under apps/: {', '.join(missing_dirs)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     if app_filter is None:
         return available
     missing = [a for a in app_filter if a not in available]
     if missing:
         print(
-            f"ERROR: unknown app(s): {', '.join(missing)}. "
-            f"Available: {', '.join(available)}",
+            f"ERROR: unknown or archived app(s): {', '.join(missing)}. "
+            f"Active apps: {', '.join(available)}",
             file=sys.stderr,
         )
         sys.exit(1)
-    return [a for a in app_filter if a in available]
+    return app_filter
 
 
 def sanitize_k8s_name(name: str) -> str:
@@ -128,7 +110,6 @@ def render_job(
     dry_run: bool,
     gold_run: bool,
     model: str = "",
-    vuln_id: str = "",
     agent_image: str = "",
     agent_mode: str = "",
     workflow: str = "",
@@ -145,7 +126,7 @@ def render_job(
     """
     # Phase 1: replace structural placeholders (job name, image). These use
     # unique strings that won't collide with env var name: fields.
-    rendered = template.replace("mcb-APP_NAME-VULN_ID-MODEL", job_name)
+    rendered = template.replace("JOB_NAME", job_name)
     rendered = rendered.replace("IMAGE_URI", image_uri)
 
     # Phase 2: replace quoted env value placeholders only — avoids clobbering
@@ -154,7 +135,6 @@ def render_job(
     env_replacements = {
         '"APP_NAME"': f'"{app_name}"',
         '"MODEL"': f'"{model}"',
-        '"VULN_ID"': f'"{vuln_id}"',
         '"EMULATOR_BACKEND"': f'"{emulator_backend}"',
         f'"{EMULATOR_GPU_ENV}"': f'"{emulator_gpu}"',
         '"DRY_RUN"': f'"{str(dry_run).lower()}"',
@@ -174,7 +154,6 @@ def render_job(
     # Replace label values (sanitized into K8s-safe tokens).
     label_replacements = {
         "experiment-app: APP_NAME": f'experiment-app: "{sanitize_k8s_name(app_name)}"',
-        "experiment-vuln: VULN_ID": f'experiment-vuln: "{sanitize_k8s_name(vuln_id)}"',
         "experiment-model: MODEL": f'experiment-model: "{sanitize_k8s_name(model)}"',
         "experiment-workflow: WORKFLOW": f'experiment-workflow: "{sanitize_k8s_name(workflow)}"',
         "experiment-attacker: ATTACKER_MODEL": f'experiment-attacker: "{sanitize_k8s_name(attacker_model)}"',
@@ -243,53 +222,21 @@ def build_external_jobs(template: str, apps: list[str], args) -> list[tuple[str,
     return jobs
 
 
-def build_legacy_jobs(
-    template: str, experiments: list[dict], args
-) -> list[tuple[str, str]]:
-    """Render the legacy (app x vuln x model) synthetic-vuln matrix."""
-    jobs = []
-    for exp in experiments:
-        for model in args.models:
-            job_name = sanitize_k8s_name(
-                f"mcb-{exp['app_name']}-{exp['vuln_id']}-{model}"
-            )
-            yaml_str = render_job(
-                template=template,
-                job_name=job_name,
-                app_name=exp["app_name"],
-                vuln_id=exp["vuln_id"],
-                model=model,
-                image_uri=args.image,
-                gcs_bucket=args.gcs_bucket,
-                emulator_backend=args.emulator_backend,
-                emulator_gpu=args.emulator_gpu,
-                dry_run=args.dry_run,
-                gold_run=args.gold_run,
-                # A synthetic vuln always carries a bundle, so it can never be
-                # probe-only. Force probe_only=false rather than inheriting it
-                # from the base config (whose committed default is probe-only),
-                # which would make synthetic_vuln_id invalid against RunnerConfig.
-                probe_only=False,
-            )
-            jobs.append((job_name, yaml_str))
-    return jobs
-
-
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate K8s Job YAMLs for MobileCyBench experiments"
+        description="Generate K8s Job YAMLs for MobileCyBench external-agent jobs"
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--apps", nargs="+", help="App names to include (e.g., moememos bitwarden)"
     )
-    group.add_argument("--all", action="store_true", help="Include all apps")
+    group.add_argument("--all", action="store_true", help="Include all active apps")
 
     parser.add_argument(
         "--models",
         nargs="+",
-        help="Model names (e.g., gpt-4o). Required for the legacy synthetic-vuln "
-        "path; optional with --agent-image (the image carries the model).",
+        help="Model names (e.g., gpt-4o). Optional because the agent image carries "
+        "the model; when provided, values are used for labels and runner_config.model.",
     )
     parser.add_argument(
         "--image",
@@ -319,18 +266,18 @@ def main():
         ),
     )
 
-    # External-agent path. Supplying --agent-image switches to the
-    # (app x attacker_model x no_codebase leg) matrix.
+    # External-agent path: (app x attacker_model x no_codebase leg) matrix.
     ext = parser.add_argument_group("external agent")
     ext.add_argument(
         "--agent-image",
+        required=True,
         help="BYO agent image ref (agent_mode=external), e.g. "
-        "cybench/mobilecybench:opencode_1.15.6-r1. Enables the external path.",
+        "cybench/mobilecybench:opencode_1.15.6-r1.",
     )
     ext.add_argument(
         "--workflow",
         default="redteam",
-        choices=["exploit", "redteam"],
+        choices=["redteam"],
         help="Workflow for external jobs (default: redteam)",
     )
     ext.add_argument(
@@ -376,47 +323,23 @@ def main():
     args = parser.parse_args()
     args.emulator_gpu = args.emulator_gpu.strip()
 
-    external = bool(args.agent_image)
-
-    # Guard against external-only flags on the legacy path.
-    external_only = []
-    if args.probe_only:
-        external_only.append("--probe-only")
-    if args.attacker_models:
-        external_only.append("--attacker-models")
-    if args.no_codebase_ablation:
-        external_only.append("--no-codebase-ablation")
-    if args.agent_wallclock_seconds is not None:
-        external_only.append("--agent-wallclock-seconds")
-    if not external and external_only:
-        parser.error(
-            f"{', '.join(external_only)} only valid with --agent-image (external path)"
+    if not args.attacker_models:
+        parser.error("--attacker-models is required")
+    if not args.probe_only:
+        parser.error("--probe-only is required for GKE external-agent jobs")
+    if not args.models:
+        print(
+            "WARNING: --models not set; jobs use the base runner_config.json "
+            "model. Ensure it matches the agent image's CLI (e.g. a claudecode_* "
+            "image needs an Anthropic model).",
+            file=sys.stderr,
         )
 
-    if external:
-        if not args.attacker_models:
-            parser.error("--attacker-models is required with --agent-image")
-        if not args.models:
-            print(
-                "WARNING: --models not set; jobs use the base runner_config.json "
-                "model. Ensure it matches the agent image's CLI (e.g. a claudecode_* "
-                "image needs an Anthropic model).",
-                file=sys.stderr,
-            )
-    else:
-        if not args.models:
-            parser.error("--models is required (or pass --agent-image)")
-
-    # probe_only + dry_run/gold_run is rejected by RunnerConfig at load time.
-    # Don't hard-fail (so --dry-run stays usable for rendering smoke-tests), but
-    # warn so the operator doesn't submit jobs that can't actually run.
     if args.probe_only and (args.dry_run or args.gold_run):
         flag = "--dry-run" if args.dry_run else "--gold-run"
-        print(
-            f"WARNING: --probe-only with {flag} renders jobs that RunnerConfig "
-            f"rejects at load (probe-only skips scoring). Use only to smoke-test "
-            f"rendering; drop {flag} for runnable jobs.",
-            file=sys.stderr,
+        parser.error(
+            f"--probe-only cannot be combined with {flag}; RunnerConfig rejects "
+            "probe-only dry/gold runs"
         )
 
     apps_dir = PROJECT_ROOT / "apps"
@@ -426,18 +349,8 @@ def main():
 
     app_filter = None if args.all else args.apps
 
-    if external:
-        apps = discover_apps(apps_dir, app_filter)
-        jobs = build_external_jobs(template, apps, args)
-    else:
-        experiments = discover_experiments(apps_dir, app_filter)
-        if not experiments:
-            print(
-                "No experiments found. Check that apps have synthetic_vulnerabilities/",
-                file=sys.stderr,
-            )
-            return 1
-        jobs = build_legacy_jobs(template, experiments, args)
+    apps = discover_apps(apps_dir, app_filter)
+    jobs = build_external_jobs(template, apps, args)
 
     # Names are sanitized + truncated to 63 chars; collisions would make
     # `kubectl apply` silently overwrite an earlier job. Fail loudly instead.

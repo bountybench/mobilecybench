@@ -48,38 +48,33 @@ kubectl create secret generic llm-api-keys \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### 4. Submit Experiments
+Probe-only jobs run a real external agent, so placeholder keys from cluster
+setup must be replaced before submitting jobs or running `test_gke.sh`.
+
+### 4. Submit Probe-Only Redteam Jobs
+
+GKE jobs run an external coding-agent image against active apps from
+`apps/app_catalog.json`. Synthetic vulnerability IDs are not used.
 
 ```bash
-# Single experiment
-python infra/gke/generate_jobs.py \
-  --apps moememos \
-  --models gpt-5.5 \
-  --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
-  --gcs-bucket $PROJECT_ID-mobilecybench-results \
-  --apply
-
-# Full matrix
-python infra/gke/generate_jobs.py \
-  --all \
-  --models gpt-5.5 claude-sonnet-4-5-20250929 \
-  --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
-  --gcs-bucket $PROJECT_ID-mobilecybench-results \
-  --apply
-```
-
-#### External coding agent (probe-only redteam)
-
-Pass `--agent-image` to run a BYO coding-agent image (`agent_mode=external`)
-over the redteam workflow instead of the legacy synthetic-vuln path. The matrix
-becomes (app × attacker_model × no_codebase leg); `--models` is optional (the
-image carries the model, but a passed model is still plumbed through for
-labeling). `synthetic_vuln_id` / `VULN_ID` are unused in this mode.
-
-```bash
+# Single app
 python infra/gke/generate_jobs.py \
   --apps conversations \
   --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \
+  --models openai/gpt-5.5 \
+  --probe-only \
+  --attacker-models malicious_app remote_attacker \
+  --no-codebase-ablation \
+  --agent-wallclock-seconds 1800 \
+  --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
+  --gcs-bucket $PROJECT_ID-mobilecybench-results \
+  --apply
+
+# All active apps
+python infra/gke/generate_jobs.py \
+  --all \
+  --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \
+  --models openai/gpt-5.5 \
   --probe-only \
   --attacker-models malicious_app remote_attacker \
   --no-codebase-ablation \
@@ -91,7 +86,11 @@ python infra/gke/generate_jobs.py \
 
 `--no-codebase-ablation` renders both legs (source mounted vs. APK-only). The
 `--image` flag is still the GKE **runner** pod image; `--agent-image` is a
-separate value forwarded into `runner_config.agent_image`.
+separate value forwarded into `runner_config.agent_image`. Pass `--models`
+when the agent image expects a specific provider/model string; the opencode
+image examples above use `openai/gpt-5.5`. Probe-only jobs cannot be combined
+with `--dry-run` or `--gold-run`: dry-run skips scoring, and gold-run requires
+a task bundle/reference exploit.
 
 ### 5. Monitor
 
@@ -100,7 +99,7 @@ separate value forwarded into `runner_config.agent_image`.
 kubectl get jobs -n mobilecybench --watch
 
 # Check specific job logs
-kubectl logs -n mobilecybench job/mcb-moememos-vuln-0-gpt-5-5 -f
+kubectl logs -n mobilecybench job/mcb-conversations-malicious-app-src-openai-gpt-5-5 -f
 
 # See pod status
 kubectl get pods -n mobilecybench

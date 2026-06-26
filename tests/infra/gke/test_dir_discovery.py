@@ -21,6 +21,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 ENTRYPOINT = REPO_ROOT / "infra" / "gke" / "entrypoint-gke.sh"
 
 
+def _entrypoint_upload_path_block() -> str:
+    text = ENTRYPOINT.read_text()
+    start = text.index("    RUN_ID=")
+    end = text.index('    echo "Uploading results to $GCS_PATH"', start)
+    lines = text[start:end].splitlines()
+    return "\n".join(line[4:] if line.startswith("    ") else line for line in lines)
+
+
 def _make_fixture(root: Path) -> dict[str, Path]:
     """Build a mixed tree and return {label: path} for assertions.
 
@@ -109,6 +117,54 @@ def test_collect_results_picks_up_run_dirs_skipping_gold(tmp_path: Path) -> None
     ), f"expected gold skip message in stderr, got: {stderr_text!r}"
 
 
+def test_collect_results_parses_probe_only_summary_and_upload_path(
+    tmp_path: Path,
+) -> None:
+    from infra.gke.collect_results import parse_experiment_dir
+
+    run_dir = tmp_path / "wallabag" / "openai_gpt-5.5" / "run-1" / "run-log"
+    run_dir.mkdir(parents=True)
+    (run_dir / "run_summary.json").write_text(
+        json.dumps(
+            {
+                "context": {
+                    "app_name": "wallabag",
+                    "workflow": "redteam",
+                    "vuln_id": None,
+                    "model": "openai/gpt-5.5",
+                },
+                "results": {"status": "signal", "score": 1},
+                "metrics": {"turn_count": 7},
+            }
+        )
+    )
+
+    parsed = parse_experiment_dir(run_dir)
+
+    assert parsed is not None
+    assert parsed["app_name"] == "wallabag"
+    assert parsed["vuln_id"] == ""
+    assert parsed["model"] == "openai/gpt-5.5"
+    assert parsed["status"] == "signal"
+    assert parsed["score"] == "1"
+    assert parsed["turns"] == "7"
+
+
+def test_collect_results_fallback_parses_legacy_synthetic_path(tmp_path: Path) -> None:
+    from infra.gke.collect_results import parse_experiment_dir
+
+    run_dir = tmp_path / "moememos" / "vuln_0" / "gpt-5-5" / "run-1" / "run-log"
+    run_dir.mkdir(parents=True)
+    (run_dir / "run_summary.json").write_text(json.dumps({"status": "completed"}))
+
+    parsed = parse_experiment_dir(run_dir)
+
+    assert parsed is not None
+    assert parsed["app_name"] == "moememos"
+    assert parsed["vuln_id"] == "vuln_0"
+    assert parsed["model"] == "gpt-5-5"
+
+
 def test_collect_results_glob_does_not_find_dirs_without_run_summary(
     tmp_path: Path,
 ) -> None:
@@ -183,20 +239,16 @@ def test_entrypoint_gke_script_uploads_block_dry_run(tmp_path: Path) -> None:
     )
     fake_gsutil.chmod(0o755)
 
-    # Extract and execute the upload block in isolation. (We don't want
-    # to run the whole entrypoint script because it expects an emulator
-    # boot etc.) The block we care about lives at lines ~98–110 of
-    # entrypoint-gke.sh. We re-create it inline to keep this test
-    # decoupled from line numbers.
+    # Execute the real entrypoint path-building block in isolation. We don't
+    # run the whole entrypoint script because it expects DinD/emulator setup.
     block = (
         "set -e\n"
         f"export MOBILECYBENCH_LOGS_DIR={tmp_path!s}\n"
         "GCS_BUCKET=fake-bucket\n"
         "APP_NAME=ntfy-android\n"
-        "VULN_ID=none\n"
-        "MODEL=claude-opus-4-7\n"
+        "MODEL=openai/gpt-5.5\n"
         "RUN_ID=fake-run\n"
-        'GCS_PATH="gs://$GCS_BUCKET/$APP_NAME/$VULN_ID/$MODEL/$RUN_ID/"\n'
+        f"{_entrypoint_upload_path_block()}\n"
         "dirs=()\n"
         "while IFS= read -r summary; do\n"
         '  dirs+=("$(dirname "$summary")")\n'
@@ -231,7 +283,7 @@ def test_entrypoint_gke_script_uploads_block_dry_run(tmp_path: Path) -> None:
     dir_args = gsutil_args[3:-1]  # everything between -r and the gs:// dest
     dest = gsutil_args[-1]
 
-    assert dest == "gs://fake-bucket/ntfy-android/none/claude-opus-4-7/fake-run/"
+    assert dest == "gs://fake-bucket/ntfy-android/openai_gpt-5.5/fake-run/"
     assert sorted(Path(d).name for d in dir_args) == sorted(
         [
             paths["real_a"].name,

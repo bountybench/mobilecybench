@@ -7,11 +7,12 @@
 # Usage: build_runner_config.sh <config_src> <config_dst>
 #
 # Overrides are driven by env vars set on the Job (see job-template.yaml):
-#   always:   MODEL, VULN_ID, EMULATOR_BACKEND, DRY_RUN, GOLD_RUN
+#   always:   MODEL, EMULATOR_BACKEND, DRY_RUN, GOLD_RUN
 #   optional: AGENT_IMAGE, AGENT_MODE, WORKFLOW, PROBE_ONLY, ATTACKER_MODEL,
 #             NO_CODEBASE, AGENT_WALLCLOCK_SECONDS
 # Optional fields are written only when their env var is non-empty, so an
-# unset var leaves the base config's value untouched (backward compatible).
+# unset var leaves the base config's value untouched. synthetic_vuln_id is
+# always cleared; GKE no longer accepts synthetic VULN_ID jobs.
 set -e
 
 CONFIG_SRC="${1:?usage: build_runner_config.sh <config_src> <config_dst>}"
@@ -23,6 +24,11 @@ if [ ! -f "$CONFIG_SRC" ]; then
 fi
 
 EMULATOR_BACKEND="${EMULATOR_BACKEND:-container}"
+
+if [ -n "${VULN_ID:-}" ]; then
+    echo "ERROR: VULN_ID is retired for GKE jobs; use redteam probe-only jobs without synthetic_vuln_id." >&2
+    exit 1
+fi
 
 # Normalize boolean env vars to JSON-safe "true"/"false" for jq --argjson.
 # (Portable lowercasing — works under bash 3.2 as well as the Linux image.)
@@ -42,8 +48,12 @@ PROBE_ONLY_B=""
 NO_CODEBASE_B=""
 [ -n "${NO_CODEBASE:-}" ] && NO_CODEBASE_B="$(normalize_bool "$NO_CODEBASE")"
 
+if [ "$PROBE_ONLY_B" = "true" ] && { [ "$DRY_RUN" = "true" ] || [ "$GOLD_RUN" = "true" ]; }; then
+    echo "ERROR: PROBE_ONLY is incompatible with DRY_RUN/GOLD_RUN for GKE jobs." >&2
+    exit 1
+fi
+
 jq --arg model "${MODEL:-}" \
-   --arg vuln "${VULN_ID:-}" \
    --arg em "$EMULATOR_BACKEND" \
    --arg agent_image "${AGENT_IMAGE:-}" \
    --arg agent_mode "${AGENT_MODE:-}" \
@@ -58,8 +68,8 @@ jq --arg model "${MODEL:-}" \
     | .emulator_backend = $em
     | .dry_run = $dryrun
     | .gold_run = $goldrun
+    | .synthetic_vuln_id = null
     | if $model != "" then .model = $model else . end
-    | if $vuln != "" then .synthetic_vuln_id = $vuln else . end
     | if $agent_image != "" then .agent_image = $agent_image else . end
     | if $agent_mode != "" then .agent_mode = $agent_mode else . end
     | if $workflow != "" then .workflow = $workflow else . end

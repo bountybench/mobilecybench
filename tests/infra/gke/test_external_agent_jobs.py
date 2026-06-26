@@ -10,8 +10,7 @@ redteam probe-only workflow with an attacker-model x source-vs-APK matrix:
     produce a runner_config.json with agent_mode=external, workflow=redteam,
     probe_only=true, the right attacker_model / no_codebase, and no
     synthetic_vuln_id.
-
-The legacy synthetic-vuln path is exercised to confirm backward compatibility.
+  * GKE smoke configs no longer depend on synthetic VULN_ID values.
 """
 
 from __future__ import annotations
@@ -28,6 +27,10 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GENERATE = REPO_ROOT / "infra" / "gke" / "generate_jobs.py"
 BUILDER = REPO_ROOT / "infra" / "gke" / "build_runner_config.sh"
+APP_CATALOG = REPO_ROOT / "apps" / "app_catalog.json"
+TEST_LOCAL = REPO_ROOT / "infra" / "gke" / "test_local.sh"
+TEST_GKE = REPO_ROOT / "infra" / "gke" / "test_gke.sh"
+DRYRUN_CONFIG = REPO_ROOT / "infra" / "gke" / "runner_config_container_dryrun.json"
 EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 
 # A base config whose bundle selectors are populated, so probe-only's
@@ -52,15 +55,7 @@ BASE_CONFIG = {
 }
 
 AGENT_IMAGE = "cybench/mobilecybench:opencode_1.15.6-r1"
-
-
-def _has_active_synthetic_vulns() -> bool:
-    return any((REPO_ROOT / "apps").glob("*/synthetic_vulnerabilities/vuln_*"))
-
-
-def _skip_without_active_synthetic_vulns() -> None:
-    if not _has_active_synthetic_vulns():
-        pytest.skip("synthetic vulnerability payloads are archived")
+MODEL = "openai/gpt-5.5"
 
 
 def _generate(
@@ -85,19 +80,26 @@ def _env_of(job: dict) -> dict[str, str]:
     }
 
 
-def _build_config(env: dict[str, str], base: dict, tmp_path: Path) -> dict:
+def _run_builder(
+    env: dict[str, str], base: dict, tmp_path: Path
+) -> tuple[subprocess.CompletedProcess, Path]:
     src = tmp_path / "base.json"
     src.write_text(json.dumps(base))
     dst = tmp_path / "out.json"
     run_env = dict(os.environ)
     run_env.update(env)
-    subprocess.run(
+    result = subprocess.run(
         ["bash", str(BUILDER), str(src), str(dst)],
         env=run_env,
-        check=True,
         capture_output=True,
         text=True,
     )
+    return result, dst
+
+
+def _build_config(env: dict[str, str], base: dict, tmp_path: Path) -> dict:
+    result, dst = _run_builder(env, base, tmp_path)
+    assert result.returncode == 0, result.stderr
     return json.loads(dst.read_text())
 
 
@@ -111,6 +113,8 @@ def test_external_probe_only_renders_full_matrix() -> None:
         "conversations",
         "--agent-image",
         AGENT_IMAGE,
+        "--models",
+        MODEL,
         "--probe-only",
         "--attacker-models",
         "malicious_app",
@@ -118,7 +122,6 @@ def test_external_probe_only_renders_full_matrix() -> None:
         "--no-codebase-ablation",
         "--gcs-bucket",
         "test",
-        "--dry-run",
     )
     assert res.returncode == 0, res.stderr
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
@@ -132,10 +135,11 @@ def test_external_probe_only_renders_full_matrix() -> None:
         env = _env_of(d)
         assert env["AGENT_MODE"] == "external"
         assert env["AGENT_IMAGE"] == AGENT_IMAGE
+        assert env["MODEL"] == MODEL
         assert env["WORKFLOW"] == "redteam"
         assert env["PROBE_ONLY"] == "true"
         assert env[EMULATOR_GPU_ENV] == ""
-        assert env["VULN_ID"] == ""  # unused in probe-only mode
+        assert "VULN_ID" not in env
         # The agent image is plumbed via runner_config, NOT as the pod image.
         assert d["spec"]["template"]["spec"]["containers"][0]["image"] != AGENT_IMAGE
         combos.add((env["ATTACKER_MODEL"], env["NO_CODEBASE"]))
@@ -164,6 +168,57 @@ def test_external_without_ablation_is_single_leg() -> None:
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
     assert len(docs) == 1
     assert _env_of(docs[0])["NO_CODEBASE"] == "false"
+
+
+def test_all_uses_active_app_catalog() -> None:
+    catalog_apps = json.loads(APP_CATALOG.read_text())["sets"]["in_scope"]
+    res = _generate(
+        "--all",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--probe-only",
+        "--attacker-models",
+        "malicious_app",
+        "--gcs-bucket",
+        "test",
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+
+    assert len(docs) == len(catalog_apps)
+    assert [_env_of(d)["APP_NAME"] for d in docs] == catalog_apps
+
+
+def test_discover_apps_uses_catalog_not_directory_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from infra.gke import generate_jobs
+
+    apps_dir = tmp_path / "apps"
+    (apps_dir / "catalog-app").mkdir(parents=True)
+    (apps_dir / "directory-only-app").mkdir()
+    monkeypatch.setattr(generate_jobs, "load_active_apps", lambda: ["catalog-app"])
+
+    assert generate_jobs.discover_apps(apps_dir, None) == ["catalog-app"]
+    with pytest.raises(SystemExit):
+        generate_jobs.discover_apps(apps_dir, ["directory-only-app"])
+    assert "unknown or archived app(s): directory-only-app" in capsys.readouterr().err
+
+
+def test_non_catalog_app_is_rejected() -> None:
+    res = _generate(
+        "--apps",
+        "archived-demo-app",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--probe-only",
+        "--attacker-models",
+        "malicious_app",
+        "--gcs-bucket",
+        "test",
+    )
+    assert res.returncode != 0
+    assert "unknown or archived app(s): archived-demo-app" in res.stderr
 
 
 def test_emulator_gpu_env_is_plumbed_to_jobs() -> None:
@@ -211,45 +266,47 @@ def test_external_requires_attacker_models() -> None:
     assert "--attacker-models is required" in res.stderr
 
 
-def test_external_only_flags_rejected_on_legacy_path() -> None:
-    res = _generate("--apps", "conversations", "--models", "gpt-4o", "--probe-only")
-    assert res.returncode != 0
-    assert "only valid with --agent-image" in res.stderr
-
-
-# ── generate_jobs.py: legacy synthetic-vuln path (backward compat) ────────────
-
-
-def test_legacy_path_still_renders_and_omits_external_labels() -> None:
-    _skip_without_active_synthetic_vulns()
+def test_generate_requires_agent_image() -> None:
     res = _generate(
-        "--apps", "conversations", "--models", "gpt-4o", "--gcs-bucket", "t"
+        "--apps",
+        "conversations",
+        "--models",
+        MODEL,
+        "--probe-only",
+        "--attacker-models",
+        "malicious_app",
     )
-    assert res.returncode == 0, res.stderr
-    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
-    assert len(docs) == 1
-    job = docs[0]
-    env = _env_of(job)
-    assert env["VULN_ID"] == "vuln_0"
-    assert env["MODEL"] == "gpt-4o"
-    # Most new env vars are empty so the entrypoint leaves the base config
-    # untouched (backward compatible)...
-    for k in ("AGENT_IMAGE", "AGENT_MODE", "WORKFLOW", "ATTACKER_MODEL"):
-        assert env[k] == ""
-    # ...except probe_only, which the legacy path forces false (a synthetic vuln
-    # is never probe-only) so synthetic_vuln_id stays valid against RunnerConfig.
-    assert env["PROBE_ONLY"] == "false"
-    # Empty experiment-* labels are stripped; legacy labels remain.
-    labels = job["metadata"]["labels"]
-    assert labels["experiment-vuln"] == "vuln-0"
-    assert "experiment-attacker" not in labels
-    assert "experiment-no-codebase" not in labels
-
-
-def test_legacy_requires_models() -> None:
-    res = _generate("--apps", "conversations")
     assert res.returncode != 0
-    assert "--models is required" in res.stderr
+    assert "--agent-image" in res.stderr
+
+
+def test_generate_requires_probe_only() -> None:
+    res = _generate(
+        "--apps",
+        "conversations",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--attacker-models",
+        "malicious_app",
+    )
+    assert res.returncode != 0
+    assert "--probe-only is required" in res.stderr
+
+
+@pytest.mark.parametrize("flag", ["--dry-run", "--gold-run"])
+def test_generate_rejects_probe_only_dry_or_gold_run(flag: str) -> None:
+    res = _generate(
+        "--apps",
+        "conversations",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--probe-only",
+        "--attacker-models",
+        "malicious_app",
+        flag,
+    )
+    assert res.returncode != 0
+    assert f"--probe-only cannot be combined with {flag}" in res.stderr
 
 
 # ── build_runner_config.sh: env -> runner_config.json ─────────────────────────
@@ -269,7 +326,7 @@ def test_builder_external_probe_only(tmp_path: Path, no_codebase: str) -> None:
             "AGENT_WALLCLOCK_SECONDS": "1800",
             "MODEL": "",
             "VULN_ID": "",
-            "DRY_RUN": "true",
+            "DRY_RUN": "false",
         },
         BASE_CONFIG,
         tmp_path,
@@ -289,21 +346,39 @@ def test_builder_external_probe_only(tmp_path: Path, no_codebase: str) -> None:
     assert cfg["model"] == "gpt-5.5"
 
 
-def test_builder_legacy_leaves_external_fields_untouched(tmp_path: Path) -> None:
-    """Only legacy env vars set: new fields keep their base-config values."""
-    cfg = _build_config(
-        {"MODEL": "gpt-4o", "VULN_ID": "vuln_0", "EMULATOR_BACKEND": "container"},
+def test_builder_rejects_retired_vuln_id(tmp_path: Path) -> None:
+    result, dst = _run_builder(
+        {"MODEL": MODEL, "VULN_ID": "vuln_0", "EMULATOR_BACKEND": "container"},
         BASE_CONFIG,
         tmp_path,
     )
-    assert cfg["model"] == "gpt-4o"
-    assert cfg["synthetic_vuln_id"] == "vuln_0"
-    # Untouched base values:
-    assert cfg["agent_mode"] == "custom"
-    assert cfg["workflow"] == "exploit"
-    assert cfg["probe_only"] is False
-    assert cfg["no_codebase"] is True
-    assert cfg["agent_image"] == "cybench/mobilecybench:latest"
+    assert result.returncode != 0
+    assert "VULN_ID is retired for GKE jobs" in result.stderr
+    assert not dst.exists() or dst.read_text() == ""
+
+
+@pytest.mark.parametrize("mode_flag", ["DRY_RUN", "GOLD_RUN"])
+def test_builder_rejects_probe_only_dry_or_gold_run(
+    tmp_path: Path, mode_flag: str
+) -> None:
+    result, _ = _run_builder(
+        {
+            "AGENT_MODE": "external",
+            "WORKFLOW": "redteam",
+            "PROBE_ONLY": "true",
+            "ATTACKER_MODEL": "remote_attacker",
+            mode_flag: "true",
+        },
+        BASE_CONFIG,
+        tmp_path,
+    )
+    assert result.returncode != 0
+    assert "PROBE_ONLY is incompatible with DRY_RUN/GOLD_RUN" in result.stderr
+
+
+def test_builder_clears_base_synthetic_id(tmp_path: Path) -> None:
+    cfg = _build_config({"EMULATOR_BACKEND": "container"}, BASE_CONFIG, tmp_path)
+    assert cfg["synthetic_vuln_id"] is None
 
 
 def test_builder_no_codebase_false_is_written_not_skipped(tmp_path: Path) -> None:
@@ -352,20 +427,57 @@ def test_committed_base_external_probe_only_is_valid(
     RunnerConfig(**cfg)  # raises if invalid
 
 
-def test_committed_base_legacy_synthetic_is_valid(tmp_path: Path) -> None:
-    """Regression: legacy path must not inherit probe_only=true from the base.
+def test_committed_container_config_is_probe_only_redteam() -> None:
+    cfg = json.loads(DRYRUN_CONFIG.read_text())
+    assert cfg["workflow"] == "redteam"
+    assert cfg["probe_only"] is True
+    assert cfg["task"] is None
+    assert cfg["synthetic_vuln_id"] is None
+    assert cfg["dry_run"] is False
 
-    End-to-end: render a real legacy job, push its env through the builder
-    against the committed base, and assert the result loads. Would fail if
-    build_legacy_jobs ever stopped forcing probe_only=false.
-    """
-    _skip_without_active_synthetic_vulns()
+
+def test_committed_container_config_is_valid() -> None:
     RunnerConfig = _runner_config_or_skip()
-    res = _generate("--apps", "conversations", "--models", "gpt-5.5")
-    assert res.returncode == 0, res.stderr
-    job = [d for d in yaml.safe_load_all(res.stdout) if d][0]
-    cfg = _build_config(_env_of(job), COMMITTED_BASE, tmp_path)
+    cfg = json.loads(DRYRUN_CONFIG.read_text())
     cfg.pop("$schema", None)
-    loaded = RunnerConfig(**cfg)
-    assert loaded.probe_only is False
-    assert loaded.synthetic_vuln_id == "vuln_0"
+    RunnerConfig(**cfg)  # raises if invalid
+
+
+def test_test_local_config_is_probe_only_redteam() -> None:
+    text = TEST_LOCAL.read_text()
+    assert 'ATTACKER_MODEL="${ATTACKER_MODEL:-remote_attacker}"' in text
+    assert '"workflow": "redteam"' in text
+    assert '"probe_only": true' in text
+    assert '"attacker_model": "$ATTACKER_MODEL"' in text
+    assert '"synthetic_vuln_id"' not in text
+    assert "VULN_ID" not in text
+
+
+def test_test_gke_manifest_has_no_retired_vuln_id() -> None:
+    text = TEST_GKE.read_text()
+    assert "VULN_ID" not in text
+    assert "vuln_0" not in text
+    assert "name: WORKFLOW" in text
+    assert "name: PROBE_ONLY" in text
+
+
+@pytest.mark.parametrize(
+    ("script", "argv"),
+    [
+        (TEST_LOCAL, ["--dry-run"]),
+        (TEST_LOCAL, ["--gold-run"]),
+        (TEST_LOCAL, ["--vuln", "vuln_0"]),
+        (TEST_GKE, ["--dry-run"]),
+        (TEST_GKE, ["--gold-run"]),
+    ],
+)
+def test_smoke_scripts_reject_retired_or_incompatible_modes(
+    script: Path, argv: list[str]
+) -> None:
+    result = subprocess.run(
+        ["bash", str(script), *argv],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "ERROR:" in result.stdout
