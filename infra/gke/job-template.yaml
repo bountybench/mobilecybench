@@ -3,12 +3,11 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: mcb-APP_NAME-VULN_ID-MODEL
+  name: JOB_NAME
   namespace: mobilecybench
   labels:
     app: mobilecybench
     experiment-app: APP_NAME
-    experiment-vuln: VULN_ID
     experiment-model: MODEL
     experiment-workflow: WORKFLOW
     experiment-attacker: ATTACKER_MODEL
@@ -39,8 +38,6 @@ spec:
               value: "APP_NAME"
             - name: MODEL
               value: "MODEL"
-            - name: VULN_ID
-              value: "VULN_ID"
             - name: EMULATOR_BACKEND
               value: "EMULATOR_BACKEND"
             - name: MOBILECYBENCH_EMULATOR_GPU
@@ -51,8 +48,7 @@ spec:
               value: "GOLD_RUN"
             - name: GCS_BUCKET
               value: "GCS_BUCKET"
-            # External-agent / probe-only fields (empty in the legacy
-            # synthetic-vuln path; build_runner_config.sh ignores empties).
+            # External-agent / probe-only fields.
             - name: AGENT_IMAGE
               value: "AGENT_IMAGE"
             - name: AGENT_MODE

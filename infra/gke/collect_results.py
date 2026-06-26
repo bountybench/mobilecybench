@@ -66,16 +66,18 @@ def parse_experiment_dir(exp_dir: Path) -> dict | None:
         "error": "",
     }
 
-    # Try to extract metadata from directory path: app/vuln/model/run_id/
-    parts = (
-        list(exp_dir.relative_to(exp_dir.parents[3]).parts)
-        if len(exp_dir.parts) > 3
-        else []
-    )
-    if len(parts) >= 3:
-        result["app_name"] = parts[0]
-        result["vuln_id"] = parts[1]
-        result["model"] = parts[2]
+    # Fallback for GKE upload prefixes. Old synthetic runs used
+    # app/vuln/model/run_id/<run_dir>; current probe-only runs use
+    # app/model/run_id/<run_dir>. run_summary.json below is authoritative
+    # whenever it is present.
+    if len(exp_dir.parents) >= 3:
+        if len(exp_dir.parents) >= 4 and exp_dir.parents[2].name.startswith("vuln"):
+            result["app_name"] = exp_dir.parents[3].name
+            result["vuln_id"] = exp_dir.parents[2].name
+            result["model"] = exp_dir.parents[1].name
+        else:
+            result["app_name"] = exp_dir.parents[2].name
+            result["model"] = exp_dir.parents[1].name
 
     # Look for experiment_config.json or scores
     for json_file in exp_dir.rglob("*.json"):
@@ -94,6 +96,28 @@ def parse_experiment_dir(exp_dir: Path) -> dict | None:
 
             if "error" in data:
                 result["error"] = data["error"]
+
+            # Current run_summary.json shape.
+            if "context" in data and isinstance(data["context"], dict):
+                context = data["context"]
+                if context.get("app_name"):
+                    result["app_name"] = context["app_name"]
+                if context.get("model"):
+                    result["model"] = context["model"]
+                if context.get("vuln_id"):
+                    result["vuln_id"] = context["vuln_id"]
+            if "results" in data and isinstance(data["results"], dict):
+                summary = data["results"]
+                if "score" in summary:
+                    result["score"] = str(summary["score"])
+                if summary.get("status"):
+                    result["status"] = summary["status"]
+                elif summary.get("agent_status"):
+                    result["status"] = summary["agent_status"]
+            if "metrics" in data and isinstance(data["metrics"], dict):
+                turns = data["metrics"].get("turn_count")
+                if turns is not None:
+                    result["turns"] = str(turns)
 
             # Extract from experiment config
             if "app" in data and "name" in data["app"]:

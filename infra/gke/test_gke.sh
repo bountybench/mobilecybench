@@ -1,6 +1,6 @@
 #!/bin/bash
-# End-to-end GKE infrastructure test — deploys a real K8s Job in dry_run mode.
-# No LLM calls, but validates the full GKE pipeline:
+# End-to-end GKE infrastructure test — deploys a real redteam probe-only K8s Job
+# and validates the full GKE pipeline:
 #
 #   1. Pod scheduling on a KVM-capable node
 #   2. /dev/kvm hostPath passthrough
@@ -30,17 +30,25 @@ CLEANUP=true
 NAMESPACE="mobilecybench"
 IMAGE="${RUNNER_IMAGE:-}"
 GCS_BUCKET="${GCS_BUCKET:-}"
-DRY_RUN="true"
+DRY_RUN="false"
 GOLD_RUN="false"
+AGENT_IMAGE="${AGENT_IMAGE:-cybench/mobilecybench:opencode_1.15.6-r1}"
+MODEL="${MODEL:-openai/gpt-5.5}"
+ATTACKER_MODEL="${ATTACKER_MODEL:-remote_attacker}"
+AGENT_WALLCLOCK_SECONDS="${AGENT_WALLCLOCK_SECONDS:-1800}"
+ACTIVE_DEADLINE_SECONDS="${ACTIVE_DEADLINE_SECONDS:-$((AGENT_WALLCLOCK_SECONDS + 900))}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --app) APP_NAME="$2"; shift 2 ;;
         --emulator-backend) EMULATOR_BACKEND="$2"; shift 2 ;;
         --image) IMAGE="$2"; shift 2 ;;
+        --agent-image) AGENT_IMAGE="$2"; shift 2 ;;
+        --model) MODEL="$2"; shift 2 ;;
+        --attacker-model) ATTACKER_MODEL="$2"; shift 2 ;;
         --no-cleanup) CLEANUP=false; shift ;;
-        --dry-run) DRY_RUN="true"; GOLD_RUN="false"; shift ;;
-        --gold-run) GOLD_RUN="true"; DRY_RUN="false"; shift ;;
+        --dry-run) echo "ERROR: --dry-run is incompatible with redteam probe-only smoke"; exit 1 ;;
+        --gold-run) echo "ERROR: --gold-run is incompatible with redteam probe-only smoke"; exit 1 ;;
         --no-dry-run) DRY_RUN="false"; shift ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
@@ -63,6 +71,11 @@ echo "Namespace:      $NAMESPACE"
 echo "GCS bucket:     ${GCS_BUCKET:-<none>}"
 echo "Dry run:        $DRY_RUN"
 echo "Gold run:       $GOLD_RUN"
+echo "Agent image:    $AGENT_IMAGE"
+echo "Model:          $MODEL"
+echo "Attacker model: $ATTACKER_MODEL"
+echo "Agent wallclock: $AGENT_WALLCLOCK_SECONDS"
+echo "Pod deadline:   $ACTIVE_DEADLINE_SECONDS"
 echo "Cleanup:        $CLEANUP"
 echo ""
 
@@ -90,11 +103,20 @@ echo "Checking secret 'llm-api-keys'..."
 if kubectl get secret llm-api-keys -n "$NAMESPACE" >/dev/null 2>&1; then
     echo "  Secret found"
 else
-    echo "  WARNING: Secret not found — creating placeholder"
-    kubectl create secret generic llm-api-keys \
-        --namespace="$NAMESPACE" \
-        --from-literal=OPENAI_API_KEY=test-placeholder \
-        --dry-run=client -o yaml | kubectl apply -f -
+    echo "ERROR: Secret 'llm-api-keys' not found."
+    echo "Probe-only GKE smoke runs a real external agent; create the secret with real provider credentials first."
+    exit 1
+fi
+if [[ "$MODEL" == openai/* ]]; then
+    OPENAI_KEY_B64=$(kubectl get secret llm-api-keys -n "$NAMESPACE" -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null || true)
+    PLACEHOLDER_B64=$(printf 'placeholder' | base64 | tr -d '\n')
+    TEST_PLACEHOLDER_B64=$(printf 'test-placeholder' | base64 | tr -d '\n')
+    if [ -z "$OPENAI_KEY_B64" ] || \
+       [ "$OPENAI_KEY_B64" = "$PLACEHOLDER_B64" ] || \
+       [ "$OPENAI_KEY_B64" = "$TEST_PLACEHOLDER_B64" ]; then
+        echo "ERROR: llm-api-keys.OPENAI_API_KEY is missing or still a placeholder for MODEL=$MODEL."
+        exit 1
+    fi
 fi
 echo ""
 
@@ -113,7 +135,7 @@ metadata:
 spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 3600
-  activeDeadlineSeconds: 1800
+  activeDeadlineSeconds: $ACTIVE_DEADLINE_SECONDS
   template:
     metadata:
       labels:
@@ -137,15 +159,27 @@ spec:
             - name: APP_NAME
               value: "$APP_NAME"
             - name: MODEL
-              value: "notarealmodel"
-            - name: VULN_ID
-              value: "vuln_0"
+              value: "$MODEL"
             - name: EMULATOR_BACKEND
               value: "$EMULATOR_BACKEND"
             - name: DRY_RUN
               value: "$DRY_RUN"
             - name: GOLD_RUN
               value: "$GOLD_RUN"
+            - name: AGENT_IMAGE
+              value: "$AGENT_IMAGE"
+            - name: AGENT_MODE
+              value: "external"
+            - name: WORKFLOW
+              value: "redteam"
+            - name: PROBE_ONLY
+              value: "true"
+            - name: ATTACKER_MODEL
+              value: "$ATTACKER_MODEL"
+            - name: NO_CODEBASE
+              value: "false"
+            - name: AGENT_WALLCLOCK_SECONDS
+              value: "$AGENT_WALLCLOCK_SECONDS"
             - name: GCS_BUCKET
               value: "$GCS_BUCKET"
             - name: RUN_ID
