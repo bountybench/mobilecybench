@@ -487,6 +487,7 @@ class Workflow(ABC):
         *,
         inject_flags: bool = False,
         start_ssrf: bool = False,
+        prepare_app_env: dict | None = None,
     ) -> None:
         """Restart emulator and app servers with the given APK.
 
@@ -495,6 +496,10 @@ class Workflow(ABC):
             prepare_app_hook: Optional shell script to run after install.
             inject_flags: Whether to inject hidden flags for probe evaluation.
             start_ssrf: Whether to start the SSRF listener.
+            prepare_app_env: Optional environment overrides for the
+                ``prepare_app_hook`` subprocess. Merged into ``os.environ``
+                so callers can supply the ``MCB_*`` task-runtime contract
+                from ``evaluation.task_bundle.build_task_runtime_env``.
         """
         from utils.command_executor import CommandExecutor
         from utils.emulator_certs import inject_system_ca
@@ -524,11 +529,22 @@ class Workflow(ABC):
         if prepare_app_hook and prepare_app_hook.exists():
             logger.info(f"Running prepare_app hook: {prepare_app_hook}")
             cmd = CommandExecutor()
+            hook_env = None
+            if prepare_app_env:
+                import os as _os
+
+                hook_env = _os.environ.copy()
+                hook_env.update(prepare_app_env)
+            # Validator parity (scripts/task_runtime_common.sh:119):
+            # prepare_app runs from TASK_RUNTIME_TASK_DIR. ``hook.parent``
+            # resolves to that dir for both zero-day (task_dir) and
+            # synthetic (app_dir/synthetic_vulnerabilities/<vuln>).
             cmd.run_with_progress(
                 f"bash {prepare_app_hook}",
                 timeout=self.config.script_timeout,
                 message="Running prepare_app hook",
-                cwd=self.app_dir,
+                cwd=prepare_app_hook.parent,
+                env=hook_env,
             )
 
         logger.info("Runtime restarted successfully")
@@ -581,6 +597,7 @@ class Workflow(ABC):
         codebase_dir: Path | None,
         replay_apk: Path | None,
         logs_dir: Path | None = None,
+        wipe_output_dir: bool = True,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
@@ -593,12 +610,20 @@ class Workflow(ABC):
         agent never had. The APK mount is for path-symmetry with the agent
         phase.
 
+        ``wipe_output_dir`` (default True): rmtree ``output_dir`` before
+        replay. Callers whose ``output_dir`` is the validator-style
+        per-phase scope (already seeded by ``prepare_app`` under
+        ``MCB_OUTPUT_DIR``) must pass ``False`` so prepare_app state
+        survives until the verifier reads it. The sibling APK staging
+        dir is wiped unconditionally — it is a runner-owned scratch
+        path, not part of the validator's per-phase scope.
+
         Connectivity (ADB + app server) is checked by the script itself.
         """
         if (codebase_dir is None) == (replay_apk is None):
             raise ValueError("exactly one of codebase_dir or replay_apk must be set")
 
-        if output_dir.exists():
+        if wipe_output_dir and output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 

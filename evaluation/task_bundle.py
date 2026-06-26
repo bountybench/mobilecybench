@@ -24,7 +24,7 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, runtime_checkable
+from typing import Dict, Literal, Optional, Protocol, runtime_checkable
 
 from utils.apk_utils import resolve_apk_path
 from utils.git_utils import git_restore_clean
@@ -430,3 +430,129 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
         vuln_id=vuln_id,
         runner_obfuscation=runner_obfuscation,
     )
+
+
+def build_task_runtime_env(
+    *,
+    bundle: TaskBundle,
+    app_dir: Path,
+    attacker_model: str,
+    output_dir: Optional[Path] = None,
+    phase: Optional[str] = None,
+) -> Dict[str, str]:
+    """Return the canonical ``MCB_*`` env-var dict for task-bundle hooks.
+
+    Mirrors the contract that ``scripts/task_runtime_common.sh``
+    (``task_runtime_set_context``) exports so that hooks (``prepare_app``,
+    ``prepare_victim``, ``agent_login``, etc.) behave identically whether
+    invoked through ``scripts/validate_task_bundle.sh`` or through
+    ``runner.py``. Without this, hooks migrated to the validator's env-var
+    contract (e.g. zerodays repo PR #50+) fail at runtime with errors like
+    ``MCB_APP_METADATA_JSON is not set``.
+
+    Callers merge the result into ``os.environ.copy()`` before passing it as
+    the ``env=`` kwarg of the subprocess that runs the hook.
+
+    The returned dict is bundle-aware: per-task fields
+    (``MCB_TASK_DIR``, ``MCB_TASK_METADATA_JSON``, ``MCB_TASK_ID``,
+    ``MCB_FIX_PATCH``) are populated only when the bundle has a task; for
+    ``ProbeOnlyBundle`` (bundle-less probe-only mode) those keys are
+    omitted. Reads ``apps/<app>/metadata.json`` opportunistically to fill
+    ``MCB_PACKAGE_NAME`` and ``MCB_BASELINE_COMMIT``.
+    """
+    env: Dict[str, str] = {}
+    env["MCB_APP_DIR"] = str(app_dir)
+    env["MCB_ATTACKER_MODEL"] = attacker_model
+
+    app_metadata_path = app_dir / "metadata.json"
+    app_meta: dict = {}
+    if app_metadata_path.exists():
+        env["MCB_APP_METADATA_JSON"] = str(app_metadata_path)
+        try:
+            app_meta = json.loads(app_metadata_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            app_meta = {}
+
+    # Per-task fields are bundle-aware. ProbeOnlyBundle exposes task_dir
+    # for layout symmetry (returns app_dir) and raises on patch access, so
+    # we gate on `kind` to set per-task MCB_* keys only for real tasks.
+    bundle_kind = getattr(bundle, "kind", None)
+    task_meta: dict = {}
+    if bundle_kind in ("zeroday", "synthetic"):
+        task_dir = getattr(bundle, "task_dir", None)
+        if task_dir is not None:
+            env["MCB_TASK_DIR"] = str(task_dir)
+            task_metadata_path = Path(task_dir) / "metadata.json"
+            if task_metadata_path.exists():
+                env["MCB_TASK_METADATA_JSON"] = str(task_metadata_path)
+                try:
+                    task_meta = json.loads(task_metadata_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    task_meta = {}
+
+        # MCB_FIX_PATCH semantics match scripts/task_runtime_common.sh:
+        # it carries the hardening / fix patch the validator passes in.
+        # That is `task/fix.patch` for zero-day bundles; for synthetic
+        # bundles the validator passes "" (the synthetic vulnerability
+        # patch is a different artifact and is not surfaced via this
+        # env var). Mirror that here so a synthetic prepare_app hook does
+        # not see `MCB_FIX_PATCH` pointing at vulnerability.patch.
+        if bundle_kind == "zeroday":
+            try:
+                patch_path = getattr(bundle, "patch", None)
+            except (AttributeError, NotImplementedError):
+                patch_path = None
+            if patch_path is not None:
+                patch_path = Path(patch_path)
+                if patch_path.exists():
+                    env["MCB_FIX_PATCH"] = str(patch_path)
+
+    # Apply the validator's precedence rules from
+    # scripts/zero_day_task_common.sh so MCB_TASK_ID / MCB_PACKAGE_NAME /
+    # MCB_BASELINE_COMMIT match what hooks would see under
+    # scripts/validate_task_bundle.sh.
+    #
+    # task_id: task metadata `.task_id` > `.task_slug` > bundle.task /
+    #          bundle.vuln_id (which maps to the task-dir basename in the
+    #          validator's fallback).
+    # package_name: task metadata `.runtime.package_name` >
+    #               `.app_metadata_overrides.package_name` >
+    #               app metadata `.package_name`.
+    # baseline commit: task metadata `.baseline.commit` >
+    #                  app metadata `.commit_version`.
+    task_id = task_meta.get("task_id") or task_meta.get("task_slug")
+    if not (isinstance(task_id, str) and task_id):
+        task_id = getattr(bundle, "task", None) or getattr(bundle, "vuln_id", None)
+    if isinstance(task_id, str) and task_id:
+        env["MCB_TASK_ID"] = task_id
+
+    runtime_section = (
+        task_meta.get("runtime") if isinstance(task_meta.get("runtime"), dict) else {}
+    )
+    overrides_section = (
+        task_meta.get("app_metadata_overrides")
+        if isinstance(task_meta.get("app_metadata_overrides"), dict)
+        else {}
+    )
+    package_name = (
+        runtime_section.get("package_name")
+        or overrides_section.get("package_name")
+        or app_meta.get("package_name")
+    )
+    if isinstance(package_name, str) and package_name:
+        env["MCB_PACKAGE_NAME"] = package_name
+
+    baseline_section = (
+        task_meta.get("baseline") if isinstance(task_meta.get("baseline"), dict) else {}
+    )
+    baseline_commit = baseline_section.get("commit") or app_meta.get("commit_version")
+    if isinstance(baseline_commit, str) and baseline_commit:
+        env["MCB_BASELINE_COMMIT"] = baseline_commit
+
+    if output_dir is not None:
+        env["MCB_OUTPUT_DIR"] = str(output_dir)
+
+    if phase:
+        env["MCB_PHASE"] = str(phase)
+
+    return env
