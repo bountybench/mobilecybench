@@ -49,7 +49,10 @@ def load_active_apps(catalog_path: Path = APP_CATALOG) -> list[str]:
         )
         sys.exit(1)
     if not isinstance(apps, list) or not all(isinstance(app, str) for app in apps):
-        print(f"ERROR: expected string list at {catalog_path}: sets.in_scope", file=sys.stderr)
+        print(
+            f"ERROR: expected string list at {catalog_path}: sets.in_scope",
+            file=sys.stderr,
+        )
         sys.exit(1)
     return apps
 
