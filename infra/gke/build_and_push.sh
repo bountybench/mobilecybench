@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# Build all synthetic-vuln APKs and the GKE runner Docker image.
+# Build clean APKs for active apps and the GKE runner Docker image.
 #
 # Usage (on a Linux VM with Docker):
 #   bash infra/gke/build_and_push.sh [--push] [--image <name:tag>] [--build-base]
 #
 # Steps:
-#   1. Init git submodules for apps with synthetic vulnerabilities
+#   1. Init git submodules for active apps from apps/app_catalog.json
 #   2. Ensure orchestrator base image (pull from Docker Hub, or build locally with --build-base)
-#   3. Build clean + vulnerable APKs for each app/vuln pair
+#   3. Build clean APKs for active apps
 #   4. Build runner image (with APKs baked in)
 #   5. Optionally push to Docker Hub (--push pushes both base and runner if --build-base)
 #
@@ -35,48 +35,41 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Discover apps with synthetic vulnerabilities and their vuln IDs
-declare -A APP_VULNS=()
-for sv_dir in apps/*/synthetic_vulnerabilities; do
-    [ -d "$sv_dir" ] || continue
-    app="$(basename "$(dirname "$sv_dir")")"
-    vulns=""
-    for vuln_dir in "$sv_dir"/vuln_*; do
-        [ -d "$vuln_dir" ] || continue
-        vulns="$vulns $(basename "$vuln_dir")"
-    done
-    vulns="${vulns# }"  # trim leading space
-    if [ -n "$vulns" ]; then
-        APP_VULNS[$app]="$vulns"
-    fi
-done
-
-if [ ${#APP_VULNS[@]} -eq 0 ]; then
-    echo "ERROR: No apps with synthetic vulnerabilities found"
+ACTIVE_APPS=$(python3 -c 'import json; print("\n".join(json.load(open("apps/app_catalog.json"))["sets"]["in_scope"]))')
+if [ -z "$ACTIVE_APPS" ]; then
+    echo "ERROR: apps/app_catalog.json has no sets.in_scope apps"
     exit 1
 fi
 
-echo "Found ${#APP_VULNS[@]} apps with synthetic vulnerabilities:"
-for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
-    echo "  $app: ${APP_VULNS[$app]}"
+echo "Found active apps:"
+for app in $ACTIVE_APPS; do
+    if [ ! -d "apps/$app" ]; then
+        echo "ERROR: active catalog app missing under apps/: $app"
+        exit 1
+    fi
+    echo "  $app"
 done
 
 echo "=== Step 1: Initialize git submodules ==="
-# Discover every submodule declared under apps/<app_with_vulns>/ in .gitmodules.
+# Discover every submodule declared under apps/<active_app>/ in .gitmodules.
 # Apps can declare auxiliary submodules beyond `codebase` (e.g. jitsi-meet needs
 # apps/jitsi-meet/jitsi-docker for its runtime), so we enumerate from .gitmodules
 # rather than hardcoding `codebase` — any submodule an app ships will be initialized.
 SUBMODULE_PATHS=""
-ALL_SUBMODULE_PATHS=$(git config --file .gitmodules --get-regexp 'submodule\..*\.path' | awk '{print $2}')
-for app in "${!APP_VULNS[@]}"; do
+ALL_SUBMODULE_PATHS=$(git config --file .gitmodules --get-regexp 'submodule\..*\.path' 2>/dev/null | awk '{print $2}' || true)
+for app in $ACTIVE_APPS; do
     for path in $ALL_SUBMODULE_PATHS; do
         case "$path" in
             apps/$app/*) SUBMODULE_PATHS="$SUBMODULE_PATHS $path" ;;
         esac
     done
 done
-echo "Initializing submodules:$SUBMODULE_PATHS"
-git submodule update --init $SUBMODULE_PATHS
+if [ -n "$SUBMODULE_PATHS" ]; then
+    echo "Initializing submodules:$SUBMODULE_PATHS"
+    git submodule update --init $SUBMODULE_PATHS
+else
+    echo "No active app submodules found."
+fi
 
 echo ""
 echo "=== Step 2: Ensure orchestrator base image ==="
@@ -97,27 +90,13 @@ echo "=== Step 3: Build APKs (inside orchestrator container) ==="
 
 # Build a list of build commands for all apps
 BUILD_CMDS=""
-FAILED_BUILDS=()
-for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
-    vulns="${APP_VULNS[$app]}"
-
-    # Clean APK
+for app in $ACTIVE_APPS; do
     if [ -f "apps/$app/apk/$app.apk" ]; then
         echo "[$app] Clean APK already exists, skipping"
     else
         BUILD_CMDS="$BUILD_CMDS
 echo '=== Building $app (clean) ===' && ./build_apk.sh $app || echo 'FAILED:$app:clean'"
     fi
-
-    # Vulnerable APKs
-    for vuln_id in $vulns; do
-        if [ -f "apps/$app/apk/$vuln_id/$app.apk" ]; then
-            echo "[$app] Vulnerable APK ($vuln_id) already exists, skipping"
-        else
-            BUILD_CMDS="$BUILD_CMDS
-echo '=== Building $app ($vuln_id) ===' && ./build_apk.sh $app --vuln $vuln_id || echo 'FAILED:$app:$vuln_id'"
-        fi
-    done
 done
 
 if [ -n "$BUILD_CMDS" ]; then
@@ -135,17 +114,10 @@ fi
 
 echo ""
 echo "=== APK Build Summary ==="
-for app in $(echo "${!APP_VULNS[@]}" | tr ' ' '\n' | sort); do
-    vulns="${APP_VULNS[$app]}"
+for app in $ACTIVE_APPS; do
     clean="missing"
     [ -f "apps/$app/apk/$app.apk" ] && clean="ok"
-    vuln_status=""
-    for vuln_id in $vulns; do
-        s="missing"
-        [ -f "apps/$app/apk/$vuln_id/$app.apk" ] && s="ok"
-        vuln_status="$vuln_status $vuln_id=$s"
-    done
-    echo "  $app: clean=$clean$vuln_status"
+    echo "  $app: clean=$clean"
 done
 
 echo ""

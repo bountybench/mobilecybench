@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,7 @@ BUILDER = REPO_ROOT / "infra" / "gke" / "build_runner_config.sh"
 APP_CATALOG = REPO_ROOT / "apps" / "app_catalog.json"
 TEST_LOCAL = REPO_ROOT / "infra" / "gke" / "test_local.sh"
 TEST_GKE = REPO_ROOT / "infra" / "gke" / "test_gke.sh"
+BUILD_AND_PUSH = REPO_ROOT / "infra" / "gke" / "build_and_push.sh"
 DRYRUN_CONFIG = REPO_ROOT / "infra" / "gke" / "runner_config_container_dryrun.json"
 EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 
@@ -481,3 +483,64 @@ def test_smoke_scripts_reject_retired_or_incompatible_modes(
     )
     assert result.returncode != 0
     assert "ERROR:" in result.stdout
+
+
+def test_build_and_push_uses_active_catalog_and_clean_apks_only(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    script = repo / "infra" / "gke" / "build_and_push.sh"
+    script.parent.mkdir(parents=True)
+    shutil.copy2(BUILD_AND_PUSH, script)
+
+    apps_dir = repo / "apps"
+    for app in ("catalog-one", "catalog-two", "directory-only"):
+        (apps_dir / app).mkdir(parents=True)
+    (apps_dir / "directory-only" / "synthetic_vulnerabilities" / "vuln_0").mkdir(
+        parents=True
+    )
+    (apps_dir / "app_catalog.json").write_text(
+        json.dumps({"sets": {"in_scope": ["catalog-one", "catalog-two"]}})
+    )
+
+    log = tmp_path / "commands.log"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "git").write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo git "$@" >> {log}\n'
+        'if [ "$1" = config ]; then\n'
+        "  echo submodule.apps/catalog-one/codebase.path apps/catalog-one/codebase\n"
+        "  echo submodule.apps/directory-only/codebase.path apps/directory-only/codebase\n"
+        "fi\n"
+    )
+    (bin_dir / "docker").write_text(
+        "#!/usr/bin/env bash\n" f'echo docker "$@" >> {log}\n'
+    )
+    (bin_dir / "git").chmod(0o755)
+    (bin_dir / "docker").chmod(0o755)
+
+    env = {
+        **os.environ,
+        "PATH": str(bin_dir) + os.pathsep + os.environ.get("PATH", ""),
+    }
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Found active apps:" in result.stdout
+    assert "catalog-one" in result.stdout
+    assert "catalog-two" in result.stdout
+    assert "directory-only" not in result.stdout
+
+    commands = log.read_text()
+    assert "apps/catalog-one/codebase" in commands
+    assert "apps/directory-only/codebase" not in commands
+    assert "./build_apk.sh catalog-one" in commands
+    assert "./build_apk.sh catalog-two" in commands
+    assert "--vuln" not in commands
