@@ -32,9 +32,9 @@ bash setup.sh --init-submodules
 initializes every app's `codebase` submodule. To init only one app, use
 `--init-submodules <app_name>`.
 
-Those `codebase` submodules pull the **app environment source** from
-[`cy-suite`](https://github.com/cy-suite), the org associated with this
-benchmark (`bountybench/mobilecybench` is the harness).
+We host the app environment source in our associated
+[`cy-suite`](https://github.com/cy-suite) org; these `codebase` submodules pull
+it in.
 
 Default Android SDK is 35. To target a different version, pass an app name and
 `setup.sh` reads `sdk` from its `metadata.json`. Run `./setup.sh --help` for the full
