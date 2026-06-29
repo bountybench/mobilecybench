@@ -48,55 +48,16 @@ paper conditions (source → `permissive` / obfuscation `off`; `apk_only` →
 detail, see
 [`documentation/EXPERIMENTS.md`](documentation/EXPERIMENTS.md#run-a-sequential-batch).
 
-## Prerequisites
+## Setup
 
-- Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
-- Docker 24+ with the Compose v2 plugin — Docker Desktop (macOS/Windows) bundles it; on Linux `apt install docker.io` does **not**, so install both: `sudo apt install docker.io docker-compose-v2`
-- Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step below)
-- Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
-- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by `build_type: "download-apk"` to fetch APK bundles. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
+[**`documentation/GETTING_STARTED.md`**](documentation/GETTING_STARTED.md) is the
+single source of truth for setup — prerequisites, clone + submodules, the Python
+env, agent authentication, and your first run. **Start there** rather than
+copying steps from here.
 
-Hardware: the Android emulator needs hardware virtualization (KVM on Linux,
-Hypervisor.framework on macOS) — nested-virt cloud VMs must have it enabled.
-Budget ≥ 16 GB RAM and ~50 GB free disk for the emulator + Docker images.
-
-Windows: use WSL or Git Bash; the shell scripts assume a POSIX environment.
-
-## Quick start
-
-```bash
-git clone https://github.com/bountybench/mobilecybench
-cd mobilecybench
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-bash setup.sh --init-submodules
-```
-
-Authenticate the agent (Claude Code is the default — see [GETTING_STARTED.md § 3](documentation/GETTING_STARTED.md#3-authenticate-the-agent) for codex/opencode alternatives):
-
-```bash
-cp agent/.env.example agent/.env                    # first time only
-npm install -g @anthropic-ai/claude-code
-claude setup-token
-echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste>' >> agent/.env
-```
-
-Then run a probe-only experiment against any curated app:
-
-```bash
-./stop_emulator.sh                                  # ensure none is running
-python runner.py audiobookshelf --config runner_config.json
-```
-
-Or run the active app set sequentially:
-
-```bash
-./stop_emulator.sh
-python runner.py --config runner_config_batch.json
-```
-
-Results land in `logs/<run-id>/run_summary.json`.
+One hard gate worth knowing up front: the Android emulator needs hardware
+virtualization (KVM on Linux, Hypervisor.framework on macOS), so you need a
+nested-virt-capable host with ≥ 16 GB RAM and ~50 GB free disk.
 
 ## Documentation
 
