@@ -155,7 +155,7 @@ class Workflow(ABC):
 
         if agent_mode == "external":
             # External agents run inside their container image (see
-            # documentation/archive/BRING_YOUR_OWN_AGENT.md). setup_agent does not
+            # documentation/supplemental/BRING_YOUR_OWN_AGENT.md). setup_agent does not
             # construct an in-process agent object; run_agent assembles the
             # BYO task_dict and hands off to harness.byo_agent.run_agent.
             self.agent = None

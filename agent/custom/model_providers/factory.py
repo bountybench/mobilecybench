@@ -27,7 +27,7 @@ class SupportedModel(Enum):
       LiteLLM, or register a detection rule via
       ``agent.custom.model_providers.litellm_provider.register_provider``.
 
-    See ``documentation/archive/ADDING_MODELS.md`` for the full checklist.
+    See ``documentation/supplemental/ADDING_MODELS.md`` for the full checklist.
 
     All entries use thinking-enabled variants by default:
     - GPT-5.x: thinking mode (not Instant/chat-latest)
@@ -116,7 +116,7 @@ def get_model_provider(
             "exploration where you don't need accurate cost telemetry, "
             "set 'allow_unregistered_models_in_custom_mode': true in "
             "runner_config.json. "
-            "See documentation/archive/ADDING_MODELS.md."
+            "See documentation/supplemental/ADDING_MODELS.md."
         )
 
     # Opt-in permissive path (model sweep / exploration).
@@ -127,7 +127,7 @@ def get_model_provider(
         "(env var %s). cost_usd will report $0 for this run because "
         "'%s' has no row in utils/token_pricing.json. Register the "
         "model permanently for sustained use. "
-        "See documentation/archive/ADDING_MODELS.md.",
+        "See documentation/supplemental/ADDING_MODELS.md.",
         model,
         rule.display_name,
         rule.env_var,

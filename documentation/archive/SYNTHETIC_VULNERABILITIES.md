@@ -255,7 +255,7 @@ Use `publish_apk_bundle.sh` to publish prebuilt APKs to GitHub releases:
 ## Running and Testing
 
 - **Agent evaluation:** See `../EXPERIMENTS.md` (exploit mode)
-- **Local CI testing:** See `CI_VALIDATION.md` (`--test-synthetic-vuln` flag)
+- **Local CI testing:** See `../supplemental/CI_VALIDATION.md` (`--test-synthetic-vuln` flag)
 
 ## Detailed Example: XMPP Carbon Copy Impersonation
 

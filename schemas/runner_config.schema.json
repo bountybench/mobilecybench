@@ -45,7 +45,7 @@
     },
     "agent_mode": {
       "default": "custom",
-      "description": "Dispatch path. 'custom' (default): in-process Python loop. 'external': BYO Docker image satisfying the contract in documentation/archive/BRING_YOUR_OWN_AGENT.md (covers codex, claude-code, and lab-supplied agents).",
+      "description": "Dispatch path. 'custom' (default): in-process Python loop. 'external': BYO Docker image satisfying the contract in documentation/supplemental/BRING_YOUR_OWN_AGENT.md (covers codex, claude-code, and lab-supplied agents).",
       "enum": [
         "custom",
         "external"

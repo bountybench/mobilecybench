@@ -6,10 +6,11 @@ Zero-to-first-pass@1 quick start. Targets the probe-only redteam flow described 
 ## 1) System prerequisites
 
 - Python 3.11 or 3.12 (3.13 not yet validated)
-- Docker 24+ — Docker Desktop on macOS/Windows, Docker Engine on Linux (for the agent stack and most app backends)
+- Docker 24+ **with the Compose v2 plugin**. Docker Desktop on macOS/Windows bundles Compose; on Linux `apt install docker.io` does **not** include it, so install both: `sudo apt install docker.io docker-compose-v2`
 - Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step in §3)
 - Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
 - [GitHub CLI](https://cli.github.com/) (`gh`), authenticated via `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
+- `apktool`, `zip`, `sqlcipher` — used by the exploit-APK build and SQLCipher app probes. `setup.sh` auto-installs them (apt on Linux, Homebrew on macOS), which needs `sudo` on Linux; on no-sudo / non-apt / proxied hosts, install them yourself first.
 
 Hardware: the Android emulator needs hardware virtualization (KVM on Linux,
 Hypervisor.framework on macOS) — nested-virt cloud VMs must have it enabled.
@@ -32,6 +33,10 @@ bash setup.sh --init-submodules
 initializes every app's `codebase` submodule. To init only one app, use
 `--init-submodules <app_name>`.
 
+We host the app environment source in our associated
+[`cy-suite`](https://github.com/cy-suite) org, pulled in by the `codebase`
+submodules.
+
 Default Android SDK is 35. To target a different version, pass an app name and
 `setup.sh` reads `sdk` from its `metadata.json`. Run `./setup.sh --help` for the full
 app-to-SDK list.
@@ -45,6 +50,20 @@ pick one agent and authenticate it via `agent/.env`:
 ```bash
 cp agent/.env.example agent/.env                    # first time only
 ```
+
+`model` and `reasoning_effort` are forwarded verbatim to the chosen CLI —
+external mode has **no model allowlist**, so a model id never has to appear in
+our examples or any registry of ours. To run a different model, just change the
+`model` field:
+
+- **Claude Code** passes it to `claude --model`, resolved by your Anthropic
+  subscription — any Anthropic model id works as-is, no image change.
+- **opencode** passes it to `opencode --model`. Built-in provider/model ids work
+  as-is; for one opencode doesn't already know, add a custom provider config (see
+  the opencode section below).
+
+Change `agent_image` only to switch the agent CLI itself (claude-code, codex,
+opencode) — the published tags are in the sections below.
 
 ### Claude Code (recommended)
 
@@ -118,7 +137,7 @@ If your provider's key env is not already forwarded, add it to
 
 ### Other BYO
 
-Build an image that satisfies the BYO contract (see [`archive/BRING_YOUR_OWN_AGENT.md`](archive/BRING_YOUR_OWN_AGENT.md)) and point `agent_image` at it.
+Build an image that satisfies the BYO contract (see [`supplemental/BRING_YOUR_OWN_AGENT.md`](supplemental/BRING_YOUR_OWN_AGENT.md)) and point `agent_image` at it.
 
 ## 4) Run a baseline experiment
 
@@ -148,7 +167,8 @@ internal module that expands and runs batch cells.
 `runner_config.json`, plus a `batch` block that selects apps and matrix fields.
 The committed batch config has `batch.apps: "in_scope"`, so it reads the active
 app list from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope`
-in this checkout and sweeps both attacker models by default.
+in this checkout and runs the full grid by default: both attacker models × both
+visibility conditions (source vs `apk_only`) = 13 apps × 2 × 2 = 52 cells.
 `continue_on_failure` records a failed cell and moves on; it does not retry
 failed cells.
 
@@ -184,4 +204,4 @@ each attacker model means at the implementation level.
 - Debug a stuck setup: [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)
 
 Extending the benchmark (new app, new model, new BYO agent image) — see the
-maintainer docs in [`archive/`](archive/).
+reference docs in [`supplemental/`](supplemental/).

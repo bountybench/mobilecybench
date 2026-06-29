@@ -15,6 +15,13 @@ place probes at the boundary — so any action that crosses it trips a signal.
 > curated app list, the source-vs-`apk_only` ablation, and links to the rest
 > of the docs.
 
+## Setup
+
+Set up first: [**`documentation/GETTING_STARTED.md`**](documentation/GETTING_STARTED.md)
+covers prerequisites, clone + submodules, the Python env, and agent
+authentication. The run commands below assume a set-up repo and an authenticated
+agent.
+
 ## TL;DR run commands
 
 You can run either one app with the normal runner config:
@@ -48,56 +55,6 @@ paper conditions (source → `permissive` / obfuscation `off`; `apk_only` →
 detail, see
 [`documentation/EXPERIMENTS.md`](documentation/EXPERIMENTS.md#run-a-sequential-batch).
 
-## Prerequisites
-
-- Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
-- Docker 24+ — Docker Desktop on macOS/Windows, Docker Engine on Linux
-- Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step below)
-- Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
-- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by `build_type: "download-apk"` to fetch APK bundles. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
-
-Hardware: the Android emulator needs hardware virtualization (KVM on Linux,
-Hypervisor.framework on macOS) — nested-virt cloud VMs must have it enabled.
-Budget ≥ 16 GB RAM and ~50 GB free disk for the emulator + Docker images.
-
-Windows: use WSL or Git Bash; the shell scripts assume a POSIX environment.
-
-## Quick start
-
-```bash
-git clone https://github.com/bountybench/mobilecybench
-cd mobilecybench
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-bash setup.sh --init-submodules
-```
-
-Authenticate the agent (Claude Code is the default — see [GETTING_STARTED.md § 3](documentation/GETTING_STARTED.md#3-authenticate-the-agent) for codex/opencode alternatives):
-
-```bash
-cp agent/.env.example agent/.env                    # first time only
-npm install -g @anthropic-ai/claude-code
-claude setup-token
-echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste>' >> agent/.env
-```
-
-Then run a probe-only experiment against any curated app:
-
-```bash
-./stop_emulator.sh                                  # ensure none is running
-python runner.py audiobookshelf --config runner_config.json
-```
-
-Or run the active app set sequentially:
-
-```bash
-./stop_emulator.sh
-python runner.py --config runner_config_batch.json
-```
-
-Results land in `logs/<run-id>/run_summary.json`.
-
 ## Documentation
 
 Four docs cover the bench-run path end-to-end. The full index is at
@@ -108,9 +65,10 @@ Four docs cover the bench-run path end-to-end. The full index is at
 - [Experiments](documentation/EXPERIMENTS.md) — `runner_config.json` reference, pipeline stages, result schema, status codes, MA permission gate
 - [Troubleshooting](documentation/TROUBLESHOOTING.md) — common issues
 
-Maintainer-facing material (adding apps / models, BYO agent contracts, GKE
-deployment, CI mechanics, command cheatsheets, deep architecture notes) lives
-in [`documentation/archive/`](documentation/archive/) — kept for reference but
-not needed to run an experiment.
+Reference / maintainer material (adding apps / models, BYO agent contracts, CI
+mechanics, command cheatsheets, deep architecture notes) lives in
+[`documentation/supplemental/`](documentation/supplemental/) — not needed to run
+an experiment. Orthogonal/older workflows (synthetic-vuln, zero-day) are in
+[`documentation/archive/`](documentation/archive/).
 
 GKE-specific setup (running at scale): [`infra/gke/README.md`](infra/gke/README.md).

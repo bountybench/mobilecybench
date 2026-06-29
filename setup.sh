@@ -559,6 +559,41 @@ Then run: gh auth login
     log "gh CLI authenticated"
 }
 
+check_docker() {
+    if [[ -n "${MOBILECYBENCH_SKIP_DOCKER_CHECK:-}" ]]; then
+        log "Skipping docker check (MOBILECYBENCH_SKIP_DOCKER_CHECK set)"
+        return 0
+    fi
+
+    log "Checking Docker + Compose v2..."
+
+    if ! command_exists docker; then
+        error_exit "Docker not found. Required for the agent stack and app backends.
+  macOS/Windows: install Docker Desktop (bundles Compose).
+  Linux:         sudo apt install docker.io docker-compose-v2
+See https://docs.docker.com/engine/install/"
+    fi
+
+    if ! docker info >/dev/null 2>&1; then
+        error_exit "Docker is installed but the daemon is not reachable.
+Start Docker Desktop, or: sudo systemctl start docker
+(and add your user to the docker group: sudo usermod -aG docker \$USER, then re-login)"
+    fi
+
+    # App backend + cleanup scripts call 'docker compose' (Compose v2 plugin).
+    # 'apt install docker.io' does NOT bundle it; Docker Desktop does. Without
+    # it every cell fails at cleanup.sh, so gate on it here rather than at runtime.
+    if ! docker compose version >/dev/null 2>&1; then
+        error_exit "Docker Compose v2 plugin not found ('docker compose'). App
+backend/cleanup scripts require it.
+  Linux:         sudo apt install docker-compose-v2
+  macOS/Windows: included with Docker Desktop (update if missing)
+See https://docs.docker.com/compose/install/"
+    fi
+
+    log "Docker + Compose v2 available"
+}
+
 # Detect OS and architecture
 detect_os() {
     case "$(uname -s)" in
@@ -738,8 +773,8 @@ install_android_packages() {
     # Accept licenses
     yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
 
-    # Install essential packages using SDKManager for all supported versions
-    local packages=("platform-tools" "emulator")
+    # Install essential packages using SDKManager for all supported versions.
+    local packages=("platform-tools" "emulator" "build-tools;35.0.0")
     for sdk_v in "${SUPPORTED_SDK_VERSIONS[@]}"; do
         packages+=("platforms;android-${sdk_v}")
         packages+=("$(get_system_image "$arch" "google_apis" "$sdk_v")")
@@ -848,6 +883,9 @@ main() {
     check_sqlcipher
 
     check_gh_auth
+
+    # Check Docker engine + Compose v2 plugin (app backends + cleanup scripts)
+    check_docker
 
     # Install Android SDK if not present
     if [[ ! -d "$ANDROID_HOME/cmdline-tools" ]]; then

@@ -60,10 +60,12 @@ jq -r '.sets.in_scope[]' apps/app_catalog.json
 |---|---|
 | Run your first experiment end-to-end | [`GETTING_STARTED.md`](GETTING_STARTED.md) |
 | Configure an experiment, interpret results, look up status codes / MA permission gate | [`EXPERIMENTS.md`](EXPERIMENTS.md) |
+| Connect your own agent CLI (BYO image contract) | [`supplemental/BRING_YOUR_OWN_AGENT.md`](supplemental/BRING_YOUR_OWN_AGENT.md) |
 | Debug a stuck setup | [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) |
 
-For contributing infrastructure or adding new apps / models / agent images,
-see [`archive/`](archive/) — kept for reference, not on the run path.
+For adding new apps / models / agent images, deep architecture, CI, and command
+reference, see [`supplemental/`](supplemental/). Orthogonal/older material
+(synthetic-vuln + zero-day workflows) is in [`archive/`](archive/).
 
 ## 5. TL;DR run commands
 
@@ -88,8 +90,10 @@ top-level fields are normal runner defaults (`workflow`, `model`,
 `agent_image`, token limits, etc.), and the `batch` block selects apps and
 matrix fields. By default, `batch.apps: "in_scope"` reads the active app list
 from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope` in
-this checkout and sweeps both `attacker_model` values. `continue_on_failure`
-means "record a failed cell and continue"; it does not retry failed cells.
+this checkout and runs the full grid: both `attacker_model` values × both
+visibility conditions (source vs `apk_only`) = 13 apps × 2 × 2 = 52 cells.
+`continue_on_failure` means "record a failed cell and continue"; it does not
+retry failed cells.
 
 ## 6. The one-line experiment
 
@@ -132,8 +136,9 @@ python runner.py --config runner_config_batch.json
 ```
 
 `runner_config_batch.json` runs `apps/app_catalog.json:sets.in_scope`
-sequentially and, by default, sweeps both `attacker_model` values
-(`malicious_app` and `remote_attacker`). Override `batch.matrix` to run only
+sequentially and, by default, runs the full grid: both `attacker_model` values
+(`malicious_app` and `remote_attacker`) × both visibility conditions (source vs
+`apk_only`) = 52 cells. Override `batch.matrix` to run only
 one mode or to sweep other `RunnerConfig` fields. You can also put apps in the
 matrix directly, for example:
 
