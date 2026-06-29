@@ -33,8 +33,8 @@ initializes every app's `codebase` submodule. To init only one app, use
 `--init-submodules <app_name>`.
 
 We host the app environment source in our associated
-[`cy-suite`](https://github.com/cy-suite) org; these `codebase` submodules pull
-it in.
+[`cy-suite`](https://github.com/cy-suite) org, pulled in by the `codebase`
+submodules.
 
 Default Android SDK is 35. To target a different version, pass an app name and
 `setup.sh` reads `sdk` from its `metadata.json`. Run `./setup.sh --help` for the full
@@ -49,6 +49,20 @@ pick one agent and authenticate it via `agent/.env`:
 ```bash
 cp agent/.env.example agent/.env                    # first time only
 ```
+
+`model` and `reasoning_effort` are forwarded verbatim to the chosen CLI —
+external mode has **no model allowlist**, so a model id never has to appear in
+our examples or any registry of ours. To run a different model, just change the
+`model` field:
+
+- **Claude Code** passes it to `claude --model`, resolved by your Anthropic
+  subscription — any Anthropic model id works as-is, no image change.
+- **opencode** passes it to `opencode --model`. Built-in provider/model ids work
+  as-is; for one opencode doesn't already know, add a custom provider config (see
+  the opencode section below).
+
+Change `agent_image` only to switch the agent CLI itself (claude-code, codex,
+opencode) — the published tags are in the sections below.
 
 ### Claude Code (recommended)
 
@@ -152,7 +166,8 @@ internal module that expands and runs batch cells.
 `runner_config.json`, plus a `batch` block that selects apps and matrix fields.
 The committed batch config has `batch.apps: "in_scope"`, so it reads the active
 app list from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope`
-in this checkout and sweeps both attacker models by default.
+in this checkout and runs the full grid by default: both attacker models × both
+visibility conditions (source vs `apk_only`) = 13 apps × 2 × 2 = 52 cells.
 `continue_on_failure` records a failed cell and moves on; it does not retry
 failed cells.
 
