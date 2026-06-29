@@ -6,7 +6,7 @@ Zero-to-first-pass@1 quick start. Targets the probe-only redteam flow described 
 ## 1) System prerequisites
 
 - Python 3.11 or 3.12 (3.13 not yet validated)
-- Docker 24+ **with the Compose v2 plugin** (for the agent stack and most app backends). Docker Desktop on macOS/Windows bundles Compose; on Linux `apt install docker.io` does **not** include it, so install both: `sudo apt install docker.io docker-compose-v2` (the app backend/cleanup scripts call `docker compose`)
+- Docker 24+ **with the Compose v2 plugin**. Docker Desktop on macOS/Windows bundles Compose; on Linux `apt install docker.io` does **not** include it, so install both: `sudo apt install docker.io docker-compose-v2`
 - Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step in §3)
 - Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
 - [GitHub CLI](https://cli.github.com/) (`gh`), authenticated via `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
@@ -31,6 +31,10 @@ bash setup.sh --init-submodules
 `setup.sh` installs the Android SDK + emulator and creates the AVD. `--init-submodules`
 initializes every app's `codebase` submodule. To init only one app, use
 `--init-submodules <app_name>`.
+
+Those `codebase` submodules pull the **app environment source** from
+[`cy-suite`](https://github.com/cy-suite), the org associated with this
+benchmark (`bountybench/mobilecybench` is the harness).
 
 Default Android SDK is 35. To target a different version, pass an app name and
 `setup.sh` reads `sdk` from its `metadata.json`. Run `./setup.sh --help` for the full
