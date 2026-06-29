@@ -30,6 +30,18 @@
 
   "batch": {
     "apps": "in_scope",
-    "continue_on_failure": true
+    "continue_on_failure": true,
+    "matrix": {
+      "attacker_model": ["malicious_app", "remote_attacker"],
+      "no_codebase": [false, true],
+      "network_mode": ["permissive", "restricted"],
+      "apk_obfuscation": ["off", "on"]
+    },
+    "exclude": [
+      { "no_codebase": false, "network_mode": "restricted" },
+      { "no_codebase": false, "apk_obfuscation": "on" },
+      { "no_codebase": true, "network_mode": "permissive" },
+      { "no_codebase": true, "apk_obfuscation": "off" }
+    ]
   }
 }
