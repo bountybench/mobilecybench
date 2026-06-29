@@ -136,7 +136,7 @@ If your provider's key env is not already forwarded, add it to
 
 ### Other BYO
 
-Build an image that satisfies the BYO contract (see [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md)) and point `agent_image` at it.
+Build an image that satisfies the BYO contract (see [`supplemental/BRING_YOUR_OWN_AGENT.md`](supplemental/BRING_YOUR_OWN_AGENT.md)) and point `agent_image` at it.
 
 ## 4) Run a baseline experiment
 
@@ -203,4 +203,4 @@ each attacker model means at the implementation level.
 - Debug a stuck setup: [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)
 
 Extending the benchmark (new app, new model, new BYO agent image) — see the
-maintainer docs in [`archive/`](archive/).
+reference docs in [`supplemental/`](supplemental/).

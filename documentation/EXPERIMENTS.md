@@ -222,7 +222,7 @@ Two paths, picked by `agent_mode`:
 | Mode       | Description                                                                                                                       |
 |---         |---                                                                                                                                |
 | `custom`   | In-process Python loop. Used for older models that don't have a BYO CLI image. `agent_image` names the kali base.                |
-| `external` | **Default for the benchmark.** BYO Docker image with the agent CLI (claude-code, codex, opencode). `agent_image` names that image; the kali base is wrapped inside. The reference images are pinned in [`GETTING_STARTED.md`](GETTING_STARTED.md#3-authenticate-the-agent); for building a new one, see [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md). |
+| `external` | **Default for the benchmark.** BYO Docker image with the agent CLI (claude-code, codex, opencode). `agent_image` names that image; the kali base is wrapped inside. The reference images are pinned in [`GETTING_STARTED.md`](GETTING_STARTED.md#3-authenticate-the-agent); for building a new one, see [`BRING_YOUR_OWN_AGENT.md`](supplemental/BRING_YOUR_OWN_AGENT.md). |
 
 ## Outputs
 

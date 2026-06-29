@@ -60,11 +60,12 @@ jq -r '.sets.in_scope[]' apps/app_catalog.json
 |---|---|
 | Run your first experiment end-to-end | [`GETTING_STARTED.md`](GETTING_STARTED.md) |
 | Configure an experiment, interpret results, look up status codes / MA permission gate | [`EXPERIMENTS.md`](EXPERIMENTS.md) |
-| Connect your own agent CLI (BYO image contract) | [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md) |
+| Connect your own agent CLI (BYO image contract) | [`supplemental/BRING_YOUR_OWN_AGENT.md`](supplemental/BRING_YOUR_OWN_AGENT.md) |
 | Debug a stuck setup | [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) |
 
-For contributing infrastructure or adding new apps / models / agent images,
-see [`archive/`](archive/) — kept for reference, not on the run path.
+For adding new apps / models / agent images, deep architecture, CI, and command
+reference, see [`supplemental/`](supplemental/). Orthogonal/older material
+(synthetic-vuln + zero-day workflows) is in [`archive/`](archive/).
 
 ## 5. TL;DR run commands
 

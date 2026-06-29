@@ -65,9 +65,10 @@ Four docs cover the bench-run path end-to-end. The full index is at
 - [Experiments](documentation/EXPERIMENTS.md) — `runner_config.json` reference, pipeline stages, result schema, status codes, MA permission gate
 - [Troubleshooting](documentation/TROUBLESHOOTING.md) — common issues
 
-Maintainer-facing material (adding apps / models, BYO agent contracts, GKE
-deployment, CI mechanics, command cheatsheets, deep architecture notes) lives
-in [`documentation/archive/`](documentation/archive/) — kept for reference but
-not needed to run an experiment.
+Reference / maintainer material (adding apps / models, BYO agent contracts, CI
+mechanics, command cheatsheets, deep architecture notes) lives in
+[`documentation/supplemental/`](documentation/supplemental/) — not needed to run
+an experiment. Orthogonal/older workflows (synthetic-vuln, zero-day) are in
+[`documentation/archive/`](documentation/archive/).
 
 GKE-specific setup (running at scale): [`infra/gke/README.md`](infra/gke/README.md).
