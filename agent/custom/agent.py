@@ -128,7 +128,7 @@ class CustomAgent:
         self._unique_tools = set()
         # Mirror the BYO contract layout: agent state lives under
         # logs_dir/agent_run/ regardless of dispatch mode (see
-        # documentation/archive/BRING_YOUR_OWN_AGENT.md).
+        # documentation/BRING_YOUR_OWN_AGENT.md).
         agent_run_dir = logger_manager.get_logs_dir() / "agent_run"
         agent_run_dir.mkdir(parents=True, exist_ok=True)
         self._conversation_file = str(agent_run_dir / "conversation.jsonl")

@@ -33,7 +33,6 @@ start at [`../README.md`](../README.md), not here.
 |---|---|
 | [`ADDING_APPS.md`](ADDING_APPS.md) | Walkthrough for onboarding a new app into the benchmark. Useful when adding apps; not needed for running. |
 | [`ADDING_MODELS.md`](ADDING_MODELS.md) | Registering a model in custom mode or via a BYO image. Useful when adding model coverage. |
-| [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md) | Building a new BYO agent CLI image. The reference images (claude-code, codex, opencode) are already pinned in `GETTING_STARTED.md`; this doc is only relevant if you're building a new one. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Deep system mental model (container topology, network membership, agent capabilities, GKE deployment). |
 | [`CI_VALIDATION.md`](CI_VALIDATION.md) | CI modes + `run_ci_local.sh` reference. Maintainer-facing. |
 | [`COMMANDS.md`](COMMANDS.md) | Command cheatsheet grouped by workflow. |

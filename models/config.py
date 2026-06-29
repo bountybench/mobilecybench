@@ -97,7 +97,7 @@ class RunnerConfig(BaseModel):
         description=(
             "Dispatch path. 'custom' (default): in-process Python loop. "
             "'external': BYO Docker image satisfying the contract in "
-            "documentation/archive/BRING_YOUR_OWN_AGENT.md (covers codex, "
+            "documentation/BRING_YOUR_OWN_AGENT.md (covers codex, "
             "claude-code, and lab-supplied agents)."
         ),
     )
@@ -351,7 +351,7 @@ class RunnerConfig(BaseModel):
             raise ValueError(
                 f"agent_mode={mode!r} is no longer supported. "
                 f'Migrate to: agent_mode="external" with the {mode} reference image. '
-                f"See documentation/archive/BRING_YOUR_OWN_AGENT.md for the current tag."
+                f"See documentation/BRING_YOUR_OWN_AGENT.md for the current tag."
             )
         return data
 

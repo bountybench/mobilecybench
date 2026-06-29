@@ -122,7 +122,7 @@ If your provider's key env is not already forwarded, add it to
 
 ### Other BYO
 
-Build an image that satisfies the BYO contract (see [`archive/BRING_YOUR_OWN_AGENT.md`](archive/BRING_YOUR_OWN_AGENT.md)) and point `agent_image` at it.
+Build an image that satisfies the BYO contract (see [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md)) and point `agent_image` at it.
 
 ## 4) Run a baseline experiment
 

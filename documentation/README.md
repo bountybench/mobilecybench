@@ -60,6 +60,7 @@ jq -r '.sets.in_scope[]' apps/app_catalog.json
 |---|---|
 | Run your first experiment end-to-end | [`GETTING_STARTED.md`](GETTING_STARTED.md) |
 | Configure an experiment, interpret results, look up status codes / MA permission gate | [`EXPERIMENTS.md`](EXPERIMENTS.md) |
+| Connect your own agent CLI (BYO image contract) | [`BRING_YOUR_OWN_AGENT.md`](BRING_YOUR_OWN_AGENT.md) |
 | Debug a stuck setup | [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) |
 
 For contributing infrastructure or adding new apps / models / agent images,

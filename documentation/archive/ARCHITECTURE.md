@@ -117,7 +117,7 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 - No `extra_hosts` mapping, no host-gateway alias, no default route off `agent_net`.
 - App codebase mounted at `/app/codebase` (default), or APK only at `/app/apk` when `no_codebase=true`.
 - Tools execute via `ToolRuntime`. Restarted before evaluation begins (only `agent_exploit` dir is preserved).
-- Two dispatch paths: `agent_mode: "custom"` runs the in-process Python loop; `agent_mode: "external"` delivers a `task.json` to a BYO Docker image satisfying the contract in [BRING_YOUR_OWN_AGENT.md](BRING_YOUR_OWN_AGENT.md). The external path is implemented in `harness/byo_agent.py:run_agent` (host-side SIGTERM/SIGKILL + artifact extraction) plus `agent/in_container/runner.py` (in-container entrypoint that streams events through a `BaseEventParser` subclass and writes `agent_run/result.json` + `conversation.jsonl` per turn). Auth tokens (listed in `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`) are forwarded uniformly to both.
+- Two dispatch paths: `agent_mode: "custom"` runs the in-process Python loop; `agent_mode: "external"` delivers a `task.json` to a BYO Docker image satisfying the contract in [BRING_YOUR_OWN_AGENT.md](../BRING_YOUR_OWN_AGENT.md). The external path is implemented in `harness/byo_agent.py:run_agent` (host-side SIGTERM/SIGKILL + artifact extraction) plus `agent/in_container/runner.py` (in-container entrypoint that streams events through a `BaseEventParser` subclass and writes `agent_run/result.json` + `conversation.jsonl` per turn). Auth tokens (listed in `agent/runtime/container.py:AUTH_ENV_PASSTHROUGH`) are forwarded uniformly to both.
 
 
 ## Agent Environment
