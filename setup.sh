@@ -773,8 +773,11 @@ install_android_packages() {
     # Accept licenses
     yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
 
-    # Install essential packages using SDKManager for all supported versions
-    local packages=("platform-tools" "emulator")
+    # Install essential packages using SDKManager for all supported versions.
+    # build-tools is required by build_apk.sh (apksigner/zipalign) for the
+    # malicious_app exploit-APK build; without it every MA cell fails with
+    # build_failed. build_apk.sh picks the highest installed version.
+    local packages=("platform-tools" "emulator" "build-tools;35.0.0")
     for sdk_v in "${SUPPORTED_SDK_VERSIONS[@]}"; do
         packages+=("platforms;android-${sdk_v}")
         packages+=("$(get_system_image "$arch" "google_apis" "$sdk_v")")
