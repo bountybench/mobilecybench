@@ -38,7 +38,12 @@ top-level fields are normal runner defaults (`workflow`, `model`,
 `agent_image`, token limits, etc.), and the `batch` block selects apps and
 matrix fields. By default, `batch.apps: "in_scope"` reads the active app list
 from [`apps/app_catalog.json`](apps/app_catalog.json):`sets.in_scope` in this
-checkout and sweeps both `attacker_model` values. `continue_on_failure` means
+checkout and runs the full grid: both `attacker_model` values × both
+visibility modes (source vs `apk_only`). `network_mode` and `apk_obfuscation`
+are coupled to visibility via `batch.matrix` + `batch.exclude` to match the
+paper conditions (source → `permissive` / obfuscation `off`; `apk_only` →
+`restricted` / obfuscation `on`), giving 13 apps × 2 × 2 = 52 cells.
+`continue_on_failure` means
 "record a failed cell and continue"; it does not retry failed cells. For more
 detail, see
 [`documentation/EXPERIMENTS.md`](documentation/EXPERIMENTS.md#run-a-sequential-batch).
