@@ -6,7 +6,7 @@ Zero-to-first-pass@1 quick start. Targets the probe-only redteam flow described 
 ## 1) System prerequisites
 
 - Python 3.11 or 3.12 (3.13 not yet validated)
-- Docker 24+ — Docker Desktop on macOS/Windows, Docker Engine on Linux (for the agent stack and most app backends)
+- Docker 24+ **with the Compose v2 plugin** (for the agent stack and most app backends). Docker Desktop on macOS/Windows bundles Compose; on Linux `apt install docker.io` does **not** include it, so install both: `sudo apt install docker.io docker-compose-v2` (the app backend/cleanup scripts call `docker compose`)
 - Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step in §3)
 - Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
 - [GitHub CLI](https://cli.github.com/) (`gh`), authenticated via `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.

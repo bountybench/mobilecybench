@@ -51,7 +51,7 @@ detail, see
 ## Prerequisites
 
 - Python 3.11 or 3.12 (3.13 not yet validated for agent dependencies)
-- Docker 24+ — Docker Desktop on macOS/Windows, Docker Engine on Linux
+- Docker 24+ with the Compose v2 plugin — Docker Desktop (macOS/Windows) bundles it; on Linux `apt install docker.io` does **not**, so install both: `sudo apt install docker.io docker-compose-v2`
 - Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step below)
 - Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
 - [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login` — required by `build_type: "download-apk"` to fetch APK bundles. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
