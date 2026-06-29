@@ -188,7 +188,7 @@ Without `agent_net`, the runtime preflight skip-guard hard-fails the run with a 
 
 ## 8) Ensure HTTPS access to the app
 
-- Follow [HTTPS Upgrade Guide](../archive/HTTPS_UPGRADE_GUIDE.md).
+- Follow [HTTPS Upgrade Guide](HTTPS_UPGRADE_GUIDE.md).
 - Re-run local CI after HTTPS changes to confirm runtime and probes still pass.
 - Moreover, rerun local CI for each of the synthetic vulnerabilities to confirm that they still work (especially if they touch the servers that were modified).
 

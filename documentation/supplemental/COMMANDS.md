@@ -34,7 +34,7 @@ Flags:
 - `--config <path>` — use an alternate runner config file (default: `runner_config.json`).
 - `--explain-config` — print the JSON Schema for `runner_config.json` (field names, types, defaults, descriptions) and exit. Same content as `schemas/runner_config.schema.json`.
 
-Agent implementation (`custom` in-process Python loop, or `external` BYO Docker image) is selected via the `agent_mode` field in `runner_config.json`. See `../EXPERIMENTS.md#agent-mode` and `../BRING_YOUR_OWN_AGENT.md`.
+Agent implementation (`custom` in-process Python loop, or `external` BYO Docker image) is selected via the `agent_mode` field in `runner_config.json`. See `../EXPERIMENTS.md#agent-mode` and `BRING_YOUR_OWN_AGENT.md`.
 
 ## Download pre-built APKs
 

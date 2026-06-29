@@ -18,7 +18,6 @@ them can still find them.
 | [`SYNTHETIC_VULNERABILITIES.md`](SYNTHETIC_VULNERABILITIES.md) | Synthetic-vuln workflow (`build_type=source --vuln <id>` + verifier). The benchmark has moved to probe-only redteam runs over real apps. |
 | [`TASK.md`](TASK.md) | Zero-day task bundle format (`task=<dir>` under `zerodays/reports/<app>/`). Two-phase redteam mode. |
 | [`ZERODAY_TASKS.md`](ZERODAY_TASKS.md) | Zero-day onboarding companion to `TASK.md`. |
-| [`HTTPS_UPGRADE_GUIDE.md`](HTTPS_UPGRADE_GUIDE.md) | One-time migration guide for the HTTP→HTTPS app-server cutover; complete. |
 | [`UI_AUTOMATION.md`](UI_AUTOMATION.md) | UI-automation tool reference. |
 
 Dated investigation reports and per-campaign write-ups are not stored here;

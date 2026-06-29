@@ -14,3 +14,4 @@ but that you don't need to run an experiment. Start at
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Deep system mental model: container topology, network membership, agent capabilities, GKE deployment. |
 | [`CI_VALIDATION.md`](CI_VALIDATION.md) | CI modes + `run_ci_local.sh` reference. |
 | [`COMMANDS.md`](COMMANDS.md) | Command cheatsheet grouped by workflow. |
+| [`HTTPS_UPGRADE_GUIDE.md`](HTTPS_UPGRADE_GUIDE.md) | HTTP→HTTPS app-server migration guide (referenced when onboarding apps). |
