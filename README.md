@@ -15,6 +15,13 @@ place probes at the boundary — so any action that crosses it trips a signal.
 > curated app list, the source-vs-`apk_only` ablation, and links to the rest
 > of the docs.
 
+## Setup
+
+Set up first: [**`documentation/GETTING_STARTED.md`**](documentation/GETTING_STARTED.md)
+covers prerequisites, clone + submodules, the Python env, and agent
+authentication. The run commands below assume a set-up repo and an authenticated
+agent.
+
 ## TL;DR run commands
 
 You can run either one app with the normal runner config:
@@ -47,17 +54,6 @@ paper conditions (source → `permissive` / obfuscation `off`; `apk_only` →
 "record a failed cell and continue"; it does not retry failed cells. For more
 detail, see
 [`documentation/EXPERIMENTS.md`](documentation/EXPERIMENTS.md#run-a-sequential-batch).
-
-## Setup
-
-[**`documentation/GETTING_STARTED.md`**](documentation/GETTING_STARTED.md) is the
-single source of truth for setup — prerequisites, clone + submodules, the Python
-env, agent authentication, and your first run. **Start there** rather than
-copying steps from here.
-
-One hard gate worth knowing up front: the Android emulator needs hardware
-virtualization (KVM on Linux, Hypervisor.framework on macOS), so you need a
-nested-virt-capable host with ≥ 16 GB RAM and ~50 GB free disk.
 
 ## Documentation
 
