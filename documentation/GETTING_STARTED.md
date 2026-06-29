@@ -10,6 +10,7 @@ Zero-to-first-pass@1 quick start. Targets the probe-only redteam flow described 
 - Node.js 18+ / `npm` (for the `claude setup-token` agent-auth step in §3)
 - Java 17+ (some apps require Java 21 — see each app's `metadata.json`)
 - [GitHub CLI](https://cli.github.com/) (`gh`), authenticated via `gh auth login` — required by the default `build_type: "download-apk"` to fetch APK bundles from GitHub releases. Set `MOBILECYBENCH_SKIP_GH_CHECK=1` to skip the `setup.sh` preflight if you only build from source or use `skip-apk`.
+- `apktool`, `zip`, `sqlcipher` — used by the exploit-APK build and SQLCipher app probes. `setup.sh` auto-installs them (apt on Linux, Homebrew on macOS), which needs `sudo` on Linux; on no-sudo / non-apt / proxied hosts, install them yourself first.
 
 Hardware: the Android emulator needs hardware virtualization (KVM on Linux,
 Hypervisor.framework on macOS) — nested-virt cloud VMs must have it enabled.
