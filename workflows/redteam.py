@@ -1180,7 +1180,7 @@ class RedTeamWorkflow(Workflow):
                 # secure->compromised transition; after-only categories keep
                 # their after reading. This swaps the raw after-only signal for
                 # the delta-adjusted one, then flows through the SAME unknown /
-                # infra / signal / no_signal routing below.
+                # infra / triggered / not_triggered routing below.
                 if (
                     self.config.probe_baseline_diff
                     and baseline_probe_results is not None
@@ -1205,7 +1205,7 @@ class RedTeamWorkflow(Workflow):
                     # (absent / flagged unknown), so its before/after delta is
                     # undefined. Scoring it as a signal would be a false positive
                     # (the after trigger can't be attributed to the exploit) and
-                    # as no_signal would falsely claim a clean comparison we never
+                    # as not_triggered would falsely claim a clean comparison we never
                     # made -> route to probe_evaluator_error. A real signal in any
                     # other category already took precedence in diff_probe_results.
                     logger.info(
@@ -1226,7 +1226,7 @@ class RedTeamWorkflow(Workflow):
                 elif not probe_vuln and probe_infra:
                     # A probe scored 0 only because it could not run
                     # (no_log / blocked_* / infra_error), not because of a real
-                    # compromise. Routing this to no_signal would mislabel an
+                    # compromise. Routing this to not_triggered would mislabel an
                     # infra failure as a clean run, so classify it explicitly.
                     logger.info(
                         "[scoring] probe_only mode: probe scored 0 due to "
@@ -1243,9 +1243,10 @@ class RedTeamWorkflow(Workflow):
                         probe_results={"probe": p1["probe_results"]},
                     )
                 else:
-                    # signal/no_signal: probe_only lacks a comparison build, so we
-                    # can't vouch for specificity the way two-phase does.
-                    status = "signal" if probe_vuln else "no_signal"
+                    # triggered/not_triggered: probe_only lacks a comparison
+                    # build, so we can't vouch for specificity the way two-phase
+                    # does.
+                    status = "triggered" if probe_vuln else "not_triggered"
                     reason = (
                         "Probes triggered after exploit"
                         if probe_vuln

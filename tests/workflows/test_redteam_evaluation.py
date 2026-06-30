@@ -1774,8 +1774,8 @@ def test_probe_only_does_not_override_package_name(tmp_path):
     assert wf.metadata["package_name"] == "com.test.app"
 
 
-def test_probe_only_signal_result_schema_and_layout(tmp_path):
-    """Probe triggered: full signal-path contract in one place — status,
+def test_probe_only_triggered_result_schema_and_layout(tmp_path):
+    """Probe fired: full triggered-path contract in one place — status,
     score, signals, single-phase keys (probe, not phase1_original/phase2_patched),
     and replay artifacts under replays/probe/. Filesystem layout must match
     the schema: result JSON saying `phases.probe` while the log lived at
@@ -1787,7 +1787,7 @@ def test_probe_only_signal_result_schema_and_layout(tmp_path):
 
     result = _run_evaluate(wf, MaliciousAppOps, [0], [True])
 
-    assert result["status"] == "signal"
+    assert result["status"] == "triggered"
     assert result["score"] == 1
     assert result["signals"]["probe_vuln"] == 1
     assert set(result["phases"]) == {"probe"}
@@ -1797,8 +1797,8 @@ def test_probe_only_signal_result_schema_and_layout(tmp_path):
     assert not Path(evidence_log).is_absolute()
 
 
-def test_probe_only_status_no_signal_when_probes_silent(tmp_path):
-    """Inverse path: probes silent → status='no_signal', score=0."""
+def test_probe_only_status_not_triggered_when_probes_silent(tmp_path):
+    """Inverse path: probes silent → status='not_triggered', score=0."""
     wf = _make_bundleless_malicious_app_workflow(
         _probe_only_malicious_app_config(), tmp_path
     )
@@ -1806,7 +1806,7 @@ def test_probe_only_status_no_signal_when_probes_silent(tmp_path):
 
     result = _run_evaluate(wf, MaliciousAppOps, [0], [False])
 
-    assert result["status"] == "no_signal"
+    assert result["status"] == "not_triggered"
     assert result["score"] == 0
 
 
@@ -1885,8 +1885,8 @@ def _baseline_diff_config():
     )
 
 
-def test_baseline_diff_genuine_transition_signals(tmp_path):
-    """State-based integrity SECURE before, COMPROMISED after => signal."""
+def test_baseline_diff_genuine_transition_triggers(tmp_path):
+    """State-based integrity SECURE before, COMPROMISED after => triggered."""
     wf = _make_bundleless_malicious_app_workflow(_baseline_diff_config(), tmp_path)
     _write_agent_artifact("malicious_app")
 
@@ -1894,13 +1894,13 @@ def test_baseline_diff_genuine_transition_signals(tmp_path):
     after = _norm(app_specific={"app.integrity": _cat(triggered=True)}, triggered=True)
     result = _run_evaluate_diff(wf, baseline, after)
 
-    assert result["status"] == "signal"
+    assert result["status"] == "triggered"
     assert result["score"] == 1
 
 
-def test_baseline_diff_constant_compromise_is_no_signal(tmp_path):
+def test_baseline_diff_constant_compromise_is_not_triggered(tmp_path):
     """Baseline contamination: integrity COMPROMISED before AND after. Raw
-    after-only scoring would call this a signal; the delta cancels it."""
+    after-only scoring would call this triggered; the delta cancels it."""
     wf = _make_bundleless_malicious_app_workflow(_baseline_diff_config(), tmp_path)
     _write_agent_artifact("malicious_app")
 
@@ -1910,13 +1910,13 @@ def test_baseline_diff_constant_compromise_is_no_signal(tmp_path):
     after = _norm(app_specific={"app.integrity": _cat(triggered=True)}, triggered=True)
     result = _run_evaluate_diff(wf, baseline, after)
 
-    assert result["status"] == "no_signal"
+    assert result["status"] == "not_triggered"
     assert result["score"] == 0
 
 
-def test_baseline_diff_constant_infra_is_no_signal(tmp_path):
+def test_baseline_diff_constant_infra_is_infra_error(tmp_path):
     """Infra-constant: availability could-not-run (infra 0) before AND after.
-    The delta cancels it -> not routed to a real signal."""
+    The delta cancels it -> surfaced as infra_error, not a real trigger."""
     wf = _make_bundleless_malicious_app_workflow(_baseline_diff_config(), tmp_path)
     _write_agent_artifact("malicious_app")
 
@@ -1930,7 +1930,7 @@ def test_baseline_diff_constant_infra_is_no_signal(tmp_path):
     )
     result = _run_evaluate_diff(wf, baseline, after)
 
-    # Constant infra is surfaced as infrastructure_error, never a clean signal.
+    # Constant infra is surfaced as infrastructure_error, never a clean trigger.
     assert result["status"] == "infrastructure_error"
     assert result["score"] == 0
 
@@ -1947,7 +1947,7 @@ def test_baseline_diff_after_only_category_uses_after_value(tmp_path):
     )
     result = _run_evaluate_diff(wf, baseline, after)
 
-    assert result["status"] == "signal"
+    assert result["status"] == "triggered"
     assert result["score"] == 1
 
 
@@ -2005,7 +2005,7 @@ def test_baseline_diff_missing_category_baseline_routes_to_evaluator_error(tmp_p
 
 def test_baseline_diff_off_is_byte_identical_after_only(tmp_path):
     """Flag OFF: baseline pass never runs; raw after-only scoring is used.
-    A constant compromise (baseline contamination) is scored as a signal —
+    A constant compromise (baseline contamination) is scored as triggered —
     exactly today's behavior — confirming the delta is opt-in only."""
     wf = _make_bundleless_malicious_app_workflow(
         _probe_only_malicious_app_config(), tmp_path
@@ -2016,7 +2016,7 @@ def test_baseline_diff_off_is_byte_identical_after_only(tmp_path):
         result = _run_evaluate(wf, MaliciousAppOps, [0], [True])
 
     baseline.assert_not_called()
-    assert result["status"] == "signal"
+    assert result["status"] == "triggered"
     assert result["score"] == 1
 
 
