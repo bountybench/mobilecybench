@@ -143,7 +143,7 @@
     },
     "probe_only": {
       "default": false,
-      "description": "redteam bundle-less mode: single replay against the app's baseline APK, no patch / no verifier / no two-phase comparison. Score is signal/no_signal based on app probes. Forbids task; requires attacker_model. Incompatible with gold_run. See documentation/EXPERIMENTS.md.",
+      "description": "redteam bundle-less mode: single replay against the app's baseline APK, no patch / no verifier / no two-phase comparison. Score is triggered/not_triggered based on app probes. Forbids task; requires attacker_model. Incompatible with gold_run. See documentation/EXPERIMENTS.md.",
       "title": "Probe Only",
       "type": "boolean"
     },
