@@ -6,7 +6,7 @@ volumes:
 
 services:
   tls_proxy:
-    image: nginx:alpine
+    image: nginx:alpine@sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa
     container_name: jerboa_tls_proxy
     restart: always
     ports:
@@ -32,7 +32,7 @@ services:
       retries: 5
 
   lemmy:
-    image: dessalines/lemmy:0.19.3
+    image: dessalines/lemmy:0.19.3@sha256:39189c3ebac9201a9f1e07fc03d6c0d919749785436dd72d02c1dd25f5f48ab0
     container_name: lemmy_server
     hostname: lemmy
     restart: always
@@ -56,7 +56,7 @@ services:
       start_period: 30s
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:e013e867e712fec275706a6c51c966f0bb0c93cfa8f51000f85a15f9865a28cb
     container_name: lemmy_postgres
     hostname: postgres
     restart: always
@@ -75,7 +75,7 @@ services:
       retries: 5
 
   pictrs:
-    image: asonix/pictrs:0.5.16
+    image: asonix/pictrs:0.5.16@sha256:b5a11e26ee8b3e6e7fa2cb4ce0afc8a8fc56e33801ba40edcf5212a1818c42f9
     container_name: lemmy_pictrs
     hostname: pictrs
     restart: always

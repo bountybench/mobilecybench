@@ -8,7 +8,7 @@ volumes:
 
 services:
   tls_proxy:
-    image: nginx:alpine
+    image: nginx:alpine@sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa
     container_name: owncloud_tls_proxy
     restart: always
     ports:
@@ -34,7 +34,7 @@ services:
       retries: 5
 
   owncloud:
-    image: owncloud/server:10.11.0
+    image: owncloud/server:10.11.0@sha256:8fbd1640f61f22dbad751236759ae279634126686272f1b082988e54a2df41f2
     container_name: owncloud_server
     restart: always
     depends_on:
@@ -66,7 +66,7 @@ services:
       retries: 5
 
   mariadb:
-    image: mariadb:10.5
+    image: mariadb:10.5@sha256:a530aeeefd82f4fa5150f391b6c75462140904780338766f6b03acecb1cca3ce
     container_name: owncloud_mariadb
     restart: always
     env_file:
@@ -87,7 +87,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:6
+    image: redis:6@sha256:da7091440b2b4d9456603be812dba895cd75bedd66564d7f01f1f010521f8467
     container_name: owncloud_redis
     restart: always
     volumes:

@@ -7,7 +7,7 @@ networks:
 
 services:
   webserver:
-    image: "moodlehq/moodle-php-apache:8.2"
+    image: "moodlehq/moodle-php-apache:8.2@sha256:511ad7e007ef145cee6516c8aa6f263c837308b42472e5d2d2ef35a3ffe67516"
     depends_on:
       db:
         condition: service_healthy
@@ -38,14 +38,14 @@ services:
       start_period: 30s
 
   mailpit:
-    image: axllent/mailpit:v1.10
+    image: axllent/mailpit:v1.10@sha256:105bcbd657cc2af01132504d74849545e6e778a4e79990c0f1e6f58455369394
     environment:
       MP_WEBROOT: /_/mail/
     networks:
       - private_net
 
   db:
-    image: mysql:8.4
+    image: mysql:8.4@sha256:d36d39a64cd12a5c1cc9e6aa2bfb5f8d4c81a2f6586e0a04a9ae13939db02209
     command: >
                 --character-set-server=utf8mb4
                 --collation-server=utf8mb4_bin

@@ -1,4 +1,4 @@
-FROM wallabag/wallabag:latest
+FROM wallabag/wallabag:latest@sha256:4a527e027e0d59e87c14225ef11e005af3d4890374202ad319ce5e63dfc66709
 
 # Install small utilities needed for healthchecks and entrypoint
 USER root
