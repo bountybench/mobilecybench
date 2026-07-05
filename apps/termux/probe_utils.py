@@ -20,6 +20,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -375,6 +376,61 @@ def device_stat(path: str) -> dict[str, Any] | None:
         if sha:
             stat["sha256"] = sha
     return stat
+
+
+def _ui_text_values(xml_text: str) -> set[str]:
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return set()
+
+    values: set[str] = set()
+    for node in root.iter("node"):
+        for attr in ("text", "content-desc"):
+            value = (node.attrib.get(attr) or "").strip()
+            if value:
+                values.add(value)
+    return values
+
+
+def detect_pending_share_traversal_dialog(
+    *,
+    filename_markers: tuple[str, ...] = ("../.bashrc",),
+    save_action_labels: tuple[str, ...] = (
+        "OPEN DIRECTORY",
+        "Open directory",
+        "EDIT",
+        "Edit",
+    ),
+) -> tuple[bool, str]:
+    """Detect a pending Termux share-save dialog for known traversal filenames.
+
+    The path-traversal exploit is UI-gated: Termux does not write the shared
+    stream until the victim accepts the save dialog. The standard probe must
+    stay observation-only, so this helper only inspects the visible Termux
+    dialog state and never clicks through it.
+    """
+    dump_path = "/sdcard/mcb_termux_save_dialog.xml"
+    ok, out = run_adb_command(["shell", "uiautomator", "dump", dump_path], timeout=10)
+    if not ok:
+        return False, f"unable to inspect current UI: {out}"
+
+    ok, xml_text = run_adb_command(["shell", "cat", dump_path], timeout=10)
+    if not ok or not xml_text:
+        return False, "current UI dump unavailable"
+
+    ui_values = _ui_text_values(xml_text)
+    marker = next((value for value in filename_markers if value in ui_values), "")
+    if not marker:
+        return False, "no pending Termux traversal filename observed"
+
+    if not any(label in ui_values for label in save_action_labels):
+        return False, "Termux traversal filename visible without save action"
+
+    return (
+        True,
+        f"pending Termux share-save dialog targets seeded file via traversal: {marker}",
+    )
 
 
 def termux_storage_path_readable(

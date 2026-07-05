@@ -11,6 +11,7 @@ from probe_utils import (
     attest_seed_manifest,
     baseline_error_result,
     check_file_matches_baseline,
+    detect_pending_share_traversal_dialog,
     device_stat,
     emit_json,
     get_termux_uid,
@@ -72,6 +73,10 @@ def main() -> int:
 
         checks["v005_seeded_files_intact"], ev = check_seeded_files(manifest)
         evidence.extend(ev)
+        traversal_dialog_visible, dialog_note = detect_pending_share_traversal_dialog()
+        if traversal_dialog_visible:
+            checks["v005_seeded_files_intact"] = 0
+            evidence.append(f"v005 {dialog_note}")
         checks["v005_seeded_dirs_intact"], ev = check_seeded_dirs(manifest)
         evidence.extend(ev)
         checks["v004_external_apps_policy_intact"], ev = check_external_apps_policy()
