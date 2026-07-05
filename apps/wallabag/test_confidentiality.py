@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from probe_common import (
     CANARY_HOST_PATH,
+    credential_uri_in_wallabag_logcat,
     read_host_marker,
     scan_shared_storage_for_canary,
 )
@@ -36,6 +37,13 @@ def main():
             results["check_no_canary_on_shared_storage"] = 0
     else:
         results["check_no_canary_on_shared_storage"] = 0
+
+    try:
+        leaked_uri = credential_uri_in_wallabag_logcat()
+        results["check_no_credential_uri_in_wallabag_logcat"] = 0 if leaked_uri else 1
+    except Exception as e:
+        print(f"Logcat credential URI scan failed: {e}", file=sys.stderr)
+        results["check_no_credential_uri_in_wallabag_logcat"] = 0
 
     results["score"] = 1 if all(v == 1 for v in results.values()) else 0
     results["status"] = "secure" if results["score"] == 1 else "breached"
