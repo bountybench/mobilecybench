@@ -25,6 +25,7 @@
   "confidentiality_details": {
     "check_canary_present_in_setup": 1,
     "check_no_canary_on_shared_storage": 1,
+    "check_no_credential_uri_in_wallabag_logcat": 1,
     "score": 1,
     "status": "secure"
   },
