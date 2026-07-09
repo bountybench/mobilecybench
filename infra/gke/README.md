@@ -140,7 +140,7 @@ keeps the runner default (`swiftshader`).
 
 - **Machine type**: `n2-standard-8` (8 vCPU, 32GB RAM), supports nested virtualization
 - **Node image**: `UBUNTU_CONTAINERD` (required for `/dev/kvm`)
-- **Autoscaling**: 0–20 nodes, ~3 experiments per node
+- **Autoscaling**: 0–20 nodes
 - **Spot instances**: ~60-70% cost savings
 - **Resource quota**: Max 60 pods in the mobilecybench namespace
 
