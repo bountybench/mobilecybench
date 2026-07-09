@@ -9,23 +9,28 @@ agent image carries the model, but a passed model is still plumbed through for
 labeling / runner_config.model. synthetic_vuln_id / VULN_ID are not emitted.
 
 The defaults ARE the paper grid: probe-only, both attacker models, both
-visibility legs (source + apk_only), Claude Code agent image. So the full
-13-app x 2 attacker x 2 visibility = 52-cell grid is just:
+visibility legs (source + apk_only). You supply the agent image + model (coupled
+CLI/model — no default) and the runner image / results bucket. So the full
+13-app x 2 attacker x 2 visibility = 52-cell grid is:
 
     RUNNER_IMAGE=...  GCS_BUCKET=...  # or pass --image / --gcs-bucket
-    python infra/gke/generate_jobs.py --all --models claude-opus-4-8 --apply
+    python infra/gke/generate_jobs.py --all \\
+        --agent-image cybench/mobilecybench:claudecode_2.1.170-r1 \\
+        --models claude-opus-4-8 --apply
+
+Published agent images (pull from Docker Hub, pick the CLI you want):
+    Claude Code  cybench/mobilecybench:claudecode_2.1.170-r1   (Anthropic models)
+    opencode     cybench/mobilecybench:opencode_1.15.6-r1      (provider/model ids)
+    codex        cybench/mobilecybench:codex_0.130.0-r2        (OpenAI models)
 
 Usage (narrowing from the defaults):
     # One app, one leg, one attacker (quick smoke)
     python infra/gke/generate_jobs.py \\
-        --apps conversations --models claude-opus-4-8 \\
+        --apps conversations \\
+        --agent-image cybench/mobilecybench:claudecode_2.1.170-r1 \\
+        --models claude-opus-4-8 \\
         --visibility source --attacker-models malicious_app \\
         --image $RUNNER_IMAGE --gcs-bucket $BUCKET --apply
-
-    # A different agent CLI (opencode instead of the default Claude Code image)
-    python infra/gke/generate_jobs.py \\
-        --all --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
-        --models openai/gpt-5.5 --outdir /tmp/jobs
 """
 
 import argparse
@@ -41,9 +46,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 APP_CATALOG = PROJECT_ROOT / "apps" / "app_catalog.json"
 
 # Defaults chosen so the common case — the full paper grid — is short:
-#   generate_jobs.py --all --models <model> --apply
-# i.e. attacker = both, visibility = both legs, probe-only, Claude Code image.
-DEFAULT_AGENT_IMAGE = "cybench/mobilecybench:claudecode_2.1.170-r1"
+#   generate_jobs.py --all --agent-image <img> --models <model> --apply
+# i.e. attacker = both, visibility = both legs, probe-only. --agent-image and
+# --models are deliberately NOT defaulted: the agent CLI and its model string
+# are coupled (a claudecode_* image needs an Anthropic model, opencode_*/codex_*
+# need their own), so a wrong default would silently mis-run every cell.
 DEFAULT_ATTACKER_MODELS = ["malicious_app", "remote_attacker"]
 # source-visible leg first (no_codebase=false), then apk-only (no_codebase=true).
 VISIBILITY_LEGS = {"both": [False, True], "source": [False], "apk_only": [True]}
@@ -289,10 +296,12 @@ def main():
     ext = parser.add_argument_group("external agent")
     ext.add_argument(
         "--agent-image",
-        default=DEFAULT_AGENT_IMAGE,
-        help="BYO agent image ref (agent_mode=external). Default: "
-        f"{DEFAULT_AGENT_IMAGE} (Claude Code). Use an opencode_*/codex_* tag "
-        "for those CLIs.",
+        required=True,
+        help="BYO agent image ref (agent_mode=external). Required and coupled to "
+        "--models (no default). Published tags: Claude Code "
+        "cybench/mobilecybench:claudecode_2.1.170-r1 (Anthropic models), opencode "
+        "cybench/mobilecybench:opencode_1.15.6-r1, codex "
+        "cybench/mobilecybench:codex_0.130.0-r2.",
     )
     ext.add_argument(
         "--workflow",

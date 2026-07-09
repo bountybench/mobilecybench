@@ -175,8 +175,10 @@ def test_visibility_source_is_single_leg() -> None:
 
 
 def test_defaults_render_full_grid_for_one_app() -> None:
-    """No matrix flags: both attackers x both visibility legs = 4 cells."""
-    res = _generate("--apps", "conversations", "--gcs-bucket", "test")
+    """With only --apps + --agent-image: both attackers x both legs = 4 cells."""
+    res = _generate(
+        "--apps", "conversations", "--agent-image", AGENT_IMAGE, "--gcs-bucket", "test"
+    )
     assert res.returncode == 0, res.stderr
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
     assert len(docs) == 4
@@ -187,8 +189,7 @@ def test_defaults_render_full_grid_for_one_app() -> None:
         ("remote_attacker", "true"),
         ("remote_attacker", "false"),
     }
-    # Default agent image is the Claude Code reference tag.
-    assert _env_of(docs[0])["AGENT_IMAGE"] == "cybench/mobilecybench:claudecode_2.1.170-r1"
+    assert _env_of(docs[0])["AGENT_IMAGE"] == AGENT_IMAGE
 
 
 def test_all_uses_active_app_catalog() -> None:
@@ -316,7 +317,8 @@ def test_attacker_models_default_to_both() -> None:
     }
 
 
-def test_agent_image_defaults_to_claude_code() -> None:
+def test_generate_requires_agent_image() -> None:
+    """--agent-image is required (coupled to --models, so no default)."""
     res = _generate(
         "--apps",
         "conversations",
@@ -329,9 +331,8 @@ def test_agent_image_defaults_to_claude_code() -> None:
         "--gcs-bucket",
         "test",
     )
-    assert res.returncode == 0, res.stderr
-    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
-    assert _env_of(docs[0])["AGENT_IMAGE"] == "cybench/mobilecybench:claudecode_2.1.170-r1"
+    assert res.returncode != 0
+    assert "--agent-image" in res.stderr
 
 
 def test_no_probe_only_is_rejected() -> None:

@@ -51,46 +51,58 @@ kubectl create secret generic llm-api-keys \
 Probe-only jobs run a real external agent, so placeholder keys from cluster
 setup must be replaced before submitting jobs or running `test_gke.sh`.
 
-### 4. Submit Probe-Only Redteam Jobs
+### 4. Submit the paper grid
 
-GKE jobs run an external coding-agent image against active apps from
-`apps/app_catalog.json`. Synthetic vulnerability IDs are not used.
+The GKE equivalent of `python runner.py --config runner_config_batch.json` — but
+fanned out across the cluster instead of run sequentially. **The defaults are the
+full paper grid** (probe-only redteam, both attacker models, both visibility
+legs), so you only pass the agent image + model and the runner image + bucket:
 
 ```bash
-# Single app
-python infra/gke/generate_jobs.py \
-  --apps conversations \
-  --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \
-  --models openai/gpt-5.5 \
-  --probe-only \
-  --attacker-models malicious_app remote_attacker \
-  --no-codebase-ablation \
-  --agent-wallclock-seconds 1800 \
-  --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
-  --gcs-bucket $PROJECT_ID-mobilecybench-results \
-  --apply
+export PROJECT_ID=your-gcp-project
+export RUNNER_IMAGE=us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest
+export GCS_BUCKET=$PROJECT_ID-mobilecybench-results
 
-# All active apps
-python infra/gke/generate_jobs.py \
-  --all \
-  --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \
-  --models openai/gpt-5.5 \
-  --probe-only \
-  --attacker-models malicious_app remote_attacker \
-  --no-codebase-ablation \
-  --agent-wallclock-seconds 1800 \
-  --image us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest \
-  --gcs-bucket $PROJECT_ID-mobilecybench-results \
+python infra/gke/generate_jobs.py --all \
+  --agent-image cybench/mobilecybench:claudecode_2.1.170-r1 \
+  --models claude-opus-4-8 \
   --apply
 ```
 
-`--no-codebase-ablation` renders both legs (source mounted vs. APK-only). The
-`--image` flag is still the GKE **runner** pod image; `--agent-image` is a
-separate value forwarded into `runner_config.agent_image`. Pass `--models`
-when the agent image expects a specific provider/model string; the opencode
-image examples above use `openai/gpt-5.5`. Probe-only jobs cannot be combined
-with `--dry-run` or `--gold-run`: dry-run skips scoring, and gold-run requires
-a task bundle/reference exploit.
+That renders **13 apps × 2 attacker models × 2 visibility legs = 52 Jobs** and
+applies them. Each cell's `network_mode` + `apk_obfuscation` are set to match the
+visibility leg automatically (source → `permissive`/off, apk-only →
+`restricted`/on), so the grid matches the sequential batch runner.
+
+**Pick the agent image for the CLI you want** (published on Docker Hub, pulled
+automatically by the pods):
+
+| Agent CLI | `--agent-image` | `--models` example |
+|-----------|-----------------|--------------------|
+| Claude Code | `cybench/mobilecybench:claudecode_2.1.170-r1` | `claude-opus-4-8` (any Anthropic id) |
+| opencode | `cybench/mobilecybench:opencode_1.15.6-r1` | `openai/gpt-5.5` (`provider/model`) |
+| codex | `cybench/mobilecybench:codex_0.130.0-r2` | `gpt-5.5` (OpenAI id) |
+
+`--agent-image` and `--models` are **required and coupled** — the agent CLI and
+its model string go together, so there is no default (a claudecode image needs an
+Anthropic model, opencode needs `provider/model`, etc.).
+
+**Narrow it** for a quick smoke run by adding flags:
+
+```bash
+# one app, one visibility leg, one attacker model
+python infra/gke/generate_jobs.py --apps conversations \
+  --agent-image cybench/mobilecybench:claudecode_2.1.170-r1 --models claude-opus-4-8 \
+  --visibility source --attacker-models malicious_app \
+  --apply
+```
+
+- `--visibility {both,source,apk_only}` (default `both`) picks the leg(s);
+  `--no-codebase-ablation` is a deprecated alias for `--visibility both`.
+- `--image` is the GKE **runner** pod image (defaults from `$RUNNER_IMAGE`);
+  `--agent-image` is separate, forwarded into `runner_config.agent_image`.
+- Probe-only is the only supported mode; `--no-probe-only`, `--dry-run`, and
+  `--gold-run` are rejected.
 
 ### 5. Monitor
 
