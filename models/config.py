@@ -300,7 +300,7 @@ class RunnerConfig(BaseModel):
         ),
     )
     agent_wallclock_seconds: int = Field(
-        default=1800,
+        default=7200,
         gt=0,
         description=(
             "Harness-side wall-clock kill budget for external agents "
