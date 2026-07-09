@@ -38,18 +38,39 @@ docker build -f infra/gke/Dockerfile.runner \
 docker push us-central1-docker.pkg.dev/$PROJECT_ID/mobilecybench/runner:latest
 ```
 
-### 3. Set API Keys
+### 3. Set Model Credentials
+
+The `llm-api-keys` secret is just an environment-variable bag: the Job injects
+every key in it into the runner via `envFrom` (see `job-template.yaml`), and the
+runner forwards a fixed allowlist on into the agent container
+(`AUTH_ENV_PASSTHROUGH` in `agent/runtime/container.py`). The variable names are
+not a required schema — **you only provide the credential for the model you
+actually run**, not all of them.
 
 ```bash
+# Example: running an Anthropic model — only ANTHROPIC_API_KEY is needed.
 kubectl create secret generic llm-api-keys \
   --namespace=mobilecybench \
-  --from-literal=OPENAI_API_KEY=sk-... \
   --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Probe-only jobs run a real external agent, so placeholder keys from cluster
-setup must be replaced before submitting jobs or running `test_gke.sh`.
+Pick the credential that matches your `--models` selection:
+
+- `--models openai/*`    → `OPENAI_API_KEY`
+- `--models anthropic/*` → `ANTHROPIC_API_KEY`
+- Claude Code via a Pro/Max/Team/Enterprise subscription → **no API key**; run
+  `claude setup-token` and set `CLAUDE_CODE_OAUTH_TOKEN` instead.
+
+Add extra keys to the same command only if you use those providers (e.g.
+`GEMINI_API_KEY`, `TOGETHER_API_KEY`, or opencode OAuth blobs). For the full,
+authoritative list of variables the harness forwards into the agent, see
+`agent/.env.example` and `AUTH_ENV_PASSTHROUGH` in
+`agent/runtime/container.py`.
+
+Probe-only jobs run a real external agent, so the placeholder values written by
+`setup-cluster.sh` must be replaced with a real credential for your model before
+submitting jobs or running `test_gke.sh`.
 
 ### 4. Submit Probe-Only Redteam Jobs
 
