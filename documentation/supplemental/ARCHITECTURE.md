@@ -196,7 +196,7 @@ Some apps (like Termux) may expose files via other mechanisms, but standard apps
 For running experiments at scale, MobileCybench can be deployed on Google Kubernetes Engine (GKE). Each experiment runs as a Kubernetes Job in a privileged pod with Docker-in-Docker:
 
 ```
-GKE Node (n2d-standard-8, nested virt enabled)
+GKE Node (n2-standard-8, nested virt enabled)
 └── Pod (privileged, /dev/kvm hostPath)
     └── Orchestrator container (DinD)
         ├── Android emulator (container or native process)
