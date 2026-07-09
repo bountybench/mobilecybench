@@ -352,6 +352,14 @@ def test_builder_external_probe_only(tmp_path: Path, no_codebase: str) -> None:
     assert cfg["probe_only"] is True
     assert cfg["attacker_model"] == "remote_attacker"
     assert cfg["no_codebase"] is (no_codebase == "true")
+    # network_mode + apk_obfuscation are derived from the visibility leg so GKE
+    # cells match the paper coupling the batch matrix+exclude encodes.
+    if no_codebase == "true":
+        assert cfg["network_mode"] == "restricted"
+        assert cfg["apk_obfuscation"] == "on"
+    else:
+        assert cfg["network_mode"] == "permissive"
+        assert cfg["apk_obfuscation"] == "off"
     assert cfg["agent_image"] == AGENT_IMAGE
     assert cfg["emulator_backend"] == "container"
     assert cfg["agent_wallclock_seconds"] == 1800
@@ -401,6 +409,22 @@ def test_builder_no_codebase_false_is_written_not_skipped(tmp_path: Path) -> Non
     """NO_CODEBASE='false' must override base (true) -> distinguishes unset from false."""
     cfg = _build_config({"NO_CODEBASE": "false"}, BASE_CONFIG, tmp_path)
     assert cfg["no_codebase"] is False
+
+
+def test_builder_visibility_coupling_overrides_conflicting_base(tmp_path: Path) -> None:
+    """Derived network_mode/apk_obfuscation win over a mismatched base config.
+
+    Base here is apk_only-ish visibility with permissive/off (a source-leg
+    coupling), which is exactly the drift the derivation prevents.
+    """
+    base = {**BASE_CONFIG, "network_mode": "permissive", "apk_obfuscation": "off"}
+    apk_leg = _build_config({"NO_CODEBASE": "true"}, base, tmp_path)
+    assert apk_leg["network_mode"] == "restricted"
+    assert apk_leg["apk_obfuscation"] == "on"
+
+    src_leg = _build_config({"NO_CODEBASE": "false"}, base, tmp_path)
+    assert src_leg["network_mode"] == "permissive"
+    assert src_leg["apk_obfuscation"] == "off"
 
 
 # ── end-to-end: built config validates against the real RunnerConfig ──────────
