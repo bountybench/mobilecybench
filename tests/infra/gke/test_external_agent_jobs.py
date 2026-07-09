@@ -154,7 +154,7 @@ def test_external_probe_only_renders_full_matrix() -> None:
     }
 
 
-def test_external_without_ablation_is_single_leg() -> None:
+def test_visibility_source_is_single_leg() -> None:
     res = _generate(
         "--apps",
         "conversations",
@@ -163,6 +163,8 @@ def test_external_without_ablation_is_single_leg() -> None:
         "--probe-only",
         "--attacker-models",
         "malicious_app",
+        "--visibility",
+        "source",
         "--gcs-bucket",
         "test",
     )
@@ -170,6 +172,24 @@ def test_external_without_ablation_is_single_leg() -> None:
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
     assert len(docs) == 1
     assert _env_of(docs[0])["NO_CODEBASE"] == "false"
+
+
+def test_defaults_render_full_grid_for_one_app() -> None:
+    """With only --apps + --agent-image: both attackers x both legs = 4 cells."""
+    res = _generate(
+        "--apps", "conversations", "--agent-image", AGENT_IMAGE, "--gcs-bucket", "test"
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+    assert len(docs) == 4
+    combos = {(_env_of(d)["ATTACKER_MODEL"], _env_of(d)["NO_CODEBASE"]) for d in docs}
+    assert combos == {
+        ("malicious_app", "true"),
+        ("malicious_app", "false"),
+        ("remote_attacker", "true"),
+        ("remote_attacker", "false"),
+    }
+    assert _env_of(docs[0])["AGENT_IMAGE"] == AGENT_IMAGE
 
 
 def test_all_uses_active_app_catalog() -> None:
@@ -181,6 +201,8 @@ def test_all_uses_active_app_catalog() -> None:
         "--probe-only",
         "--attacker-models",
         "malicious_app",
+        "--visibility",
+        "source",
         "--gcs-bucket",
         "test",
     )
@@ -276,27 +298,44 @@ def test_emulator_gpu_cli_is_plumbed_to_jobs() -> None:
     assert _env_of(docs[0])[EMULATOR_GPU_ENV] == "swangle"
 
 
-def test_external_requires_attacker_models() -> None:
-    res = _generate("--apps", "conversations", "--agent-image", AGENT_IMAGE)
-    assert res.returncode != 0
-    assert "--attacker-models is required" in res.stderr
+def test_attacker_models_default_to_both() -> None:
+    res = _generate(
+        "--apps",
+        "conversations",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--visibility",
+        "source",
+        "--gcs-bucket",
+        "test",
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+    assert {_env_of(d)["ATTACKER_MODEL"] for d in docs} == {
+        "malicious_app",
+        "remote_attacker",
+    }
 
 
 def test_generate_requires_agent_image() -> None:
+    """--agent-image is required (coupled to --models, so no default)."""
     res = _generate(
         "--apps",
         "conversations",
         "--models",
         MODEL,
-        "--probe-only",
         "--attacker-models",
         "malicious_app",
+        "--visibility",
+        "source",
+        "--gcs-bucket",
+        "test",
     )
     assert res.returncode != 0
     assert "--agent-image" in res.stderr
 
 
-def test_generate_requires_probe_only() -> None:
+def test_no_probe_only_is_rejected() -> None:
     res = _generate(
         "--apps",
         "conversations",
@@ -304,9 +343,10 @@ def test_generate_requires_probe_only() -> None:
         AGENT_IMAGE,
         "--attacker-models",
         "malicious_app",
+        "--no-probe-only",
     )
     assert res.returncode != 0
-    assert "--probe-only is required" in res.stderr
+    assert "probe-only" in res.stderr
 
 
 @pytest.mark.parametrize("flag", ["--dry-run", "--gold-run"])
@@ -352,6 +392,14 @@ def test_builder_external_probe_only(tmp_path: Path, no_codebase: str) -> None:
     assert cfg["probe_only"] is True
     assert cfg["attacker_model"] == "remote_attacker"
     assert cfg["no_codebase"] is (no_codebase == "true")
+    # network_mode + apk_obfuscation are derived from the visibility leg so GKE
+    # cells match the visibility coupling the batch matrix+exclude encodes.
+    if no_codebase == "true":
+        assert cfg["network_mode"] == "restricted"
+        assert cfg["apk_obfuscation"] == "on"
+    else:
+        assert cfg["network_mode"] == "permissive"
+        assert cfg["apk_obfuscation"] == "off"
     assert cfg["agent_image"] == AGENT_IMAGE
     assert cfg["emulator_backend"] == "container"
     assert cfg["agent_wallclock_seconds"] == 1800
@@ -401,6 +449,22 @@ def test_builder_no_codebase_false_is_written_not_skipped(tmp_path: Path) -> Non
     """NO_CODEBASE='false' must override base (true) -> distinguishes unset from false."""
     cfg = _build_config({"NO_CODEBASE": "false"}, BASE_CONFIG, tmp_path)
     assert cfg["no_codebase"] is False
+
+
+def test_builder_visibility_coupling_overrides_conflicting_base(tmp_path: Path) -> None:
+    """Derived network_mode/apk_obfuscation win over a mismatched base config.
+
+    Base here is apk_only-ish visibility with permissive/off (a source-leg
+    coupling), which is exactly the drift the derivation prevents.
+    """
+    base = {**BASE_CONFIG, "network_mode": "permissive", "apk_obfuscation": "off"}
+    apk_leg = _build_config({"NO_CODEBASE": "true"}, base, tmp_path)
+    assert apk_leg["network_mode"] == "restricted"
+    assert apk_leg["apk_obfuscation"] == "on"
+
+    src_leg = _build_config({"NO_CODEBASE": "false"}, base, tmp_path)
+    assert src_leg["network_mode"] == "permissive"
+    assert src_leg["apk_obfuscation"] == "off"
 
 
 # ── end-to-end: built config validates against the real RunnerConfig ──────────

@@ -243,7 +243,7 @@
       "type": "integer"
     },
     "agent_wallclock_seconds": {
-      "default": 1800,
+      "default": 7200,
       "description": "Harness-side wall-clock kill budget for external agents (SIGKILL on expiry). Custom agent ignores this and is bounded by max_iterations + llm_request_timeout_ms.",
       "exclusiveMinimum": 0,
       "title": "Agent Wallclock Seconds",

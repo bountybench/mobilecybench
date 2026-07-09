@@ -36,6 +36,15 @@ Or run the active app set sequentially with a batch config:
 python runner.py --config runner_config_batch.json
 ```
 
+Or run the whole grid **in parallel on GKE** — the same 52-cell grid, fanned
+out across a cluster instead of sequential (setup: [`infra/gke/README.md`](infra/gke/README.md)):
+
+```bash
+python infra/gke/generate_jobs.py --all \
+  --agent-image cybench/mobilecybench:claudecode_2.1.170-r1 \
+  --models claude-opus-4-8 --apply
+```
+
 `runner.py` is still the only user-facing runner command. `batch_runner.py` is
 an internal orchestration module that `runner.py` calls when the config contains
 a top-level `batch` block.

@@ -13,6 +13,14 @@
 # Optional fields are written only when their env var is non-empty, so an
 # unset var leaves the base config's value untouched. synthetic_vuln_id is
 # always cleared; GKE no longer accepts synthetic VULN_ID jobs.
+#
+# network_mode and apk_obfuscation are NOT taken from env: they are derived
+# from the effective no_codebase so every GKE cell matches the batch grid's
+# visibility coupling (the same 1:1 the batch config's matrix+exclude encodes):
+#   source-visible (no_codebase=false) -> network_mode=permissive, apk_obfuscation=off
+#   apk_only       (no_codebase=true)  -> network_mode=restricted, apk_obfuscation=on
+# This keeps a full-ablation GKE sweep semantically identical to the batch grid,
+# so the two run paths can't silently drift apart.
 set -e
 
 CONFIG_SRC="${1:?usage: build_runner_config.sh <config_src> <config_dst>}"
@@ -75,6 +83,8 @@ jq --arg model "${MODEL:-}" \
     | if $workflow != "" then .workflow = $workflow else . end
     | if $attacker != "" then .attacker_model = $attacker else . end
     | if $no_codebase != "" then .no_codebase = ($no_codebase == "true") else . end
+    | .network_mode = (if .no_codebase then "restricted" else "permissive" end)
+    | .apk_obfuscation = (if .no_codebase then "on" else "off" end)
     | if $wallclock != "" then .agent_wallclock_seconds = ($wallclock | tonumber) else . end
     | if $probe_only == "true" then
           .probe_only = true | .synthetic_vuln_id = null | .task = null

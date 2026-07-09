@@ -8,20 +8,29 @@ redteam probe-only workflow. It renders one Job per
 agent image carries the model, but a passed model is still plumbed through for
 labeling / runner_config.model. synthetic_vuln_id / VULN_ID are not emitted.
 
-Usage:
-    # External agent, probe-only redteam, both attacker models, source-vs-APK ablation
+The defaults ARE the full grid: probe-only, both attacker models, both
+visibility legs (source + apk_only). You supply the agent image + model (coupled
+CLI/model — no default) and the runner image / results bucket. So the full
+13-app x 2 attacker x 2 visibility = 52-cell grid is:
+
+    RUNNER_IMAGE=...  GCS_BUCKET=...  # or pass --image / --gcs-bucket
+    python infra/gke/generate_jobs.py --all \\
+        --agent-image cybench/mobilecybench:claudecode_2.1.170-r1 \\
+        --models claude-opus-4-8 --apply
+
+Published agent images (pull from Docker Hub, pick the CLI you want):
+    Claude Code  cybench/mobilecybench:claudecode_2.1.170-r1   (Anthropic models)
+    opencode     cybench/mobilecybench:opencode_1.15.6-r1      (provider/model ids)
+    codex        cybench/mobilecybench:codex_0.130.0-r2        (OpenAI models)
+
+Usage (narrowing from the defaults):
+    # One app, one leg, one attacker (quick smoke)
     python infra/gke/generate_jobs.py \\
         --apps conversations \\
-        --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
-        --models openai/gpt-5.5 \\
-        --probe-only --attacker-models malicious_app remote_attacker \\
-        --no-codebase-ablation --gcs-bucket $BUCKET --apply
-
-    # Write YAMLs to a directory instead of stdout/apply
-    python infra/gke/generate_jobs.py \\
-        --all --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
-        --models openai/gpt-5.5 --probe-only \\
-        --attacker-models malicious_app --outdir /tmp/jobs
+        --agent-image cybench/mobilecybench:claudecode_2.1.170-r1 \\
+        --models claude-opus-4-8 \\
+        --visibility source --attacker-models malicious_app \\
+        --image $RUNNER_IMAGE --gcs-bucket $BUCKET --apply
 """
 
 import argparse
@@ -35,6 +44,16 @@ from pathlib import Path
 EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 APP_CATALOG = PROJECT_ROOT / "apps" / "app_catalog.json"
+
+# Defaults chosen so the common case — the full grid — is short:
+#   generate_jobs.py --all --agent-image <img> --models <model> --apply
+# i.e. attacker = both, visibility = both legs, probe-only. --agent-image and
+# --models are deliberately NOT defaulted: the agent CLI and its model string
+# are coupled (a claudecode_* image needs an Anthropic model, opencode_*/codex_*
+# need their own), so a wrong default would silently mis-run every cell.
+DEFAULT_ATTACKER_MODELS = ["malicious_app", "remote_attacker"]
+# source-visible leg first (no_codebase=false), then apk-only (no_codebase=true).
+VISIBILITY_LEGS = {"both": [False, True], "source": [False], "apk_only": [True]}
 
 
 def load_active_apps(catalog_path: Path | None = None) -> list[str]:
@@ -195,7 +214,7 @@ def build_external_jobs(template: str, apps: list[str], args) -> list[tuple[str,
     omitted, the base config's model is left in place.
     """
     models = args.models or [None]
-    legs = [True, False] if args.no_codebase_ablation else [False]
+    legs = VISIBILITY_LEGS[args.visibility]
     jobs = []
     for app in apps:
         for model in models:
@@ -278,8 +297,11 @@ def main():
     ext.add_argument(
         "--agent-image",
         required=True,
-        help="BYO agent image ref (agent_mode=external), e.g. "
-        "cybench/mobilecybench:opencode_1.15.6-r1.",
+        help="BYO agent image ref (agent_mode=external). Required and coupled to "
+        "--models (no default). Published tags: Claude Code "
+        "cybench/mobilecybench:claudecode_2.1.170-r1 (Anthropic models), opencode "
+        "cybench/mobilecybench:opencode_1.15.6-r1, codex "
+        "cybench/mobilecybench:codex_0.130.0-r2.",
     )
     ext.add_argument(
         "--workflow",
@@ -289,19 +311,31 @@ def main():
     )
     ext.add_argument(
         "--probe-only",
-        action="store_true",
-        help="Run redteam in bundle-less probe-only mode (probe_only=true)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Bundle-less probe-only mode (default: on; the only supported GKE "
+        "external mode). --no-probe-only is rejected.",
     )
     ext.add_argument(
         "--attacker-models",
         nargs="+",
         choices=["malicious_app", "remote_attacker"],
-        help="Attacker model(s) to iterate over (required with --agent-image)",
+        default=DEFAULT_ATTACKER_MODELS,
+        help="Attacker model(s) to iterate over (default: both malicious_app and "
+        "remote_attacker).",
+    )
+    ext.add_argument(
+        "--visibility",
+        choices=["both", "source", "apk_only"],
+        default="both",
+        help="Which visibility legs to render (default: both = the source-vs-APK "
+        "ablation, i.e. the full grid). Use 'source' or 'apk_only' to "
+        "render a single leg.",
     )
     ext.add_argument(
         "--no-codebase-ablation",
         action="store_true",
-        help="Render both no_codebase legs (source-vs-APK ablation)",
+        help="Deprecated alias for --visibility both (kept for back-compat).",
     )
     ext.add_argument(
         "--agent-wallclock-seconds",
@@ -330,10 +364,12 @@ def main():
     args = parser.parse_args()
     args.emulator_gpu = args.emulator_gpu.strip()
 
-    if not args.attacker_models:
-        parser.error("--attacker-models is required")
+    # --no-codebase-ablation is a back-compat alias for the default --visibility both.
+    if args.no_codebase_ablation:
+        args.visibility = "both"
+
     if not args.probe_only:
-        parser.error("--probe-only is required for GKE external-agent jobs")
+        parser.error("GKE external-agent jobs are probe-only; remove --no-probe-only")
     if not args.models:
         print(
             "WARNING: --models not set; jobs use the base runner_config.json "
