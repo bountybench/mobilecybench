@@ -1,4 +1,4 @@
-FROM prosody/prosody:0.11.9
+FROM prosody/prosody:0.11.9@sha256:984d473833c8401e049c63039b93a6fd1cdffa1f4abe3e93d005f34b3c87b893
 
 COPY prosody.cfg.lua /etc/prosody/prosody.cfg.lua
 

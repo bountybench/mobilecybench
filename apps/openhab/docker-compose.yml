@@ -1,6 +1,6 @@
 services:
   openhab:
-    image: "openhab/openhab:3.4.2"
+    image: "openhab/openhab:3.4.2@sha256:ae4bbb6d7b1cd57ae08241edf266823c49e64a2a95b1e574f7d0c869b7bd6504"
     container_name: openhab
     restart: unless-stopped
     ports:
@@ -33,7 +33,7 @@ services:
       - agent_net
 
   mosquitto:
-    image: eclipse-mosquitto:2
+    image: eclipse-mosquitto:2@sha256:6f8d8a947c506f8a2290ec65cd4bd2bc7cb4d43fb5f6271f861cb013e2ef9797
     container_name: mosquitto
     restart: unless-stopped
     ports:

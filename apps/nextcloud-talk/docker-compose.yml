@@ -1,6 +1,6 @@
 services:
   tls_proxy:
-    image: nginx:1.28.3-alpine
+    image: nginx:1.28.3-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
     container_name: nextcloud-talk-tls-proxy
     restart: always
     ports:
@@ -26,7 +26,7 @@ services:
       retries: 5
 
   db:
-    image: mariadb:10.6
+    image: mariadb:10.6@sha256:114d40be36852d0a019afd8458f7e1cc63fd300403b115b1f32e31130d5f671b
     container_name: nextcloud-database
     restart: always
     env_file: [.env]
@@ -41,7 +41,7 @@ services:
       retries: 3
 
   app:
-    image: nextcloud:32.0.6
+    image: nextcloud:32.0.6@sha256:297c6ecc0a94a4bb6e55f12d693a1cf3e5ca24797f70f8570d18cf784f757792
     container_name: nextcloud-server
     restart: always
     env_file: [.env]
