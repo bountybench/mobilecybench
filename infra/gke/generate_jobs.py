@@ -369,9 +369,7 @@ def main():
         args.visibility = "both"
 
     if not args.probe_only:
-        parser.error(
-            "GKE external-agent jobs are probe-only; remove --no-probe-only"
-        )
+        parser.error("GKE external-agent jobs are probe-only; remove --no-probe-only")
     if not args.models:
         print(
             "WARNING: --models not set; jobs use the base runner_config.json "
