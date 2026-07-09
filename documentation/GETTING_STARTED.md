@@ -16,6 +16,12 @@ Hardware: the Android emulator needs hardware virtualization (KVM on Linux,
 Hypervisor.framework on macOS) — nested-virt cloud VMs must have it enabled.
 Budget ≥ 16 GB RAM and ~50 GB free disk for the emulator + Docker images.
 
+On Linux, your user also needs read/write access to `/dev/kvm`. On a fresh VM
+that usually means joining the `kvm` group once: `sudo gpasswd -a "$USER" kvm`,
+then log out and back in (group membership is only picked up by a new login).
+Without it the emulator exits immediately at boot; the runner's `ProbeKVM` check
+detects this and prints the same fix.
+
 Windows: use WSL or Git Bash; the shell scripts assume a POSIX environment.
 
 ## 2) Clone + Python env + setup script
