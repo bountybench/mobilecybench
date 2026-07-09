@@ -24,6 +24,76 @@ detects this and prints the same fix.
 
 Windows: use WSL or Git Bash; the shell scripts assume a POSIX environment.
 
+### Where to run
+
+You can run this quick start on **either**:
+
+- **A local machine** (macOS, or Linux with `/dev/kvm`) — skip the VM box below
+  and continue at §2.
+- **A single Google Cloud VM** — the setup we use for our own experiments. Do the
+  one-time provisioning box below, then continue at §2 exactly as written.
+
+> One VM runs **one experiment at a time** (the emulator/KVM is single-tenant per
+> host). To run the 52-cell grid in parallel across many nodes instead, use the
+> Kubernetes path in [`infra/gke/README.md`](../infra/gke/README.md). The GKE path
+> is purely a parallelism optimization — a single VM produces identical results,
+> just serially.
+
+#### Provision a GCE VM (skip if running locally)
+
+Sizing — the numbers and why:
+
+- **Machine type: `n2-standard-8` (8 vCPU / 32 GB), recommended.** One experiment
+  requests 4 vCPU / 16 GB and may burst to 6 vCPU / 24 GB (the resource
+  request/limit in `infra/gke/job-template.yaml`), so `-8` leaves headroom for the
+  host OS, Docker, and the emulator. This is the same shape the GKE node pool uses.
+- **Must be an N2 machine — nested virtualization is required and `N2D` does not
+  support it.** `n2-standard-4` (4 vCPU / 16 GB) is the bare minimum that meets the
+  request but has zero headroom above the burst limit, so it is not recommended;
+  prefer `-8`. Scale by adding VMs, not by shrinking the machine.
+- **`--enable-nested-virtualization` at create time** is what makes `/dev/kvm`
+  appear on the guest. Without this flag the emulator cannot start.
+- **Disk: ≥ 100 GB SSD** (`pd-ssd` or `pd-balanced`); the emulator + Docker images
+  need ~50 GB, so give headroom. Our GKE nodes use 200 GB `pd-ssd`.
+- **OS image: Ubuntu 22.04 LTS.**
+
+```bash
+export PROJECT_ID=your-gcp-project
+
+gcloud compute instances create mobilecybench \
+  --project="$PROJECT_ID" \
+  --zone=us-central1-a \
+  --machine-type=n2-standard-8 \
+  --enable-nested-virtualization \
+  --image-family=ubuntu-2204-lts --image-project=ubuntu-os-cloud \
+  --boot-disk-size=200GB --boot-disk-type=pd-ssd
+```
+
+SSH in and confirm KVM is present:
+
+```bash
+gcloud compute ssh mobilecybench --zone=us-central1-a
+
+# On the VM — /dev/kvm must exist (this is what nested virt provides):
+ls -l /dev/kvm
+```
+
+Install the host toolchain (the equivalent of what a laptop already has):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  docker.io docker-compose-v2 git python3-venv openjdk-17-jdk nodejs npm
+
+# Let your user reach Docker and /dev/kvm without sudo, then re-load groups:
+sudo usermod -aG docker,kvm "$USER"
+newgrp docker   # or log out and back in so the new groups take effect
+```
+
+From here the VM is just a Linux host — **continue with §2 exactly as written.**
+The committed `runner_config.json` already sets `emulator_display: "headless"`, so
+nothing display-related needs changing on a machine with no monitor.
+
 ## 2) Clone + Python env + setup script
 
 ```bash
