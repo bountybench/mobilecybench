@@ -7,14 +7,115 @@ from unittest.mock import patch
 import pytest
 
 from evaluation.replay_apk import (
+    BuildEnvironmentError,
     EvidenceBundle,
     assemble_evidence_log,
+    build_apk,
     gate_check_permissions,
     load_protection_levels,
+    preflight_build_env,
     prepare_ma_apk,
     validate_apk_for_contract,
     wait_for_done_marker,
 )
+
+
+def _fake_sdk(root):
+    """A minimally-complete Android SDK layout that satisfies the preflight."""
+    bt = root / "build-tools" / "34.0.0"
+    bt.mkdir(parents=True)
+    for tool in ("aapt", "apksigner", "d8"):
+        (bt / tool).write_text("#!/bin/sh\n")
+    plat = root / "platforms" / "android-34"
+    plat.mkdir(parents=True)
+    (plat / "android.jar").write_bytes(b"")
+    return root
+
+
+def _sound_build_env(monkeypatch, project_dir, sdk):
+    """Wire env so preflight_build_env passes: SDK + build script + host tools."""
+    (project_dir / "build_exploit_apk.sh").write_text("#!/bin/sh\n")
+    monkeypatch.setenv("ANDROID_HOME", str(sdk))
+    monkeypatch.setattr(
+        "evaluation.replay_apk.shutil.which",
+        lambda exe: f"/usr/bin/{exe}",
+    )
+
+
+class TestPreflightBuildEnv:
+    """Toolchain preflight: an incomplete builder must not look like a bad exploit."""
+
+    def test_passes_with_complete_toolchain(self, tmp_path, monkeypatch):
+        _sound_build_env(monkeypatch, tmp_path, _fake_sdk(tmp_path / "sdk"))
+        preflight_build_env(tmp_path)  # no raise
+
+    def test_raises_when_android_home_unset(self, tmp_path, monkeypatch):
+        (tmp_path / "build_exploit_apk.sh").write_text("#!/bin/sh\n")
+        monkeypatch.delenv("ANDROID_HOME", raising=False)
+        monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+        monkeypatch.setattr(
+            "evaluation.replay_apk.shutil.which", lambda exe: f"/usr/bin/{exe}"
+        )
+        with pytest.raises(BuildEnvironmentError, match="ANDROID_HOME"):
+            preflight_build_env(tmp_path)
+
+    def test_raises_when_build_tools_component_missing(self, tmp_path, monkeypatch):
+        sdk = _fake_sdk(tmp_path / "sdk")
+        (sdk / "build-tools" / "34.0.0" / "d8").unlink()
+        _sound_build_env(monkeypatch, tmp_path, sdk)
+        with pytest.raises(BuildEnvironmentError, match="d8 missing"):
+            preflight_build_env(tmp_path)
+
+    def test_raises_when_zip_absent(self, tmp_path, monkeypatch):
+        _sound_build_env(monkeypatch, tmp_path, _fake_sdk(tmp_path / "sdk"))
+        monkeypatch.setattr(
+            "evaluation.replay_apk.shutil.which",
+            lambda exe: None if exe == "zip" else f"/usr/bin/{exe}",
+        )
+        with pytest.raises(BuildEnvironmentError, match="zip not on PATH"):
+            preflight_build_env(tmp_path)
+
+    def test_raises_when_build_script_not_staged(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ANDROID_HOME", str(_fake_sdk(tmp_path / "sdk")))
+        monkeypatch.setattr(
+            "evaluation.replay_apk.shutil.which", lambda exe: f"/usr/bin/{exe}"
+        )
+        with pytest.raises(BuildEnvironmentError, match="build script not staged"):
+            preflight_build_env(tmp_path)
+
+
+class TestBuildApkClassification:
+    """build_apk separates broken-builder (infra) from bad-source (agent)."""
+
+    def test_incomplete_env_raises_before_running_script(self, tmp_path, monkeypatch):
+        (tmp_path / "build_exploit_apk.sh").write_text("#!/bin/sh\n")
+        monkeypatch.delenv("ANDROID_HOME", raising=False)
+        monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+
+        def _boom(*a, **k):
+            raise AssertionError("build script must not run on a broken toolchain")
+
+        monkeypatch.setattr("evaluation.replay_apk.subprocess.run", _boom)
+        with pytest.raises(BuildEnvironmentError):
+            build_apk(tmp_path)
+
+    def test_compile_failure_is_runtime_error_not_env(self, tmp_path, monkeypatch):
+        _sound_build_env(monkeypatch, tmp_path, _fake_sdk(tmp_path / "sdk"))
+        monkeypatch.setattr(
+            "evaluation.replay_apk.subprocess.run",
+            lambda *a, **k: subprocess.CompletedProcess(a[0], 1, "", "javac: error"),
+        )
+        with pytest.raises(RuntimeError, match="build failed"):
+            build_apk(tmp_path)
+
+    def test_build_env_error_propagates_through_prepare_ma_apk(self, tmp_path):
+        # BuildEnvironmentError must NOT be swallowed into build_failed/exploit_invalid.
+        with patch(
+            "evaluation.replay_apk.build_apk",
+            side_effect=BuildEnvironmentError("no build-tools"),
+        ):
+            with pytest.raises(BuildEnvironmentError):
+                prepare_ma_apk(tmp_path)
 
 
 class TestAssembleEvidenceLog:

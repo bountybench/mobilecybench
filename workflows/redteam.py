@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Protocol
 
-from evaluation.replay_apk import MaArtifact
+from evaluation.replay_apk import BuildEnvironmentError, MaArtifact
 from evaluation.scoring import compute_probe_diff, compute_redteam_score
 from evaluation.task_bundle import (
     TaskBundle,
@@ -1063,6 +1063,19 @@ class RedTeamWorkflow(Workflow):
                 ma_artifact, error = self._prepare_ma_artifact(
                     agent_exploit_dir, ma_perm_log_path
                 )
+            except BuildEnvironmentError as e:
+                # Host build toolchain missing/incomplete (or script not staged)
+                # — we can't build the APK here; the agent's source is untouched.
+                # Retryable on a sound builder, so never exploit_invalid.
+                logger.error(f"MA exploit build environment unusable: {e}")
+                error = self._make_result(
+                    "infrastructure_error",
+                    score=0,
+                    reason="ma_build_env_error",
+                    detail=str(e),
+                )
+                self._save_result(error)
+                return error
             except RuntimeError as e:
                 # adb/dumpsys flake — gate never voted, so not exploit_invalid.
                 logger.error(f"MA artifact preparation crashed: {e}")
