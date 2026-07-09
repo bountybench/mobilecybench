@@ -51,12 +51,12 @@ kubectl create secret generic llm-api-keys \
 Probe-only jobs run a real external agent, so placeholder keys from cluster
 setup must be replaced before submitting jobs or running `test_gke.sh`.
 
-### 4. Submit the paper grid
+### 4. Submit the full grid
 
 The GKE equivalent of `python runner.py --config runner_config_batch.json` — but
 fanned out across the cluster instead of run sequentially. **The defaults are the
-full paper grid** (probe-only redteam, both attacker models, both visibility
-legs), so you only pass the agent image + model and the runner image + bucket:
+full grid** (probe-only redteam, both attacker models, both visibility legs), so
+you only pass the agent image + model and the runner image + bucket:
 
 ```bash
 export PROJECT_ID=your-gcp-project

@@ -36,7 +36,7 @@ Or run the active app set sequentially with a batch config:
 python runner.py --config runner_config_batch.json
 ```
 
-Or run the whole grid **in parallel on GKE** — same 52-cell paper grid, fanned
+Or run the whole grid **in parallel on GKE** — the same 52-cell grid, fanned
 out across a cluster instead of sequential (setup: [`infra/gke/README.md`](infra/gke/README.md)):
 
 ```bash

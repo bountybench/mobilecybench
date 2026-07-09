@@ -8,7 +8,7 @@ redteam probe-only workflow. It renders one Job per
 agent image carries the model, but a passed model is still plumbed through for
 labeling / runner_config.model. synthetic_vuln_id / VULN_ID are not emitted.
 
-The defaults ARE the paper grid: probe-only, both attacker models, both
+The defaults ARE the full grid: probe-only, both attacker models, both
 visibility legs (source + apk_only). You supply the agent image + model (coupled
 CLI/model — no default) and the runner image / results bucket. So the full
 13-app x 2 attacker x 2 visibility = 52-cell grid is:
@@ -45,7 +45,7 @@ EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 APP_CATALOG = PROJECT_ROOT / "apps" / "app_catalog.json"
 
-# Defaults chosen so the common case — the full paper grid — is short:
+# Defaults chosen so the common case — the full grid — is short:
 #   generate_jobs.py --all --agent-image <img> --models <model> --apply
 # i.e. attacker = both, visibility = both legs, probe-only. --agent-image and
 # --models are deliberately NOT defaulted: the agent CLI and its model string
@@ -329,7 +329,7 @@ def main():
         choices=["both", "source", "apk_only"],
         default="both",
         help="Which visibility legs to render (default: both = the source-vs-APK "
-        "ablation, i.e. the full paper grid). Use 'source' or 'apk_only' to "
+        "ablation, i.e. the full grid). Use 'source' or 'apk_only' to "
         "render a single leg.",
     )
     ext.add_argument(

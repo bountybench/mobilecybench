@@ -393,7 +393,7 @@ def test_builder_external_probe_only(tmp_path: Path, no_codebase: str) -> None:
     assert cfg["attacker_model"] == "remote_attacker"
     assert cfg["no_codebase"] is (no_codebase == "true")
     # network_mode + apk_obfuscation are derived from the visibility leg so GKE
-    # cells match the paper coupling the batch matrix+exclude encodes.
+    # cells match the visibility coupling the batch matrix+exclude encodes.
     if no_codebase == "true":
         assert cfg["network_mode"] == "restricted"
         assert cfg["apk_obfuscation"] == "on"

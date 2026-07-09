@@ -15,12 +15,12 @@
 # always cleared; GKE no longer accepts synthetic VULN_ID jobs.
 #
 # network_mode and apk_obfuscation are NOT taken from env: they are derived
-# from the effective no_codebase so every GKE cell matches the paper's
+# from the effective no_codebase so every GKE cell matches the batch grid's
 # visibility coupling (the same 1:1 the batch config's matrix+exclude encodes):
 #   source-visible (no_codebase=false) -> network_mode=permissive, apk_obfuscation=off
 #   apk_only       (no_codebase=true)  -> network_mode=restricted, apk_obfuscation=on
-# This keeps a `--no-codebase-ablation` GKE sweep semantically identical to the
-# batch grid, so the two run paths can't silently drift apart.
+# This keeps a full-ablation GKE sweep semantically identical to the batch grid,
+# so the two run paths can't silently drift apart.
 set -e
 
 CONFIG_SRC="${1:?usage: build_runner_config.sh <config_src> <config_dst>}"
