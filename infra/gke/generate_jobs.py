@@ -8,20 +8,24 @@ redteam probe-only workflow. It renders one Job per
 agent image carries the model, but a passed model is still plumbed through for
 labeling / runner_config.model. synthetic_vuln_id / VULN_ID are not emitted.
 
-Usage:
-    # External agent, probe-only redteam, both attacker models, source-vs-APK ablation
-    python infra/gke/generate_jobs.py \\
-        --apps conversations \\
-        --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
-        --models openai/gpt-5.5 \\
-        --probe-only --attacker-models malicious_app remote_attacker \\
-        --no-codebase-ablation --gcs-bucket $BUCKET --apply
+The defaults ARE the paper grid: probe-only, both attacker models, both
+visibility legs (source + apk_only), Claude Code agent image. So the full
+13-app x 2 attacker x 2 visibility = 52-cell grid is just:
 
-    # Write YAMLs to a directory instead of stdout/apply
+    RUNNER_IMAGE=...  GCS_BUCKET=...  # or pass --image / --gcs-bucket
+    python infra/gke/generate_jobs.py --all --models claude-opus-4-8 --apply
+
+Usage (narrowing from the defaults):
+    # One app, one leg, one attacker (quick smoke)
+    python infra/gke/generate_jobs.py \\
+        --apps conversations --models claude-opus-4-8 \\
+        --visibility source --attacker-models malicious_app \\
+        --image $RUNNER_IMAGE --gcs-bucket $BUCKET --apply
+
+    # A different agent CLI (opencode instead of the default Claude Code image)
     python infra/gke/generate_jobs.py \\
         --all --agent-image cybench/mobilecybench:opencode_1.15.6-r1 \\
-        --models openai/gpt-5.5 --probe-only \\
-        --attacker-models malicious_app --outdir /tmp/jobs
+        --models openai/gpt-5.5 --outdir /tmp/jobs
 """
 
 import argparse
@@ -35,6 +39,14 @@ from pathlib import Path
 EMULATOR_GPU_ENV = "MOBILECYBENCH_EMULATOR_GPU"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 APP_CATALOG = PROJECT_ROOT / "apps" / "app_catalog.json"
+
+# Defaults chosen so the common case — the full paper grid — is short:
+#   generate_jobs.py --all --models <model> --apply
+# i.e. attacker = both, visibility = both legs, probe-only, Claude Code image.
+DEFAULT_AGENT_IMAGE = "cybench/mobilecybench:claudecode_2.1.170-r1"
+DEFAULT_ATTACKER_MODELS = ["malicious_app", "remote_attacker"]
+# source-visible leg first (no_codebase=false), then apk-only (no_codebase=true).
+VISIBILITY_LEGS = {"both": [False, True], "source": [False], "apk_only": [True]}
 
 
 def load_active_apps(catalog_path: Path | None = None) -> list[str]:
@@ -195,7 +207,7 @@ def build_external_jobs(template: str, apps: list[str], args) -> list[tuple[str,
     omitted, the base config's model is left in place.
     """
     models = args.models or [None]
-    legs = [True, False] if args.no_codebase_ablation else [False]
+    legs = VISIBILITY_LEGS[args.visibility]
     jobs = []
     for app in apps:
         for model in models:
@@ -277,9 +289,10 @@ def main():
     ext = parser.add_argument_group("external agent")
     ext.add_argument(
         "--agent-image",
-        required=True,
-        help="BYO agent image ref (agent_mode=external), e.g. "
-        "cybench/mobilecybench:opencode_1.15.6-r1.",
+        default=DEFAULT_AGENT_IMAGE,
+        help="BYO agent image ref (agent_mode=external). Default: "
+        f"{DEFAULT_AGENT_IMAGE} (Claude Code). Use an opencode_*/codex_* tag "
+        "for those CLIs.",
     )
     ext.add_argument(
         "--workflow",
@@ -289,19 +302,31 @@ def main():
     )
     ext.add_argument(
         "--probe-only",
-        action="store_true",
-        help="Run redteam in bundle-less probe-only mode (probe_only=true)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Bundle-less probe-only mode (default: on; the only supported GKE "
+        "external mode). --no-probe-only is rejected.",
     )
     ext.add_argument(
         "--attacker-models",
         nargs="+",
         choices=["malicious_app", "remote_attacker"],
-        help="Attacker model(s) to iterate over (required with --agent-image)",
+        default=DEFAULT_ATTACKER_MODELS,
+        help="Attacker model(s) to iterate over (default: both malicious_app and "
+        "remote_attacker).",
+    )
+    ext.add_argument(
+        "--visibility",
+        choices=["both", "source", "apk_only"],
+        default="both",
+        help="Which visibility legs to render (default: both = the source-vs-APK "
+        "ablation, i.e. the full paper grid). Use 'source' or 'apk_only' to "
+        "render a single leg.",
     )
     ext.add_argument(
         "--no-codebase-ablation",
         action="store_true",
-        help="Render both no_codebase legs (source-vs-APK ablation)",
+        help="Deprecated alias for --visibility both (kept for back-compat).",
     )
     ext.add_argument(
         "--agent-wallclock-seconds",
@@ -330,10 +355,14 @@ def main():
     args = parser.parse_args()
     args.emulator_gpu = args.emulator_gpu.strip()
 
-    if not args.attacker_models:
-        parser.error("--attacker-models is required")
+    # --no-codebase-ablation is a back-compat alias for the default --visibility both.
+    if args.no_codebase_ablation:
+        args.visibility = "both"
+
     if not args.probe_only:
-        parser.error("--probe-only is required for GKE external-agent jobs")
+        parser.error(
+            "GKE external-agent jobs are probe-only; remove --no-probe-only"
+        )
     if not args.models:
         print(
             "WARNING: --models not set; jobs use the base runner_config.json "

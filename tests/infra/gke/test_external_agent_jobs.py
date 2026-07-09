@@ -154,7 +154,7 @@ def test_external_probe_only_renders_full_matrix() -> None:
     }
 
 
-def test_external_without_ablation_is_single_leg() -> None:
+def test_visibility_source_is_single_leg() -> None:
     res = _generate(
         "--apps",
         "conversations",
@@ -163,6 +163,8 @@ def test_external_without_ablation_is_single_leg() -> None:
         "--probe-only",
         "--attacker-models",
         "malicious_app",
+        "--visibility",
+        "source",
         "--gcs-bucket",
         "test",
     )
@@ -170,6 +172,23 @@ def test_external_without_ablation_is_single_leg() -> None:
     docs = [d for d in yaml.safe_load_all(res.stdout) if d]
     assert len(docs) == 1
     assert _env_of(docs[0])["NO_CODEBASE"] == "false"
+
+
+def test_defaults_render_full_grid_for_one_app() -> None:
+    """No matrix flags: both attackers x both visibility legs = 4 cells."""
+    res = _generate("--apps", "conversations", "--gcs-bucket", "test")
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+    assert len(docs) == 4
+    combos = {(_env_of(d)["ATTACKER_MODEL"], _env_of(d)["NO_CODEBASE"]) for d in docs}
+    assert combos == {
+        ("malicious_app", "true"),
+        ("malicious_app", "false"),
+        ("remote_attacker", "true"),
+        ("remote_attacker", "false"),
+    }
+    # Default agent image is the Claude Code reference tag.
+    assert _env_of(docs[0])["AGENT_IMAGE"] == "cybench/mobilecybench:claudecode_2.1.170-r1"
 
 
 def test_all_uses_active_app_catalog() -> None:
@@ -181,6 +200,8 @@ def test_all_uses_active_app_catalog() -> None:
         "--probe-only",
         "--attacker-models",
         "malicious_app",
+        "--visibility",
+        "source",
         "--gcs-bucket",
         "test",
     )
@@ -276,27 +297,44 @@ def test_emulator_gpu_cli_is_plumbed_to_jobs() -> None:
     assert _env_of(docs[0])[EMULATOR_GPU_ENV] == "swangle"
 
 
-def test_external_requires_attacker_models() -> None:
-    res = _generate("--apps", "conversations", "--agent-image", AGENT_IMAGE)
-    assert res.returncode != 0
-    assert "--attacker-models is required" in res.stderr
+def test_attacker_models_default_to_both() -> None:
+    res = _generate(
+        "--apps",
+        "conversations",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--visibility",
+        "source",
+        "--gcs-bucket",
+        "test",
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+    assert {_env_of(d)["ATTACKER_MODEL"] for d in docs} == {
+        "malicious_app",
+        "remote_attacker",
+    }
 
 
-def test_generate_requires_agent_image() -> None:
+def test_agent_image_defaults_to_claude_code() -> None:
     res = _generate(
         "--apps",
         "conversations",
         "--models",
         MODEL,
-        "--probe-only",
         "--attacker-models",
         "malicious_app",
+        "--visibility",
+        "source",
+        "--gcs-bucket",
+        "test",
     )
-    assert res.returncode != 0
-    assert "--agent-image" in res.stderr
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+    assert _env_of(docs[0])["AGENT_IMAGE"] == "cybench/mobilecybench:claudecode_2.1.170-r1"
 
 
-def test_generate_requires_probe_only() -> None:
+def test_no_probe_only_is_rejected() -> None:
     res = _generate(
         "--apps",
         "conversations",
@@ -304,9 +342,10 @@ def test_generate_requires_probe_only() -> None:
         AGENT_IMAGE,
         "--attacker-models",
         "malicious_app",
+        "--no-probe-only",
     )
     assert res.returncode != 0
-    assert "--probe-only is required" in res.stderr
+    assert "probe-only" in res.stderr
 
 
 @pytest.mark.parametrize("flag", ["--dry-run", "--gold-run"])
