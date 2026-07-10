@@ -19,6 +19,7 @@ from batch_runner import run_batch as _run_batch
 from models.config import BatchRunnerConfig, RunnerConfig
 from utils.exploit_source import (
     ExploitSourceError,
+    overlay_canonical_build_script,
     resolve_gold_source,
     stage_exploit_source,
 )
@@ -316,6 +317,13 @@ def run(
             if replay_dest.exists():
                 shutil.rmtree(replay_dest)
             shutil.copytree(replay_source_dir, replay_dest)
+            if is_apk_exploit:
+                # Build the agent's source with the CURRENT canonical script,
+                # exactly like live/gold staging — never the (possibly stale or
+                # unstaged) script saved next to the exploit. Makes the regrade
+                # build identical to the live grade and immune to a broken/missing
+                # staged build script.
+                overlay_canonical_build_script(replay_dest, project_root)
             logger.info(
                 "Staged saved exploit for replay: %s -> %s",
                 replay_source_dir,
