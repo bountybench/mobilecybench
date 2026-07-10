@@ -199,10 +199,21 @@ output_dir = Path(sys.argv[3])
 timeout = int(sys.argv[4])
 
 sys.path.insert(0, str(root_dir))
-from evaluation.replay_apk import prepare_ma_apk, replay_malicious_apk
+from evaluation.replay_apk import (
+    BuildEnvironmentError,
+    prepare_ma_apk,
+    replay_malicious_apk,
+)
 
 perm_log = output_dir / "exploit_apk_permissions.json"
-artifact = prepare_ma_apk(apk_project_dir, perm_log)
+try:
+    artifact = prepare_ma_apk(apk_project_dir, perm_log)
+except BuildEnvironmentError as e:
+    # Broken/incomplete host toolchain (or unstaged script) — infra, not the
+    # agent. Distinct exit 3 so external CI consumers do not read it as a
+    # failed exploit (the 0/1 contract below); retryable on a sound builder.
+    print(f"[replay] build environment unusable (infra, retryable): {e}", file=sys.stderr)
+    raise SystemExit(3)
 if artifact.apk_path is None:
     print(f"[replay] APK rejected: {artifact.reason} — {artifact.detail}", file=sys.stderr)
     raise SystemExit(2)

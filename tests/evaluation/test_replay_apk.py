@@ -20,13 +20,13 @@ from evaluation.replay_apk import (
 )
 
 
-def _fake_sdk(root):
+def _fake_sdk(root, version="34.0.0", platform="android-34"):
     """A minimally-complete Android SDK layout that satisfies the preflight."""
-    bt = root / "build-tools" / "34.0.0"
+    bt = root / "build-tools" / version
     bt.mkdir(parents=True)
-    for tool in ("aapt", "apksigner", "d8"):
+    for tool in ("aapt", "zipalign", "apksigner", "d8"):
         (bt / tool).write_text("#!/bin/sh\n")
-    plat = root / "platforms" / "android-34"
+    plat = root / "platforms" / platform
     plat.mkdir(parents=True)
     (plat / "android.jar").write_bytes(b"")
     return root
@@ -66,6 +66,15 @@ class TestPreflightBuildEnv:
         with pytest.raises(BuildEnvironmentError, match="d8 missing"):
             preflight_build_env(tmp_path)
 
+    def test_raises_when_zipalign_missing(self, tmp_path, monkeypatch):
+        # zipalign is used by build_exploit_apk.sh but was omitted from the
+        # original check — a build-tools missing it would fake an exploit_invalid.
+        sdk = _fake_sdk(tmp_path / "sdk")
+        (sdk / "build-tools" / "34.0.0" / "zipalign").unlink()
+        _sound_build_env(monkeypatch, tmp_path, sdk)
+        with pytest.raises(BuildEnvironmentError, match="zipalign missing"):
+            preflight_build_env(tmp_path)
+
     def test_raises_when_zip_absent(self, tmp_path, monkeypatch):
         _sound_build_env(monkeypatch, tmp_path, _fake_sdk(tmp_path / "sdk"))
         monkeypatch.setattr(
@@ -74,6 +83,41 @@ class TestPreflightBuildEnv:
         )
         with pytest.raises(BuildEnvironmentError, match="zip not on PATH"):
             preflight_build_env(tmp_path)
+
+    def test_raises_when_unzip_absent(self, tmp_path, monkeypatch):
+        # unzip is used by the script's classes.dex sanity check.
+        _sound_build_env(monkeypatch, tmp_path, _fake_sdk(tmp_path / "sdk"))
+        monkeypatch.setattr(
+            "evaluation.replay_apk.shutil.which",
+            lambda exe: None if exe == "unzip" else f"/usr/bin/{exe}",
+        )
+        with pytest.raises(BuildEnvironmentError, match="unzip not on PATH"):
+            preflight_build_env(tmp_path)
+
+    def test_validates_highest_version_by_sort_v_not_lexicographic(
+        self, tmp_path, monkeypatch
+    ):
+        # Script uses `sort -V`: build-tools 34.0.0 > 9.0.0. A complete 34.0.0
+        # with an incomplete 9.0.0 must PASS (lexicographic would wrongly pick
+        # 9.0.0 and fail); an incomplete 34.0.0 must FAIL even next to a
+        # complete 9.0.0.
+        sdk = _fake_sdk(tmp_path / "sdk", version="34.0.0", platform="android-34")
+        stale = sdk / "build-tools" / "9.0.0"
+        stale.mkdir(parents=True)
+        (stale / "aapt").write_text("#!/bin/sh\n")  # deliberately incomplete
+        _sound_build_env(monkeypatch, tmp_path, sdk)
+        preflight_build_env(tmp_path)  # no raise: 34.0.0 is the one that counts
+
+        (sdk / "build-tools" / "34.0.0" / "d8").unlink()
+        with pytest.raises(BuildEnvironmentError, match="d8 missing.*34.0.0"):
+            preflight_build_env(tmp_path)
+
+    def test_stray_file_under_build_tools_is_ignored(self, tmp_path, monkeypatch):
+        # A non-directory entry (e.g. source.properties) must not be selected.
+        sdk = _fake_sdk(tmp_path / "sdk")
+        (sdk / "build-tools" / "zzz-source.properties").write_text("x")
+        _sound_build_env(monkeypatch, tmp_path, sdk)
+        preflight_build_env(tmp_path)  # no raise
 
     def test_raises_when_build_script_not_staged(self, tmp_path, monkeypatch):
         monkeypatch.setenv("ANDROID_HOME", str(_fake_sdk(tmp_path / "sdk")))
