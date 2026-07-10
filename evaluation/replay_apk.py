@@ -138,15 +138,44 @@ class BuildEnvironmentError(Exception):
     """
 
 
+def _version_sort_key(name: str) -> list:
+    """Natural-version key mirroring the build script's ``sort -V``.
+
+    build_exploit_apk.sh selects with ``ls | sort -V | tail -1``, a true version
+    sort. Plain lexicographic ``sorted()`` disagrees on mixed-width majors
+    (``9.0.0`` vs ``34.0.0``, ``android-9`` vs ``android-34``), which would make
+    the preflight validate a different directory than the build actually uses —
+    reintroducing the very misclassification this module exists to prevent. Split
+    into digit / non-digit runs so numeric components compare numerically.
+    """
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
+
+
+def _highest_version_dir(parent: Path, pattern: str) -> Path | None:
+    """Highest-versioned child directory of ``parent`` matching ``pattern``.
+
+    Filters to directories (like ``_aapt_path``) so a stray file under
+    build-tools/ can't be mistaken for a version, and orders with
+    ``_version_sort_key`` to match the build script's ``sort -V``.
+    """
+    dirs = [p for p in parent.glob(pattern) if p.is_dir()]
+    if not dirs:
+        return None
+    return max(dirs, key=lambda p: _version_sort_key(p.name))
+
+
 def preflight_build_env(project_dir: Path) -> None:
     """Verify the Android build toolchain is present before invoking the build.
 
     build_exploit_apk.sh needs ANDROID_HOME (build-tools + a platform android.jar
-    + aapt/apksigner/d8) plus host ``javac`` and ``zip``. When any of these are
-    absent the script exits non-zero for a reason that has nothing to do with
-    the agent's exploit — historically that got recorded as ``exploit_invalid``,
-    silently converting a broken replay host into a fabricated non-signal. Fail
-    fast and loud with a distinct error instead.
+    + aapt/zipalign/apksigner/d8) plus host ``javac``, ``zip`` and ``unzip``. When
+    any of these are absent the script exits non-zero for a reason that has
+    nothing to do with the agent's exploit — historically that got recorded as
+    ``exploit_invalid``, silently converting a broken replay host into a
+    fabricated non-signal. Fail fast and loud with a distinct error instead.
+
+    The checked set is kept in lockstep with templates/malicious_app/
+    build_exploit_apk.sh — if that script's tool usage changes, update this list.
 
     Raises BuildEnvironmentError listing every missing component.
     """
@@ -165,22 +194,22 @@ def preflight_build_env(project_dir: Path) -> None:
         if not sdk.is_dir():
             missing.append(f"ANDROID_HOME does not exist: {sdk}")
         else:
-            # Mirror the build script's discovery: highest build-tools + platform.
-            build_tools = sorted((sdk / "build-tools").glob("*"))
-            if not build_tools:
+            # Mirror the build script's discovery: highest build-tools + platform
+            # by version sort (sort -V), not lexicographic order.
+            bt = _highest_version_dir(sdk / "build-tools", "*")
+            if bt is None:
                 missing.append(f"no build-tools under {sdk}/build-tools")
             else:
-                bt = build_tools[-1]
-                for tool in ("aapt", "apksigner", "d8"):
+                for tool in ("aapt", "zipalign", "apksigner", "d8"):
                     if not (bt / tool).exists():
                         missing.append(f"{tool} missing from {bt}")
-            platforms = sorted((sdk / "platforms").glob("android-*"))
-            if not platforms:
+            platform = _highest_version_dir(sdk / "platforms", "android-*")
+            if platform is None:
                 missing.append(f"no platforms under {sdk}/platforms")
-            elif not (platforms[-1] / "android.jar").exists():
-                missing.append(f"android.jar missing from {platforms[-1]}")
+            elif not (platform / "android.jar").exists():
+                missing.append(f"android.jar missing from {platform}")
 
-    for exe in ("javac", "zip"):
+    for exe in ("javac", "zip", "unzip"):
         if shutil.which(exe) is None:
             missing.append(f"{exe} not on PATH")
 
