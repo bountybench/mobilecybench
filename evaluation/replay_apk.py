@@ -14,6 +14,7 @@ third-party app on a production user-build phone.
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -126,15 +127,112 @@ class GateResult:
 # ---------------------------------------------------------------------------
 
 
-def build_apk(project_dir: Path) -> Path:
-    """Run build_exploit_apk.sh, return the built APK path.
+class BuildEnvironmentError(Exception):
+    """The host build toolchain is missing/incomplete, or the canonical build
+    script wasn't staged.
 
-    Raises RuntimeError on build failure or missing output. Distinct from
-    infra failure: callers map to status=exploit_invalid (agent's source).
+    Deliberately NOT a RuntimeError so it does not get swept into the
+    ``exploit_invalid`` (agent-fault) bucket: it means *we* can't build the
+    APK here, not that the agent's source is bad. Callers map it to
+    ``infrastructure_error`` (retryable) — see workflows/redteam.py.
     """
+
+
+def _version_sort_key(name: str) -> list:
+    """Natural-version key mirroring the build script's ``sort -V``.
+
+    build_exploit_apk.sh selects with ``ls | sort -V | tail -1``, a true version
+    sort. Plain lexicographic ``sorted()`` disagrees on mixed-width majors
+    (``9.0.0`` vs ``34.0.0``, ``android-9`` vs ``android-34``), which would make
+    the preflight validate a different directory than the build actually uses —
+    reintroducing the very misclassification this module exists to prevent. Split
+    into digit / non-digit runs so numeric components compare numerically.
+    """
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
+
+
+def _highest_version_dir(parent: Path, pattern: str) -> Path | None:
+    """Highest-versioned child directory of ``parent`` matching ``pattern``.
+
+    Filters to directories (like ``_aapt_path``) so a stray file under
+    build-tools/ can't be mistaken for a version, and orders with
+    ``_version_sort_key`` to match the build script's ``sort -V``.
+    """
+    dirs = [p for p in parent.glob(pattern) if p.is_dir()]
+    if not dirs:
+        return None
+    return max(dirs, key=lambda p: _version_sort_key(p.name))
+
+
+def preflight_build_env(project_dir: Path) -> None:
+    """Verify the Android build toolchain is present before invoking the build.
+
+    build_exploit_apk.sh needs ANDROID_HOME (build-tools + a platform android.jar
+    + aapt/zipalign/apksigner/d8) plus host ``javac``, ``zip`` and ``unzip``. When
+    any of these are absent the script exits non-zero for a reason that has
+    nothing to do with the agent's exploit — historically that got recorded as
+    ``exploit_invalid``, silently converting a broken replay host into a
+    fabricated non-signal. Fail fast and loud with a distinct error instead.
+
+    The checked set is kept in lockstep with templates/malicious_app/
+    build_exploit_apk.sh — if that script's tool usage changes, update this list.
+
+    Raises BuildEnvironmentError listing every missing component.
+    """
+    missing: list[str] = []
+
+    if not (project_dir / "build_exploit_apk.sh").exists():
+        # The canonical script is harness-overlaid (templates/malicious_app/),
+        # so its absence is a staging fault, never the agent's.
+        missing.append(f"build script not staged at {project_dir}/build_exploit_apk.sh")
+
+    android_home = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
+    if not android_home:
+        missing.append("ANDROID_HOME/ANDROID_SDK_ROOT unset")
+    else:
+        sdk = Path(android_home)
+        if not sdk.is_dir():
+            missing.append(f"ANDROID_HOME does not exist: {sdk}")
+        else:
+            # Mirror the build script's discovery: highest build-tools + platform
+            # by version sort (sort -V), not lexicographic order.
+            bt = _highest_version_dir(sdk / "build-tools", "*")
+            if bt is None:
+                missing.append(f"no build-tools under {sdk}/build-tools")
+            else:
+                for tool in ("aapt", "zipalign", "apksigner", "d8"):
+                    if not (bt / tool).exists():
+                        missing.append(f"{tool} missing from {bt}")
+            platform = _highest_version_dir(sdk / "platforms", "android-*")
+            if platform is None:
+                missing.append(f"no platforms under {sdk}/platforms")
+            elif not (platform / "android.jar").exists():
+                missing.append(f"android.jar missing from {platform}")
+
+    for exe in ("javac", "zip", "unzip"):
+        if shutil.which(exe) is None:
+            missing.append(f"{exe} not on PATH")
+
+    if missing:
+        raise BuildEnvironmentError(
+            "exploit build environment incomplete: " + "; ".join(missing)
+        )
+
+
+def build_apk(project_dir: Path) -> Path:
+    """Build the agent's exploit source via the canonical build_exploit_apk.sh.
+
+    Two failure classes, kept distinct so grading blames the right party:
+
+    * BuildEnvironmentError — the host toolchain is missing/incomplete or the
+      canonical script wasn't staged. This is *our* fault; callers map it to
+      ``infrastructure_error`` and it is retryable on a sound builder.
+    * RuntimeError — the toolchain is present but the agent's source failed to
+      compile (or produced no APK). This is the agent's fault; callers map it
+      to ``exploit_invalid``.
+    """
+    preflight_build_env(project_dir)
     build_script = project_dir / "build_exploit_apk.sh"
-    if not build_script.exists():
-        raise RuntimeError(f"Build script not found: {build_script}")
 
     logger.info("Building exploit APK...")
     proc = subprocess.run(
@@ -676,6 +774,10 @@ def prepare_ma_apk(
     try:
         apk_path = build_apk(apk_dir)
     except RuntimeError as e:
+        # Agent's source didn't compile → exploit_invalid. A
+        # BuildEnvironmentError (broken host toolchain) is deliberately NOT
+        # caught here: it propagates so the workflow maps it to
+        # infrastructure_error rather than blaming the agent.
         return MaArtifact(None, None, "build_failed", str(e))
 
     ok, reason, detail = validate_apk_for_contract(
