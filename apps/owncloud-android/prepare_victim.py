@@ -79,6 +79,37 @@ def _dismiss_system_anr(d=None) -> bool:
         return False
 
 
+def _dismiss_system_blocker(d=None) -> bool:
+    """Dismiss known non-app system dialogs that block ownCloud login.
+
+    Emulator boots can surface platform alerts such as "SIM added" over the app.
+    They use generic AlertDialog ids, so clicking button1 can trigger destructive
+    actions like rebooting. Press BACK for known safe-to-close alerts and leave
+    unknown dialogs alone for diagnostics.
+    """
+    try:
+        if d is None:
+            if _anr_d is None:
+                d = u2.connect()
+            else:
+                d = _anr_d
+        title_node = d(resourceId="android:id/alertTitle")
+        message_node = d(resourceId="android:id/message")
+        title = (title_node.get_text() or "").strip() if title_node.exists else ""
+        message = (message_node.get_text() or "").strip() if message_node.exists else ""
+        known_titles = {"SIM added"}
+        if title not in known_titles:
+            return False
+        subprocess.run(
+            ["adb", "shell", "input", "keyevent", "KEYCODE_BACK"], check=False
+        )
+        log(f"System dialog dismissed: {title}: {message[:80]}")
+        time.sleep(0.5)
+        return True
+    except Exception:
+        return False
+
+
 def wait_until(check, timeout=30, interval=0.5):
     """Poll for ``check()`` truthy, dismissing system ANR dialogs each tick.
 
@@ -89,6 +120,7 @@ def wait_until(check, timeout=30, interval=0.5):
     deadline = time.time() + timeout
     while time.time() < deadline:
         _dismiss_system_anr()
+        _dismiss_system_blocker()
         if check():
             return True
         time.sleep(interval)
@@ -145,6 +177,7 @@ def handle_whats_new(d, timeout=60):
     deadline = time.time() + timeout
     while time.time() < deadline:
         _dismiss_system_anr(d)
+        _dismiss_system_blocker(d)
         if d(resourceId=f"{APP}:id/hostUrlInput").exists:
             log("WhatsNew: hostUrlInput visible — no intro screen, returning")
             return
@@ -259,6 +292,7 @@ def submit_web_login(d, username, password):
     deadline = time.time() + 120
     while time.time() < deadline:
         _dismiss_system_anr(d)
+        _dismiss_system_blocker(d)
         if d(text="Login", className="android.widget.Button").exists:
             log("web_login: Login button visible")
             break
@@ -273,6 +307,7 @@ def submit_web_login(d, username, password):
     fields_count = 0
     while time.time() < fields_deadline:
         _dismiss_system_anr(d)
+        _dismiss_system_blocker(d)
         fields = d(className="android.widget.EditText")
         fields_count = fields.count
         if fields_count >= 2:
