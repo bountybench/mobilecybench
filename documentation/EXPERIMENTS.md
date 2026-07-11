@@ -307,6 +307,16 @@ Phase 1 / probe-only `exploit_timeout` → `infrastructure_error` →
 `probe_evaluator_error` → scored diff result. A Phase 2 `done.marker`
 timeout is not terminal by itself; it is treated as patched-side exploit
 failure and included in `signals.phase2_timed_out` when diff scoring runs.
+On a Phase 2 timeout `patch_diff` is withheld (forced to 0): the patched-side
+success marker is absent by construction, so it is tautological with the
+timeout and cannot be distinguished from a reaped-process flake. Promotion to
+`verified` therefore requires an independently measured signal (`probe_diff`
+or `verifier_diff`); a Phase 2 timeout carrying only `patch_diff` scores
+`needs_review`. That withholding is recorded in `signals.patch_diff_withheld`:
+when it is 1, the exploit self-reported success in Phase 1 and then failed to
+complete against the patched app — a likely-correct attribution (the patch
+blocked the exploit's callback) that ranks above a generic no-signal
+`needs_review` for triage, even though it is not auto-promoted.
 
 ## MA permission gate
 

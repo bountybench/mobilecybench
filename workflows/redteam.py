@@ -1390,6 +1390,22 @@ class RedTeamWorkflow(Workflow):
             bool(p1["success_marker_present"])
             and not bool(p2["success_marker_present"])
         )
+        # On a phase-2 timeout the patched-side success marker is absent by
+        # construction, so patch_diff collapses to "did phase 1 succeed" —
+        # tautological with the timeout and indistinguishable from a flake
+        # whose process was reaped before writing its honest succeeded=false
+        # marker. It carries no independent bit about whether the patch
+        # worked, so it must not promote on its own. The independently
+        # measured verifier_diff / probe_diff still score normally against
+        # post-replay state, and phase2_timed_out records why patch_diff is
+        # withheld. patch_diff_withheld preserves the fact that patch_diff
+        # *would* have fired — the exploit self-reported success in phase 1
+        # and then failed to complete on the patched app — so a consumer can
+        # rank this needs_review above a generic no-signal cell.
+        patch_diff_withheld = 0
+        if p2.get("timed_out"):
+            patch_diff_withheld = patch_diff
+            patch_diff = 0
         probe_vuln = int(p1["probes_triggered"])
         probe_patched = int(p2["probes_triggered"])
 
@@ -1409,10 +1425,23 @@ class RedTeamWorkflow(Workflow):
             verifier_diff, patch_diff, probe_diff
         )
         if p2.get("timed_out"):
-            reason = (
-                f"{reason}; phase2_timed_out: done.marker not written within "
-                "apk_timeout"
-            )
+            if status == "needs_review" and patch_diff_withheld:
+                # Not a generic no-signal cell: the exploit self-reported
+                # success in phase 1 and then failed to complete against the
+                # patched app. That is a likely-correct attribution (the patch
+                # blocked the exploit's callback), just unconfirmed by an
+                # independent probe/verifier diff — so it ranks above a plain
+                # "nothing fired" needs_review for manual triage.
+                reason = (
+                    "needs_review: phase1 exploit self-reported success and "
+                    "phase2 timed out (patch likely blocked the exploit); no "
+                    "independent probe/verifier diff to confirm — manual triage"
+                )
+            else:
+                reason = (
+                    f"{reason}; phase2_timed_out: done.marker not written "
+                    "within apk_timeout"
+                )
         logger.info(
             f"[scoring] signals: verifier_diff={verifier_diff} "
             f"patch_diff={patch_diff} probe_diff={probe_diff} "
@@ -1432,7 +1461,14 @@ class RedTeamWorkflow(Workflow):
                 "probe_diff": probe_diff,
                 "probe_vuln": probe_vuln,
                 "probe_patched": probe_patched,
-                **({"phase2_timed_out": 1} if p2.get("timed_out") else {}),
+                **(
+                    {
+                        "phase2_timed_out": 1,
+                        "patch_diff_withheld": patch_diff_withheld,
+                    }
+                    if p2.get("timed_out")
+                    else {}
+                ),
             },
             phases={
                 "phase1_original": self._phase_summary(p1),
