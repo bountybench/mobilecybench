@@ -18,6 +18,7 @@ def install_app_and_setup_backend(
     container_names: list[str] | None = None,
     apk_path: Optional[Path] = None,
     inject_flags: bool = True,
+    compose_env: Optional[dict] = None,
 ) -> None:
     """
     Install the app and set up backend services.
@@ -31,10 +32,19 @@ def install_app_and_setup_backend(
         container_names: Backend container names (required when start_ssrf=True)
         apk_path: Optional path to APK file (passed to start_runtime.sh --apk)
         inject_flags: Whether to inject security flags (discovery mode only)
+        compose_env: Optional env overrides (e.g. COMPOSE_FILE) merged into the
+            start_runtime.sh subprocess for a server-side zero-day image swap.
     """
+    import os
+
     from utils.command_executor import CommandExecutor
 
     cmd = CommandExecutor()
+
+    runtime_env = None
+    if compose_env:
+        runtime_env = os.environ.copy()
+        runtime_env.update(compose_env)
 
     # Sanity check: emulator should already be booted by the workflow caller
     if not emulator.check_status():
@@ -54,6 +64,7 @@ def install_app_and_setup_backend(
             timeout=build_command_timeout,
             message="Setting up backend and installing APK",
             cwd=app_dir,
+            env=runtime_env,
         )
     elif legacy_script.exists():
         logger.info("Using legacy setup.sh")
@@ -62,6 +73,7 @@ def install_app_and_setup_backend(
             timeout=build_command_timeout,
             message="Setting up backend and installing APK",
             cwd=app_dir,
+            env=runtime_env,
         )
     else:
         raise FileNotFoundError(

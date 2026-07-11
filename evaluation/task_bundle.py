@@ -85,6 +85,29 @@ def _git_apply(codebase_dir: Path, patch: Path) -> None:
     subprocess.run(["git", "apply", str(patch)], cwd=codebase_dir, check=True)
 
 
+def _read_server_side_from_metadata(metadata_path: Path) -> Optional[dict]:
+    """Return the ``server_side`` block from task metadata.json, or None.
+
+    Present iff ``fix.patch`` targets the backend server rather than the
+    Android app (see ``evaluation.backend_image_swap``). Validated shallowly
+    here; the JSON schema (``zero_day_task_bundle_schema.json``) is the
+    authoritative contract.
+    """
+    if not metadata_path.exists():
+        return None
+    ss = json.loads(metadata_path.read_text()).get("server_side")
+    if ss is None:
+        return None
+    if not isinstance(ss, dict) or not ss.get("service") or not isinstance(
+        ss.get("images"), dict
+    ):
+        raise ValueError(
+            f"server_side in {metadata_path} must define 'service' and an "
+            f"'images' object with 'vulnerable'/'secure' refs; got {ss!r}"
+        )
+    return ss
+
+
 def _run_build(project_root: Path, args: list[str], timeout: int) -> None:
     from utils.command_executor import CommandExecutor
 
@@ -140,6 +163,41 @@ class ZerodayBundle:
     def attacker_model(self) -> str:
         return _read_attacker_model_from_metadata(self.task_dir / "metadata.json")
 
+    def server_side(self) -> Optional[dict]:
+        """Return the ``server_side`` metadata block, or None for app-side tasks."""
+        return _read_server_side_from_metadata(self.task_dir / "metadata.json")
+
+    def is_server_side(self) -> bool:
+        return self.server_side() is not None
+
+    def backend_service(self) -> str:
+        """Compose service whose image is swapped per phase."""
+        ss = self.server_side()
+        if ss is None:
+            raise ValueError(f"{self.task} is not a server-side task")
+        return ss["service"]
+
+    def backend_image_for_phase(self, phase_slug: str) -> str:
+        """Prebuilt backend image ref for a runner phase slug.
+
+        ``phase_slug`` is ``vulnerable`` (Phase 1) or ``secure`` (Phase 2),
+        matching ``_phase_slug_for_output_dir`` in the workflow.
+        """
+        ss = self.server_side()
+        if ss is None:
+            raise ValueError(f"{self.task} is not a server-side task")
+        from evaluation.backend_image_swap import image_key_for_phase
+
+        key = image_key_for_phase(phase_slug)
+        if key is None:
+            raise ValueError(f"unknown phase slug {phase_slug!r} for image swap")
+        image = ss["images"].get(key)
+        if not image:
+            raise ValueError(
+                f"server_side.images.{key} missing for task {self.task}"
+            )
+        return image
+
     @property
     def _hardened_apk(self) -> Path:
         return self._report_dir / "artifacts" / "hardened_apk" / f"{self.app_name}.apk"
@@ -162,7 +220,12 @@ class ZerodayBundle:
         Hardened APK path is fixed by the report layout; build_apk.sh's
         validator rejects --obfuscate + --hardened-patch as unsupported, so
         the toggle does not split phase 2.
+
+        Server-side tasks patch the backend, not the app: the APK is identical
+        across phases, so Phase 2 replays the same baseline APK as Phase 1.
         """
+        if self.is_server_side():
+            return self.phase1_apk()
         return self._hardened_apk
 
     def restore_codebase(self, codebase_dir: Path) -> None:
@@ -173,8 +236,15 @@ class ZerodayBundle:
         self.restore_codebase(codebase_dir)
 
     def prepare_phase2_codebase(self, codebase_dir: Path) -> None:
-        """Vulnerable → patched: apply fix.patch."""
+        """Vulnerable → patched: apply fix.patch.
+
+        Server-side tasks patch the backend image (swapped per phase by the
+        runner), not the app codebase — so the app tree stays clean and only
+        needs a restore. See ``evaluation.backend_image_swap``.
+        """
         self.restore_codebase(codebase_dir)
+        if self.is_server_side():
+            return
         _git_apply(codebase_dir, self.patch)
 
     def build_apks(self, app_name: str, project_root: Path, *, timeout: int) -> None:
@@ -182,6 +252,10 @@ class ZerodayBundle:
         # cannot — build_apk.sh's validator rejects --obfuscate + --hardened-patch.
         obf_flag = ["--obfuscate"] if self.runner_obfuscation == "on" else []
         _run_build(project_root, [app_name, *obf_flag], timeout)
+        # Server-side tasks reuse the baseline APK in both phases (the patch is
+        # in the backend image), so there is no hardened APK to build.
+        if self.is_server_side():
+            return
         _run_build(
             project_root,
             [app_name, "--hardened-patch", str(self.patch)],
@@ -191,6 +265,9 @@ class ZerodayBundle:
     def validate_build_artifacts(self, app_dir: Path) -> None:
         if not self.phase1_apk().exists():
             raise FileNotFoundError(f"Original APK not found: {self.phase1_apk()}")
+        # Server-side tasks have no hardened APK — Phase 2 reuses phase1_apk.
+        if self.is_server_side():
+            return
         if not self._hardened_apk.exists():
             raise FileNotFoundError(
                 f"Prebuilt hardened APK not found for task {self.task}: "

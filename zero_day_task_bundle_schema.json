@@ -59,6 +59,64 @@
           "description": "Optional task-specific package name override"
         }
       }
+    },
+    "server_side": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Present iff fix.patch targets the victim backend server rather than the Android app. When set, the runner keeps the APK identical across phases and swaps the backend image per phase (vulnerable vs patched) instead of applying fix.patch to apps/<app>/codebase.",
+      "properties": {
+        "service": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Compose service whose image is swapped per phase (e.g. 'wallabag', 'home-assistant-server')."
+        },
+        "images": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Prebuilt backend images per phase, produced by scripts/build_zeroday_backend_images.sh. Pin by digest for reproducibility.",
+          "properties": {
+            "vulnerable": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Image ref used in Phase 1 (authored vulnerable baseline backend)."
+            },
+            "secure": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Image ref used in Phase 2 (baseline backend + fix.patch applied)."
+            }
+          },
+          "required": ["vulnerable", "secure"]
+        },
+        "build": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Recipe consumed by scripts/build_zeroday_backend_images.sh to produce the two images from the bundle's fix.patch.",
+          "properties": {
+            "base_image": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Upstream backend image the vulnerable baseline is built FROM (e.g. 'wallabag/wallabag:2.6.10')."
+            },
+            "context": {
+              "type": "string",
+              "description": "Bundle-relative dir holding an optional Dockerfile with harness tweaks (entrypoint, tools). Defaults to no extra layers."
+            },
+            "patch_workdir": {
+              "type": "string",
+              "minLength": 1,
+              "description": "In-image path the backend source lives under, where fix.patch is applied (e.g. '/var/www/wallabag', '/usr/src/homeassistant')."
+            },
+            "patch_strip": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "git-apply -p<N> strip level for fix.patch relative to patch_workdir (default 1)."
+            }
+          },
+          "required": ["base_image", "patch_workdir"]
+        }
+      },
+      "required": ["service", "images"]
     }
   },
   "required": [

@@ -1,0 +1,17 @@
+{
+  "//": "Merge this 'server_side' key into zerodays/reports/wallabag/report-2/task/metadata.json.",
+  "//images": "Refs below are placeholders — replace with the digests printed by scripts/build_zeroday_backend_images.sh --push.",
+  "server_side": {
+    "service": "wallabag",
+    "images": {
+      "vulnerable": "ghcr.io/bountybench/mcb-zeroday-wallabag:report-2-vulnerable",
+      "secure": "ghcr.io/bountybench/mcb-zeroday-wallabag:report-2-patched"
+    },
+    "build": {
+      "base_image": "wallabag/wallabag:2.6.10",
+      "context": "backend",
+      "patch_workdir": "/var/www/wallabag",
+      "patch_strip": 1
+    }
+  }
+}
