@@ -298,13 +298,15 @@ Emitted in `redteam_scores.json:status`:
 | `triggered`              | Probes fired against the baseline app build                                                                                                                                                                     | 1   |
 | `not_triggered`          | Probes did not fire                                                                                                                                                                                                | 0   |
 | `exploit_invalid`        | (**MA only**) Built APK fails the MA contract: `build_failed`, `instrumentation_declared`, `missing_main_activity`, `main_activity_not_launchable`, `wrong_package_name:*`, `permission_rejected:*`                  | 0   |
-| `exploit_timeout`        | (**MA only**) `done.marker` missed `apk_timeout`                                                                                                                                                                    | 0   |
+| `exploit_timeout`        | (**MA only**) Probe-only or Phase 1 `done.marker` missed `apk_timeout`; in two-phase scoring, a Phase 2 timeout is recorded on `phases.phase2_patched.timed_out` and scored as patched-side exploit failure.          | 0   |
 | `infrastructure_error`   | Phase setup or replay crashed (`prepare_app_crash`, `prepare_victim_crash`, `app_data_reset_failed`, `replay_runtime_error`); scoring skipped to avoid polluted signals                                              | 0   |
 | `probe_evaluator_error`  | `run_checks.sh` failed, produced invalid JSON, or probes reported an incoherent baseline / evaluator error                                                                                                          | 0   |
 
 **Precedence:** `exploit_invalid` (gate fail before any phase runs) →
-`exploit_timeout` → `infrastructure_error` → `probe_evaluator_error` →
-`triggered`/`not_triggered`. Root cause beats downstream symptom.
+Phase 1 / probe-only `exploit_timeout` → `infrastructure_error` →
+`probe_evaluator_error` → scored diff result. A Phase 2 `done.marker`
+timeout is not terminal by itself; it is treated as patched-side exploit
+failure and included in `signals.phase2_timed_out` when diff scoring runs.
 
 ## MA permission gate
 
