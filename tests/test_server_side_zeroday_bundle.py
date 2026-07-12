@@ -49,6 +49,7 @@ def _make_bundle(tmp_path: Path, server_side=None) -> ZerodayBundle:
 
 # --- server_side metadata parsing ---------------------------------------
 
+
 def test_absent_server_side_is_app_side(tmp_path):
     b = _make_bundle(tmp_path)
     assert b.server_side() is None
@@ -77,13 +78,16 @@ def test_backend_image_for_phase(tmp_path):
 
 # --- phase-2 behavior branches ------------------------------------------
 
+
 def test_phase2_codebase_server_side_skips_git_apply(tmp_path, monkeypatch):
     b = _make_bundle(tmp_path, SERVER_SIDE)
     restored, applied = [], []
-    monkeypatch.setattr("evaluation.task_bundle.git_restore_clean",
-                        lambda d: restored.append(d))
-    monkeypatch.setattr("evaluation.task_bundle._git_apply",
-                        lambda d, p: applied.append((d, p)))
+    monkeypatch.setattr(
+        "evaluation.task_bundle.git_restore_clean", lambda d: restored.append(d)
+    )
+    monkeypatch.setattr(
+        "evaluation.task_bundle._git_apply", lambda d, p: applied.append((d, p))
+    )
     b.prepare_phase2_codebase(tmp_path / "codebase")
     assert restored, "codebase should still be restored to clean"
     assert not applied, "server-side must NOT git-apply into the app codebase"
@@ -93,8 +97,9 @@ def test_phase2_codebase_app_side_applies_patch(tmp_path, monkeypatch):
     b = _make_bundle(tmp_path)  # app-side
     applied = []
     monkeypatch.setattr("evaluation.task_bundle.git_restore_clean", lambda d: None)
-    monkeypatch.setattr("evaluation.task_bundle._git_apply",
-                        lambda d, p: applied.append((d, p)))
+    monkeypatch.setattr(
+        "evaluation.task_bundle._git_apply", lambda d, p: applied.append((d, p))
+    )
     b.prepare_phase2_codebase(tmp_path / "codebase")
     assert len(applied) == 1, "app-side must apply fix.patch to the codebase"
 
@@ -102,8 +107,10 @@ def test_phase2_codebase_app_side_applies_patch(tmp_path, monkeypatch):
 def test_build_apks_server_side_skips_hardened(tmp_path, monkeypatch):
     b = _make_bundle(tmp_path, SERVER_SIDE)
     calls = []
-    monkeypatch.setattr("evaluation.task_bundle._run_build",
-                        lambda root, args, timeout: calls.append(args))
+    monkeypatch.setattr(
+        "evaluation.task_bundle._run_build",
+        lambda root, args, timeout: calls.append(args),
+    )
     b.build_apks("wallabag", tmp_path, timeout=1)
     assert len(calls) == 1, "server-side builds only the baseline APK"
     assert "--hardened-patch" not in " ".join(calls[0])
@@ -112,8 +119,10 @@ def test_build_apks_server_side_skips_hardened(tmp_path, monkeypatch):
 def test_build_apks_app_side_builds_hardened(tmp_path, monkeypatch):
     b = _make_bundle(tmp_path)
     calls = []
-    monkeypatch.setattr("evaluation.task_bundle._run_build",
-                        lambda root, args, timeout: calls.append(args))
+    monkeypatch.setattr(
+        "evaluation.task_bundle._run_build",
+        lambda root, args, timeout: calls.append(args),
+    )
     b.build_apks("wallabag", tmp_path, timeout=1)
     assert len(calls) == 2
     assert any("--hardened-patch" in " ".join(a) for a in calls)
@@ -130,6 +139,7 @@ def test_validate_server_side_skips_hardened_apk(tmp_path, monkeypatch):
 
 # --- override generation ------------------------------------------------
 
+
 def test_image_key_for_phase():
     assert backend_image_swap.image_key_for_phase("vulnerable") == "vulnerable"
     assert backend_image_swap.image_key_for_phase("secure") == "secure"
@@ -139,8 +149,11 @@ def test_image_key_for_phase():
 def test_write_override_and_env(tmp_path):
     (tmp_path / "docker-compose.yml").write_text("services: {}\n")
     env = backend_image_swap.write_phase_override(
-        tmp_path, "wallabag", "img:patched", "secure")
-    assert env == {"COMPOSE_FILE": f"docker-compose.yml:{backend_image_swap.OVERRIDE_FILENAME}"}
+        tmp_path, "wallabag", "img:patched", "secure"
+    )
+    assert env == {
+        "COMPOSE_FILE": f"docker-compose.yml:{backend_image_swap.OVERRIDE_FILENAME}"
+    }
     ov = (tmp_path / backend_image_swap.OVERRIDE_FILENAME).read_text()
     assert "wallabag:" in ov
     assert "image: img:patched" in ov
@@ -150,13 +163,13 @@ def test_write_override_and_env(tmp_path):
 def test_write_override_yaml_base(tmp_path):
     (tmp_path / "docker-compose.yaml").write_text("services: {}\n")
     env = backend_image_swap.write_phase_override(
-        tmp_path, "home-assistant-server", "img:v", "vulnerable")
+        tmp_path, "home-assistant-server", "img:v", "vulnerable"
+    )
     assert env["COMPOSE_FILE"].startswith("docker-compose.yaml:")
 
 
 def test_write_override_no_base_returns_empty(tmp_path):
-    env = backend_image_swap.write_phase_override(
-        tmp_path, "svc", "img", "secure")
+    env = backend_image_swap.write_phase_override(tmp_path, "svc", "img", "secure")
     assert env == {}
     assert not (tmp_path / backend_image_swap.OVERRIDE_FILENAME).exists()
 

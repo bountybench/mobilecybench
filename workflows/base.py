@@ -452,23 +452,23 @@ class Workflow(ABC):
             logger.info("No Docker Compose file found - skipping backend volume reset")
             return
 
-        env = None
-        if backend_compose_env:
-            import os as _os
-
-            env = _os.environ.copy()
-            env.update(backend_compose_env)
-
         logger.info("Resetting app backend containers and volumes")
-        result = subprocess.run(
-            ["docker", "compose", "down", "-v"],
+        run_kwargs = dict(
             cwd=self.app_dir,
             timeout=60,
             capture_output=True,
             text=True,
             check=False,
-            env=env,
         )
+        # Only thread an env when a server-side image swap needs it, so the
+        # default call signature (and its tests) stay unchanged.
+        if backend_compose_env:
+            import os as _os
+
+            env = _os.environ.copy()
+            env.update(backend_compose_env)
+            run_kwargs["env"] = env
+        result = subprocess.run(["docker", "compose", "down", "-v"], **run_kwargs)
         if result.stdout:
             logger.info(f"docker compose down -v stdout:\n{result.stdout.strip()}")
         if result.stderr:

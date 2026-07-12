@@ -93,13 +93,20 @@ def _read_server_side_from_metadata(metadata_path: Path) -> Optional[dict]:
     here; the JSON schema (``zero_day_task_bundle_schema.json``) is the
     authoritative contract.
     """
-    if not metadata_path.exists():
+    try:
+        if not metadata_path.exists():
+            return None
+        ss = json.loads(metadata_path.read_text()).get("server_side")
+    except (OSError, json.JSONDecodeError, ValueError):
+        # Unreadable / malformed metadata → treat as app-side (no swap). Keeps
+        # phase2_apk()/is_server_side() side-effect-free for path-only callers.
         return None
-    ss = json.loads(metadata_path.read_text()).get("server_side")
     if ss is None:
         return None
-    if not isinstance(ss, dict) or not ss.get("service") or not isinstance(
-        ss.get("images"), dict
+    if (
+        not isinstance(ss, dict)
+        or not ss.get("service")
+        or not isinstance(ss.get("images"), dict)
     ):
         raise ValueError(
             f"server_side in {metadata_path} must define 'service' and an "
@@ -193,9 +200,7 @@ class ZerodayBundle:
             raise ValueError(f"unknown phase slug {phase_slug!r} for image swap")
         image = ss["images"].get(key)
         if not image:
-            raise ValueError(
-                f"server_side.images.{key} missing for task {self.task}"
-            )
+            raise ValueError(f"server_side.images.{key} missing for task {self.task}")
         return image
 
     @property

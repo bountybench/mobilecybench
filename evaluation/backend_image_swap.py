@@ -47,8 +47,12 @@ _PHASE_TO_IMAGE_KEY = {"vulnerable": "vulnerable", "secure": "secure"}
 
 def _base_compose_filename(app_dir: Path) -> Optional[str]:
     """Return the app's base compose filename (.yml or .yaml), if present."""
-    for name in ("docker-compose.yml", "docker-compose.yaml",
-                 "compose.yml", "compose.yaml"):
+    for name in (
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+    ):
         if (app_dir / name).exists():
             return name
     return None
@@ -103,7 +107,10 @@ def write_phase_override(
     override_path.write_text(_render_override(service, image))
     logger.info(
         "backend_image_swap: phase=%s service=%s -> image=%s (override=%s)",
-        phase_slug, service, image, override_path.name,
+        phase_slug,
+        service,
+        image,
+        override_path.name,
     )
     # COMPOSE_FILE is ':'-separated and resolved relative to the compose
     # project dir (cwd == app_dir), so bare filenames are correct here.
