@@ -165,6 +165,92 @@ def is_auth_error(d):
     return desc.exists and "Authentication failed" in (desc.get_text() or "")
 
 
+def dismiss_transient_overlays(d):
+    """Dismiss dialogs/wizards that can appear late and cover the toolbar.
+
+    On slow emulator boots these surface after the first render, so they must be
+    cleared on every navigation attempt rather than once at startup. Returns True
+    if anything was dismissed (caller may want to re-check screen state).
+    """
+    dismissed = False
+    # Immersive-mode "Got it" overlay.
+    got_it = d(resourceId="android:id/ok", text="Got it")
+    if got_it.exists:
+        log("Dismissing immersive mode dialog...")
+        got_it.click()
+        dismissed = True
+    # Intro wizard.
+    skip = d(resourceId=f"{PACKAGE}:id/skip", text="SKIP")
+    if skip.exists:
+        log("Skipping intro wizard...")
+        skip.click()
+        dismissed = True
+    # Runtime permission dialog (POST_NOTIFICATIONS is pre-granted, but a
+    # request can still surface on some images).
+    for label in ("While using the app", "Allow", "ALLOW", "OK"):
+        perm = d(text=label, packageName="com.android.permissioncontroller")
+        if perm.exists:
+            log(f"Dismissing permission dialog via '{label}'...")
+            perm.click()
+            dismissed = True
+            break
+    if dismissed:
+        wait_stable(d, timeout=TIMEOUT_FAST)
+    return dismissed
+
+
+def wait_for_main_screen(d, timeout=TIMEOUT_SLOW):
+    """Poll until the main screen is actually interactable (toolbar/list ready).
+
+    ``wait_stable`` only means the hierarchy stopped changing, which is also true
+    of a splash/loading screen. Navigation must not start before the drawer
+    toggle or a sitemap list exists, or the side-menu lookup races the render.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        dismiss_transient_overlays(d)
+        if (
+            d(description="Open side menu").exists
+            or d(resourceId=f"{PACKAGE}:id/pager").exists
+            or d(resourceId=f"{PACKAGE}:id/recyclerview").exists
+            or is_auth_error(d)
+        ):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def open_side_menu(d):
+    """Open the navigation drawer, tolerant of the toggle desc being absent.
+
+    Prefers the ActionBarDrawerToggle content-description, falls back to a
+    partial match, then to an edge swipe on the DrawerLayout. Verified by the
+    "Settings" entry becoming visible.
+    """
+    for attempt in range(3):
+        if attempt:
+            dismiss_transient_overlays(d)
+        hamburger = d(description="Open side menu")
+        if hamburger.wait(timeout=TIMEOUT_FAST):
+            hamburger.click()
+        else:
+            alt = d(descriptionContains="side menu")
+            if alt.exists:
+                alt.click()
+            else:
+                # DrawerLayout opens on an edge swipe even when the toggle
+                # content-description is unavailable.
+                log("Side-menu toggle not found; opening drawer via edge swipe")
+                width, height = d.window_size()
+                d.swipe(2, height // 2, int(width * 0.6), height // 2, 0.2)
+        time.sleep(0.5)
+        if d(text="Settings").wait(timeout=TIMEOUT_FAST):
+            return True
+        log(f"Drawer did not open (attempt {attempt + 1}/3); retrying...")
+    log("ERROR: side menu button not found")
+    return False
+
+
 def fill_dialog(d, text):
     """Fill a preference dialog (Username or Password) and click OK."""
     selectors = [
@@ -245,12 +331,8 @@ def navigate_to_local_settings(d):
     """From main screen, navigate: Side menu -> Settings -> Server openHAB -> Local."""
     # Open side menu
     log("Opening side menu...")
-    hamburger = d(description="Open side menu")
-    if not hamburger.wait(timeout=TIMEOUT_NORMAL):
-        log("ERROR: side menu button not found")
+    if not open_side_menu(d):
         return False
-    hamburger.click()
-    time.sleep(0.5)
 
     # Click Settings
     log("Opening Settings...")
@@ -343,19 +425,11 @@ def main():
         sys.exit(1)
     wait_stable(d, timeout=TIMEOUT_SLOW, interval=1)
 
-    # Dismiss system immersive-mode overlay if present
-    got_it = d(resourceId="android:id/ok", text="Got it")
-    if got_it.exists:
-        log("Dismissing immersive mode dialog...")
-        got_it.click()
-        wait_stable(d, timeout=TIMEOUT_NORMAL)
-
-    # Skip intro wizard if present (fresh install without prefs)
-    skip = d(resourceId=f"{PACKAGE}:id/skip", text="SKIP")
-    if skip.exists:
-        log("Skipping intro wizard...")
-        skip.click()
-        wait_stable(d, timeout=TIMEOUT_NORMAL)
+    # Clear any late overlays (immersive "Got it", intro wizard, permission
+    # dialogs) and wait for the main screen to be interactable before probing
+    # UI state. On slow boots these appear after the first render.
+    dismiss_transient_overlays(d)
+    wait_for_main_screen(d, timeout=TIMEOUT_SLOW)
 
     # Check if already connected — but only skip if no explicit credentials
     # were passed (i.e. we can't tell which user is logged in, so if the caller
@@ -364,16 +438,32 @@ def main():
         log("App is already connected - nothing to do")
         sys.exit(0)
 
-    if not is_auth_error(d) and not is_connected(d):
-        log("WARNING: unexpected screen state, proceeding anyway")
+    # Navigate + enter credentials, retrying the whole flow. Transient UI races
+    # (drawer toggle not yet rendered, a dialog covering the toolbar) otherwise
+    # fail the entire prepare_victim step as an infrastructure error instead of
+    # a recoverable retry.
+    LOGIN_ATTEMPTS = 3
+    for attempt in range(LOGIN_ATTEMPTS):
+        if attempt:
+            log(f"Retrying login flow ({attempt + 1}/{LOGIN_ATTEMPTS})...")
+            d.app_start(PACKAGE, wait=True)
+            d.app_wait(PACKAGE, front=True, timeout=TIMEOUT_SLOW)
+            dismiss_transient_overlays(d)
+            if not wait_for_main_screen(d, timeout=TIMEOUT_SLOW):
+                continue
 
-    if not navigate_to_local_settings(d):
-        sys.exit(1)
+        if not is_auth_error(d) and not is_connected(d):
+            log("WARNING: unexpected screen state, proceeding anyway")
 
-    if not set_credentials(d):
-        sys.exit(1)
-
-    if not save_and_return(d):
+        if not navigate_to_local_settings(d):
+            continue
+        if not set_credentials(d):
+            continue
+        if not save_and_return(d):
+            continue
+        break
+    else:
+        log("ERROR: login flow did not complete after retries")
         sys.exit(1)
 
     # Wait for reconnection
