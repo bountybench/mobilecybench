@@ -138,24 +138,31 @@ def wait_for_condition(condition, timeout=30, interval=1):
     return False
 
 
-def wait_for_browser(d, timeout=30):
+def wait_for_browser(d, timeout=90):
+    """Wait for the app to hand off to the external browser.
+
+    Returns True on success, False if the handoff never appeared (so the
+    caller can retry). The handoff races app cold-boot on slow/loaded
+    emulators, so the default timeout is generous and failure is non-fatal.
+    """
     log("Waiting for external browser")
     if not wait_for_condition(
         lambda: current_package(d) == BROWSER_PACKAGE
         or on_browser_login_handoff_screen(d),
         timeout=timeout,
     ):
-        log("ERROR: Browser login handoff did not appear")
-        sys.exit(1)
+        log("Browser login handoff did not appear within timeout")
+        return False
 
     if on_browser_login_handoff_screen(d):
         if not wait_for_condition(
             lambda: current_package(d) == BROWSER_PACKAGE, timeout=timeout
         ):
-            log("ERROR: Chrome did not open after browser handoff screen")
-            sys.exit(1)
+            log("Chrome did not open after browser handoff screen")
+            return False
 
     log("External browser opened")
+    return True
 
 
 def handle_chrome_first_run(d):
@@ -327,11 +334,47 @@ def main():
         log("Already logged in")
         sys.exit(0)
 
-    # Run login flow
-    if on_server_url_screen(d):
-        handle_server_url(d, args.server_url)
+    # Run login flow. The server-URL screen render and the subsequent
+    # browser handoff both race the app's cold boot on a slow/loaded
+    # emulator, so retry the whole sequence a few times (relaunching the
+    # app between attempts) instead of one-shotting it.
+    MAX_ATTEMPTS = 4
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        if is_logged_in(d):
+            log("Already logged in")
+            sys.exit(0)
 
-    wait_for_browser(d)
+        already_handed_off = (
+            current_package(d) == BROWSER_PACKAGE
+            or on_browser_login_handoff_screen(d)
+        )
+        if not already_handed_off:
+            # Wait for the server URL screen to actually render before
+            # submitting — a one-shot check loses the race on slow boots.
+            if wait_for_condition(lambda: on_server_url_screen(d), timeout=45):
+                handle_server_url(d, args.server_url)
+            else:
+                log(
+                    f"Server URL screen not ready (attempt {attempt}/"
+                    f"{MAX_ATTEMPTS}); relaunching app"
+                )
+                d.app_start(PACKAGE, wait=True)
+                time.sleep(5)
+                continue
+
+        if wait_for_browser(d):
+            break
+
+        log(
+            f"Browser handoff did not appear (attempt {attempt}/"
+            f"{MAX_ATTEMPTS}); relaunching app and retrying"
+        )
+        d.app_start(PACKAGE, wait=True)
+        time.sleep(5)
+    else:
+        log("ERROR: Browser login handoff did not appear after retries")
+        sys.exit(1)
+
     handle_chrome_first_run(d)
     handle_connect_page(d)
     handle_login_form(d, args.username, args.password)
