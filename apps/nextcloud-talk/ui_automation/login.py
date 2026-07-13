@@ -53,6 +53,39 @@ def current_package(d):
     return d.app_current().get("package", "")
 
 
+def dismiss_blocking_dialogs(d):
+    """Clear ANR / system dialogs that can sit on top of the app's own UI on
+    a slow emulator (e.g. an 'isn't responding' ANR, a launcher/system info
+    popup). These block on_server_url_screen() from ever matching. We tap
+    'Wait' on ANRs (which keeps the app alive rather than killing it) and
+    dismiss benign informational dialogs. Returns True if anything was tapped.
+    """
+    acted = False
+    for _ in range(3):
+        # ANR "<app> isn't responding" — Wait keeps the process alive.
+        if d(resourceId="android:id/aerr_wait").exists:
+            log("ANR dialog present; tapping Wait")
+            d(resourceId="android:id/aerr_wait").click()
+            time.sleep(2)
+            acted = True
+            continue
+        # Generic system/info dialogs — dismiss without closing the app.
+        # Deliberately excludes 'Close app' so we never kill Talk.
+        tapped = False
+        for label in ("Wait", "OK", "Got it", "Allow"):
+            btn = d(text=label, className="android.widget.Button")
+            if btn.exists:
+                log(f"Dismissing system dialog ({label})")
+                btn.click()
+                time.sleep(1)
+                acted = True
+                tapped = True
+                break
+        if not tapped:
+            break
+    return acted
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Nextcloud Talk login automation")
     parser.add_argument("--username", required=True)
@@ -338,8 +371,12 @@ def main():
     # browser handoff both race the app's cold boot on a slow/loaded
     # emulator, so retry the whole sequence a few times (relaunching the
     # app between attempts) instead of one-shotting it.
-    MAX_ATTEMPTS = 4
+    MAX_ATTEMPTS = 5
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        # An ANR/system dialog can cover the app on a slow emulator and stop
+        # every screen check below from matching — clear it first.
+        dismiss_blocking_dialogs(d)
+
         if is_logged_in(d):
             log("Already logged in")
             sys.exit(0)
@@ -350,12 +387,19 @@ def main():
         if not already_handed_off:
             # Wait for the server URL screen to actually render before
             # submitting — a one-shot check loses the race on slow boots.
-            if wait_for_condition(lambda: on_server_url_screen(d), timeout=45):
+            # Poll dialog-dismissal alongside so an ANR that pops mid-wait
+            # doesn't wedge us for the whole timeout.
+            def server_screen_ready():
+                dismiss_blocking_dialogs(d)
+                return on_server_url_screen(d)
+
+            if wait_for_condition(server_screen_ready, timeout=60):
                 handle_server_url(d, args.server_url)
             else:
                 log(
                     f"Server URL screen not ready (attempt {attempt}/"
-                    f"{MAX_ATTEMPTS}); relaunching app"
+                    f"{MAX_ATTEMPTS}; current package={current_package(d)!r}); "
+                    "relaunching app"
                 )
                 d.app_start(PACKAGE, wait=True)
                 time.sleep(5)
