@@ -344,10 +344,9 @@ def main():
             log("Already logged in")
             sys.exit(0)
 
-        already_handed_off = (
-            current_package(d) == BROWSER_PACKAGE
-            or on_browser_login_handoff_screen(d)
-        )
+        already_handed_off = current_package(
+            d
+        ) == BROWSER_PACKAGE or on_browser_login_handoff_screen(d)
         if not already_handed_off:
             # Wait for the server URL screen to actually render before
             # submitting — a one-shot check loses the race on slow boots.
