@@ -230,7 +230,7 @@
     },
     "apk_timeout": {
       "default": 180,
-      "description": "HARD wall-clock deadline (seconds) for the malicious-APK replay to write done.marker; agent cannot extend by withholding it. Must exceed any exploit's internal wait (e.g. credential-capture timeouts) — otherwise the runner SIGKILLs the exploit before it writes its honest succeeded=false marker, masking 'patch blocked the exploit' as 'exploit_timeout'. See e.g. openhab/report-0's credential-trap which waits 90s on CredCatcher.",
+      "description": "HARD wall-clock deadline (seconds) for the malicious-APK replay to write done.marker; agent cannot extend by withholding it. Probe-only and Phase 1 misses are exploit_timeout. In two-phase scoring, a Phase 2 miss is recorded as phases.phase2_patched.timed_out and scored as patched-side exploit failure.",
       "exclusiveMinimum": 0,
       "title": "Apk Timeout",
       "type": "integer"

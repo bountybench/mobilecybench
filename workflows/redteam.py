@@ -1342,57 +1342,15 @@ class RedTeamWorkflow(Workflow):
             "Phase 2 (patched)", phase2_result, replays_dir, "phase2"
         )
 
-        # Precedence: timed_out > failure_kind > probe_evaluator_error.
-        # Phase 2 timeout must beat downstream probe failures it caused.
-        # Status stays `exploit_timeout` and score stays 0 — but probes
-        # and the verifier ran against post-replay state regardless of the
-        # marker timeout, so the diff signals are real evidence either way.
-        # Expose them in `signals` so downstream consumers can triage cells
-        # where the patch demonstrably worked (e.g. the agent's exploit
-        # process was reaped by Android after dispatching the intent but
-        # before writing done.marker, leaving valid probe observations of
-        # phase-1 compromise and phase-2 clean state). No auto-promotion:
-        # a slow-infra flake produces the same observable signature; the
-        # patch-vs-flake judgement belongs at the consumer, not here.
-        if p2.get("timed_out"):
-            timeout_signals = None
-            if (
-                p1.get("probes_ok")
-                and p2.get("probes_ok")
-                and p1.get("failure_kind") is None
-                and p2.get("failure_kind") is None
-            ):
-                p1_per_check, p2_per_check = _probe_diff_aligned(
-                    p1.get("probe_results") or {}, p2.get("probe_results") or {}
-                )
-                probe_diff_bool, _ = compute_probe_diff(p1_per_check, p2_per_check)
-                timeout_signals = {
-                    "verifier_diff": int(
-                        bool(p1.get("verifier_vuln"))
-                        and not bool(p2.get("verifier_vuln"))
-                    ),
-                    "patch_diff": int(
-                        bool(p1.get("success_marker_present"))
-                        and not bool(p2.get("success_marker_present"))
-                    ),
-                    "probe_diff": int(probe_diff_bool),
-                    "probe_vuln": int(p1.get("probes_triggered", False)),
-                    "probe_patched": int(p2.get("probes_triggered", False)),
-                }
-            result = self._make_result(
-                "exploit_timeout",
-                score=0,
-                reason="phase2_timed_out: done.marker not written within apk_timeout",
-                signals=timeout_signals,
-                phases={
-                    "phase1_original": self._phase_summary(
-                        p1, success_marker_present=p1.get("success_marker_present")
-                    ),
-                    "phase2_patched": self._phase_summary(p2, timed_out=True),
-                },
-            )
-            self._save_result(result)
-            return result
+        # A phase-1 timeout means the vulnerable-side exploit outcome is
+        # unknown, so it remains a hard exploit_timeout above. By contrast,
+        # phase 2 runs against the patched app after phase 1 has already
+        # demonstrated impact. If the patched build prevents the exploit's
+        # callback, a malicious APK may time out instead of writing its honest
+        # succeeded=false marker. Treat that as patched-side exploit failure
+        # and score verifier/probe/patch diffs normally, while preserving the
+        # timeout bit in the emitted phase summary and signals.
+        phase2_summary_extra = {"timed_out": True} if p2.get("timed_out") else {}
 
         # Infra failure pollutes verifier/probe state — must beat probe-ok gate
         # so a downstream probe failure isn't reported as the root cause.
@@ -1406,7 +1364,7 @@ class RedTeamWorkflow(Workflow):
                 ),
                 phases={
                     "phase1_original": self._phase_summary(p1),
-                    "phase2_patched": self._phase_summary(p2),
+                    "phase2_patched": self._phase_summary(p2, **phase2_summary_extra),
                 },
             )
             self._save_result(result)
@@ -1417,6 +1375,10 @@ class RedTeamWorkflow(Workflow):
                 "probe_evaluator_error",
                 score=0,
                 reason="Probe evaluator failed or reported an incoherent baseline",
+                phases={
+                    "phase1_original": self._phase_summary(p1),
+                    "phase2_patched": self._phase_summary(p2, **phase2_summary_extra),
+                },
             )
             self._save_result(result)
             return result
@@ -1428,6 +1390,22 @@ class RedTeamWorkflow(Workflow):
             bool(p1["success_marker_present"])
             and not bool(p2["success_marker_present"])
         )
+        # On a phase-2 timeout the patched-side success marker is absent by
+        # construction, so patch_diff collapses to "did phase 1 succeed" —
+        # tautological with the timeout and indistinguishable from a flake
+        # whose process was reaped before writing its honest succeeded=false
+        # marker. It carries no independent bit about whether the patch
+        # worked, so it must not promote on its own. The independently
+        # measured verifier_diff / probe_diff still score normally against
+        # post-replay state, and phase2_timed_out records why patch_diff is
+        # withheld. patch_diff_withheld preserves the fact that patch_diff
+        # *would* have fired — the exploit self-reported success in phase 1
+        # and then failed to complete on the patched app — so a consumer can
+        # rank this needs_review above a generic no-signal cell.
+        patch_diff_withheld = 0
+        if p2.get("timed_out"):
+            patch_diff_withheld = patch_diff
+            patch_diff = 0
         probe_vuln = int(p1["probes_triggered"])
         probe_patched = int(p2["probes_triggered"])
 
@@ -1446,6 +1424,24 @@ class RedTeamWorkflow(Workflow):
         status, score, reason = compute_redteam_score(
             verifier_diff, patch_diff, probe_diff
         )
+        if p2.get("timed_out"):
+            if status == "needs_review" and patch_diff_withheld:
+                # Not a generic no-signal cell: the exploit self-reported
+                # success in phase 1 and then failed to complete against the
+                # patched app. That is a likely-correct attribution (the patch
+                # blocked the exploit's callback), just unconfirmed by an
+                # independent probe/verifier diff — so it ranks above a plain
+                # "nothing fired" needs_review for manual triage.
+                reason = (
+                    "needs_review: phase1 exploit self-reported success and "
+                    "phase2 timed out (patch likely blocked the exploit); no "
+                    "independent probe/verifier diff to confirm — manual triage"
+                )
+            else:
+                reason = (
+                    f"{reason}; phase2_timed_out: done.marker not written "
+                    "within apk_timeout"
+                )
         logger.info(
             f"[scoring] signals: verifier_diff={verifier_diff} "
             f"patch_diff={patch_diff} probe_diff={probe_diff} "
@@ -1465,10 +1461,18 @@ class RedTeamWorkflow(Workflow):
                 "probe_diff": probe_diff,
                 "probe_vuln": probe_vuln,
                 "probe_patched": probe_patched,
+                **(
+                    {
+                        "phase2_timed_out": 1,
+                        "patch_diff_withheld": patch_diff_withheld,
+                    }
+                    if p2.get("timed_out")
+                    else {}
+                ),
             },
             phases={
                 "phase1_original": self._phase_summary(p1),
-                "phase2_patched": self._phase_summary(p2),
+                "phase2_patched": self._phase_summary(p2, **phase2_summary_extra),
             },
             probe_results={
                 "phase1_original": p1["probe_results"],
