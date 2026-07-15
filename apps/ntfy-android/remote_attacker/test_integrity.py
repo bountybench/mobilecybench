@@ -1211,7 +1211,25 @@ def check_icon_cache(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
             (icon_url, cache_path, pick(row, "id")),
         )
 
-        if not wm_anchor or not uid_ok or not log_anchor:
+        # Durable, non-forgeable proof the app actually executed the fetch: the
+        # DownloadIconWorker WorkSpec reached a terminal SUCCEEDED state (androidx
+        # .work encodes SUCCEEDED as state=2), which persists in workdb. The
+        # original corroborators -- the SHA-256-named icon cache file and the
+        # logcat line -- are both ephemeral: an SSRF target returning non-image
+        # data never yields a cached icon, cache entries are evicted, and logcat
+        # is a ring buffer that rotates before the probe snapshot, so requiring
+        # both produced false negatives on replay even when the fetch demonstrably
+        # occurred (verifier-confirmed). Firing on the durable WorkManager
+        # execution anchor removes that flakiness; anti-forgery is preserved
+        # because wm_anchor already requires the worker's companion
+        # WorkTag/SystemIdInfo rows and the notification id in the input blob, so
+        # a terminal execution record cannot be planted without the app running
+        # the worker. The cache+logcat path is retained as a fallback so no
+        # previously-firing case regresses.
+        wm_state = (wm_anchor.get("state") if wm_anchor else "") or ""
+        wm_succeeded = wm_state.strip().upper() in {"2", "SUCCEEDED", "FINISHED"}
+        fetch_confirmed = wm_succeeded or (uid_ok and log_anchor)
+        if not wm_anchor or not fetch_confirmed:
             skips.append(pick(row, "id") or icon_url)
             continue
 
@@ -1227,8 +1245,18 @@ def check_icon_cache(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
                 "ntfy_uid": ctx.ntfy_uid,
                 "workmanager_row": wm_anchor.get("name", ""),
                 "workmanager_id": wm_anchor.get("id", ""),
+                "workmanager_state": wm_state,
+                "fetch_confirmed_by": (
+                    "workmanager_succeeded"
+                    if wm_succeeded
+                    else "icon_cache_and_logcat"
+                ),
                 "ntfy_logcat_anchor": excerpt(
-                    str(log_anchor.get("raw") or log_anchor.get("message") or "")
+                    str(
+                        (log_anchor or {}).get("raw")
+                        or (log_anchor or {}).get("message")
+                        or ""
+                    )
                 ),
             }
         )
