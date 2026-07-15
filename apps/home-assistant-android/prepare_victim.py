@@ -227,14 +227,57 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
         timeout=SCREEN_TIMEOUT,
     )
 
-    # Screen 2: Server picker → "Enter address manually". Expected next:
-    # the manual-URL form ("What is your Home Assistant address?").
-    click_then_expect(
-        d,
-        d(text="Enter address manually"),
-        d(textContains="What is your Home Assistant"),
-        timeout=SCREEN_TIMEOUT,
-    )
+    # Screen 2: Server picker → "Enter address manually" → manual-URL form.
+    #
+    # Two cold-boot hazards make the bare click flaky (observed: "Click on
+    # Selector [text='Enter address manually'] failed after 5 attempts" →
+    # "URL EditText never appeared"):
+    #   (a) The picker is still running mDNS discovery when we land, so the tap
+    #       registers but the screen doesn't transition to the manual form.
+    #   (b) A discovered server row pushes "Enter address manually" below the
+    #       fold, so the selector never matches until we scroll.
+    # Recovery mirrors Screen 1: surface the link by scrolling, and if the
+    # manual form still doesn't render, HOME + relaunch HA and re-drive from
+    # Welcome → picker. Bounded by MANUAL_FORM_RETRIES so a genuinely broken
+    # setup still fails loudly instead of hanging.
+    MANUAL_FORM_RETRIES = 3
+    url_field = None
+    for attempt in range(1, MANUAL_FORM_RETRIES + 1):
+        try:
+            if not d(text="Enter address manually").exists:
+                # Link may sit below discovered-server rows; scroll to reveal it.
+                d(scrollable=True).scroll.to(text="Enter address manually")
+            click_then_expect(
+                d,
+                d(text="Enter address manually"),
+                d(textContains="What is your Home Assistant"),
+                timeout=SCREEN_TIMEOUT,
+            )
+            candidate = d(className="android.widget.EditText")
+            if candidate.wait(timeout=SCREEN_TIMEOUT):
+                url_field = candidate
+                break
+        except Exception as exc:  # noqa: BLE001 - retry any UI-automation error
+            logger.warning(
+                "manual-URL form attempt %d/%d failed: %s",
+                attempt, MANUAL_FORM_RETRIES, exc,
+            )
+        if attempt < MANUAL_FORM_RETRIES:
+            logger.info("relaunching HA to retry server picker (attempt %d)", attempt)
+            _adb_shell("input keyevent 3")  # KEYCODE_HOME
+            time.sleep(1)
+            _adb_shell(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
+            # Re-drive Welcome → picker so the next iteration starts clean.
+            click_then_expect(
+                d,
+                d(text="Continue"),
+                d(textContains="Home Assistant server"),
+                timeout=SCREEN_TIMEOUT,
+            )
+    if url_field is None:
+        raise RuntimeError(
+            f"URL EditText never appeared after {MANUAL_FORM_RETRIES} attempts"
+        )
 
     # Screen 3: URL EditText is a Compose TextField. uiautomator2's set_text
     # bypasses the IME and never fires onValueChange, so the ViewModel's
@@ -251,9 +294,6 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
     # The recovery for both is the same: click the Connect button (now enabled
     # thanks to the IME-driven onValueChange) and wait again. Loop until a
     # WebView is up *and stays up*, or the overall budget expires.
-    url_field = d(className="android.widget.EditText")
-    if not url_field.wait(timeout=SCREEN_TIMEOUT):
-        raise RuntimeError("URL EditText never appeared")
     url_field.click()
     time.sleep(0.5)
     _adb_shell(f"input text {_sh_quote(server_url)}")
