@@ -260,7 +260,9 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
         except Exception as exc:  # noqa: BLE001 - retry any UI-automation error
             logger.warning(
                 "manual-URL form attempt %d/%d failed: %s",
-                attempt, MANUAL_FORM_RETRIES, exc,
+                attempt,
+                MANUAL_FORM_RETRIES,
+                exc,
             )
         if attempt < MANUAL_FORM_RETRIES:
             logger.info("relaunching HA to retry server picker (attempt %d)", attempt)
