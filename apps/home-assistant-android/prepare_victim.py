@@ -229,27 +229,35 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
 
     # Screen 2: Server picker → "Enter address manually" → manual-URL form.
     #
-    # Two cold-boot hazards make the bare click flaky (observed: "Click on
-    # Selector [text='Enter address manually'] failed after 5 attempts" →
-    # "URL EditText never appeared"):
-    #   (a) The picker is still running mDNS discovery when we land, so the tap
-    #       registers but the screen doesn't transition to the manual form.
-    #   (b) A discovered server row pushes "Enter address manually" below the
-    #       fold, so the selector never matches until we scroll.
-    # Recovery mirrors Screen 1: surface the link by scrolling, and if the
-    # manual form still doesn't render, HOME + relaunch HA and re-drive from
-    # Welcome → picker. Bounded by MANUAL_FORM_RETRIES so a genuinely broken
-    # setup still fails loudly instead of hanging.
+    # The bare click is flaky on a cold boot (observed: "Click on Selector
+    # [text='Enter address manually'] failed after 5 attempts" → "URL EditText
+    # never appeared") because the picker is still running mDNS discovery when we
+    # land, so the tap registers before the screen is interactive / transitions.
+    #
+    # It is NOT a below-the-fold problem: in DiscoveryView.kt the manual-setup
+    # button is a sibling *below* the discovered-server LazyColumn, and that
+    # LazyColumn is laid out with weight(1f), so the button is pinned on screen
+    # and never scrolls out of view. Scrolling d(scrollable=True) would only move
+    # the discovered-server rows (the LazyColumn) and never surface the button, so
+    # the recovery is to WAIT for the pinned button to render, not to scroll.
+    # If it still never renders we HOME + relaunch HA and re-drive from Welcome →
+    # picker, bounded by MANUAL_FORM_RETRIES so a genuinely broken setup fails
+    # loudly instead of hanging.
     MANUAL_FORM_RETRIES = 3
     url_field = None
     for attempt in range(1, MANUAL_FORM_RETRIES + 1):
         try:
-            if not d(text="Enter address manually").exists:
-                # Link may sit below discovered-server rows; scroll to reveal it.
-                d(scrollable=True).scroll.to(text="Enter address manually")
+            # The button is pinned (weight(1f) sibling), so if the selector isn't
+            # matching yet the picker is still settling -- wait for it to render
+            # and verify it is actually present before tapping.
+            manual_button = d(text="Enter address manually")
+            if not manual_button.wait(timeout=SCREEN_TIMEOUT):
+                raise RuntimeError(
+                    "'Enter address manually' button never rendered on the server picker"
+                )
             click_then_expect(
                 d,
-                d(text="Enter address manually"),
+                manual_button,
                 d(textContains="What is your Home Assistant"),
                 timeout=SCREEN_TIMEOUT,
             )
