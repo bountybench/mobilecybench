@@ -955,6 +955,35 @@ def server_history_records(topics: Iterable[str]) -> list[dict[str, Any]]:
     return all_records
 
 
+def _icon_fetch_proof_target(icon_url: str) -> tuple[str, str] | None:
+    """For a stored-CSRF icon URL that is a *publish to the ntfy backend*
+    (``.../<topic>/publish?message=<marker>``), return ``(topic, marker)`` -- the
+    exact message the victim app's icon fetch would republish to that topic.
+
+    Finding that exact message on that topic in the ntfy server's own history is a
+    durable, ADB-unforgeable proof the icon URL was actually requested (it is the
+    signal the report-1 verifier trusts). Returns ``None`` when the icon URL is not
+    a server-recordable publish (e.g. a plain image URL), so callers fall back to the
+    device-side corroborators.
+    """
+    try:
+        parsed = urllib.parse.urlparse(icon_url)
+        segments = [seg for seg in parsed.path.split("/") if seg]
+        query = urllib.parse.parse_qs(parsed.query)
+        message = (query.get("message") or query.get("m") or [""])[0]
+        if not segments or not message:
+            return None
+        # ntfy publish forms: /<topic>/publish, /<topic>/trigger, /<topic>.
+        topic = segments[0]
+        if topic in {"publish", "message"}:
+            topic = (query.get("topic") or [""])[0]
+        if not topic:
+            return None
+        return topic, message
+    except Exception:  # noqa: BLE001 - a malformed icon URL has no server target
+        return None
+
+
 def load_passive_request_records(ctx: ProbeState) -> list[dict[str, Any]]:
     records = list(ctx.artifact_rows)
     records.extend(ctx.logcat_rows)
@@ -1211,24 +1240,33 @@ def check_icon_cache(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
             (icon_url, cache_path, pick(row, "id")),
         )
 
-        # Durable, non-forgeable proof the app actually executed the fetch: the
-        # DownloadIconWorker WorkSpec reached a terminal SUCCEEDED state (androidx
-        # .work encodes SUCCEEDED as state=2), which persists in workdb. The
-        # original corroborators -- the SHA-256-named icon cache file and the
-        # logcat line -- are both ephemeral: an SSRF target returning non-image
-        # data never yields a cached icon, cache entries are evicted, and logcat
-        # is a ring buffer that rotates before the probe snapshot, so requiring
-        # both produced false negatives on replay even when the fetch demonstrably
-        # occurred (verifier-confirmed). Firing on the durable WorkManager
-        # execution anchor removes that flakiness; anti-forgery is preserved
-        # because wm_anchor already requires the worker's companion
-        # WorkTag/SystemIdInfo rows and the notification id in the input blob, so
-        # a terminal execution record cannot be planted without the app running
-        # the worker. The cache+logcat path is retained as a fallback so no
-        # previously-firing case regresses.
-        wm_state = (wm_anchor.get("state") if wm_anchor else "") or ""
-        wm_succeeded = wm_state.strip().upper() in {"2", "SUCCEEDED", "FINISHED"}
-        fetch_confirmed = wm_succeeded or (uid_ok and log_anchor)
+        # Durable, ADB-unforgeable proof the app actually *requested* the icon URL.
+        #
+        # A WorkManager terminal state is NOT such proof: the pinned
+        # DownloadIconWorker catches fetch failures and still returns
+        # Result.success() (upstream dff5a1c), so a patched build or a failed /
+        # oversized fetch reaches SUCCEEDED without any request landing -- keying on
+        # it would mark those runs vulnerable. And a workdb-only anchor is
+        # reward-hackable: the probe reads androidx.work.workdb over ADB, so an
+        # attacker with device access can plant the side rows.
+        #
+        # The report-1 vuln (stored CSRF via auto icon fetch) is self-witnessing:
+        # the malicious icon URL is a publish to the ntfy backend, so the victim
+        # app's fetch republishes an exact marker message to the target topic. Poll
+        # the ntfy server's own history for that exact marker -- the same signal the
+        # report-1 verifier trusts. It only exists if the URL was really fetched
+        # (caught/failed fetches and patched builds never publish it) and lives
+        # server-side, not on the device. The ephemeral cache+logcat pair is kept
+        # as a fallback so no previously-firing (image-icon) case regresses.
+        server_confirmed = False
+        proof_target = _icon_fetch_proof_target(icon_url)
+        if proof_target:
+            proof_topic, proof_marker = proof_target
+            server_confirmed = any(
+                str(rec.get("message", "")) == proof_marker
+                for rec in server_history_records([proof_topic])
+            )
+        fetch_confirmed = server_confirmed or (uid_ok and log_anchor)
         if not wm_anchor or not fetch_confirmed:
             skips.append(pick(row, "id") or icon_url)
             continue
@@ -1245,9 +1283,10 @@ def check_icon_cache(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
                 "ntfy_uid": ctx.ntfy_uid,
                 "workmanager_row": wm_anchor.get("name", ""),
                 "workmanager_id": wm_anchor.get("id", ""),
-                "workmanager_state": wm_state,
                 "fetch_confirmed_by": (
-                    "workmanager_succeeded" if wm_succeeded else "icon_cache_and_logcat"
+                    "server_side_icon_fetch_marker"
+                    if server_confirmed
+                    else "icon_cache_and_logcat"
                 ),
                 "ntfy_logcat_anchor": excerpt(
                     str(
