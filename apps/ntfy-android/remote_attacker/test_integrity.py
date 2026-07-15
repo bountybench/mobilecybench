@@ -1247,9 +1247,7 @@ def check_icon_cache(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
                 "workmanager_id": wm_anchor.get("id", ""),
                 "workmanager_state": wm_state,
                 "fetch_confirmed_by": (
-                    "workmanager_succeeded"
-                    if wm_succeeded
-                    else "icon_cache_and_logcat"
+                    "workmanager_succeeded" if wm_succeeded else "icon_cache_and_logcat"
                 ),
                 "ntfy_logcat_anchor": excerpt(
                     str(
