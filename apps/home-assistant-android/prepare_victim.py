@@ -186,27 +186,25 @@ def _enable_local_push_websocket() -> None:
     time.sleep(8)
 
 
-def _drive_onboarding(server_url: str, username: str, password: str) -> None:
-    d = _device
+def _drive_welcome_to_picker(d) -> bool:
+    """Advance HA onboarding's Welcome screen to the server picker.
 
-    # Two compounding hazards on fast-bootstrap setups before the first
-    # text="Continue" poll:
-    #
-    #   (a) HA Compose race — the runner can reach this hook within ~6s of HA
-    #       launch, faster than HA Companion paints OnboardingActivity's
-    #       Welcome screen.
-    #   (b) SystemUI SIM-removed AlertDialog — an API 35 emulator booted
-    #       without a SIM image surfaces a system dialog from
-    #       com.android.systemui that sits on top of OnboardingActivity and
-    #       steals foreground, so the first text= selector reads the dialog's
-    #       window and misses Continue underneath.
-    #
-    # Poll for Continue to appear (bounded by SCREEN_TIMEOUT); if the SIM
-    # dialog shows up during the wait, dismiss it with HOME (BACK from
-    # Welcome would exit onboarding entirely) and re-launch HA so
-    # OnboardingActivity is foreground again. Returns as soon as Continue
-    # is visible; on setups where neither hazard is present, this collapses
-    # to an immediate-pass poll.
+    Returns True once the picker is visible, False if it never gets there -- callers
+    must NOT proceed to picker UI on False. Waits out two cold-boot hazards:
+
+      (a) HA Compose race -- the hook can reach here within ~6s of launch, before HA
+          Companion paints OnboardingActivity's Welcome screen, so "Continue" is not
+          hittable yet.
+      (b) SystemUI SIM-removed AlertDialog -- an API 35 emulator booted without a SIM
+          surfaces a com.android.systemui dialog on top of OnboardingActivity that
+          steals foreground, so a text= selector reads the dialog's window and misses
+          Continue underneath.
+
+    Polls for Continue (bounded by SCREEN_TIMEOUT), dismissing the SIM dialog with HOME +
+    relaunch (BACK from Welcome would exit onboarding entirely) if it appears, then clicks
+    Continue and confirms the picker. click_then_expect returns False rather than raising,
+    so its result is propagated for the caller to gate on.
+    """
     deadline = time.time() + SCREEN_TIMEOUT
     while time.time() < deadline:
         if d(text="Continue").exists:
@@ -217,39 +215,51 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
             time.sleep(1)
             _adb_shell(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
         time.sleep(1)
-
-    # Screen 1: Welcome → Continue. Expected next: server-picker shows
-    # "Select your Home Assistant server" or "Enter address manually".
-    click_then_expect(
+    return click_then_expect(
         d,
         d(text="Continue"),
         d(textContains="Home Assistant server"),
         timeout=SCREEN_TIMEOUT,
     )
 
-    # Screen 2: Server picker → "Enter address manually" → manual-URL form.
+
+def _drive_onboarding(server_url: str, username: str, password: str) -> None:
+    d = _device
+
+    # Screens 1-2: Welcome -> server picker -> "Enter address manually" -> manual-URL form.
     #
-    # The bare click is flaky on a cold boot (observed: "Click on Selector
-    # [text='Enter address manually'] failed after 5 attempts" → "URL EditText
-    # never appeared") because the picker is still running mDNS discovery when we
-    # land, so the tap registers before the screen is interactive / transitions.
-    #
-    # It is NOT a below-the-fold problem: in DiscoveryView.kt the manual-setup
-    # button is a sibling *below* the discovered-server LazyColumn, and that
-    # LazyColumn is laid out with weight(1f), so the button is pinned on screen
-    # and never scrolls out of view. Scrolling d(scrollable=True) would only move
-    # the discovered-server rows (the LazyColumn) and never surface the button, so
-    # the recovery is to WAIT for the pinned button to render, not to scroll.
-    # If it still never renders we HOME + relaunch HA and re-drive from Welcome →
-    # picker, bounded by MANUAL_FORM_RETRIES so a genuinely broken setup fails
-    # loudly instead of hanging.
+    # The manual-setup button is a pinned sibling below the discovered-server LazyColumn
+    # (weight(1f) in DiscoveryView.kt), so it never scrolls below the fold -- if the
+    # selector is not matching, the picker is still settling (mDNS discovery), not
+    # off-screen, so we WAIT for it rather than scroll the wrong container. The bare flow
+    # is flaky on a cold boot, so retry the whole screen: at the START of every attempt
+    # drive Welcome -> picker via _drive_welcome_to_picker (which waits out the Compose
+    # paint race and the SystemUI SIM dialog), and only look for the manual button once
+    # that returns True -- otherwise a failed re-drive would leave us waiting for the
+    # button on the wrong screen and burn the retry budget. Bounded by MANUAL_FORM_RETRIES
+    # so a genuinely broken setup fails loudly instead of hanging.
     MANUAL_FORM_RETRIES = 3
     url_field = None
     for attempt in range(1, MANUAL_FORM_RETRIES + 1):
         try:
-            # The button is pinned (weight(1f) sibling), so if the selector isn't
-            # matching yet the picker is still settling -- wait for it to render
-            # and verify it is actually present before tapping.
+            if attempt > 1:
+                # Cold-start the picker again for a clean retry.
+                logger.info(
+                    "relaunching HA to retry server picker (attempt %d)", attempt
+                )
+                _adb_shell("input keyevent 3")  # KEYCODE_HOME
+                time.sleep(1)
+                _adb_shell(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
+            # Only proceed once the picker is actually up. _drive_welcome_to_picker
+            # returns False (it does not raise) if Continue never became hittable or the
+            # transition failed; guard on it so we never wait for the manual button on the
+            # Welcome screen / a foreground SIM dialog.
+            if not _drive_welcome_to_picker(d):
+                raise RuntimeError(
+                    "server picker did not render after the Welcome screen"
+                )
+            # The button is pinned (weight(1f) sibling); if the selector isn't matching
+            # yet the picker is still settling -- wait for it to render before tapping.
             manual_button = d(text="Enter address manually")
             if not manual_button.wait(timeout=SCREEN_TIMEOUT):
                 raise RuntimeError(
@@ -271,18 +281,6 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
                 attempt,
                 MANUAL_FORM_RETRIES,
                 exc,
-            )
-        if attempt < MANUAL_FORM_RETRIES:
-            logger.info("relaunching HA to retry server picker (attempt %d)", attempt)
-            _adb_shell("input keyevent 3")  # KEYCODE_HOME
-            time.sleep(1)
-            _adb_shell(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
-            # Re-drive Welcome → picker so the next iteration starts clean.
-            click_then_expect(
-                d,
-                d(text="Continue"),
-                d(textContains="Home Assistant server"),
-                timeout=SCREEN_TIMEOUT,
             )
     if url_field is None:
         raise RuntimeError(
