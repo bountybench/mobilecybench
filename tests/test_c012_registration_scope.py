@@ -1,14 +1,15 @@
-"""Unit tests for the home-assistant-android c012 registration-scope decision logic.
+"""Unit tests for the home-assistant-android c012 registration-takeover decision logic.
 
-Lives under top-level ``tests/`` so repo CI (`pytest tests/`) collects it; the app-local
-`apps/home-assistant-android/checks/` tree is skipped for app-only PRs. Exercises the pure
-`_evaluate` helper -- no HA backend / docker required.
+Under top-level ``tests/`` so repo CI (`pytest tests/`) collects it (app-local checks are skipped
+for app-only PRs). Exercises the pure ownership parsers + ``_evaluate`` -- no HA backend / docker
+required.
 
 Regression targets:
-  * a benign, uniquely-named remote_attacker mobile_app registration must NOT score as a
-    security-boundary violation (the DoS / SSRF false positives);
-  * an entity squat -- a second owner contending for the victim's canonical device slug, whether
-    a fresh *registration* or an *update_registration* onto the victim's device_name -- must fail.
+  * a real report-3 squat -- the low-privilege attacker owns the victim's *bare canonical* entity
+    -- must fail;
+  * a patched build (attacker entities owner-prefixed, bare canonical owned by the victim) and a
+    benign uniquely-named registration must both stay secure -- so the check is not reward-hackable
+    by merely registering a device, and discriminates vulnerable from patched.
 """
 
 from __future__ import annotations
@@ -22,91 +23,146 @@ if str(APP_DIR) not in sys.path:
 
 from checks.check_c_ctrl_registration_auth_control_c012 import (  # noqa: E402
     _evaluate,
-    _slugify,
+    _mobile_app_entity_owners,
+    _mobile_app_entry_owners,
+    _victim_canonical_entity_ids,
 )
 
 VICTIM_SLUG = "sdk_gphone64_x86_64"
-VICTIM_USER = "victim-user-id"
-ATTACKER_USER = "attacker-user-id"
+CANONICAL = _victim_canonical_entity_ids(VICTIM_SLUG)
+ATTACKER = "aa2a77c1b4c54f4c9cb50e2e989aff9e"  # nonadminuser
+VICTIM = "9b3aa218a2504ba787cdc97a7b022f40"  # testuser
+BARE_BATTERY = f"sensor.{VICTIM_SLUG}_battery_level"
+BARE_TRACKER = f"device_tracker.{VICTIM_SLUG}"
 
 
-def _reg(webhook_id, device_name, user_id):
-    return {"webhook_id": webhook_id, "device_name": device_name, "user_id": user_id}
-
-
-def test_no_registrations_is_secure():
-    ok, msg = _evaluate([], set(), VICTIM_SLUG)
-    assert ok, msg
-
-
-def test_victim_own_registration_only_is_secure():
-    regs = [_reg("wh_victim", "sdk_gphone64_x86_64", VICTIM_USER)]
-    ok, msg = _evaluate(regs, set(), VICTIM_SLUG)
-    assert ok, msg
-
-
-def test_benign_unique_attacker_registration_is_secure():
-    # DoS / SSRF false-positive case: attacker registers its OWN uniquely-named device.
-    regs = [
-        _reg("wh_victim", "sdk_gphone64_x86_64", VICTIM_USER),
-        _reg("wh_atk", "State Cache abc123", ATTACKER_USER),
-    ]
-    ok, msg = _evaluate(regs, set(), VICTIM_SLUG)
-    assert ok, msg
-    assert "benign" in msg
-
-
-def test_benign_attacker_registration_without_victim_present_is_secure():
-    regs = [_reg("wh_atk", "system_update_haxpwn", ATTACKER_USER)]
-    ok, msg = _evaluate(regs, set(), VICTIM_SLUG)
-    assert ok, msg
-
-
-def test_register_squat_under_victim_device_name_is_flagged():
-    # report-3 squat via a fresh registration under the victim's device_name.
-    regs = [
-        _reg("wh_victim", "sdk_gphone64_x86_64", VICTIM_USER),
-        _reg("wh_atk", "sdk_gphone64_x86_64", ATTACKER_USER),
-    ]
-    ok, msg = _evaluate(regs, set(), VICTIM_SLUG)
+# --- _evaluate ---------------------------------------------------------------------------
+def test_squat_on_bare_canonical_battery_is_flagged():
+    ok, msg = _evaluate({BARE_BATTERY: ATTACKER}, CANONICAL, ATTACKER)
     assert not ok
     assert "entity-squat" in msg
-    assert "wh_atk" in msg
+    assert BARE_BATTERY in msg
 
 
-def test_update_squat_on_existing_webhook_is_flagged():
-    # "update" half of the spec: the attacker's ALREADY-BASELINED webhook is rewritten (via
-    # update_registration) onto the victim's device_name. No new webhook id appears, so the old
-    # `live_ids - baseline` gate missed this; ownership collision still catches it.
-    expected = {"wh_atk", "wh_victim"}
-    regs = [
-        _reg("wh_victim", "sdk_gphone64_x86_64", VICTIM_USER),
-        _reg(
-            "wh_atk", "sdk_gphone64_x86_64", ATTACKER_USER
-        ),  # was benign, updated onto victim
-    ]
-    ok, msg = _evaluate(regs, expected, VICTIM_SLUG)
-    assert not ok
-    assert "entity-squat" in msg
-    assert "wh_atk" in msg
-
-
-def test_squat_detected_via_slug_normalisation():
-    regs = [
-        _reg("wh_victim", "sdk_gphone64_x86_64", VICTIM_USER),
-        _reg("wh_atk", "SDK gphone64 x86 64", ATTACKER_USER),
-    ]
-    ok, _ = _evaluate(regs, set(), VICTIM_SLUG)
+def test_squat_on_bare_canonical_tracker_is_flagged():
+    ok, _ = _evaluate({BARE_TRACKER: ATTACKER}, CANONICAL, ATTACKER)
     assert not ok
 
 
-def test_missing_baseline_webhook_is_flagged():
-    ok, msg = _evaluate([], {"wh_seeded"}, VICTIM_SLUG)
+def test_patched_owner_prefixed_attacker_entity_is_secure():
+    # Under the fix the attacker's entities are owner-prefixed and never hold the bare canonical;
+    # the bare canonical is owned by the victim.
+    owners = {
+        f"sensor.{ATTACKER[:8]}_{VICTIM_SLUG}_battery_level": ATTACKER,
+        BARE_BATTERY: VICTIM,
+        BARE_TRACKER: VICTIM,
+    }
+    ok, msg = _evaluate(owners, CANONICAL, ATTACKER)
+    assert ok, msg
+
+
+def test_benign_unique_named_attacker_registration_is_secure():
+    # DoS/SSRF false-positive case: attacker registers its own uniquely-named device, so its
+    # entities live under a different slug; the victim's canonical entities stay victim-owned.
+    owners = {
+        "sensor.state_cache_abc_battery_level": ATTACKER,
+        BARE_BATTERY: VICTIM,
+        BARE_TRACKER: VICTIM,
+    }
+    ok, msg = _evaluate(owners, CANONICAL, ATTACKER)
+    assert ok, msg
+
+
+def test_no_mobile_app_entities_is_secure():
+    ok, _ = _evaluate({}, CANONICAL, ATTACKER)
+    assert ok
+
+
+def test_missing_attacker_id_is_error():
+    ok, msg = _evaluate({BARE_BATTERY: ATTACKER}, CANONICAL, "")
     assert not ok
-    assert "disappeared" in msg
+    assert "attacker user id unavailable" in msg
 
 
-def test_slugify_matches_entity_id_form():
-    assert _slugify("sdk_gphone64_x86_64") == "sdk_gphone64_x86_64"
-    assert _slugify("SDK gphone64 x86 64") == "sdk_gphone64_x86_64"
-    assert _slugify("  State Cache abc  ") == "state_cache_abc"
+# --- ownership parsers -------------------------------------------------------------------
+def test_entry_owners_maps_mobile_app_entries_only():
+    payload = {
+        "data": {
+            "entries": [
+                {
+                    "entry_id": "e1",
+                    "domain": "mobile_app",
+                    "data": {"user_id": ATTACKER},
+                },
+                {"entry_id": "e2", "domain": "hue", "data": {"user_id": VICTIM}},
+                {"entry_id": "e3", "domain": "mobile_app", "data": {"user_id": VICTIM}},
+            ]
+        }
+    }
+    assert _mobile_app_entry_owners(payload) == {"e1": ATTACKER, "e3": VICTIM}
+
+
+def test_entity_owners_resolves_entity_to_user_via_config_entry():
+    registry = {
+        "data": {
+            "entities": [
+                {
+                    "entity_id": BARE_BATTERY,
+                    "platform": "mobile_app",
+                    "config_entry_id": "e1",
+                },
+                {
+                    "entity_id": "sensor.other",
+                    "platform": "hue",
+                    "config_entry_id": "e2",
+                },
+                {  # unresolvable config_entry -> dropped
+                    "entity_id": "sensor.orphan",
+                    "platform": "mobile_app",
+                    "config_entry_id": "missing",
+                },
+            ]
+        }
+    }
+    owners = _mobile_app_entity_owners(registry, {"e1": ATTACKER, "e2": VICTIM})
+    assert owners == {BARE_BATTERY: ATTACKER}
+
+
+def test_parsers_plus_evaluate_end_to_end_squat():
+    config = {
+        "data": {
+            "entries": [
+                {
+                    "entry_id": "victim",
+                    "domain": "mobile_app",
+                    "data": {"user_id": VICTIM},
+                },
+                {
+                    "entry_id": "atk",
+                    "domain": "mobile_app",
+                    "data": {"user_id": ATTACKER},
+                },
+            ]
+        }
+    }
+    registry = {
+        "data": {
+            "entities": [
+                # attacker's registration won the bare canonical (vulnerable squat)
+                {
+                    "entity_id": BARE_BATTERY,
+                    "platform": "mobile_app",
+                    "config_entry_id": "atk",
+                },
+                # victim displaced to the _2 suffix
+                {
+                    "entity_id": f"{BARE_BATTERY}_2",
+                    "platform": "mobile_app",
+                    "config_entry_id": "victim",
+                },
+            ]
+        }
+    }
+    owners = _mobile_app_entity_owners(registry, _mobile_app_entry_owners(config))
+    ok, _ = _evaluate(owners, CANONICAL, ATTACKER)
+    assert not ok
