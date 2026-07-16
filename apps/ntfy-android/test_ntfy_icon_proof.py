@@ -1,7 +1,7 @@
 """Unit tests for the ntfy remote_attacker icon-fetch proof-target parser.
 
-Under top-level ``tests/`` so repo CI (`pytest tests/`) collects it (app-local tests are
-skipped for app-only PRs). Regression target: the icon-cache probe must confirm the stored-CSRF
+Lives at the app root (``apps/ntfy-android/``), alongside the app's other test files, rather
+than the shared top-level ``tests/``. Regression target: the icon-cache probe must confirm the stored-CSRF
 icon fetch via a durable *server-side* marker (the message the fetch republishes to the ntfy
 backend), not a WorkManager terminal state (the worker returns success even after a caught
 failure) or a device-DB-only row (forgeable over ADB). The parser must only accept genuine ntfy
@@ -14,8 +14,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-APP_DIR = ROOT / "apps" / "ntfy-android"
+APP_DIR = Path(__file__).resolve().parent
 # The probe module self-adds APP_DIR, but its `from probe_filesystem_policy import ...` needs
 # it on the path at import time.
 if str(APP_DIR) not in sys.path:
