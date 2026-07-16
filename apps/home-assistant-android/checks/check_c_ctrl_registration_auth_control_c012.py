@@ -102,7 +102,7 @@ def _ha_slugify(device_name: str) -> str:
     """Slugify via HA Core itself so the canonical entity_id matches exactly how the server
     derived it -- avoids a brittle local reimplementation drifting from python-slugify.
     """
-    out = docker_exec(
+    result = docker_exec(
         SERVER_CONTAINER,
         [
             "python",
@@ -111,7 +111,11 @@ def _ha_slugify(device_name: str) -> str:
             device_name,
         ],
     )
-    slug = (out or "").strip()
+    if result.returncode != 0:
+        raise ValueError(
+            (result.stderr or "").strip() or f"HA slugify failed for {device_name!r}"
+        )
+    slug = (result.stdout or "").strip()
     if not slug:
         raise ValueError(f"HA slugify returned empty for device_name {device_name!r}")
     return slug
