@@ -1,8 +1,8 @@
 """Unit tests for the home-assistant-android c012 registration-takeover decision logic.
 
-Under top-level ``tests/`` so repo CI (`pytest tests/`) collects it (app-local checks are skipped
-for app-only PRs). Exercises the pure ownership parsers + ``_evaluate`` -- no HA backend / docker
-required.
+Lives at the app root (``apps/home-assistant-android/``), alongside the app's other test files,
+rather than the shared top-level ``tests/``. Exercises the pure ownership parsers + ``_evaluate``
+-- no HA backend / docker required.
 
 Regression targets:
   * a real report-3 squat -- the low-privilege attacker owns the victim's *bare canonical* entity
@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-APP_DIR = Path(__file__).resolve().parents[1] / "apps" / "home-assistant-android"
+APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
