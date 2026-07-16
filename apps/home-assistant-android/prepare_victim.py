@@ -49,6 +49,7 @@ logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s: %(mess
 # timing out at the end.
 SCREEN_TIMEOUT = 60  # seconds to wait for a Compose screen to render
 WEBVIEW_TIMEOUT = 90  # WebView + HA frontend HTTP load
+WEBVIEW_CONNECT_RETRIES = 3  # full Connect→WebView cycles before giving up
 DASHBOARD_TIMEOUT = 120  # post-onboarding handoff to WebViewActivity
 
 
@@ -308,21 +309,53 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
     time.sleep(0.5)
     _adb_shell("input keyevent 66")  # ENTER → ImeAction.Done → connectedClicked
 
-    deadline = time.time() + WEBVIEW_TIMEOUT
-    while time.time() < deadline:
-        if d(className="android.webkit.WebView").exists:
-            time.sleep(2)  # confirm WebView stays, not a transient flash
+    # The WebView load from HA Core's /auth/authorize is the flakiest onboarding step on CI
+    # emulators: the TLS frontend fetch is slow, and a transient error page can flash the
+    # WebView briefly then dismiss back to the URL form. A single 90s wait therefore fails
+    # intermittently. Retry the whole Connect→WebView cycle a few times; on each pass, if we are
+    # sitting on the URL form (WebView flashed away, or ENTER never reached ImeAction.Done so
+    # Connect is disabled), re-type the URL to re-fire onValueChange and re-submit before
+    # waiting again.
+    webview_up = False
+    for connect_attempt in range(1, WEBVIEW_CONNECT_RETRIES + 1):
+        deadline = time.time() + WEBVIEW_TIMEOUT
+        while time.time() < deadline:
             if d(className="android.webkit.WebView").exists:
-                break
-        elif d(text="Connect").exists:
-            # Bounced back to URL form: ENTER missed or WebView flashed away.
-            # Connect button is enabled (onValueChange already fired); click it.
-            d(text="Connect").click()
-            time.sleep(2)
-        else:
-            time.sleep(1)
-    else:
-        raise RuntimeError("Login WebView never stabilized after Connect")
+                time.sleep(2)  # confirm WebView stays, not a transient flash
+                if d(className="android.webkit.WebView").exists:
+                    webview_up = True
+                    break
+            elif (
+                d(text="Connect").exists
+                or d(className="android.widget.EditText").exists
+            ):
+                # On the URL form: re-type via the IME so onValueChange re-enables Connect,
+                # submit with ENTER, and click Connect if it is present.
+                field = d(className="android.widget.EditText")
+                if field.exists:
+                    field.click()
+                    time.sleep(0.3)
+                    _adb_shell(f"input text {_sh_quote(server_url)}")
+                    time.sleep(0.3)
+                _adb_shell(
+                    "input keyevent 66"
+                )  # ENTER → ImeAction.Done → connectedClicked
+                if d(text="Connect").exists:
+                    d(text="Connect").click()
+                time.sleep(2)
+            else:
+                time.sleep(1)
+        if webview_up:
+            break
+        logger.warning(
+            "login WebView not stable after attempt %d/%d; retrying Connect",
+            connect_attempt,
+            WEBVIEW_CONNECT_RETRIES,
+        )
+    if not webview_up:
+        raise RuntimeError(
+            f"Login WebView never stabilized after {WEBVIEW_CONNECT_RETRIES} Connect attempts"
+        )
 
     # Screen 4: WebView login. Tab order trick — autofocus is on the username
     # field in HA's auth frontend; type, TAB, type, ENTER.
