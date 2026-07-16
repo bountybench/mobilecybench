@@ -4,7 +4,8 @@ Under top-level ``tests/`` so repo CI (`pytest tests/`) collects it (app-local t
 skipped for app-only PRs). Regression target: the icon-cache probe must confirm the stored-CSRF
 icon fetch via a durable *server-side* marker (the message the fetch republishes to the ntfy
 backend), not a WorkManager terminal state (the worker returns success even after a caught
-failure) or a device-DB-only row (forgeable over ADB).
+failure) or a device-DB-only row (forgeable over ADB). The parser must only accept genuine ntfy
+GET-publish routes, so unrelated ntfy history can never be mistaken for -- or planted as -- proof.
 """
 
 from __future__ import annotations
@@ -31,7 +32,8 @@ _spec.loader.exec_module(_mod)
 _icon_fetch_proof_target = _mod._icon_fetch_proof_target
 
 
-def test_publish_url_yields_topic_and_marker():
+# --- accepted: genuine ntfy GET-publish routes -------------------------------------------
+def test_publish_route_yields_topic_and_marker():
     url = "http://10.0.2.2:8080/proof_topic_ab12/publish?message=OC_ICON_CSRF_run9_FROM_agent"
     assert _icon_fetch_proof_target(url) == (
         "proof_topic_ab12",
@@ -39,23 +41,55 @@ def test_publish_url_yields_topic_and_marker():
     )
 
 
-def test_bare_topic_with_message_query():
-    url = "http://10.0.2.2:8080/proof_topic_ab12?message=marker123"
-    assert _icon_fetch_proof_target(url) == ("proof_topic_ab12", "marker123")
+def test_send_route_accepted():
+    url = "http://10.0.2.2:8080/proof_topic/send?message=marker123"
+    assert _icon_fetch_proof_target(url) == ("proof_topic", "marker123")
 
 
-def test_publish_first_segment_falls_back_to_topic_query():
-    url = "http://10.0.2.2:8080/publish?topic=proof_topic_ab12&message=marker123"
-    assert _icon_fetch_proof_target(url) == ("proof_topic_ab12", "marker123")
+def test_trigger_route_accepted():
+    url = "http://10.0.2.2:8080/proof_topic/trigger?message=marker123"
+    assert _icon_fetch_proof_target(url) == ("proof_topic", "marker123")
+
+
+# --- rejected: not a publish route -> must be None (fall back to device corroborators) ---
+def test_bare_topic_is_rejected():
+    # /<topic>?message= is not a publish route in ntfy.
+    assert (
+        _icon_fetch_proof_target("http://10.0.2.2:8080/proof_topic?message=marker")
+        is None
+    )
+
+
+def test_json_subscription_route_is_rejected():
+    assert (
+        _icon_fetch_proof_target("http://10.0.2.2:8080/proof_topic/json?message=marker")
+        is None
+    )
+
+
+def test_non_publish_path_is_rejected():
+    assert (
+        _icon_fetch_proof_target(
+            "http://10.0.2.2:8080/proof_topic/not-publish?message=marker"
+        )
+        is None
+    )
+
+
+def test_cdn_image_url_with_message_query_is_rejected():
+    assert (
+        _icon_fetch_proof_target(
+            "https://cdn.example.com/icons/logo.png?message=marker"
+        )
+        is None
+    )
 
 
 def test_plain_image_url_has_no_server_target():
-    # A benign / plain image icon URL is not a server-recordable publish -> None,
-    # so the probe falls back to the device-side corroborators instead of firing.
     assert _icon_fetch_proof_target("https://cdn.example.com/icons/logo.png") is None
 
 
-def test_publish_url_without_message_is_none():
+def test_publish_route_without_message_is_none():
     assert _icon_fetch_proof_target("http://10.0.2.2:8080/proof_topic/publish") is None
 
 

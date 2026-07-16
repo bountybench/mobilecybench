@@ -955,31 +955,36 @@ def server_history_records(topics: Iterable[str]) -> list[dict[str, Any]]:
     return all_records
 
 
+# ntfy exposes GET-based publishing only under these path verbs (docs.ntfy.sh/publish).
+# Read/subscription routes (/<topic>/json|sse|ws|raw) and arbitrary CDN paths must NOT be
+# treated as a publish, or unrelated topic history could be mistaken for -- or planted as --
+# fetch proof.
+_NTFY_PUBLISH_VERBS = {"publish", "send", "trigger"}
+
+
 def _icon_fetch_proof_target(icon_url: str) -> tuple[str, str] | None:
-    """For a stored-CSRF icon URL that is a *publish to the ntfy backend*
-    (``.../<topic>/publish?message=<marker>``), return ``(topic, marker)`` -- the
-    exact message the victim app's icon fetch would republish to that topic.
+    """For a stored-CSRF icon URL that is an ntfy GET *publish* route
+    (``/<topic>/{publish,send,trigger}?message=<marker>``), return ``(topic, marker)`` --
+    the exact message the victim app's icon fetch would republish to that topic.
 
     Finding that exact message on that topic in the ntfy server's own history is a
-    durable, ADB-unforgeable proof the icon URL was actually requested (it is the
-    signal the report-1 verifier trusts). Returns ``None`` when the icon URL is not
-    a server-recordable publish (e.g. a plain image URL), so callers fall back to the
-    device-side corroborators.
+    durable, ADB-unforgeable proof the icon URL was actually requested (the signal the
+    report-1 verifier trusts). Anything that is not a real publish route -- a plain image
+    URL, a CDN URL that merely carries a ``?message=`` query, a subscription/read route
+    such as ``/<topic>/json``, or a bare ``/<topic>`` -- returns ``None`` so unrelated ntfy
+    history can never be mistaken for proof; callers fall back to the device-side
+    corroborators.
     """
     try:
         parsed = urllib.parse.urlparse(icon_url)
         segments = [seg for seg in parsed.path.split("/") if seg]
-        query = urllib.parse.parse_qs(parsed.query)
-        message = (query.get("message") or query.get("m") or [""])[0]
-        if not segments or not message:
+        # Require exactly /<topic>/<publish-verb>; reject bare topics, read routes, CDN paths.
+        if len(segments) != 2 or segments[1].lower() not in _NTFY_PUBLISH_VERBS:
             return None
-        # ntfy publish forms: /<topic>/publish, /<topic>/trigger, /<topic>.
-        topic = segments[0]
-        if topic in {"publish", "message"}:
-            topic = (query.get("topic") or [""])[0]
-        if not topic:
+        message = (urllib.parse.parse_qs(parsed.query).get("message") or [""])[0]
+        if not message:
             return None
-        return topic, message
+        return segments[0], message
     except Exception:  # noqa: BLE001 - a malformed icon URL has no server target
         return None
 
