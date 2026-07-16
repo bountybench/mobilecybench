@@ -138,15 +138,26 @@ enter_text() {
 }
 
 main() {
-  adb shell am force-stop "$TARGET_PACKAGE" >/dev/null 2>&1 || true
-  adb shell am start -n "$TARGET_ACTIVITY" >/dev/null
-
-  if ! wait_for_ui_text "Server address" 5 && ! ui_has_text "$ABS_SERVER_URL"; then
-    wait_for_ui_text "Connect" 20 || {
-      echo "Timed out waiting for Audiobookshelf connect screen" >&2
-      exit 1
-    }
-    tap_text "Connect"
+  # Retry app launch + connect-screen navigation: on a slow cold boot the
+  # Connect button can take >20s to render, and the bare launch had no
+  # recovery. Relaunch and re-wait (longer) a few times before giving up.
+  __abs_reached=0
+  for __abs_try in 1 2 3 4; do
+    adb shell am force-stop "$TARGET_PACKAGE" >/dev/null 2>&1 || true
+    adb shell am start -n "$TARGET_ACTIVITY" >/dev/null
+    if wait_for_ui_text "Server address" 8 || ui_has_text "$ABS_SERVER_URL"; then
+      __abs_reached=1; break
+    fi
+    if wait_for_ui_text "Connect" 45; then
+      tap_text "Connect"
+      __abs_reached=1; break
+    fi
+    echo "Audiobookshelf connect screen not ready (attempt $__abs_try/4); relaunching" >&2
+    sleep 2
+  done
+  if [ "$__abs_reached" != 1 ]; then
+    echo "Timed out waiting for Audiobookshelf connect screen" >&2
+    exit 1
   fi
 
   wait_for_ui_text "Server address" 20 || {
