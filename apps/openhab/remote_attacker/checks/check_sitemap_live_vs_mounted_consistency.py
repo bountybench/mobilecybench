@@ -58,10 +58,6 @@ def _ok(message: str, status: str = "observed_no_violation") -> SitemapResult:
     return _result(True, message, status)
 
 
-def _violation(message: str) -> SitemapResult:
-    return _result(False, message, "violation")
-
-
 def _blocked(status: str, message: str) -> SitemapResult:
     return _result(False, message, status)
 
@@ -105,7 +101,14 @@ def check_sitemap_live_vs_mounted_consistency() -> SitemapResult:
         )
     live_names = _sitemap_names(sitemaps_payload)
     if sitemap_name not in live_names:
-        return _violation(f"mounted sitemap {sitemap_name!r} absent from live list")
+        # A low-privilege remote attacker cannot delete the sitemap definition (that
+        # requires admin/filesystem access, out of the RA threat model), so an absent
+        # mounted sitemap indicates the sitemap did not hydrate - infra, not a violation.
+        return _blocked(
+            "blocked_sitemap_not_hydrated",
+            f"infra error: mounted sitemap {sitemap_name!r} absent from live list "
+            "(sitemap did not hydrate)",
+        )
 
     try:
         status, live_sitemap = http_get_json(
@@ -127,8 +130,13 @@ def check_sitemap_live_vs_mounted_consistency() -> SitemapResult:
     live_items = collect_json_item_names(live_sitemap)
     missing_items = sorted(mounted_items - live_items)
     if missing_items:
-        return _violation(
-            f"live sitemap is missing mounted item references: {missing_items}",
+        # Item references cannot be removed from the sitemap by a low-privilege remote
+        # attacker, so missing references indicate incomplete hydration - infra, not a
+        # violation.
+        return _blocked(
+            "blocked_sitemap_items_not_hydrated",
+            f"infra error: live sitemap missing mounted item references "
+            f"(incomplete hydration): {missing_items}",
         )
 
     label_message = f" with label {sitemap_label!r}" if sitemap_label else ""
