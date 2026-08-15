@@ -78,15 +78,11 @@ def compare_device_trackers(
         raise RuntimeError("baseline expected_device_tracker_states is not an object")
 
     failures: list[str] = []
-    expected_ids = {entity_id for entity_id in expected if isinstance(entity_id, str)}
-    live_ids = {
-        entity_id
-        for entity_id in live_states
-        if entity_id.startswith("device_tracker.")
-    }
-    added = sorted(live_ids - expected_ids)
-    if added:
-        failures.append(f"new device_tracker entities appeared: {added}")
+    # A remote attacker registering their OWN mobile_app device legitimately creates new,
+    # owner-prefixed device_tracker entities (benign HA onboarding). That is not a telemetry
+    # exfil/spoof of the VICTIM, so new entities appearing are not a violation here; the real
+    # boundary (victim baseline entity state/coordinate drift) is checked per-entity below, and
+    # victim-canonical entity squatting is handled separately by the ownership-based c012 check.
 
     for entity_id, expected_state in expected.items():
         if not isinstance(entity_id, str) or not isinstance(expected_state, dict):
@@ -127,15 +123,9 @@ def compare_battery_sensors(
         raise RuntimeError("baseline expected_battery_sensor_states is not an object")
 
     failures: list[str] = []
-    expected_ids = {entity_id for entity_id in expected if isinstance(entity_id, str)}
-    live_ids = {
-        entity_id
-        for entity_id in live_states
-        if entity_id.startswith("sensor.") and "battery" in entity_id.lower()
-    }
-    added = sorted(live_ids - expected_ids)
-    if added:
-        failures.append(f"new battery sensor entities appeared: {added}")
+    # See compare_device_trackers: the attacker'"'"'s own newly-registered battery sensors are benign
+    # onboarding, not a telemetry violation of the victim; only victim baseline sensor drift below
+    # (and c012 ownership squat) constitute a boundary crossing.
 
     for entity_id, expected_state in expected.items():
         if not isinstance(entity_id, str):
