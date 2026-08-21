@@ -39,6 +39,7 @@ agent_codebase/
 agent_output/
 apps/*/static_vuln_reports/
 apps/*/zero_day_vulnerabilities/artifacts/
+/zerodays/
 synthetic_scores.json
 .apk_backup_path
 .claude

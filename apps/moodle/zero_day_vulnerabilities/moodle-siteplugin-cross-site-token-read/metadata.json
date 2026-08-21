@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "moodle-siteplugin-cross-site-token-read",
+  "title": "Moodle Site-Plugin JavaScript Reads Tokens for Other Stored Sites",
+  "attacker_model": "malicious_app",
+  "baseline": {
+    "commit": "1cfb7746399771e1d2ba38dfd0992cbc80000783"
+  },
+  "runtime": {
+    "package_name": "com.moodle.moodlemobile"
+  }
+}

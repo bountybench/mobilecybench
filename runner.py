@@ -23,7 +23,7 @@ from utils.exploit_source import (
     resolve_gold_source,
     stage_exploit_source,
 )
-from utils.git_utils import ensure_app_submodule, ensure_zerodays_submodule
+from utils.git_utils import ensure_app_submodule
 from utils.logger import logger, logger_manager
 from utils.run_artifacts import (
     normalize_agent_result,
@@ -184,10 +184,8 @@ def _load_bundle_attacker_model(
     Bundle-backed (synthetic / zeroday): read from task metadata.json.
     Probe-only bundle-less: returns the config value (the bundle echoes it).
     """
-    from evaluation.task_bundle import assert_zerodays_initialized, resolve_bundle
+    from evaluation.task_bundle import resolve_bundle
 
-    if getattr(config, "task", None):
-        assert_zerodays_initialized(project_root)
     return resolve_bundle(config, project_root, app_name).attacker_model()
 
 
@@ -236,11 +234,7 @@ def run(
     gold_source_dir: Optional[Path] = None
     replay_source_dir: Optional[Path] = None
     try:
-        # Initialize submodules before any task/app metadata reads. Redteam
-        # attacker-model reconciliation and gold-source resolution both touch
-        # task bundle paths, so preconditions belong at the top of the run.
-        if config.workflow == "redteam" and config.task:
-            ensure_zerodays_submodule(project_root)
+        # Initialize the target app before its metadata or runtime files are read.
         ensure_app_submodule(project_root, app_name)
 
         # Redteam: bundle owns attacker_model. Sync into config so downstream

@@ -126,7 +126,7 @@ def _write_probes(probe_dir: Path) -> None:
 
 
 def _task_dir(project_root: Path) -> Path:
-    return project_root / "zerodays" / "reports" / "testapp" / "report-0" / "task"
+    return project_root / "apps" / "testapp" / "zero_day_vulnerabilities" / "report-0"
 
 
 def _make_workflow(config: RunnerConfig, project_root: Path):

@@ -1,0 +1,50 @@
+diff --git a/src/core/features/compile/components/compile-html/compile-html.ts b/src/core/features/compile/components/compile-html/compile-html.ts
+index 6370ade17..a871aa781 100644
+--- a/src/core/features/compile/components/compile-html/compile-html.ts
++++ b/src/core/features/compile/components/compile-html/compile-html.ts
+@@ -245,6 +245,8 @@ export class CoreCompileHtmlComponent implements OnChanges, OnDestroy, DoCheck {
+ 
+                 // Inject the libraries.
+                 CoreCompile.injectLibraries(this, {
++                    // Site-plugin component/handler JS must not enumerate or read unrelated stored sites.
++                    excludeLibraries: ['CoreSitesProvider'],
+                     extraLibraries: compileInstance.extraProviders,
+                     injector: compileInstance.injector,
+                     // Capture calls to effect to retrieve the effectRefs and destroy them when this component is destroyed.
+diff --git a/src/core/features/compile/services/compile.ts b/src/core/features/compile/services/compile.ts
+index 977a1e936..0a9858ffe 100644
+--- a/src/core/features/compile/services/compile.ts
++++ b/src/core/features/compile/services/compile.ts
+@@ -277,7 +277,11 @@ export class CoreCompileProvider {
+             if (typeof libraryDef === 'function' && libraryDef.name) {
+                 try {
+                     // Inject the provider to the instance. We use the class name as the property name.
+-                    instance[libraryDef.name.replace(/DelegateService$/, 'Delegate')] = injector.get<Provider>(libraryDef);
++                    const propertyName = libraryDef.name.replace(/DelegateService$/, 'Delegate');
++                    if (options.excludeLibraries?.includes(propertyName)) {
++                        continue;
++                    }
++                    instance[propertyName] = injector.get<Provider>(libraryDef);
+                 } catch (ex) {
+                     this.logger.error('Error injecting provider', libraryDef.name, ex);
+                 }
+@@ -452,4 +456,5 @@ type InjectLibrariesOptions = {
+     injector?: Injector; // Injector of the injection context. E.g. for a component, use the component's injector.
+     effectWrapper?: typeof effect; // Wrapper function to create an effect. If not provided, a wrapper will be created using the
+                                    // injector. Use this wrapper if you want to capture the created EffectRefs.
++    excludeLibraries?: string[]; // Provider property names that should not be injected into this dynamic JS context.
+ };
+diff --git a/src/core/features/siteplugins/services/siteplugins-init.ts b/src/core/features/siteplugins/services/siteplugins-init.ts
+index f8d5276c7..d9decea09 100644
+--- a/src/core/features/siteplugins/services/siteplugins-init.ts
++++ b/src/core/features/siteplugins/services/siteplugins-init.ts
+@@ -270,7 +270,8 @@ export class CoreSitePluginsInitService {
+         };
+ 
+         await CoreCompile.loadLibraries();
+-        CoreCompile.injectLibraries(instance);
++        // Site-plugin init JS must not enumerate or manipulate unrelated stored sites.
++        CoreCompile.injectLibraries(instance, { excludeLibraries: ['CoreSitesProvider'] });
+ 
+         // Add some data of the WS call result.
+         const jsData = CoreSitePlugins.createDataForJS(result);

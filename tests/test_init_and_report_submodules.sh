@@ -2,13 +2,12 @@
 # Integration test for init_and_report_submodules.sh.
 #
 # Validates that:
-#   1. With no args, all non-zerodays submodules are inited + reported.
+#   1. With no args, all active app submodules are inited + reported.
 #   2. With a path arg, only that path is inited and reported.
 #   3. A path arg that's a parent of a submodule path also matches
 #      (e.g. `apps/foo` matches `apps/foo/codebase`).
 #   4. Failure of an unrelated submodule does not abort the script when
 #      the user scoped to a working submodule path.
-#   5. Passing zerodays explicitly still initializes/reports zerodays.
 #
 # Mocks `git submodule` via PATH override so we exercise the script's
 # argument-passing without needing real submodule remotes.
@@ -26,13 +25,11 @@ trap 'rm -rf "$TMP"' EXIT
 # Synthetic project layout. `foo` has TWO submodules (mirrors real-world
 # apps that ship both `codebase` and `<app>-docker`, e.g. jitsi-meet).
 mkdir -p "$TMP/apps/foo/codebase" "$TMP/apps/foo/foo-docker" \
-         "$TMP/apps/bar/codebase" "$TMP/apps/wordpress/codebase" \
-         "$TMP/zerodays"
+         "$TMP/apps/bar/codebase" "$TMP/apps/wordpress/codebase"
 echo "f1" > "$TMP/apps/foo/codebase/file.txt"
 echo "f2" > "$TMP/apps/foo/foo-docker/file.txt"
 echo "b"  > "$TMP/apps/bar/codebase/file.txt"
 echo "w"  > "$TMP/apps/wordpress/codebase/file.txt"
-echo "z"  > "$TMP/zerodays/file.txt"
 
 # .gitmodules so `git config --file .gitmodules` enumerates them.
 cat > "$TMP/.gitmodules" <<'EOF'
@@ -48,9 +45,6 @@ cat > "$TMP/.gitmodules" <<'EOF'
 [submodule "apps/wordpress/codebase"]
 	path = apps/wordpress/codebase
 	url = https://example.invalid/wordpress
-[submodule "zerodays"]
-	path = zerodays
-	url = https://example.invalid/zerodays
 EOF
 
 # Bring the script under test into the tmp dir.
@@ -131,23 +125,19 @@ assert_grep() {
 }
 
 # =====================================================================
-# Test 1: no args — inits & reports all submodules except zerodays
+# Test 1: no args initializes and reports all active app submodules
 # =====================================================================
 rm -f git_calls.log submodule_size_report.txt
 bash ./init_and_report_submodules.sh > /dev/null
 [ -f git_calls.log ] || { echo "FAIL: no git calls captured"; exit 1; }
-# Init/update should be scoped to every registered path except zerodays.
-assert_grep "Test 1: init called without zerodays" "^git submodule init apps/foo/codebase apps/foo/foo-docker apps/bar/codebase apps/wordpress/codebase$" git_calls.log
-assert_grep "Test 1: update called without zerodays" "^git submodule update --recursive --progress apps/foo/codebase apps/foo/foo-docker apps/bar/codebase apps/wordpress/codebase$" git_calls.log
+# Init/update should be scoped to every active app submodule.
+assert_grep "Test 1: init called with active apps" "^git submodule init apps/foo/codebase apps/foo/foo-docker apps/bar/codebase apps/wordpress/codebase$" git_calls.log
+assert_grep "Test 1: update called with active apps" "^git submodule update --recursive --progress apps/foo/codebase apps/foo/foo-docker apps/bar/codebase apps/wordpress/codebase$" git_calls.log
 # Report should mention four app submodules (foo has codebase + foo-docker).
 assert_grep "Test 1: report includes foo/codebase"   "Submodule: apps/foo/codebase"       submodule_size_report.txt
 assert_grep "Test 1: report includes foo/foo-docker" "Submodule: apps/foo/foo-docker"     submodule_size_report.txt
 assert_grep "Test 1: report includes bar"            "Submodule: apps/bar/codebase"       submodule_size_report.txt
 assert_grep "Test 1: report includes wordpress"      "Submodule: apps/wordpress/codebase" submodule_size_report.txt
-if grep -q "Submodule: zerodays" submodule_size_report.txt; then
-    echo "FAIL: Test 1 — report should not include zerodays by default"; exit 1
-fi
-echo "PASS: Test 1: report excludes zerodays by default"
 assert_grep "Test 1: count is 4"                     "Submodules/App Count: 4"            submodule_size_report.txt
 
 # =====================================================================
@@ -202,19 +192,6 @@ if MOCK_FAIL_WORDPRESS=1 bash ./init_and_report_submodules.sh > /dev/null 2>&1; 
     echo "FAIL: Test 4 — default init should fail when an included submodule fails"; exit 1
 fi
 echo "PASS: Test 4: default init still fails on included broken submodule"
-
-# =====================================================================
-# Test 5: zerodays can still be initialized/reported when explicit
-# =====================================================================
-rm -f git_calls.log submodule_size_report.txt
-bash ./init_and_report_submodules.sh zerodays > /dev/null
-assert_grep "Test 5: init called WITH zerodays" \
-    "^git submodule init zerodays$" git_calls.log
-assert_grep "Test 5: update called WITH zerodays" \
-    "^git submodule update --recursive --progress zerodays$" git_calls.log
-assert_grep "Test 5: report includes zerodays when explicit" \
-    "Submodule: zerodays" submodule_size_report.txt
-assert_grep "Test 5: count is 1" "Submodules/App Count: 1" submodule_size_report.txt
 
 echo
 echo "All tests passed."

@@ -121,7 +121,7 @@ main() {
     echo "Total: $(format_size "$total_size") across $count submodules"
 
     if $active_apps_default; then
-        echo "Note: archived app submodules and zerodays/ are skipped by default. Pass explicit paths to initialize them."
+        echo "Note: archived app submodules are skipped by default. Pass explicit paths to initialize them."
     fi
 }
 

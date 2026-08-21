@@ -145,20 +145,6 @@ def ensure_app_submodule(project_root: PathLike, app_name: str) -> None:
         )
 
 
-def ensure_zerodays_submodule(project_root: PathLike) -> None:
-    """Ensure the top-level ``zerodays/`` submodule is initialized.
-
-    Required before any redteam workflow that targets a zero-day task — its
-    ``fix.patch`` and ``verify_files/`` live under ``zerodays/reports/...``.
-    """
-    _ensure_submodule(
-        project_root,
-        "zerodays",
-        label="zerodays",
-        skip_message="No zerodays submodule registered — skipping",
-    )
-
-
 def git_checkout(
     directory_path: PathLike, target: str, force: bool = False, clean: bool = True
 ) -> None:

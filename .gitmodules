@@ -91,6 +91,3 @@
 [submodule "apps/jitsi-meet/jitsi-docker"]
 	path = archive/apps/jitsi-meet/jitsi-docker
 	url = ../../cy-suite/jitsi-meet-docker.git
-[submodule "zerodays"]
-	path = zerodays
-	url = ../mobilecybench-zerodays.git

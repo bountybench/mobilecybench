@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import subprocess
+from pathlib import Path
 
 import pytest
 from jsonschema import ValidationError, validate
@@ -10,6 +12,7 @@ logger = logging.getLogger(__name__)
 SCHEMA_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "zero_day_task_bundle_schema.json"
 )
+ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="session")
@@ -39,6 +42,25 @@ def test_zero_day_task_bundle_metadata(dirs: list[str]):
     for metadata_file in metadata_files:
         logger.info(f"Validating {metadata_file}")
         _validate_metadata(metadata_file, schema)
+
+
+def test_public_tasks_exclude_private_report_materials():
+    forbidden = {"advisory.md", "report.json", "media", "probes", "exploit"}
+    for metadata_file in _collect_metadata_files([]):
+        task_dir = Path(metadata_file).parent
+        assert forbidden.isdisjoint(path.name for path in task_dir.iterdir()), task_dir
+
+
+def test_private_zerodays_repository_is_not_tracked():
+    tracked = subprocess.run(
+        ["git", "ls-files", "--stage", "zerodays"],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert tracked.stdout == ""
+    assert "path = zerodays" not in (ROOT_DIR / ".gitmodules").read_text()
 
 
 def _collect_metadata_files(dirs):
