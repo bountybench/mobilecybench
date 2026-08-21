@@ -16,7 +16,7 @@ them can still find them.
 | File | Why archived |
 |---|---|
 | [`SYNTHETIC_VULNERABILITIES.md`](SYNTHETIC_VULNERABILITIES.md) | Synthetic-vuln workflow (`build_type=source --vuln <id>` + verifier). The benchmark has moved to probe-only redteam runs over real apps. |
-| [`TASK.md`](TASK.md) | Zero-day task bundle format (`task=<dir>` under `zerodays/reports/<app>/`). Two-phase redteam mode. |
+| [`TASK.md`](TASK.md) | Zero-day task bundle format under `apps/<app>/zero_day_vulnerabilities/<task_id>/`. Two-phase redteam mode. |
 | [`ZERODAY_TASKS.md`](ZERODAY_TASKS.md) | Zero-day onboarding companion to `TASK.md`. |
 | [`UI_AUTOMATION.md`](UI_AUTOMATION.md) | UI-automation tool reference. |
 

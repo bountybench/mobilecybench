@@ -2,7 +2,7 @@
 
 One workflow, two bundle types:
 
-- ZerodayBundle → zerodays/reports/<app>/<task>/task/
+- ZerodayBundle → apps/<app>/zero_day_vulnerabilities/<task>/
   Baseline is vulnerable; fix.patch turns it patched. Phase 1 is no-op on
   codebase; Phase 2 applies fix.patch.
 
@@ -122,12 +122,12 @@ class ZerodayBundle:
             )
 
     @property
-    def _report_dir(self) -> Path:
-        return self.project_root / "zerodays" / "reports" / self.app_name / self.task
+    def _task_root(self) -> Path:
+        return self.project_root / "apps" / self.app_name / "zero_day_vulnerabilities"
 
     @property
     def task_dir(self) -> Path:
-        return self._report_dir / "task"
+        return self._task_root / self.task
 
     @property
     def exploit_dir(self) -> Path:
@@ -142,7 +142,13 @@ class ZerodayBundle:
 
     @property
     def _hardened_apk(self) -> Path:
-        return self._report_dir / "artifacts" / "hardened_apk" / f"{self.app_name}.apk"
+        return (
+            self._task_root
+            / "artifacts"
+            / self.task
+            / "hardened_apk"
+            / f"{self.app_name}.apk"
+        )
 
     def phase1_apk(self) -> Path:
         """Vulnerable APK: the default build target (baseline is vulnerable).
@@ -266,31 +272,6 @@ class ProbeOnlyBundle:
             raise FileNotFoundError(f"Probe-only APK not found: {self.phase1_apk()}")
 
 
-def assert_zerodays_initialized(project_root: Path) -> None:
-    """Surface a clear, actionable error when zerodays/ is empty.
-
-    The submodule is registered in .gitmodules but `bash setup.sh` only
-    initializes it with --init-submodules. A bare clone leaves the
-    directory empty, and downstream code that opens task/metadata.json
-    raises a path-not-found error that does not point at the submodule.
-
-    Callers run this as an environment precondition before exercising a
-    ZerodayBundle's filesystem paths (validate_arguments hooks, runner
-    startup metadata reads).
-    """
-    zerodays_dir = project_root / "zerodays"
-    if zerodays_dir.exists() and any(zerodays_dir.iterdir()):
-        return
-    raise FileNotFoundError(
-        "zerodays/ submodule is not initialized — required for redteam "
-        "zero-day tasks. Run:\n"
-        "    git submodule update --init zerodays\n"
-        "If you do not have access to the submodule remote, contact a "
-        "repo maintainer. Not required for probe_only runs — see "
-        "documentation/EXPERIMENTS.md."
-    )
-
-
 def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
     """Return the TaskBundle for the current config.
 
@@ -299,9 +280,7 @@ def resolve_bundle(config, project_root: Path, app_name: str) -> TaskBundle:
     - task set → ZerodayBundle
     Synthetic-vulnerability selectors are retired and rejected by RunnerConfig.
 
-    Pure path-resolution — does not check filesystem state. Callers that
-    need an environment precondition should invoke
-    ``assert_zerodays_initialized`` separately.
+    Pure path-resolution. Task existence is checked by workflow validation.
     """
     task = getattr(config, "task", None)
     vuln_id = getattr(config, "synthetic_vuln_id", None)
@@ -353,9 +332,7 @@ def build_task_runtime_env(
     (``task_runtime_set_context``) exports so that hooks (``prepare_app``,
     ``prepare_victim``, ``agent_login``, etc.) behave identically whether
     invoked through ``scripts/validate_task_bundle.sh`` or through
-    ``runner.py``. Without this, hooks migrated to the validator's env-var
-    contract (e.g. zerodays repo PR #50+) fail at runtime with errors like
-    ``MCB_APP_METADATA_JSON is not set``.
+    ``runner.py``.
 
     Callers merge the result into ``os.environ.copy()`` before passing it as
     the ``env=`` kwarg of the subprocess that runs the hook.

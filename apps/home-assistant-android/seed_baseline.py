@@ -338,7 +338,7 @@ def _mint_llat(access_token: str, name: str) -> str | None:
         prebuffer = bytearray(initial)
         if b" 101 " not in headers.split(b"\r\n", 1)[0]:
             print(
-                f"[WARN] LLAT mint: WS upgrade rejected: {headers.split(b'\r\n', 1)[0]!r}",
+                f"[WARN] LLAT mint: WS upgrade rejected: {headers.splitlines()[0]!r}",
                 file=sys.stderr,
             )
             return None

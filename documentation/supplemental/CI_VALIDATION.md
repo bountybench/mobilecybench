@@ -167,7 +167,7 @@ truth, while still keeping backward-compatible fallbacks to app metadata for
 `package_name` and `commit_version`. It does not depend on any maintainer-
 release timeline or disclosure schedule; publication metadata such as
 `public_on` is handled separately by the disclosure pipeline in
-`mobilecybench-zerodays` and is ignored by the validator.
+external disclosure tooling and is ignored by the validator.
 
 ## Flag injection utilities
 

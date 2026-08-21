@@ -11,7 +11,6 @@ from evaluation.task_bundle import (
     ProbeOnlyBundle,
     TaskBundle,
     ZerodayBundle,
-    assert_zerodays_initialized,
     build_task_runtime_env,
     resolve_bundle,
 )
@@ -21,6 +20,10 @@ def _config(**kwargs):
     values = {"task": None, "synthetic_vuln_id": None}
     values.update(kwargs)
     return SimpleNamespace(**values)
+
+
+def _task_dir(project_root: Path, app: str = "myapp", task: str = "report-0") -> Path:
+    return project_root / "apps" / app / "zero_day_vulnerabilities" / task
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -57,10 +60,11 @@ def git_repo(tmp_path):
             ZerodayBundle(
                 project_root=Path("/root"), app_name="myapp", task="report-1"
             ),
-            Path("/root/zerodays/reports/myapp/report-1/task"),
+            Path("/root/apps/myapp/zero_day_vulnerabilities/report-1"),
             Path("/root/apps/myapp/apk/myapp.apk"),
             Path(
-                "/root/zerodays/reports/myapp/report-1/artifacts/hardened_apk/myapp.apk"
+                "/root/apps/myapp/zero_day_vulnerabilities/artifacts/report-1/"
+                "hardened_apk/myapp.apk"
             ),
         ),
     ],
@@ -71,13 +75,6 @@ def test_bundle_paths(bundle, task_dir, phase1_apk, phase2_apk):
     assert bundle.exploit_dir == task_dir / "exploit_files"
     assert bundle.phase1_apk() == phase1_apk
     assert bundle.phase2_apk() == phase2_apk
-
-
-def _initialized_zerodays_root(tmp_path: Path) -> Path:
-    """Project root with a non-empty zerodays/ submodule directory."""
-    (tmp_path / "zerodays").mkdir()
-    (tmp_path / "zerodays" / ".keep").write_text("")
-    return tmp_path
 
 
 @pytest.mark.parametrize(
@@ -92,24 +89,8 @@ def test_resolve_bundle_selects_expected_kind(cfg, expected_type):
     assert isinstance(bundle, expected_type)
 
 
-def test_assert_zerodays_initialized_raises_when_submodule_missing(tmp_path):
-    """A bare clone leaves zerodays/ empty; downstream callers should
-    see an actionable error pointing at the submodule, not a generic
-    path-not-found from an opener deeper in the stack."""
-    with pytest.raises(
-        FileNotFoundError, match="zerodays/ submodule is not initialized"
-    ):
-        assert_zerodays_initialized(tmp_path)
-
-
-def test_assert_zerodays_initialized_passes_when_submodule_populated(tmp_path):
-    """Once any content lives under zerodays/, the precondition clears."""
-    assert_zerodays_initialized(_initialized_zerodays_root(tmp_path))
-
-
 def test_resolve_bundle_does_not_check_filesystem(tmp_path):
-    """resolve_bundle is pure path-resolution — env preconditions live
-    in `assert_zerodays_initialized`, not here."""
+    """resolve_bundle is pure path resolution."""
     bundle = resolve_bundle(_config(task="report-1"), tmp_path, "app")
     assert isinstance(bundle, ZerodayBundle)
 
@@ -259,11 +240,10 @@ def _seed_app(tmp_path: Path, *, package_name: str = "io.test", commit: str = "a
 
 def test_build_task_runtime_env_zeroday_sets_full_contract(tmp_path):
     """ZerodayBundle must export every MCB_* key that
-    scripts/task_runtime_common.sh sets, matching the validator contract that
-    zerodays repo PR #50+ prepare_app.sh scripts rely on.
+    scripts/task_runtime_common.sh sets, matching the validator contract.
     """
     app_dir = _seed_app(tmp_path)
-    task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
+    task_dir = _task_dir(tmp_path)
     task_dir.mkdir(parents=True)
     (task_dir / "metadata.json").write_text(
         json.dumps({"attacker_model": "malicious_app"})
@@ -359,7 +339,7 @@ def test_build_task_runtime_env_task_metadata_takes_precedence(tmp_path):
     fields (task_id, runtime.package_name, app_metadata_overrides.package_name,
     baseline.commit) win over app metadata fallbacks."""
     app_dir = _seed_app(tmp_path, package_name="io.fallback", commit="appcommit")
-    task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
+    task_dir = _task_dir(tmp_path)
     task_dir.mkdir(parents=True)
     (task_dir / "metadata.json").write_text(
         json.dumps(
@@ -389,7 +369,7 @@ def test_build_task_runtime_env_app_metadata_overrides_section(tmp_path):
     over the app metadata fallback (matches validator second-tier
     precedence)."""
     app_dir = _seed_app(tmp_path, package_name="io.fallback")
-    task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
+    task_dir = _task_dir(tmp_path)
     task_dir.mkdir(parents=True)
     (task_dir / "metadata.json").write_text(
         json.dumps(
@@ -412,7 +392,7 @@ def test_build_task_runtime_env_falls_back_to_bundle_task_id(tmp_path):
     to bundle.task — matching the validator's task-dir basename
     fallback."""
     app_dir = _seed_app(tmp_path)
-    task_dir = tmp_path / "zerodays" / "reports" / "myapp" / "report-0" / "task"
+    task_dir = _task_dir(tmp_path)
     task_dir.mkdir(parents=True)
     (task_dir / "metadata.json").write_text(
         json.dumps({"attacker_model": "malicious_app"})

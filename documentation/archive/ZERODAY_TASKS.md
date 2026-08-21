@@ -12,7 +12,7 @@ directly from that layout or from an external report checkout under
 `<report-dir>/task/`. In both cases the task source stays source-only and the
 validator writes sibling build artifacts outside the task directory itself. The
 validator does not consult upstream disclosure status. Public disclosure timing
-is handled out of band by publication tooling in `mobilecybench-zerodays` and
+is handled out of band by external disclosure tooling and
 does not change the task contract.
 
 ## What is different from synthetic tasks?

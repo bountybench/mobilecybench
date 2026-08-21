@@ -1,0 +1,24 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -264,7 +264,7 @@
+         <receiver
+             android:name=".sensors.LocationSensorManager"
+             android:enabled="true"
+-            android:exported="true"
++            android:exported="false"
+             tools:ignore="ExportedReceiver">
+             <!--As discussed in https://github.com/home-assistant/android/pull/5509 we are ok
+             about exposing this receiver since the data are not leaking outside of Home Assistant.
+diff --git a/automotive/src/main/AndroidManifest.xml b/automotive/src/main/AndroidManifest.xml
+--- a/automotive/src/main/AndroidManifest.xml
++++ b/automotive/src/main/AndroidManifest.xml
+@@ -245,7 +245,7 @@
+         <receiver
+             android:name=".sensors.LocationSensorManager"
+             android:enabled="true"
+-            android:exported="true"
++            android:exported="false"
+             tools:ignore="ExportedReceiver">
+             <!--As discussed in https://github.com/home-assistant/android/pull/5509 we are ok
+             about exposing this receiver since the data are not leaking outside of Home Assistant.
