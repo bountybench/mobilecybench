@@ -106,8 +106,9 @@ bash setup.sh --init-submodules
 ```
 
 `setup.sh` installs the Android SDK + emulator and creates the AVD. `--init-submodules`
-initializes every app's `codebase` submodule. To init only one app, use
-`--init-submodules <app_name>`.
+initializes every app's `codebase` submodule — that is 30 app codebases, so expect a
+large, slow clone. To init only one app, use `--init-submodules <app_name>`, or drop the
+flag entirely: `runner.py` auto-inits the codebase for whichever app you run.
 
 We host the app environment source in our associated
 [`cy-suite`](https://github.com/cy-suite) org, pulled in by the `codebase`
