@@ -1,16 +1,17 @@
 # Running Experiments
 
-Configure and run a `redteam` + `probe_only=true` experiment: pick an attacker
-model and an access mode, point at an app, and the runner does the rest.
+Configure and run a `redteam` + `probe_only=true` experiment: pick an attack
+setting and a code-access level, point at an app, and the runner does the rest.
 
-## Threat model
+## Attack setting
 
-The agent plays one of two roles per experiment:
+The config key is `attacker_model`; the paper calls this the **attack
+setting**. The agent plays one of two roles per experiment:
 
-| Role               | Setup                                                                                       | Agent output                                                                  |
-|---                 |---                                                                                          |---                                                                            |
-| `remote_attacker`  | Authenticated low-privilege user on the app backend; reaches the backend from the kali container | `exploit.sh` — runs in a sandboxed Docker container with ADB + backend access |
-| `malicious_app`    | Another app installed on the same device as the (logged-in) target app                       | `exploit_apk/` (AndroidManifest + Java sources, built into an APK by the harness) |
+| Role (`attacker_model`) | Paper name | Setup | Agent output |
+|---|---|---|---|
+| `remote_attacker`  | remote low-privilege attacker | Authenticated low-privilege user on the app backend; reaches the backend from the kali container | `exploit.sh` — runs in a sandboxed Docker container with ADB + backend access |
+| `malicious_app`    | same-device malicious app | Another app installed on the same device as the (logged-in) target app | `exploit_apk/` (AndroidManifest + Java sources, built into an APK by the harness) |
 
 How each role is replayed and where the probes live:
 
@@ -25,13 +26,14 @@ Implementation lives in `workflows/redteam.py` (`MaliciousAppOps`, `RemoteAttack
 
 For each app, we sweep:
 
-| `attacker_model`   | `no_codebase=false` (**source**)                          | `no_codebase=true` (**apk_only**)                                                       |
+| `attacker_model`   | `no_codebase=false` (**source-visible**)                   | `no_codebase=true` (**APK-only**)                                                       |
 |---                 |---                                                         |---                                                                                       |
-| `malicious_app`    | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/` (obfuscated R8 build if `apk_obfuscation=on`)     |
+| `malicious_app`    | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/` (R8-minified build if `apk_obfuscation=on`)       |
 | `remote_attacker`  | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/`                                                    |
 
-**The main ablation is `source` vs `apk_only`** — does giving the agent the
-source raise the success rate vs. forcing it to reverse-engineer the shipped APK?
+**The main ablation is source-visible vs. APK-only** — does giving the agent
+the source raise the trigger rate vs. forcing it to reverse-engineer the
+shipped APK?
 
 ## Run an experiment
 
@@ -99,15 +101,15 @@ Notes:
   }
   ```
 - Use `"attacker_model": ["remote_attacker"]` (or `["malicious_app"]`) to run
-  only one threat model.
-- `continue_on_failure: true` records a failed cell and moves on to the next
-  expanded job. It does not retry failed cells. Set it to `false` to stop the
-  batch at the first non-zero cell.
+  only one attack setting.
+- `continue_on_failure: true` records a failed run and moves on to the next
+  expanded job. It does not retry failed runs. Set it to `false` to stop the
+  batch at the first non-zero run.
 - Jobs run sequentially. Each job gets its own `logs/<app>_<workflow>_.../`
   directory and `run_summary.json`; the batch writes an aggregate summary under
   `logs/batches/batch_<id>/batch_summary.json`.
 - During a batch, `logs/latest` is updated by each underlying single run and
-  therefore points at the last-started/last-finished cell, not at the aggregate
+  therefore points at the last-started/last-finished run, not at the aggregate
   batch directory. Use the printed `logs/batches/batch_<id>/batch_summary.json`
   path for batch-level status.
 
