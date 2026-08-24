@@ -19,6 +19,10 @@ def _load_run_summary_schema() -> dict:
         return json.load(f)
 
 
+def _task_dir(project_root: Path, app: str, task: str) -> Path:
+    return project_root / "apps" / app / "zero_day_vulnerabilities" / task
+
+
 @pytest.fixture
 def base_config():
     """Base configuration for testing."""
@@ -71,7 +75,7 @@ class TestCreateWorkflow:
 
         # Bundle now owns attacker_model — seed task metadata.json so workflow
         # init can read it.
-        task_dir = tmp_path / "zerodays" / "reports" / "test_app" / "report-0" / "task"
+        task_dir = _task_dir(tmp_path, "test_app", "report-0")
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(
             json.dumps({"attacker_model": "malicious_app"})
@@ -427,9 +431,7 @@ class TestRun:
 
         with patch(
             "runner._load_bundle_attacker_model", return_value="remote_attacker"
-        ), patch("runner.ensure_zerodays_submodule"), patch(
-            "runner.ensure_app_submodule"
-        ), patch(
+        ), patch("runner.ensure_app_submodule"), patch(
             "runner.create_workflow", return_value=FakeWorkflow()
         ), patch(
             "runner.run_interactive_shell", return_value={"status": "completed"}
@@ -473,9 +475,7 @@ class TestRun:
 
         with patch(
             "runner._load_bundle_attacker_model", return_value="remote_attacker"
-        ), patch("runner.ensure_zerodays_submodule"), patch(
-            "runner.ensure_app_submodule"
-        ), patch(
+        ), patch("runner.ensure_app_submodule"), patch(
             "runner.create_workflow", return_value=FakeWorkflow()
         ), patch(
             "runner.run_interactive_shell", return_value={"status": "completed"}
@@ -850,7 +850,7 @@ class TestTaskMetadataOverride:
 
     def test_overrides_attacker_model_from_task_metadata(self, base_config, tmp_path):
         """run() reconciles attacker_model from task/metadata.json for the workflow."""
-        task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
+        task_dir = _task_dir(tmp_path, "testapp", "report-4")
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(
             json.dumps({"attacker_model": "remote_attacker"})
@@ -885,7 +885,7 @@ class TestTaskMetadataOverride:
 
     def test_missing_attacker_model_in_task_metadata_fails(self, base_config, tmp_path):
         """task/metadata.json with missing attacker_model returns exit code 1."""
-        task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-0" / "task"
+        task_dir = _task_dir(tmp_path, "testapp", "report-0")
         task_dir.mkdir(parents=True)
         (task_dir / "metadata.json").write_text(json.dumps({"title": "no model"}))
 
@@ -901,50 +901,6 @@ class TestTaskMetadataOverride:
         )
         exit_code = run(config, "testapp", tmp_path)
         assert exit_code == 1
-
-
-class TestZerodaySubmoduleInit:
-    """zerodays/ submodule must be lazy-initialized BEFORE validate_arguments
-    for redteam tasks, otherwise validation surfaces a misleading 'Task file
-    not found' error instead of an init hint."""
-
-    def test_zerodays_init_runs_for_redteam_task_before_validate(
-        self, base_config, tmp_path
-    ):
-        config = RunnerConfig(
-            **{
-                **base_config.model_dump(),
-                "workflow": "redteam",
-                "probe_only": False,
-                "task": "report-4",
-                "synthetic_vuln_id": None,
-                "attacker_model": "remote_attacker",
-            }
-        )
-        task_dir = tmp_path / "zerodays" / "reports" / "testapp" / "report-4" / "task"
-
-        order = []
-
-        def init_zerodays(*_args, **_kwargs):
-            order.append("zerodays_init")
-            task_dir.mkdir(parents=True)
-            (task_dir / "metadata.json").write_text(
-                json.dumps({"attacker_model": "remote_attacker"})
-            )
-
-        def fail_validate(self):
-            order.append("validate")
-            raise RuntimeError("stop")
-
-        with patch(
-            "runner.ensure_zerodays_submodule",
-            side_effect=init_zerodays,
-        ), patch("runner.ensure_app_submodule"), patch(
-            "workflows.RedTeamWorkflow.validate_arguments", new=fail_validate
-        ):
-            run(config, "testapp", tmp_path)
-
-        assert order == ["zerodays_init", "validate"]
 
 
 class TestMain:

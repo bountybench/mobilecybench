@@ -323,7 +323,7 @@ init_submodules() {
         done
 
         log "Active app submodules initialized."
-        log "Note: zerodays/ is not required for probe_only mode. If you need redteam zero-day tasks and have access, run: git submodule update --init zerodays"
+        log "Note: zerodays/ is optional and only available to authorized maintainers."
     fi
 }
 

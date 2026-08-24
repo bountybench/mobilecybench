@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "task_id": "location_spoofing",
+  "title": "Location Spoofing via Unprotected Exported BroadcastReceiver",
+  "attacker_model": "malicious_app",
+  "baseline": {
+    "commit": "23766ac"
+  },
+  "build": {
+    "env": {
+      "HOME_ASSISTANT_FLAVOR": "full"
+    },
+    "comparators": {
+      "vulnerable": {
+        "patch": null
+      },
+      "secure": {
+        "patch": "fix.patch"
+      }
+    }
+  },
+  "runtime": {
+    "package_name": "io.homeassistant.companion.android"
+  }
+}

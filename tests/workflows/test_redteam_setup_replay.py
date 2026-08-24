@@ -37,6 +37,10 @@ _BASE_CONFIG = {
 }
 
 
+def _task_dir(project_root: Path) -> Path:
+    return project_root / "apps" / "demoapp" / "zero_day_vulnerabilities" / "report-0"
+
+
 def _make_workflow(tmp_path: Path, replay_dir: Path | None) -> RedTeamWorkflow:
     cfg = {**_BASE_CONFIG}
     if replay_dir is not None:
@@ -157,7 +161,7 @@ def test_prepare_app_and_verifier_share_per_phase_output_dir(tmp_path):
         json.dumps({"package_name": "io.demo", "commit_version": "abc123"})
     )
 
-    task_dir = tmp_path / "zerodays" / "reports" / "demoapp" / "report-0" / "task"
+    task_dir = _task_dir(tmp_path)
     task_dir.mkdir(parents=True)
     (task_dir / "metadata.json").write_text(
         json.dumps({"attacker_model": "malicious_app"})
@@ -251,7 +255,7 @@ def test_run_verifier_exports_full_task_runtime_env(tmp_path):
         json.dumps({"package_name": "io.demo", "commit_version": "abc123"})
     )
 
-    task_dir = tmp_path / "zerodays" / "reports" / "demoapp" / "report-0" / "task"
+    task_dir = _task_dir(tmp_path)
     task_dir.mkdir(parents=True)
     (task_dir / "metadata.json").write_text(json.dumps({"task_id": "report-0"}))
     (task_dir / "fix.patch").write_text("--- a\n+++ b\n")
@@ -333,7 +337,7 @@ def test_run_verifier_omits_phase_when_replay_dir_is_none(tmp_path):
     app_dir.mkdir(parents=True)
     (app_dir / "metadata.json").write_text(json.dumps({"package_name": "io.demo"}))
 
-    task_dir = tmp_path / "zerodays" / "reports" / "demoapp" / "report-0" / "task"
+    task_dir = _task_dir(tmp_path)
     task_dir.mkdir(parents=True)
     (task_dir / "metadata.json").write_text(json.dumps({"task_id": "report-0"}))
     verifier = task_dir / "verify_files" / "verify_exploit.sh"
@@ -410,7 +414,7 @@ def test_run_prepare_victim_exports_per_phase_context(tmp_path):
     app_dir.mkdir(parents=True)
     (app_dir / "metadata.json").write_text(json.dumps({"package_name": "io.demo"}))
 
-    task_dir = tmp_path / "zerodays" / "reports" / "demoapp" / "report-0" / "task"
+    task_dir = _task_dir(tmp_path)
     task_dir.mkdir(parents=True)
     (task_dir / "metadata.json").write_text(json.dumps({"task_id": "report-0"}))
 

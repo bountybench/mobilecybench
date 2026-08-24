@@ -138,7 +138,7 @@
         }
       ],
       "default": null,
-      "description": "Zero-day task selector for two-phase redteam. Names a directory under zerodays/reports/<app>/. Forbidden when probe_only=true.",
+      "description": "Zero-day task selector for two-phase redteam. Names a directory under apps/<app>/zero_day_vulnerabilities/. Forbidden when probe_only=true.",
       "title": "Task"
     },
     "probe_only": {

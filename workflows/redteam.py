@@ -1,7 +1,7 @@
 """RedTeamWorkflow — redteam evaluation pipeline.
 
 Two bundle types share the pipeline (see evaluation.task_bundle):
-- ZerodayBundle:   zerodays/reports/<app>/<task>/task/ (fix.patch direction).
+- ZerodayBundle: apps/<app>/zero_day_vulnerabilities/<task>/ (fix.patch direction).
 - ProbeOnlyBundle: bundle-less probe-only runs (no patch, no verifier).
 
 Path resolution lives behind the TaskBundle Protocol so the workflow does not
@@ -614,11 +614,6 @@ class RedTeamWorkflow(Workflow):
     def validate_arguments(self) -> None:
         super().validate_arguments()
 
-        if self._bundle.kind == "zeroday":
-            from evaluation.task_bundle import assert_zerodays_initialized
-
-            assert_zerodays_initialized(self.project_root)
-
         if self.config.probe_only:
             # Probe-only is bundle-less: no patch, no verifier, no task-specific
             # behavior. package_name comes from app metadata (already populated
@@ -641,10 +636,7 @@ class RedTeamWorkflow(Workflow):
             self._bundle.task_dir / "metadata.json",
         ):
             if not required.exists():
-                hint = ""
-                if "zerodays" in required.parts:
-                    hint = " (zerodays submodule may be uninitialized — try `git submodule update --init zerodays`)"
-                raise ValueError(f"Task file not found: {required}{hint}")
+                raise ValueError(f"Task file not found: {required}")
 
         task_metadata = json.loads(
             (self._bundle.task_dir / "metadata.json").read_text()
@@ -695,15 +687,16 @@ class RedTeamWorkflow(Workflow):
         self._bundle.prepare_phase1_codebase(codebase_dir)
 
     def setup_runtime_environment(self) -> None:
-        from agent.runtime.container import setup_agent_environment
-        from utils.emulator_certs import inject_system_ca
-        from utils.emulator_manager import EmulatorManager
-        from utils.setup_utils import check_connectivity, install_app_and_setup_backend
+        import importlib
+
+        from utils import emulator_certs, emulator_manager, setup_utils
+
+        agent_container = importlib.import_module("agent.runtime.container")
 
         self._preflight_cleanup_app_runtime()
 
         logger.info("Starting emulator...")
-        self.emulator = EmulatorManager(
+        self.emulator = emulator_manager.EmulatorManager(
             project_root=self.project_root,
             sdk_version=self.metadata.get("sdk"),
             app_name=self.app_name,
@@ -740,7 +733,7 @@ class RedTeamWorkflow(Workflow):
             timeout=self.config.emulator_boot_timeout_seconds
         )
 
-        inject_system_ca(self.project_root)
+        emulator_certs.inject_system_ca(self.project_root)
         self.emulator.setup_port_forwards(self.app_dir)
 
         # Install the runtime APK so the agent's observations match the
@@ -748,7 +741,7 @@ class RedTeamWorkflow(Workflow):
         # app baseline APK in probe_only mode, otherwise the bundle's phase-1
         # APK (the baseline vulnerable APK for zeroday).
         self._mark_app_backend_active()
-        install_app_and_setup_backend(
+        setup_utils.install_app_and_setup_backend(
             self.app_dir,
             self.emulator,
             self.project_root,
@@ -781,7 +774,7 @@ class RedTeamWorkflow(Workflow):
         # agent_container derivation, which cannot infer zeroday / probe_only
         # APK layouts.
         runtime_apk = self._runtime_apk() if self.config.no_codebase else None
-        self.agent_env = setup_agent_environment(
+        self.agent_env = agent_container.setup_agent_environment(
             app_dir=self.app_dir,
             agent_image=self.config.agent_image,
             metadata=self.metadata,
@@ -792,7 +785,9 @@ class RedTeamWorkflow(Workflow):
             apk_path=runtime_apk,
         )
 
-        check_connectivity(self.agent_env.container, self.metadata.get("app_server"))
+        setup_utils.check_connectivity(
+            self.agent_env.container, self.metadata.get("app_server")
+        )
 
         self._ops.setup_agent_extras(self)
 
@@ -1608,9 +1603,8 @@ class RedTeamWorkflow(Workflow):
         ``scripts/task_runtime_common.sh``) so that hooks behave identically
         whether invoked via ``runner.py`` or via
         ``scripts/validate_task_bundle.sh``. Hooks that depend on, e.g.,
-        ``MCB_APP_METADATA_JSON`` or ``MCB_TASK_DIR`` (zerodays repo
-        PR #50+ pattern) would otherwise fail at runtime even when they
-        pass validation.
+        ``MCB_APP_METADATA_JSON`` or ``MCB_TASK_DIR`` would otherwise fail
+        at runtime even when they pass validation.
 
         ``phase_dir`` is the per-phase replay directory. When supplied it
         sets ``MCB_OUTPUT_DIR`` to the per-phase scope (the validator's

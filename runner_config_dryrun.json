@@ -10,7 +10,7 @@
   "dry_run": true,
   "gold_run": false,
   "workflow": "redteam",
-  "task": "report-0",
+  "task": "audiobookshelf_mobile_search_xss",
   "no_codebase": false,
   "synthetic_vuln_id": null,
   "attacker_model": "remote_attacker",

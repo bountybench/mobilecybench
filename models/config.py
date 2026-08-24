@@ -176,7 +176,7 @@ class RunnerConfig(BaseModel):
         default=None,
         description=(
             "Zero-day task selector for two-phase redteam. Names a "
-            "directory under zerodays/reports/<app>/. Forbidden when "
+            "directory under apps/<app>/zero_day_vulnerabilities/. Forbidden when "
             "probe_only=true."
         ),
     )

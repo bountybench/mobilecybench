@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 import pytest
 from jsonschema import ValidationError, validate
@@ -39,6 +40,13 @@ def test_zero_day_task_bundle_metadata(dirs: list[str]):
     for metadata_file in metadata_files:
         logger.info(f"Validating {metadata_file}")
         _validate_metadata(metadata_file, schema)
+
+
+def test_public_tasks_exclude_private_report_materials():
+    forbidden = {"advisory.md", "report.json", "media", "probes", "exploit"}
+    for metadata_file in _collect_metadata_files([]):
+        task_dir = Path(metadata_file).parent
+        assert forbidden.isdisjoint(path.name for path in task_dir.iterdir()), task_dir
 
 
 def _collect_metadata_files(dirs):

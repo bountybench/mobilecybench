@@ -120,7 +120,9 @@ class TestAgentEnvironmentPostCheckoutHook:
         self._git(codebase_dir, "add", "-A")
         self._git(codebase_dir, "commit", "-m", "initial", "-q")
 
-        task_dir = project_root / "zerodays" / "reports" / "app" / "report-1" / "task"
+        task_dir = (
+            project_root / "apps" / "app" / "zero_day_vulnerabilities" / "report-1"
+        )
         task_dir.mkdir(parents=True)
         (task_dir / "fix.patch").write_text("diff --git a/server.py b/server.py\n")
 

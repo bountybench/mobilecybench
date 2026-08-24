@@ -67,8 +67,7 @@ Details: `ADDING_APPS.md`. (Synthetic-vuln and zero-day flows are no longer the 
 Flags:
 
 - `./build_apk.sh <app_name> [--vuln <vuln_id>] [--output <dir>]`
-- `./build_apk.sh <app_name> --hardened` (uses `security.patch` from `zerodays` submodule)
-- `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses explicit patch file; for zero-day tasks, point it at `apps/<app>/zero_day_vulnerabilities/<task_id>/fix.patch` or `reports/<app>/<report>/task/fix.patch`)
+- `./build_apk.sh <app_name> --hardened-patch <patch_path>` (uses an explicit patch file under `apps/<app>/zero_day_vulnerabilities/<task_id>/fix.patch`)
 - `./build_apk.sh <app_name> --obfuscate` — build with R8 minify + resource shrinking enabled via the repo-level `gradle/obfuscate.init.gradle` init script. Output goes to `apps/<app>/apk/obfuscated/<app>.apk`. Fails unless the per-app `build.sh` forwards `--init-script "$MCB_OBFUSCATE_INIT_SCRIPT"` to gradlew (see `ADDING_APPS.md`).
 - `./publish_apk_bundle.sh apps/<app_name>` — when `apk/obfuscated/` exists, automatically publishes both bundles at lockstep `vN` and updates both `download_link` and `download_link_obfuscated`. Use `--default-only` / `--obfuscated-only` to override.
 
