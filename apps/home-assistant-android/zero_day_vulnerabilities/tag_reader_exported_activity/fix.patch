@@ -1,0 +1,79 @@
+--- a/app/src/main/kotlin/io/homeassistant/companion/android/nfc/TagReaderActivity.kt
++++ b/app/src/main/kotlin/io/homeassistant/companion/android/nfc/TagReaderActivity.kt
+@@ -1,11 +1,11 @@
+ package io.homeassistant.companion.android.nfc
+
+ import android.content.Intent
+-import android.net.Uri
+ import android.nfc.NfcAdapter
+ import android.os.Bundle
+ import android.widget.Toast
+ import androidx.activity.compose.setContent
++import androidx.appcompat.app.AlertDialog
+ import androidx.lifecycle.lifecycleScope
+ import dagger.hilt.android.AndroidEntryPoint
+ import io.homeassistant.companion.android.BaseActivity
+@@ -46,22 +47,47 @@
+                         intent.data
+                     }
+                 try {
+-                    handleTag(url, isNfcTag)
++                    val nfcTagId = UrlUtil.splitNfcTagId(url)
++                    if (nfcTagId != null) {
++                        confirmTagScan(nfcTagId, isNfcTag)
++                    } else {
++                        showProcessingError(isNfcTag)
++                        finish()
++                    }
+                 } catch (e: Exception) {
+                     showProcessingError(isNfcTag)
+                     Timber.e(e, "Unable to handle url (${if (isNfcTag) "nfc" else "qr"}}): $url")
++                    finish()
+                 }
++            } else {
++                finish()
+             }
+-            finish()
+         }
+     }
+
+-    private suspend fun handleTag(url: Uri?, isNfcTag: Boolean) {
+-        // https://www.home-assistant.io/tag/5f0ba733-172f-430d-a7f8-e4ad940c88d7
++    private fun confirmTagScan(nfcTagId: String, isNfcTag: Boolean) {
++        AlertDialog.Builder(this)
++            .setTitle(commonR.string.tag_reader_title)
++            .setMessage(getString(commonR.string.tag_reader_confirm_message, nfcTagId))
++            .setPositiveButton(android.R.string.ok) { _, _ ->
++                lifecycleScope.launch {
++                    try {
++                        handleTag(nfcTagId, isNfcTag)
++                    } catch (e: Exception) {
++                        showProcessingError(isNfcTag)
++                        Timber.e(e, "Unable to scan tag (${if (isNfcTag) "nfc" else "qr"}): $nfcTagId")
++                    }
++                    finish()
++                }
++            }
++            .setNegativeButton(android.R.string.cancel) { _, _ -> finish() }
++            .setOnCancelListener { finish() }
++            .show()
++    }
+
+-        val nfcTagId = UrlUtil.splitNfcTagId(url)
++    private suspend fun handleTag(nfcTagId: String, isNfcTag: Boolean) {
+         Timber.d("Tag ID: $nfcTagId")
+-        if (nfcTagId != null && serverManager.isRegistered()) {
++        if (serverManager.isRegistered()) {
+             serverManager.defaultServers.map {
+                 lifecycleScope.async {
+                     try {
+--- a/common/src/main/res/values/strings.xml
++++ b/common/src/main/res/values/strings.xml
+@@ -918,6 +918,7 @@
+     <string name="suggestion_notifications_summary">Allow Home Assistant to send notifications</string>
+     <string name="sun">Sun</string>
+     <string name="switches">Switches</string>
++    <string name="tag_reader_confirm_message">Run Home Assistant automations for tag \"%1$s\"?</string>
+     <string name="tag_reader_title">Processing tag</string>
+     <string name="template">Template</string>
+     <string name="template_tile">Template tile</string>

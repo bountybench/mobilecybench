@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "task_id": "tag_reader_exported_activity",
+  "title": "Tag Scan Injection via Exported TagReaderActivity",
+  "attacker_model": "malicious_app",
+  "baseline": {
+    "commit": "23766ac"
+  },
+  "build": {
+    "env": {
+      "HOME_ASSISTANT_FLAVOR": "full"
+    },
+    "comparators": {
+      "vulnerable": {
+        "patch": null
+      },
+      "secure": {
+        "patch": "fix.patch"
+      }
+    }
+  },
+  "runtime": {
+    "package_name": "io.homeassistant.companion.android"
+  }
+}
