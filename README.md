@@ -3,17 +3,22 @@
 MobileCyBench measures AI agent cybersecurity capabilities. Each experiment
 puts a coding agent in a realistic environment — a working Android app and its
 backend running in an emulator — and asks it to find and exploit a
-vulnerability. Detection is automatic: each app ships CIA
-(confidentiality / integrity / availability) probes that fire when the agent
-takes an action it shouldn't be able to.
+vulnerability, with no target vulnerability named in advance. Scoring is
+automatic: each application ships a hidden **probe suite** covering four
+security property families — confidentiality, integrity, availability, and
+access control (CIAA) — and a run is **triggered** as soon as one probe fires.
 
-Probes are derived from each app's golden flow. We model what the agent's
-account is *legitimately* allowed to do under the app's permissions, then
-place probes at the boundary — so any action that crosses it trips a signal.
+Each probe encodes one *security property*: a condition on application state
+that must hold for an attacker with the privileges the attack setting grants.
+A probe fires when that property is violated, which shows the application has
+a vulnerability — not which one. Identifying *which* vulnerability is a
+separate, post-hoc attribution step that never changes a probe score.
 
 > Start at [**`documentation/README.md`**](documentation/README.md) for the
-> curated app list, the source-vs-`apk_only` ablation, and links to the rest
-> of the docs.
+> curated app list, the source-visible vs. APK-only ablation, and links to the
+> rest of the docs. New to the terminology? See
+> [**`documentation/GLOSSARY.md`**](documentation/GLOSSARY.md), which maps the
+> paper's terms onto the config keys you actually type.
 
 ## Setup
 
@@ -36,8 +41,8 @@ Or run the active app set sequentially with a batch config:
 python runner.py --config runner_config_batch.json
 ```
 
-Or run the whole grid **in parallel on GKE** — the same 52-cell grid, fanned
-out across a cluster instead of sequential (setup: [`infra/gke/README.md`](infra/gke/README.md)):
+Or run the whole grid **in parallel on GKE** — the same 52-configuration grid,
+fanned out across a cluster instead of sequential (setup: [`infra/gke/README.md`](infra/gke/README.md)):
 
 ```bash
 python infra/gke/generate_jobs.py --all \
@@ -54,30 +59,33 @@ top-level fields are normal runner defaults (`workflow`, `model`,
 `agent_image`, token limits, etc.), and the `batch` block selects apps and
 matrix fields. By default, `batch.apps: "in_scope"` reads the active app list
 from [`apps/app_catalog.json`](apps/app_catalog.json):`sets.in_scope` in this
-checkout and runs the full grid: both `attacker_model` values × both
-visibility modes (source vs `apk_only`). `network_mode` and `apk_obfuscation`
-are coupled to visibility via `batch.matrix` + `batch.exclude` to match the
-paper conditions (source → `permissive` / obfuscation `off`; `apk_only` →
-`restricted` / obfuscation `on`), giving 13 apps × 2 × 2 = 52 cells.
+checkout and runs the full grid: both `attacker_model` values (the paper's two
+*attack settings*) × both access levels (source-visible vs. APK-only).
+`network_mode` and `apk_obfuscation` are coupled to the access level via
+`batch.matrix` + `batch.exclude` to match the paper conditions (source-visible
+→ `permissive` / obfuscation `off`; APK-only → `restricted` / obfuscation
+`on`), giving 13 apps × 2 × 2 = 52 configurations for one agent.
 `continue_on_failure` means
-"record a failed cell and continue"; it does not retry failed cells. For more
+"record a failed run and continue"; it does not retry failed runs. For more
 detail, see
 [`documentation/EXPERIMENTS.md`](documentation/EXPERIMENTS.md#run-a-sequential-batch).
 
 ## Documentation
 
-Four docs cover the bench-run path end-to-end. The full index is at
+These docs cover the bench-run path end-to-end. The full index is at
 [`documentation/README.md`](documentation/README.md).
 
 - [Documentation index + curated app list + ablation overview](documentation/README.md)
 - [Getting Started](documentation/GETTING_STARTED.md) — setup + first run
-- [Experiments](documentation/EXPERIMENTS.md) — `runner_config.json` reference, pipeline stages, result schema, status codes, MA permission gate
+- [Experiments](documentation/EXPERIMENTS.md) — `runner_config.json` reference, pipeline stages, result schema, status codes, malicious-app permission gate
 - [Troubleshooting](documentation/TROUBLESHOOTING.md) — common issues
+- [Glossary](documentation/GLOSSARY.md) — paper terminology mapped onto repo config keys
 
 Reference / maintainer material (adding apps / models, BYO agent contracts, CI
 mechanics, command cheatsheets, deep architecture notes) lives in
 [`documentation/supplemental/`](documentation/supplemental/) — not needed to run
-an experiment. Orthogonal/older workflows (synthetic-vuln, zero-day) are in
+an experiment. Orthogonal/older workflows (reference-vulnerability authoring,
+targeted task bundles) are in
 [`documentation/archive/`](documentation/archive/).
 
 GKE-specific setup (running at scale): [`infra/gke/README.md`](infra/gke/README.md).

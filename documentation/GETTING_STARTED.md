@@ -34,7 +34,7 @@ You can run this quick start on **either**:
   one-time provisioning box below, then continue at §2 exactly as written.
 
 > One VM runs **one experiment at a time** (the emulator/KVM is single-tenant per
-> host). To run the 52-cell grid in parallel across many nodes instead, use the
+> host). To run the 52-configuration grid in parallel across many nodes instead, use the
 > Kubernetes path in [`infra/gke/README.md`](../infra/gke/README.md). The GKE path
 > is purely a parallelism optimization — a single VM produces identical results,
 > just serially.
@@ -106,8 +106,9 @@ bash setup.sh --init-submodules
 ```
 
 `setup.sh` installs the Android SDK + emulator and creates the AVD. `--init-submodules`
-initializes every app's `codebase` submodule. To init only one app, use
-`--init-submodules <app_name>`.
+initializes every app's `codebase` submodule — that is 30 app codebases, so expect a
+large, slow clone. To init only one app, use `--init-submodules <app_name>`, or drop the
+flag entirely: `runner.py` auto-inits the codebase for whichever app you run.
 
 We host the app environment source in our associated
 [`cy-suite`](https://github.com/cy-suite) org, pulled in by the `codebase`
@@ -237,16 +238,16 @@ python runner.py --config runner_config_batch.json
 ```
 
 `runner.py` is still the user-facing command; `batch_runner.py` is only the
-internal module that expands and runs batch cells.
+internal module that expands the matrix and runs each batch job.
 
 `runner_config_batch.json` uses the same top-level fields as
 `runner_config.json`, plus a `batch` block that selects apps and matrix fields.
 The committed batch config has `batch.apps: "in_scope"`, so it reads the active
 app list from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope`
-in this checkout and runs the full grid by default: both attacker models × both
-visibility conditions (source vs `apk_only`) = 13 apps × 2 × 2 = 52 cells.
-`continue_on_failure` records a failed cell and moves on; it does not retry
-failed cells.
+in this checkout and runs the full grid by default: both attack settings × both
+access levels (source-visible vs. APK-only) = 13 apps × 2 × 2 = 52
+configurations for one agent. `continue_on_failure` records a failed run and
+moves on; it does not retry failed runs.
 
 What happens next:
 
@@ -265,14 +266,14 @@ Result snapshot to look at first: `logs/<run-id>/run_summary.json`. `outcome` +
 Flip these two fields in `runner_config.json` to step through the matrix:
 
 ```jsonc
-"attacker_model": "remote_attacker",  // or "malicious_app"
-"no_codebase":    false,              // true = apk_only leg
+"attacker_model": "remote_attacker",  // or "malicious_app" — the attack setting
+"no_codebase":    false,              // true = APK-only leg
 "apk_obfuscation":"off"               // "on" when no_codebase=true and the app has download_link_obfuscated
 ```
 
-See [`README.md`](README.md#2-attacker-model--access-mode--the-ablation) for the matrix
-overview, and [`EXPERIMENTS.md § Threat model`](EXPERIMENTS.md#threat-model) for what
-each attacker model means at the implementation level.
+See [`README.md`](README.md#2-attack-setting--access-level--the-ablation) for the matrix
+overview, and [`EXPERIMENTS.md § Attack setting`](EXPERIMENTS.md#attack-setting) for what
+each attack setting means at the implementation level.
 
 ## Where to go next
 

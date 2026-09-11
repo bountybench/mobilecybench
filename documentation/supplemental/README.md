@@ -4,6 +4,10 @@ Detailed reference and maintainer/extender material that the main docs link to
 but that you don't need to run an experiment. Start at
 [`../README.md`](../README.md) for the run path.
 
+These pages use the repo's literal path and command names (`synthetic_vulnerabilities/`,
+`zerodays/`, `attacker_model`, …). [`../GLOSSARY.md`](../GLOSSARY.md) maps those onto the
+terminology used in the paper.
+
 ## Contents
 
 | File | What it covers |

@@ -138,7 +138,7 @@ Kernel routing (`agent_net` is `internal: true`) and rfc1918/loopback denies app
 - Directory tree of codebase
 
 **Mode used by the benchmark:**
-- Redteam probe-only (`workflow=redteam`, `probe_only=true`): single baseline replay against the app's `apps/<app>/apk/<app>.apk` (no patch / no verifier / no two-phase comparison); scoring is `signal`/`no_signal` based on app probes. The agent searches for vulnerabilities without disclosure. See [`../EXPERIMENTS.md`](../EXPERIMENTS.md).
+- Redteam probe-only (`workflow=redteam`, `probe_only=true`): single baseline replay against the app's `apps/<app>/apk/<app>.apk` (no patch / no verifier / no two-phase comparison); scoring is `triggered`/`not_triggered` based on the app's probe suite. The agent searches for vulnerabilities without disclosure. See [`../EXPERIMENTS.md`](../EXPERIMENTS.md).
 
 Two other workflows (`exploit` mode against synthetic vulnerabilities, and two-phase `redteam` with a patch + verifier task bundle) are supported in code but not part of the current benchmark; their docs are archived in this directory.
 
