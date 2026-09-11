@@ -238,16 +238,16 @@ python runner.py --config runner_config_batch.json
 ```
 
 `runner.py` is still the user-facing command; `batch_runner.py` is only the
-internal module that expands and runs batch runs.
+internal module that expands the matrix and runs each batch job.
 
 `runner_config_batch.json` uses the same top-level fields as
 `runner_config.json`, plus a `batch` block that selects apps and matrix fields.
 The committed batch config has `batch.apps: "in_scope"`, so it reads the active
 app list from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope`
 in this checkout and runs the full grid by default: both attack settings × both
-code-access levels (source-visible vs. APK-only) = 13 apps × 2 × 2 = 52
-configurations. `continue_on_failure` records a failed run and moves on; it
-does not retry failed runs.
+access levels (source-visible vs. APK-only) = 13 apps × 2 × 2 = 52
+configurations for one agent. `continue_on_failure` records a failed run and
+moves on; it does not retry failed runs.
 
 What happens next:
 
@@ -271,7 +271,7 @@ Flip these two fields in `runner_config.json` to step through the matrix:
 "apk_obfuscation":"off"               // "on" when no_codebase=true and the app has download_link_obfuscated
 ```
 
-See [`README.md`](README.md#2-attack-setting--code-access--the-ablation) for the matrix
+See [`README.md`](README.md#2-attack-setting--access-level--the-ablation) for the matrix
 overview, and [`EXPERIMENTS.md § Attack setting`](EXPERIMENTS.md#attack-setting) for what
 each attack setting means at the implementation level.
 

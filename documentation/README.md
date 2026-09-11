@@ -8,8 +8,8 @@ hidden **probe suite** covering four security property families —
 confidentiality, integrity, availability, and access control (CIAA). Each
 probe encodes one security property and fires when that property is violated,
 so a run is **triggered** as soon as one probe fires. The status value in
-`redteam_scores.json` is `triggered` / `not_triggered` /
-`infrastructure_error`.
+`redteam_scores.json` is `triggered` / `not_triggered`, plus the error statuses
+listed in [`EXPERIMENTS.md`](EXPERIMENTS.md#result-status-codes).
 
 > Terminology note: some of this repo's config keys predate the paper's
 > vocabulary and are kept as-is so saved run logs stay valid — most notably
@@ -28,7 +28,7 @@ so a run is **triggered** as soon as one probe fires. The status value in
 - **Wallclock:** default 2 h per attempt (`agent_wallclock_seconds`); the
   agent self-stops when it thinks it's done
 
-## 2. Attack setting × code access — the ablation
+## 2. Attack setting × access level — the ablation
 
 Each app is evaluated across a 2×2 matrix. The config key is `attacker_model`;
 the paper calls this dimension the **attack setting**.
@@ -40,8 +40,8 @@ the paper calls this dimension the **attack setting**.
 
 **The main ablation is source-visible vs. APK-only** — does access to source
 raise the trigger rate vs. forcing the agent to reverse-engineer the shipped
-APK? The APK-only leg uses the R8-minified release build (toggled via
-`apk_obfuscation`).
+APK? The APK-only leg uses the obfuscated (R8-minified) release build
+(toggled via `apk_obfuscation`).
 
 The attack setting changes the attacker's privileges and position:
 
@@ -111,9 +111,9 @@ top-level fields are normal runner defaults (`workflow`, `model`,
 matrix fields. By default, `batch.apps: "in_scope"` reads the active app list
 from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope` in
 this checkout and runs the full grid: both `attacker_model` values × both
-code-access levels (source-visible vs. APK-only) = 13 apps × 2 × 2 = 52
-configurations. `continue_on_failure` means "record a failed run and
-continue"; it does not retry failed runs.
+access levels (source-visible vs. APK-only) = 13 apps × 2 × 2 = 52
+configurations for one agent. `continue_on_failure` means "record a failed run
+and continue"; it does not retry failed runs.
 
 ## 6. The one-line experiment
 
@@ -143,9 +143,9 @@ To flip between the configurations in §2's matrix, change two fields:
 - `no_codebase`: `false` (source-visible leg) or `true` (APK-only leg)
 
 Optionally set `apk_obfuscation: "on"` with `no_codebase: true` to run against
-the R8-minified release build instead of the clean APK (requires the app to
-publish `download_link_obfuscated`). This is the APK-only condition the paper
-reports.
+the obfuscated (R8-minified) release build instead of the clean APK (requires
+the app to publish `download_link_obfuscated`). This is the APK-only condition
+the paper reports.
 
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for the full field reference.
@@ -158,10 +158,10 @@ python runner.py --config runner_config_batch.json
 
 `runner_config_batch.json` runs `apps/app_catalog.json:sets.in_scope`
 sequentially and, by default, runs the full grid: both `attacker_model` values
-(`malicious_app` and `remote_attacker`) × both code-access levels
-(source-visible vs. APK-only) = 52 configurations. Override `batch.matrix` to
-run only one mode or to sweep other `RunnerConfig` fields. You can also put
-apps in the matrix directly, for example:
+(`malicious_app` and `remote_attacker`) × both access levels
+(source-visible vs. APK-only) = 52 configurations for one agent. Override
+`batch.matrix` to run only one mode or to sweep other `RunnerConfig` fields.
+You can also put apps in the matrix directly, for example:
 
 ```json
 "batch": {

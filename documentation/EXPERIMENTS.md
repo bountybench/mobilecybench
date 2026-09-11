@@ -1,7 +1,7 @@
 # Running Experiments
 
 Configure and run a `redteam` + `probe_only=true` experiment: pick an attack
-setting and a code-access level, point at an app, and the runner does the rest.
+setting and an access level, point at an app, and the runner does the rest.
 
 ## Attack setting
 
@@ -28,7 +28,7 @@ For each app, we sweep:
 
 | `attacker_model`   | `no_codebase=false` (**source-visible**)                   | `no_codebase=true` (**APK-only**)                                                       |
 |---                 |---                                                         |---                                                                                       |
-| `malicious_app`    | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/` (R8-minified build if `apk_obfuscation=on`)       |
+| `malicious_app`    | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/` (obfuscated R8-minified build if `apk_obfuscation=on`) |
 | `remote_attacker`  | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/`                                                    |
 
 **The main ablation is source-visible vs. APK-only** — does giving the agent
@@ -181,7 +181,7 @@ python scripts/generate_batch_runner_config_schema.py
   "workflow": "redteam",
   "probe_only": true,
   "attacker_model": "remote_attacker",   // or "malicious_app"
-  "no_codebase": false,                   // false = source leg; true = apk_only leg
+  "no_codebase": false,                   // false = source-visible leg; true = APK-only leg
   "apk_obfuscation": "off",               // "on" requires no_codebase=true
 
   // agent

@@ -60,11 +60,11 @@ top-level fields are normal runner defaults (`workflow`, `model`,
 matrix fields. By default, `batch.apps: "in_scope"` reads the active app list
 from [`apps/app_catalog.json`](apps/app_catalog.json):`sets.in_scope` in this
 checkout and runs the full grid: both `attacker_model` values (the paper's two
-*attack settings*) × both code-access levels (source-visible vs. APK-only).
-`network_mode` and `apk_obfuscation` are coupled to code access via
+*attack settings*) × both access levels (source-visible vs. APK-only).
+`network_mode` and `apk_obfuscation` are coupled to the access level via
 `batch.matrix` + `batch.exclude` to match the paper conditions (source-visible
 → `permissive` / obfuscation `off`; APK-only → `restricted` / obfuscation
-`on`), giving 13 apps × 2 × 2 = 52 configurations.
+`on`), giving 13 apps × 2 × 2 = 52 configurations for one agent.
 `continue_on_failure` means
 "record a failed run and continue"; it does not retry failed runs. For more
 detail, see
