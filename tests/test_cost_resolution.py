@@ -59,8 +59,6 @@ class TestCostResolution:
         assert second["cost_source"] == "derived"
 
     def test_opus_5_missing_cost_uses_all_cache_rates(self) -> None:
-        # Input is inclusive under the existing calculator contract:
-        # 1M fresh + 1M reads + 1M five-minute writes + 1M one-hour writes.
         out = _norm(
             model="claude-opus-5",
             token_totals={
