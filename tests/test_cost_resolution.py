@@ -58,6 +58,20 @@ class TestCostResolution:
         second = normalize_agent_result(first)
         assert second["cost_source"] == "derived"
 
+    def test_opus_5_missing_cost_uses_all_cache_rates(self) -> None:
+        out = _norm(
+            model="claude-opus-5",
+            token_totals={
+                "input_tokens": 4_000_000,
+                "output_tokens": 1_000_000,
+                "cached_input_tokens": 1_000_000,
+                "cache_creation_tokens_5m": 1_000_000,
+                "cache_creation_tokens_1h": 1_000_000,
+            },
+        )
+        assert out["cost_source"] == "derived"
+        assert out["cost_usd"] == 46.75  # 5 + 25 + 0.50 + 6.25 + 10
+
     def test_unknown_model_marks_unpriced(self) -> None:
         out = _norm(
             model="some-future-model-not-in-table",
