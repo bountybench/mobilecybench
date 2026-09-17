@@ -41,8 +41,9 @@ Or run the active app set sequentially with a batch config:
 python runner.py --config runner_config_batch.json
 ```
 
-Or run the whole grid **in parallel on GKE** — the same 52-configuration grid,
-fanned out across a cluster instead of sequential (setup: [`infra/gke/README.md`](infra/gke/README.md)):
+For **parallel execution on GKE**, see [`infra/gke/README.md`](infra/gke/README.md).
+Its separate scheduler currently includes the two Termux remote-attacker cells
+excluded from the paper, giving 52 configurations per agent:
 
 ```bash
 python infra/gke/generate_jobs.py --all \
@@ -64,7 +65,9 @@ checkout and runs the full grid: both `attacker_model` values (the paper's two
 `network_mode` and `apk_obfuscation` are coupled to the access level via
 `batch.matrix` + `batch.exclude` to match the paper conditions (source-visible
 → `permissive` / obfuscation `off`; APK-only → `restricted` / obfuscation
-`on`), giving 13 apps × 2 × 2 = 52 configurations for one agent.
+`on`). The batch excludes `termux` with `remote_attacker`, because Termux has
+no backend, giving (13 malicious-app + 12 remote-attacker) × 2 access levels
+= 50 configurations for one agent, matching the paper.
 `continue_on_failure` means
 "record a failed run and continue"; it does not retry failed runs. For more
 detail, see

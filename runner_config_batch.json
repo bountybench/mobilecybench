@@ -38,6 +38,7 @@
       "apk_obfuscation": ["off", "on"]
     },
     "exclude": [
+      { "app": "termux", "attacker_model": "remote_attacker" },
       { "no_codebase": false, "network_mode": "restricted" },
       { "no_codebase": false, "apk_obfuscation": "on" },
       { "no_codebase": true, "network_mode": "permissive" },

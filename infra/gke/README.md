@@ -93,7 +93,9 @@ python infra/gke/generate_jobs.py --all \
 That renders **13 apps × 2 attacker models × 2 visibility legs = 52 Jobs** and
 applies them. Each cell's `network_mode` + `apk_obfuscation` are set to match the
 visibility leg automatically (source → `permissive`/off, apk-only →
-`restricted`/on), so the grid matches the sequential batch runner.
+`restricted`/on). Unlike the sequential batch config, this generator still
+includes the two Termux remote-attacker cells excluded from the paper; the
+paper uses 50 configurations per agent.
 
 **Pick the agent image for the CLI you want** (published on Docker Hub, pulled
 automatically by the pods):

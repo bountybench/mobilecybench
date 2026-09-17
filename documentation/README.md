@@ -111,8 +111,8 @@ top-level fields are normal runner defaults (`workflow`, `model`,
 matrix fields. By default, `batch.apps: "in_scope"` reads the active app list
 from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope` in
 this checkout and runs the full grid: both `attacker_model` values × both
-access levels (source-visible vs. APK-only) = 13 apps × 2 × 2 = 52
-configurations for one agent. `continue_on_failure` means "record a failed run
+access levels (source-visible vs. APK-only), excluding Termux remote-attacker
+runs because Termux has no backend: (13 + 12) × 2 = 50 configurations for one agent. `continue_on_failure` means "record a failed run
 and continue"; it does not retry failed runs.
 
 ## 6. The one-line experiment
@@ -159,7 +159,8 @@ python runner.py --config runner_config_batch.json
 `runner_config_batch.json` runs `apps/app_catalog.json:sets.in_scope`
 sequentially and, by default, runs the full grid: both `attacker_model` values
 (`malicious_app` and `remote_attacker`) × both access levels
-(source-visible vs. APK-only) = 52 configurations for one agent. Override
+(source-visible vs. APK-only), excluding Termux remote-attacker runs
+= 50 configurations for one agent. Override
 `batch.matrix` to run only one mode or to sweep other `RunnerConfig` fields.
 You can also put apps in the matrix directly, for example:
 
