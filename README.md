@@ -42,8 +42,7 @@ python runner.py --config runner_config_batch.json
 ```
 
 For **parallel execution on GKE**, see [`infra/gke/README.md`](infra/gke/README.md).
-Its separate scheduler currently includes the two Termux remote-attacker cells
-excluded from the paper, giving 52 configurations per agent:
+It runs the same 50 configurations per agent as the sequential batch:
 
 ```bash
 python infra/gke/generate_jobs.py --all \

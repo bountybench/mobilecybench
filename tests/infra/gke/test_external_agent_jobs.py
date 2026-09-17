@@ -154,6 +154,36 @@ def test_external_probe_only_renders_full_matrix() -> None:
     }
 
 
+@pytest.mark.parametrize("models", [[], ["model-a", "model-b"]])
+def test_full_grid_excludes_only_termux_remote_attacker(models) -> None:
+    res = _generate(
+        "--all",
+        "--agent-image",
+        AGENT_IMAGE,
+        "--gcs-bucket",
+        "test",
+        *(["--models", *models] if models else []),
+    )
+    assert res.returncode == 0, res.stderr
+    docs = [d for d in yaml.safe_load_all(res.stdout) if d]
+    actual = {
+        (env["APP_NAME"], env["ATTACKER_MODEL"], env["NO_CODEBASE"], env["MODEL"])
+        for env in map(_env_of, docs)
+    }
+    apps = json.loads(APP_CATALOG.read_text())["sets"]["in_scope"]
+    expected = {
+        (app, attacker, leg, model)
+        for app in apps
+        for attacker in ("malicious_app", "remote_attacker")
+        for leg in ("true", "false")
+        for model in (models or [""])
+        if not (app == "termux" and attacker == "remote_attacker")
+    }
+    assert actual == expected
+    assert len(docs) == len(actual) == 50 * max(1, len(models))
+    assert len({d["metadata"]["name"] for d in docs}) == len(docs)
+
+
 def test_visibility_source_is_single_leg() -> None:
     res = _generate(
         "--apps",
@@ -592,9 +622,7 @@ def test_build_and_push_uses_active_catalog_and_clean_apks_only(
         "  echo submodule.apps/directory-only/codebase.path apps/directory-only/codebase\n"
         "fi\n"
     )
-    (bin_dir / "docker").write_text(
-        "#!/usr/bin/env bash\n" f'echo docker "$@" >> {log}\n'
-    )
+    (bin_dir / "docker").write_text(f'#!/usr/bin/env bash\necho docker "$@" >> {log}\n')
     (bin_dir / "git").chmod(0o755)
     (bin_dir / "docker").chmod(0o755)
 

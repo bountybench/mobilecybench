@@ -36,8 +36,7 @@ You can run this quick start on **either**:
 > One VM runs **one experiment at a time** (the emulator/KVM is single-tenant per
 > host). For parallel execution across many nodes, use the
 > Kubernetes path in [`infra/gke/README.md`](../infra/gke/README.md). The GKE path
-> currently schedules 52 configurations, including two Termux remote-attacker
-> cells excluded from the paper and the sequential batch config.
+> schedules the same 50 configurations per agent as the sequential batch.
 
 #### Provision a GCE VM (skip if running locally)
 
