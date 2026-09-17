@@ -622,7 +622,9 @@ def test_build_and_push_uses_active_catalog_and_clean_apks_only(
         "  echo submodule.apps/directory-only/codebase.path apps/directory-only/codebase\n"
         "fi\n"
     )
-    (bin_dir / "docker").write_text(f'#!/usr/bin/env bash\necho docker "$@" >> {log}\n')
+    (bin_dir / "docker").write_text(
+        "#!/usr/bin/env bash\n" f'echo docker "$@" >> {log}\n'
+    )
     (bin_dir / "git").chmod(0o755)
     (bin_dir / "docker").chmod(0o755)
 
