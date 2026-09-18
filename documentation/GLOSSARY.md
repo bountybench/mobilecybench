@@ -29,7 +29,7 @@ The two differ on purpose. The paper names concepts; the code names fields. Conf
 | **maintainer-validated** | — | A candidate a maintainer confirmed by patch, acknowledgement, advisory, CVE, or bounty. |
 | **coding agent** | `agent_mode: "external"` + `agent_image` | The model-plus-scaffold unit under evaluation. |
 
-Note on grid sizes: this repo's batch config sweeps 13 apps × 2 attack settings × 2 access levels = **52 configurations for one agent**. The paper's grid multiplies that by the 5 evaluated agents (260) and then drops `termux`'s 10 remote-attacker configurations, because `termux` has no backend — leaving 250 scored configurations, each attempted twice.
+Note on grid sizes: the committed sequential batch config and GKE generator exclude `termux`'s remote-attacker setting because it has no backend, giving (13 malicious-app + 12 remote-attacker) × 2 access levels = **50 configurations for one agent**. Across the 5 evaluated agents, the paper reports 250 configurations, each attempted twice.
 
 ## The four property families (CIAA)
 

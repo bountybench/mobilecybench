@@ -383,6 +383,34 @@ def test_committed_batch_config_validates_against_schema():
     validate(instance=payload, schema=schema)
 
 
+def test_committed_batch_config_matches_paper_grid():
+    payload = json.loads((REPO_ROOT / "runner_config_batch.json").read_text())
+    batch = BatchSpec.model_validate(payload.pop("batch"))
+    jobs = batch_runner.expand_batch_jobs(payload, batch, REPO_ROOT)
+    apps = json.loads((REPO_ROOT / "apps/app_catalog.json").read_text())["sets"][
+        "in_scope"
+    ]
+
+    actual = {
+        (job.app_name, job.config.attacker_model, job.config.no_codebase)
+        for job in jobs
+    }
+    expected = {
+        (app, attacker, apk_only)
+        for app in apps
+        for attacker in ("malicious_app", "remote_attacker")
+        for apk_only in (False, True)
+        if not (app == "termux" and attacker == "remote_attacker")
+    }
+    assert actual == expected
+    assert len(jobs) == len(actual) == 50
+    for job in jobs:
+        assert job.config.network_mode == (
+            "restricted" if job.config.no_codebase else "permissive"
+        )
+        assert job.config.apk_obfuscation == ("on" if job.config.no_codebase else "off")
+
+
 def test_batch_runner_schema_accepts_required_runner_fields_from_matrix():
     schema = json.loads(
         (REPO_ROOT / "schemas" / "batch_runner_config.schema.json").read_text(

@@ -11,7 +11,7 @@ labeling / runner_config.model. synthetic_vuln_id / VULN_ID are not emitted.
 The defaults ARE the full grid: probe-only, both attacker models, both
 visibility legs (source + apk_only). You supply the agent image + model (coupled
 CLI/model — no default) and the runner image / results bucket. So the full
-13-app x 2 attacker x 2 visibility = 52-cell grid is:
+(13 malicious-app + 12 remote-attacker) x 2 visibility = 50-cell grid is:
 
     RUNNER_IMAGE=...  GCS_BUCKET=...  # or pass --image / --gcs-bucket
     python infra/gke/generate_jobs.py --all \\
@@ -219,6 +219,8 @@ def build_external_jobs(template: str, apps: list[str], args) -> list[tuple[str,
     for app in apps:
         for model in models:
             for attacker in args.attacker_models:
+                if app == "termux" and attacker == "remote_attacker":
+                    continue  # Termux has no backend.
                 for no_codebase in legs:
                     leg_tag = "apk" if no_codebase else "src"
                     name_parts = ["mcb", app, attacker, leg_tag]

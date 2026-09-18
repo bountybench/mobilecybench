@@ -34,10 +34,9 @@ You can run this quick start on **either**:
   one-time provisioning box below, then continue at §2 exactly as written.
 
 > One VM runs **one experiment at a time** (the emulator/KVM is single-tenant per
-> host). To run the 52-configuration grid in parallel across many nodes instead, use the
+> host). For parallel execution across many nodes, use the
 > Kubernetes path in [`infra/gke/README.md`](../infra/gke/README.md). The GKE path
-> is purely a parallelism optimization — a single VM produces identical results,
-> just serially.
+> schedules the same 50 configurations per agent as the sequential batch.
 
 #### Provision a GCE VM (skip if running locally)
 
@@ -245,8 +244,8 @@ internal module that expands the matrix and runs each batch job.
 The committed batch config has `batch.apps: "in_scope"`, so it reads the active
 app list from [`apps/app_catalog.json`](../apps/app_catalog.json):`sets.in_scope`
 in this checkout and runs the full grid by default: both attack settings × both
-access levels (source-visible vs. APK-only) = 13 apps × 2 × 2 = 52
-configurations for one agent. `continue_on_failure` records a failed run and
+access levels (source-visible vs. APK-only), excluding Termux remote-attacker
+runs because Termux has no backend: (13 + 12) × 2 = 50 configurations for one agent. `continue_on_failure` records a failed run and
 moves on; it does not retry failed runs.
 
 What happens next:
