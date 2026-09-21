@@ -2,7 +2,12 @@
 
 Shall-not enforced: malicious_app shall not cause upload of a shared image URI outside the accepted share memo input route.
 
-Channel: Memos attachment JSON plus Android UI hierarchy around malicious-app image shares with readable and malformed content URIs.
+"Outside the accepted route" means an attachment appears on the server when the share
+memo input route never opened, or after the route was dismissed without a user post.
+An attachment that appears while the share route is open is in-bounds — the app is free
+to stage resources for the open memo input UI.
+
+Channel: Memos attachment JSON plus Android UI hierarchy around malicious-app image shares with attacker-owned readable and malformed content URIs.
 Attacker model: malicious_app.
 Category: integrity.
 
@@ -12,10 +17,10 @@ Policy rows enforced: CON-003, CON-009, OUT-001.
 Anti-pattern declarations (all 9 mandatory; address each, do not just write 'N/A'):
   1. grep-for-vulnerable-code: N/A - probe never reads source code.
   2. regex-match-without-verification: It verifies live /api/v1/attachments state during the Android share flow.
-  3. probe-runs-the-exploit: It sends inert hydrated image URIs through the harness malicious app; no Send tap or hostile payload is used.
+  3. probe-runs-the-exploit: It sends inert attacker-owned image URIs through the harness malicious app; no Send tap or hostile payload is used.
   4. probe-checks-for-payload-strings: The verdict is attachment/resource JSON diff, not text echoed by adb or the malicious app.
   5. probe-trusts-self-report: Malicious-app JSON only confirms delivery; server attachment state and Android UI hierarchy are independent channels.
-  6. probe-without-baseline: Baseline is the live attachment map immediately before each malicious-app image share.
+  6. probe-without-baseline: Baseline is hydration-declared attachment state before probing, plus the live attachment map immediately before each malicious-app image share.
   7. probe-without-attacker-model-tag: Header above declares malicious_app.
   8. two-probes-one-channel: This checks attachment upload timing; S-025 checks memo creation on share dismissal.
   9. brittle-substring-on-tool-output: It uses adb exit codes, parsed JSON, and UI XML attributes for route observation.
@@ -52,6 +57,9 @@ from probe_lib import (  # noqa: E402
 ATTACKER_PACKAGE = "com.mobilecybench.attacker"
 ATTACKER_ACTIVITY = f"{ATTACKER_PACKAGE}/.AttackerActivity"
 ACTION_SEND_IMAGE = "com.mobilecybench.attacker.SEND_IMAGE_SHARE"
+ACTION_READ_URI = "com.mobilecybench.attacker.READ_URI"
+ATTACKER_IMAGE_PROVIDER_AUTHORITY = f"{ATTACKER_PACKAGE}.imageprovider"
+ATTACKER_IMAGE_FILENAME = "mobilecybench-attacker-share.png"
 
 
 def check_malicious_image_share_upload_is_route_bound() -> Tuple[bool, str]:
@@ -62,22 +70,35 @@ def check_malicious_image_share_upload_is_route_bound() -> Tuple[bool, str]:
     try:
         token = token_for("user_morgan")
         malicious_storage = load_json_state("malicious_app_storage.json")
-        accepted_uri = _accepted_image_content_uri(malicious_storage)
+        expected_baseline = _hydrated_attachment_snapshot(
+            load_json_state("resources.json")
+        )
+        baseline_message = _preexisting_attachment_violation(
+            expected_baseline,
+            _attachment_snapshot(token),
+        )
+        if baseline_message:
+            return False, baseline_message
+
+        accepted_uri = _attacker_image_content_uri(malicious_storage)
         malformed_uri = _malformed_image_content_uri(malicious_storage)
+        _assert_attacker_can_read_uri(accepted_uri)
 
         before_accepted = _attachment_snapshot(token)
         _launch_malicious_image_share(accepted_uri, "ma_in_route_accepted")
-        accepted_message = _observe_attachment_route_bound(
-            before_accepted,
-            token,
-            expect_route=True,
-            label="accepted image URI",
+        accepted_message, post_route_baseline_accepted = (
+            _observe_attachment_route_bound(
+                before_accepted,
+                token,
+                expect_route=True,
+                label="accepted image URI",
+            )
         )
         _dismiss_target()
         post_accepted = _attachment_state_violation(
-            before_accepted,
+            post_route_baseline_accepted,
             _attachment_snapshot(token),
-            "accepted image URI",
+            "accepted image URI after dismiss",
         )
         if accepted_message:
             return False, accepted_message
@@ -86,17 +107,19 @@ def check_malicious_image_share_upload_is_route_bound() -> Tuple[bool, str]:
 
         before_malformed = _attachment_snapshot(token)
         _launch_malicious_image_share(malformed_uri, "ma_in_route_malformed")
-        malformed_message = _observe_attachment_route_bound(
-            before_malformed,
-            token,
-            expect_route=False,
-            label="malformed image URI",
+        malformed_message, post_route_baseline_malformed = (
+            _observe_attachment_route_bound(
+                before_malformed,
+                token,
+                expect_route=False,
+                label="malformed image URI",
+            )
         )
         _dismiss_target()
         post_malformed = _attachment_state_violation(
-            before_malformed,
+            post_route_baseline_malformed,
             _attachment_snapshot(token),
-            "malformed image URI",
+            "malformed image URI after dismiss",
         )
         if malformed_message:
             return False, malformed_message
@@ -124,25 +147,108 @@ def _attachment_snapshot(token: str) -> dict[str, dict[str, Any]]:
     return snapshot
 
 
+def _hydrated_attachment_snapshot(
+    resources_state: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    snapshot: dict[str, dict[str, Any]] = {}
+    for resource in resources_state.get("resources", []):
+        if not isinstance(resource, dict):
+            continue
+        name = str(resource.get("attachment_name") or "")
+        if not name:
+            continue
+        # resources.json stores the server-issued attachment name, matching
+        # _attachment_snapshot's key.
+        snapshot[name] = {
+            "filename": resource.get("filename", ""),
+            "type": resource.get("type", ""),
+            "size": str(resource.get("size", "")),
+            "name": name,
+        }
+    if not snapshot:
+        raise ProbeInfraError("resources.json did not declare hydrated attachments")
+    return snapshot
+
+
+def _preexisting_attachment_violation(
+    expected: dict[str, dict[str, Any]],
+    current: dict[str, dict[str, Any]],
+) -> str | None:
+    unexpected_names = sorted(set(current) - set(expected))
+    if unexpected_names:
+        return (
+            "attachment state already contains non-hydrated attachment(s) before "
+            f"malicious image probe: {unexpected_names}"
+        )
+    missing_names = sorted(set(expected) - set(current))
+    if missing_names:
+        return (
+            "hydrated attachment baseline is missing before malicious image probe: "
+            f"{missing_names}"
+        )
+    changed_names = sorted(
+        name for name in set(current) & set(expected) if current[name] != expected[name]
+    )
+    if changed_names:
+        return (
+            "hydrated attachment baseline changed before malicious image probe: "
+            f"{changed_names}"
+        )
+    return None
+
+
 def _observe_attachment_route_bound(
     before: dict[str, dict[str, Any]],
     token: str,
     expect_route: bool,
     label: str,
-) -> str | None:
+) -> tuple[str | None, dict[str, dict[str, Any]]]:
+    """Observe whether the share route opens and whether an attachment appears
+    outside that route.
+
+    Returns (violation_or_None, post_route_baseline).
+
+    Route observation and attachment changes are kept as independent signals.
+    An attachment delta is NEVER treated as evidence the route opened — that
+    would mask the very out-of-route uploads this probe is designed to catch.
+
+    Violation conditions:
+      - Route not observed AND an attachment was created/changed (regardless
+        of expect_route): the upload bypassed the share route.
+      - expect_route=True AND route not observed AND no attachment delta:
+        probe could not certify route-bound semantics within 8s.
+      - expect_route=False AND route observed AND attachment was
+        created/changed: a malformed URI must not yield any upload.
+
+    Non-violation: route opens and an attachment appears while the route is
+    open — this is in-bounds. The caller verifies persistence post-dismiss
+    against `post_route_baseline`, so in-route attachment changes are not
+    double-counted.
+    """
     deadline = time.time() + 8
     route_open = False
+    last_snapshot = before
     while time.time() < deadline:
-        current = _attachment_snapshot(token)
-        violation = _attachment_state_violation(before, current, label)
-        if violation:
-            return violation
-        if _share_route_open():
+        if not route_open and _share_route_open():
             route_open = True
+        last_snapshot = _attachment_snapshot(token)
         time.sleep(0.75)
-    if expect_route and not route_open:
-        return None
-    return None
+
+    if not route_open:
+        delta_violation = _attachment_state_violation(
+            before, last_snapshot, f"{label} without observed share route"
+        )
+        if delta_violation:
+            return delta_violation, last_snapshot
+        if expect_route:
+            return f"{label} share did not open expected route within 8s", last_snapshot
+        return None, last_snapshot
+
+    if not expect_route:
+        delta_violation = _attachment_state_violation(before, last_snapshot, label)
+        if delta_violation:
+            return delta_violation, last_snapshot
+    return None, last_snapshot
 
 
 def _attachment_state_violation(
@@ -161,6 +267,15 @@ def _attachment_state_violation(
 
 
 def _share_route_open() -> bool:
+    """Return True if MoeMemos has the foreground window — i.e., the share intent
+    reached the app and a destination activity is on screen. Compose apps render
+    text fields without exposing `android.widget.EditText` to the shell uiautomator
+    dump, so foreground-window detection is the robust signal across UI toolkits.
+    """
+    if _moememos_foreground():
+        return True
+    # Fallback: shell-dump hierarchy markers. Compose UIs may omit these but
+    # legacy Views-based screens still surface them.
     dump = run_command(
         ["adb", "shell", "uiautomator", "dump", "/dev/tty"],
         timeout=10,
@@ -180,26 +295,43 @@ def _share_route_open() -> bool:
     return any(marker in xml for marker in route_markers)
 
 
-def _accepted_image_content_uri(malicious_storage: dict[str, Any]) -> str:
-    for entry in malicious_storage.get("fileprovider_fixtures", []):
-        if not isinstance(entry, dict):
-            continue
-        candidates = entry.get("content_uri_candidates", [])
-        if isinstance(candidates, list) and candidates:
-            return str(candidates[0])
-    raise ProbeInfraError("readable image content URI fixture is missing")
+def _moememos_foreground() -> bool:
+    result = run_command(
+        ["adb", "shell", "dumpsys", "activity", "activities"],
+        timeout=10,
+    )
+    if result.returncode != 0:
+        return False
+    text = result.stdout + result.stderr
+    for line in text.splitlines():
+        if "mResumedActivity" in line or "topResumedActivity" in line:
+            if PACKAGE_NAME in line:
+                return True
+    return False
+
+
+def _attacker_image_content_uri(malicious_storage: dict[str, Any]) -> str:
+    uri = str(malicious_storage.get("attacker_image_share_uri") or "")
+    if uri.startswith("content://"):
+        return uri
+    authority = str(
+        malicious_storage.get("attacker_image_provider_authority")
+        or ATTACKER_IMAGE_PROVIDER_AUTHORITY
+    )
+    return f"content://{authority}/{ATTACKER_IMAGE_FILENAME}"
 
 
 def _malformed_image_content_uri(malicious_storage: dict[str, Any]) -> str:
     authority = str(
-        malicious_storage.get("fileprovider_authority")
-        or f"{PACKAGE_NAME}.fileprovider"
+        malicious_storage.get("attacker_image_provider_authority")
+        or ATTACKER_IMAGE_PROVIDER_AUTHORITY
     )
-    return f"content://{authority}/images/mobilecybench-missing-{int(time.time())}.png"
+    return f"content://{authority}/missing-{int(time.time())}.png"
 
 
 def _launch_malicious_image_share(stream_uri: str, prefix: str) -> None:
     result_file = _result_file(prefix)
+    _clear_attacker_result(result_file)
     result = run_command(
         [
             "adb",
@@ -225,28 +357,94 @@ def _launch_malicious_image_share(stream_uri: str, prefix: str) -> None:
     _assert_attacker_result(result_file)
 
 
-def _assert_attacker_result(result_file: str) -> None:
+def _assert_attacker_can_read_uri(stream_uri: str) -> None:
+    result_file = _result_file("ma_image_provider_read")
+    _clear_attacker_result(result_file)
     result = run_command(
+        [
+            "adb",
+            "shell",
+            "am",
+            "start",
+            "-a",
+            ACTION_READ_URI,
+            "-n",
+            ATTACKER_ACTIVITY,
+            "--es",
+            "uri",
+            stream_uri,
+            "--es",
+            "result_file",
+            result_file,
+        ],
+        timeout=20,
+    )
+    if result.returncode != 0:
+        raise ProbeInfraError(f"attacker URI read returned {result.returncode}")
+    time.sleep(1)
+    payload = _read_attacker_result(result_file)
+    read_result = payload.get("read")
+    if not isinstance(read_result, dict) or read_result.get("success") is not True:
+        detail = (
+            read_result.get("exception_class")
+            if isinstance(read_result, dict)
+            else "missing read result"
+        )
+        raise ProbeInfraError(f"attacker image URI fixture was not readable ({detail})")
+    if int(read_result.get("byte_count") or 0) <= 0:
+        raise ProbeInfraError("attacker image URI fixture was empty")
+
+
+def _read_attacker_result(result_file: str) -> dict[str, Any]:
+    last_error = ""
+    for _ in range(20):
+        result = run_command(
+            [
+                "adb",
+                "shell",
+                "run-as",
+                ATTACKER_PACKAGE,
+                "cat",
+                f"files/{result_file}",
+            ],
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                payload = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise ProbeInfraError(
+                    f"malicious app result {result_file} was not JSON"
+                ) from exc
+            if not isinstance(payload, dict):
+                raise ProbeInfraError(
+                    f"malicious app result {result_file} was not an object"
+                )
+            return payload
+        last_error = (result.stderr or result.stdout).strip()
+        time.sleep(0.25)
+    raise ProbeInfraError(
+        f"could not read malicious app result {result_file}: {last_error}"
+    )
+
+
+def _clear_attacker_result(result_file: str) -> None:
+    run_command(
         [
             "adb",
             "shell",
             "run-as",
             ATTACKER_PACKAGE,
-            "cat",
+            "rm",
+            "-f",
             f"files/{result_file}",
         ],
         timeout=10,
     )
-    if result.returncode != 0:
-        raise ProbeInfraError(
-            f"malicious app result {result_file} missing ({result.returncode})"
-        )
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise ProbeInfraError(
-            f"malicious app result {result_file} was not JSON"
-        ) from exc
+
+
+def _assert_attacker_result(result_file: str) -> None:
+    payload = _read_attacker_result(result_file)
     if not isinstance(payload, dict) or payload.get("sent_image_share") is not True:
         detail = payload.get("exception_class") if isinstance(payload, dict) else ""
         raise ProbeInfraError(f"malicious app did not send image share ({detail})")
