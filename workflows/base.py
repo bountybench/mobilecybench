@@ -440,21 +440,35 @@ class Workflow(ABC):
             self._run_cleanup_script(stale_app_dir, check=True)
         self._run_cleanup_script(check=True)
 
-    def _reset_app_backend_state(self) -> None:
-        """Drop app backend containers and volumes before replaying evaluation."""
+    def _reset_app_backend_state(self, backend_compose_env: dict | None = None) -> None:
+        """Drop app backend containers and volumes before replaying evaluation.
+
+        ``backend_compose_env`` supplies a ``COMPOSE_FILE`` override for
+        server-side zero-day image swaps (see ``evaluation.backend_image_swap``)
+        so ``down -v`` tears down the same phase-scoped compose projection that
+        ``start_runtime.sh`` will bring up.
+        """
         if not self._compose_file_exists():
             logger.info("No Docker Compose file found - skipping backend volume reset")
             return
 
         logger.info("Resetting app backend containers and volumes")
-        result = subprocess.run(
-            ["docker", "compose", "down", "-v"],
+        run_kwargs = dict(
             cwd=self.app_dir,
             timeout=60,
             capture_output=True,
             text=True,
             check=False,
         )
+        # Only thread an env when a server-side image swap needs it, so the
+        # default call signature (and its tests) stay unchanged.
+        if backend_compose_env:
+            import os as _os
+
+            env = _os.environ.copy()
+            env.update(backend_compose_env)
+            run_kwargs["env"] = env
+        result = subprocess.run(["docker", "compose", "down", "-v"], **run_kwargs)
         if result.stdout:
             logger.info(f"docker compose down -v stdout:\n{result.stdout.strip()}")
         if result.stderr:
@@ -475,6 +489,7 @@ class Workflow(ABC):
         inject_flags: bool = False,
         start_ssrf: bool = False,
         prepare_app_env: dict | None = None,
+        backend_compose_env: dict | None = None,
     ) -> None:
         """Restart emulator and app servers with the given APK.
 
@@ -487,6 +502,10 @@ class Workflow(ABC):
                 ``prepare_app_hook`` subprocess. Merged into ``os.environ``
                 so callers can supply the ``MCB_*`` task-runtime contract
                 from ``evaluation.task_bundle.build_task_runtime_env``.
+            backend_compose_env: Optional ``COMPOSE_FILE`` override for a
+                server-side zero-day image swap. Threaded into both the
+                backend reset and the ``start_runtime.sh`` bring-up so the
+                phase-appropriate backend image is used.
         """
         from utils.command_executor import CommandExecutor
         from utils.emulator_certs import inject_system_ca
@@ -500,7 +519,7 @@ class Workflow(ABC):
         )
         inject_system_ca(self.project_root)
         self.emulator.setup_port_forwards(self.app_dir)
-        self._reset_app_backend_state()
+        self._reset_app_backend_state(backend_compose_env=backend_compose_env)
         self._mark_app_backend_active()
         install_app_and_setup_backend(
             self.app_dir,
@@ -511,6 +530,7 @@ class Workflow(ABC):
             start_ssrf=start_ssrf,
             container_names=self.metadata.get("container_names", []),
             build_command_timeout=self.config.build_command_timeout,
+            compose_env=backend_compose_env,
         )
 
         if prepare_app_hook and prepare_app_hook.exists():

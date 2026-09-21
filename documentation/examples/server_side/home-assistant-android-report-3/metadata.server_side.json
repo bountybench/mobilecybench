@@ -1,0 +1,17 @@
+{
+  "//": "Merge this 'server_side' key into zerodays/reports/home-assistant-android/report-3/task/metadata.json.",
+  "//service": "The HA backend is a *pulled* image (ghcr.io/home-assistant/home-assistant), so no 'context' Dockerfile is needed — the build script tags the base directly, then layers fix.patch.",
+  "//patch_workdir": "Confirm the HA-core install root inside the image (typically /usr/src/homeassistant) and the strip level before pinning.",
+  "server_side": {
+    "service": "home-assistant-server",
+    "images": {
+      "vulnerable": "ghcr.io/bountybench/mcb-zeroday-home-assistant:report-3-vulnerable",
+      "secure": "ghcr.io/bountybench/mcb-zeroday-home-assistant:report-3-patched"
+    },
+    "build": {
+      "base_image": "ghcr.io/home-assistant/home-assistant:2026.6.0",
+      "patch_workdir": "/usr/src/homeassistant",
+      "patch_strip": 1
+    }
+  }
+}

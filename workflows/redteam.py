@@ -148,6 +148,7 @@ class MaliciousAppOps:
             kwargs["target_apk"],
             inject_flags=kwargs.get("needs_flags", False),
             start_ssrf=kwargs.get("needs_ssrf", False),
+            backend_compose_env=workflow._backend_compose_env_for_phase(phase_dir),
         )
 
         logger.info("[phase] Running prepare_app.sh (per-task)...")
@@ -311,7 +312,10 @@ class RemoteAttackerOps:
         package_name = workflow.metadata.get("package_name", "")
 
         logger.info("[phase] Restarting runtime with target APK...")
-        workflow._restart_runtime(kwargs["target_apk"])
+        workflow._restart_runtime(
+            kwargs["target_apk"],
+            backend_compose_env=workflow._backend_compose_env_for_phase(phase_dir),
+        )
 
         # Per-task pre-exploit setup (e.g. seed a row only this exploit reads).
         # Mirrors CI's task_runtime_run_prepare_hook (pre-exploit, both models).
@@ -668,6 +672,36 @@ class RedTeamWorkflow(Workflow):
           (ProbeOnlyBundle.phase1_apk == phase2_apk == that path).
         """
         return self._bundle.phase1_apk()
+
+    def _backend_compose_env_for_phase(
+        self, phase_dir: Optional[Path]
+    ) -> Optional[dict]:
+        """COMPOSE_FILE override for a server-side zero-day image swap, or None.
+
+        For a server-side task the backend, not the app, carries the fix. We
+        keep the APK identical across phases and instead repoint the backend
+        compose service at the phase-appropriate prebuilt image (vulnerable in
+        Phase 1, patched in Phase 2). Returns ``None`` for app-side / probe-only
+        runs, which keep their default backend bring-up unchanged.
+        """
+        bundle = getattr(self, "_bundle", None)
+        if getattr(bundle, "kind", None) != "zeroday":
+            return None
+        if not bundle.is_server_side():
+            return None
+        phase_slug = _phase_slug_for_output_dir(phase_dir)
+        if phase_slug is None:
+            # No per-phase replay dir (e.g. probe pass) — nothing to swap.
+            return None
+        from evaluation.backend_image_swap import write_phase_override
+
+        image = self._bundle.backend_image_for_phase(phase_slug)
+        return write_phase_override(
+            app_dir=self.app_dir,
+            service=self._bundle.backend_service(),
+            image=image,
+            phase_slug=phase_slug,
+        )
 
     def _prepare_runtime_codebase(self, codebase_dir: Path) -> None:
         """Codebase prep for phase-1 / single-pass runs.
