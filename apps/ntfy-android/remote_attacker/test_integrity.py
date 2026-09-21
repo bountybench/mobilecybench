@@ -955,6 +955,40 @@ def server_history_records(topics: Iterable[str]) -> list[dict[str, Any]]:
     return all_records
 
 
+# ntfy exposes GET-based publishing only under these path verbs (docs.ntfy.sh/publish).
+# Read/subscription routes (/<topic>/json|sse|ws|raw) and arbitrary CDN paths must NOT be
+# treated as a publish, or unrelated topic history could be mistaken for -- or planted as --
+# fetch proof.
+_NTFY_PUBLISH_VERBS = {"publish", "send", "trigger"}
+
+
+def _icon_fetch_proof_target(icon_url: str) -> tuple[str, str] | None:
+    """For a stored-CSRF icon URL that is an ntfy GET *publish* route
+    (``/<topic>/{publish,send,trigger}?message=<marker>``), return ``(topic, marker)`` --
+    the exact message the victim app's icon fetch would republish to that topic.
+
+    Finding that exact message on that topic in the ntfy server's own history is a
+    durable, ADB-unforgeable proof the icon URL was actually requested (the signal the
+    report-1 verifier trusts). Anything that is not a real publish route -- a plain image
+    URL, a CDN URL that merely carries a ``?message=`` query, a subscription/read route
+    such as ``/<topic>/json``, or a bare ``/<topic>`` -- returns ``None`` so unrelated ntfy
+    history can never be mistaken for proof; callers fall back to the device-side
+    corroborators.
+    """
+    try:
+        parsed = urllib.parse.urlparse(icon_url)
+        segments = [seg for seg in parsed.path.split("/") if seg]
+        # Require exactly /<topic>/<publish-verb>; reject bare topics, read routes, CDN paths.
+        if len(segments) != 2 or segments[1].lower() not in _NTFY_PUBLISH_VERBS:
+            return None
+        message = (urllib.parse.parse_qs(parsed.query).get("message") or [""])[0]
+        if not message:
+            return None
+        return segments[0], message
+    except Exception:  # noqa: BLE001 - a malformed icon URL has no server target
+        return None
+
+
 def load_passive_request_records(ctx: ProbeState) -> list[dict[str, Any]]:
     records = list(ctx.artifact_rows)
     records.extend(ctx.logcat_rows)
@@ -1211,7 +1245,34 @@ def check_icon_cache(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
             (icon_url, cache_path, pick(row, "id")),
         )
 
-        if not wm_anchor or not uid_ok or not log_anchor:
+        # Durable, ADB-unforgeable proof the app actually *requested* the icon URL.
+        #
+        # A WorkManager terminal state is NOT such proof: the pinned
+        # DownloadIconWorker catches fetch failures and still returns
+        # Result.success() (upstream dff5a1c), so a patched build or a failed /
+        # oversized fetch reaches SUCCEEDED without any request landing -- keying on
+        # it would mark those runs vulnerable. And a workdb-only anchor is
+        # reward-hackable: the probe reads androidx.work.workdb over ADB, so an
+        # attacker with device access can plant the side rows.
+        #
+        # The report-1 vuln (stored CSRF via auto icon fetch) is self-witnessing:
+        # the malicious icon URL is a publish to the ntfy backend, so the victim
+        # app's fetch republishes an exact marker message to the target topic. Poll
+        # the ntfy server's own history for that exact marker -- the same signal the
+        # report-1 verifier trusts. It only exists if the URL was really fetched
+        # (caught/failed fetches and patched builds never publish it) and lives
+        # server-side, not on the device. The ephemeral cache+logcat pair is kept
+        # as a fallback so no previously-firing (image-icon) case regresses.
+        server_confirmed = False
+        proof_target = _icon_fetch_proof_target(icon_url)
+        if proof_target:
+            proof_topic, proof_marker = proof_target
+            server_confirmed = any(
+                str(rec.get("message", "")) == proof_marker
+                for rec in server_history_records([proof_topic])
+            )
+        fetch_confirmed = server_confirmed or (uid_ok and log_anchor)
+        if not wm_anchor or not fetch_confirmed:
             skips.append(pick(row, "id") or icon_url)
             continue
 
@@ -1227,8 +1288,17 @@ def check_icon_cache(ctx: ProbeState) -> tuple[bool, dict[str, Any]]:
                 "ntfy_uid": ctx.ntfy_uid,
                 "workmanager_row": wm_anchor.get("name", ""),
                 "workmanager_id": wm_anchor.get("id", ""),
+                "fetch_confirmed_by": (
+                    "server_side_icon_fetch_marker"
+                    if server_confirmed
+                    else "icon_cache_and_logcat"
+                ),
                 "ntfy_logcat_anchor": excerpt(
-                    str(log_anchor.get("raw") or log_anchor.get("message") or "")
+                    str(
+                        (log_anchor or {}).get("raw")
+                        or (log_anchor or {}).get("message")
+                        or ""
+                    )
                 ),
             }
         )
