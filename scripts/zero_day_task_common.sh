@@ -13,6 +13,12 @@ if [ -z "${ROOT_DIR:-}" ]; then
 fi
 
 source "${ROOT_DIR}/scripts/task_validation_common.sh"
+# zero_day_task_run_validation builds the vulnerable-APK path via
+# mcb_apk_subdir (utils/android.sh). Orchestrators like run_ci_local.sh source
+# android.sh themselves, but the standalone validate_task_bundle.sh entry point
+# (used by the zero-days CI) does not, so source it here to keep this chain
+# self-sufficient regardless of caller.
+source "${ROOT_DIR}/utils/android.sh"
 
 declare -a ZERO_DAY_BUILD_ENV_ARGS=()
 ZERO_DAY_WORKSPACE=""
