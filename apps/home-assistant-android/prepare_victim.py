@@ -49,6 +49,7 @@ logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s: %(mess
 # timing out at the end.
 SCREEN_TIMEOUT = 60  # seconds to wait for a Compose screen to render
 WEBVIEW_TIMEOUT = 90  # WebView + HA frontend HTTP load
+WEBVIEW_CONNECT_RETRIES = 3  # full Connect→WebView cycles before giving up
 DASHBOARD_TIMEOUT = 120  # post-onboarding handoff to WebViewActivity
 
 
@@ -186,27 +187,25 @@ def _enable_local_push_websocket() -> None:
     time.sleep(8)
 
 
-def _drive_onboarding(server_url: str, username: str, password: str) -> None:
-    d = _device
+def _drive_welcome_to_picker(d) -> bool:
+    """Advance HA onboarding's Welcome screen to the server picker.
 
-    # Two compounding hazards on fast-bootstrap setups before the first
-    # text="Continue" poll:
-    #
-    #   (a) HA Compose race — the runner can reach this hook within ~6s of HA
-    #       launch, faster than HA Companion paints OnboardingActivity's
-    #       Welcome screen.
-    #   (b) SystemUI SIM-removed AlertDialog — an API 35 emulator booted
-    #       without a SIM image surfaces a system dialog from
-    #       com.android.systemui that sits on top of OnboardingActivity and
-    #       steals foreground, so the first text= selector reads the dialog's
-    #       window and misses Continue underneath.
-    #
-    # Poll for Continue to appear (bounded by SCREEN_TIMEOUT); if the SIM
-    # dialog shows up during the wait, dismiss it with HOME (BACK from
-    # Welcome would exit onboarding entirely) and re-launch HA so
-    # OnboardingActivity is foreground again. Returns as soon as Continue
-    # is visible; on setups where neither hazard is present, this collapses
-    # to an immediate-pass poll.
+    Returns True once the picker is visible, False if it never gets there -- callers
+    must NOT proceed to picker UI on False. Waits out two cold-boot hazards:
+
+      (a) HA Compose race -- the hook can reach here within ~6s of launch, before HA
+          Companion paints OnboardingActivity's Welcome screen, so "Continue" is not
+          hittable yet.
+      (b) SystemUI SIM-removed AlertDialog -- an API 35 emulator booted without a SIM
+          surfaces a com.android.systemui dialog on top of OnboardingActivity that
+          steals foreground, so a text= selector reads the dialog's window and misses
+          Continue underneath.
+
+    Polls for Continue (bounded by SCREEN_TIMEOUT), dismissing the SIM dialog with HOME +
+    relaunch (BACK from Welcome would exit onboarding entirely) if it appears, then clicks
+    Continue and confirms the picker. click_then_expect returns False rather than raising,
+    so its result is propagated for the caller to gate on.
+    """
     deadline = time.time() + SCREEN_TIMEOUT
     while time.time() < deadline:
         if d(text="Continue").exists:
@@ -217,24 +216,77 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
             time.sleep(1)
             _adb_shell(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
         time.sleep(1)
-
-    # Screen 1: Welcome → Continue. Expected next: server-picker shows
-    # "Select your Home Assistant server" or "Enter address manually".
-    click_then_expect(
+    return click_then_expect(
         d,
         d(text="Continue"),
         d(textContains="Home Assistant server"),
         timeout=SCREEN_TIMEOUT,
     )
 
-    # Screen 2: Server picker → "Enter address manually". Expected next:
-    # the manual-URL form ("What is your Home Assistant address?").
-    click_then_expect(
-        d,
-        d(text="Enter address manually"),
-        d(textContains="What is your Home Assistant"),
-        timeout=SCREEN_TIMEOUT,
-    )
+
+def _drive_onboarding(server_url: str, username: str, password: str) -> None:
+    d = _device
+
+    # Screens 1-2: Welcome -> server picker -> "Enter address manually" -> manual-URL form.
+    #
+    # The manual-setup button is a pinned sibling below the discovered-server LazyColumn
+    # (weight(1f) in DiscoveryView.kt), so it never scrolls below the fold -- if the
+    # selector is not matching, the picker is still settling (mDNS discovery), not
+    # off-screen, so we WAIT for it rather than scroll the wrong container. The bare flow
+    # is flaky on a cold boot, so retry the whole screen: at the START of every attempt
+    # drive Welcome -> picker via _drive_welcome_to_picker (which waits out the Compose
+    # paint race and the SystemUI SIM dialog), and only look for the manual button once
+    # that returns True -- otherwise a failed re-drive would leave us waiting for the
+    # button on the wrong screen and burn the retry budget. Bounded by MANUAL_FORM_RETRIES
+    # so a genuinely broken setup fails loudly instead of hanging.
+    MANUAL_FORM_RETRIES = 3
+    url_field = None
+    for attempt in range(1, MANUAL_FORM_RETRIES + 1):
+        try:
+            if attempt > 1:
+                # Cold-start the picker again for a clean retry.
+                logger.info(
+                    "relaunching HA to retry server picker (attempt %d)", attempt
+                )
+                _adb_shell("input keyevent 3")  # KEYCODE_HOME
+                time.sleep(1)
+                _adb_shell(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
+            # Only proceed once the picker is actually up. _drive_welcome_to_picker
+            # returns False (it does not raise) if Continue never became hittable or the
+            # transition failed; guard on it so we never wait for the manual button on the
+            # Welcome screen / a foreground SIM dialog.
+            if not _drive_welcome_to_picker(d):
+                raise RuntimeError(
+                    "server picker did not render after the Welcome screen"
+                )
+            # The button is pinned (weight(1f) sibling); if the selector isn't matching
+            # yet the picker is still settling -- wait for it to render before tapping.
+            manual_button = d(text="Enter address manually")
+            if not manual_button.wait(timeout=SCREEN_TIMEOUT):
+                raise RuntimeError(
+                    "'Enter address manually' button never rendered on the server picker"
+                )
+            click_then_expect(
+                d,
+                manual_button,
+                d(textContains="What is your Home Assistant"),
+                timeout=SCREEN_TIMEOUT,
+            )
+            candidate = d(className="android.widget.EditText")
+            if candidate.wait(timeout=SCREEN_TIMEOUT):
+                url_field = candidate
+                break
+        except Exception as exc:  # noqa: BLE001 - retry any UI-automation error
+            logger.warning(
+                "manual-URL form attempt %d/%d failed: %s",
+                attempt,
+                MANUAL_FORM_RETRIES,
+                exc,
+            )
+    if url_field is None:
+        raise RuntimeError(
+            f"URL EditText never appeared after {MANUAL_FORM_RETRIES} attempts"
+        )
 
     # Screen 3: URL EditText is a Compose TextField. uiautomator2's set_text
     # bypasses the IME and never fires onValueChange, so the ViewModel's
@@ -251,30 +303,59 @@ def _drive_onboarding(server_url: str, username: str, password: str) -> None:
     # The recovery for both is the same: click the Connect button (now enabled
     # thanks to the IME-driven onValueChange) and wait again. Loop until a
     # WebView is up *and stays up*, or the overall budget expires.
-    url_field = d(className="android.widget.EditText")
-    if not url_field.wait(timeout=SCREEN_TIMEOUT):
-        raise RuntimeError("URL EditText never appeared")
     url_field.click()
     time.sleep(0.5)
     _adb_shell(f"input text {_sh_quote(server_url)}")
     time.sleep(0.5)
     _adb_shell("input keyevent 66")  # ENTER → ImeAction.Done → connectedClicked
 
-    deadline = time.time() + WEBVIEW_TIMEOUT
-    while time.time() < deadline:
-        if d(className="android.webkit.WebView").exists:
-            time.sleep(2)  # confirm WebView stays, not a transient flash
+    # The WebView load from HA Core's /auth/authorize is the flakiest onboarding step on CI
+    # emulators: the TLS frontend fetch is slow, and a transient error page can flash the
+    # WebView briefly then dismiss back to the URL form. A single 90s wait therefore fails
+    # intermittently. Retry the whole Connect→WebView cycle a few times; on each pass, if we are
+    # sitting on the URL form (WebView flashed away, or ENTER never reached ImeAction.Done so
+    # Connect is disabled), re-type the URL to re-fire onValueChange and re-submit before
+    # waiting again.
+    webview_up = False
+    for connect_attempt in range(1, WEBVIEW_CONNECT_RETRIES + 1):
+        deadline = time.time() + WEBVIEW_TIMEOUT
+        while time.time() < deadline:
             if d(className="android.webkit.WebView").exists:
-                break
-        elif d(text="Connect").exists:
-            # Bounced back to URL form: ENTER missed or WebView flashed away.
-            # Connect button is enabled (onValueChange already fired); click it.
-            d(text="Connect").click()
-            time.sleep(2)
-        else:
-            time.sleep(1)
-    else:
-        raise RuntimeError("Login WebView never stabilized after Connect")
+                time.sleep(2)  # confirm WebView stays, not a transient flash
+                if d(className="android.webkit.WebView").exists:
+                    webview_up = True
+                    break
+            elif (
+                d(text="Connect").exists
+                or d(className="android.widget.EditText").exists
+            ):
+                # On the URL form: re-type via the IME so onValueChange re-enables Connect,
+                # submit with ENTER, and click Connect if it is present.
+                field = d(className="android.widget.EditText")
+                if field.exists:
+                    field.click()
+                    time.sleep(0.3)
+                    _adb_shell(f"input text {_sh_quote(server_url)}")
+                    time.sleep(0.3)
+                _adb_shell(
+                    "input keyevent 66"
+                )  # ENTER → ImeAction.Done → connectedClicked
+                if d(text="Connect").exists:
+                    d(text="Connect").click()
+                time.sleep(2)
+            else:
+                time.sleep(1)
+        if webview_up:
+            break
+        logger.warning(
+            "login WebView not stable after attempt %d/%d; retrying Connect",
+            connect_attempt,
+            WEBVIEW_CONNECT_RETRIES,
+        )
+    if not webview_up:
+        raise RuntimeError(
+            f"Login WebView never stabilized after {WEBVIEW_CONNECT_RETRIES} Connect attempts"
+        )
 
     # Screen 4: WebView login. Tab order trick — autofocus is on the username
     # field in HA's auth frontend; type, TAB, type, ENTER.
