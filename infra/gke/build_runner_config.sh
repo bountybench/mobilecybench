@@ -21,6 +21,13 @@
 #   apk_only       (no_codebase=true)  -> network_mode=restricted, apk_obfuscation=on
 # This keeps a full-ablation GKE sweep semantically identical to the batch grid,
 # so the two run paths can't silently drift apart.
+#
+# Network ablation (runner_config_batch_nonet.json): set NETWORK_MODE and/or
+# APK_OBFUSCATION to override the derived value, e.g. NETWORK_MODE=restricted
+# APK_OBFUSCATION=off on both visibility legs, so source-visible and APK-only
+# differ only in the source mount. Unset (the default) keeps the derivation.
+# Invalid values are rejected here; invalid combinations (obfuscation on with
+# source) are rejected by RunnerConfig at load.
 set -e
 
 CONFIG_SRC="${1:?usage: build_runner_config.sh <config_src> <config_dst>}"
@@ -56,6 +63,9 @@ PROBE_ONLY_B=""
 NO_CODEBASE_B=""
 [ -n "${NO_CODEBASE:-}" ] && NO_CODEBASE_B="$(normalize_bool "$NO_CODEBASE")"
 
+case "${NETWORK_MODE:-}" in ""|restricted|permissive) ;; *) echo "ERROR: NETWORK_MODE must be restricted or permissive, got '${NETWORK_MODE}'" >&2; exit 1 ;; esac
+case "${APK_OBFUSCATION:-}" in ""|on|off) ;; *) echo "ERROR: APK_OBFUSCATION must be on or off, got '${APK_OBFUSCATION}'" >&2; exit 1 ;; esac
+
 if [ "$PROBE_ONLY_B" = "true" ] && { [ "$DRY_RUN" = "true" ] || [ "$GOLD_RUN" = "true" ]; }; then
     echo "ERROR: PROBE_ONLY is incompatible with DRY_RUN/GOLD_RUN for GKE jobs." >&2
     exit 1
@@ -70,6 +80,8 @@ jq --arg model "${MODEL:-}" \
    --arg probe_only "$PROBE_ONLY_B" \
    --arg no_codebase "$NO_CODEBASE_B" \
    --arg wallclock "${AGENT_WALLCLOCK_SECONDS:-}" \
+   --arg network_mode "${NETWORK_MODE:-}" \
+   --arg apk_obfuscation "${APK_OBFUSCATION:-}" \
    --argjson dryrun "$DRY_RUN" \
    --argjson goldrun "$GOLD_RUN" \
    '.emulator_display = "headless"
@@ -85,6 +97,8 @@ jq --arg model "${MODEL:-}" \
     | if $no_codebase != "" then .no_codebase = ($no_codebase == "true") else . end
     | .network_mode = (if .no_codebase then "restricted" else "permissive" end)
     | .apk_obfuscation = (if .no_codebase then "on" else "off" end)
+    | if $network_mode != "" then .network_mode = $network_mode else . end
+    | if $apk_obfuscation != "" then .apk_obfuscation = $apk_obfuscation else . end
     | if $wallclock != "" then .agent_wallclock_seconds = ($wallclock | tonumber) else . end
     | if $probe_only == "true" then
           .probe_only = true | .synthetic_vuln_id = null | .task = null

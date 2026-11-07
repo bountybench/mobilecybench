@@ -497,6 +497,31 @@ def test_builder_visibility_coupling_overrides_conflicting_base(tmp_path: Path) 
     assert src_leg["apk_obfuscation"] == "off"
 
 
+@pytest.mark.parametrize("no_codebase", ["true", "false"])
+def test_builder_network_ablation_overrides_derivation(tmp_path: Path, no_codebase: str) -> None:
+    """NETWORK_MODE/APK_OBFUSCATION, when set, win over the derived coupling."""
+    cfg = _build_config(
+        {"NO_CODEBASE": no_codebase, "NETWORK_MODE": "restricted", "APK_OBFUSCATION": "off"},
+        BASE_CONFIG,
+        tmp_path,
+    )
+    assert cfg["network_mode"] == "restricted"
+    assert cfg["apk_obfuscation"] == "off"
+
+
+def test_builder_network_ablation_unset_keeps_derivation(tmp_path: Path) -> None:
+    cfg = _build_config({"NO_CODEBASE": "false", "NETWORK_MODE": "", "APK_OBFUSCATION": ""}, BASE_CONFIG, tmp_path)
+    assert cfg["network_mode"] == "permissive"
+    assert cfg["apk_obfuscation"] == "off"
+
+
+@pytest.mark.parametrize("env", [{"NETWORK_MODE": "none"}, {"APK_OBFUSCATION": "yes"}])
+def test_builder_network_ablation_rejects_bad_values(tmp_path: Path, env: dict) -> None:
+    result, _ = _run_builder({"NO_CODEBASE": "false", **env}, BASE_CONFIG, tmp_path)
+    assert result.returncode != 0
+    assert "must be" in result.stderr
+
+
 # ── end-to-end: built config validates against the real RunnerConfig ──────────
 # These feed the *committed* runner_config.json (the actual CONFIG_SRC in the
 # image) through the builder and assert the result loads, which is the invariant
@@ -535,6 +560,24 @@ def test_committed_base_external_probe_only_is_valid(
     )
     cfg.pop("$schema", None)
     RunnerConfig(**cfg)  # raises if invalid
+
+
+def test_committed_base_source_restricted_ablation_is_valid(tmp_path: Path) -> None:
+    """The source-visible, restricted-network ablation cell loads in RunnerConfig."""
+    RunnerConfig = _runner_config_or_skip()
+    cfg = _build_config(
+        {
+            "AGENT_MODE": "external", "AGENT_IMAGE": AGENT_IMAGE, "WORKFLOW": "redteam",
+            "PROBE_ONLY": "true", "ATTACKER_MODEL": "remote_attacker", "NO_CODEBASE": "false",
+            "NETWORK_MODE": "restricted", "APK_OBFUSCATION": "off",
+            "EMULATOR_BACKEND": "container", "DRY_RUN": "false",
+        },
+        COMMITTED_BASE,
+        tmp_path,
+    )
+    cfg.pop("$schema", None)
+    c = RunnerConfig(**cfg)
+    assert (c.no_codebase, c.network_mode, c.apk_obfuscation) == (False, "restricted", "off")
 
 
 def test_committed_container_config_is_probe_only_redteam() -> None:

@@ -508,3 +508,29 @@ def test_app_catalog_validates_and_sets_are_consistent():
     assert "jitsi-meet" not in in_scope
     assert "apps" not in catalog
     assert "notes" not in catalog
+
+
+def test_nonet_ablation_batch_config_matches_paper_grid_cells():
+    """runner_config_batch_nonet.json: same 50 (app, attacker, visibility) cells as
+    the paper grid, but both visibility legs run under the restricted network with
+    obfuscation off, so source-visible and APK-only differ only in the source mount."""
+    paper = json.loads((REPO_ROOT / "runner_config_batch.json").read_text())
+    paper_jobs = batch_runner.expand_batch_jobs(
+        paper, BatchSpec.model_validate(paper.pop("batch")), REPO_ROOT
+    )
+    payload = json.loads((REPO_ROOT / "runner_config_batch_nonet.json").read_text())
+    batch = BatchSpec.model_validate(payload.pop("batch"))
+    jobs = batch_runner.expand_batch_jobs(payload, batch, REPO_ROOT)
+
+    def cells(js):
+        return {(j.app_name, j.config.attacker_model, j.config.no_codebase) for j in js}
+
+    assert cells(jobs) == cells(paper_jobs)
+    assert len(jobs) == 50
+    for job in jobs:
+        assert job.config.network_mode == "restricted"
+        assert job.config.apk_obfuscation == "off"
+    # Everything except network/obfuscation matches the paper grid's base config.
+    for key in ("model", "agent_image", "reasoning_effort", "agent_wallclock_seconds",
+                "max_iterations", "probe_only", "workflow"):
+        assert payload[key] == paper[key], key
