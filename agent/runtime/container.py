@@ -707,6 +707,8 @@ def _opencode_proxy_config() -> dict:
     """opencode config for runs through the OpenAI proxy.
 
     - baseURL points at the proxy.
+    - Context limit 272k, opencode's limit for this model over a ChatGPT login
+      (how the paper's GPT runs were made); opencode compacts before reaching it.
     - The model is defined here, with its xhigh variant, so it resolves even when
       the models.dev catalog fetch fails (opencode otherwise reports "Model not found").
     - external_directory is allowed: with --dir /app/apk, reading /app/codebase is an
@@ -718,7 +720,7 @@ def _opencode_proxy_config() -> dict:
             "options": {"baseURL": f"http://{OPENAI_PROXY_CONTAINER}:{OPENAI_PROXY_PORT}/v1"},
             "models": {"gpt-5.6-sol": {
                 "name": "GPT-5.6 Sol", "reasoning": True, "tool_call": True,
-                "limit": {"context": 400000, "output": 128000},
+                "limit": {"context": 272000, "output": 128000},
                 "variants": {"xhigh": {"reasoningEffort": "xhigh", "reasoningSummary": "auto"}},
             }},
         }},
