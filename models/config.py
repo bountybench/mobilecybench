@@ -37,6 +37,7 @@ class RunnerConfig(BaseModel):
     * ``dry_run`` and ``gold_run`` are mutually exclusive.
     * ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and
       cannot be used with ``build_type == 'source'``.
+    * ``source_with_apk`` requires ``no_codebase == true``.
 
     See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
     """
@@ -69,6 +70,17 @@ class RunnerConfig(BaseModel):
             "or skip-apk. For download-apk, the selected app must publish "
             "download_link_obfuscated; for skip-apk, the obfuscated APK must "
             "already exist under apps/<app>/apk/obfuscated/."
+        ),
+    )
+
+    source_with_apk: bool = Field(
+        default=False,
+        description=(
+            "Matched source-access ablation. Requires no_codebase: true. The "
+            "agent keeps every APK-only setting (the same APK at /app/apk/, "
+            "apk_obfuscation, network_mode, replay APK) and additionally "
+            "receives the full source with git history at /app/codebase, in "
+            "both the agent container and the exploit replay container."
         ),
     )
 
@@ -508,6 +520,12 @@ class RunnerConfig(BaseModel):
         # signal the obfuscated APK introduces is moot — reject the combo
         # so operators don't run experiments where the manipulated variable
         # is invisible.
+        if self.source_with_apk and not self.no_codebase:
+            raise ValueError(
+                "source_with_apk: true requires no_codebase: true. It adds the "
+                "source mount to the APK-only setting; with no_codebase: false "
+                "the source is already mounted."
+            )
         if self.apk_obfuscation == "on" and not self.no_codebase:
             raise ValueError(
                 "apk_obfuscation: 'on' requires no_codebase: true. With "

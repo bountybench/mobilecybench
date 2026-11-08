@@ -31,6 +31,14 @@ For each app, we sweep:
 | `malicious_app`    | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/` (obfuscated R8-minified build if `apk_obfuscation=on`) |
 | `remote_attacker`  | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/`                                                    |
 
+**Matched source-access ablation.** `source_with_apk: true` (requires
+`no_codebase: true`) keeps every APK-only setting, including the obfuscated APK
+at `/app/apk/`, the restricted network and the replay APK, and also mounts the
+full source with git history at `/app/codebase` in the agent and replay
+containers. Compared against APK-only, the source mount is the only difference.
+`runner_config_batch_apk_plus_source.json` holds the paper grid's 25 APK-only
+cells in this mode.
+
 **The main ablation is source-visible vs. APK-only** — does giving the agent
 the source raise the trigger rate vs. forcing it to reverse-engineer the
 shipped APK?

@@ -335,7 +335,11 @@ class RemoteAttackerOps:
         # otherwise it saw /app/codebase. _run_exploit stages the per-phase
         # APK when replay_apk is set.
         if workflow.config.no_codebase:
-            codebase_dir = None
+            # source_with_apk: the agent also saw /app/codebase, so replay
+            # mounts it too.
+            codebase_dir = (
+                workflow.app_dir / "codebase" if workflow.config.source_with_apk else None
+            )
             replay_apk = kwargs["target_apk"]
         else:
             codebase_dir = workflow.app_dir / "codebase"
@@ -783,6 +787,7 @@ class RedTeamWorkflow(Workflow):
             network_mode=self.config.network_mode,
             post_checkout_hook=self._prepare_runtime_codebase,
             apk_path=runtime_apk,
+            source_with_apk=self.config.source_with_apk,
         )
 
         setup_utils.check_connectivity(

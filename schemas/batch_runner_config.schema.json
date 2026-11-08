@@ -31,6 +31,12 @@
       "title": "Apk Obfuscation",
       "type": "string"
     },
+    "source_with_apk": {
+      "default": false,
+      "description": "Matched source-access ablation. Requires no_codebase: true. The agent keeps every APK-only setting (the same APK at /app/apk/, apk_obfuscation, network_mode, replay APK) and additionally receives the full source with git history at /app/codebase, in both the agent container and the exploit replay container.",
+      "title": "Source With Apk",
+      "type": "boolean"
+    },
     "model": {
       "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",
       "minLength": 1,
@@ -321,6 +327,7 @@
                   "reasoning_effort",
                   "replay_exploit_dir",
                   "script_timeout",
+                  "source_with_apk",
                   "synthetic_vuln_id",
                   "task",
                   "workflow",
@@ -380,6 +387,7 @@
                 "reasoning_effort",
                 "replay_exploit_dir",
                 "script_timeout",
+                "source_with_apk",
                 "synthetic_vuln_id",
                 "task",
                 "workflow",

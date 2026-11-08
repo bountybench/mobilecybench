@@ -189,16 +189,28 @@ def _build_resource_access(
     return section
 
 
-def _analysis_target(no_codebase: bool) -> str:
+def _analysis_target(no_codebase: bool, source_with_apk: bool = False) -> str:
     """Human-readable label for what the agent should analyze."""
+    if no_codebase and source_with_apk:
+        return "APK and codebase"
     return "APK" if no_codebase else "codebase"
 
 
-def _redteam_codebase_bullet(no_codebase: bool) -> str:
-    """Inline bullet for the redteam development-phase resource list."""
+_APK_BULLET = "**APK** — the application APK at `/app/apk/` for static analysis (e.g. decompilation with apktool/jadx)"
+_CODEBASE_BULLET = "**Codebase** — full application source with git history at `/app/codebase`"
+
+
+def _redteam_codebase_bullet(no_codebase: bool, source_with_apk: bool = False) -> str:
+    """Inline bullet for the redteam development-phase resource list.
+
+    Under source_with_apk the template's single ``- {codebase_resource}`` line
+    becomes two bullets: the APK-only bullet, unchanged, then the codebase one.
+    """
+    if no_codebase and source_with_apk:
+        return f"{_APK_BULLET}\n- {_CODEBASE_BULLET}"
     if no_codebase:
-        return "**APK** — the application APK at `/app/apk/` for static analysis (e.g. decompilation with apktool/jadx)"
-    return "**Codebase** — full application source with git history at `/app/codebase`"
+        return _APK_BULLET
+    return _CODEBASE_BULLET
 
 
 def _assemble_prompt(
@@ -249,6 +261,7 @@ def build_malicious_app_prompt(
     password: Optional[str] = None,
     no_codebase: bool = False,
     agent_mode: str = "custom",
+    source_with_apk: bool = False,
 ) -> str:
     """Build the redteam-workflow system prompt for the `malicious_app` attacker model."""
     base = _load_template("malicious_app").format(
@@ -259,8 +272,8 @@ def build_malicious_app_prompt(
             if username and password
             else ""
         ),
-        codebase_resource=_redteam_codebase_bullet(no_codebase),
-        analysis_target=_analysis_target(no_codebase),
+        codebase_resource=_redteam_codebase_bullet(no_codebase, source_with_apk),
+        analysis_target=_analysis_target(no_codebase, source_with_apk),
     )
     return _assemble_prompt(
         base,
@@ -289,6 +302,7 @@ def build_remote_attacker_prompt(
     password: Optional[str] = None,
     no_codebase: bool = False,
     agent_mode: str = "custom",
+    source_with_apk: bool = False,
 ) -> str:
     """Build the redteam-workflow system prompt for the `remote_attacker` attacker model."""
     base = _load_template("remote_attacker").format(
@@ -299,8 +313,8 @@ def build_remote_attacker_prompt(
             if username and password
             else ""
         ),
-        codebase_resource=_redteam_codebase_bullet(no_codebase),
-        analysis_target=_analysis_target(no_codebase),
+        codebase_resource=_redteam_codebase_bullet(no_codebase, source_with_apk),
+        analysis_target=_analysis_target(no_codebase, source_with_apk),
     )
     return _assemble_prompt(
         base,

@@ -99,7 +99,7 @@ class TestRestartRuntime:
 
 class TestRunExploit:
     def test_rejects_missing_replay_resource(self, workflow, tmp_path):
-        with pytest.raises(ValueError, match="exactly one"):
+        with pytest.raises(ValueError, match="at least one"):
             workflow._run_exploit(
                 exploit_dir=tmp_path / "agent_exploit",
                 output_dir=tmp_path / "replay_output",
@@ -110,7 +110,8 @@ class TestRunExploit:
             )
 
     def test_rejects_multiple_replay_resources(self, workflow, tmp_path):
-        with pytest.raises(ValueError, match="exactly one"):
+        # Both mounts are allowed only under source_with_apk (matched ablation).
+        with pytest.raises(ValueError, match="only valid with source_with_apk"):
             workflow._run_exploit(
                 exploit_dir=tmp_path / "agent_exploit",
                 output_dir=tmp_path / "replay_output",

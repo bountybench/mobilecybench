@@ -125,6 +125,7 @@ class Workflow(ABC):
             username=username,
             password=password,
             no_codebase=self.config.no_codebase,
+            source_with_apk=self.config.source_with_apk,
             agent_mode=agent_mode,
         )
 
@@ -606,8 +607,14 @@ class Workflow(ABC):
 
         Connectivity (ADB + app server) is checked by the script itself.
         """
-        if (codebase_dir is None) == (replay_apk is None):
-            raise ValueError("exactly one of codebase_dir or replay_apk must be set")
+        if codebase_dir is None and replay_apk is None:
+            raise ValueError("at least one of codebase_dir or replay_apk must be set")
+        if codebase_dir is not None and replay_apk is not None and not getattr(
+            self.config, "source_with_apk", False
+        ):
+            raise ValueError(
+                "codebase_dir and replay_apk together are only valid with source_with_apk"
+            )
 
         if wipe_output_dir and output_dir.exists():
             shutil.rmtree(output_dir)

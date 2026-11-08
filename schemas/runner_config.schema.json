@@ -3,7 +3,7 @@
   "$id": "https://mobilecybench.dev/schemas/runner_config.schema.json",
   "title": "Runner Config",
   "additionalProperties": false,
-  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``workflow`` is ``redteam``; legacy ``exploit`` configs are retired.\n* ``synthetic_vuln_id`` is retained as a nullable compatibility field but\n  non-null values are rejected.\n* ``redteam`` (two-phase) requires ``task`` (zero-day).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``,\n  requires ``attacker_model``, and is incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n* ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and\n  cannot be used with ``build_type == 'source'``.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
+  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``workflow`` is ``redteam``; legacy ``exploit`` configs are retired.\n* ``synthetic_vuln_id`` is retained as a nullable compatibility field but\n  non-null values are rejected.\n* ``redteam`` (two-phase) requires ``task`` (zero-day).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``,\n  requires ``attacker_model``, and is incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n* ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and\n  cannot be used with ``build_type == 'source'``.\n* ``source_with_apk`` requires ``no_codebase == true``.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
   "properties": {
     "build_type": {
       "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
@@ -30,6 +30,12 @@
       ],
       "title": "Apk Obfuscation",
       "type": "string"
+    },
+    "source_with_apk": {
+      "default": false,
+      "description": "Matched source-access ablation. Requires no_codebase: true. The agent keeps every APK-only setting (the same APK at /app/apk/, apk_obfuscation, network_mode, replay APK) and additionally receives the full source with git history at /app/codebase, in both the agent container and the exploit replay container.",
+      "title": "Source With Apk",
+      "type": "boolean"
     },
     "model": {
       "description": "Model id (e.g. gpt-5.5, claude-opus-4-7, gemini-3.1-pro-preview). Custom path: routed via agent/custom/model_providers/factory.py. External path: forwarded to the in-container CLI.",
