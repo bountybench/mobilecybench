@@ -703,6 +703,29 @@ def _start_adb_proxy() -> None:
     logger.info(f"ADB proxy started (:{ADB_PROXY_PORT} → host adbd)")
 
 
+def _opencode_proxy_config() -> dict:
+    """opencode config for runs through the OpenAI proxy.
+
+    - baseURL points at the proxy.
+    - The model is defined here, with its xhigh variant, so it resolves even when
+      the models.dev catalog fetch fails (opencode otherwise reports "Model not found").
+    - external_directory is allowed: with --dir /app/apk, reading /app/codebase is an
+      external directory, and opencode's non-interactive run waits forever on that prompt
+      despite --dangerously-skip-permissions.
+    """
+    return {
+        "provider": {"openai": {
+            "options": {"baseURL": f"http://{OPENAI_PROXY_CONTAINER}:{OPENAI_PROXY_PORT}/v1"},
+            "models": {"gpt-5.6-sol": {
+                "name": "GPT-5.6 Sol", "reasoning": True, "tool_call": True,
+                "limit": {"context": 400000, "output": 128000},
+                "variants": {"xhigh": {"reasoningEffort": "xhigh", "reasoningSummary": "auto"}},
+            }},
+        }},
+        "permission": {"external_directory": "allow"},
+    }
+
+
 def _start_openai_proxy() -> bool:
     """Start the OpenAI access-program proxy sidecar if OPENAI_PROXY_KEY_FILE is set.
 
@@ -903,8 +926,7 @@ def setup_agent_environment(
         env_vars["OPENAI_API_KEY"] = "sk-via-openai-proxy"
         env_vars["OPENCODE_OPENAI_AUTH"] = "apikey"
         env_vars.pop("OPENCODE_AUTH_CONTENT", None)
-        env_vars["OPENCODE_CONFIG_CONTENT"] = json.dumps({"provider": {"openai": {"options": {
-            "baseURL": f"http://{OPENAI_PROXY_CONTAINER}:{OPENAI_PROXY_PORT}/v1"}}}})
+        env_vars["OPENCODE_CONFIG_CONTENT"] = json.dumps(_opencode_proxy_config())
         forwarded = [n for n in forwarded if n not in ("OPENAI_API_KEY", "OPENCODE_AUTH_CONTENT")]
         forwarded += ["OPENAI_API_KEY (dummy, via openai-proxy)", "OPENCODE_CONFIG_CONTENT"]
     logger.info("Forwarded auth env vars: %s", ", ".join(forwarded) or "(none)")
