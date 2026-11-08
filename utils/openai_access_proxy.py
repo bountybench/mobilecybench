@@ -7,13 +7,15 @@ opencode's OpenAI provider drops unknown request fields, so it cannot send
 - adds ``access_programs`` to every ``/responses`` request body,
 - replaces the Authorization header with the real key (the agent never sees it),
 - streams the response back unchanged,
-- appends each request's token usage and estimated cost to a ledger, and
-- refuses new requests (HTTP 429) once the ledger total reaches the cap.
+- appends each request's token usage and estimated cost to a ledger.
+
+It never refuses a request on cost: a run that has started always finishes.
+Budget is enforced only before a job starts, by the queue reading the ledger.
 
 Configuration (environment):
     OPENAI_PROXY_KEY_FILE    file holding the real API key (first line)
     OPENAI_PROXY_LEDGER      JSONL ledger path (shared across runs on one host)
-    OPENAI_PROXY_CAP_USD     spend cap for this ledger
+    OPENAI_PROXY_CAP_USD     budget for this ledger (logged only; the queue enforces it at job start)
     OPENAI_PROXY_ACCESS      JSON object for access_programs, e.g. {"cyber": "daybreak_blue"}
     OPENAI_PROXY_PRICES      JSON {"input": usd/Mtok, "cached": usd/Mtok, "output": usd/Mtok}
     OPENAI_PROXY_RUN         label written to each ledger row
@@ -84,9 +86,6 @@ class Handler(BaseHTTPRequestHandler):
         self._forward(self.rfile.read(n))
 
     def _forward(self, body: bytes | None) -> None:
-        if spent() >= CAP:
-            self._error(429, f"spend cap of ${CAP:.2f} reached for this host")
-            return
         model, effort = "", None
         if body and self.path.rstrip("/").endswith("/responses"):
             req = json.loads(body)
