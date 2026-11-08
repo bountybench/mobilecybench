@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import shlex
 import shutil
@@ -34,6 +35,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 ADB_PROXY_CONTAINER = "adb-proxy"
 ADB_PROXY_IMAGE = "python:3.11-slim"
 ADB_PROXY_PORT = 5037
+
+# Optional OpenAI access-program proxy (utils/openai_access_proxy.py). Enabled
+# when OPENAI_PROXY_KEY_FILE is set in the runner's environment.
+OPENAI_PROXY_CONTAINER = "openai-proxy"
+OPENAI_PROXY_PORT = 8080
 
 
 class AgentEnvironment:
@@ -697,6 +703,56 @@ def _start_adb_proxy() -> None:
     logger.info(f"ADB proxy started (:{ADB_PROXY_PORT} → host adbd)")
 
 
+def _start_openai_proxy() -> bool:
+    """Start the OpenAI access-program proxy sidecar if OPENAI_PROXY_KEY_FILE is set.
+
+    Same placement as the ADB proxy: on agent_net so the agent reaches it, and on
+    Docker's default bridge for its own path to api.openai.com. Returns whether
+    it was started.
+    """
+    key_file = os.environ.get("OPENAI_PROXY_KEY_FILE")
+    _stop_container(OPENAI_PROXY_CONTAINER)
+    if not key_file:
+        return False
+    ledger = Path(os.environ["OPENAI_PROXY_LEDGER"])
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.touch()
+    script = _REPO_ROOT / "utils" / "openai_access_proxy.py"
+    client = docker.from_env()
+    container = client.containers.run(
+        image=ADB_PROXY_IMAGE,
+        name=OPENAI_PROXY_CONTAINER,
+        command="python3 /opt/openai_access_proxy.py",
+        detach=True,
+        network=AGENT_NET,
+        environment={
+            "OPENAI_PROXY_KEY_FILE": "/run/openai_key",
+            "OPENAI_PROXY_LEDGER": f"/ledger/{ledger.name}",
+            "OPENAI_PROXY_CAP_USD": os.environ["OPENAI_PROXY_CAP_USD"],
+            "OPENAI_PROXY_ACCESS": os.environ.get("OPENAI_PROXY_ACCESS", ""),
+            "OPENAI_PROXY_PRICES": os.environ["OPENAI_PROXY_PRICES"],
+            "OPENAI_PROXY_RUN": os.environ.get("OPENAI_PROXY_RUN", ""),
+        },
+        volumes={
+            str(Path(key_file).resolve()): {"bind": "/run/openai_key", "mode": "ro"},
+            str(script): {"bind": "/opt/openai_access_proxy.py", "mode": "ro"},
+            str(ledger.parent.resolve()): {"bind": "/ledger", "mode": "rw"},
+        },
+    )
+    client.networks.get(EXTERNAL_BRIDGE).connect(container)
+    logger.info(f"OpenAI access proxy started (:{OPENAI_PROXY_PORT}, cap ${os.environ['OPENAI_PROXY_CAP_USD']})")
+    return True
+
+
+def _stop_container(name: str) -> None:
+    client = docker.from_env()
+    try:
+        container = client.containers.get(name)
+        container.remove(force=True)
+    except docker.errors.NotFound:
+        pass
+
+
 def _stop_adb_proxy() -> None:
     """Stop and remove the ADB proxy sidecar container if it exists."""
     client = docker.from_env()
@@ -800,6 +856,7 @@ def setup_agent_environment(
     # Networks are created earlier in preflight; don't re-create here.
     _start_adb_proxy()
     firewall.start(network_mode)
+    openai_proxy = _start_openai_proxy()
 
     _disable_emulator_root()
     logger.info("Emulator root privileges disabled")
@@ -817,7 +874,10 @@ def setup_agent_environment(
     # ADB → adb-proxy sidecar; HTTP/HTTPS → Squid; in-cluster targets bypass
     # via NO_PROXY (Python HTTP clients match by hostname suffix, not CIDR).
     egress_url = firewall.proxy_url()
-    no_proxy = firewall.build_no_proxy(metadata, extra_aliases=[ADB_PROXY_CONTAINER])
+    no_proxy = firewall.build_no_proxy(
+        metadata,
+        extra_aliases=[ADB_PROXY_CONTAINER] + ([OPENAI_PROXY_CONTAINER] if openai_proxy else []),
+    )
     env_vars = {
         "ANDROID_ADB_SERVER_PORT": "5037",
         "ADB_SERVER_SOCKET": f"tcp:{ADB_PROXY_CONTAINER}:{ADB_PROXY_PORT}",
@@ -838,6 +898,15 @@ def setup_agent_environment(
         if val:
             env_vars[name] = val
             forwarded.append(name)
+    if openai_proxy:
+        # The agent talks to the proxy with a dummy key; the real key stays in the proxy.
+        env_vars["OPENAI_API_KEY"] = "sk-via-openai-proxy"
+        env_vars["OPENCODE_OPENAI_AUTH"] = "apikey"
+        env_vars.pop("OPENCODE_AUTH_CONTENT", None)
+        env_vars["OPENCODE_CONFIG_CONTENT"] = json.dumps({"provider": {"openai": {"options": {
+            "baseURL": f"http://{OPENAI_PROXY_CONTAINER}:{OPENAI_PROXY_PORT}/v1"}}}})
+        forwarded = [n for n in forwarded if n not in ("OPENAI_API_KEY", "OPENCODE_AUTH_CONTENT")]
+        forwarded += ["OPENAI_API_KEY (dummy, via openai-proxy)", "OPENCODE_CONFIG_CONTENT"]
     logger.info("Forwarded auth env vars: %s", ", ".join(forwarded) or "(none)")
 
     commit_id: Optional[str] = None
