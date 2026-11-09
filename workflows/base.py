@@ -649,6 +649,8 @@ class Workflow(ABC):
             replay_cmd += ["--codebase-dir", str(codebase_dir)]
         if apk_mount_dir is not None:
             replay_cmd += ["--apk-dir", str(apk_mount_dir)]
+        if codebase_dir is not None and apk_mount_dir is not None:
+            replay_cmd += ["--source-with-apk"]
         proc = subprocess.Popen(
             replay_cmd,
             cwd=self.project_root,

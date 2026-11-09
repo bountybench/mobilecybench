@@ -1,3 +1,4 @@
+import os
 """Tests for Workflow._restart_runtime() and _run_exploit() helpers."""
 
 import json
@@ -283,7 +284,7 @@ class TestRunExploitContainerScript:
             self._base_args(tmp_path), capture_output=True, text=True, check=False
         )
         assert proc.returncode == 1
-        assert "exactly one of --codebase-dir or --apk-dir" in proc.stderr
+        assert "one of --codebase-dir or --apk-dir is required" in proc.stderr
 
     def test_help_documents_unique_adb_proxy_name(self, tmp_path):
         proc = subprocess.run(
@@ -319,4 +320,26 @@ class TestRunExploitContainerScript:
             check=False,
         )
         assert proc.returncode == 1
-        assert "exactly one of --codebase-dir or --apk-dir" in proc.stderr
+        assert "together require --source-with-apk" in proc.stderr
+
+    def test_source_with_apk_allows_both_replay_resources(self, tmp_path):
+        codebase_dir = tmp_path / "codebase"
+        apk_dir = tmp_path / "apk"
+        codebase_dir.mkdir()
+        apk_dir.mkdir()
+        # Stub docker/adb so the script stops at its first container call.
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        for tool in ("docker", "adb"):
+            (bin_dir / tool).write_text("#!/bin/bash\nexit 1\n")
+            (bin_dir / tool).chmod(0o755)
+        proc = subprocess.run(
+            self._base_args(tmp_path)
+            + ["--codebase-dir", str(codebase_dir), "--apk-dir", str(apk_dir), "--source-with-apk"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+        )
+        assert "--source-with-apk" not in proc.stderr
+        assert "is required" not in proc.stderr
