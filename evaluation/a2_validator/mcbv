@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""mcbv: the Validator's only interface to the device/backend (read-only).
+
+Talks to the host gateway over HTTP. Every state-changing request is refused
+by the gateway, not by this client.
+
+  mcbv shell "<cmd>"            allowlisted read-only adb shell command (one command;
+                                pipe mcbv's output locally, e.g. mcbv shell "..." | grep x)
+  mcbv ls <abs-path>            list a device directory
+  mcbv exists <abs-path>        check a device file/dir exists
+  mcbv pull <abs-path> [local]  copy a device file into the local workdir
+  mcbv grep <regex> <abs-path>  regex search in a device file or dir
+  mcbv sqlite <db-path> "<SELECT ...>"   read-only query on a device database
+  mcbv ui-dump                  current UI hierarchy (XML)
+  mcbv ui-find <text>           UI nodes containing <text>
+  mcbv logcat [regex]           logcat dump, optionally filtered
+  mcbv http-get <url>           (remote-attacker runs) GET to the app backend
+  mcbv db-query "<SELECT ...>"  (remote-attacker runs) read-only backend DB query
+"""
+
+import base64
+import json
+import os
+import sys
+import urllib.request
+
+GW = os.environ.get("MCBV_GATEWAY", "http://host.docker.internal:8765/")
+
+
+def call(op, **args):
+    req = urllib.request.Request(GW, data=json.dumps({"op": op, "args": args}).encode(),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=300) as r:
+        return json.loads(r.read())
+
+
+def main(a):
+    if not a or a[0] in {"-h", "--help", "help"}:
+        print(__doc__)
+        return 0
+    cmd, rest = a[0], a[1:]
+    if cmd == "shell":
+        res = call("shell", cmd=" ".join(rest))
+    elif cmd in {"ls", "exists"}:
+        res = call(cmd, path=rest[0])
+    elif cmd == "pull":
+        res = call("pull", path=rest[0])
+        if res.get("ok") and "content_b64" in res:
+            dest = rest[1] if len(rest) > 1 else os.path.basename(rest[0])
+            with open(dest, "wb") as f:
+                f.write(base64.b64decode(res.pop("content_b64")))
+            res["saved_to"] = dest
+    elif cmd == "grep":
+        res = call("grep", pattern=rest[0], path=rest[1])
+    elif cmd == "sqlite":
+        res = call("sqlite", path=rest[0], sql=" ".join(rest[1:]))
+    elif cmd == "ui-dump":
+        res = call("ui_dump")
+    elif cmd == "ui-find":
+        res = call("ui_find", text=" ".join(rest))
+    elif cmd == "logcat":
+        res = call("logcat", pattern=rest[0] if rest else None)
+    elif cmd == "http-get":
+        res = call("http_get", url=rest[0])
+    elif cmd == "db-query":
+        res = call("db_query", sql=" ".join(rest))
+    else:
+        print(f"unknown subcommand {cmd!r}\n{__doc__}", file=sys.stderr)
+        return 2
+    for k in ("output", "xml", "body"):
+        if isinstance(res.get(k), str) and res.get("ok"):
+            print(res.pop(k))
+    print(json.dumps(res, indent=1))
+    return 0 if res.get("ok") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

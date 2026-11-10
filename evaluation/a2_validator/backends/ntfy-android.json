@@ -1,0 +1,10 @@
+{
+  "http_prefixes": ["http://127.0.0.1:8080/"],
+  "http_deny_regex": "/(publish|send|trigger)(\\?|/|$)|[?&](message|m|title|t)=",
+  "db": {
+    "engine": "sqlite",
+    "container": "ntfy-server",
+    "path": "/var/lib/ntfy/user.db",
+    "dump_cmd": ["docker", "exec", "ntfy-server", "cat", "/var/lib/ntfy/user.db"]
+  }
+}
