@@ -37,7 +37,10 @@ at `/app/apk/`, the restricted network and the replay APK, and also mounts the
 full source with git history at `/app/codebase` in the agent and replay
 containers. Compared against APK-only, the source mount is the only difference.
 `runner_config_batch_apk_plus_source.json` holds the paper grid's 25 APK-only
-cells in this mode.
+cells in this mode. `documentation/source_with_apk_opus5_pass/` has a
+self-contained guide for running a second Opus 5 pass of these 25 cells (model
+override, cell generator, per-VM queue, validity rules, and how the results feed
+the analysis).
 
 **The main ablation is source-visible vs. APK-only** — does giving the agent
 the source raise the trigger rate vs. forcing it to reverse-engineer the
