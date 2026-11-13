@@ -770,6 +770,7 @@ def setup_agent_environment(
     no_codebase: bool = False,
     post_checkout_hook: Optional[Callable[[Path], None]] = None,
     apk_path: Optional[Path] = None,
+    attacker_adb: bool = True,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -784,12 +785,21 @@ def setup_agent_environment(
         no_codebase: Whether to copy the built APK into the agent environment
         post_checkout_hook: Optional callback run on the staged codebase
         apk_path: APK to copy into the agent environment when no_codebase=True
+        attacker_adb: When False, start no ADB proxy and set no ADB env vars.
+            The proxy is the agent's only path to adbd: agent_net is internal
+            and the egress proxy denies RFC1918 destinations and non-443
+            CONNECT, so without it the agent has no device access.
 
     Returns:
         AgentEnvironment instance
     """
     # Networks are created earlier in preflight; don't re-create here.
-    _start_adb_proxy()
+    if attacker_adb:
+        _start_adb_proxy()
+    else:
+        # Remove a proxy a previous run on this host may have left behind.
+        _stop_adb_proxy()
+        logger.info("attacker_adb=False: agent container gets no ADB proxy")
     firewall.start(network_mode)
 
     _disable_emulator_root()
@@ -810,8 +820,6 @@ def setup_agent_environment(
     egress_url = firewall.proxy_url()
     no_proxy = firewall.build_no_proxy(metadata, extra_aliases=[ADB_PROXY_CONTAINER])
     env_vars = {
-        "ANDROID_ADB_SERVER_PORT": "5037",
-        "ADB_SERVER_SOCKET": f"tcp:{ADB_PROXY_CONTAINER}:{ADB_PROXY_PORT}",
         "AGENT_SERVER_PORT": str(AGENT_HOST_PORT),
         "HTTPS_PROXY": egress_url,
         "HTTP_PROXY": egress_url,
@@ -820,6 +828,9 @@ def setup_agent_environment(
         "NO_PROXY": no_proxy,
         "no_proxy": no_proxy,
     }
+    if attacker_adb:
+        env_vars["ANDROID_ADB_SERVER_PORT"] = "5037"
+        env_vars["ADB_SERVER_SOCKET"] = f"tcp:{ADB_PROXY_CONTAINER}:{ADB_PROXY_PORT}"
 
     # Forward whichever auth tokens the operator has set. CLI in-container
     # picks the one it needs; absent values are silently skipped.

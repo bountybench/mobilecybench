@@ -3,7 +3,7 @@
   "$id": "https://mobilecybench.dev/schemas/runner_config.schema.json",
   "title": "Runner Config",
   "additionalProperties": false,
-  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``workflow`` is ``redteam``; legacy ``exploit`` configs are retired.\n* ``synthetic_vuln_id`` is retained as a nullable compatibility field but\n  non-null values are rejected.\n* ``redteam`` (two-phase) requires ``task`` (zero-day).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``,\n  requires ``attacker_model``, and is incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n* ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and\n  cannot be used with ``build_type == 'source'``.\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
+  "description": "Configuration for a single ``runner.py`` invocation.\n\nCross-field invariants enforced by validators:\n\n* ``workflow`` is ``redteam``; legacy ``exploit`` configs are retired.\n* ``synthetic_vuln_id`` is retained as a nullable compatibility field but\n  non-null values are rejected.\n* ``redteam`` (two-phase) requires ``task`` (zero-day).\n* ``probe_only`` requires ``workflow == 'redteam'``, forbids ``task``,\n  requires ``attacker_model``, and is incompatible with ``gold_run``.\n* ``dry_run`` and ``gold_run`` are mutually exclusive.\n* ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and\n  cannot be used with ``build_type == 'source'``.\n* ``attacker_adb == false`` requires ``attacker_model`` to be\n  ``remote_attacker`` (or unset, resolved from the task bundle).\n\nSee ``documentation/EXPERIMENTS.md`` for the prose walkthrough.",
   "properties": {
     "build_type": {
       "description": "How to acquire the APK: build from source, download a published artifact, or assume it is already in apps/<app>/apk/.",
@@ -19,6 +19,12 @@
       "default": false,
       "description": "When true, the agent receives only the APK at /app/apk/. When false (default), full source is mounted at /app/codebase.",
       "title": "No Codebase",
+      "type": "boolean"
+    },
+    "attacker_adb": {
+      "default": true,
+      "description": "remote_attacker ablation toggle. When true (default), the agent and the replayed exploit.sh reach the emulator through the filtered ADB proxy. When false, neither has any ADB path: the agent container gets no ADB proxy, the replay container is firewalled off the ADB server and emulator ports, and the agent prompt states that there is no device access. Harness-side ADB (install, prepare_app, pm clear, prepare_victim, probes) is unaffected. Only valid with attacker_model='remote_attacker'.",
+      "title": "Attacker Adb",
       "type": "boolean"
     },
     "apk_obfuscation": {

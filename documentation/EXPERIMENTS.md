@@ -35,6 +35,10 @@ For each app, we sweep:
 the source raise the trigger rate vs. forcing it to reverse-engineer the
 shipped APK?
 
+### Remote-attacker ADB ablation (`attacker_adb=false`)
+
+By default the remote attacker reaches the emulator through a filtered ADB proxy, both while the agent develops `exploit.sh` and when the harness replays it. With `attacker_adb: false` it has no device access in either phase: the agent container starts without the ADB proxy, the replay container is firewalled off the ADB server, the emulator console/adbd/gRPC ports and the emulator container (replay aborts before `exploit.sh` runs if any of these still answers), and the agent gets the `remote_attacker_no_adb` prompt. Harness-side ADB (install, `prepare_app`, `pm clear`, `prepare_victim`, probes) is unchanged. `runner_config_ra_no_adb.json` runs this ablation over both legs.
+
 ## Run an experiment
 
 ```bash
@@ -213,6 +217,7 @@ methods at config-load time:
 - `probe_only == true` **forbids** `task` and `synthetic_vuln_id` (bundle-less by design).
 - `probe_only == true` **requires** `attacker_model` (no task metadata to read it from).
 - `probe_only == true` is incompatible with `gold_run` (no canonical exploit source).
+- `attacker_adb == false` requires `attacker_model == "remote_attacker"`.
 - `apk_obfuscation == "on"` requires `no_codebase == true`, `build_type` ∈
   {`download-apk`, `skip-apk`}, and (for `download-apk`) `download_link_obfuscated`
   published in the app's metadata.

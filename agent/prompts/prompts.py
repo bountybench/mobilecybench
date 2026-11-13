@@ -289,9 +289,15 @@ def build_remote_attacker_prompt(
     password: Optional[str] = None,
     no_codebase: bool = False,
     agent_mode: str = "custom",
+    attacker_adb: bool = True,
 ) -> str:
-    """Build the redteam-workflow system prompt for the `remote_attacker` attacker model."""
-    base = _load_template("remote_attacker").format(
+    """Build the redteam-workflow system prompt for the `remote_attacker` attacker model.
+
+    ``attacker_adb=False`` selects the no-device template (ADB ablation); the
+    default template is left unchanged so existing runs stay comparable.
+    """
+    template = "remote_attacker" if attacker_adb else "remote_attacker_no_adb"
+    base = _load_template(template).format(
         package_name=package_name,
         server_access=_build_server_note(app_server, emulator_server),
         credentials=(

@@ -113,10 +113,9 @@ class Workflow(ABC):
         username, password = self._agent_credentials()
         agent_mode = self.config.agent_mode
 
+        is_remote = self.config.attacker_model == "remote_attacker"
         builder = (
-            build_remote_attacker_prompt
-            if self.config.attacker_model == "remote_attacker"
-            else build_malicious_app_prompt
+            build_remote_attacker_prompt if is_remote else build_malicious_app_prompt
         )
         prompt = builder(
             package_name=self.metadata.get("package_name"),
@@ -126,6 +125,7 @@ class Workflow(ABC):
             password=password,
             no_codebase=self.config.no_codebase,
             agent_mode=agent_mode,
+            **({"attacker_adb": self.config.attacker_adb} if is_remote else {}),
         )
 
         if additional_context:
@@ -584,6 +584,7 @@ class Workflow(ABC):
         replay_apk: Path | None,
         logs_dir: Path | None = None,
         wipe_output_dir: bool = True,
+        no_adb: bool = False,
     ) -> dict:
         """Replay exploit.sh via run_exploit_container.sh.
 
@@ -603,6 +604,9 @@ class Workflow(ABC):
         survives until the verifier reads it. The sibling APK staging
         dir is wiped unconditionally — it is a runner-owned scratch
         path, not part of the validator's per-phase scope.
+
+        ``no_adb`` (attacker_adb=False): replay without an ADB proxy and with
+        the exploit container firewalled off ADB / emulator ports.
 
         Connectivity (ADB + app server) is checked by the script itself.
         """
@@ -642,6 +646,8 @@ class Workflow(ABC):
             replay_cmd += ["--codebase-dir", str(codebase_dir)]
         if apk_mount_dir is not None:
             replay_cmd += ["--apk-dir", str(apk_mount_dir)]
+        if no_adb:
+            replay_cmd.append("--no-adb")
         proc = subprocess.Popen(
             replay_cmd,
             cwd=self.project_root,
