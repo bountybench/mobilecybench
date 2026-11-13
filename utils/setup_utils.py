@@ -95,7 +95,9 @@ def install_app_and_setup_backend(
             logger.info("No backend containers - skipping SSRF listener")
 
 
-def check_connectivity(container, app_server: Optional[str] = None) -> None:
+def check_connectivity(
+    container, app_server: Optional[str] = None, expect_agent_adb: bool = True
+) -> None:
     """Verify the kali container can reach the app server and emulator.
 
     Raises RuntimeError if any check fails.
@@ -103,6 +105,8 @@ def check_connectivity(container, app_server: Optional[str] = None) -> None:
     Args:
         container: Docker container to run checks from.
         app_server: App server URL to check (e.g. "server:8080"). Skipped if None.
+        expect_agent_adb: When False (attacker_adb=False), the kali → emulator
+            check passes only if the container can NOT see the emulator.
     """
     checks = []
 
@@ -120,7 +124,12 @@ def check_connectivity(container, app_server: Optional[str] = None) -> None:
     # container env (set by setup_agent_environment to tcp:adb-proxy:5037).
     result = container.exec_run("bash -c 'adb devices'", demux=True)
     stdout = result.output[0].decode() if result.output[0] else ""
-    checks.append(("kali → emulator (adb)", "emulator" in stdout, stdout.strip()))
+    if expect_agent_adb:
+        checks.append(("kali → emulator (adb)", "emulator" in stdout, stdout.strip()))
+    else:
+        checks.append(
+            ("kali ↛ emulator (adb blocked)", "emulator" not in stdout, stdout.strip())
+        )
 
     # Host → emulator (for verify scripts that run on host)
     try:

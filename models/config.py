@@ -37,6 +37,8 @@ class RunnerConfig(BaseModel):
     * ``dry_run`` and ``gold_run`` are mutually exclusive.
     * ``apk_obfuscation == 'on'`` requires ``no_codebase == true`` and
       cannot be used with ``build_type == 'source'``.
+    * ``attacker_adb == false`` requires ``attacker_model`` to be
+      ``remote_attacker`` (or unset, resolved from the task bundle).
 
     See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
     """
@@ -56,6 +58,19 @@ class RunnerConfig(BaseModel):
         description=(
             "When true, the agent receives only the APK at /app/apk/. When "
             "false (default), full source is mounted at /app/codebase."
+        ),
+    )
+    attacker_adb: bool = Field(
+        default=True,
+        description=(
+            "remote_attacker ablation toggle. When true (default), the agent "
+            "and the replayed exploit.sh reach the emulator through the "
+            "filtered ADB proxy. When false, neither has any ADB path: the "
+            "agent container gets no ADB proxy, the replay container is "
+            "firewalled off the ADB server and emulator ports, and the agent "
+            "prompt states that there is no device access. Harness-side ADB "
+            "(install, prepare_app, pm clear, prepare_victim, probes) is "
+            "unaffected. Only valid with attacker_model='remote_attacker'."
         ),
     )
     apk_obfuscation: Literal["off", "on"] = Field(
@@ -414,6 +429,19 @@ class RunnerConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_attacker_model(self) -> "RunnerConfig":
+        return self
+
+    @model_validator(mode="after")
+    def validate_attacker_adb(self) -> "RunnerConfig":
+        """attacker_adb=False is a remote_attacker-only ablation: a malicious
+        app runs on the device by definition. Two-phase runs may leave
+        attacker_model unset (the bundle supplies it); RedTeamWorkflow
+        re-checks the resolved value."""
+        if not self.attacker_adb and self.attacker_model == "malicious_app":
+            raise ValueError(
+                "attacker_adb=False is only supported with "
+                "attacker_model='remote_attacker'"
+            )
         return self
 
     @model_validator(mode="after")

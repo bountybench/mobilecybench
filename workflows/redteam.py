@@ -359,6 +359,7 @@ class RemoteAttackerOps:
             # prepare_app already seeded phase_dir as MCB_OUTPUT_DIR;
             # wiping here would erase that state before the verifier reads it.
             wipe_output_dir=False,
+            no_adb=not workflow.config.attacker_adb,
         )
 
         if package_name:
@@ -604,6 +605,11 @@ class RedTeamWorkflow(Workflow):
             self.config = self.config.model_copy(
                 update={"attacker_model": self._attacker_model}
             )
+        if not self.config.attacker_adb and self._attacker_model != "remote_attacker":
+            raise ValueError(
+                "attacker_adb=False is only supported with remote_attacker; "
+                f"task resolves attacker_model={self._attacker_model!r}"
+            )
         self._ops: AttackerModelOps = _OPS[self._attacker_model]()
         self._probe_config: dict = {"generic_probe_applicability": {}}
 
@@ -783,10 +789,13 @@ class RedTeamWorkflow(Workflow):
             network_mode=self.config.network_mode,
             post_checkout_hook=self._prepare_runtime_codebase,
             apk_path=runtime_apk,
+            attacker_adb=self.config.attacker_adb,
         )
 
         setup_utils.check_connectivity(
-            self.agent_env.container, self.metadata.get("app_server")
+            self.agent_env.container,
+            self.metadata.get("app_server"),
+            expect_agent_adb=self.config.attacker_adb,
         )
 
         self._ops.setup_agent_extras(self)
