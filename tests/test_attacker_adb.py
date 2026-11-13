@@ -69,7 +69,7 @@ def test_no_adb_prompt_drops_device_access(no_codebase):
     assert "via ADB" not in no_adb
     assert "with ADB access" not in no_adb
     assert "running app" not in no_adb
-    assert "No device access" in no_adb
+    assert "**No ADB**" in no_adb
     assert "attacker" in no_adb and "server:8080" in no_adb
     assert ("/app/apk/" in no_adb) == no_codebase
 
