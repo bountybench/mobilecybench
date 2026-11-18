@@ -109,6 +109,19 @@ class AttackerModelOps(Protocol):
     ) -> dict: ...
 
 
+def _generic_probe_needs(applicability: dict) -> tuple[bool, bool]:
+    """Return (needs_flags, needs_ssrf) from generic_probe_applicability."""
+    FLAG_PROBES = {
+        "confidentiality.app_flag",
+        "confidentiality.container_flag",
+        "integrity.app_flag",
+        "integrity.container_flag",
+    }
+    needs_flags = any(applicability.get(k) for k in FLAG_PROBES)
+    needs_ssrf = applicability.get("access.ssrf_detected", False)
+    return needs_flags, needs_ssrf
+
+
 class MaliciousAppOps:
     """Model-specific operations for the malicious_app attacker model."""
 
@@ -220,15 +233,7 @@ class MaliciousAppOps:
 
     def probe_needs(self, applicability: dict) -> tuple[bool, bool]:
         """Return (needs_flags, needs_ssrf) from generic_probe_applicability."""
-        FLAG_PROBES = {
-            "confidentiality.app_flag",
-            "confidentiality.container_flag",
-            "integrity.app_flag",
-            "integrity.container_flag",
-        }
-        needs_flags = any(applicability.get(k) for k in FLAG_PROBES)
-        needs_ssrf = applicability.get("access.ssrf_detected", False)
-        return needs_flags, needs_ssrf
+        return _generic_probe_needs(applicability)
 
     def probe_dir(self, app_dir: Path) -> Path:
         """Malicious_app probes live directly in the app directory."""
@@ -252,6 +257,12 @@ class MaliciousAppOps:
 
 class RemoteAttackerOps:
     """Model-specific operations for the remote_attacker attacker model."""
+
+    def __init__(self, *, ra_generic_probes: bool = False) -> None:
+        # RunnerConfig.ra_generic_probes opt-in: also run the generic probe
+        # suite on the RA path (default off — the frozen path scores RA on
+        # the app-specific remote_attacker/ probes only).
+        self.uses_generic_probes = ra_generic_probes
 
     def _wait_for_adb_device(self, attempts: int = 3) -> bool:
         """ADB can briefly disappear after exploit replay cleanup toggles adbd."""
@@ -310,8 +321,21 @@ class RemoteAttackerOps:
         """Run one phase: restart → prepare_app → exploit → pm clear → prepare_victim."""
         package_name = workflow.metadata.get("package_name", "")
 
+        # ra_generic_probes opt-in: start the SSRF listener / inject flags
+        # exactly like the MA path when the app's generic probe config needs
+        # them. With the opt-in off, probe_needs keeps both False and this
+        # restart is the frozen behavior.
+        needs_flags = kwargs.get("needs_flags", False)
+        needs_ssrf = kwargs.get("needs_ssrf", False)
+        if needs_ssrf:
+            workflow._clear_ssrf_requests()
+
         logger.info("[phase] Restarting runtime with target APK...")
-        workflow._restart_runtime(kwargs["target_apk"])
+        workflow._restart_runtime(
+            kwargs["target_apk"],
+            inject_flags=needs_flags,
+            start_ssrf=needs_ssrf,
+        )
 
         # Per-task pre-exploit setup (e.g. seed a row only this exploit reads).
         # Mirrors CI's task_runtime_run_prepare_hook (pre-exploit, both models).
@@ -448,11 +472,12 @@ class RemoteAttackerOps:
                     "(required for remote_attacker)"
                 )
 
-    uses_generic_probes = False
-
     def probe_needs(self, applicability: dict) -> tuple[bool, bool]:
-        """Remote attacker does not use generic probes."""
-        return False, False
+        """Remote attacker computes probe needs only when the generic suite is
+        opted in (ra_generic_probes); otherwise the frozen (False, False)."""
+        if not self.uses_generic_probes:
+            return False, False
+        return _generic_probe_needs(applicability)
 
     def probe_dir(self, app_dir: Path) -> Path:
         """Remote-attacker probes live in apps/<app>/remote_attacker/."""
@@ -604,7 +629,13 @@ class RedTeamWorkflow(Workflow):
             self.config = self.config.model_copy(
                 update={"attacker_model": self._attacker_model}
             )
-        self._ops: AttackerModelOps = _OPS[self._attacker_model]()
+        # RemoteAttackerOps takes the RunnerConfig.ra_generic_probes opt-in;
+        # MaliciousAppOps always runs the generic suite and takes no flag.
+        self._ops: AttackerModelOps = (
+            RemoteAttackerOps(ra_generic_probes=self.config.ra_generic_probes)
+            if self._attacker_model == "remote_attacker"
+            else MaliciousAppOps()
+        )
         self._probe_config: dict = {"generic_probe_applicability": {}}
 
     # ------------------------------------------------------------------
@@ -614,19 +645,20 @@ class RedTeamWorkflow(Workflow):
     def validate_arguments(self) -> None:
         super().validate_arguments()
 
+        if self.config.ra_generic_probes and self._attacker_model != "remote_attacker":
+            raise ValueError(
+                "ra_generic_probes=True only affects remote_attacker runs; the "
+                f"task bundle resolved attacker_model={self._attacker_model!r}, "
+                "which already runs the generic probe suite."
+            )
+
         if self.config.probe_only:
             # Probe-only is bundle-less: no patch, no verifier, no task-specific
             # behavior. package_name comes from app metadata (already populated
             # by the base Workflow init); attacker_model was already resolved
             # via bundle.attacker_model() in __init__.
             if self._ops.uses_generic_probes:
-                from evaluation.generic_probe_config import load_generic_probe_config
-
-                self._probe_config = load_generic_probe_config(
-                    self.app_dir / "generic_probe_config.json",
-                    container_names=self.metadata.get("container_names", []),
-                    app_server=self.metadata.get("app_server", ""),
-                )
+                self._load_probe_config()
             self._ops.validate(self)
             return
 
@@ -646,15 +678,28 @@ class RedTeamWorkflow(Workflow):
             self.metadata["package_name"] = task_package_name
 
         if self._ops.uses_generic_probes:
-            from evaluation.generic_probe_config import load_generic_probe_config
-
-            self._probe_config = load_generic_probe_config(
-                self.app_dir / "generic_probe_config.json",
-                container_names=self.metadata.get("container_names", []),
-                app_server=self.metadata.get("app_server", ""),
-            )
+            self._load_probe_config()
 
         self._ops.validate(self)
+
+    def _load_probe_config(self) -> None:
+        """Load the app's generic_probe_config.json into ``self._probe_config``.
+
+        For remote_attacker (reachable only via the ra_generic_probes opt-in)
+        the config is loaded unmasked: probe_needs must still see the
+        on-device flag keys so flags.json is generated — the generic probe
+        modules load it at import time. The on-device subprobes themselves
+        are masked at runtime by the probe scripts (see
+        evaluation/generic_probes/applicability.py), and their null results
+        are dropped by normalize_probe_results.
+        """
+        from evaluation.generic_probe_config import load_generic_probe_config
+
+        self._probe_config = load_generic_probe_config(
+            self.app_dir / "generic_probe_config.json",
+            container_names=self.metadata.get("container_names", []),
+            app_server=self.metadata.get("app_server", ""),
+        )
 
     # ------------------------------------------------------------------
     # Runtime setup
@@ -1544,12 +1589,21 @@ class RedTeamWorkflow(Workflow):
         probe_helpers.py picks the on-device victim (agentuser vs user1) off
         this env var. Without it, RA probes would query the wrong account's
         state and score zero on a clean run.
+
+        The ra_generic_probes opt-in additionally exports
+        MCB_RA_GENERIC_PROBES so run_checks.sh resolves the generic suite's
+        config/metadata from the app dir rather than the remote_attacker
+        probe dir, and the generic probe scripts apply the RA on-device
+        subprobe exclusions (evaluation/generic_probes/applicability.py).
         """
         os.environ["MCB_ATTACKER_MODEL"] = self._attacker_model
+        if self._attacker_model == "remote_attacker" and self._ops.uses_generic_probes:
+            os.environ["MCB_RA_GENERIC_PROBES"] = "1"
         try:
             return super()._run_checks(*args, **kwargs)
         finally:
             os.environ.pop("MCB_ATTACKER_MODEL", None)
+            os.environ.pop("MCB_RA_GENERIC_PROBES", None)
 
     def _run_agent_login(self) -> None:
         """Run <app_dir>/agent_login.sh — optional pre-agent login hook.

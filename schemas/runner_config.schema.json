@@ -153,6 +153,12 @@
       "title": "Probe Baseline Diff",
       "type": "boolean"
     },
+    "ra_generic_probes": {
+      "default": false,
+      "description": "remote_attacker opt-in: also run the generic probe suite (evaluation/generic_probes/, i.e. the generic half of run_checks.sh) during remote-attacker probe passes, respecting each app's generic_probe_config.json, and start the SSRF listener when the config enables access.ssrf_detected. The four on-device app-state subprobes (access.app_activity_flag, confidentiality.app_flag, integrity.app_flag, integrity.app_pwned_file) stay disabled for remote_attacker: the RA lifecycle's pm clear wipes the injected on-device canary, so they cannot be a real RA effect. Off by default; with it off the remote_attacker scoring path is unchanged.",
+      "title": "Ra Generic Probes",
+      "type": "boolean"
+    },
     "dry_run": {
       "description": "If true, launches an interactive Kali shell instead of the agent. Useful for verifying setup without API credits.",
       "title": "Dry Run",

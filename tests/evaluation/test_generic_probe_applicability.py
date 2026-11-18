@@ -408,3 +408,313 @@ def test_run_checks_nulls_remote_attacker_probe_infra_error_scores(tmp_path):
     assert remote_attacker["access_details"]["status"] == "error"
     assert remote_attacker["access_details"]["baseline_coherent"] is False
     assert remote_attacker["access_details"]["score"] == 0
+
+
+# ---------------------------------------------------------------------------
+# ra_generic_probes opt-in: remote-attacker on-device subprobe exclusions
+# ---------------------------------------------------------------------------
+
+
+def _set_ra_generic_env(monkeypatch, *, attacker_model, flag):
+    if attacker_model is None:
+        monkeypatch.delenv("MCB_ATTACKER_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("MCB_ATTACKER_MODEL", attacker_model)
+    if flag:
+        monkeypatch.setenv("MCB_RA_GENERIC_PROBES", "1")
+    else:
+        monkeypatch.delenv("MCB_RA_GENERIC_PROBES", raising=False)
+
+
+def test_load_category_applicability_ra_excludes_on_device_subprobes(
+    tmp_path, monkeypatch
+):
+    """With the opt-in active for remote_attacker, exactly the four on-device
+    app-state subprobes are forced off; backend/network subprobes keep their
+    configured applicability."""
+    _set_ra_generic_env(monkeypatch, attacker_model="remote_attacker", flag=True)
+    config = {
+        "version": 1,
+        "generic_probe_applicability": {k: True for k in ALL_GENERIC_CONFIG_KEYS},
+    }
+    config_path = tmp_path / "generic_probe_config.json"
+    _write_json(config_path, config)
+
+    assert load_category_applicability("access", config_path) == {
+        "app_activity_flag": False,
+        "ssrf_detected": True,
+    }
+    assert load_category_applicability("confidentiality", config_path) == {
+        "secrets": True,
+        "app_flag": False,
+        "container_flag": True,
+    }
+    assert load_category_applicability("integrity", config_path) == {
+        "app_flag": False,
+        "app_pwned_file": False,
+        "container_flag": True,
+        "container_pwned_file": True,
+    }
+    assert load_category_applicability("availability", config_path) == {
+        "check_container_health": True,
+    }
+
+
+def test_load_category_applicability_ra_exclusions_apply_without_config(
+    tmp_path, monkeypatch
+):
+    """The legacy no-config default enables every subprobe; the RA exclusions
+    must mask the on-device four there too."""
+    _set_ra_generic_env(monkeypatch, attacker_model="remote_attacker", flag=True)
+    missing_config = tmp_path / "generic_probe_config.json"
+
+    assert load_category_applicability("integrity", missing_config) == {
+        "app_flag": False,
+        "app_pwned_file": False,
+        "container_flag": True,
+        "container_pwned_file": True,
+    }
+    assert load_category_applicability("access", missing_config) == {
+        "app_activity_flag": False,
+        "ssrf_detected": True,
+    }
+
+
+def test_load_category_applicability_ra_exclusions_require_opt_in(
+    tmp_path, monkeypatch
+):
+    """Frozen path: MCB_ATTACKER_MODEL=remote_attacker alone (no flag) changes
+    nothing, and the flag alone (malicious_app run) changes nothing."""
+    config = {
+        "version": 1,
+        "generic_probe_applicability": {k: True for k in ALL_GENERIC_CONFIG_KEYS},
+    }
+    config_path = tmp_path / "generic_probe_config.json"
+    _write_json(config_path, config)
+
+    for attacker_model, flag in (
+        ("remote_attacker", False),  # frozen RA path
+        ("malicious_app", True),  # flag never set for MA, but gate on it anyway
+        (None, True),  # CI / direct run_checks.sh invocation
+        (None, False),
+    ):
+        _set_ra_generic_env(monkeypatch, attacker_model=attacker_model, flag=flag)
+        assert load_category_applicability("integrity", config_path) == {
+            "app_flag": True,
+            "app_pwned_file": True,
+            "container_flag": True,
+            "container_pwned_file": True,
+        }
+
+
+def _write_ra_app_fixture(app_dir: Path, generic_applicability: dict) -> Path:
+    """An app dir with metadata/secrets/generic config and a remote_attacker
+    probe dir holding four trivially-secure probes — the layout the RA path
+    invokes run_checks.sh with (probe_dir = apps/<app>/remote_attacker)."""
+    app_dir.mkdir()
+    ra_dir = app_dir / "remote_attacker"
+    ra_dir.mkdir()
+    _write_json(
+        app_dir / "metadata.json",
+        {
+            "package_name": "com.example.app",
+            "container_names": ["not-running-container"],
+            "app_server": "http://example.invalid",
+        },
+    )
+    _write_json(app_dir / "secrets.json", {"password": "do-not-leak"})
+    _write_json(
+        app_dir / "generic_probe_config.json",
+        {
+            "version": 1,
+            "generic_probe_applicability": generic_applicability,
+        },
+    )
+    for probe in (
+        "test_access_control.py",
+        "test_availability.py",
+        "test_confidentiality.py",
+        "test_integrity.py",
+    ):
+        _write_probe(ra_dir / probe, {"score": 1})
+    return ra_dir
+
+
+def _run_checks_for(ra_dir: Path, tmp_path: Path, extra_env: dict) -> dict:
+    repo_root = Path(__file__).resolve().parents[2]
+    log_path = tmp_path / "evidence.log"
+    log_path.write_text("benign output only\n", encoding="utf-8")
+    app_scores = tmp_path / "scores.json"
+    generic_scores = tmp_path / "generic_scores.json"
+
+    env = os.environ.copy()
+    env.pop("MCB_RA_GENERIC_PROBES", None)
+    env.pop("MCB_ATTACKER_MODEL", None)
+    env.update(extra_env)
+    env["APP_SCORES_OUT"] = str(app_scores)
+    env["GENERIC_SCORES_OUT"] = str(generic_scores)
+
+    subprocess.run(
+        ["bash", str(repo_root / "run_checks.sh"), str(ra_dir), str(log_path)],
+        cwd=repo_root,
+        env=env,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return json.loads(generic_scores.read_text(encoding="utf-8"))
+
+
+def test_run_checks_ra_generic_probes_default_off_stays_all_skipped(tmp_path):
+    """Frozen path byte-identical: with the opt-in off, an RA run's generic
+    section is the all-skipped shape even though the app ships a
+    generic_probe_config.json that enables subprobes."""
+    ra_dir = _write_ra_app_fixture(
+        tmp_path / "app",
+        {
+            **ALL_GENERIC_CONFIG_KEYS,
+            "confidentiality.secrets": True,
+            "confidentiality.app_flag": True,
+            "integrity.app_flag": True,
+            "integrity.app_pwned_file": True,
+        },
+    )
+
+    generic = _run_checks_for(
+        ra_dir, tmp_path, {"MCB_ATTACKER_MODEL": "remote_attacker"}
+    )
+
+    skipped = {"score": None, "status": "skipped"}
+    assert generic["access_details"] == skipped
+    assert generic["availability_details"] == skipped
+    assert generic["confidentiality_details"] == skipped
+    assert generic["integrity_details"] == skipped
+
+
+def test_run_checks_ra_generic_probes_opt_in_runs_app_config_and_masks_on_device(
+    tmp_path,
+):
+    """Flag-on: the generic section runs against the app dir's
+    generic_probe_config.json, and an on-device app-state subprobe the config
+    enables (confidentiality.app_flag) is masked off — null in the output,
+    and never executed (unmasked it would call load_flags, which raises
+    without a runner-generated flags.json and fails this test at exit 1)."""
+    ra_dir = _write_ra_app_fixture(
+        tmp_path / "app",
+        {
+            **ALL_GENERIC_CONFIG_KEYS,
+            "confidentiality.secrets": True,
+            "confidentiality.app_flag": True,
+        },
+    )
+
+    generic = _run_checks_for(
+        ra_dir,
+        tmp_path,
+        {"MCB_ATTACKER_MODEL": "remote_attacker", "MCB_RA_GENERIC_PROBES": "1"},
+    )
+
+    # Categories with no enabled config key stay skipped.
+    skipped = {"score": None, "status": "skipped"}
+    assert generic["access_details"] == skipped
+    assert generic["availability_details"] == skipped
+    assert generic["integrity_details"] == skipped
+    # confidentiality really ran: secrets checked the evidence log against the
+    # app dir's secrets.json; the on-device app_flag is masked to null.
+    assert generic["confidentiality_details"] == {
+        "secrets": 1,
+        "app_flag": None,
+        "container_flag": None,
+        "score": 1,
+    }
+
+
+def test_run_checks_ra_generic_probes_opt_in_respects_per_app_config(tmp_path):
+    """Per-app applicability still decides which categories run: with only
+    confidentiality.secrets enabled, the other categories stay skipped."""
+    ra_dir = _write_ra_app_fixture(
+        tmp_path / "app",
+        {**ALL_GENERIC_CONFIG_KEYS, "confidentiality.secrets": True},
+    )
+
+    generic = _run_checks_for(
+        ra_dir,
+        tmp_path,
+        {"MCB_ATTACKER_MODEL": "remote_attacker", "MCB_RA_GENERIC_PROBES": "1"},
+    )
+
+    skipped = {"score": None, "status": "skipped"}
+    assert generic["access_details"] == skipped
+    assert generic["availability_details"] == skipped
+    assert generic["integrity_details"] == skipped
+    assert generic["confidentiality_details"] == {
+        "secrets": 1,
+        "app_flag": None,
+        "container_flag": None,
+        "score": 1,
+    }
+
+
+def test_run_checks_ra_generic_probes_env_leaves_malicious_app_unchanged(tmp_path):
+    """MA runs the generic suite from the app dir already; the opt-in env vars
+    must not redirect it or mask on-device subprobes."""
+    repo_root = Path(__file__).resolve().parents[2]
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+
+    _write_json(
+        app_dir / "metadata.json",
+        {
+            "package_name": "com.example.app",
+            "container_names": ["not-running-container"],
+            "app_server": "http://example.invalid",
+        },
+    )
+    _write_json(app_dir / "secrets.json", {"password": "do-not-leak"})
+    _write_json(
+        app_dir / "generic_probe_config.json",
+        {
+            "version": 1,
+            "generic_probe_applicability": {
+                **ALL_GENERIC_CONFIG_KEYS,
+                "confidentiality.secrets": True,
+            },
+        },
+    )
+    for probe in (
+        "test_access_control.py",
+        "test_availability.py",
+        "test_confidentiality.py",
+        "test_integrity.py",
+    ):
+        _write_probe(app_dir / probe, {"score": 1})
+
+    log_path = tmp_path / "evidence.log"
+    log_path.write_text("benign output only\n", encoding="utf-8")
+    app_scores = tmp_path / "scores.json"
+    generic_scores = tmp_path / "generic_scores.json"
+
+    env = os.environ.copy()
+    env["APP_SCORES_OUT"] = str(app_scores)
+    env["GENERIC_SCORES_OUT"] = str(generic_scores)
+    # The workflow never exports this pair for MA; set them to prove the
+    # run_checks.sh / applicability gates are RA-only.
+    env["MCB_ATTACKER_MODEL"] = "malicious_app"
+    env["MCB_RA_GENERIC_PROBES"] = "1"
+
+    subprocess.run(
+        ["bash", str(repo_root / "run_checks.sh"), str(app_dir), str(log_path)],
+        cwd=repo_root,
+        env=env,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    generic = json.loads(generic_scores.read_text(encoding="utf-8"))
+    assert generic["confidentiality_details"] == {
+        "secrets": 1,
+        "app_flag": None,
+        "container_flag": None,
+        "score": 1,
+    }

@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -1370,6 +1371,226 @@ echo "prepare_victim:$MCB_ATTACKER_MODEL" >> "{order_log}"
         "pm_clear",
         "prepare_victim:remote_attacker",
     ]
+
+
+# ---------------------------------------------------------------------------
+# ra_generic_probes opt-in: remote_attacker runs the generic probe suite
+# ---------------------------------------------------------------------------
+
+
+def _ra_generic_config(**overrides) -> RunnerConfig:
+    return RunnerConfig(
+        **{
+            **_BASE_CONFIG,
+            "attacker_model": "remote_attacker",
+            "ra_generic_probes": True,
+            **overrides,
+        }
+    )
+
+
+def _write_full_generic_probe_config(app_dir: Path) -> None:
+    """A generic_probe_config.json with every key enabled (the loader requires
+    all nine keys)."""
+    from evaluation.generic_probe_config import GENERIC_PROBE_KEYS
+
+    _write_json(
+        app_dir / "generic_probe_config.json",
+        {
+            "version": 1,
+            "generic_probe_applicability": {k: True for k in GENERIC_PROBE_KEYS},
+        },
+    )
+
+
+def _set_metadata_containers(wf, container_names) -> None:
+    """Rewrite the fixture app's metadata.json with backend containers so
+    container-dependent generic keys pass config validation."""
+    metadata = json.loads((wf.app_dir / "metadata.json").read_text())
+    metadata["container_names"] = container_names
+    _write_json(wf.app_dir / "metadata.json", metadata)
+
+
+def test_ra_generic_probes_default_off_skips_generic_config(
+    remote_attacker_config, tmp_path
+):
+    """Frozen path: even with a generic_probe_config.json on disk, the RA
+    workflow does not load it and reports no probe needs."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+    _write_full_generic_probe_config(wf.app_dir)
+
+    wf.validate_arguments()
+
+    assert wf._ops.uses_generic_probes is False
+    assert wf._probe_config == {"generic_probe_applicability": {}}
+    assert wf._ops.probe_needs({"access.ssrf_detected": True}) == (False, False)
+
+
+def test_ra_generic_probes_opt_in_loads_config_and_computes_probe_needs(tmp_path):
+    """Flag-on: the RA workflow loads the app's generic probe config and
+    derives flag injection / SSRF listener needs from it. The loaded config
+    stays unmasked — the on-device subprobe exclusions are applied by the
+    probe scripts at runtime, and probe_needs must still see the on-device
+    flag keys so flags.json is generated (the generic probe modules load it
+    at import time)."""
+    wf = _make_workflow(_ra_generic_config(), tmp_path)
+    _write_full_generic_probe_config(wf.app_dir)
+    _set_metadata_containers(wf, ["backend"])
+
+    wf.validate_arguments()
+
+    assert wf._ops.uses_generic_probes is True
+    applicability = wf._probe_config["generic_probe_applicability"]
+    assert all(applicability.values())
+    assert wf._ops.probe_needs(applicability) == (True, True)
+
+
+def test_config_ra_generic_probes_rejected_for_malicious_app():
+    """ra_generic_probes with attacker_model=malicious_app is a silent no-op
+    (MA always runs the generic suite) — reject it at config validation."""
+    with pytest.raises(ValueError, match="ra_generic_probes"):
+        RunnerConfig(
+            **{
+                **_BASE_CONFIG,
+                "attacker_model": "malicious_app",
+                "ra_generic_probes": True,
+            }
+        )
+
+
+def test_ra_generic_probes_rejected_when_bundle_resolves_malicious_app(
+    redteam_config, tmp_path
+):
+    """Two-phase configs may leave attacker_model unset (bundle-authoritative);
+    the workflow re-checks the flag after bundle resolution."""
+    wf = _make_workflow(redteam_config, tmp_path)
+    assert wf._attacker_model == "malicious_app"
+    wf.config = wf.config.model_copy(update={"ra_generic_probes": True})
+
+    with pytest.raises(ValueError, match="ra_generic_probes"):
+        wf.validate_arguments()
+
+
+def _run_ra_phase_with_mocks(wf, tmp_path, ops, **phase_kwargs) -> dict:
+    """Drive RemoteAttackerOps.run_phase with the emulator/exploit/adb
+    boundaries faked; returns the recorded mock calls."""
+    phase_dir = tmp_path / "phase"
+    phase_dir.mkdir(parents=True, exist_ok=True)
+    evidence = phase_dir / "replay_evidence.log"
+    evidence.write_text("ok")
+
+    def fake_exploit(*_args, **_kwargs):
+        return {"replay_exit_code": 1, "replay_evidence_path": str(evidence)}
+
+    def fake_subprocess_run(cmd, **_kwargs):
+        if isinstance(cmd, list) and cmd[:2] == ["adb", "get-state"]:
+            return MagicMock(returncode=0, stdout="device\n")
+        return MagicMock(returncode=0, stdout="")
+
+    with (
+        patch.object(RedTeamWorkflow, "_restart_runtime") as mock_restart,
+        patch.object(RedTeamWorkflow, "_clear_ssrf_requests") as mock_clear,
+        patch.object(RedTeamWorkflow, "_run_exploit", side_effect=fake_exploit),
+        patch("workflows.redteam.subprocess.run", side_effect=fake_subprocess_run),
+    ):
+        ops.run_phase(
+            wf,
+            phase_dir,
+            exploit_dir=tmp_path,
+            target_apk=Path("apk/test.apk"),
+            **phase_kwargs,
+        )
+    return {"restart": mock_restart, "clear_ssrf": mock_clear}
+
+
+def test_remote_attacker_run_phase_starts_ssrf_listener_when_opted_in(
+    remote_attacker_config, tmp_path
+):
+    """Flag-on with an all-true config: the RA phase restart injects flags and
+    starts the SSRF listener, clearing stale requests first — the same runtime
+    shape the MA path uses."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+
+    calls = _run_ra_phase_with_mocks(
+        wf,
+        tmp_path,
+        RemoteAttackerOps(ra_generic_probes=True),
+        needs_flags=True,
+        needs_ssrf=True,
+    )
+
+    calls["clear_ssrf"].assert_called_once_with()
+    calls["restart"].assert_called_once_with(
+        Path("apk/test.apk"), inject_flags=True, start_ssrf=True
+    )
+
+
+def test_remote_attacker_run_phase_default_restart_is_frozen(
+    remote_attacker_config, tmp_path
+):
+    """Flag-off: no flag injection, no SSRF listener, no request clear — the
+    frozen RA runtime shape."""
+    wf = _make_workflow(remote_attacker_config, tmp_path)
+
+    calls = _run_ra_phase_with_mocks(wf, tmp_path, RemoteAttackerOps())
+
+    calls["clear_ssrf"].assert_not_called()
+    calls["restart"].assert_called_once_with(
+        Path("apk/test.apk"), inject_flags=False, start_ssrf=False
+    )
+
+
+def _capture_run_checks_env(wf, tmp_path) -> dict:
+    """Run wf._run_checks with base's subprocess boundary faked; return the
+    env the run_checks.sh subprocess would inherit."""
+    captured: dict = {}
+
+    def fake_run(_cmd, **kwargs):
+        captured.update(kwargs.get("env") or {})
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with patch("workflows.base.subprocess.run", side_effect=fake_run):
+        wf._run_checks(
+            "",
+            app_scores_out=tmp_path / "app.json",
+            generic_scores_out=tmp_path / "generic.json",
+            probe_dir=wf._ops.probe_dir(wf.app_dir),
+        )
+    return captured
+
+
+def test_run_checks_exports_ra_generic_probes_when_opted_in(tmp_path, monkeypatch):
+    """The probe subprocess env carries MCB_RA_GENERIC_PROBES=1 exactly when
+    the RA run opted in; both MCB_* vars are removed from os.environ after."""
+    monkeypatch.delenv("MCB_RA_GENERIC_PROBES", raising=False)
+    monkeypatch.delenv("MCB_ATTACKER_MODEL", raising=False)
+    wf = _make_workflow(_ra_generic_config(), tmp_path)
+
+    env = _capture_run_checks_env(wf, tmp_path)
+
+    assert env["MCB_ATTACKER_MODEL"] == "remote_attacker"
+    assert env["MCB_RA_GENERIC_PROBES"] == "1"
+    assert "MCB_RA_GENERIC_PROBES" not in os.environ
+    assert "MCB_ATTACKER_MODEL" not in os.environ
+
+
+def test_run_checks_omits_ra_generic_probes_when_off(
+    redteam_config, remote_attacker_config, tmp_path, monkeypatch
+):
+    """Flag-off RA and malicious_app runs never see MCB_RA_GENERIC_PROBES."""
+    monkeypatch.delenv("MCB_RA_GENERIC_PROBES", raising=False)
+
+    ra_env = _capture_run_checks_env(
+        _make_workflow(remote_attacker_config, tmp_path / "ra"), tmp_path / "ra"
+    )
+    ma_env = _capture_run_checks_env(
+        _make_workflow(redteam_config, tmp_path / "ma"), tmp_path / "ma"
+    )
+
+    assert ra_env["MCB_ATTACKER_MODEL"] == "remote_attacker"
+    assert "MCB_RA_GENERIC_PROBES" not in ra_env
+    assert ma_env["MCB_ATTACKER_MODEL"] == "malicious_app"
+    assert "MCB_RA_GENERIC_PROBES" not in ma_env
 
 
 # ---------------------------------------------------------------------------
