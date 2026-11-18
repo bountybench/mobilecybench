@@ -31,6 +31,14 @@ For each app, we sweep:
 | `malicious_app`    | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/` (obfuscated R8-minified build if `apk_obfuscation=on`) |
 | `remote_attacker`  | Agent has source at `/app/codebase`                        | Agent has only the APK at `/app/apk/`                                                    |
 
+**Matched source-access ablation.** `source_with_apk: true` (requires
+`no_codebase: true`) keeps every APK-only setting, including the obfuscated APK
+at `/app/apk/`, the restricted network and the replay APK, and also mounts the
+full source with git history at `/app/codebase` in the agent and replay
+containers. Compared against APK-only, the source mount is the only difference.
+`runner_config_batch_apk_plus_source.json` holds the paper grid's 25 APK-only
+cells in this mode.
+
 **The main ablation is source-visible vs. APK-only** — does giving the agent
 the source raise the trigger rate vs. forcing it to reverse-engineer the
 shipped APK?
@@ -38,6 +46,42 @@ shipped APK?
 ### Remote-attacker ADB ablation (`attacker_adb=false`)
 
 By default the remote attacker reaches the emulator through a filtered ADB proxy, both while the agent develops `exploit.sh` and when the harness replays it. With `attacker_adb: false` it has no device access in either phase: the agent container starts without the ADB proxy, the replay container is firewalled off the ADB server, the emulator console/adbd/gRPC ports and the emulator container (replay aborts before `exploit.sh` runs if any of these still answers), and the agent gets the `remote_attacker_no_adb` prompt. Harness-side ADB (install, `prepare_app`, `pm clear`, `prepare_victim`, probes) is unchanged. `runner_config_ra_no_adb.json` runs this ablation over both legs.
+
+### APK plus source without attacker ADB
+
+`runner_config_ra_no_adb_apk_plus_source.json` combines the two controls. It
+runs only `remote_attacker`, with `attacker_adb: false`, `no_codebase: true`,
+`source_with_apk: true`, `apk_obfuscation: "on"`, and `network_mode: "restricted"`.
+The agent and replay both receive the APK and source. Attacker ADB is disabled
+in both phases; harness-side device setup and probes remain enabled. This is
+neither the source-visible leg (unobfuscated APK, permissive network) nor the
+APK-only leg (no source).
+
+The template selects the existing Claude Opus 4.8 image/model and its `max`
+reasoning setting. Before running another Opus version, change `model`,
+`agent_image`, and `reasoning_effort` to match that version and its control.
+Authenticate using the existing BYO-agent setup in
+[`supplemental/BRING_YOUR_OWN_AGENT.md`](supplemental/BRING_YOUR_OWN_AGENT.md).
+No credentials belong in the runner config. OpenAI/Codex authentication is
+separate from this experiment config; this branch does not configure daybreak
+for Codex OAuth.
+
+On a Linux host prepared using the repository setup instructions:
+
+```bash
+python runner.py --config runner_config_ra_no_adb_apk_plus_source.json
+```
+
+The batch expands to 12 in-scope apps, excluding Termux, one attempt per app.
+For two independent attempts, invoke the batch twice; the runner records each
+invocation separately. Use a separate checkout/host per parallel runner because
+emulator and backend runtime names are shared within a host. To shard, copy the
+config and replace `batch.apps` with that worker's explicit, disjoint app list.
+Do not launch the full template on every worker.
+
+For a matched APK-only control, copy this config and set only
+`source_with_apk: false`. For the requested new condition leave it `true`; do
+not change APK obfuscation, network policy, attacker ADB, or evaluator.
 
 ## Run an experiment
 

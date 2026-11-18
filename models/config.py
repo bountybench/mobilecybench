@@ -39,6 +39,7 @@ class RunnerConfig(BaseModel):
       cannot be used with ``build_type == 'source'``.
     * ``attacker_adb == false`` requires ``attacker_model`` to be
       ``remote_attacker`` (or unset, resolved from the task bundle).
+    * ``source_with_apk`` requires ``no_codebase == true``.
 
     See ``documentation/EXPERIMENTS.md`` for the prose walkthrough.
     """
@@ -84,6 +85,17 @@ class RunnerConfig(BaseModel):
             "or skip-apk. For download-apk, the selected app must publish "
             "download_link_obfuscated; for skip-apk, the obfuscated APK must "
             "already exist under apps/<app>/apk/obfuscated/."
+        ),
+    )
+
+    source_with_apk: bool = Field(
+        default=False,
+        description=(
+            "Matched source-access ablation. Requires no_codebase: true. The "
+            "agent keeps every APK-only setting (the same APK at /app/apk/, "
+            "apk_obfuscation, network_mode, replay APK) and additionally "
+            "receives the full source with git history at /app/codebase, in "
+            "both the agent container and the exploit replay container."
         ),
     )
 
@@ -531,6 +543,12 @@ class RunnerConfig(BaseModel):
                 "published for this app via publish_apk_bundle.sh) or "
                 "build_type: 'skip-apk' (after running "
                 "`./build_apk.sh <app> --obfuscate` manually)."
+            )
+        if self.source_with_apk and not self.no_codebase:
+            raise ValueError(
+                "source_with_apk: true requires no_codebase: true. It adds the "
+                "source mount to the APK-only setting; with no_codebase: false "
+                "the source is already mounted."
             )
         # If the agent already gets full source mounted at /app/codebase, the rename-only
         # signal the obfuscated APK introduces is moot — reject the combo

@@ -2186,3 +2186,31 @@ def test_phase2_timeout_with_failure_kind_is_infrastructure_error(
     )
     assert result["status"] == "infrastructure_error"
     assert "signals" not in result
+
+
+def test_remote_attacker_replay_mounts_codebase_and_apk_under_source_with_apk(
+    remote_attacker_config, tmp_path
+):
+    """source_with_apk: the agent saw both /app/apk and /app/codebase, so replay
+    mounts both."""
+    config = remote_attacker_config.model_copy(
+        update={"no_codebase": True, "source_with_apk": True}
+    )
+    wf = _make_workflow(config, tmp_path)
+    target_apk = wf.app_dir / "apk" / "phase1" / "testapp.apk"
+    target_apk.parent.mkdir(parents=True, exist_ok=True)
+    target_apk.write_bytes(b"phase1")
+
+    captured = _run_remote_phase_and_capture(wf, target_apk, tmp_path / "phase1")
+
+    assert captured["codebase_dir"] == wf.app_dir / "codebase"
+    assert captured["replay_apk"] == target_apk
+
+
+def test_run_exploit_rejects_both_mounts_without_source_with_apk(redteam_config, tmp_path):
+    wf = _make_workflow(redteam_config, tmp_path)
+    with pytest.raises(ValueError, match="source_with_apk"):
+        wf._run_exploit(
+            tmp_path / "exploit", tmp_path / "out", tmp_path / "runner.sh", "img:test", None,
+            codebase_dir=tmp_path / "codebase", replay_apk=tmp_path / "a.apk",
+        )

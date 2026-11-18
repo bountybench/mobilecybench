@@ -508,3 +508,164 @@ def test_app_catalog_validates_and_sets_are_consistent():
     assert "jitsi-meet" not in in_scope
     assert "apps" not in catalog
     assert "notes" not in catalog
+
+
+def test_nonet_ablation_matches_paper_grid_cells():
+    """Keep the paper grid's cells while isolating source access from APK/network policy."""
+    paper = json.loads((REPO_ROOT / "runner_config_batch.json").read_text())
+    paper_batch = BatchSpec.model_validate(paper.pop("batch"))
+    paper_jobs = batch_runner.expand_batch_jobs(paper, paper_batch, REPO_ROOT)
+    payload = {**paper, "network_mode": "restricted", "apk_obfuscation": "off"}
+    batch = BatchSpec(
+        matrix={
+            "attacker_model": ["malicious_app", "remote_attacker"],
+            "no_codebase": [False, True],
+        },
+        exclude=[{"app": "termux", "attacker_model": "remote_attacker"}],
+    )
+    jobs = batch_runner.expand_batch_jobs(payload, batch, REPO_ROOT)
+
+    def cells(js):
+        return {(j.app_name, j.config.attacker_model, j.config.no_codebase) for j in js}
+
+    assert cells(jobs) == cells(paper_jobs)
+    assert len(jobs) == 50
+    for job in jobs:
+        assert job.config.network_mode == "restricted"
+        assert job.config.apk_obfuscation == "off"
+    # Everything except network/obfuscation matches the paper grid's base config.
+    for key in (
+        "model",
+        "agent_image",
+        "reasoning_effort",
+        "agent_wallclock_seconds",
+        "max_iterations",
+        "probe_only",
+        "workflow",
+    ):
+        assert payload[key] == paper[key], key
+
+
+def test_apk_plus_source_batch_config_matches_paper_apk_only_cells():
+    """runner_config_batch_apk_plus_source.json: the paper grid's 25 APK-only cells
+    with every APK-only setting unchanged (obfuscated APK, restricted network) plus
+    the source mount, so it differs from APK-only only in the source."""
+    paper = json.loads((REPO_ROOT / "runner_config_batch.json").read_text())
+    paper_jobs = batch_runner.expand_batch_jobs(
+        paper, BatchSpec.model_validate(paper.pop("batch")), REPO_ROOT
+    )
+    apk_only = [j for j in paper_jobs if j.config.no_codebase]
+    payload = json.loads(
+        (REPO_ROOT / "runner_config_batch_apk_plus_source.json").read_text()
+    )
+    batch = BatchSpec.model_validate(payload.pop("batch"))
+    jobs = batch_runner.expand_batch_jobs(payload, batch, REPO_ROOT)
+
+    def cells(js):
+        return {(j.app_name, j.config.attacker_model) for j in js}
+
+    assert cells(jobs) == cells(apk_only)
+    assert len(jobs) == 25
+    for job, ref in zip(
+        sorted(jobs, key=lambda j: (j.app_name, j.config.attacker_model)),
+        sorted(apk_only, key=lambda j: (j.app_name, j.config.attacker_model)),
+    ):
+        a = job.config.model_dump()
+        b = ref.config.model_dump()
+        assert a.pop("source_with_apk") is True
+        assert b.pop("source_with_apk") is False
+        assert a == b
+
+
+def test_no_adb_apk_plus_source_template_expands_only_requested_condition():
+    payload, batch = batch_runner.load_batch_config_parts(
+        REPO_ROOT / "runner_config_ra_no_adb_apk_plus_source.json"
+    )
+    jobs = batch_runner.expand_batch_jobs(payload, batch, REPO_ROOT)
+
+    assert len(jobs) == 12
+    assert "termux" not in {job.app_name for job in jobs}
+    for job in jobs:
+        assert job.config.attacker_model == "remote_attacker"
+        assert job.config.attacker_adb is False
+        assert job.config.no_codebase is True
+        assert job.config.source_with_apk is True
+        assert job.config.apk_obfuscation == "on"
+        assert job.config.network_mode == "restricted"
+        assert job.config.probe_only is True
+
+
+@pytest.mark.parametrize("build_type", ["download-apk", "skip-apk"])
+def test_batch_matrix_keeps_source_and_adb_controls_independent(tmp_path, build_type):
+    batch = BatchSpec(
+        apps=["app_a"],
+        matrix={
+            "attacker_model": ["remote_attacker"],
+            "attacker_adb": [True, False],
+            "source_with_apk": [False, True],
+        },
+    )
+    payload = {
+        **_base_payload(),
+        "build_type": build_type,
+        "no_codebase": True,
+        "apk_obfuscation": "on",
+        "network_mode": "restricted",
+    }
+
+    jobs = batch_runner.expand_batch_jobs(payload, batch, tmp_path)
+
+    assert [(job.config.attacker_adb, job.config.source_with_apk) for job in jobs] == [
+        (True, False),
+        (True, True),
+        (False, False),
+        (False, True),
+    ]
+    for job in jobs:
+        assert job.config.attacker_model == "remote_attacker"
+        assert job.config.no_codebase is True
+        assert job.config.apk_obfuscation == "on"
+        assert job.config.network_mode == "restricted"
+        assert job.config.build_type == build_type
+        assert job.config.probe_only is True
+        assert job.config.replay_exploit_dir is None
+        assert job.config.dry_run is False
+        assert job.config.gold_run is False
+        validate(
+            instance=job.config.model_dump(), schema=RunnerConfig.build_json_schema()
+        )
+
+
+@pytest.mark.parametrize("source_with_apk", [False, True])
+def test_batch_matrix_rejects_malicious_app_without_adb(tmp_path, source_with_apk):
+    batch = BatchSpec(
+        apps=["app_a"],
+        matrix={"attacker_model": ["malicious_app"]},
+    )
+    payload = {
+        **_base_payload(),
+        "attacker_adb": False,
+        "no_codebase": True,
+        "source_with_apk": source_with_apk,
+    }
+
+    with pytest.raises(ValueError, match="attacker_adb=False"):
+        batch_runner.expand_batch_jobs(payload, batch, tmp_path)
+
+
+@pytest.mark.parametrize("attacker_adb", [True, False])
+def test_batch_matrix_rejects_source_with_apk_without_no_codebase(
+    tmp_path, attacker_adb
+):
+    batch = BatchSpec(
+        apps=["app_a"],
+        matrix={"attacker_model": ["remote_attacker"]},
+    )
+    payload = {
+        **_base_payload(),
+        "attacker_adb": attacker_adb,
+        "source_with_apk": True,
+    }
+
+    with pytest.raises(ValueError, match="source_with_apk: true requires no_codebase"):
+        batch_runner.expand_batch_jobs(payload, batch, tmp_path)

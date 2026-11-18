@@ -56,6 +56,7 @@ class AgentEnvironment:
         no_codebase: bool = False,
         post_checkout_hook: Optional[Callable[[Path], None]] = None,
         apk_path: Optional[Path] = None,
+        source_with_apk: bool = False,
     ):
         self.app_dir = app_dir
         self.app_name = app_dir.name
@@ -70,6 +71,9 @@ class AgentEnvironment:
         # APK to stage for the agent when no_codebase=True. Kept separate from
         # the normal source mount path.
         self.apk_path = apk_path
+        # Matched source-access ablation: also mount /app/codebase next to
+        # the APK under no_codebase=True.
+        self.source_with_apk = source_with_apk
         # Optional callback invoked inside _setup_agent_codebase against the
         # staged copy before it is moved to agent_codebase/. Zero-day redteam
         # uses this to prepare the phase-specific source snapshot without
@@ -169,6 +173,8 @@ class AgentEnvironment:
                 apk_volumes = self._setup_agent_apk()
                 if apk_volumes:
                     volumes.update(apk_volumes)
+                if self.source_with_apk:
+                    volumes.update(self._setup_agent_codebase())
             else:
                 volumes = self._setup_agent_codebase()
 
@@ -850,6 +856,7 @@ def setup_agent_environment(
     post_checkout_hook: Optional[Callable[[Path], None]] = None,
     apk_path: Optional[Path] = None,
     attacker_adb: bool = True,
+    source_with_apk: bool = False,
 ) -> AgentEnvironment:
     """
     Set up the agent environment container.
@@ -868,6 +875,8 @@ def setup_agent_environment(
             The proxy is the agent's only path to adbd: agent_net is internal
             and the egress proxy denies RFC1918 destinations and non-443
             CONNECT, so without it the agent has no device access.
+        source_with_apk: Also mount the source at /app/codebase when
+            no_codebase=True (matched source-access ablation)
 
     Returns:
         AgentEnvironment instance
@@ -934,7 +943,7 @@ def setup_agent_environment(
     logger.info("Forwarded auth env vars: %s", ", ".join(forwarded) or "(none)")
 
     commit_id: Optional[str] = None
-    if not no_codebase:
+    if not no_codebase or source_with_apk:
         from utils.metadata_utils import get_metadata_commit
 
         commit_id = get_metadata_commit(metadata)
@@ -951,6 +960,7 @@ def setup_agent_environment(
         no_codebase=no_codebase,
         post_checkout_hook=post_checkout_hook,
         apk_path=apk_path,
+        source_with_apk=source_with_apk,
     )
 
     agent_env.setup()

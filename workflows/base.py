@@ -124,6 +124,7 @@ class Workflow(ABC):
             username=username,
             password=password,
             no_codebase=self.config.no_codebase,
+            source_with_apk=self.config.source_with_apk,
             agent_mode=agent_mode,
             **({"attacker_adb": self.config.attacker_adb} if is_remote else {}),
         )
@@ -589,10 +590,10 @@ class Workflow(ABC):
         """Replay exploit.sh via run_exploit_container.sh.
 
         Replay mirrors the agent container's resource model: callers pass
-        exactly one of ``codebase_dir`` (no_codebase=False; mounts
-        /app/codebase) or ``replay_apk`` (no_codebase=True; the single APK
-        file to stage and mount at /app/apk so exploit.sh resolves the same
-        path the agent had during the agent phase). The codebase mount is
+        ``codebase_dir`` (no_codebase=False; mounts /app/codebase) or
+        ``replay_apk`` (no_codebase=True; the single APK file to stage and
+        mount at /app/apk). Both are allowed under source_with_apk=True,
+        preserving the resources visible during the agent phase. The codebase mount is
         the security-load-bearing one — replay must not expose source the
         agent never had. The APK mount is for path-symmetry with the agent
         phase.
@@ -610,8 +611,14 @@ class Workflow(ABC):
 
         Connectivity (ADB + app server) is checked by the script itself.
         """
-        if (codebase_dir is None) == (replay_apk is None):
-            raise ValueError("exactly one of codebase_dir or replay_apk must be set")
+        if codebase_dir is None and replay_apk is None:
+            raise ValueError("at least one of codebase_dir or replay_apk must be set")
+        if codebase_dir is not None and replay_apk is not None and not getattr(
+            self.config, "source_with_apk", False
+        ):
+            raise ValueError(
+                "codebase_dir and replay_apk together are only valid with source_with_apk"
+            )
 
         if wipe_output_dir and output_dir.exists():
             shutil.rmtree(output_dir)
@@ -646,6 +653,8 @@ class Workflow(ABC):
             replay_cmd += ["--codebase-dir", str(codebase_dir)]
         if apk_mount_dir is not None:
             replay_cmd += ["--apk-dir", str(apk_mount_dir)]
+        if codebase_dir is not None and apk_mount_dir is not None:
+            replay_cmd.append("--source-with-apk")
         if no_adb:
             replay_cmd.append("--no-adb")
         proc = subprocess.Popen(
