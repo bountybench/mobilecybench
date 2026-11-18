@@ -1599,6 +1599,10 @@ class RedTeamWorkflow(Workflow):
         os.environ["MCB_ATTACKER_MODEL"] = self._attacker_model
         if self._attacker_model == "remote_attacker" and self._ops.uses_generic_probes:
             os.environ["MCB_RA_GENERIC_PROBES"] = "1"
+        else:
+            # The config flag is the single source of truth: strip a stray
+            # user-set var so the frozen path stays byte-identical.
+            os.environ.pop("MCB_RA_GENERIC_PROBES", None)
         try:
             return super()._run_checks(*args, **kwargs)
         finally:

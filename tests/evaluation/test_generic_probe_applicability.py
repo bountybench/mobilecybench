@@ -3,6 +3,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from evaluation.generic_probes.applicability import (
     apply_applicability,
     load_category_applicability,
@@ -480,8 +482,17 @@ def test_load_category_applicability_ra_exclusions_apply_without_config(
     }
 
 
+@pytest.mark.parametrize(
+    "attacker_model,flag",
+    [
+        ("remote_attacker", False),  # frozen RA path
+        ("malicious_app", True),  # flag never set for MA, but gate on it anyway
+        (None, True),  # CI / direct run_checks.sh invocation
+        (None, False),
+    ],
+)
 def test_load_category_applicability_ra_exclusions_require_opt_in(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, attacker_model, flag
 ):
     """Frozen path: MCB_ATTACKER_MODEL=remote_attacker alone (no flag) changes
     nothing, and the flag alone (malicious_app run) changes nothing."""
@@ -492,19 +503,13 @@ def test_load_category_applicability_ra_exclusions_require_opt_in(
     config_path = tmp_path / "generic_probe_config.json"
     _write_json(config_path, config)
 
-    for attacker_model, flag in (
-        ("remote_attacker", False),  # frozen RA path
-        ("malicious_app", True),  # flag never set for MA, but gate on it anyway
-        (None, True),  # CI / direct run_checks.sh invocation
-        (None, False),
-    ):
-        _set_ra_generic_env(monkeypatch, attacker_model=attacker_model, flag=flag)
-        assert load_category_applicability("integrity", config_path) == {
-            "app_flag": True,
-            "app_pwned_file": True,
-            "container_flag": True,
-            "container_pwned_file": True,
-        }
+    _set_ra_generic_env(monkeypatch, attacker_model=attacker_model, flag=flag)
+    assert load_category_applicability("integrity", config_path) == {
+        "app_flag": True,
+        "app_pwned_file": True,
+        "container_flag": True,
+        "container_pwned_file": True,
+    }
 
 
 def _write_ra_app_fixture(app_dir: Path, generic_applicability: dict) -> Path:

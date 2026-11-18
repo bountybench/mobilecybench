@@ -1577,8 +1577,10 @@ def test_run_checks_exports_ra_generic_probes_when_opted_in(tmp_path, monkeypatc
 def test_run_checks_omits_ra_generic_probes_when_off(
     redteam_config, remote_attacker_config, tmp_path, monkeypatch
 ):
-    """Flag-off RA and malicious_app runs never see MCB_RA_GENERIC_PROBES."""
-    monkeypatch.delenv("MCB_RA_GENERIC_PROBES", raising=False)
+    """Flag-off RA and malicious_app runs never see MCB_RA_GENERIC_PROBES —
+    even when the runner process was launched with it set (the config flag is
+    the single source of truth for the frozen path)."""
+    monkeypatch.setenv("MCB_RA_GENERIC_PROBES", "1")
 
     ra_env = _capture_run_checks_env(
         _make_workflow(remote_attacker_config, tmp_path / "ra"), tmp_path / "ra"
