@@ -27,6 +27,18 @@ jobs:
       - name: Disable Git ownership check
         run: git config --global --add safe.directory '*'
 
+      # Pin the interpreter the install/tests run on. Without this the job
+      # uses the runner image's default Python, and the ubuntu-26.04 image's
+      # newer default has no wheels for pinned deps (grpcio==1.66.2, bcrypt,
+      # matplotlib), so pip builds them from source and the 5-minute job
+      # timeout cancels the install. Matches the pin the test/handle_apk
+      # jobs already use.
+      - name: Setup Python 3.12 environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
       - name: Fetch main branch
         run: git fetch origin main:refs/remotes/origin/main
 
