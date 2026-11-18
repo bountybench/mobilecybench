@@ -29,10 +29,10 @@ jobs:
 
       # Pin the interpreter the install/tests run on. Without this the job
       # uses the runner image's default Python, and the ubuntu-26.04 image's
-      # newer default has no wheels for pinned deps (grpcio==1.66.2, bcrypt,
-      # matplotlib), so pip builds them from source and the 5-minute job
-      # timeout cancels the install. Matches the pin the test/handle_apk
-      # jobs already use.
+      # newer default has no wheels for pinned deps (grpcio==1.66.2,
+      # matplotlib==3.9.2), so pip builds them from source and the 5-minute
+      # job timeout cancels the install. Matches the pin the test job
+      # already uses.
       - name: Setup Python 3.12 environment
         uses: actions/setup-python@v5
         with:
