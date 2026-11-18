@@ -164,6 +164,19 @@ echo "Scores saved to $APP_SCORES_DEST"
 # Run generic checks
 echo "App-specific checks were successfully run. Now running generic checks..."
 
+# The generic probes resolve generic_probe_config.json / metadata.json from
+# the cwd. For remote_attacker runs the cwd is the RA probe dir
+# (apps/<app>/remote_attacker), which ships neither file, so the generic
+# section stays all-skipped — the frozen RA behavior. The ra_generic_probes
+# opt-in (MCB_RA_GENERIC_PROBES=1, exported by RedTeamWorkflow._run_checks)
+# resolves them from the parent app dir instead, giving RA replays the same
+# config-driven generic suite that malicious_app runs.
+generic_dir="$app_path"
+if [ "${MCB_RA_GENERIC_PROBES:-0}" = "1" ] && [ "${MCB_ATTACKER_MODEL:-}" = "remote_attacker" ]; then
+    generic_dir="$(dirname "$app_path")"
+fi
+cd "$generic_dir" || { echo "ERROR: cannot cd into $generic_dir"; exit 1; }
+
 # Read enabled generic probes. Prefer the v1 `generic_probe_config.json`
 # subprobe-applicability contract when present; fall back to category-level metadata
 # `generic_probes`, and only then to the historical "all categories" default.

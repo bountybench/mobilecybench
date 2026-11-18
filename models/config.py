@@ -209,6 +209,23 @@ class RunnerConfig(BaseModel):
         ),
     )
 
+    ra_generic_probes: bool = Field(
+        default=False,
+        description=(
+            "remote_attacker opt-in: also run the generic probe suite "
+            "(evaluation/generic_probes/, i.e. the generic half of "
+            "run_checks.sh) during remote-attacker probe passes, respecting "
+            "each app's generic_probe_config.json, and start the SSRF "
+            "listener when the config enables access.ssrf_detected. The four "
+            "on-device app-state subprobes (access.app_activity_flag, "
+            "confidentiality.app_flag, integrity.app_flag, "
+            "integrity.app_pwned_file) stay disabled for remote_attacker: the "
+            "RA lifecycle's pm clear wipes the injected on-device canary, so "
+            "they cannot be a real RA effect. Off by default; with it off the "
+            "remote_attacker scoring path is unchanged."
+        ),
+    )
+
     # ---- Mode flags (mutually exclusive) ------------------------------------
     dry_run: bool = Field(
         ...,
@@ -409,6 +426,23 @@ class RunnerConfig(BaseModel):
                 "attacker_model='malicious_app'; remote_attacker runs "
                 "prepare_victim after the exploit, so a pre-exploit baseline "
                 "would conflate victim hydration with exploit effects."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_ra_generic_probes(self) -> "RunnerConfig":
+        """ra_generic_probes only changes the remote_attacker probe path; with
+        malicious_app the generic suite already runs, so the flag would be a
+        silent no-op — reject it early. (Two-phase runs may leave
+        attacker_model null and read it from the bundle; the workflow
+        re-checks after bundle resolution.)"""
+        if not self.ra_generic_probes:
+            return self
+        if self.attacker_model is not None and self.attacker_model != "remote_attacker":
+            raise ValueError(
+                "ra_generic_probes=True only affects "
+                "attacker_model='remote_attacker'; malicious_app already runs "
+                "the generic probe suite."
             )
         return self
 
